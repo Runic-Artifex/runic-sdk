@@ -64,11 +64,12 @@
         <h2>Connect products without coupling their cores.</h2>
       </div>
       <p>
-        The Runic SDK monorepo contains the SDK libraries, tools, templates and
+        The Runic SDK repository contains SDK libraries, tools, templates and
         examples. Its package set releases together through NuGet and npm.
-        Translations Editor is available from source. Official integrations can
-        connect a product to another product, framework, or tool; the product
-        cores do not depend back on those integrations.
+        Command Line and Translations, including Translations Editor, will
+        release independently. Official integrations can connect a product to
+        another product, framework, or tool; the product cores do not depend
+        back on those integrations.
       </p>
       <p>
         Application Views defines explicit Window and View contracts and emits

@@ -55,30 +55,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [platform, assets, command-line, translations, application]
+        suite: [platform, assets, application]
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
       - uses: ./.github/actions/restore-build
-      - name: Install the C++20 conformance compiler
-        if: matrix.suite == 'translations'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes clang
       - name: Run managed conformance suite
         run: bun eng/ci/test-managed.mjs "$SUITE"
         env:
           SUITE: ${{ matrix.suite }}
-      - name: Publish and execute RMF2 artifact-v5 NativeAOT smoke
-        if: matrix.suite == 'translations'
-        run: |
-          dotnet publish tests/dotnet/Runic.Translations.Rmf2AotTests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/rmf2-aot
-          ./artifacts/rmf2-aot/Runic.Translations.Rmf2AotTests
-      - name: Run bounded RMF2 LSP performance guard
-        if: matrix.suite == 'translations'
-        run: dotnet run --project tests/dotnet/Runic.Translations.Build.Tests/Runic.Translations.Build.Tests.csproj -c Release --no-build -- --rmf2-lsp-benchmark
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   web:
@@ -125,10 +112,6 @@ jobs:
         run: bun test --timeout 180000 ./eng/*.test.mjs ./eng/ci/*.test.mjs ./eng/release/*.test.mjs ./eng/reliability/*.test.mjs ./tests/engineering/*.test.mjs
       - name: Check embedded CLI compatibility metadata
         run: bun tools/dotnet-runic/metadata/generate.mjs --check
-      - name: Check generated translation capability artifacts
-        run: |
-          bun eng/generate-cldr.mjs --check
-          bun eng/render-capabilities.mjs --check
       - name: Check generated packing project inventory
         run: bun eng/generate-shipping-projects.mjs --check
       - name: Check generated files and lockfile
@@ -205,91 +188,6 @@ jobs:
           node examples/notes-reactive-views/ide-host-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-  editor:
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-sdk
-      - uses: ./.github/actions/restore-build
-      - name: Build the Translations Editor
-        run: dotnet build apps/translations-editor/Runic.Translations.Editor.csproj -c Release
-      - name: Verify editor frontend and production output
-        working-directory: apps/translations-editor/Frontend
-        run: bun run --bun verify:built
-        env:
-          RUNIC_TRANSLATIONS_MANIFEST: ${{ github.workspace }}/apps/translations-editor/obj/Release/net10.0/translations/editor.esm-v5/web-module-manifest-v3.json
-      - name: Run editor smoke scenarios
-        run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll --smoke-test
-      - name: Validate the example translation workspace
-        run: dotnet apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll validate apps/translations-editor/ExampleWorkspace
-      - uses: ./.github/actions/install-browser
-      - name: Verify real hosted editor RMF2 editing and recovery
-        run: bun apps/translations-editor/tests/HostedBrowserE2E/run-hosted-rmf2-ui.mjs apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll
-        env:
-          RUNIC_EDITOR_HOSTED_E2E_REPORT_DIR: ${{ github.workspace }}/artifacts/editor-hosted-rmf2-ui
-      - name: Retain hosted editor browser evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: editor-hosted-rmf2-ui
-          path: artifacts/editor-hosted-rmf2-ui
-          if-no-files-found: ignore
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
-  ide-packaging:
-    name: IDE / package and verify
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-sdk
-      - name: Build and test the VS Code extension
-        working-directory: tools/vscode-runic-translations
-        run: |
-          bun install --frozen-lockfile
-          bun run check
-          bun run test
-          bun run package
-      - name: Verify the Visual Studio source packaging contract
-        run: python3 tools/visualstudio-runic-translations/package.py --check-source
-      - uses: actions/upload-artifact@v7
-        with:
-          name: rmf2-ide-packages
-          path: tools/vscode-runic-translations/artifacts/runic-translations.vsix
-          if-no-files-found: error
-          retention-days: 14
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
-  ide-windows-package:
-    name: IDE / Windows VSIX package
-    runs-on: windows-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-      - uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
-      - name: Build the language server
-        run: dotnet build tools/dotnet-runic-translations/dotnet-runic-translations.csproj -c Release
-      - name: Build the native VSIX with full-framework MSBuild
-        run: msbuild tools/visualstudio-runic-translations/Runic.Translations.VisualStudio.csproj /restore /m:1 /p:Configuration=Release
-      - name: Verify the generated VSIX against the source manifest
-        run: python tools/visualstudio-runic-translations/package.py --configuration Release
-      - uses: actions/upload-artifact@v7
-        with:
-          name: rmf2-visualstudio-vsix
-          path: tools/visualstudio-runic-translations/artifacts/runic-translations-visualstudio.vsix
-          if-no-files-found: error
-          retention-days: 14
   docs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -349,55 +247,14 @@ jobs:
           path: artifacts/packages
       - name: Verify isolated NuGet and npm consumers
         run: bun run verify-packages
-      - name: Verify generated CommandLine package consumer with NativeAOT
-        shell: pwsh
-        run: |
-          $version = (Get-Content eng/workspace.json -Raw | ConvertFrom-Json).version
-          ./tests/fixtures/command-line/package-consumer/Runic.CommandLine.PackageConsumer/Invoke-PackageConsumer.ps1 -PackageVersion $version -PackageDirectory artifacts/packages/nuget -RuntimeIdentifier linux-x64 -Configuration Release
       - name: Verify packaged Angular View outlet
         run: |
           version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")).version')
           bun tests/web/angular-package-consumer/test-package-consumer.mjs "artifacts/packages/npm/runic-artifex-angular-$version.tgz"
-      - uses: ./.github/actions/install-browser
-      - name: Verify editor against locally packed View SDK
-        run: |
-          bun eng/run.mjs build-web
-          dotnet build apps/translations-editor/Runic.Translations.Editor.csproj -c Release -m:1 \
-            -p:RunicEditorUsePackedViews=true \
-            -p:RestoreAdditionalProjectSources="$PWD/artifacts/packages/nuget"
-          bun eng/ci/verify-editor-packed.mjs artifacts/packages/nuget
-          bun apps/translations-editor/tests/HostedBrowserE2E/run-hosted-rmf2-ui.mjs \
-            apps/translations-editor/bin/Release/net10.0/Runic.Translations.Editor.dll
-        env:
-          RUNIC_EDITOR_HOSTED_E2E_REPORT_DIR: ${{ github.workspace }}/artifacts/editor-hosted-packed
-      - name: Retain packaged editor browser evidence
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: editor-hosted-packed
-          path: artifacts/editor-hosted-packed
-          if-no-files-found: ignore
       - name: Verify packaged Window factory, generated client, and browser
         run: |
           node examples/first-window/package-smoke.mjs
           node examples/first-window-desktop/package-smoke.mjs
-      - name: Check generated files and lockfile
-        run: bun eng/ci/source-state.mjs check
-  wpf-package-consumer:
-    needs: packages
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-sdk
-      - uses: actions/download-artifact@v8
-        with:
-          name: runic-sdk-${{ github.run_id }}
-          path: artifacts/packages
-      - name: Verify packaged WPF translation consumer
-        run: bun eng/run.mjs verify-packages Runic.Translations.Wpf
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:
@@ -574,9 +431,6 @@ jobs:
           name: platform-sandbox-${{ matrix.rid }}-${{ github.run_id }}
           path: artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz
           if-no-files-found: error
-      - name: Verify WPF translation rendering
-        if: runner.os == 'Windows'
-        run: dotnet run --project tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj -c Release
       - name: Publish and exercise WebView2 with NativeAOT
         if: runner.os == 'Windows'
         shell: bash
@@ -615,7 +469,7 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [build, managed, web, engineering, framework-consumers, views, editor, docs, packages, package-consumers, wpf-package-consumer, templates, native, ide-packaging, ide-windows-package]
+    needs: [build, managed, web, engineering, framework-consumers, views, docs, packages, package-consumers, templates, native]
     runs-on: ubuntu-24.04
     steps:
       - name: Require every verification job to pass

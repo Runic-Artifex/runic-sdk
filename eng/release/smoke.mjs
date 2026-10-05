@@ -17,8 +17,8 @@ function run(command, args, cwd = directory) {
 }
 try {
   writeFileSync(join(directory, 'NuGet.Config'), '<configuration><packageSources><clear/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>');
-  writeFileSync(join(directory, 'Smoke.csproj'), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Runic.CommandLine" Version="[${VERSION}]"/></ItemGroup></Project>`);
-  writeFileSync(join(directory, 'Program.cs'), 'System.Console.WriteLine(typeof(Runic.CommandLine.CommandCatalog).FullName);');
+  writeFileSync(join(directory, 'Smoke.csproj'), `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><PackageReference Include="Runic.Assets" Version="[${VERSION}]"/></ItemGroup></Project>`);
+  writeFileSync(join(directory, 'Program.cs'), 'System.Console.WriteLine(typeof(Runic.Assets.AssetManifest).FullName);');
   run('dotnet', ['run', '--project', 'Smoke.csproj', '-c', 'Release']);
   run('dotnet', ['tool', 'install', 'dotnet-runic', '--version', VERSION, '--tool-path', join(directory, 'tools'), '--configfile', join(directory, 'NuGet.Config')]);
   run(join(directory, 'tools', process.platform === 'win32' ? 'dotnet-runic.exe' : 'dotnet-runic'), ['--help']);

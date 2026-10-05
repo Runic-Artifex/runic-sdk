@@ -1,23 +1,27 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import activeSdkRelease from '../src/lib/active-sdk-release.json' with { type: 'json' };
 import publishedRelease from '../src/lib/published-release.json' with { type: 'json' };
+import workspace from '../../eng/workspace.json' with { type: 'json' };
 import {
   createReleaseDocs,
   packageInstallCommand,
 } from '../src/lib/release-docs-core.ts';
 
 test('published catalog has unique installable packages and matching registry links', () => {
-  const rows = createReleaseDocs(publishedRelease).catalogRows;
+  const rows = createReleaseDocs(activeSdkRelease).catalogRows;
   assert.equal(new Set(rows.map((row) => row.name)).size, rows.length);
   for (const row of rows) {
     assert.ok(packageInstallCommand(row), row.name);
-    assert.ok(row.registryUrl.endsWith(`/${publishedRelease.version}`));
+    assert.ok(row.registryUrl.endsWith(`/${activeSdkRelease.version}`));
   }
   assert.ok(rows.some((row) => row.name === 'Runic.Application.Templates'));
   assert.ok(rows.some((row) => row.name === 'Runic.Application'));
   assert.ok(rows.some((row) => row.name === 'Runic.Application.Testing'));
   assert.ok(rows.some((row) => row.name === 'Runic.Application.ReactiveUI'));
   assert.ok(rows.some((row) => row.name === '@runic-artifex/svelte'));
+  assert.ok(!rows.some((row) => row.name === 'Runic.CommandLine'));
+  assert.ok(!rows.some((row) => row.name === 'Runic.Translations'));
   assert.ok(
     rows.every(
       (row) =>
@@ -26,6 +30,24 @@ test('published catalog has unique installable packages and matching registry li
         row.name !== '@runic-artifex/application-bridge',
     ),
   );
+});
+
+test('the unified 0.6 catalog remains immutable release history', () => {
+  const rows = createReleaseDocs(publishedRelease).catalogRows;
+  assert.ok(rows.some((row) => row.name === 'Runic.CommandLine'));
+  assert.ok(rows.some((row) => row.name === 'Runic.Translations'));
+  assert.equal(publishedRelease.version, '0.6.0-preview.1');
+});
+
+test('active catalog follows the SDK-owned package inventory only', () => {
+  const inventory = [...workspace.nuget, ...workspace.npm]
+    .map((entry) => entry.name)
+    .sort();
+  const catalog = activeSdkRelease.packages
+    .map((entry) => entry.identity)
+    .sort();
+  assert.equal(activeSdkRelease.version, workspace.version);
+  assert.deepEqual(catalog, inventory);
 });
 
 test('commands cover libraries, templates, tools and npm packages', () => {

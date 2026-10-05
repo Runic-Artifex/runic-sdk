@@ -88,22 +88,11 @@ test('all managed executable suites are assigned exactly once to workflow groups
   for (const group of managedGroups) assert.ok(suites.some(item => item.group === group), group);
   for (const path of ['tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj',
     'tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj',
-    'tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj',
-    'tests/dotnet/Runic.CommandLine.Tests/Runic.CommandLine.Tests.csproj'])
+    'tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj'])
     assert.ok(suites.some(item => item.path === path), path);
-  const wpf = 'tests/dotnet/Runic.Translations.Wpf.Tests/Runic.Translations.Wpf.Tests.csproj';
-  assert.ok(suites.some(item => item.path === wpf), wpf);
-  assert.ok(!managedTests(root, 'linux').some(item => item.path === wpf));
-  assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes(wpf)));
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
   assert.ok(workflow.jobs.native.steps.some(step =>
     step.run?.includes('dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/') && step.run.includes('PublishAot=true')));
-  const rmf2Aot = workflow.jobs.managed.steps.find(step => step.name === 'Publish and execute RMF2 artifact-v5 NativeAOT smoke');
-  assert.ok(rmf2Aot);
-  assert.equal(rmf2Aot.if, "matrix.suite == 'translations'");
-  assert.match(rmf2Aot.run, /dotnet publish tests\/dotnet\/Runic\.Translations\.Rmf2AotTests/);
-  assert.match(rmf2Aot.run, /PublishAot=true/);
-  assert.match(rmf2Aot.run, /artifacts\/rmf2-aot\/Runic\.Translations\.Rmf2AotTests/);
 });
 
 test('every web package with a test script is included in the dynamic matrix', () => {
@@ -123,28 +112,15 @@ test('verification gate includes all jobs and candidates are independent of test
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.equal(workflow.jobs.packages.needs, 'build');
-  const capabilities = workflow.jobs.engineering.steps.find(step => step.name === 'Check generated translation capability artifacts');
-  assert.ok(capabilities);
-  assert.match(capabilities.run, /bun eng\/generate-cldr\.mjs --check/);
-  assert.match(capabilities.run, /bun eng\/render-capabilities\.mjs --check/);
-  for (const id of ['templates', 'package-consumers', 'wpf-package-consumer']) assert.equal(workflow.jobs[id].needs, 'packages');
-  assert.equal(workflow.jobs['wpf-package-consumer']['runs-on'], 'windows-latest');
-  assert.ok(workflow.jobs['wpf-package-consumer'].steps.some(step =>
-    step.run?.includes('verify-packages Runic.Translations.Wpf')));
+  for (const id of ['templates', 'package-consumers']) assert.equal(workflow.jobs[id].needs, 'packages');
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });
 
-test('package consumers retain the installed RMF2 v5 NativeAOT journey', () => {
+test('package consumers verify isolated NuGet and npm installations', () => {
   const step = workflow.jobs['package-consumers'].steps.find(item =>
     item.name === 'Verify isolated NuGet and npm consumers');
   assert.equal(step?.run, 'bun run verify-packages');
-  const verifier = readFileSync(resolve(root, 'eng/verify-packages.mjs'), 'utf8');
-  assert.doesNotMatch(verifier, /executionProfile/);
-  assert.match(verifier, /CheckoutTextCatalog\.CreateExternalManagerAsync/);
-  assert.match(verifier, /"-p:PublishAot=true"/);
-  assert.match(verifier, /"-p:IlcTreatWarningsAsErrors=true"/);
-  assert.match(verifier, /run\(join\(nativeOutput, "Consumer"/);
 });
 
 test('Views replace the Bridge application gates', () => {

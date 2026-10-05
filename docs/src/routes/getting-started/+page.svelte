@@ -141,11 +141,11 @@
     </ContentCard>
     <ContentCard eyebrow="Existing project" title="Add one capability">
       <p>
-        You can adopt Application Views, Desktop, Assets, Translations or
-        Command Line separately. Choose a package and copy its installation
-        command from the <a class="text-link" href={resolve('/packages')}
-          >package catalog</a
-        >.
+        You can adopt Application Views, Desktop, or Assets separately. Choose a
+        package and copy its installation command from the <a
+          class="text-link"
+          href={resolve('/packages')}>package catalog</a
+        >. Command Line and Translations have their own installation guidance.
       </p>
       <p>
         Application Views uses explicit Window and View types. Its build tooling

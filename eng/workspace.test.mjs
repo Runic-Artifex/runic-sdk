@@ -9,8 +9,8 @@ import { dotnetBuildArguments, packageConsumerStrategy, resolveMsbuildPathValue 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 32);
-  assert.equal(workspace.npm.length, 8);
+  assert.equal(workspace.nuget.length, 22);
+  assert.equal(workspace.npm.length, 7);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
   for (const p of workspace.nuget) {
@@ -30,19 +30,18 @@ test("workspace defines the complete public SDK package inventory", () => {
   for (const p of workspace.nuget)
     assert.ok(existsSync(resolve(root, p.project)));
 });
-test("package consumers declare platform-specific target and execution strategies", () => {
-  for (const packageEntry of workspace.nuget) packageConsumerStrategy(packageEntry);
-  const wpf = workspace.nuget.find(packageEntry => packageEntry.name === "Runic.Translations.Wpf");
-  assert.ok(wpf);
-  assert.deepEqual(packageConsumerStrategy(wpf, "linux"), {
-    targetFramework: "net10.0-windows",
-    runtimePlatform: "win32",
-    useWpf: true,
-    canaryType: "Runic.Translations.Wpf.WpfInlineRenderer",
-    execute: false,
-    enableWindowsTargeting: true,
-  });
-  assert.equal(packageConsumerStrategy(wpf, "win32").execute, true);
+test("SDK package consumers use cross-platform target and execution strategies", () => {
+  for (const packageEntry of workspace.nuget) {
+    for (const platform of ["linux", "win32"]) {
+      assert.deepEqual(packageConsumerStrategy(packageEntry, platform), {
+        targetFramework: "net10.0",
+        execute: true,
+        enableWindowsTargeting: false,
+        useWpf: false,
+        canaryType: undefined,
+      }, `${packageEntry.name}: ${platform}`);
+    }
+  }
 });
 test("package verification honors non-Debug build output paths", () => {
   assert.deepEqual(dotnetBuildArguments("Consumer.csproj", "Release", ["--nologo"]),
@@ -104,7 +103,7 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    ["desktop", "assets", "editor", "examples", "platform"].sort(),
+    ["desktop", "assets", "examples", "platform"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["eng/build/desktop.props"]).sort(),

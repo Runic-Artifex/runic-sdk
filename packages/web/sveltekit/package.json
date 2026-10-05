@@ -1,7 +1,7 @@
 {
   "name": "@runic-artifex/sveltekit",
   "version": "0.6.0-preview.1",
-  "description": "SvelteKit integration for Runic Toolkit applications",
+  "description": "SvelteKit adapter for Runic Toolkit applications",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/sveltekit#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
@@ -25,15 +25,6 @@
     "./page-options": {
       "types": "./dist/page-options.d.ts",
       "import": "./dist/page-options.js"
-    },
-    "./translations": {
-      "types": "./dist/translations/index.d.ts",
-      "import": "./dist/translations/index.js"
-    },
-    "./translations/navigation": {
-      "types": "./dist/translations/navigation.d.ts",
-      "svelte": "./dist/translations/navigation.js",
-      "import": "./dist/translations/navigation.js"
     }
   },
   "files": [
@@ -42,27 +33,18 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
+    "build": "bun run --bun clean && tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "bun run --bun build && vitest run test/adapter.test.ts test/locale-routing.test.ts test/reference-app.test.ts test/spa-reference-app.test.ts",
+    "test": "bun run --bun build && vitest run test/adapter.test.ts test/spa-reference-app.test.ts",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/svelte": "0.6.0-preview.1",
-    "@runic-artifex/vite-plugin-runic": "0.6.0-preview.1",
     "@sveltejs/adapter-static": ">=4 <5",
     "@sveltejs/kit": ">=3 <4",
     "@sveltejs/vite-plugin-svelte": ">=7 <8",
     "svelte": ">=5.57.1 <6",
     "vite": ">=8.0.12 <9"
-  },
-  "peerDependenciesMeta": {
-    "@runic-artifex/svelte": {
-      "optional": true
-    },
-    "@runic-artifex/vite-plugin-runic": {
-      "optional": true
-    }
   },
   "publishConfig": {
     "access": "public",
@@ -78,8 +60,6 @@
     "node": ">=24.18.0 <25"
   },
   "devDependencies": {
-    "@runic-artifex/svelte": "workspace:*",
-    "@runic-artifex/vite-plugin-runic": "workspace:*",
     "@sveltejs/adapter-static": "4.0.0",
     "@sveltejs/kit": "3.0.0",
     "@sveltejs/package": "3.0.0",

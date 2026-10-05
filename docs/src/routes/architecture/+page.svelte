@@ -27,8 +27,8 @@
     <p class="lede">
       Each Runic tool works on its own. Integrations connect products, external
       frameworks, or tooling without making a core depend back on them. Those
-      integrations stay in separate packages within the Runic SDK monorepo. The
-      SDK package set releases together.
+      integrations stay in separate packages. The SDK package set releases
+      together; independently owned products release on their own schedules.
     </p>
   </section>
   <section class="content-grid shell">
@@ -65,11 +65,11 @@
       title="One coordinated SDK package set"
     >
       <p>
-        The runic-sdk monorepo supplies SDK libraries, tools and templates
-        through NuGet and npm. Translations Editor is available from source. All
-        package families share the SDK release workflow. CS-WebUI remains an
-        independent upstream compatibility product; the SDK includes the
-        Runic.Application integrations.
+        The runic-sdk repository supplies SDK libraries, tools and templates
+        through NuGet and npm. Command Line and Translations, including
+        Translations Editor, have their own repositories and release lifecycles.
+        CS-WebUI remains an independent upstream compatibility product; the SDK
+        includes the Runic.Application integrations.
       </p>
     </ContentCard>
     <ContentCard
@@ -91,16 +91,16 @@
         Runic Translations owns schemas, compiler behavior, runtime contracts,
         generators, and authoring APIs. Runic Translations Editor uses its
         packages and APIs as a downstream desktop application and owns
-        translator UX. It is available from source; the SDK package catalog does
-        not include an Editor distribution.
+        translator UX. It is released with the Translations project, outside the
+        SDK package catalog.
       </p>
     </ContentCard>
     <ContentCard eyebrow="Preview compatibility" title="Pin the exact versions">
       <p>
-        Pin exact preview versions and upgrade the Runic package set together.
-        Rebuild generated Window and View clients and retest after upgrades.
-        Compatibility is verified in consuming applications, frontend builds,
-        and, where applicable, NativeAOT runs.
+        Pin exact preview versions within each product family. Rebuild generated
+        Window and View clients and retest after SDK upgrades. Compatibility is
+        verified in consuming applications, frontend builds, and, where
+        applicable, NativeAOT runs.
       </p>
     </ContentCard>
     <ContentCard

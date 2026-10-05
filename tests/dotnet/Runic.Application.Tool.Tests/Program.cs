@@ -282,7 +282,11 @@ internal static class Program
         Write(Path.Combine(frontendDirectory, "package.json"), JsonSerializer.Serialize(new
         {
             packageManager = $"npm@{authority.Toolchain.Npm}",
-            dependencies = new Dictionary<string, string> { [npm.Identity] = npm.Version },
+            dependencies = new Dictionary<string, string>
+            {
+                [npm.Identity] = npm.Version,
+                ["@runic-artifex/vite-plugin-runic-translations"] = "0.6.0-preview.1",
+            },
         }));
         Write(Path.Combine(frontendDirectory, "package-lock.json"), "{}");
         Write(Path.Combine(frontendDirectory, "vite.config.ts"), "export default {};");
@@ -295,6 +299,9 @@ internal static class Program
                 [$"{nuget.Identity}/{nuget.Version}"] = new { type = "package" },
                 ["CsWebUi/2.5.0-beta.4.4"] = new { type = "package" },
                 ["CsWebUi.Native/2.5.0-beta.4.4"] = new { type = "package" },
+                ["Runic.CommandLine/0.6.0-preview.1"] = new { type = "package" },
+                ["Runic.Translations/0.6.0-preview.1"] = new { type = "package" },
+                ["dotnet-runic-translations/0.6.0-preview.1"] = new { type = "package" },
             },
         }));
 

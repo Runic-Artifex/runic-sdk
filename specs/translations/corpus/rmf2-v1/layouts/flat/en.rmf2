@@ -1,5 +1,0 @@
-checkout {
-  cart {
-    title = Hello {$name}
-  }
-}

@@ -5,8 +5,6 @@ here, grouped by the component that owns them. Managed and web tests consume the
 inputs. Translation CLI packages embed their schemas directly from this tree.
 
 - [Desktop](desktop): native transport contract and conformance vectors.
-- [Command line](command-line): serialized command contract corpus.
-- [Translations](translations): schemas, compiler corpus, capabilities and CLDR inputs/licenses.
 - [Assets](assets): archive format decisions.
 - [Application](application): current Window and View contract ownership and its package documentation.
 

@@ -9,14 +9,12 @@
   },
   "workspaces": [
     "packages/web/angular",
-    "packages/web/vite-plugin-runic-translations",
     "packages/web/vite-plugin-runic",
     "packages/web/svelte",
     "packages/web/sveltekit",
     "packages/web/views",
     "packages/web/react",
     "packages/web/vue",
-    "apps/translations-editor/Frontend",
     "docs"
   ],
   "scripts": {
@@ -27,7 +25,6 @@
     "pack": "bun eng/run.mjs pack",
     "verify-packages": "bun eng/run.mjs verify-packages",
     "dev:docs": "bun eng/run.mjs dev:docs",
-    "dev:editor": "bun eng/run.mjs dev:editor",
     "affected": "bun eng/run.mjs affected",
     "example:first-window": "bun eng/run.mjs example:first-window",
     "example:notes": "bun eng/run.mjs example:notes",

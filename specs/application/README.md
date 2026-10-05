@@ -8,7 +8,7 @@ previous preview Application Bridge protocol and its Bridge IR are retired.
 Generated code is the only supported producer and consumer. The protocol is
 documented so host adapters, generated clients and the runtime can change
 together; it is not an application API. The independent MessageFormat 2
-specification remains under [`specs/translations`](../translations/README.md).
+specification is maintained by [Runic Translations](https://github.com/Runic-Artifex/runic-translations-sdk).
 
 ## Version
 

@@ -2,7 +2,7 @@
   import ContentCard from '#lib/components/ContentCard.svelte';
   import {
     currentRelease,
-    catalogRows,
+    catalogRows as activeSdkCatalogRows,
     packageInstallCommand,
   } from '#lib/release-docs.js';
 </script>
@@ -29,8 +29,9 @@
     <p class="eyebrow">Packages</p>
     <h1>Install the components you need.</h1>
     <p class="lede">
-      These packages are available in Runic SDK {currentRelease.version}. Keep
-      Runic dependencies on the same preview version.
+      These SDK packages are available in Runic SDK {currentRelease.version}.
+      Keep SDK dependencies on the same preview version. Command Line and
+      Translations will publish their next previews independently.
     </p>
   </section>
   <section class="content-grid shell">
@@ -43,7 +44,7 @@
         > if the project does not already have one.
       </p>
       <div class="package-list">
-        {#each catalogRows as row (row.name)}
+        {#each activeSdkCatalogRows as row (row.name)}
           <section>
             <h2><a href={row.registryUrl} rel="external">{row.name}</a></h2>
             <p>{row.product} · {row.registry}</p>

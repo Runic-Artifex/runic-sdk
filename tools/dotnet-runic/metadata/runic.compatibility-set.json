@@ -32,26 +32,6 @@
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.CommandLine",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "Runic.CommandLine.Processes",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "Runic.CommandLine.Spectre",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "Runic.CommandLine.Testing",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
       "identity": "Runic.Desktop",
       "version": "0.6.0-preview.1"
     },
@@ -102,31 +82,6 @@
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Translations",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "Runic.Translations.Build",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "Runic.Translations.Tooling",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "Runic.Translations.Templates",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
-      "identity": "dotnet-runic-translations",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "nuget",
       "identity": "Runic.Platform",
       "version": "0.6.0-preview.1"
     },
@@ -166,18 +121,8 @@
       "version": "0.6.0-preview.1"
     },
     {
-      "ecosystem": "nuget",
-      "identity": "Runic.Translations.Wpf",
-      "version": "0.6.0-preview.1"
-    },
-    {
       "ecosystem": "npm",
       "identity": "@runic-artifex/angular",
-      "version": "0.6.0-preview.1"
-    },
-    {
-      "ecosystem": "npm",
-      "identity": "@runic-artifex/vite-plugin-runic-translations",
       "version": "0.6.0-preview.1"
     },
     {

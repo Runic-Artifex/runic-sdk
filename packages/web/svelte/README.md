@@ -1,18 +1,7 @@
 # `@runic-artifex/svelte`
 
-Svelte 5 helpers for Runic Translations, inline content, and Application Views.
-
-For locale context in a Svelte tree:
-
-```ts
-import { createLocaleContext } from "@runic-artifex/svelte/translations";
-```
-
-The browser-safe `@runic-artifex/svelte/translations/testing` entry point
-provides pseudo-localization, RTL isolation, plural boundary values, and
-accessibility stress fixtures. `@runic-artifex/svelte/inline` exports
-`LocalizedInline` and `inlineFactory` for localized structured content.
-`@runic-artifex/svelte/views` exports `ViewOutlet`, `ViewReference`,
+Svelte 5 Application Views helpers. `@runic-artifex/svelte` and
+`@runic-artifex/svelte/views` export `ViewOutlet`, `ViewReference`,
 `ViewRegistry` and `useView` for generated Window/View clients.
 
 Generated View clients import `@runic-artifex/views`, so a Views application
@@ -48,5 +37,6 @@ reference with a different `connect` function. An already connected client is
 observed and left to its owner. The result exposes reactive `state`, `client`
 and `error` properties and `retry()`.
 
-See the [Translations guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/docs/guides/translations)
-for catalog generation and the SvelteKit locale routing helpers.
+Translation helpers moved to
+[`@runic-artifex/translations-svelte`](https://github.com/Runic-Artifex/runic-translations-sdk/tree/main/packages/web/translations-svelte).
+Use a prior SDK preview until application imports have been migrated.

@@ -4,14 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import publishedRelease from '../src/lib/published-release.json' with { type: 'json' };
+import activeSdkRelease from '../src/lib/active-sdk-release.json' with { type: 'json' };
 import {
   createReleaseDocs,
   packageInstallCommand,
 } from '../src/lib/release-docs-core.ts';
 
 const buildDirectory = fileURLToPath(new URL('../build/', import.meta.url));
-const releaseDocs = createReleaseDocs(publishedRelease);
+const releaseDocs = createReleaseDocs(activeSdkRelease);
 
 const primaryRoutes = [
   '/',
@@ -155,7 +155,7 @@ test('renders every primary documentation route with one page heading', async ()
 
 test('getting started offers the creator and the equivalent template commands', async () => {
   const html = stripMarkup(await render('/getting-started'));
-  const version = publishedRelease.version;
+  const version = activeSdkRelease.version;
   assert.ok(html.includes(`dnx Runic.Create@${version}`));
   assert.match(html, /cd MyApp dotnet tool restore dotnet runic dev/);
   assert.ok(
@@ -171,7 +171,7 @@ test('getting started offers the creator and the equivalent template commands', 
 test('create page prerenders the default project and every template choice', async () => {
   const markup = await render('/create');
   const html = stripMarkup(markup);
-  const version = publishedRelease.version;
+  const version = activeSdkRelease.version;
   assert.ok(
     html.includes(
       `dnx Runic.Create@${version} -- MyApp --frontend react --package-manager npm --host cswebui --view-models toolkit`,
@@ -210,7 +210,7 @@ test('home page leads with the guided creator', async () => {
   const markup = await render('/');
   assert.ok(
     stripMarkup(markup).includes(
-      `dnx Runic.Create@${publishedRelease.version}`,
+      `dnx Runic.Create@${activeSdkRelease.version}`,
     ),
   );
   assert.match(markup, /href="[^"]*\/create"/);
@@ -286,14 +286,28 @@ test('uses the canonical Runic Translations identifiers', async () => {
   assert.match(html, /<h1>Runic Translations<\/h1>/);
   assert.match(html, /runic\.translations\/1/);
   assert.match(html, /Runic\.Translations\.\*/);
-  assert.match(html, /Runic\.Translations\.Tooling/);
-  assert.match(html, /@runic-artifex\/vite-plugin-runic-translations/);
-  assert.match(html, /translations\/runic\.json/);
-  assert.match(html, /m\.message_id\(\)/);
+  assert.match(html, /runic-translations-sdk/);
+  assert.match(stripMarkup(html), /independent preview is not yet published/);
 });
 
-test('links release notes and renders published install commands', async () => {
-  for (const path of primaryRoutes) {
+test('keeps CS-WebUI as an already independent product', async () => {
+  const html = await render('/products/cs-webui');
+  assert.match(html, /CS-WebUI is maintained separately/);
+  assert.match(html, /github\.com\/Runic-Artifex\/cs-webui\/releases/);
+  assert.doesNotMatch(html, /independent preview is not yet published/);
+});
+
+test('links SDK release notes and renders active SDK install commands', async () => {
+  for (const path of primaryRoutes.filter(
+    (route) =>
+      ![
+        '/products/runic-translations',
+        '/products/runic-translations-editor',
+        '/products/runic-command-line',
+        '/products/cs-webui',
+        '/products/runic-flow',
+      ].includes(route),
+  )) {
     assert.match(
       await render(path),
       /<a href="[^"#]*releases">Release notes<\/a>/,
@@ -359,12 +373,12 @@ test('resolves every internal route link and fragment in the prerendered site', 
 test('published release is consistent across onboarding, catalog and release notes', async () => {
   for (const route of ['/packages', '/releases', '/getting-started']) {
     const html = await render(route);
-    assert.ok(html.includes(publishedRelease.version), route);
+    assert.ok(html.includes(activeSdkRelease.version), route);
     assert.doesNotMatch(
       html,
       /unpublished candidate|release authority|two-hour soak/i,
     );
   }
   for (const route of ['/releases', '/getting-started'])
-    assert.ok((await render(route)).includes(publishedRelease.url), route);
+    assert.ok((await render(route)).includes(activeSdkRelease.url), route);
 });

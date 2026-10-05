@@ -1,6 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <RunicPolicyShippingProject>$(RunicCommandLineShippingProject)</RunicPolicyShippingProject>
-  </PropertyGroup>
-  <Import Project="common.targets" />
-</Project>

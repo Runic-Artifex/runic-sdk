@@ -180,7 +180,9 @@
           title={isArchived
             ? 'Retired project'
             : isIndependent
-              ? 'External WebUI binding'
+              ? product.transitioning
+                ? 'Independent preview pending'
+                : 'Independently released product'
               : product.slug === 'runic-application'
                 ? `Runic Application · SDK ${currentRelease.version}`
                 : isApplication
@@ -197,8 +199,15 @@
               >
               for the current Window and View application model.
             {:else if isIndependent}
-              CS-WebUI is maintained separately. Runic Application provides a
-              separate adapter for application Windows and ViewModels.
+              {#if product.transitioning}
+                {product.name} is moving to its own release lifecycle. Its first independent
+                preview is not yet published; the 0.6.0-preview.1 unified catalog
+                remains available as release history. Follow the product for its next
+                preview and installation guidance.
+              {:else}
+                {product.name} is maintained separately. Runic Application provides
+                a separate adapter for application Windows and ViewModels.
+              {/if}
             {:else if product.slug === 'runic-application'}
               The published SDK catalog includes the current Window and View
               packages. Keep the runtime, host adapter, templates, and frontend
@@ -211,9 +220,15 @@
               the same preview version.
             {/if}
           </p>
-          <a class="text-link" href={currentRelease.url} rel="external"
-            >Release notes and migration guidance</a
-          >
+          {#if !isIndependent}
+            <a class="text-link" href={currentRelease.url} rel="external"
+              >Release notes and migration guidance</a
+            >
+          {:else if product.releaseNotes}
+            <a class="text-link" href={product.releaseNotes} rel="external"
+              >Release notes</a
+            >
+          {/if}
         </Notice>
       </section>
       {#if !isArchived && !isIndependent}

@@ -8,14 +8,12 @@ project does not silently change its language, analyzer or package settings.
   testing adapters, the BridgeCodegen tools, `dotnet-runic`, templates, the
   `Runic.Platform*` native-service packages and their tests.
 - `assets`: archive/runtime adapters and asset packer.
-- `command-line`: command catalogs, generators and process APIs.
 - `desktop`: `Runic.Desktop`/`Runic.Desktop.Gtk4`, their tests and native smoke checks.
-- `translations`: translation runtime, compiler, generators, tooling and the editor.
 
-`application`, `assets`, `command-line` and `translations` are thin wrappers over
+`application` and `assets` are thin wrappers over
 `common.props`/`common.targets`. They differ only in package tags, icon and the name
 of their build-mode switch (`RunicToolkitBuildMode`, `RunicAssetsBuildMode`,
-`RunicCommandLineBuildMode`, `RunicTranslationsBuildMode`). `Development` is the
+`). `Development` is the
 default; CI selects `Verification`, which treats warnings as errors and enables
 NuGet audit and trim/AOT analyzers for shipping projects. A shipping project sets
 `Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible;

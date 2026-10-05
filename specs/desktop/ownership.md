@@ -42,8 +42,7 @@ normative contract sources:
   standalone Desktop presentation and native dispatch.
 - `packages/dotnet/Runic.Assets/AssetContracts.cs` and `AssetArchive.cs` own
   asset identity and archives. `Runic.Assets.Desktop` owns its delivery adapter.
-- `packages/dotnet/Runic.Translations/Runtime/Management/TranslationManager.cs`
-  owns runtime locale state.
+- Runic Translations owns runtime locale state in its independent repository.
 - `packages/web/vite-plugin-runic` owns the Views development integration.
 - `packages/web/svelte` and `packages/web/angular` own frontend
   content outlets and View lifecycle projection.

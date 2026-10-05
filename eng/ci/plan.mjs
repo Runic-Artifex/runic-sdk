@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace } from "../run.mjs";
 
-export const managedGroups = ["platform", "assets", "command-line", "translations", "application"];
+export const managedGroups = ["platform", "assets", "application"];
 export function managedTests(base = root, platform = process.platform) {
   return [...readFileSync(resolve(base, "RunicSdk.Core.slnx"), "utf8").matchAll(/<Project Path="([^"]+)"/g)]
     .map(([, path]) => path)
@@ -14,9 +14,7 @@ export function managedTests(base = root, platform = process.platform) {
         && (platform === "win32" || !/<TargetFramework>[^<]*-windows<\/TargetFramework>/.test(project));
     })
     .map(path => ({ path, group: path.includes("Runic.Application.") ? "application"
-      : path.includes("Runic.Translations") ? "translations"
       : path.includes("Runic.Assets") ? "assets"
-      : path.includes("Runic.CommandLine") || path.startsWith("examples/command-line/") ? "command-line"
       : "platform" }));
 }
 

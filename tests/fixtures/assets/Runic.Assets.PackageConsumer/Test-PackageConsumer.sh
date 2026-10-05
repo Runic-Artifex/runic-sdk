@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-fixture_root="$repository_root/tests/Runic.Assets.PackageConsumer"
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+fixture_root="$repository_root/tests/fixtures/assets/Runic.Assets.PackageConsumer"
 dependency_root="${RUNIC_ASSETS_DEPENDENCY_ROOT:-$repository_root/..}"
 desktop_project="$dependency_root/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj"
 test_root="$(mktemp -d)"
@@ -35,9 +35,9 @@ fi
 
 export NUGET_PACKAGES="$test_root/packages"
 mkdir -p "$consumer_root"
-cp "$repository_root/tests/Runic.Assets.PackageConsumer/Program.cs" "$consumer_root/Program.cs"
-cp -R "$repository_root/tests/Runic.Assets.PackageConsumer/vite-dist" "$consumer_root/vite-dist"
-cp "$repository_root/tests/Runic.Assets.PackageConsumer/Runic.Assets.PackageConsumer.csproj" \
+cp "$fixture_root/Program.cs" "$consumer_root/Program.cs"
+cp -R "$fixture_root/vite-dist" "$consumer_root/vite-dist"
+cp "$fixture_root/Runic.Assets.PackageConsumer.csproj" \
   "$consumer_root/Runic.Assets.PackageConsumer.csproj"
 sed "s|__LOCAL_FEED__|$package_feed|g" \
   "$fixture_root/NuGet.config.template" > "$nuget_config"
@@ -68,7 +68,7 @@ cp "$tool_archive" "$test_root/packaged-tool-first.runic-assets"
 dotnet "$packer_path" "$tool_fixture" "$tool_archive" --trusted-generated-output
 cmp "$test_root/packaged-tool-first.runic-assets" "$tool_archive"
 
-usage="Usage: Runic.Assets.Packer <source-directory> <destination-archive> [--entry-point <relative-path>] [--exclude <semicolon-separated-relative-paths>] [--trusted-generated-output]"
+usage="RCLI1005: A required command argument is missing. (source-directory)"
 check_failure() {
   local expected_exit="$1"
   shift

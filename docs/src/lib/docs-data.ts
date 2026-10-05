@@ -23,6 +23,8 @@ export type Product = {
   bestFor: string[];
   boundaries: string[];
   availability?: 'active' | 'archived' | 'independent';
+  transitioning?: boolean;
+  releaseNotes?: string;
   kind?: 'package-family' | 'application';
   related?: {
     href:
@@ -133,6 +135,7 @@ export const products: Product[] = [
     version: null,
     versionState: 'unassigned',
     availability: 'independent',
+    releaseNotes: 'https://github.com/Runic-Artifex/cs-webui/releases',
     source: 'https://github.com/Runic-Artifex/cs-webui',
     bestFor: [
       'Direct upstream WebUI interop from .NET',
@@ -179,9 +182,12 @@ export const products: Product[] = [
       'Turn a conventional MessageFormat 2 project into typed C# and tree-shakable TypeScript APIs.',
     description:
       'Runic Translations discovers one translations/runic.json project with locale-scoped MessageFormat 2 files. Its deterministic compiler generates identifier-safe message calls, locale metadata, request-local SSR support, typed C# and tree-shakable ESM while keeping its runtime ABI portable and NativeAOT-ready.',
-    ...releaseMetadata('translations'),
-    source:
-      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Translations',
+    releaseProduct: null,
+    version: null,
+    versionState: 'unassigned',
+    availability: 'independent',
+    transitioning: true,
+    source: 'https://github.com/Runic-Artifex/runic-translations-sdk',
     bestFor: [
       'Deterministic localization builds',
       'MessageFormat 2 authoring with generated m.message_id() calls',
@@ -210,9 +216,13 @@ export const products: Product[] = [
       'Create, translate, review, and validate Runic Translations workspaces in a focused desktop editor.',
     description:
       'Runic Translations Editor opens the same runic.json and MessageFormat 2 files as the compiler. It gives translators a focused workspace for natural text, variables, variants, workflow status, and validation without defining a second authoring format.',
-    ...releaseMetadata('editor'),
+    releaseProduct: null,
+    version: null,
+    versionState: 'unassigned',
+    availability: 'independent',
+    transitioning: true,
     source:
-      'https://github.com/Runic-Artifex/runic-sdk/tree/main/apps/translations-editor',
+      'https://github.com/Runic-Artifex/runic-translations-sdk/tree/main/apps/translations-editor',
     bestFor: [
       'Translating and reviewing MessageFormat 2 projects visually',
       'Managing locales, message structure, variables, and plural variants',
@@ -239,9 +249,12 @@ export const products: Product[] = [
       'Build reflection-free NativeAOT command applications with parser-neutral contracts and predictable human and machine output.',
     description:
       'Runic Command Line generates NativeAOT-ready commands from ordinary typed C# methods. Help, validation, completion, environment fallbacks and shared options work in standalone tools and hosted Runic applications. Add Runic.CommandLine.Spectre for styled help, progress and prompts; machine output remains structured and predictable.',
-    ...releaseMetadata('command-line'),
-    source:
-      'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.CommandLine',
+    releaseProduct: null,
+    version: null,
+    versionState: 'unassigned',
+    availability: 'independent',
+    transitioning: true,
+    source: 'https://github.com/Runic-Artifex/runic-cli-sdk',
     bestFor: [
       'NativeAOT command applications',
       'Deterministic machine and human output',

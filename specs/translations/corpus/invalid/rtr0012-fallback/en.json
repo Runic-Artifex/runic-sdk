@@ -1,7 +1,0 @@
-{
-  "schemaVersion": 1,
-  "catalog": "fallback",
-  "locale": "en",
-  "layer": "base",
-  "resources": { "Hello": "Hello" }
-}

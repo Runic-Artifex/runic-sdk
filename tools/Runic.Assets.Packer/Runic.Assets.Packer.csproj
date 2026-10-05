@@ -13,14 +13,10 @@
 
   <ItemGroup>
     <ProjectReference Include="../../packages/dotnet/Runic.Assets/Runic.Assets.csproj" />
-    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine/Runic.CommandLine.csproj" />
-    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Generators/Runic.CommandLine.Generators.csproj"
-                      PrivateAssets="all"
-                      ReferenceOutputAssembly="false"
-                      OutputItemType="Analyzer" />
+    <PackageReference Include="Runic.CommandLine" />
   </ItemGroup>
   <Import Project="../../eng/build/assets.targets" />
   <ItemGroup>
-    <ProjectReference Include="../../packages/dotnet/Runic.CommandLine.Spectre/Runic.CommandLine.Spectre.csproj" />
+    <PackageReference Include="Runic.CommandLine.Spectre" />
   </ItemGroup>
 </Project>

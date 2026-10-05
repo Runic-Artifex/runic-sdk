@@ -1,8 +1,8 @@
 # Runic SDK
 
 Build native desktop applications with C# logic and React, Vue, Svelte or Angular.
-Adopt Application Views, Desktop, Assets, Translations and Command Line independently;
-the SDK's NuGet and npm packages release together.
+Adopt Application Views, Desktop and Assets independently. Command Line and
+Translations are independently released SDKs.
 
 ## Start building an application
 
@@ -33,8 +33,7 @@ Window and View model. The instructions below are for contributing to the SDK it
 
 ## Start developing
 
-Install the .NET SDK in `global.json`, Node in `.node-version`, and Bun 1.4.2. The full translation compiler test suite also requires `clang++`
-with C++20 support.
+Install the .NET SDK in `global.json`, Node in `.node-version`, and Bun 1.4.2.
 On Linux with Nix, `nix develop` provides the SDK, Node, Bun, C++ compiler, and
 webview dependencies from the shared flake. Run these commands from this directory:
 
@@ -44,24 +43,20 @@ for the environment requirements and regression checks.
 ```sh
 nix develop             # Linux: use the complete pinned environment
 bun run bootstrap       # One frozen npm workspace install and .NET restore
-bun run build           # SDK, editor, current example, and documentation
-bun run test command-line # Focused checks in the current checkout
+bun run build           # SDK, current example, and documentation
+bun run test application # Focused checks in the current checkout
 bun run dev:docs        # Documentation development server
-bun run dev:editor      # Build and launch the translations editor
 ```
 
-Open `RunicSdk.slnx` for the complete solution or `RunicSdk.Core.slnx` for SDK
-and test work without the editor frontend. Builds use Debug by default; set
-`CONFIGURATION=Release` for release builds. Native editor execution requires the
-platform webview runtime described in [Desktop guidance](docs/guides/desktop/window-close-lifecycle.md).
+Open `RunicSdk.Core.slnx` for the SDK and test work. Builds use Debug by default;
+set `CONFIGURATION=Release` for release builds.
 
 ## Layout
 
 | Directory | Ownership |
 | --- | --- |
 | `packages/dotnet`, `packages/web` | Published libraries, generators and framework integrations |
-| `tools` | CLI, bridge inspector, asset packer, translation compiler and templates |
-| `apps` | First-party applications |
+| `tools` | Application tooling, bridge inspector and asset packer |
 | `examples` | First Window and Notes application examples |
 | `tests` | Managed/native suites, package/template consumers and required fixtures |
 | `specs` | Shared protocols, schemas and conformance corpora |
