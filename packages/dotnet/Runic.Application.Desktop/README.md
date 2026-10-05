@@ -67,5 +67,5 @@ contract as the CS-WebUI adapter, and its build defaults match
 
 The [First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window-desktop)
 example is a complete application. See the
-[host selection guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/guides/desktop/host-selection.md)
+[host selection guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-selection.md)
 to choose between this host and CS-WebUI.

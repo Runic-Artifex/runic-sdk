@@ -67,7 +67,8 @@ bun test eng/release/template-locks.test.mjs
 before sending missing versions; `registry` checks availability. These are internal
 workflow steps, not files a maintainer must assemble by hand.
 
-After publication, refresh the public docs with `bun run docs:release <version>`.
+After publication, refresh the public portal from the `runic-site` repository
+with `bun run docs:release <version>`.
 This records the released tag's package catalog in one file. Commit it with any
-API guide changes and deploy the docs; see [docs maintenance](../../docs/README.md).
+API guide changes and deploy the docs; see [portal maintenance](https://github.com/Runic-Artifex/runic-site/blob/main/docs/README.md).
 The marketing site links to the docs and needs no routine version edits.

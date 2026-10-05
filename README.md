@@ -37,15 +37,14 @@ Install the .NET SDK in `global.json`, Node in `.node-version`, and Bun 1.4.2.
 On Linux with Nix, `nix develop` provides the SDK, Node, Bun, C++ compiler, and
 webview dependencies from the shared flake. Run these commands from this directory:
 
-See [NixOS development and native shutdown](docs/guides/desktop/nixos-development.md)
+See [NixOS development and native shutdown](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/nixos-development.md)
 for the environment requirements and regression checks.
 
 ```sh
 nix develop             # Linux: use the complete pinned environment
 bun run bootstrap       # One frozen npm workspace install and .NET restore
-bun run build           # SDK, current example, and documentation
+bun run build           # SDK libraries and web packages
 bun run test application # Focused checks in the current checkout
-bun run dev:docs        # Documentation development server
 ```
 
 Open `RunicSdk.Core.slnx` for the SDK and test work. Builds use Debug by default;
@@ -60,7 +59,7 @@ set `CONFIGURATION=Release` for release builds.
 | `examples` | First Window and Notes application examples |
 | `tests` | Managed/native suites, package/template consumers and required fixtures |
 | `specs` | Shared protocols, schemas and conformance corpora |
-| `docs` | Documentation site and product/architecture guides |
+| `docs` | Link to the shared portal in runic-site |
 | `eng` | Shared build policy, focused checks, package inventory and release tooling |
 
 Source dependencies use explicit `ProjectReference` and `workspace:*` links.
@@ -79,9 +78,9 @@ Start with the [first Window](examples/first-window/README.md), then compare the
 [CommunityToolkit Notes](examples/notes-view-first/README.md) and
 [Reactive Notes](examples/notes-reactive-views/README.md) examples. They use
 explicit .NET Window and View types, generated TypeScript clients, and ordinary
-frontend components. See the [Views guide](docs/guides/application/README.md)
-and [host selection](docs/guides/desktop/host-selection.md).
-The [host-choice and footprint assessment](docs/guides/desktop/host-choice-and-footprint.md)
+frontend components. See the [Views guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/README.md)
+and [host selection](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-selection.md).
+The [host-choice and footprint assessment](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-choice-and-footprint.md)
 retains the historical Linux measurement and links to current size guidance.
 
 ## Verify packages and releases
@@ -103,7 +102,7 @@ requires Bash, npm 12.2.0, and pnpm 12.9.1. Artifacts are written to
 `eng/workspace.json` lists maintained artifacts and component dependencies.
 `eng/Versions.props` defines the .NET release version. npm packages retain explicit
 versions, checked against the inventory. Coordinate version changes in a single PR.
-CI uses separate jobs for managed suites, web packages, docs, the editor, browser/HMR
+CI uses separate jobs for managed suites, web packages, browser/HMR
 checks, packages and template consumers. Managed desktop, native window/close,
 NativeAOT and footprint checks target Linux x64, Windows x64 and macOS Apple Silicon. Broader native UI certification remains
 a separate platform test concern.

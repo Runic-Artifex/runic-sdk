@@ -19,7 +19,7 @@ generated starter ignores it instead.
 `window.Show("index.html")` opens the page through CS-WebUI. It uses an
 installed browser in app mode (Chrome, Edge or another Chromium-based browser
 works best), then the default browser, then the platform WebView. The
-[host selection guide](../../docs/guides/desktop/host-selection.md) describes
+[host selection guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-selection.md) describes
 the Runic Desktop host for applications that need native windows.
 
 ## Run it from this repository

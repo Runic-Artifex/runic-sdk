@@ -142,7 +142,6 @@
         "tests/dotnet/Runic.Desktop.Tests",
         "tests/native/Runic.Desktop.WebViewSmoke",
         "eng/build/desktop.props",
-        "docs/guides/desktop",
         "eng/branding/desktop",
         "specs/desktop",
         "tests/fixtures/desktop/evidence",
@@ -165,7 +164,6 @@
         "tests/dotnet/Runic.Assets.Tests",
         "eng/build/assets.props",
         "eng/build/assets.targets",
-        "docs/guides/assets",
         "eng/branding/assets",
         "specs/assets"
       ]
@@ -193,7 +191,6 @@
         "tests/fixtures/application",
         "eng/build/application.props",
         "eng/build/application.targets",
-        "docs/guides/application",
         "eng/branding/application",
         "specs/application",
         "tests/templates",
@@ -242,12 +239,6 @@
         "examples/Directory.Build.targets",
         "examples/Directory.Packages.props",
         "examples/NuGet.config"
-      ]
-    },
-    "docs": {
-      "dependsOn": [],
-      "paths": [
-        "docs"
       ]
     },
     "platform": {

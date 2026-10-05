@@ -52,5 +52,5 @@ Serialization counts include captured rows even when delivery coalesces a
 snapshot. Timing excludes asynchronous transport, browser hydration and native
 rendering. See [assessment](assessment.md) for retained results and limits.
 
-See the [DynamicData guide](../../docs/guides/application/guides/dynamicdata.md)
+See the [DynamicData guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/guides/dynamicdata.md)
 for model scheduling, supported row shapes and fallback behavior.
