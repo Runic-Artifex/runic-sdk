@@ -51,3 +51,14 @@ export async function registryMatches(p, options={}) {
   }
   return true;
 }
+
+// Until 1.0 every release is a preview, so npm latest follows the newest one.
+// Never move latest back to an older version, for example on a late rerun.
+export function needsLatest(current, version) {
+  return current === undefined || Bun.semver.order(current, version) < 0;
+}
+export async function npmLatest(name, options={}) {
+  const response=await fetchRegistry(`https://registry.npmjs.org/-/package/${encodeURIComponent(name)}/dist-tags`,options);
+  assert(response.ok, `npm dist-tag lookup failed for ${name}: ${response.status}`);
+  return (await response.json()).latest;
+}

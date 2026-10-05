@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authority, scan, json, sha256, validateCandidate, VERSION, REPOSITORY } from './artifacts.mjs';
-import { registryMatches } from './registry.mjs';
+import { registryMatches, needsLatest, npmLatest } from './registry.mjs';
 import { runChecked } from './process.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const [command, ...args] = process.argv.slice(2);
@@ -47,4 +47,10 @@ else if (command === 'registry') {
       runChecked('dotnet', ['nuget', 'push', path, '--source', 'https://api.nuget.org/v3/index.json', '--api-key', process.env.NUGET_API_KEY]);
     }
   }
-} else throw new Error('Use prepare <packages> <source> <run> <manifest>, verify <packages> <manifest>, registry <manifest>, or publish <packages> <manifest>');
+} else if (command === 'tag-latest') {
+  const candidate = json(args[0]); validateCandidate(candidate);
+  assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
+  for (const p of candidate.packages.filter(p => p.registry === 'npm'))
+    if (needsLatest(await npmLatest(p.name, {waitForAvailability: true}), VERSION))
+      runChecked('npm', ['dist-tag', 'add', `${p.name}@${VERSION}`, 'latest', '--registry', 'https://registry.npmjs.org']);
+} else throw new Error('Use prepare <packages> <source> <run> <manifest>, verify <packages> <manifest>, registry <manifest>, publish <packages> <manifest>, or tag-latest <manifest>');

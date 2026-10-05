@@ -28,7 +28,9 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
 Keep the existing `preview` environment and trusted publishers for
 `Runic-Artifex/runic-sdk`, workflow `publish-preview.yml`, environment `preview`.
 NuGet uses `NuGet/login` and `vars.NUGET_USER` (the profile username); npm publishes
-through OIDC with the `preview` tag. This workflow does not move npm `latest`.
+through OIDC with the `preview` tag. Until 1.0, every release is a preview, so after the
+GitHub release the workflow moves npm `latest` to it, never to an older version.
+Each npm trusted publisher therefore also needs **Allow npm dist-tag** enabled.
 The filename is retained so installed trusted-publisher registrations keep working.
 New package identities may still need registry ownership/bootstrap configuration.
 That is account setup, not a recurring release acceptance checklist.

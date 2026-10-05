@@ -26,3 +26,13 @@ test('publication does not wait for registry indexing and release has no evidenc
   expect(release.jobs.publish.permissions['id-token']).toBe('write');
   expect(release.jobs.publish.environment).toBe('preview');
 });
+test('npm latest follows the preview after its GitHub release, never backwards', async () => {
+  const { needsLatest } = await import('./registry.mjs');
+  const steps = workflow('publish-preview.yml').jobs.publish.steps;
+  expect(steps.findIndex(s => s.run?.includes('github.mjs'))).toBeLessThan(steps.findIndex(s => s.run?.includes('cli.mjs tag-latest')));
+  expect(needsLatest(undefined, '0.6.0-preview.1')).toBe(true);
+  expect(needsLatest('0.2.0-preview.1', '0.6.0-preview.1')).toBe(true);
+  expect(needsLatest('0.6.0-preview.1', '0.6.0-preview.2')).toBe(true);
+  expect(needsLatest('0.6.0-preview.1', '0.6.0-preview.1')).toBe(false);
+  expect(needsLatest('0.7.0-preview.1', '0.6.0-preview.2')).toBe(false);
+});
