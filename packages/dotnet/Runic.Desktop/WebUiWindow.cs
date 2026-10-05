@@ -51,6 +51,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private WindowCloseController? _closeController;
 
     private TaskCompletionSource _browserConnected = NewCompletionSource();
+    // How far the current presentation got before authentication, for timeout reports.
+    private int _connectionProgress;
     private string _rootFolder;
     private string? _profileName;
     private string? _profilePath;
@@ -330,6 +332,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         Task connection;
         Uri browserUrl;
+        Process? launched = null;
         var navigateExisting = false;
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -377,7 +380,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     _x,
                     _y,
                     _allowedPermissions);
-                _browserConnected = NewCompletionSource();
+                connection = BeginConnection();
                 Process process;
                 Task outputClosed;
                 try
@@ -396,7 +399,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 _browserProcess = process;
                 _browserOutputClosed = outputClosed;
                 _currentBrowser = installation.Browser;
-                connection = _browserConnected.Task;
+                launched = process;
                 _ = MonitorBrowserAsync(process);
             }
         }
@@ -411,15 +414,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         else if (WaitForConnection && _externalUrl is null)
         {
-            try
-            {
-                await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
-                throw;
-            }
+            await WaitForConnectionAsync(connection, launched, surfaceHosted: content is null, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return url;
@@ -486,8 +482,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 _embeddedHost = host;
                 _currentBrowser = WebUiBrowser.WebView;
-                _browserConnected = NewCompletionSource();
-                connection = _browserConnected.Task;
+                connection = BeginConnection();
                 try
                 {
                     ConfigureCloseConfirmation(host);
@@ -515,15 +510,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         else if (WaitForConnection && _externalUrl is null)
         {
-            try
-            {
-                await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
-            }
-            catch
-            {
-                await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
-                throw;
-            }
+            await WaitForConnectionAsync(connection, browserProcess: null, surfaceHosted: content is null, cancellationToken)
+                .ConfigureAwait(false);
         }
         return url;
     }
@@ -560,8 +548,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 host.Closed += EmbeddedHostClosed;
                 _embeddedHost = host;
                 _currentBrowser = WebUiBrowser.WebView;
-                _browserConnected = NewCompletionSource();
-                connection = _browserConnected.Task;
+                connection = BeginConnection();
                 try
                 {
                     ConfigureCloseConfirmation(host);
@@ -591,18 +578,25 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         else if (WaitForConnection && _externalUrl is null)
         {
             var deadline = DateTime.UtcNow + ConnectionTimeout;
-            while (!connection.IsCompleted)
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                ProcessEmbeddedHostEvents();
-                if (DateTime.UtcNow >= deadline)
+                while (!connection.IsCompleted)
                 {
-                    CloseCoreAsync(CancellationToken.None).GetAwaiter().GetResult();
-                    throw new TimeoutException("The embedded WebView did not authenticate before the connection timeout.");
+                    cancellationToken.ThrowIfCancellationRequested();
+                    ProcessEmbeddedHostEvents();
+                    if (DateTime.UtcNow >= deadline)
+                    {
+                        throw new TimeoutException(DescribeConnectionTimeout(browserProcess: null));
+                    }
+                    Thread.Sleep(10);
                 }
-                Thread.Sleep(10);
+                connection.GetAwaiter().GetResult();
             }
-            connection.GetAwaiter().GetResult();
+            catch
+            {
+                CloseFailedPresentationAsync(surfaceHosted: content is null).GetAwaiter().GetResult();
+                throw;
+            }
         }
         return url;
     }
@@ -1554,6 +1548,92 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private static TaskCompletionSource NewCompletionSource() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+    private enum ConnectionProgress
+    {
+        NoRequest,
+        DocumentRequested,
+        BridgeRequested,
+        WebSocketRejected,
+        WebSocketOpened,
+    }
+
+    private Task BeginConnection()
+    {
+        Volatile.Write(ref _connectionProgress, (int)ConnectionProgress.NoRequest);
+        _browserConnected = NewCompletionSource();
+        return _browserConnected.Task;
+    }
+
+    private void ReportConnectionProgress(ConnectionProgress progress)
+    {
+        var current = Volatile.Read(ref _connectionProgress);
+        while (current < (int)progress)
+        {
+            var observed = Interlocked.CompareExchange(ref _connectionProgress, (int)progress, current);
+            if (observed == current)
+            {
+                return;
+            }
+            current = observed;
+        }
+    }
+
+    private async Task WaitForConnectionAsync(
+        Task connection,
+        Process? browserProcess,
+        bool surfaceHosted,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException exception)
+        {
+            // Describe the browser process before closing the presentation stops it.
+            var timeout = new TimeoutException(DescribeConnectionTimeout(browserProcess), exception);
+            await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+            throw timeout;
+        }
+        catch
+        {
+            await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    // A surface-hosted presentation leaves the started surface to its owner,
+    // which may open another presentation on it.
+    private Task CloseFailedPresentationAsync(bool surfaceHosted) =>
+        surfaceHosted ? ClosePresentationAsync() : CloseCoreAsync(CancellationToken.None);
+
+    private string DescribeConnectionTimeout(Process? browserProcess)
+    {
+        var progress = (ConnectionProgress)Volatile.Read(ref _connectionProgress) switch
+        {
+            ConnectionProgress.NoRequest => "no request reached the server",
+            ConnectionProgress.DocumentRequested => $"the page was requested, but not {BridgePath}",
+            ConnectionProgress.BridgeRequested => "the Bridge script was requested, but no WebSocket opened",
+            ConnectionProgress.WebSocketRejected => "the Bridge WebSocket was rejected",
+            _ => "the Bridge WebSocket opened, but authentication did not complete",
+        };
+        var presentation = browserProcess is null ? "The embedded WebView" : "The browser";
+        var process = string.Empty;
+        if (browserProcess is not null)
+        {
+            try
+            {
+                process = browserProcess.HasExited
+                    ? $"; the browser process exited with code {browserProcess.ExitCode}"
+                    : "; the browser process is still running";
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+            }
+        }
+        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds: {progress}{process}.";
+    }
+
     private Task HandleRequestAsync(HttpContext context) => PrepareResponseAsync(context, DispatchRequestAsync);
 
     private Task DispatchRequestAsync(HttpContext context)
@@ -1561,10 +1641,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var path = context.Request.Path;
         if (path == BridgePath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
         {
+            ReportConnectionProgress(ConnectionProgress.BridgeRequested);
             return ServeBridgeAsync(context);
         }
         if (path == DesktopBootstrapPath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
         {
+            ReportConnectionProgress(ConnectionProgress.BridgeRequested);
             return ServeDesktopBootstrapAsync(context);
         }
         if (path == WebSocketPath && HttpMethods.IsGet(context.Request.Method))
@@ -1573,6 +1655,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
         {
+            ReportConnectionProgress(ConnectionProgress.DocumentRequested);
             return ServeContentAsync(context);
         }
 
@@ -1797,6 +1880,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
+            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
             context.Response.StatusCode = StatusCodes.Status426UpgradeRequired;
             return;
         }
@@ -1804,6 +1888,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var acceptedSubprotocol = ValidateWebSocketAdmission(context);
         if (acceptedSubprotocol is null)
         {
+            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
             return;
         }
 
@@ -1811,6 +1896,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             if (!AllowMultipleClients && _activeConnections > 0)
             {
+                ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
@@ -1823,6 +1909,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             var clientId = GetOrCreateClient(context);
             using var socket = await context.WebSockets.AcceptWebSocketAsync(
                 acceptedSubprotocol.Length == 0 ? null : acceptedSubprotocol).ConfigureAwait(false);
+            ReportConnectionProgress(ConnectionProgress.WebSocketOpened);
             var connectionId = checked((nuint)Interlocked.Increment(ref _nextConnectionId));
             var session = new WebUiSession(
                 this,

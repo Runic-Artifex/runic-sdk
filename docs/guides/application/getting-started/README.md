@@ -20,12 +20,12 @@ dotnet new install Runic.Application.Templates@<VERSION>
 dotnet new runic-app --name MyApp --frontend svelte --package-manager bun --host desktop --view-models reactiveui
 ```
 
-| Option | Choices | Default |
-| --- | --- | --- |
-| `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
-| `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
-| `--host` | `cswebui`, `desktop` | `cswebui` |
-| `--view-models` | `toolkit` (CommunityToolkit.Mvvm), `reactiveui` | `toolkit` |
+| Option              | Choices                                         | Default   |
+| ------------------- | ----------------------------------------------- | --------- |
+| `--frontend`        | `react`, `vue`, `svelte`, `angular`             | `react`   |
+| `--package-manager` | `npm`, `pnpm`, `bun`                            | `npm`     |
+| `--host`            | `cswebui`, `desktop`                            | `cswebui` |
+| `--view-models`     | `toolkit` (CommunityToolkit.Mvvm), `reactiveui` | `toolkit` |
 
 You need the .NET 10 SDK and Node.js 24 with npm or pnpm, or Bun 1.4.
 

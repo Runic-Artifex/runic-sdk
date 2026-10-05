@@ -8,6 +8,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Channels;
 using Runic.Desktop;
+using Microsoft.Extensions.Hosting;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
@@ -47,6 +48,19 @@ public sealed class ContentAndLifecycleTests
         using var firstAfterClose = await client.GetAsync(firstUrl);
         Assert.Equal(HttpStatusCode.NotFound, firstAfterClose.StatusCode);
         Assert.Equal("<h1>second</h1>", await client.GetStringAsync(secondUrl));
+    }
+
+    [Fact]
+    public async Task EmbeddedServerLeavesProcessSignalsToTheApplication()
+    {
+        await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
+            Port: 0,
+            NetworkExposure: PresentationNetworkExposure.Loopback));
+        await using var window = new WebUiWindow(host, "signals");
+        await window.StartServerAsync("signals");
+
+        // ConsoleLifetime would cancel SIGINT and SIGTERM, leaving the process running.
+        Assert.IsType<ProcessOwnedLifetime>(host.Services?.GetService(typeof(IHostLifetime)));
     }
 
     [Fact]

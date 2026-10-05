@@ -55,6 +55,9 @@ selection. `DesktopPlatform.GetLinuxEmbeddedBackends()` inspects both library se
 without loading either toolkit; `host.GetPresentationPreflight(...)` evaluates the
 configured provider. A process cannot change GTK versions after claiming a backend.
 `EmbeddedThenBrowser` remains an explicit browser fallback, never a GTK3/GTK4 retry.
+It falls back when the embedded presentation cannot start, not when it opens but its
+page never connects: that fails with `presentation-connection-timeout`, and the inner
+`TimeoutException` says how far the page got.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the

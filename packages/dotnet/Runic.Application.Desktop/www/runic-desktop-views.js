@@ -21,6 +21,18 @@
     }
   }
 
+  // Views frontends own their navigation. Once the bridge connects it cancels
+  // navigations, including history.pushState and replaceState, until a Bridge
+  // call allows them; a router updating history before its first call would
+  // otherwise be cancelled. Allow them before each history update.
+  for (const method of ["pushState", "replaceState"]) {
+    const update = history[method];
+    history[method] = function (...args) {
+      globalThis.webui?.allowNavigation?.(true);
+      return update.apply(this, args);
+    };
+  }
+
   globalThis.__runicBridge = {
     isConnected: connected,
     call: (name, ...args) => {

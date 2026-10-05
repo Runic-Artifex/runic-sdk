@@ -1,6 +1,6 @@
 {
-  "version": "0.5.0-preview.3",
-  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.5.0-preview.3",
+  "version": "0.6.0-preview.1",
+  "url": "https://github.com/Runic-Artifex/runic-sdk/releases/tag/v0.6.0-preview.1",
   "packages": [
     {
       "identity": "Runic.Platform.Administration.Windows",
@@ -103,6 +103,12 @@
       "ecosystem": "nuget",
       "product": "application",
       "installKind": "dotnet-tool"
+    },
+    {
+      "identity": "Runic.Create",
+      "ecosystem": "nuget",
+      "product": "application",
+      "installKind": "dotnet-tool-exec"
     },
     {
       "identity": "Runic.Translations",
@@ -216,6 +222,24 @@
       "identity": "@runic-artifex/sveltekit",
       "ecosystem": "npm",
       "product": "svelte",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/views",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/react",
+      "ecosystem": "npm",
+      "product": "application",
+      "installKind": "npm-package"
+    },
+    {
+      "identity": "@runic-artifex/vue",
+      "ecosystem": "npm",
+      "product": "application",
       "installKind": "npm-package"
     }
   ]
