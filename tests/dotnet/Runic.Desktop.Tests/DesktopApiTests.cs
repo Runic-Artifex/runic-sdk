@@ -449,6 +449,67 @@ public sealed class DesktopApiTests
     }
 
     [Fact]
+    public async Task EmbeddedConnectionTimeoutIsReportedInsteadOfFallingBack()
+    {
+        var factory = new RecordingWindowHostFactory();
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            DiagnosticSink = diagnostics.Enqueue,
+            ConnectionTimeout = TimeSpan.FromMilliseconds(200),
+        });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = "never connects",
+        });
+
+        var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
+            await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Browser = BrowserKind.Embedded,
+                PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            }));
+
+        Assert.Equal(DesktopErrorCategory.TimedOut, exception.Category);
+        Assert.Equal("presentation-connection-timeout", exception.Code);
+        var timeout = Assert.IsType<TimeoutException>(exception.InnerException);
+        Assert.Contains("no request reached the server", timeout.Message);
+        Assert.Contains(diagnostics, static item => item.Code == "presentation-connection-timeout");
+        Assert.DoesNotContain(diagnostics, static item => item.Code == "embedded-presentation-fallback");
+        Assert.False(factory.Host?.IsOpen);
+        // Only the presentation closed; the surface keeps serving for its owner.
+        using var client = new HttpClient();
+        Assert.Equal("never connects", await client.GetStringAsync(surface.Url));
+    }
+
+    [Fact]
+    public async Task ConnectionTimeoutReportsHowFarThePageGot()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            ConnectionTimeout = TimeSpan.FromSeconds(2),
+        });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = "no bridge script",
+        });
+        var opening = surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+        }).AsTask();
+        using var client = new HttpClient();
+        Assert.Equal("no bridge script", await client.GetStringAsync(surface.Url));
+
+        var exception = await Assert.ThrowsAsync<DesktopException>(() => opening);
+
+        var timeout = Assert.IsType<TimeoutException>(exception.InnerException);
+        Assert.Contains("the page was requested, but not /webui.js", timeout.Message);
+    }
+
+    [Fact]
     public void AvailabilityReportsConcretePresentationsAndActionableFailures()
     {
         var availability = DesktopPlatform.GetAvailability(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));

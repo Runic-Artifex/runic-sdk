@@ -3,6 +3,10 @@ namespace Runic.Desktop;
 /// <summary>Owns content, capabilities, sessions, requests, and optional presentations for one namespace.</summary>
 public sealed class DesktopSurface : IAsyncDisposable
 {
+    private const string ConnectionTimeoutCode = "presentation-connection-timeout";
+    private const string ConnectionTimeoutMessage =
+        "The presentation opened, but its page did not connect before the connection timeout.";
+
     private readonly DesktopHost _host;
     private readonly Guid _id;
     private readonly WebUiWindow _engine;
@@ -100,7 +104,11 @@ public sealed class DesktopSurface : IAsyncDisposable
                     await OpenCheckedAsync(BrowserKind.Embedded, cancellationToken).ConfigureAwait(false);
                     actualBrowser = BrowserKind.Embedded;
                 }
-                catch (Exception exception) when (exception is not OperationCanceledException)
+                // An embedded presentation that opened but never connected is not
+                // unavailable: the browser would load the same frontend, so report it.
+                catch (Exception exception) when (
+                    exception is not OperationCanceledException
+                    and not DesktopException { Code: ConnectionTimeoutCode })
                 {
                     fellBack = true;
                     var correlationId = exception is DesktopException desktopException
@@ -353,6 +361,24 @@ public sealed class DesktopSurface : IAsyncDisposable
         catch (DesktopException)
         {
             throw;
+        }
+        catch (TimeoutException exception)
+        {
+            var correlationId = Guid.NewGuid().ToString("N");
+            _host.Report(new DesktopDiagnostic(
+                DesktopErrorCategory.TimedOut,
+                ConnectionTimeoutCode,
+                ConnectionTimeoutMessage,
+                Retryable: true,
+                correlationId,
+                "Check that the page loads its Runic client script, or increase DesktopHostOptions.ConnectionTimeout."));
+            throw new DesktopException(
+                DesktopErrorCategory.TimedOut,
+                ConnectionTimeoutCode,
+                ConnectionTimeoutMessage,
+                retryable: true,
+                exception,
+                correlationId);
         }
         catch (Exception exception)
         {

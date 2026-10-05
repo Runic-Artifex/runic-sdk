@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -26,12 +27,17 @@ internal static class DevApplication
             return Program.Success;
         }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
+        // Stop the frontend and native host process trees on Ctrl+C and also when
+        // an IDE or terminal ends only this process.
+        Action<PosixSignalContext> stopHandler = context =>
         {
-            eventArgs.Cancel = true;
+            context.Cancel = true;
             stop.Cancel();
         };
-        Console.CancelKeyPress += cancelHandler;
+        using var interrupt = PosixSignalRegistration.Create(PosixSignal.SIGINT, stopHandler);
+        using var quit = PosixSignalRegistration.Create(PosixSignal.SIGQUIT, stopHandler);
+        using var terminate = PosixSignalRegistration.Create(PosixSignal.SIGTERM, stopHandler);
+        using var hangUp = PosixSignalRegistration.Create(PosixSignal.SIGHUP, stopHandler);
         try
         {
             if (options.Restore)
@@ -60,7 +66,6 @@ internal static class DevApplication
         }
         finally
         {
-            Console.CancelKeyPress -= cancelHandler;
             stop.Cancel();
         }
     }

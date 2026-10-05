@@ -16,13 +16,20 @@ async function retry(action, timeout = 30_000) {
   throw new Error(`Timed out waiting for IDE host: ${last ?? "no detail"}`);
 }
 
-async function responds(url) {
+async function responds(url, timeout = 700) {
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(700) });
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeout) });
     await response.arrayBuffer();
     return { ok: response.ok, status: response.status };
   }
   catch (error) { return { ok: false, error: String(error) }; }
+}
+
+// A cold runner can take several seconds to serve the first proxied request.
+async function respondsWithin(url, timeout = 20_000) {
+  let result;
+  await retry(async () => (result = await responds(url, 5000)).ok, timeout).catch(() => {});
+  return result;
 }
 
 function acceptsConnections(url) {
@@ -58,11 +65,13 @@ async function verify(framework, stopWithSignal = false) {
     }, 90_000).catch(error => {
       throw new Error(`${error.message}\nHost output:\n${output.slice(-16_384)}`, { cause: error });
     });
-    if (!(await responds(frontend)).ok || !(await responds(new URL("/runic-cswebui.js", frontend))).ok)
-      throw new Error(`Frontend did not become ready: ${output}`);
-    // This serve-only probe may take WebUI's single client slot once; the Debug host never does.
-    const bridge = await responds(new URL("/webui.js", frontend));
-    if (!bridge.ok) throw new Error(`The frontend Bridge proxy failed on first request: ${JSON.stringify(bridge)}`);
+    for (const url of [frontend, new URL("/runic-cswebui.js", frontend)]) {
+      const ready = await respondsWithin(url);
+      if (!ready.ok) throw new Error(`Frontend did not become ready at ${url}: ${JSON.stringify(ready)}\nHost output:\n${output.slice(-16_384)}`);
+    }
+    // This serve-only probe may take WebUI's single client slot; the Debug host never does.
+    const bridge = await respondsWithin(new URL("/webui.js", frontend));
+    if (!bridge.ok) throw new Error(`The frontend Bridge proxy did not respond: ${JSON.stringify(bridge)}\nHost output:\n${output.slice(-16_384)}`);
     if (framework === "angular") {
       if (!angularOrigin) throw new Error(`Angular map proxy did not report its internal port: ${output}`);
       const bundle = await (await fetch(new URL("/main.js", frontend))).text();
