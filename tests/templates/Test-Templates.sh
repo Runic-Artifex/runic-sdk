@@ -18,6 +18,12 @@ registry_pid=""
 # Process group of a running serve-only application or dotnet runic dev.
 served_group=""
 
+# Processes in a group, without the Roslyn and MSBuild build servers that a
+# build starts and that outlive it by design.
+started_processes() {
+  ps -o pid=,args= -g "$1" | grep -vE 'VBCSCompiler|MSBuild\.dll.*/nodemode:' || true
+}
+
 stop_served() {
   if [[ -n "$served_group" ]]; then
     kill -TERM -- "-$served_group" 2>/dev/null || true
@@ -177,12 +183,12 @@ serve_and_fetch() {
     # frontend and native host processes it started.
     kill -TERM "$served_group"
     for _ in $(seq 1 60); do
-      pgrep -g "$served_group" > /dev/null || break
+      [[ -z "$(started_processes "$served_group")" ]] && break
       sleep 0.5
     done
-    if pgrep -g "$served_group" > /dev/null; then
+    if [[ -n "$(started_processes "$served_group")" ]]; then
       echo "dotnet runic dev left processes running after SIGTERM:" >&2
-      ps -o pid,args -g "$served_group" >&2
+      started_processes "$served_group" >&2
       exit 1
     fi
   else
@@ -244,7 +250,7 @@ verify_template() {
     toolkit) grep -Fq 'CommunityToolkit.Mvvm' "$output/$project_name.csproj" ;;
     reactiveui) grep -Fq 'Runic.Application.ReactiveUI' "$output/$project_name.csproj" ;;
   esac
-  if rg -n '^\s*#(if|elif|else|endif)\b|<!--#|__[A-Z][A-Z_]+__' "$output" --glob '!Frontend/*lock*' --glob '!*.lock'; then
+  if grep -rnIE --exclude='*lock*' '^[[:space:]]*#(if|elif|else|endif)\b|<!--#|__[A-Z][A-Z_]+__' "$output"; then
     echo "The generated $framework project contains unprocessed template syntax." >&2
     exit 1
   fi
@@ -252,11 +258,11 @@ verify_template() {
     echo "The generated $framework project declares settings the Runic packages default." >&2
     exit 1
   fi
-  if rg -ni 'Runic\.Application\.Bridge|application-bridge|@runic-artifex/(views-angular|views-svelte|desktop)' "$output"; then
+  if grep -rniIE 'Runic\.Application\.Bridge|application-bridge|@runic-artifex/(views-angular|views-svelte|desktop)' "$output"; then
     echo "The generated $framework template contains a removed Bridge or Desktop package." >&2
     exit 1
   fi
-  if [[ "$host" == cswebui ]] && rg -ni 'Runic\.Desktop' "$output"; then
+  if [[ "$host" == cswebui ]] && grep -rniI 'Runic\.Desktop' "$output"; then
     echo "The generated CS-WebUI project references Runic Desktop." >&2
     exit 1
   fi
@@ -296,7 +302,7 @@ verify_template() {
   test -f "$output/Frontend/dist/index.html"
   # Runic Desktop serves each Window below its own path, where root-absolute
   # asset URLs leave the page blank. Desktop variants are not started here.
-  if rg -n '(src|href)="/[^/]' "$output/Frontend/dist/index.html"; then
+  if grep -nE '(src|href)="/[^/]' "$output/Frontend/dist/index.html"; then
     echo "The built frontend document references root-absolute URLs." >&2
     exit 1
   fi
