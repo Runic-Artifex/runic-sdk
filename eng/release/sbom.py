@@ -207,6 +207,8 @@ def build(repository, version, source, epoch, paths):
         component['properties'] = property_list({**component['properties'], 'runic:file': path.name})
         if not component.get('licenses'):
             component.pop('licenses', None)
+        if component['bom-ref'] in graph.components:
+            raise ValueError(f"{path.name} repeats {component['bom-ref']}")
         artifacts.append((graph.add(component), requested, extra))
     shipped = {ref for ref, _, _ in artifacts}
     for ref, requested, extra in artifacts:
