@@ -21,3 +21,9 @@ Runic.Application.Views.CsWebUi.CsWebUiWindow<TViewModel>.CloseAsync(System.Time
 *REMOVED*override Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult.ToString() -> string!
 *REMOVED*static Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult.operator !=(Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult? left, Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult? right) -> bool
 *REMOVED*static Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult.operator ==(Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult? left, Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult? right) -> bool
+const Runic.Application.Views.CsWebUi.CsWebUiConfigurationException.BridgeNotRegisteredCode = "bridge-not-registered" -> string!
+Runic.Application.Views.CsWebUi.CsWebUiConfigurationException
+Runic.Application.Views.CsWebUi.CsWebUiConfigurationException.Code.get -> string!
+Runic.Application.Views.CsWebUi.CsWebUiConfigurationException.DiagnosticMessage.get -> string!
+Runic.Application.Views.CsWebUi.CsWebUiConfigurationException.Remediation.get -> string!
+static Runic.Application.Views.CsWebUi.CsWebUiBridgeWindowExtensions.ValidateWindow<TViewModel>(this System.IServiceProvider! services) -> void

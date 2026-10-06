@@ -114,12 +114,15 @@ try {
   const closedWindow = await run("dotnet", [probe, "--probe-window-close"], probes);
   if (!closedWindow.includes("FIRST_WINDOW_CLOSE_OK"))
     throw new Error(`The packaged Window did not close its host cleanly:\n${closedWindow}`);
+  const missingBridge = await run("dotnet", [probe, "--probe-missing-bridge"], probes);
+  if (!missingBridge.includes("FIRST_WINDOW_MISSING_BRIDGE_OK"))
+    throw new Error(`The packaged Window did not report a missing Bridge registration:\n${missingBridge}`);
   const browser = await run("node", [join(example, "browser-smoke.mjs")], root, {
     ...process.env,
     RUNIC_FIRST_WINDOW_DLL: join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll")
   });
   if (!browser.includes("FIRST_WINDOW_OK")) throw new Error(`Browser journey failed:\n${browser}`);
-  console.log("FIRST_WINDOW_PACKAGE_OK|pack|restore|generate|failed-construction|close|browser");
+  console.log("FIRST_WINDOW_PACKAGE_OK|pack|restore|generate|failed-construction|close|missing-bridge|browser");
 } finally {
   await rm(temporary, { recursive: true, force: true });
   if (testVersion) {

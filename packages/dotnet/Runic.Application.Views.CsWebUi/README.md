@@ -16,6 +16,7 @@ var services = new ServiceCollection();
 services.AddScoped<MainViewModel>();
 services.AddRunicViews(); // generated in <ProjectName>.RunicBridgeComposition
 using var provider = services.BuildServiceProvider();
+provider.ValidateWindow<MainViewModel>(); // stops at startup when the Bridge is not registered
 await using (var window = provider.OpenWindow<MainWindow, MainViewModel>(host => new MainWindow(host)))
 {
     window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
@@ -32,6 +33,16 @@ accepted operations. `CsWebUiWindow<TViewModel>` forwards `SetRootFolder`,
 `SetSize`, `Show`, `ShowWebView`, `StartServer`, `CloseAsync`, and `DisposeAsync`
 to its `Host`, a `CsWebUiBridgeWindow<TViewModel>`; `Host.NativeWindow` exposes
 the underlying `WebUiWindow`.
+
+`ValidateWindow<TViewModel>` checks at startup that the generated Bridge for
+the ViewModel is registered, and `OpenWindow` repeats the check before it
+creates the native window. A missing `AddRunicViews()` throws a
+`CsWebUiConfigurationException` (an `InvalidOperationException`) with the code
+`bridge-not-registered`, the same code Runic Desktop reports, and a
+remediation, instead of a dependency-injection error. It is logged as event
+1050 through the provider's `ILoggerFactory`. `ValidateWindow` asks the
+container through `IServiceProviderIsService`; a container without it is
+checked only when `OpenWindow` resolves the Bridge.
 
 Both hosts share one lifetime contract, `IBridgeWindow` from
 `Runic.Application.Views`: `CloseAsync(timeout)` returns a `BridgeWindowCloseResult`,
