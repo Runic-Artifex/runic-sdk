@@ -22,6 +22,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: dynamicdata
       # eng/workspace.json owns the reviewed fork revision; see examples/dynamicdata/README.md.
       - name: Read the pinned DynamicData fork revision
         id: fork

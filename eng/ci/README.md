@@ -60,6 +60,54 @@ The launcher currently supports Linux with an amd64 runner image. Windows x64 an
 macOS Apple Silicon jobs remain native GitHub checks. A passing local Linux run
 is not evidence that the other operating systems passed. Intel macOS is excluded.
 
+## Affected-only pull requests
+
+The `plan` job runs `eng/ci/plan.mjs`. On a pull request it diffs GitHub's merge
+commit against its base parent and maps each changed path to its component in
+`eng/workspace.json`, adding every component that depends on it. The base branch's
+planner and component map make that decision (`--affected`), so a pull request cannot
+narrow its own plan; changes to the planner or `eng/workspace.json` are unowned and run
+everything. The pull request's checkout then enumerates the suites (`--plan`). Pushes,
+manual runs, local `act` runs and an unavailable diff or base result plan every job.
+
+A pull request is planned against the base it was opened or last updated on. Every
+push to `main` runs the full workflow, so a change that only breaks in combination
+with newer `main` commits is caught there.
+
+- `plan`, `build` and `engineering` always run. `build` checks generated files;
+  `engineering` lints workflows and runs the contract and Markdown link tests.
+- Markdown outside `packages/`, `tools/` and `tests/`, the `*.test.mjs` files the
+  engineering job runs, and workflows other than `ci.yml` are read only by those jobs
+  (`engineeringOnly` in `eng/run.mjs`; `bun run affected` uses the same rule).
+- A path that no component owns, such as `Directory.Build.props`, the shared
+  `eng/build/application.{props,targets}`, other `eng/` tooling or
+  `.github/actions/`, runs everything.
+- Managed groups and web packages run when a component owning one of their suites
+  is affected. `views` follows `examples`; `framework-consumers` follows `svelte`;
+  package candidates, package consumers and templates run for any affected component.
+  Native jobs follow `desktop`, `platform`, `application`, `examples` and
+  `administration-windows`.
+
+Skipped jobs report `skipped`, so no check stays pending. The required `verify` job
+(`eng/ci/gate.mjs`) accepts `skipped` only for jobs in the plan's skip list; a
+failed plan fails it. The engineering tests check that the component `dependsOn` graph
+covers every ProjectReference, workspace npm dependency, MSBuild import and
+cross-directory item include (with an allow-list for generated output, restored
+packages and external checkouts), so a new reference cannot silently escape the plan. Preview the plan for a branch with
+`bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`. To run every
+job for a pull request, start the workflow manually on its branch.
+
+## NuGet lock files
+
+Projects in `RunicSdk.Core.slnx` commit `packages.lock.json`
+(`eng/build/nuget-lock.targets`), and CI restores with `--locked-mode`. Run
+`bun run lock:nuget` after changing references, package versions or the SDK pin.
+Publishing with a RuntimeIdentifier or NativeAOT changes the package graph of every
+referenced project, so those restores are not locked; `Directory.Packages.props` still
+pins their direct versions. The `core` NuGet cache key hashes the lock files and package
+props; native jobs use a separate `native` key. Both fall back to the latest cache for
+the same OS and architecture. Web and Svelte consumer jobs skip NuGet entirely.
+
 ## Source snapshots and artifacts
 
 Each real invocation freezes the current tracked and nonignored untracked files,
@@ -110,8 +158,9 @@ and the [`act` usage guide](https://nektosact.com/usage/index.html).
 Add verification commands as workflow steps or independently rerunnable jobs.
 Use the shared setup actions for pinned tools and frozen restores. Managed
 executable suites are discovered from `RunicSdk.Core.slnx`; web test suites are
-discovered from `eng/workspace.json`. Add new managed groups to the workflow matrix
-and the discovery module together; contract tests check that assignment. Keep
+discovered from `eng/workspace.json`. Both matrices come from the plan. Add a new
+skippable job to `skippableJobs` in `eng/ci/plan.mjs` with its `if` condition, and
+give new projects a component owner; contract tests check both. Keep
 focused package/test commands available for quick development without a container.
 The engineering job runs actionlint over every workflow; pin remote actions as
 described in [dependency review](../dependencies/README.md).

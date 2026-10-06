@@ -4,9 +4,17 @@ inputs:
   dotnet:
     description: Install the pinned .NET SDK
     default: "true"
+  nuget:
+    description: >-
+      NuGet package cache to restore: core (the locked RunicSdk.Core.slnx restore),
+      another name for a job whose restores differ (native, dynamicdata), or none
+    default: core
   node:
     description: Install real Node and npm/pnpm for compatibility checks
     default: "false"
+  install:
+    description: Install the Bun workspace dependencies
+    default: "true"
 runs:
   using: composite
   steps:
@@ -29,14 +37,21 @@ runs:
       shell: bash
       run: npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.install == 'true'
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-${{ runner.arch }}-
+    # NuGet lock files pin the core restore. Jobs whose restores differ, such as
+    # RID-specific and NativeAOT publishes, use a separate cache name so a smaller
+    # package set is never saved under the core key. A partial match seeds a changed restore.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: inputs.dotnet == 'true'
+      if: inputs.dotnet == 'true' && inputs.nuget != 'none'
       with:
         path: .cache/nuget
-        key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.props', '**/*.targets', '**/*.csproj', 'global.json', 'NuGet.config') }}
+        key: nuget-${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/packages.lock.json', '**/packages.*.lock.json', '**/Directory.Packages.props', 'global.json', 'NuGet.config') }}
+        restore-keys: nuget-${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-
     - name: Install workspace dependencies
+      if: inputs.install == 'true'
       shell: bash
       run: bun install --frozen-lockfile

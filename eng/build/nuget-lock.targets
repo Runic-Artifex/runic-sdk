@@ -1,0 +1,17 @@
+<Project>
+  <!-- NuGet lock files pin the transitive graph of the RID-neutral restore of
+       RunicSdk.Core.slnx. A project opts in by committing its lock file, and
+       `bun run lock:nuget` regenerates them. A publish command's RuntimeIdentifier
+       and PublishAot flow into every referenced project and change its package
+       graph, so those restores read a lock path that never exists and stay
+       unlocked; Directory.Packages.props still pins their direct versions.
+       CI (CI=true) restores in locked mode. -->
+  <PropertyGroup>
+    <_RunicLockable Condition="'$(RuntimeIdentifier)' == '' and '$(PublishAot)' != 'true'">true</_RunicLockable>
+    <_RunicLockFile>$(NuGetLockFilePath)</_RunicLockFile>
+    <_RunicLockFile Condition="'$(_RunicLockFile)' == ''">packages.lock.json</_RunicLockFile>
+    <RestorePackagesWithLockFile Condition="'$(_RunicLockable)' == 'true' and ('$(RunicUpdateLockFiles)' == 'true' or Exists('$(MSBuildProjectDirectory)/$(_RunicLockFile)'))">true</RestorePackagesWithLockFile>
+    <NuGetLockFilePath Condition="'$(_RunicLockable)' != 'true'">$(BaseIntermediateOutputPath)runic-unlocked-restore/packages.lock.json</NuGetLockFilePath>
+    <RestoreLockedMode Condition="'$(RestorePackagesWithLockFile)' == 'true' and '$(CI)' == 'true' and '$(RunicUpdateLockFiles)' != 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+</Project>

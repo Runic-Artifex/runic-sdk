@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "runic.platform": {
+        "type": "Project"
+      },
+      "runic.platform.runtime": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform": "[0.6.0-preview.1, )"
+        }
+      },
+      "runic.platform.windows": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.6.0-preview.1, )"
+        }
+      }
+    }
+  }
+}

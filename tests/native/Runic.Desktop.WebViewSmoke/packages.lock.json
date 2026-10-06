@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "runic.desktop": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Web.WebView2": "[1.0.4258.31, )"
+        }
+      },
+      "runic.platform": {
+        "type": "Project"
+      },
+      "runic.platform.runtime": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform": "[0.6.0-preview.1, )"
+        }
+      },
+      "runic.platform.windows": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.6.0-preview.1, )"
+        }
+      },
+      "Microsoft.Web.WebView2": {
+        "type": "CentralTransitive",
+        "requested": "[1.0.4258.31, )",
+        "resolved": "1.0.4258.31",
+        "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+      }
+    }
+  }
+}

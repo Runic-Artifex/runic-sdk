@@ -56,9 +56,9 @@ function orderedPackages() {
   }
   return ordered;
 }
-function web(command) {
+function web(command, built = []) {
   for (const p of orderedPackages()) {
-    if (manifest(p.path).scripts?.[command])
+    if (manifest(p.path).scripts?.[command] && !built.includes(p.name))
       run("bun", ["run", "--bun", command], resolve(root, p.path));
   }
   // On a clean checkout Bun cannot link workspace executables until their
@@ -83,12 +83,13 @@ function core() {
 }
 function build() {
   core();
-  web("build");
+  // core() has just built the Views runtime.
+  web("build", ["@runic-artifex/views"]);
 }
 export const packages = resolve(root, "artifacts/packages");
 function pack(built = false) {
   run("bun", ["eng/generate-shipping-projects.mjs", "--check"]);
-  if (!built) { core(); web("build"); }
+  if (!built) build();
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   // Build the complete candidate in a sibling directory and replace
   // artifacts/packages only after every package and check succeeds.
@@ -145,7 +146,21 @@ function affected() {
   console.log(JSON.stringify(affectedComponents(files), null, 2));
 }
 
-export function affectedComponents(files) {
+// The CI engineering job runs every *.test.mjs directly in these directories.
+export const engineeringTestDirectories = ["eng", "eng/ci", "eng/release", "eng/reliability", "tests/engineering"];
+
+// Files that only the always-run CI jobs (build, engineering) read: documentation
+// outside packages/, tools/ and tests/ (package READMEs and fixtures are build
+// inputs), the engineering tests, and workflows other than ci.yml, which the
+// engineering job lints. They affect no component.
+export function engineeringOnly(file) {
+  return (file.endsWith(".md") && !/^(packages|tools|tests)\//.test(file))
+    || (file.endsWith(".test.mjs") && engineeringTestDirectories.includes(file.slice(0, Math.max(0, file.lastIndexOf("/")))))
+    || (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(file) && file !== ".github/workflows/ci.yml");
+}
+
+export function affectedComponents(paths) {
+  const files = paths.filter((file) => !engineeringOnly(file));
   const components = Object.entries(workspace.components);
   const owns = (component, file) =>
     component.paths.some(

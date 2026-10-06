@@ -143,14 +143,12 @@
         "tests/fixtures/desktop/Runic.Desktop.PackageConsumer",
         "tests/fixtures/desktop/Runic.Desktop.PackageConsumer.Windows",
         "tests/dotnet/Runic.Desktop.Tests",
-        "tests/native/Runic.Desktop.WebViewSmoke",
         "eng/build/desktop.props",
         "eng/branding/desktop",
         "specs/desktop",
         "tests/fixtures/desktop/evidence",
         "tests/fixtures/desktop/samples",
-        "packages/dotnet/Runic.Desktop.Gtk4",
-        "tests/native/Runic.Desktop.Gtk4.Smoke"
+        "packages/dotnet/Runic.Desktop.Gtk4"
       ]
     },
     "assets": {
@@ -172,7 +170,10 @@
       ]
     },
     "application": {
-      "dependsOn": [],
+      "dependsOn": [
+        "desktop",
+        "platform"
+      ],
       "paths": [
         "packages/dotnet/Runic.Application.Views",
         "packages/dotnet/Runic.Application.Testing",
@@ -184,24 +185,22 @@
         "tools/Runic.Application.Views.Codegen.Toolkit",
         "tools/Runic.Application.Views.Codegen.ReactiveUI",
         "tools/Runic.Application.Views.Dev",
-        "tools/Runic.Application.Templates",
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
-        "tools/Runic.Create",
-        "tests/dotnet/Runic.Create.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Desktop.Tests",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
-        "tests/fixtures/application",
-        "eng/build/application.props",
-        "eng/build/application.targets",
         "eng/branding/application",
         "specs/application",
-        "tests/templates",
         "packages/web/angular",
         "packages/web/views",
         "packages/web/react",
-        "packages/web/vue"
+        "packages/web/vue",
+        "tests/fixtures/application/cswebui-window-probes",
+        "tests/fixtures/application/experiments",
+        "tests/fixtures/application/reactiveui25-aot",
+        "tests/fixtures/application/reactiveui-behavioral-conformance",
+        "tests/fixtures/application/reactiveui-reactive-flavor"
       ]
     },
     "vite": {
@@ -224,6 +223,19 @@
         "tests/web/svelte-package-consumers"
       ]
     },
+    "templates": {
+      "dependsOn": [
+        "application",
+        "vite",
+        "svelte"
+      ],
+      "paths": [
+        "tools/Runic.Application.Templates",
+        "tests/templates",
+        "tools/Runic.Create",
+        "tests/dotnet/Runic.Create.Tests"
+      ]
+    },
     "examples": {
       "dependsOn": [
         "application",
@@ -239,11 +251,11 @@
         "examples/notes-reactive-views",
         "examples/dynamicdata",
         "examples/shared",
-        "examples/README.md",
         "examples/Directory.Build.props",
         "examples/Directory.Build.targets",
         "examples/Directory.Packages.props",
-        "examples/NuGet.config"
+        "examples/NuGet.config",
+        "tests/fixtures/application/dynamicdata"
       ]
     },
     "platform": {
@@ -266,7 +278,9 @@
         "packages/dotnet/Runic.Platform.Linux.Portal",
         "packages/dotnet/Runic.Platform.Linux.Gtk4",
         "tests/dotnet/Runic.Platform.Linux.Portal.Tests",
-        "tests/dotnet/Runic.Platform.Runtime.Tests"
+        "tests/dotnet/Runic.Platform.Runtime.Tests",
+        "tests/native/Runic.Desktop.WebViewSmoke",
+        "tests/native/Runic.Desktop.Gtk4.Smoke"
       ]
     }
   }
