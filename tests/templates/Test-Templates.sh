@@ -374,6 +374,14 @@ fi
 if [[ -n "${RUNIC_TEMPLATE_VARIANTS+set}" ]]; then
   # Semicolon-separated "frontend manager host view-models" entries; empty skips them.
   IFS=';' read -r -a variants <<< "$RUNIC_TEMPLATE_VARIANTS"
+else
+  # Default variants follow the selected frontends, so per-framework CI lanes
+  # together run each variant exactly once.
+  selected_variants=()
+  for variant in "${variants[@]}"; do
+    if [[ " ${frameworks[*]} " == *" ${variant%% *} "* ]]; then selected_variants+=("$variant"); fi
+  done
+  variants=("${selected_variants[@]}")
 fi
 for framework in "${frameworks[@]}"; do
   case "$framework" in
@@ -388,7 +396,12 @@ for manager in "${managers[@]}"; do
   esac
 done
 
-verify_creator
+# CI runs the creator check in one framework lane only.
+case "${RUNIC_TEMPLATE_CREATOR:-1}" in
+  1) verify_creator ;;
+  0) ;;
+  *) echo "RUNIC_TEMPLATE_CREATOR must be 0 or 1." >&2; exit 2 ;;
+esac
 for manager in "${managers[@]}"; do
   for framework in "${frameworks[@]}"; do
     verify_template "$framework" "$manager" cswebui toolkit
