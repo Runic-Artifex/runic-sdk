@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,6 +16,9 @@ const projects = [
   ["Runic.Application.Desktop", "Runic.Application.Desktop"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;
+// A unique package version keeps restore from resolving the published release of the
+// same version from nuget.org or the global packages folder.
+const testVersion = `${version}.packagetest${process.pid}${Date.now()}`;
 const dependencyInjection = (await readFile(join(root, "Directory.Packages.props"), "utf8"))
   .match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
 if (!dependencyInjection) throw new Error("The dependency injection version was not found.");
@@ -37,9 +40,9 @@ try {
   await mkdir(feed);
   for (const [identity, project] of projects) {
     await run("dotnet", ["pack", `packages/dotnet/${project}/${project}.csproj`,
-      "-c", "Release", "--no-build", "-o", feed, `-p:PackageVersion=${version}`]);
+      "-c", "Release", "--no-build", "-o", feed, `-p:Version=${testVersion}`, `-p:PackageVersion=${testVersion}`]);
     if (identity === "Runic.Application.Desktop")
-      await readFile(join(feed, `${identity}.${version}.nupkg`));
+      await readFile(join(feed, `${identity}.${testVersion}.nupkg`));
   }
   await mkdir(join(consumer, "Frontend/src"), { recursive: true });
   for (const file of ["Program.cs", "CounterWindow.cs", "CounterViewModel.cs"])
@@ -67,8 +70,8 @@ try {
   <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
-    <PackageReference Include="Runic.Application.Desktop" Version="${version}" />
-    <PackageReference Include="Runic.Application.ReactiveUI" Version="${version}" />
+    <PackageReference Include="Runic.Application.Desktop" Version="${testVersion}" />
+    <PackageReference Include="Runic.Application.ReactiveUI" Version="${testVersion}" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>
 </Project>
@@ -83,4 +86,7 @@ try {
   console.log("DESKTOP_VIEWS_PACKAGE_OK|restore|generate|owner|browser");
 } finally {
   await rm(temporary, { recursive: true, force: true });
+  const cache = process.env.NUGET_PACKAGES ?? join(homedir(), ".nuget/packages");
+  for (const [identity] of projects)
+    await rm(join(cache, identity.toLowerCase(), testVersion.toLowerCase()), { recursive: true, force: true });
 }
