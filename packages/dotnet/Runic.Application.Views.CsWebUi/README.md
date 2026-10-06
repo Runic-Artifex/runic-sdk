@@ -53,6 +53,18 @@ built frontend. Load `webui.js` (served by WebUI) and `runic-cswebui.js` before
 the generated client in `index.html`. The script adapts `window.webui` to the
 generated client's transport contract.
 
+Native WebUI can assign one event slot to two calls that arrive together, and
+one of them then never receives a reply. The script therefore sends the next
+Bridge call only after .NET reports the previous one as received, or after it
+settles. Concurrent calls are sent one server round trip apart. Applications
+that keep their own copy of `runic-cswebui.js` should update it.
+
+The window binds all WebUI events because only that binding delivers
+disconnects. The script stops WebUI from also sending a click event for every
+element with an id: those clicks would reach the server in parallel with the
+Bridge calls they start. Use Bridge commands rather than WebUI element bindings
+in a Views window.
+
 A window-local `CreateBridgeSession()` retains one native binding for each route
 name and swaps the active managed handler as Views change; an inactive route
 returns `disconnected`. CS-WebUI cannot remove a native route registration

@@ -32,6 +32,84 @@
     };
   }
 
+  // The window's all-events binding delivers disconnects to .NET, and WebUI has
+  // no narrower way to receive them. With it, WebUI also sends a click event for
+  // every element with an id, in parallel with the Bridge calls that click
+  // starts, and those can collide in native WebUI (#53). Runic does not use the
+  // click events. WebUI skips elements it already marked, so mark each element
+  // with an id before WebUI's next scan.
+  function suppressClickEvents(node) {
+    if (node.nodeType !== 1) return;
+    if (node.id) node.dataset.webui_click_is_set = "true";
+    for (const element of node.querySelectorAll("[id]")) element.dataset.webui_click_is_set = "true";
+  }
+  if (typeof MutationObserver === "function" && typeof document === "object") {
+    new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type === "attributes") suppressClickEvents(record.target);
+        else for (const node of record.addedNodes) suppressClickEvents(node);
+      }
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["id"] });
+    if (document.documentElement) suppressClickEvents(document.documentElement);
+  }
+
+  // Native WebUI claims an event slot for each incoming call on its own thread
+  // without holding its lock for the whole claim. Two calls arriving together
+  // can share one slot: one of them then never receives a reply, and either
+  // can read the other's arguments or response (#53). Send the next call only
+  // after .NET admitted the previous one, which it reports through
+  // __runicBridgeAdmitted, or that call settled. A call that reaches no handler
+  // and never settles holds the others back for at most admissionTimeout.
+  const admissionTimeout = 1500;
+  let admission = Promise.resolve();
+  let current;
+  // Calls the timeout released before .NET admitted them. Their admissions can
+  // still arrive and must not release a later call before it has a slot.
+  const late = [];
+  window.__runicBridgeAdmitted = () => {
+    if (late.length !== 0) late.shift();
+    else current?.admit();
+  };
+  function send(name, args) {
+    let release;
+    const previous = admission;
+    admission = new Promise(resolve => { release = resolve; });
+    return previous.then(() => {
+      let timer;
+      const call = {
+        admit() {
+          if (current !== call) return;
+          current = undefined;
+          clearTimeout(timer);
+          release();
+        },
+        settle() {
+          if (current === call) call.admit();
+          // An admission precedes its reply, so a late call that settles was
+          // never admitted.
+          const index = late.indexOf(call);
+          if (index !== -1) late.splice(index, 1);
+        },
+      };
+      current = call;
+      timer = setTimeout(() => {
+        if (current !== call) return;
+        current = undefined;
+        late.push(call);
+        release();
+      }, admissionTimeout);
+      let reply;
+      try {
+        reply = window.webui.call(name, ...args);
+      } catch (error) {
+        call.settle();
+        throw error;
+      }
+      Promise.resolve(reply).then(call.settle, call.settle);
+      return reply;
+    });
+  }
+
   window.__runicBridge = {
     isConnected: () => {
       const isConnected = connected();
@@ -41,7 +119,7 @@
     call: (name, ...args) => {
       if (!window.webui) return Promise.reject(new Error("CS-WebUI is unavailable."));
       window.webui.allowNavigation?.(true);
-      return window.webui.call(name, ...args);
+      return send(name, args);
     },
     onReconnect: (listener) => {
       reconnectListeners.add(listener);

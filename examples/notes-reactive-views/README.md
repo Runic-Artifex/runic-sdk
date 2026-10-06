@@ -47,6 +47,9 @@ RUNIC_VERIFY_PENDING_MOUNT=1 node examples/notes-reactive-views/browser-smoke.mj
 RUNIC_VERIFY_CLIENT_DISCONNECT=1 node examples/notes-reactive-views/browser-smoke.mjs
 ```
 
+`RUNIC_VERIFY_CALL_BURST=1` also sends 2,000 concurrent Bridge calls and
+requires every reply. It takes about 80 seconds.
+
 Build `Svelte` or `Angular` in this folder and set `RUNIC_WEB_ROOT` to the
 resulting output directory to run the same browser check. Development server
 HMR can be checked with `RUNIC_HMR_FRONTEND=svelte` or `angular` and

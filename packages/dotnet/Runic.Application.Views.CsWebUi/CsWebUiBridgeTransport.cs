@@ -18,12 +18,24 @@ public static class CsWebUiBridgeExtensions
 
 internal sealed class CsWebUiBridgeTransport(WebUiWindow window) : IBridgeTransport
 {
+    // Native WebUI has claimed this call's event slot once the callback runs.
+    // runic-cswebui.js holds the next call until then, so concurrent calls
+    // never share one slot and lose a reply (#53).
+    private const string AdmittedScript = "window.__runicBridgeAdmitted?.();";
+
     public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) =>
-        window.Bind(name, e => WebUiResult.FromString(handler(new WebUiBridgeArguments(e))));
+        window.Bind(name, e =>
+        {
+            e.RunJavaScript(AdmittedScript);
+            return WebUiResult.FromString(handler(new WebUiBridgeArguments(e)));
+        });
 
     public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) =>
         window.BindAsync(name, async (e, token) =>
-            WebUiResult.FromString(await handler(new WebUiBridgeArguments(e), token).ConfigureAwait(false)));
+        {
+            e.RunJavaScript(AdmittedScript);
+            return WebUiResult.FromString(await handler(new WebUiBridgeArguments(e), token).ConfigureAwait(false));
+        });
 
     public void Publish(string name, string stateJson) =>
         window.RunJavaScript($"window.__{name}Changed?.({stateJson});");

@@ -6,6 +6,7 @@ const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesReactiveViews.dll"
 const webRoot = process.env.RUNIC_WEB_ROOT;
 const verifyClientDisconnect = process.env.RUNIC_VERIFY_CLIENT_DISCONNECT === "1";
 const verifyPendingMount = process.env.RUNIC_VERIFY_PENDING_MOUNT === "1";
+const verifyCallBurst = process.env.RUNIC_VERIFY_CALL_BURST === "1";
 const host = spawn("dotnet", [dll, "--serve-only", ...(webRoot ? ["--web-root", webRoot] : []),
   ...(verifyClientDisconnect ? ["--verify-client-disconnect"] : [])], { stdio: ["pipe", "pipe", "pipe"] });
 let output = "", errors = "";
@@ -49,6 +50,20 @@ try {
     }
     return false;
   });
+  if (verifyCallBurst) {
+    // Native WebUI can give two calls that arrive together one event slot, and
+    // one of them then never receives a reply (#53). Unless the client sends
+    // calls one admission at a time, a burst this size loses some.
+    const count = 2000;
+    const settled = await evaluate(`(async () => {
+      let settled = 0;
+      const calls = Array.from({ length: ${count} }, (_, index) => window.__runicBridge.call(
+        index % 2 ? "shellSnapshot" : "__runicOperationStatus", "invalid-json").then(() => settled++));
+      await Promise.race([Promise.all(calls), new Promise(resolve => setTimeout(resolve, 150_000))]);
+      return settled;
+    })()`, { timeout: 160_000 });
+    if (settled !== count) throw new Error(`Concurrent Bridge calls lost replies: ${settled} of ${count} settled.`);
+  }
   if (verifyClientDisconnect) {
     await click("[data-go=document]");
     await retry(async () => await query('document.querySelector("#document-pane h2")?.textContent') === "Full editor");
