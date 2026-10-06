@@ -140,8 +140,12 @@ public sealed class BrowserHostTests
             return;
         }
 
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        WebUiApplication.SetConnectionTimeout(30);
+        // Each launch starts Chromium with a fresh profile. On a busy Windows
+        // runner the first connection occasionally took longer than 30 seconds
+        // (#35). Allow 45 seconds per launch and keep the whole test inside
+        // CI's two-minute hang timeout, so a timeout still reports its stage.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));
+        WebUiApplication.SetConnectionTimeout(45);
         await using var window = new WebUiWindow();
         window.SetHidden(true);
         window.SetCustomParameters("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");

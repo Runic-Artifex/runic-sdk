@@ -1,20 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createConnection } from "node:net";
 import { fileURLToPath } from "node:url";
+import { pause, waitFor } from "../shared/smoke.mjs";
 
 const assembly = fileURLToPath(new URL("./bin/Debug/net10.0/NotesReactiveViews.dll", import.meta.url));
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-async function retry(action, timeout = 30_000) {
-  const deadline = Date.now() + timeout;
-  let last;
-  while (Date.now() < deadline) {
-    try { if (await action()) return; }
-    catch (error) { last = error; }
-    await pause(100);
-  }
-  throw new Error(`Timed out waiting for IDE host: ${last ?? "no detail"}`);
-}
+const retry = (condition, timeout = 30_000) => waitFor(condition, { timeout, interval: 100, label: "the IDE host" });
 
 async function responds(url, timeout = 700) {
   try {
@@ -25,11 +15,13 @@ async function responds(url, timeout = 700) {
   catch (error) { return { ok: false, error: String(error) }; }
 }
 
-// A cold runner can take several seconds to serve the first proxied request.
+// A cold runner can take several seconds to serve the first proxied request
+// (#40). Warm each readiness URL up for 20 seconds before treating it as failed.
 async function respondsWithin(url, timeout = 20_000) {
-  let result;
-  await retry(async () => (result = await responds(url, 5000)).ok, timeout).catch(() => {});
-  return result;
+  const started = Date.now();
+  let result, attempts = 0;
+  await retry(async () => (attempts++, result = await responds(url, 5000)).ok, timeout).catch(() => {});
+  return { ...result, attempts, milliseconds: Date.now() - started };
 }
 
 function acceptsConnections(url) {
@@ -72,6 +64,8 @@ async function verify(framework, stopWithSignal = false) {
     // This serve-only probe may take WebUI's single client slot; the Debug host never does.
     const bridge = await respondsWithin(new URL("/webui.js", frontend));
     if (!bridge.ok) throw new Error(`The frontend Bridge proxy did not respond: ${JSON.stringify(bridge)}\nHost output:\n${output.slice(-16_384)}`);
+    // Record the first proxied request's latency so a slow runner shows up before it fails.
+    console.log(`REACTIVE_NOTES_IDE_FIRST_PROXY|${framework}|ms=${bridge.milliseconds}|attempts=${bridge.attempts}`);
     if (framework === "angular") {
       if (!angularOrigin) throw new Error(`Angular map proxy did not report its internal port: ${output}`);
       const bundle = await (await fetch(new URL("/main.js", frontend))).text();

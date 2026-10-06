@@ -238,6 +238,7 @@
         "examples/notes-view-first",
         "examples/notes-reactive-views",
         "examples/dynamicdata",
+        "examples/shared",
         "examples/README.md",
         "examples/Directory.Build.props",
         "examples/Directory.Build.targets",
