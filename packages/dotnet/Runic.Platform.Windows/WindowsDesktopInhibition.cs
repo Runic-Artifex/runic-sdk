@@ -21,7 +21,7 @@ internal sealed partial class WindowsDesktopInhibition : IDesktopInhibition
             {
                 var failure = LastFailure();
                 handle.Dispose();
-                return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(failure));
+                return ValueTask.FromResult(failure);
             }
             var lease = new Lease(handle, effects);
             try
@@ -31,7 +31,7 @@ internal sealed partial class WindowsDesktopInhibition : IDesktopInhibition
                 {
                     var failure = LastFailure();
                     lease.Close();
-                    return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(failure));
+                    return ValueTask.FromResult(failure);
                 }
                 cancellationToken.ThrowIfCancellationRequested();
                 return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Success(lease));
@@ -39,7 +39,12 @@ internal sealed partial class WindowsDesktopInhibition : IDesktopInhibition
             catch { lease.Close(); throw; }
         }
     }
-    private static FailureCode LastFailure() => Marshal.GetLastPInvokeError() == 5 ? FailureCode.PermissionDenied : FailureCode.IoError;
+    private static PlatformResult<IDesktopInhibitionLease> LastFailure()
+    {
+        int error = Marshal.GetLastPInvokeError();
+        return new PlatformResult<IDesktopInhibitionLease>.Failed(
+            error == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, PlatformDiagnostic.FromWin32Error(error));
+    }
     [StructLayout(LayoutKind.Sequential)]
     private struct ReasonContext { internal uint Version; internal uint Flags; internal nint Text; internal uint ResourceId; internal uint StringCount; internal nint Strings; }
     private sealed class Lease(SafeFileHandle handle, DesktopInhibitionEffects effects) : IDesktopInhibitionLease

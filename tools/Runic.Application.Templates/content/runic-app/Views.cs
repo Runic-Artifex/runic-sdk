@@ -37,11 +37,11 @@ public sealed partial class WelcomeView : RunicView<WelcomeViewModel>;
 public sealed partial class CounterView : RunicView<CounterViewModel>;
 #elif (viewModels == "reactiveui")
 public sealed partial class WorkspaceWindow(CsWebUiBridgeWindow<WorkspaceViewModel> host)
-    : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IDisposable
+    : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
     public void SetRootFolder(string path) => host.SetRootFolder(path);
     public void Show(string content) => host.Show(content);
-    public void Dispose() => host.Dispose();
+    public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 
 public sealed partial class WelcomeView : ReactiveRunicView<WelcomeViewModel>;

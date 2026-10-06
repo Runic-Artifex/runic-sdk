@@ -1,2 +1,20 @@
 #nullable enable
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.<Clone>$() -> Runic.Application.Views.Desktop.DesktopBridgeCloseResult!
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Completion.get -> System.Threading.Tasks.Task!
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Completion.init -> void
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Deconstruct(out bool Drained, out int RemainingOperations, out System.Threading.Tasks.Task! Completion) -> void
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.DesktopBridgeCloseResult(bool Drained, int RemainingOperations, System.Threading.Tasks.Task! Completion) -> void
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Drained.get -> bool
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Drained.init -> void
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Equals(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? other) -> bool
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.RemainingOperations.get -> int
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeCloseResult.RemainingOperations.init -> void
 Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+*REMOVED*Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.Desktop.DesktopBridgeCloseResult!>
+*REMOVED*override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Equals(object? obj) -> bool
+*REMOVED*override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.GetHashCode() -> int
+*REMOVED*override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.ToString() -> string!
+*REMOVED*static Runic.Application.Views.Desktop.DesktopBridgeCloseResult.operator !=(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? left, Runic.Application.Views.Desktop.DesktopBridgeCloseResult? right) -> bool
+*REMOVED*static Runic.Application.Views.Desktop.DesktopBridgeCloseResult.operator ==(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? left, Runic.Application.Views.Desktop.DesktopBridgeCloseResult? right) -> bool

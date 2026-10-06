@@ -7,7 +7,12 @@ namespace Runic.Application.Views.CsWebUi;
 /// <summary>
 /// Owns one CS-WebUI window, its DI scope, and its Bridge attachments.
 /// </summary>
-public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposable where TViewModel : class
+/// <remarks>
+/// Release it with <see cref="DisposeAsync"/> or <see cref="CloseAsync"/>. There is no
+/// synchronous <c>Dispose</c>: accepted operations can keep the DI scope alive after
+/// the visible window closes, as with every <see cref="IBridgeWindow"/> host.
+/// </remarks>
+public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewModel : class
 {
     private readonly object _closeGate = new();
     private readonly IServiceScope _scope;
@@ -16,7 +21,7 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
     private readonly WindowContentSession _content;
     private readonly IDisposable _connectionBinding;
     private IDisposable? _attachment;
-    private Task<CsWebUiBridgeCloseResult>? _closeAdmission;
+    private Task<BridgeWindowCloseResult>? _closeAdmission;
     private Task? _closeCompletion;
     private bool _admissionReleased;
     private bool _finalized;
@@ -120,36 +125,14 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
     /// transport promptly, while this object retains its scope until the
     /// remaining operations finish.
     /// </summary>
-    public ValueTask<CsWebUiBridgeCloseResult> CloseAsync(TimeSpan timeout)
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
-        Task<CsWebUiBridgeCloseResult> admission;
+        Task<BridgeWindowCloseResult> admission;
         lock (_closeGate)
             admission = _closeAdmission ??= BeginCloseAsync(timeout);
         return new(admission);
-    }
-
-    /// <summary>
-    /// Starts an immediate close without waiting for accepted operations. Failures are
-    /// traced; use <see cref="DisposeAsync"/> or <see cref="CloseAsync"/> to observe them.
-    /// </summary>
-    public void Dispose()
-    {
-        _ = ObserveCloseAsync();
-    }
-
-    private async Task ObserveCloseAsync()
-    {
-        try
-        {
-            var result = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
-            await result.Completion.ConfigureAwait(false);
-        }
-        catch (Exception error)
-        {
-            System.Diagnostics.Trace.TraceError($"Closing the CS-WebUI Bridge window failed: {error}");
-        }
     }
 
     /// <summary>Closes the window immediately and waits until its resources are released.</summary>
@@ -159,11 +142,11 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<CsWebUiBridgeCloseResult> BeginCloseAsync(TimeSpan timeout)
+    private async Task<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         var errors = new List<Exception>();
         Capture(ReleaseAdmissionRoutes, errors);
-        WindowContentSessionCloseResult result;
+        BridgeWindowCloseResult result;
         try
         {
             result = await _content.BeginCloseAsync(timeout).ConfigureAwait(false);
@@ -260,9 +243,6 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IDisposable, IAsyncDisposa
     }
 }
 
-/// <summary>Admission result for a graceful CS-WebUI Bridge window close.</summary>
-public sealed record CsWebUiBridgeCloseResult(bool Drained, int RemainingOperations, Task Completion);
-
 /// <summary>Opens CS-WebUI Bridge windows from a service provider.</summary>
 public static class CsWebUiBridgeWindowExtensions
 {
@@ -272,7 +252,7 @@ public static class CsWebUiBridgeWindowExtensions
     /// </summary>
     public static TWindow OpenWindow<TWindow, TViewModel>(this IServiceProvider services,
         Func<CsWebUiBridgeWindow<TViewModel>, TWindow> createWindow)
-        where TWindow : RunicWindow<TViewModel>, IDisposable
+        where TWindow : RunicWindow<TViewModel>, IAsyncDisposable
         where TViewModel : class
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -324,7 +304,7 @@ public static class CsWebUiBridgeWindowExtensions
         {
             if (host is not null)
             {
-                try { applicationWindow?.Dispose(); }
+                try { applicationWindow?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
                 finally { host.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
                 throw;
             }

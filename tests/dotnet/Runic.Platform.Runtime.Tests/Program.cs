@@ -38,6 +38,7 @@ internal static class Conformance
             ("PICK: provider failure releases admission for the next request", ProviderFailure),
             ("THREAD-01/02/03: worker dispatch, inline dispatch and queued cancellation", Dispatch),
             ("THREAD-04: queued rejection and running callback drain", DispatchShutdown),
+            ("RESULT: failures carry optional native diagnostics", NativeDiagnostics),
         ];
         int failures = 0;
         foreach (var test in tests)
@@ -47,6 +48,21 @@ internal static class Conformance
         }
         Console.WriteLine($"{tests.Length - failures}/{tests.Length} Runic.Platform.Runtime scenarios passed; no native provider certification.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static Task NativeDiagnostics()
+    {
+        var hresult = PlatformDiagnostic.FromHResult(unchecked((int)0x80070005));
+        if (hresult.Domain != "HRESULT" || hresult.Code != 0x80070005L || !hresult.ToString().StartsWith("HRESULT 0x80070005", StringComparison.Ordinal))
+            throw new InvalidOperationException($"HRESULT diagnostic lost its unsigned code: {hresult}");
+        var errno = PlatformDiagnostic.FromErrno(13);
+        if (errno is not { Domain: "errno", Code: 13 } || string.IsNullOrWhiteSpace(errno.Message))
+            throw new InvalidOperationException($"errno diagnostic lost its code or native message: {errno}");
+        if (new PlatformDiagnostic("org.freedesktop.portal.Error.NotAllowed", 0).ToString() != "org.freedesktop.portal.Error.NotAllowed 0")
+            throw new InvalidOperationException("A named diagnostic without a message formatted unexpectedly.");
+        if (new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError).Diagnostic is not null)
+            throw new InvalidOperationException("A failure without native detail reported a diagnostic.");
+        return Task.CompletedTask;
     }
 
     private static async Task NativeOwnerDispatchRace()
@@ -60,8 +76,8 @@ internal static class Conformance
             var saveTask = save ? files.SaveFileAsync(new("document.txt")).AsTask() : null;
             await owner.Queued.Task;
             owner.Close();
-            if (save) Check(await saveTask! is PickerResult<ISaveFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed });
-            else Check(await openTask! is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+            if (save) Check(await saveTask! is PickerResult<ISaveFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed });
+            else Check(await openTask! is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed });
             Check(lifetime.GetResourceSnapshot().PendingOperationCount == 0);
         }
 
@@ -112,16 +128,16 @@ internal static class Conformance
         backend.Text = "";
         Check(await clipboard.ReadTextAsync(0) is PlatformResult<string?>.Success { Value: "" });
         backend.Text = "oversized";
-        Check(await clipboard.ReadTextAsync(2) is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge });
-        backend.Failure = FailureCode.PermissionDenied;
-        Check(await clipboard.ReadTextAsync(20) is PlatformResult<string?>.Failed { Code: FailureCode.PermissionDenied });
-        backend.Failure = FailureCode.ResourceBusy;
-        Check(await clipboard.WriteTextAsync("busy") is PlatformResult<Unit>.Failed { Code: FailureCode.ResourceBusy });
+        Check(await clipboard.ReadTextAsync(2) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge });
+        backend.Failure = PlatformFailureCode.PermissionDenied;
+        Check(await clipboard.ReadTextAsync(20) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.PermissionDenied });
+        backend.Failure = PlatformFailureCode.ResourceBusy;
+        Check(await clipboard.WriteTextAsync("busy") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.ResourceBusy });
         backend.Failure = null;
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
         await Throws<OperationCanceledException>(() => clipboard.WriteTextAsync("canceled", canceled.Token).AsTask());
-        Check(await clipboard.WriteTextAsync("retry") is PlatformResult<Unit>.Success);
+        Check(await clipboard.WriteTextAsync("retry") is PlatformResult<PlatformUnit>.Success);
         backend.BlockWrite = true;
         using var late = new CancellationTokenSource();
         var write = clipboard.WriteTextAsync("actual", late.Token).AsTask();
@@ -131,17 +147,17 @@ internal static class Conformance
         Check(!stopped.IsCompleted);
         Check(!backend.Disposed);
         backend.Finish.TrySetResult();
-        Check(await write is PlatformResult<Unit>.Success);
+        Check(await write is PlatformResult<PlatformUnit>.Success);
         await stopped;
         Check(backend.Text == "actual" && backend.Disposed);
         Check(lifetime.GetResourceSnapshot() == (0, 0));
-        Check(await clipboard.ReadTextAsync(20) is PlatformResult<string?>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+        Check(await clipboard.ReadTextAsync(20) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed });
     }
 
     private sealed class ControlledClipboard : ITextClipboard, IAsyncDisposable
     {
         internal string? Text;
-        internal FailureCode? Failure;
+        internal PlatformFailureCode? Failure;
         internal bool BlockWrite;
         internal bool Disposed;
         internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -152,13 +168,13 @@ internal static class Conformance
             return ValueTask.FromResult<PlatformResult<string?>>(Failure is { } failure
                 ? new PlatformResult<string?>.Failed(failure) : new PlatformResult<string?>.Success(Text));
         }
-        public async ValueTask<PlatformResult<Unit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+        public async ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (Failure is { } failure) return new PlatformResult<Unit>.Failed(failure);
+            if (Failure is { } failure) return new PlatformResult<PlatformUnit>.Failed(failure);
             if (BlockWrite) { Started.TrySetResult(); await Finish.Task; }
             Text = text;
-            return new PlatformResult<Unit>.Success(new());
+            return new PlatformResult<PlatformUnit>.Success(new());
         }
         public ValueTask DisposeAsync() { Disposed = true; return ValueTask.CompletedTask; }
     }
@@ -167,28 +183,28 @@ internal static class Conformance
     {
         await using var lifetime = new PresentationLifetime();
         var absent = new PresentationFiles(lifetime);
-        Check(await absent.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.ProviderNotConfigured });
+        Check(await absent.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.ProviderNotConfigured });
         var backend = new ControlledBackend();
         var files = new PresentationFiles(lifetime, backend);
         var before = files.GetSnapshot();
-        Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: UnavailableReason.OwnerUnavailable });
-        Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerUnavailable });
+        Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable });
+        Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerUnavailable });
         await Throws<ArgumentOutOfRangeException>(() => files.OpenFileAsync(new((OwnerPolicy)1)).AsTask());
         Check(files.GetSnapshot().Statuses["platform.dialogs.owned"] is CapabilityStatus.Unavailable);
         lifetime.AttachTestOwner();
         Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available);
         Check(files.GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Available);
         backend.SupportsAtomicReplace = false;
-        Check(files.GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Unavailable { Reason: UnavailableReason.AtomicReplaceUnavailable });
+        Check(files.GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.AtomicReplaceUnavailable });
         Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available);
         backend.SupportsAtomicReplace = true;
         Check(before.Statuses["platform.files.open"] is CapabilityStatus.Unavailable);
         backend.IsAvailable = false;
-        Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.BackendUnavailable });
+        Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
         Check(backend.OpenCalls == 0);
         await lifetime.DisposeAsync();
         Check(files.GetSnapshot().Generation == before.Generation);
-        Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: UnavailableReason.OwnerClosed });
+        Check(files.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed });
     }
 
     private static async Task PickerAdmission()
@@ -201,7 +217,7 @@ internal static class Conformance
         Check(backend.OpenCalls == 0);
         var first = files.OpenFileAsync(new()).AsTask();
         var anotherFacade = new PresentationFiles(owner, backend);
-        Check(await anotherFacade.SaveFileAsync(new("contact.json")) is PickerResult<ISaveFileLease>.Failed { Code: FailureCode.ResourceBusy });
+        Check(await anotherFacade.SaveFileAsync(new("contact.json")) is PickerResult<ISaveFileLease>.Failed { Code: PlatformFailureCode.ResourceBusy });
         Check(backend.SaveCalls == 0);
         await using var independent = Owned();
         var otherBackend = new ControlledBackend();
@@ -243,7 +259,7 @@ internal static class Conformance
         var pending = files.OpenFileAsync(new()).AsTask();
         var closed = owner.DisposeAsync().AsTask();
         Check(!closed.IsCompleted);
-        Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+        Check(await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed });
         await using var replacement = Owned();
         Check(snapshot.Generation != replacement.Generation);
         Check(snapshot.Statuses["platform.files.open"] is CapabilityStatus.Available);
@@ -252,7 +268,7 @@ internal static class Conformance
         await lease.Disposing.Task;
         Check(!closed.IsCompleted);
         lease.Release.SetResult();
-        Check(await pending is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed });
+        Check(await pending is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed });
         await closed;
         await owner.DisposeAsync();
         Check(lease.Disposals == 1 && backend.OpenCalls == 1);
@@ -280,8 +296,8 @@ internal static class Conformance
         var files = new PresentationFiles(owner, backend);
         backend.OpenResult.SetException(new IOException("injected provider bug"));
         await Throws<IOException>(() => files.OpenFileAsync(new()).AsTask());
-        backend.SaveResult.SetResult(new PickerResult<ISaveFileLease>.Failed(FailureCode.PermissionDenied));
-        Check(await files.SaveFileAsync(new("contact.json")) is PickerResult<ISaveFileLease>.Failed { Code: FailureCode.PermissionDenied });
+        backend.SaveResult.SetResult(new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.PermissionDenied));
+        Check(await files.SaveFileAsync(new("contact.json")) is PickerResult<ISaveFileLease>.Failed { Code: PlatformFailureCode.PermissionDenied });
         Check(backend.SaveCalls == 1);
         await Throws<ArgumentException>(() => files.SaveFileAsync(new("../contact.json")).AsTask());
         Check(backend.SaveCalls == 1);

@@ -77,7 +77,7 @@ internal static class DesktopServicesNativeSmoke
                     Console.WriteLine($"Exercise {operation}; choose or dismiss the native application picker when it appears.");
                     var result = await launcher.LaunchAsync(path, operation, token);
                     Console.WriteLine($"{operation}: {result}");
-                    if (operation == DesktopFileOperation.ChooseApplication && result is PlatformResult<Unit>.Failed { Code: FailureCode.UserDismissed })
+                    if (operation == DesktopFileOperation.ChooseApplication && result is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.UserDismissed })
                         Console.WriteLine("Picker dismissal reported by the native API.");
                     else RequireSuccess(result, operation.ToString());
                     if (OperatingSystem.IsWindows() && operation == DesktopFileOperation.ChooseApplication)
@@ -107,9 +107,9 @@ internal static class DesktopServicesNativeSmoke
             }
         }
     }
-    private static void RequireSuccess(PlatformResult<Unit> result, string operation)
+    private static void RequireSuccess(PlatformResult<PlatformUnit> result, string operation)
     {
-        if (result is not PlatformResult<Unit>.Success) throw new InvalidOperationException($"{operation} failed: {result}");
+        if (result is not PlatformResult<PlatformUnit>.Success) throw new InvalidOperationException($"{operation} failed: {result}");
         Console.WriteLine($"PASS {operation}: native API accepted the request.");
     }
 }

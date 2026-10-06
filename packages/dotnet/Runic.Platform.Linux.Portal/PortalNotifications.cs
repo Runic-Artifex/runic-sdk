@@ -20,19 +20,19 @@ internal sealed class PortalNotifications(string? address = null, string destina
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
 
-    public ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default) =>
+    public ValueTask<PlatformResult<PlatformUnit>> RequestPermissionAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(null, cancellationToken); // The portal owns permission policy; no separate authorization method exists.
-    public ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Notification(notification);
         return ExecuteAsync(proxy => proxy.AddNotificationAsync(notification.Id, NotificationOptions(notification)), cancellationToken, notification);
     }
-    public ValueTask<PlatformResult<Unit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Identifier(id);
         return ExecuteAsync(proxy => proxy.RemoveNotificationAsync(id), cancellationToken, remove: id);
     }
-    private async ValueTask<PlatformResult<Unit>> ExecuteAsync(Func<Protocol.Notification, Task>? request,
+    private async ValueTask<PlatformResult<PlatformUnit>> ExecuteAsync(Func<Protocol.Notification, Task>? request,
         CancellationToken cancellationToken, DesktopNotification? notification = null, string? remove = null)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -101,19 +101,19 @@ internal sealed class PortalNotifications(string? address = null, string destina
                 var version = await new Protocol.Notification(_connection, _session!.Destination, "/org/freedesktop/portal/desktop").GetVersionAsync()
                     .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
                 if (_session!.OwnerChanged.IsCancellationRequested) throw new NativeBackendUnavailableException();
-                if (version < 1) return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
+                if (version < 1) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             }
-            return new PlatformResult<Unit>.Success(new Unit());
+            return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
         }
         catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
-        { Diagnose("portal-notification-permission-denied", error.ErrorName, "Check application identity and desktop notification permissions."); return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied); }
-        catch (NotificationCapacityException) { return new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy); }
+        { Diagnose("portal-notification-permission-denied", error.ErrorName, "Check application identity and desktop notification permissions."); return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PortalErrors.Reply(error)); }
+        catch (NotificationCapacityException) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy); }
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
         {
             Diagnose("portal-notification-backend-unavailable", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
                 "Check session portal services and the installed desktop entry for the supplied application ID.");
             ResetConnection();
-            return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         }
         finally { _gate.Release(); }
     }

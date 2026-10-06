@@ -16,19 +16,32 @@ var services = new ServiceCollection();
 services.AddScoped<MainViewModel>();
 services.AddRunicViews(); // generated in <ProjectName>.RunicBridgeComposition
 using var provider = services.BuildServiceProvider();
-using var window = provider.OpenWindow<MainWindow, MainViewModel>(host => new MainWindow(host));
-window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
-window.Show("index.html");
-WebUiApplication.Wait();
+await using (var window = provider.OpenWindow<MainWindow, MainViewModel>(host => new MainWindow(host)))
+{
+    window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
+    window.Show("index.html");
+    WebUiApplication.Wait();
+}
+WebUiApplication.Clean();
 ```
 
 `OpenWindow` creates a DI scope, resolves the Window's ViewModel, constructs
 the Window, and attaches its generated Bridge; the Window owns the native
 window, scope, and attachments until it is disposed or `CloseAsync` drains its
 accepted operations. `CsWebUiWindow<TViewModel>` forwards `SetRootFolder`,
-`SetSize`, `Show`, `ShowWebView`, `StartServer`, `CloseAsync`, and disposal to
-its `Host`, a `CsWebUiBridgeWindow<TViewModel>`; `Host.NativeWindow` exposes
+`SetSize`, `Show`, `ShowWebView`, `StartServer`, `CloseAsync`, and `DisposeAsync`
+to its `Host`, a `CsWebUiBridgeWindow<TViewModel>`; `Host.NativeWindow` exposes
 the underlying `WebUiWindow`.
+
+Both hosts share one lifetime contract, `IBridgeWindow` from
+`Runic.Application.Views`: `CloseAsync(timeout)` returns a `BridgeWindowCloseResult`,
+and disposal is asynchronous only. Accepted operations can keep the Window's DI
+scope alive after the visible window closes, so dispose the Window with
+`await using` before `WebUiApplication.Clean()`.
+
+State snapshots and collection delta frames are sent as ordered WebSocket messages
+to every connected client. Unlike Runic Desktop, CS-WebUI has no acknowledged
+multi-client send, so a slow browser is not throttled into a recovery snapshot.
 
 ## What Show opens
 

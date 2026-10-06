@@ -84,7 +84,7 @@ internal static class UsabilitySmoke
                         await window.CloseAsync();
                         var outcome = await pending.WaitAsync(TimeSpan.FromSeconds(5));
                         Console.WriteLine("OWNER CLOSE RESULT " + outcome);
-                        if (outcome is not PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed })
+                        if (outcome is not PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed })
                             throw new InvalidOperationException("Closing the picker owner did not invalidate the request.");
                         break;
                     }

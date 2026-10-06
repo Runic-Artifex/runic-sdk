@@ -18,14 +18,14 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
     private nint _center, _delegate;
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
-    public ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default) =>
+    public ValueTask<PlatformResult<PlatformUnit>> RequestPermissionAsync(CancellationToken cancellationToken = default) =>
         ExecuteAsync(completion =>
         {
-            var block = MacDesktopBlock.Authorization((granted, error) => completion.TrySetResult(error != 0 ? FromError(error) : granted != 0 ? Success() : Failed(FailureCode.PermissionDenied)));
+            var block = MacDesktopBlock.Authorization((granted, error) => completion.TrySetResult(error != 0 ? FromError(error) : granted != 0 ? Success() : Failed(PlatformFailureCode.PermissionDenied)));
             try { Args(_center, Sel("requestAuthorizationWithOptions:completionHandler:"), 4 | 2, block); }
             finally { MacDesktopBlock.Release(block); }
         }, cancellationToken);
-    public ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Notification(notification);
         return ExecuteAsync(completion =>
@@ -61,7 +61,7 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
             finally { Release(content); }
         }, cancellationToken);
     }
-    public ValueTask<PlatformResult<Unit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Identifier(id);
         return ExecuteAsync(completion =>
@@ -73,18 +73,18 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
             completion.TrySetResult(Success());
         }, cancellationToken);
     }
-    private async ValueTask<PlatformResult<Unit>> ExecuteAsync(Action<TaskCompletionSource<PlatformResult<Unit>>> action, CancellationToken cancellationToken)
+    private async ValueTask<PlatformResult<PlatformUnit>> ExecuteAsync(Action<TaskCompletionSource<PlatformResult<PlatformUnit>>> action, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var completion = new TaskCompletionSource<PlatformResult<Unit>>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var completion = new TaskCompletionSource<PlatformResult<PlatformUnit>>(TaskCreationOptions.RunContinuationsAsynchronously);
             await MacOsMainQueue.InvokeAsync(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 using var pool = new Pool();
-                if (!Initialize()) { completion.TrySetResult(new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable)); return; }
+                if (!Initialize()) { completion.TrySetResult(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable)); return; }
                 action(completion);
             }).ConfigureAwait(false);
             // UN APIs have no cancellation primitive; drain their completion after submitting.
@@ -160,11 +160,14 @@ internal sealed partial class MacDesktopNotifications : IDesktopNotifications
         }
         finally { _gate.Release(); }
     }
-    private static PlatformResult<Unit> FromError(nint error) =>
-        Text(Send(error, Sel("domain"))) == "UNErrorDomain" && Send(error, Sel("code")) == 1
-            ? Failed(FailureCode.PermissionDenied) : Failed(FailureCode.IoError);
-    private static PlatformResult<Unit> Success() => new PlatformResult<Unit>.Success(new Unit());
-    private static PlatformResult<Unit> Failed(FailureCode code) => new PlatformResult<Unit>.Failed(code);
+    private static PlatformResult<PlatformUnit> FromError(nint error)
+    {
+        var diagnostic = ErrorDiagnostic(error);
+        return new PlatformResult<PlatformUnit>.Failed(
+            diagnostic is { Domain: "UNErrorDomain", Code: 1 } ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, diagnostic);
+    }
+    private static PlatformResult<PlatformUnit> Success() => new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+    private static PlatformResult<PlatformUnit> Failed(PlatformFailureCode code) => new PlatformResult<PlatformUnit>.Failed(code);
     [LibraryImport(ObjC, EntryPoint = "objc_allocateClassPair", StringMarshalling = StringMarshalling.Utf8)] private static partial nint AllocateClass(nint parent, string name, nuint extra);
     [LibraryImport(ObjC, EntryPoint = "objc_registerClassPair")] private static partial void RegisterClass(nint type);
     [LibraryImport(ObjC, EntryPoint = "objc_getProtocol", StringMarshalling = StringMarshalling.Utf8)] private static partial nint GetProtocol(string name);

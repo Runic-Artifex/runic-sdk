@@ -48,7 +48,7 @@ try
     var selected = await backend.SaveFileAsync(new SaveFileOptions("original.txt"));
     Check(selected is PickerResult<ISaveFileLease>.Selected, "portal save destination selected");
     await using var lease = ((PickerResult<ISaveFileLease>.Selected)selected).Value;
-    Check(await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Unavailable { Reason: UnavailableReason.AtomicReplaceUnavailable }, "portal grant does not authorize atomic sibling replacement");
+    Check(await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Unavailable { Reason: PlatformUnavailableReason.AtomicReplaceUnavailable }, "portal grant does not authorize atomic sibling replacement");
     Check(await File.ReadAllTextAsync(path) == "original" && Directory.GetFiles(saveDirectory).Length == 1, "unsupported save preserves file and creates no sibling staging");
 }
 finally { Directory.Delete(saveDirectory, recursive: true); }

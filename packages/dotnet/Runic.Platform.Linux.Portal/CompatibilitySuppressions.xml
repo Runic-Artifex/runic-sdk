@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Platform.Linux.Portal.PortalApplication.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner,System.Uri,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Platform.Linux.Portal.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Linux.Portal.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Platform.Linux.Portal.PortalPlatformProvider.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner,System.Uri,System.Threading.CancellationToken)</Target>
+    <Left>lib/net10.0/Runic.Platform.Linux.Portal.dll</Left>
+    <Right>lib/net10.0/Runic.Platform.Linux.Portal.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

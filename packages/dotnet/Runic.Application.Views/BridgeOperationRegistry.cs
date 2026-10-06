@@ -407,7 +407,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         Task[] terminals;
         lock (_gate)
         {
-            if (_disposed) return new(Drained: true, RemainingRunningOperations: 0);
+            if (_disposed) return BridgeOperationCloseResult.Completed;
             _closing = true;
             terminals = _operations.Values
                 .Where(entry => entry.Status is BridgeOperationStatusKind.Running)
@@ -416,11 +416,12 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 .ToArray();
         }
 
-        if (terminals.Length == 0) return new(Drained: true, RemainingRunningOperations: 0);
+        if (terminals.Length == 0) return BridgeOperationCloseResult.Completed;
+        var all = Task.WhenAll(terminals);
         try
         {
-            await Task.WhenAll(terminals).WaitAsync(timeout, callerCancellation).ConfigureAwait(false);
-            return new(Drained: true, RemainingRunningOperations: 0);
+            await all.WaitAsync(timeout, callerCancellation).ConfigureAwait(false);
+            return BridgeOperationCloseResult.Completed;
         }
         catch (TimeoutException)
         {
@@ -429,7 +430,10 @@ internal sealed class BridgeOperationRegistry : IDisposable
                 remaining = _awaited.Count + _operations.Values.Count(
                     entry => entry.Status is BridgeOperationStatusKind.Running);
             RequestOwnerCancellation();
-            return new(Drained: false, RemainingRunningOperations: remaining);
+            // Terminal outcomes are reported to their callers; this only observes the end.
+            var settled = all.ContinueWith(static _ => { }, CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return new(Drained: false, RemainingRunningOperations: remaining, settled);
         }
     }
 
@@ -550,7 +554,10 @@ internal sealed record BridgeOperationStatus(
     public static BridgeOperationStatus Expired(string requestId) => new(requestId, BridgeOperationStatusKind.Expired, null);
 }
 
-internal sealed record BridgeOperationCloseResult(bool Drained, int RemainingRunningOperations);
+internal sealed record BridgeOperationCloseResult(bool Drained, int RemainingRunningOperations, Task Remaining)
+{
+    internal static BridgeOperationCloseResult Completed { get; } = new(true, 0, Task.CompletedTask);
+}
 internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status, BridgeOperationStreamRead? Stream);
 
 // Supplied only to the streaming admission overload. Command descriptors can

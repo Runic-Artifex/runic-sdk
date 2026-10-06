@@ -131,19 +131,19 @@ static async Task RunAsync()
     if (!focused) throw new InvalidOperationException("The compositor did not focus the clipboard test window.");
     try
     {
-        if (await clipboard.WriteTextAsync("") is not PlatformResult<Unit>.Success ||
+        if (await clipboard.WriteTextAsync("") is not PlatformResult<PlatformUnit>.Success ||
             await clipboard.ReadTextAsync(0) is not PlatformResult<string?>.Success { Value: "" })
         {
             throw new InvalidOperationException("GTK 4 empty clipboard text was not preserved.");
         }
         var write = await clipboard.WriteTextAsync("Runic GTK4 clipboard");
         var read = await clipboard.ReadTextAsync(64);
-        if (write is not PlatformResult<Unit>.Success ||
+        if (write is not PlatformResult<PlatformUnit>.Success ||
             read is not PlatformResult<string?>.Success { Value: "Runic GTK4 clipboard" })
         {
             throw new InvalidOperationException($"GTK 4 clipboard round-trip failed: write={write}; read={read}.");
         }
-        if (await clipboard.ReadTextAsync(3) is not PlatformResult<string?>.Failed { Code: FailureCode.TooLarge })
+        if (await clipboard.ReadTextAsync(3) is not PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge })
         {
             throw new InvalidOperationException("GTK 4 clipboard character bound was not enforced.");
         }

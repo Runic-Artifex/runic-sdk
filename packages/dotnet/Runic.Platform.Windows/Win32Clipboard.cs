@@ -14,7 +14,7 @@ internal sealed partial class Win32Clipboard : IWindowsClipboard
             nint memory = GetClipboardData(UnicodeText);
             if (memory == 0) return Failed<string?>();
             nuint bytes = GlobalSize(memory);
-            if (bytes < 2 || bytes % 2 != 0) return new PlatformResult<string?>.Failed(FailureCode.InvalidData);
+            if (bytes < 2 || bytes % 2 != 0) return new PlatformResult<string?>.Failed(PlatformFailureCode.InvalidData);
             nint pointer = GlobalLock(memory);
             if (pointer == 0) return Failed<string?>();
             try
@@ -33,35 +33,40 @@ internal sealed partial class Win32Clipboard : IWindowsClipboard
         nuint bound = available < requested ? available : requested;
         for (nuint i = 0; i < bound; i++)
             if (characters[i] == '\0') return new PlatformResult<string?>.Success(new string(characters, 0, checked((int)i)));
-        return new PlatformResult<string?>.Failed(available > (nuint)maximumCharacters ? FailureCode.TooLarge : FailureCode.InvalidData);
+        return new PlatformResult<string?>.Failed(available > (nuint)maximumCharacters ? PlatformFailureCode.TooLarge : PlatformFailureCode.InvalidData);
     }
 
-    public unsafe PlatformResult<Unit> Write(nint owner, string text)
+    public unsafe PlatformResult<PlatformUnit> Write(nint owner, string text)
     {
         nuint bytes = checked(((nuint)text.Length + 1) * 2);
         nint memory = GlobalAlloc(0x42, bytes); // GMEM_MOVEABLE | GMEM_ZEROINIT
-        if (memory == 0) return Failed<Unit>();
+        if (memory == 0) return Failed<PlatformUnit>();
         try
         {
             nint pointer = GlobalLock(memory);
-            if (pointer == 0) return Failed<Unit>();
+            if (pointer == 0) return Failed<PlatformUnit>();
             try { text.AsSpan().CopyTo(new Span<char>((void*)pointer, text.Length)); }
             finally { GlobalUnlock(memory); }
-            if (OpenClipboard(owner) == 0) return Failed<Unit>(true);
+            if (OpenClipboard(owner) == 0) return Failed<PlatformUnit>(true);
             try
             {
-                if (EmptyClipboard() == 0) return Failed<Unit>();
-                if (SetClipboardData(UnicodeText, memory) == 0) return Failed<Unit>();
+                if (EmptyClipboard() == 0) return Failed<PlatformUnit>();
+                if (SetClipboardData(UnicodeText, memory) == 0) return Failed<PlatformUnit>();
                 memory = 0; // Ownership transfers only on successful SetClipboardData.
-                return new PlatformResult<Unit>.Success(new Unit());
+                return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
             }
             finally { CloseClipboard(); }
         }
         finally { if (memory != 0) GlobalFree(memory); }
     }
 
-    private static PlatformResult<T> Failed<T>(bool busy = false) => new PlatformResult<T>.Failed(
-        Marshal.GetLastPInvokeError() == 5 ? FailureCode.PermissionDenied : busy ? FailureCode.ResourceBusy : FailureCode.IoError);
+    private static PlatformResult<T> Failed<T>(bool busy = false)
+    {
+        int error = Marshal.GetLastPInvokeError();
+        return new PlatformResult<T>.Failed(
+            error == 5 ? PlatformFailureCode.PermissionDenied : busy ? PlatformFailureCode.ResourceBusy : PlatformFailureCode.IoError,
+            PlatformDiagnostic.FromWin32Error(error));
+    }
 
     [LibraryImport("user32.dll", SetLastError = true)] internal static partial int OpenClipboard(nint owner);
     [LibraryImport("user32.dll", SetLastError = true)] internal static partial int CloseClipboard();

@@ -65,13 +65,13 @@ internal sealed partial class LocalAtomicFileReplacement : IAtomicFileReplacemen
             if (existed && OperatingSystem.IsWindows()) File.Replace(stagingPath, targetPath, null);
             else File.Move(stagingPath, targetPath, overwrite: existed);
         }
-        catch (UnauthorizedAccessException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(FailureCode.PermissionDenied)); }
+        catch (UnauthorizedAccessException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied)); }
         // A no-overwrite move refuses a destination created since selection.
         catch (IOException error) when (!existed && IsAlreadyExists(error))
-        { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(FailureCode.Conflict)); }
+        { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict)); }
         // An IO error can be reported after the filesystem accepted a rename.
         // Never delete the target or automatically retry an uncertain outcome.
-        catch (IOException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.CommitUnknown(FailureCode.IoError)); }
+        catch (IOException) { return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError)); }
         SyncDirectory(Path.GetDirectoryName(targetPath)!);
         return ValueTask.FromResult<FileCommitResult>(new FileCommitResult.Committed());
     }
@@ -108,7 +108,7 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
     private readonly IAsyncDisposable? _access;
     private int _handoffs;
     private readonly TaskCompletionSource _handoffsDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    public async ValueTask<PlatformResult<Unit>> LaunchAsync(IDesktopFileLauncher launcher,
+    public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(IDesktopFileLauncher launcher,
         DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(launcher);
@@ -165,9 +165,9 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
         {
             ObjectDisposedException.ThrowIf(_closed is not null, this);
             if (!_replacement.IsSupported) return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(
-                new PlatformResult<IFileWriteTransaction>.Unavailable(UnavailableReason.AtomicReplaceUnavailable));
+                new PlatformResult<IFileWriteTransaction>.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable));
             if (_transaction is not null) return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(
-                new PlatformResult<IFileWriteTransaction>.Failed(FailureCode.ResourceBusy));
+                new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.ResourceBusy));
             try
             {
                 // Replace a symlink's final target rather than the link itself, staging
@@ -178,8 +178,8 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
                 _transaction = new(staging, target, _original, content, _replacement);
                 return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Success(_transaction));
             }
-            catch (UnauthorizedAccessException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(FailureCode.PermissionDenied)); }
-            catch (IOException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(FailureCode.IoError)); }
+            catch (UnauthorizedAccessException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.PermissionDenied)); }
+            catch (IOException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.IoError)); }
         }
     }
 
@@ -274,7 +274,7 @@ internal sealed class FileWriteTransaction(string staging, string target, byte[]
             var current = await SaveFileLease.FingerprintAsync(target, token).ConfigureAwait(false);
             if ((original is null) != (current is null) || (original is not null && !original.AsSpan().SequenceEqual(current)))
             {
-                completion.SetResult(new FileCommitResult.NotCommitted(FailureCode.Conflict));
+                completion.SetResult(new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict));
                 return;
             }
             // Best-effort conflict check, not filesystem CAS. No cancellable wait
@@ -285,8 +285,8 @@ internal sealed class FileWriteTransaction(string staging, string target, byte[]
             completion.SetResult(outcome);
         }
         catch (OperationCanceledException error) when (!submitted) { completion.SetCanceled(error.CancellationToken); }
-        catch (UnauthorizedAccessException) { completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(FailureCode.PermissionDenied) : new FileCommitResult.NotCommitted(FailureCode.PermissionDenied)); }
-        catch (IOException) { completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(FailureCode.IoError) : new FileCommitResult.NotCommitted(FailureCode.IoError)); }
+        catch (UnauthorizedAccessException) { completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(PlatformFailureCode.PermissionDenied) : new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied)); }
+        catch (IOException) { completion.SetResult(submitted ? new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError) : new FileCommitResult.NotCommitted(PlatformFailureCode.IoError)); }
         catch (Exception error) { completion.SetException(error); }
     }
 

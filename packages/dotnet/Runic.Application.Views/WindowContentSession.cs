@@ -175,11 +175,16 @@ public sealed class WindowContentSession : IDisposable
     /// cancel; call again to wait for it. Content, fields, and routes owned by
     /// this session stay intact until the owner later disposes the session.
     /// </summary>
-    public async ValueTask<WindowContentSessionCloseResult> BeginCloseAsync(TimeSpan timeout)
+    /// <remarks>
+    /// The result's <see cref="BridgeWindowCloseResult.Completion"/> completes when the
+    /// remaining operations reach a terminal result. It never faults; the session
+    /// itself stays alive until its owner disposes it.
+    /// </remarks>
+    public async ValueTask<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         lock (_gate) ThrowIfDisposed();
         var result = await _operations.BeginCloseAsync(timeout).ConfigureAwait(false);
-        return new(result.Drained, result.RemainingRunningOperations);
+        return new(result.Drained, result.RemainingRunningOperations, result.Remaining);
     }
 
     /// <summary>
@@ -1369,6 +1374,3 @@ public sealed class WindowContentSession : IDisposable
         }
     }
 }
-
-/// <summary>Result of requesting graceful shutdown for one window session.</summary>
-public sealed record WindowContentSessionCloseResult(bool Drained, int RemainingOperations);

@@ -1,3 +1,4 @@
+using CsWebUi;
 using NotesWindowViews;
 
 var useSplat = args.Contains("--splat", StringComparer.Ordinal);
@@ -15,8 +16,8 @@ var webRoot = webRootOption >= 0
 
 using var app = NotesApplication.Create(useSplat);
 var twoWindows = args.Contains("--two-windows", StringComparer.Ordinal);
-using (var window = app.OpenWindow())
-using (var second = twoWindows ? app.OpenWindow() : null)
+await using (var window = app.OpenWindow())
+await using (var second = twoWindows ? app.OpenWindow() : null)
 {
     var portOption = Array.IndexOf(args, "--port");
     if (portOption >= 0)
@@ -48,6 +49,10 @@ using (var second = twoWindows ? app.OpenWindow() : null)
         second?.Show("index.html");
         app.Wait();
     }
+    // Server mode can still have a native worker after the final client disconnects.
+    // Stop WebUI before the windows' async disposal destroys their native state.
+    WebUiApplication.Exit();
+    await WebUiApplication.WaitAsync();
 }
 if (args.Contains("--verify-web-mount", StringComparer.Ordinal))
 {

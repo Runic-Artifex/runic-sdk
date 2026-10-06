@@ -9,12 +9,20 @@ if (args.Length > 0 && args[0] == "--native-inhibition")
 if (args.Length > 0 && args[0] is "--native-notifications" or "--notification-activation")
     return await NotificationTests.RunAsync(args);
 if (args.Length > 0) return NativeTests.Run(args);
-Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070490), 0) is PlatformResult<Unit>.Success);
-Check(WindowsDesktopNotifications.NotificationSettingResult(0, 0) is PlatformResult<Unit>.Success);
+Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070490), 0) is PlatformResult<PlatformUnit>.Success);
+Check(WindowsDesktopNotifications.NotificationSettingResult(0, 0) is PlatformResult<PlatformUnit>.Success);
 foreach (var setting in new[] { 1, 2, 3, 4, 99 })
-    Check(WindowsDesktopNotifications.NotificationSettingResult(0, setting) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied });
-Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070005), 0) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied });
-Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80004005), 0) is PlatformResult<Unit>.Unavailable);
+    Check(WindowsDesktopNotifications.NotificationSettingResult(0, setting) is PlatformResult<PlatformUnit>.Failed
+    {
+        Code: PlatformFailureCode.PermissionDenied,
+        Diagnostic.Domain: "Windows.UI.Notifications.NotificationSetting",
+    } failed && failed.Diagnostic!.Code == setting);
+Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070005), 0) is PlatformResult<PlatformUnit>.Failed
+    {
+        Code: PlatformFailureCode.PermissionDenied,
+        Diagnostic: { Domain: "HRESULT", Code: 0x80070005L },
+    });
+Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80004005), 0) is PlatformResult<PlatformUnit>.Unavailable);
 Console.WriteLine("PASS notification first-use eligibility, denial and backend failure classification");
 var xml = System.Xml.Linq.XElement.Parse(WindowsDesktopNotifications.ToastXml(new("saved", "<Title>", "A & B")
 { Actions = [new("open", "Open <result>")], ActivationUri = new Uri("runic-test://result/1") }));
@@ -29,7 +37,7 @@ Check(await clipboard.ReadTextAsync(0) is PlatformResult<string?>.Success { Valu
 native.Text = "";
 Check(await clipboard.ReadTextAsync(0) is PlatformResult<string?>.Success { Value: "" });
 native.Text = "long";
-Check(await clipboard.ReadTextAsync(2) is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge });
+Check(await clipboard.ReadTextAsync(2) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge });
 using var cancellation = new CancellationTokenSource();
 cancellation.Cancel();
 try { await clipboard.WriteTextAsync("ignored", cancellation.Token); throw new InvalidOperationException("Cancellation ignored"); }
@@ -37,12 +45,12 @@ catch (OperationCanceledException) { }
 Check(native.Writes == 0);
 using var late = new CancellationTokenSource();
 native.OnWrite = late.Cancel;
-Check(await clipboard.WriteTextAsync("committed", late.Token) is PlatformResult<Unit>.Success);
+Check(await clipboard.WriteTextAsync("committed", late.Token) is PlatformResult<PlatformUnit>.Success);
 Check(native.Text == "committed" && native.Writes == 1);
-Check(await clipboard.WriteTextAsync("invalid\0text") is PlatformResult<Unit>.Failed { Code: FailureCode.InvalidData });
+Check(await clipboard.WriteTextAsync("invalid\0text") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData });
 Check(native.Writes == 1);
 native.Reads = 0;
-foreach (var code in new[] { FailureCode.PermissionDenied, FailureCode.ResourceBusy, FailureCode.IoError })
+foreach (var code in new[] { PlatformFailureCode.PermissionDenied, PlatformFailureCode.ResourceBusy, PlatformFailureCode.IoError })
 {
     native.Failure = code;
     Check(await clipboard.ReadTextAsync(10) is PlatformResult<string?>.Failed failed && failed.Code == code);
@@ -61,10 +69,10 @@ using (var waiting = new CancellationTokenSource())
     native.BusyReads = 0; native.OnBusy = null;
 }
 owner.BeforeInvoke = () => owner.Generation = Guid.NewGuid();
-Check(await clipboard.WriteTextAsync("stale") is PlatformResult<Unit>.Unavailable);
+Check(await clipboard.WriteTextAsync("stale") is PlatformResult<PlatformUnit>.Unavailable);
 Check(native.Writes == 1);
 owner.BeforeInvoke = null;
-Check(await clipboard.WriteTextAsync("retry") is PlatformResult<Unit>.Success);
+Check(await clipboard.WriteTextAsync("retry") is PlatformResult<PlatformUnit>.Success);
 owner.IsAvailable = false;
 Check(await clipboard.ReadTextAsync(10) is PlatformResult<string?>.Unavailable);
 Console.WriteLine("PASS Windows clipboard portable cancellation, bounds, outcomes, generation, retry conformance");
@@ -90,19 +98,19 @@ internal sealed class FakeClipboard : IWindowsClipboard
     internal string? Text;
     internal int Writes;
     internal Action? OnWrite;
-    internal FailureCode? Failure;
+    internal PlatformFailureCode? Failure;
     internal int Reads, BusyReads;
     internal Action? OnBusy;
     public PlatformResult<string?> Read(nint owner, int maximumCharacters)
     {
         Reads++;
-        if (BusyReads > 0) { BusyReads--; OnBusy?.Invoke(); return new PlatformResult<string?>.Failed(FailureCode.ResourceBusy); }
+        if (BusyReads > 0) { BusyReads--; OnBusy?.Invoke(); return new PlatformResult<string?>.Failed(PlatformFailureCode.ResourceBusy); }
         return Failure is { } failure ? new PlatformResult<string?>.Failed(failure)
-            : Text?.Length > maximumCharacters ? new PlatformResult<string?>.Failed(FailureCode.TooLarge)
+            : Text?.Length > maximumCharacters ? new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge)
             : new PlatformResult<string?>.Success(Text);
     }
-    public PlatformResult<Unit> Write(nint owner, string text)
-    { Writes++; Text = text; OnWrite?.Invoke(); return new PlatformResult<Unit>.Success(new()); }
+    public PlatformResult<PlatformUnit> Write(nint owner, string text)
+    { Writes++; Text = text; OnWrite?.Invoke(); return new PlatformResult<PlatformUnit>.Success(new()); }
 }
 
 internal static partial class NativeTests
@@ -125,7 +133,7 @@ internal static partial class NativeTests
             var native = new Win32Clipboard();
             if (args[0] == "--native-write")
             {
-                Assert(native.Write(window, args[1]) is PlatformResult<Unit>.Success);
+                Assert(native.Write(window, args[1]) is PlatformResult<PlatformUnit>.Success);
                 return 0;
             }
             if (args[0] != "--native") throw new ArgumentException("Unknown native mode");
@@ -139,7 +147,7 @@ internal static partial class NativeTests
                 }
                 finally { StopChild(child); }
                 Assert(native.Read(window, text.Length) is PlatformResult<string?>.Success success && success.Value == text);
-                if (text.Length > 0) Assert(native.Read(window, text.Length - 1) is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge });
+                if (text.Length > 0) Assert(native.Read(window, text.Length - 1) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge });
             }
             Assert(Win32Clipboard.OpenClipboard(window) != 0);
             try { Assert(Win32Clipboard.EmptyClipboard() != 0); }
@@ -150,8 +158,8 @@ internal static partial class NativeTests
                 try
                 {
                     Assert(holder.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(15)).GetAwaiter().GetResult() == "ready");
-                    Assert(native.Read(window, 10) is PlatformResult<string?>.Failed { Code: FailureCode.ResourceBusy or FailureCode.PermissionDenied });
-                    Assert(native.Write(window, "busy") is PlatformResult<Unit>.Failed { Code: FailureCode.ResourceBusy or FailureCode.PermissionDenied });
+                    Assert(native.Read(window, 10) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.ResourceBusy or PlatformFailureCode.PermissionDenied });
+                    Assert(native.Write(window, "busy") is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.ResourceBusy or PlatformFailureCode.PermissionDenied });
                 }
                 finally
                 {
@@ -163,7 +171,7 @@ internal static partial class NativeTests
                     finally { StopChild(holder); }
                 }
             }
-            Assert(native.Write(window, "post-busy retry") is PlatformResult<Unit>.Success);
+            Assert(native.Write(window, "post-busy retry") is PlatformResult<PlatformUnit>.Success);
             Console.WriteLine("PASS Windows native cross-process Unicode, empty/no text, bounds, contention and retry");
             return 0;
         }
@@ -199,10 +207,10 @@ internal static class BufferTests
         char* malformed = stackalloc char[] { 'a', 'b' };
         Assert(Win32Clipboard.DecodeText(empty, 1, 0) is PlatformResult<string?>.Success { Value: "" });
         Assert(Win32Clipboard.DecodeText(valid, 3, 2) is PlatformResult<string?>.Success { Value: "ab" });
-        Assert(Win32Clipboard.DecodeText(valid, 3, 1) is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge });
-        Assert(Win32Clipboard.DecodeText(malformed, 2, 2) is PlatformResult<string?>.Failed { Code: FailureCode.InvalidData });
-        Assert(Win32Clipboard.DecodeText(malformed, 2, int.MaxValue) is PlatformResult<string?>.Failed { Code: FailureCode.InvalidData });
-        Assert(Win32Clipboard.DecodeText(null, 0, 0) is PlatformResult<string?>.Failed { Code: FailureCode.InvalidData });
+        Assert(Win32Clipboard.DecodeText(valid, 3, 1) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge });
+        Assert(Win32Clipboard.DecodeText(malformed, 2, 2) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData });
+        Assert(Win32Clipboard.DecodeText(malformed, 2, int.MaxValue) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData });
+        Assert(Win32Clipboard.DecodeText(null, 0, 0) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData });
     }
     private static void Assert(bool value) { if (!value) throw new InvalidOperationException("Native text buffer bound assertion failed"); }
 }

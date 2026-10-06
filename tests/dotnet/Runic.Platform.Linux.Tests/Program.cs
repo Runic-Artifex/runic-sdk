@@ -21,8 +21,8 @@ if (args.Contains("--observer"))
 foreach (Exception failure in new Exception[] { new OwnerClosedException(), new ObjectDisposedException("presentation") })
 {
     await using var raced = LinuxPlatformProvider.CreateTextClipboard(new DisappearingOwner(failure));
-    Check(await raced.ReadTextAsync(30) is PlatformResult<string?>.Unavailable { Reason: UnavailableReason.OwnerClosed }, "read owner dispatch race " + failure.GetType().Name);
-    Check(await raced.WriteTextAsync("unwritten") is PlatformResult<Unit>.Unavailable { Reason: UnavailableReason.OwnerClosed }, "write owner dispatch race " + failure.GetType().Name);
+    Check(await raced.ReadTextAsync(30) is PlatformResult<string?>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "read owner dispatch race " + failure.GetType().Name);
+    Check(await raced.WriteTextAsync("unwritten") is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "write owner dispatch race " + failure.GetType().Name);
 }
 await using (var broken = LinuxPlatformProvider.CreateTextClipboard(new DisappearingOwner(new InvalidOperationException("dispatcher defect"))))
 {
@@ -52,13 +52,13 @@ if (args.Contains("--portal-cancel"))
 }
 await owner.InvokeAsync(_ => Native.Clear(Native.Clipboard(Native.Atom("CLIPBOARD", 0))));
 Check(await clipboard.ReadTextAsync(30) is PlatformResult<string?>.Success { Value: null }, "no text");
-Check(await clipboard.WriteTextAsync("") is PlatformResult<Unit>.Success, "empty write");
+Check(await clipboard.WriteTextAsync("") is PlatformResult<PlatformUnit>.Success, "empty write");
 Check(await clipboard.ReadTextAsync(0) is PlatformResult<string?>.Success { Value: "" }, "empty distinct from absent");
 const string sample = "Runic Ω 文本";
-Check(await clipboard.WriteTextAsync(sample) is PlatformResult<Unit>.Success, "write");
+Check(await clipboard.WriteTextAsync(sample) is PlatformResult<PlatformUnit>.Success, "write");
 Check(await clipboard.ReadTextAsync(sample.Length) is PlatformResult<string?>.Success { Value: sample }, "read");
 var bounded = await clipboard.ReadTextAsync(2);
-Check(bounded is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "bound: " + bounded);
+Check(bounded is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge }, "bound: " + bounded);
 using (var canceled = new CancellationTokenSource())
 {
     canceled.Cancel();
@@ -69,7 +69,7 @@ Check(await clipboard.ReadTextAsync(30) is PlatformResult<string?>.Success { Val
 using (var late = new CancellationTokenSource())
 {
     owner.AfterDispatch = late.Cancel;
-    Check(await clipboard.WriteTextAsync(sample, late.Token) is PlatformResult<Unit>.Success, "late cancellation retains actual write outcome");
+    Check(await clipboard.WriteTextAsync(sample, late.Token) is PlatformResult<PlatformUnit>.Success, "late cancellation retains actual write outcome");
 }
 using (var pending = new CancellationTokenSource())
 {
@@ -99,7 +99,7 @@ finally
 string actual = await observerOutput;
 Check(observer.ExitCode == 0 && actual == sample, "independent native observer: " + actual + " stderr: " + await observerError);
 await using var replacement = LinuxPlatformProvider.CreateTextClipboard(owner);
-Check(await replacement.WriteTextAsync("replacement") is PlatformResult<Unit>.Success, "replacement owns clipboard");
+Check(await replacement.WriteTextAsync("replacement") is PlatformResult<PlatformUnit>.Success, "replacement owns clipboard");
 await clipboard.DisposeAsync();
 Check(await replacement.ReadTextAsync(30) is PlatformResult<string?>.Success { Value: "replacement" }, "disposing previous owner preserves new owner");
 Console.WriteLine("PASS GTK native clipboard: absent, empty, unicode, bounds, cancellation, independent process observer. Display=" + Environment.GetEnvironmentVariable("DISPLAY") + " GDK_BACKEND=" + Environment.GetEnvironmentVariable("GDK_BACKEND") + " Wayland=" + Environment.GetEnvironmentVariable("WAYLAND_DISPLAY"));

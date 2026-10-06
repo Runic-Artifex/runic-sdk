@@ -37,25 +37,25 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
         ArgumentNullException.ThrowIfNull(options);
         if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
         cancellationToken.ThrowIfCancellationRequested();
-        if (!IsAvailable) return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.OwnerUnavailable);
+        if (!IsAvailable) return new PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         NativeFileSelection? selection = null;
         try
         {
             selection = await picker.SelectAsync(false, null, cancellationToken).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsAvailable) return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.OwnerClosed);
+            if (!IsAvailable) return new PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             if (selection is null) return new PickerResult<IReadFileLease>.Dismissed();
             var stream = OpenSelected(selection.Path);
             var lease = new ReadFileLease(Path.GetFileName(selection.Path), stream, selection.Access);
             selection = null;
             return new PickerResult<IReadFileLease>.Selected(lease);
         }
-        catch (OwnerClosedException) { return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (DllNotFoundException) { return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PickerResult<IReadFileLease>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException) { return new PickerResult<IReadFileLease>.Failed(FailureCode.PermissionDenied); }
-        catch (IOException) { return new PickerResult<IReadFileLease>.Failed(FailureCode.IoError); }
+        catch (OwnerClosedException) { return new PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (UnauthorizedAccessException) { return new PickerResult<IReadFileLease>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (IOException) { return new PickerResult<IReadFileLease>.Failed(PlatformFailureCode.IoError); }
         finally { if (selection?.Access is { } access) await access.DisposeAsync().ConfigureAwait(false); }
     }
 
@@ -68,7 +68,7 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
         if (options.SuggestedName.IndexOfAny(['/', '\\', '\0']) >= 0 || options.SuggestedName is "." or "..")
             throw new ArgumentException("The suggestion must be a filename, not a path.", nameof(options));
         cancellationToken.ThrowIfCancellationRequested();
-        if (!IsAvailable) return new PickerResult<ISaveFileLease>.Unavailable(UnavailableReason.OwnerUnavailable);
+        if (!IsAvailable) return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         try
         {
             var selection = await picker.SelectAsync(true, options.SuggestedName, cancellationToken).ConfigureAwait(false);
@@ -81,7 +81,7 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
             {
                 if (selection.Access is { } access) await access.DisposeAsync().ConfigureAwait(false);
                 cancellationToken.ThrowIfCancellationRequested();
-                return new PickerResult<ISaveFileLease>.Unavailable(UnavailableReason.OwnerClosed);
+                return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             }
             // CreateAsync takes ownership of acquired access, including failure paths.
             var lease = await SaveFileLease.CreateAsync(selection.Path,
@@ -89,12 +89,12 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
                 selection.Access, cancellationToken).ConfigureAwait(false);
             return new PickerResult<ISaveFileLease>.Selected(lease);
         }
-        catch (OwnerClosedException) { return new PickerResult<ISaveFileLease>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (DllNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PickerResult<ISaveFileLease>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (UnauthorizedAccessException) { return new PickerResult<ISaveFileLease>.Failed(FailureCode.PermissionDenied); }
-        catch (IOException) { return new PickerResult<ISaveFileLease>.Failed(FailureCode.IoError); }
+        catch (OwnerClosedException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (UnauthorizedAccessException) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (IOException) { return new PickerResult<ISaveFileLease>.Failed(PlatformFailureCode.IoError); }
     }
 
     // Opening a FIFO blocks until a writer appears, and special files may never end.

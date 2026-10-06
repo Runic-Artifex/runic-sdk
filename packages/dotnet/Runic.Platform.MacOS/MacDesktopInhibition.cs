@@ -15,16 +15,18 @@ internal sealed partial class MacDesktopInhibition : IDesktopInhibition
         try
         {
             label = StringCreate(0, reason, 0x08000100);
-            if (label == 0) return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(FailureCode.IoError));
+            if (label == 0) return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(PlatformFailureCode.IoError));
             foreach (var (effect, name) in new[] { (DesktopInhibitionEffects.SystemSleep, "PreventUserIdleSystemSleep"), (DesktopInhibitionEffects.DisplaySleep, "PreventUserIdleDisplaySleep") })
             {
                 if (!effects.HasFlag(effect)) continue;
                 var type = StringCreate(0, name, 0x08000100);
-                if (type == 0) return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(FailureCode.IoError));
+                if (type == 0) return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(PlatformFailureCode.IoError));
                 try
                 {
-                    if (CreateAssertion(type, 255, label, out var id) != 0)
-                        return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(FailureCode.IoError));
+                    var status = CreateAssertion(type, 255, label, out var id);
+                    if (status != 0)
+                        return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Failed(
+                            PlatformFailureCode.IoError, new PlatformDiagnostic("IOReturn", unchecked((uint)status))));
                     assertions.Add(id);
                 }
                 finally { Release(type); }

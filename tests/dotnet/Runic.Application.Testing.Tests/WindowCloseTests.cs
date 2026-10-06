@@ -39,6 +39,7 @@ public static class WindowCloseTests
             Require(reply.RootElement.GetProperty("ok").GetBoolean(), "The drained awaited command did not succeed.");
         var result = await close;
         Require(result.Drained && result.RemainingOperations == 0, "Close did not report the drained awaited command.");
+        Require(result.Completion.IsCompletedSuccessfully, "A drained close left its completion pending.");
         session.Dispose();
     }
 
@@ -57,6 +58,7 @@ public static class WindowCloseTests
         using (var reply = JsonDocument.Parse(await call.WaitAsync(TimeSpan.FromSeconds(5))))
             Require(reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "cancelled" && model.Cancelled,
                 "The close timeout did not cancel the remaining awaited command.");
+        await timedOut.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         var drained = await session.BeginCloseAsync(Timeout.InfiniteTimeSpan);
         Require(drained.Drained, "Close did not drain after cancellation.");
         session.Dispose();

@@ -12,7 +12,7 @@ internal sealed partial class WindowsDesktopSettings : DesktopSettingsSource
     {
         try { return await Task.Run(ReadNative, cancellationToken).ConfigureAwait(false); }
         catch (Exception error) when (error is COMException or UnauthorizedAccessException)
-        { return new PlatformResult<DesktopAppearance>.Unavailable(UnavailableReason.BackendUnavailable); }
+        { return new PlatformResult<DesktopAppearance>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
     }
     private static unsafe PlatformResult<DesktopAppearance> ReadNative()
     {

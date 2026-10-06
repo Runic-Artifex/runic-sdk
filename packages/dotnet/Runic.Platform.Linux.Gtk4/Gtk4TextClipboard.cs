@@ -19,7 +19,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            return new PlatformResult<string?>.Failed(FailureCode.ResourceBusy);
+            return new PlatformResult<string?>.Failed(PlatformFailureCode.ResourceBusy);
         }
 
         var dispatched = false;
@@ -27,7 +27,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
         {
             if (_disposed || !owner.IsAvailable)
             {
-                return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed);
+                return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             }
 
             using var request = new ReadRequest(maximumCharacters, cancellationToken);
@@ -53,25 +53,25 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
             cancellationToken.ThrowIfCancellationRequested();
             return result;
         }
-        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (UnauthorizedAccessException) { return new PlatformResult<string?>.Failed(FailureCode.PermissionDenied); }
-        catch (DllNotFoundException) { return new PlatformResult<string?>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PlatformResult<string?>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PlatformResult<string?>.Unavailable(UnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (UnauthorizedAccessException) { return new PlatformResult<string?>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (DllNotFoundException) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         finally
         {
             _gate.Release();
         }
     }
 
-    public async ValueTask<PlatformResult<Unit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+    public async ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
-            return new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy);
+            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy);
         }
 
         var dispatched = false;
@@ -79,10 +79,10 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
         {
             if (_disposed || !owner.IsAvailable)
             {
-                return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed);
+                return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             }
 
-            PlatformResult<Unit> result = new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
+            PlatformResult<PlatformUnit> result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             await owner.InvokeAsync(_ =>
             {
                 dispatched = true;
@@ -92,7 +92,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                 if (SetContent(clipboard, ownership.Provider) == 0)
                 {
                     Unref(ownership.Provider);
-                    result = new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy);
+                    result = new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy);
                     return;
                 }
                 var previous = _ownership;
@@ -104,16 +104,16 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                     // application's later clipboard content.
                     Unref(previous.Provider);
                 }
-                result = new PlatformResult<Unit>.Success(new Unit());
+                result = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
             }, cancellationToken).ConfigureAwait(false);
             return result;
         }
-        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (UnauthorizedAccessException) { return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied); }
-        catch (DllNotFoundException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (UnauthorizedAccessException) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (DllNotFoundException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         finally
         {
             _gate.Release();
@@ -239,7 +239,7 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
                 // GDK reports an empty or non-text clipboard as an unavailable format.
                 request.Result.TrySetResult(IsMissingFormat(error)
                     ? new PlatformResult<string?>.Success(null)
-                    : new PlatformResult<string?>.Failed(FailureCode.IoError));
+                    : new PlatformResult<string?>.Failed(PlatformFailureCode.IoError, Diagnostic(error)));
                 return;
             }
             if (text == 0)
@@ -254,15 +254,15 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
         }
         catch (TooLargeClipboardException)
         {
-            request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.TooLarge));
+            request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge));
         }
         catch (DecoderFallbackException)
         {
-            request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.InvalidData));
+            request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.InvalidData));
         }
         catch
         {
-            request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.IoError));
+            request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError));
         }
         finally
         {
@@ -283,6 +283,12 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
     private static bool IsMissingFormat(nint error) =>
         (uint)Marshal.ReadInt32(error) == IoErrorQuark()
         && Marshal.ReadInt32(error, sizeof(uint)) is 15 or 1; // G_IO_ERROR_NOT_SUPPORTED, G_IO_ERROR_NOT_FOUND
+
+    // The GError message follows the domain and code, at pointer alignment.
+    private static PlatformDiagnostic Diagnostic(nint error) => new(
+        Marshal.PtrToStringUTF8(QuarkToString((uint)Marshal.ReadInt32(error))) ?? "GError",
+        Marshal.ReadInt32(error, sizeof(uint)),
+        Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(error, 2 * sizeof(int))));
 
     private static unsafe ReadOnlySpan<byte> BoundedUtf8(nint text, int maximumCharacters)
     {
@@ -326,6 +332,8 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
     private static partial void BytesUnref(nint bytes);
     [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_object_unref")]
     private static partial void Unref(nint instance);
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_quark_to_string")]
+    private static partial nint QuarkToString(uint quark);
     [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_error_free")]
     private static partial void ErrorFree(nint error);
     [LibraryImport("libgio-2.0.so.0", EntryPoint = "g_io_error_quark")]

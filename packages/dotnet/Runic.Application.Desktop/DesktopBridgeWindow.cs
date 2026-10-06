@@ -6,7 +6,7 @@ using Runic.Desktop;
 namespace Runic.Application.Views.Desktop;
 
 /// <summary>Owns one Desktop surface, presentation, ViewModel scope, and Views session.</summary>
-public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TViewModel : class
+public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewModel : class
 {
     private readonly object _closeGate = new();
     private readonly AsyncServiceScope _scope;
@@ -16,7 +16,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
     private readonly IDisposable _connectionBinding;
     private IDisposable? _attachment;
     private DesktopWindow? _presentation;
-    private Task<DesktopBridgeCloseResult>? _close;
+    private Task<BridgeWindowCloseResult>? _close;
     private Task? _completion;
     private bool _finalized;
 
@@ -60,8 +60,8 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
         }
     }
 
-    /// <summary>Rejects new operations, then waits up to the requested drain timeout.</summary>
-    public ValueTask<DesktopBridgeCloseResult> CloseAsync(TimeSpan timeout)
+    /// <inheritdoc />
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
@@ -75,13 +75,13 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
         await result.Completion.ConfigureAwait(false);
     }
 
-    private async Task<DesktopBridgeCloseResult> BeginCloseAsync(TimeSpan timeout)
+    private async Task<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout)
     {
         var errors = new List<Exception>();
         Capture(_connectionBinding.Dispose, errors);
         if (_attachment is not null) Capture(_attachment.Dispose, errors);
 
-        WindowContentSessionCloseResult result;
+        BridgeWindowCloseResult result;
         try { result = await _content.BeginCloseAsync(timeout).ConfigureAwait(false); }
         catch (Exception error)
         {
@@ -150,9 +150,6 @@ public sealed class DesktopBridgeWindow<TViewModel> : IAsyncDisposable where TVi
         catch (Exception error) { errors.Add(error); }
     }
 }
-
-/// <summary>Admission result for a Desktop Views window close.</summary>
-public sealed record DesktopBridgeCloseResult(bool Drained, int RemainingOperations, Task Completion);
 
 /// <summary>Opens Desktop Views windows from a service provider.</summary>
 public static class DesktopBridgeWindowExtensions

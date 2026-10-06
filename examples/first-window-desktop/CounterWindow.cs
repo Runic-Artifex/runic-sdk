@@ -1,10 +1,11 @@
+using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Desktop;
 
 namespace FirstWindowDesktop;
 
-public sealed partial class CounterWindow : ReactiveRunicWindow<CounterViewModel>, IAsyncDisposable
+public sealed partial class CounterWindow : ReactiveRunicWindow<CounterViewModel>, IBridgeWindow
 {
     private readonly DesktopBridgeWindow<CounterViewModel> _host;
 
@@ -12,6 +13,6 @@ public sealed partial class CounterWindow : ReactiveRunicWindow<CounterViewModel
 
     public DesktopSurface Surface => _host.Surface;
     public DesktopWindow Presentation => _host.Presentation;
-    public ValueTask<DesktopBridgeCloseResult> CloseAsync(TimeSpan timeout) => _host.CloseAsync(timeout);
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout) => _host.CloseAsync(timeout);
     public ValueTask DisposeAsync() => _host.DisposeAsync();
 }
