@@ -9,9 +9,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Published enum members name wire value kinds (String, Int32, Single). -->
     <NoWarn>$(NoWarn);CA1720</NoWarn>
-    <!-- The protected ViewModelBridge constructors are called by generated bridges, which
-         are regenerated with the package; their optional descriptor arrays grow per feature. -->
-    <NoWarn>$(NoWarn);RS0026</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="/" />

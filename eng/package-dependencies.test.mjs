@@ -16,6 +16,7 @@ test("shipping projects must set their component shipping flag", () => {
   const sources = {
     "packages/a.csproj": '<Import Project="../../eng/build/assets.props" /><RunicAssetsShippingProject>true</RunicAssetsShippingProject>',
     "packages/b.csproj": '<Import Project="../../eng/build/assets.props" />',
+    "packages/b2.csproj": '<Import Project="../../eng/build/assets.props" /><!-- <RunicAssetsShippingProject>true</RunicAssetsShippingProject> -->',
     "packages/c.csproj": '<Import Project="../../eng/build/desktop.props" /><IsAotCompatible>true</IsAotCompatible>',
     "tools/d.csproj": '<Import Project="../../eng/build/application.props" /><PackageType>Template</PackageType><IncludeBuildOutput>false</IncludeBuildOutput>',
     "tools/e.csproj": "<Project />",
@@ -23,6 +24,7 @@ test("shipping projects must set their component shipping flag", () => {
   const workspace = { nuget: Object.keys(sources).map(project => ({ project })) };
   assert.deepEqual(shippingPolicyErrors(workspace, project => sources[project]), [
     "packages/b.csproj must set <RunicAssetsShippingProject>true</RunicAssetsShippingProject> for assets.props",
+    "packages/b2.csproj must set <RunicAssetsShippingProject>true</RunicAssetsShippingProject> for assets.props",
     "packages/c.csproj must set <IsTrimmable>true</IsTrimmable> for desktop.props",
     "tools/e.csproj imports no shipping build policy from eng/build",
   ]);

@@ -12,8 +12,9 @@ releases and their evidence remain historical records.
 3. The workflow runs the existing full CI, publishes its exact package artifacts,
    then creates the GitHub prerelease with generated change notes, a package bundle and one checksum file.
 4. Afterwards, move each library's `PublicAPI.Unshipped.txt` entries into
-   `PublicAPI.Shipped.txt`, set `RunicPackageValidationBaselineVersion` in
-   `eng/Versions.props` to the published version and delete the
+   `PublicAPI.Shipped.txt`. A `*REMOVED*` entry is not moved: delete it together
+   with the Shipped line it names. Then set `RunicPackageValidationBaselineVersion`
+   in `eng/Versions.props` to the published version and delete the
    `CompatibilitySuppressions.xml` files, which describe breaks from the old baseline.
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. It is

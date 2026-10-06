@@ -28,7 +28,7 @@ const policies = [
 ];
 export function shippingPolicyErrors(workspace, read = project => readFileSync(resolve(root, project), "utf8")) {
   return workspace.nuget.flatMap(({ project }) => {
-    const source = read(project);
+    const source = read(project).replace(/<!--[\s\S]*?-->/g, "");
     // Template packages contain no assemblies, so trim and AOT policy does not apply.
     if (/<PackageType>Template<\/PackageType>/.test(source) && /<IncludeBuildOutput>false<\/IncludeBuildOutput>/.test(source)) return [];
     const policy = policies.find(({ props }) => new RegExp(`<Import Project="[^"]*eng/build/${props.replace(".", "\\.")}"`).test(source));
