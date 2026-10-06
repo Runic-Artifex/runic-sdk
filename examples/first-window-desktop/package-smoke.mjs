@@ -16,6 +16,9 @@ const projects = [
   ["Runic.Application.Desktop", "Runic.Application.Desktop"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;
+const dependencyInjection = (await readFile(join(root, "Directory.Packages.props"), "utf8"))
+  .match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
+if (!dependencyInjection) throw new Error("The dependency injection version was not found.");
 
 function run(command, args, cwd = root, env = process.env) {
   return new Promise((resolve, reject) => {
@@ -63,6 +66,7 @@ try {
   </PropertyGroup>
   <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
     <PackageReference Include="Runic.Application.Desktop" Version="${version}" />
     <PackageReference Include="Runic.Application.ReactiveUI" Version="${version}" />
   </ItemGroup>

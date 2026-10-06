@@ -11,7 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <InternalsVisibleTo Include="Runic.Application.Desktop.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="build/Runic.Application.Desktop.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Desktop.props" />

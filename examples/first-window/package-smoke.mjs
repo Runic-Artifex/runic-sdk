@@ -45,7 +45,8 @@ try {
   const packages = await readFile(join(root, "Directory.Packages.props"), "utf8");
   const baseVersion = versions.match(/<RunicSdkVersion>([^<]+)<\/RunicSdkVersion>/)?.[1];
   const toolkit = packages.match(/<PackageVersion Include="CommunityToolkit.Mvvm" Version="([^"]+)"/)?.[1];
-  if (!baseVersion || !toolkit) throw new Error("SDK or CommunityToolkit version was not found.");
+  const dependencyInjection = packages.match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
+  if (!baseVersion || !toolkit || !dependencyInjection) throw new Error("SDK, CommunityToolkit or dependency injection version was not found.");
   testVersion = `${baseVersion}.packagetest${process.pid}${Date.now()}`;
 
   await run("dotnet", ["build", "examples/first-window/FirstWindow.csproj", "-c", "Release"]);
@@ -74,6 +75,7 @@ try {
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
     <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
   </ItemGroup>
 </Project>
@@ -99,6 +101,7 @@ try {
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
     <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
   </ItemGroup>
 </Project>

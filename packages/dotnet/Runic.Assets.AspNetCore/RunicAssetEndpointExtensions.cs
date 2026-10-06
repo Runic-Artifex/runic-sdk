@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Patterns;
 using Microsoft.Extensions.Primitives;
 
 namespace Runic.Assets.AspNetCore;
@@ -13,60 +14,63 @@ namespace Runic.Assets.AspNetCore;
 /// <summary>Maps a Runic Assets source to ASP.NET Core endpoints.</summary>
 public static class RunicAssetEndpointExtensions
 {
-    private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
+    private const string RouteValueName = "runicAssetPath";
 
-    /// <summary>Maps GET and HEAD for all exact manifest paths below an optional route prefix.</summary>
+    /// <summary>
+    /// Maps GET and HEAD below an optional route prefix. Request paths resolve with
+    /// <see cref="AssetManifest.TryResolveRequestPath"/>, the same rules and defaults the Desktop
+    /// adapter uses: the prefix root serves the entry point and missing extensionless paths fall
+    /// back to it unless <paramref name="routing"/> disables them. The endpoint matches only GET
+    /// and HEAD requests for paths that resolve. It runs after the application's endpoints and
+    /// before <c>MapFallback</c>, so other requests reach static files, a fallback or a 404.
+    /// </summary>
     public static IEndpointConventionBuilder MapRunicAssetSource(
         this IEndpointRouteBuilder endpoints,
-        IAssetSource source,
-        string routePrefix = "")
+        IAssetSnapshotSource source,
+        string routePrefix = "",
+        AssetRoutingOptions? routing = null)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(source);
-        if (source is not IAssetSnapshotSource)
-        {
-            throw new ArgumentException(
-                "ASP.NET Core delivery requires a source that atomically owns descriptor-and-stream snapshots.",
-                nameof(source));
-        }
-
         routePrefix = NormalizePrefix(routePrefix);
 
-        string route = "/" + (routePrefix.Length == 0 ? "" : routePrefix + "/") + "{**runicAssetPath}";
-        return endpoints.MapMethods(
-            route,
-            ReadMethods,
-            async context =>
+        RoutePattern pattern = RoutePatternFactory.Parse(
+            "/" + (routePrefix.Length == 0 ? "" : routePrefix + "/") + "{**" + RouteValueName + "}",
+            defaults: null,
+            parameterPolicies: new RouteValueDictionary
             {
-                string? requested = context.Request.RouteValues["runicAssetPath"] as string;
-                if (requested is null
-                    || !TryFind(source.Manifest, requested, out AssetDescriptor? descriptor))
-                {
-                    context.Response.StatusCode = StatusCodes.Status404NotFound;
-                    return;
-                }
-
-                await WriteAssetAsync(context, source, descriptor!).ConfigureAwait(false);
+                [RouteValueName] = new ResolvableAssetConstraint(source, routing),
             });
+        return endpoints.Map(
+                pattern,
+                async context =>
+                {
+                    // Live sources can publish a new manifest between matching and handling.
+                    string? requested = context.Request.RouteValues[RouteValueName] as string;
+                    if (!source.Manifest.TryResolveRequestPath(requested, routing, out AssetDescriptor? descriptor))
+                    {
+                        context.Response.StatusCode = StatusCodes.Status404NotFound;
+                        return;
+                    }
+
+                    await WriteAssetAsync(context, source, descriptor).ConfigureAwait(false);
+                })
+            .WithDisplayName("Runic assets " + pattern.RawText)
+            // After application endpoints (order 0 and conventional routes), before MapFallback (int.MaxValue).
+            .WithOrder(int.MaxValue - 1);
     }
 
     /// <summary>Writes one declared asset with its manifest-owned HTTP metadata.</summary>
     public static async Task WriteAssetAsync(
         HttpContext context,
-        IAssetSource source,
+        IAssetSnapshotSource source,
         AssetDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(descriptor);
-        if (source is not IAssetSnapshotSource snapshots)
-        {
-            throw new ArgumentException(
-                "ASP.NET Core delivery requires a source that atomically owns descriptor-and-stream snapshots.",
-                nameof(source));
-        }
 
-        await using AssetReadSnapshot snapshot = await snapshots.OpenSnapshotAsync(
+        await using AssetReadSnapshot snapshot = await source.OpenSnapshotAsync(
             descriptor.RelativePath,
             context.RequestAborted).ConfigureAwait(false);
         AssetDescriptor current = snapshot.Descriptor;
@@ -138,22 +142,6 @@ public static class RunicAssetEndpointExtensions
         ArgumentNullException.ThrowIfNull(routePrefix);
         string normalized = routePrefix.Trim('/');
         return normalized.Length == 0 ? "" : AssetPath.Normalize(normalized);
-    }
-
-    private static bool TryFind(
-        AssetManifest manifest,
-        string requested,
-        out AssetDescriptor? descriptor)
-    {
-        try
-        {
-            return manifest.TryGetAsset(requested, out descriptor);
-        }
-        catch (ArgumentException)
-        {
-            descriptor = null;
-            return false;
-        }
     }
 
     private static bool MatchesIfNoneMatch(StringValues values, string entityTag)
@@ -297,6 +285,26 @@ public static class RunicAssetEndpointExtensions
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
             remaining -= read;
         }
+    }
+
+    private sealed class ResolvableAssetConstraint(IAssetSnapshotSource source, AssetRoutingOptions? routing)
+        : IRouteConstraint
+    {
+        public bool Match(
+            HttpContext? httpContext,
+            IRouter? route,
+            string routeKey,
+            RouteValueDictionary values,
+            RouteDirection routeDirection) =>
+            // Methods are checked here rather than with HttpMethodMetadata, whose 405 response
+            // would also claim paths that do not resolve and hide them from later middleware.
+            (httpContext is null
+                || HttpMethods.IsGet(httpContext.Request.Method)
+                || HttpMethods.IsHead(httpContext.Request.Method))
+            && source.Manifest.TryResolveRequestPath(
+                values.TryGetValue(routeKey, out object? value) ? value as string : null,
+                routing,
+                out _);
     }
 
     private enum AssetRangeResult

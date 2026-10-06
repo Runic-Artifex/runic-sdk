@@ -7,6 +7,7 @@
     <RunicViewsWindowProject>true</RunicViewsWindowProject>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
 <!--#if (viewModels == "reactiveui") -->
     <PackageReference Include="Runic.Application.ReactiveUI" Version="__RUNIC_NUGET_VERSION__" />
 <!--#else -->

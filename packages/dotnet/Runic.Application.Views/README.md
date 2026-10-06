@@ -13,6 +13,7 @@ Reference a host adapter; it brings this package and its build targets:
 dotnet add package Runic.Application.CsWebUi --prerelease   # CS-WebUI browser or WebView window
 dotnet add package Runic.Application.Desktop --prerelease   # or: Runic Desktop native host
 dotnet add package CommunityToolkit.Mvvm                     # or ReactiveUI with Runic.Application.ReactiveUI
+dotnet add package Microsoft.Extensions.DependencyInjection  # ServiceCollection; the adapters need only the abstractions
 ```
 
 To start a new application, run the

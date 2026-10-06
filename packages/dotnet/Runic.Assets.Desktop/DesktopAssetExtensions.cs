@@ -11,39 +11,37 @@ namespace Runic.Assets.Desktop;
 /// <summary>Adapts authoritative asset snapshots to Runic Desktop request-scoped delivery.</summary>
 public static class DesktopAssetExtensions
 {
-    /// <summary>Creates a Desktop content handler over the source's current immutable snapshots.</summary>
+    /// <summary>
+    /// Creates a Desktop content handler over the source's current immutable snapshots. Request
+    /// paths resolve with <see cref="AssetManifest.TryResolveRequestPath"/>, the same rules the
+    /// ASP.NET Core adapter uses.
+    /// </summary>
     public static ContentHandler ToDesktopContentHandler(
-        this IAssetSource source,
-        DesktopAssetOptions? options = null)
+        this IAssetSnapshotSource source,
+        AssetRoutingOptions? routing = null)
     {
         ArgumentNullException.ThrowIfNull(source);
-        if (source is not IAssetSnapshotSource snapshots)
-            throw new ArgumentException("Desktop delivery requires atomic descriptor-and-stream snapshots.", nameof(source));
-        DesktopAssetOptions selected = options ?? new();
         return (request, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<ContentResponse?>(Handle(
-                snapshots,
-                request,
-                selected.EnableSinglePageApplicationFallback));
+            return ValueTask.FromResult<ContentResponse?>(Handle(source, request, routing));
         };
     }
 
     private static ContentResponse Handle(
         IAssetSnapshotSource source,
         ContentRequest request,
-        bool spaFallback)
+        AssetRoutingOptions? routing)
     {
         if (!StringComparer.Ordinal.Equals(request.Method, "GET") &&
             !StringComparer.Ordinal.Equals(request.Method, "HEAD"))
             return Error(405);
-        if (!TryResolve(source.Manifest, request.Path, spaFallback, out AssetDescriptor? descriptor))
+        if (!source.Manifest.TryResolveRequestPath(request.Path, routing, out AssetDescriptor? descriptor))
             return Error(404);
 
         try
         {
-            AssetDescriptor current = descriptor!;
+            AssetDescriptor current = descriptor;
             IReadOnlyDictionary<string, string> headers = Headers(current);
             if (MatchesIfNoneMatch(Header(request, "If-None-Match"), current.EntityTag))
             {
@@ -147,34 +145,6 @@ public static class DesktopAssetExtensions
     private static string Header(ContentRequest request, string name) =>
         request.Headers.TryGetValue(name, out string? value) ? value : string.Empty;
 
-    private static bool TryResolve(
-        AssetManifest manifest,
-        string path,
-        bool spaFallback,
-        out AssetDescriptor? descriptor)
-    {
-        descriptor = null;
-        if (string.IsNullOrEmpty(path) || StringComparer.Ordinal.Equals(path, "/"))
-        {
-            descriptor = manifest.EntryPoint;
-            return true;
-        }
-        try
-        {
-            string normalized = AssetPath.Normalize(path[0] == '/' ? path[1..] : path);
-            if (manifest.TryGetAsset(normalized, out descriptor) && descriptor is not null) return true;
-            if (spaFallback && !HasFileExtension(normalized))
-            {
-                descriptor = manifest.EntryPoint;
-                return true;
-            }
-        }
-        catch (ArgumentException)
-        {
-        }
-        return false;
-    }
-
     private static async Task SkipAsync(Stream stream, long count, CancellationToken cancellationToken)
     {
         if (count == 0) return;
@@ -237,13 +207,6 @@ public static class DesktopAssetExtensions
         end = Math.Min(end, assetLength - 1);
         length = checked(end - start + 1);
         return AssetRangeResult.Satisfiable;
-    }
-
-    private static bool HasFileExtension(string path)
-    {
-        int nameStart = path.LastIndexOf('/') + 1;
-        int dot = path.LastIndexOf('.');
-        return dot > nameStart && dot < path.Length - 1;
     }
 
     private static ContentResponse Error(int statusCode) =>
