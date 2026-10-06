@@ -13,7 +13,9 @@ namespace Runic.Application.Views;
 //   System.Text.Json both read the last duplicate, so it is ambiguous input.
 // - A number is written by its exact decimal value, laid out like ECMAScript
 //   Number::toString does for the same digits: 1.0, 1e0 and 10e-1 are all 1,
-//   and -0 is 0. Nothing is rounded, so distinct values remain distinct.
+//   and -0 is 0. Nothing is rounded, so distinct values remain distinct. A
+//   number whose decimal exponent exceeds ±100,000 is rejected (FormatException);
+//   JSON numbers a browser can produce are within ±400.
 // - Strings are re-escaped by Utf8JsonWriter's default encoder.
 //
 // It reads with Utf8JsonReader instead of building a JsonDocument. Objects
@@ -40,7 +42,10 @@ internal static class BridgeCanonicalJson
     }
 
     // Values written by the same writer are usually byte-identical when equal,
-    // so equal raw output skips canonicalization.
+    // so equal raw output skips canonicalization. Byte-identical values are
+    // therefore equal even when they are not valid canonical input (a
+    // duplicate member name, an exponent beyond ±100,000), for which Hash and
+    // the digests throw. Generated writers cannot produce such values.
     public static bool Equal<T>(Action<Utf8JsonWriter, T> write, T left, T right)
     {
         using var first = WriteRaw(write, left);
@@ -171,8 +176,7 @@ internal static class BridgeCanonicalJson
             var span = members.AsSpan(0, count);
             if (!sorted)
             {
-                var source = json.ToArray();
-                span.Sort((left, right) => Member.Compare(source, left, right));
+                Sort(json, span);
                 for (var index = 1; index < span.Length; index++)
                     if (Member.Compare(json, span[index - 1], span[index]) == 0) throw Duplicate();
             }
@@ -193,6 +197,45 @@ internal static class BridgeCanonicalJson
         {
             ArrayPool<Member>.Shared.Return(members, clearArray: true);
         }
+    }
+
+    // A stable merge sort over the member table. Names are compared in place
+    // in the input, so sorting an object costs O(m log m) comparisons of its
+    // own names whatever the size of the enclosing document.
+    private static void Sort(ReadOnlySpan<byte> json, Span<Member> members)
+    {
+        if (members.Length <= 16)
+        {
+            for (var index = 1; index < members.Length; index++)
+            {
+                var current = members[index];
+                var at = index - 1;
+                for (; at >= 0 && Member.Compare(json, members[at], current) > 0; at--) members[at + 1] = members[at];
+                members[at + 1] = current;
+            }
+            return;
+        }
+        var rented = ArrayPool<Member>.Shared.Rent(members.Length);
+        try { MergeSort(json, members, rented.AsSpan(0, members.Length)); }
+        finally { ArrayPool<Member>.Shared.Return(rented, clearArray: true); }
+    }
+
+    private static void MergeSort(ReadOnlySpan<byte> json, Span<Member> members, Span<Member> scratch)
+    {
+        if (members.Length <= 16)
+        {
+            Sort(json, members);
+            return;
+        }
+        var middle = members.Length / 2;
+        MergeSort(json, members[..middle], scratch[..middle]);
+        MergeSort(json, members[middle..], scratch[middle..]);
+        members.CopyTo(scratch);
+        int left = 0, right = middle, target = 0;
+        while (left < middle && right < members.Length)
+            members[target++] = Member.Compare(json, scratch[right], scratch[left]) < 0 ? scratch[right++] : scratch[left++];
+        while (left < middle) members[target++] = scratch[left++];
+        while (right < members.Length) members[target++] = scratch[right++];
     }
 
     private static FormatException Duplicate() => new("A bridge JSON object cannot contain duplicate property names.");
@@ -222,8 +265,19 @@ internal static class BridgeCanonicalJson
         {
             if (left.Name is null && right.Name is null)
                 return json.Slice(left.NameStart, left.NameLength).SequenceCompareTo(json.Slice(right.NameStart, right.NameLength));
-            return string.CompareOrdinal(left.Name ?? Encoding.ASCII.GetString(json.Slice(left.NameStart, left.NameLength)),
-                right.Name ?? Encoding.ASCII.GetString(json.Slice(right.NameStart, right.NameLength)));
+            if (left.Name is { } leftName && right.Name is { } rightName) return string.CompareOrdinal(leftName, rightName);
+            return left.Name is { } name
+                ? -CompareAscii(json.Slice(right.NameStart, right.NameLength), name)
+                : CompareAscii(json.Slice(left.NameStart, left.NameLength), right.Name!);
+        }
+
+        // Ordinal UTF-16 order of an ASCII name against a decoded name.
+        private static int CompareAscii(ReadOnlySpan<byte> ascii, ReadOnlySpan<char> name)
+        {
+            var length = Math.Min(ascii.Length, name.Length);
+            for (var index = 0; index < length; index++)
+                if (ascii[index] != name[index]) return ascii[index] - name[index];
+            return ascii.Length - name.Length;
         }
     }
 

@@ -165,3 +165,29 @@ public sealed class HostTransport : IBridgeTransport, IDisposable
         Inner.Dispose();
     }
 }
+
+// Canonicalizing an array of rows whose members are in declaration order,
+// as generated writers emit them.
+public class CanonicalArrayBenchmarks
+{
+    private byte[] _rows = [];
+
+    [Params(4000, 16000)]
+    public int Rows { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        var buffer = new System.Buffers.ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+        {
+            writer.WriteStartArray();
+            for (var id = 0; id < Rows; id++) Wire.WriteRow(writer, Wire.SampleRow(id));
+            writer.WriteEndArray();
+        }
+        _rows = buffer.WrittenSpan.ToArray();
+    }
+
+    [Benchmark]
+    public byte[] CanonicalizeUnsortedRows() => BridgeWire.Canonicalize(_rows);
+}

@@ -20,6 +20,7 @@ internal static class SnapshotBatchTests
         await RouteRepliesRemainImmediate();
         await DoesNotCaptureAnOpenBatch();
         await BurstBehindBusyHostCapturesOnce();
+        await FailedCaptureKeepsDelivering();
     }
 
     private static async Task CoalescesBulkNotifications()
@@ -159,6 +160,28 @@ internal static class SnapshotBatchTests
             "The final deferred capture did not retain the latest immediate-reply revision.");
     }
 
+    // A writer failure, including ObjectDisposedException from a getter, fails
+    // that capture only. The next change requests another one.
+    private static async Task FailedCaptureKeepsDelivering()
+    {
+        var model = new Model();
+        using var transport = new InMemoryViewTransport();
+        using var bridge = new ThrowingProbeBridge(transport, model);
+        model.Value = 13;
+        await Task.Delay(100);
+        Require(transport.DrainPublications().Count == 0, "A failed capture published a state.");
+        model.Value = 14;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        IReadOnlyList<ViewTestPublication> published = [];
+        while (published.Count == 0 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(5);
+            published = transport.DrainPublications();
+        }
+        Require(published.Count == 1 && published[0].StateJson.Contains("\"value\":14", StringComparison.Ordinal),
+            "Delivery stopped after a snapshot writer threw ObjectDisposedException.");
+    }
+
     // Without a batch, a busy host still costs one capture per delivered state.
     private static async Task BurstBehindBusyHostCapturesOnce()
     {
@@ -280,6 +303,15 @@ internal static class SnapshotBatchTests
             counter.Capture(revision);
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
+            writer.WriteNumber("value", vm.Value);
+            writer.WriteEndObject();
+        }, [], []);
+
+    private sealed class ThrowingProbeBridge(IBridgeTransport transport, Model model)
+        : ViewModelBridge<Model>(transport, model, "throwing", (writer, vm, revision) =>
+        {
+            ObjectDisposedException.ThrowIf(vm.Value == 13, vm);
+            writer.WriteStartObject();
             writer.WriteNumber("value", vm.Value);
             writer.WriteEndObject();
         }, [], []);

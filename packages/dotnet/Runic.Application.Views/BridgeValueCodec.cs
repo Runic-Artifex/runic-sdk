@@ -339,7 +339,9 @@ public static class BridgeWire
     /// <remarks>
     /// Object members are sorted by ordinal name, duplicate names are rejected,
     /// and numbers are written by exact value (<c>1.0</c> and <c>1e0</c> are both <c>1</c>).
+    /// A number whose decimal exponent exceeds ±100,000 is rejected.
     /// </remarks>
+    /// <exception cref="FormatException">The value has a duplicate member name or an out-of-range number.</exception>
     public static string EncodeCanonical(Action<Utf8JsonWriter> write)
     {
         ArgumentNullException.ThrowIfNull(write);

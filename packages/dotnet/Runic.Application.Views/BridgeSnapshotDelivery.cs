@@ -120,16 +120,26 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             }
 
             string? snapshot = null;
+            var started = false;
             try
             {
                 // Cross the originating turn before entering native delivery.
                 // A requested state is captured in that same turn.
-                if (capture) snapshot = modelTurn.Run(() => TakeStateRequest() ? captureState() : null);
-                else modelTurn.Run(static () => { });
+                snapshot = modelTurn.Run(() =>
+                {
+                    started = true;
+                    return capture && TakeStateRequest() ? captureState() : null;
+                });
             }
-            catch (ObjectDisposedException) { Dispose(); }
+            // Only a turn that could not start means the model context is
+            // gone. An ObjectDisposedException from a getter or snapshot
+            // writer is an ordinary capture failure.
+            catch (ObjectDisposedException) when (!started) { Dispose(); }
             catch (Exception error) when (capture)
             {
+                // There is no PropertyChanged raiser to report to here. The
+                // producer still requires a full state, so its next change
+                // requests another capture.
                 Trace.TraceError($"Bridge snapshot capture for {route} failed: {error}");
             }
             if (!capture)

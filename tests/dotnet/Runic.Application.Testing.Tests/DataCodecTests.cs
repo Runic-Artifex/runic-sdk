@@ -94,6 +94,20 @@ internal static class DataCodecTests
         Require(BridgeOperationRequest.CanonicalDigest("{\"n\":1e-30}") != BridgeOperationRequest.CanonicalDigest("{\"n\":0}")
             && BridgeOperationRequest.CanonicalDigest("{\"n\":[1.50]}") == BridgeOperationRequest.CanonicalDigest("{\"n\":[15e-1]}"),
             "The operation digest did not use the shared canonical numbers.");
+        // Generated writers emit declaration order, so a large array of unsorted
+        // objects is the common case. Sorting must not copy the enclosing document.
+        var rows = "[" + string.Join(",", Enumerable.Range(0, 16000).Select(id => $"{{\"label\":\"row {id}\",\"id\":{id}}}")) + "]";
+        var rowBytes = System.Text.Encoding.UTF8.GetBytes(rows);
+        _ = BridgeWire.Canonicalize(rowBytes);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var sortedRows = BridgeWire.Canonicalize(rowBytes);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Require(System.Text.Encoding.UTF8.GetString(sortedRows).StartsWith("[{\"id\":0,\"label\":\"row 0\"},{\"id\":1,", StringComparison.Ordinal),
+            "A large array of unsorted objects was not canonicalized.");
+        Require(allocated < 8L * rowBytes.Length,
+            $"Canonicalizing {rowBytes.Length} bytes of unsorted objects allocated {allocated} bytes.");
+        Require(Canonical("{\"\\u00e9\":1,\"z\":2,\"\\u00e0\":3,\"a\":4}") == "{\"a\":4,\"z\":2,\"\\u00E0\":3,\"\\u00E9\":1}",
+            "Decoded and ASCII member names were not ordered ordinally.");
         var codec = new BridgeValueCodec<decimal>(element => element.GetDecimal(), (writer, value) => writer.WriteNumberValue(value));
         Require(codec.StructuralEquals(1.0m, 1.00m) && codec.Encode(1.50m) == "1.5" && !codec.StructuralEquals(1m, 2m),
             "Codec equality did not compare numbers by value.");
