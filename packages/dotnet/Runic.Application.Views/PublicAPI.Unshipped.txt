@@ -28,8 +28,8 @@ override Runic.Application.Views.BridgeCollectionDescriptor<T>.GetHashCode() -> 
 override Runic.Application.Views.BridgeCollectionDescriptor<T>.ToString() -> string!
 Runic.Application.Views.BridgeCollectionDescriptor<T>
 Runic.Application.Views.BridgeCollectionDescriptor<T>.<Clone>$() -> Runic.Application.Views.BridgeCollectionDescriptor<T>!
-Runic.Application.Views.BridgeCollectionDescriptor<T>.BridgeCollectionDescriptor(string! Name, System.Func<T, object?>! Get, System.Action<System.Text.Json.Utf8JsonWriter!, object?>! WriteItem, System.Func<object?, string!>! Key) -> void
-Runic.Application.Views.BridgeCollectionDescriptor<T>.Deconstruct(out string! Name, out System.Func<T, object?>! Get, out System.Action<System.Text.Json.Utf8JsonWriter!, object?>! WriteItem, out System.Func<object?, string!>! Key) -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.BridgeCollectionDescriptor(string! Name, System.Func<T, object?>! Get, System.Action<System.Text.Json.Utf8JsonWriter!, object?>! WriteItem, System.Func<object?, string!>! Key, bool PublishesChanges = true) -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Deconstruct(out string! Name, out System.Func<T, object?>! Get, out System.Action<System.Text.Json.Utf8JsonWriter!, object?>! WriteItem, out System.Func<object?, string!>! Key, out bool PublishesChanges) -> void
 Runic.Application.Views.BridgeCollectionDescriptor<T>.Equals(Runic.Application.Views.BridgeCollectionDescriptor<T>? other) -> bool
 Runic.Application.Views.BridgeCollectionDescriptor<T>.Get.get -> System.Func<T, object?>!
 Runic.Application.Views.BridgeCollectionDescriptor<T>.Get.init -> void
@@ -37,6 +37,8 @@ Runic.Application.Views.BridgeCollectionDescriptor<T>.Key.get -> System.Func<obj
 Runic.Application.Views.BridgeCollectionDescriptor<T>.Key.init -> void
 Runic.Application.Views.BridgeCollectionDescriptor<T>.Name.get -> string!
 Runic.Application.Views.BridgeCollectionDescriptor<T>.Name.init -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.PublishesChanges.get -> bool
+Runic.Application.Views.BridgeCollectionDescriptor<T>.PublishesChanges.init -> void
 Runic.Application.Views.BridgeCollectionDescriptor<T>.WriteItem.get -> System.Action<System.Text.Json.Utf8JsonWriter!, object?>!
 Runic.Application.Views.BridgeCollectionDescriptor<T>.WriteItem.init -> void
 Runic.Application.Views.IAsyncBridgeTransport

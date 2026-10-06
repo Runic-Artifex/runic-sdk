@@ -570,14 +570,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("        collections: [");
     foreach (var (property, key) in incrementalCollections)
     {
-        // Validation aggregates must remain atomic with their full snapshot.
-        if (hasValidation) continue;
+        // Validation aggregates must remain atomic with their full snapshot, so
+        // their collections only check keys and never publish frames.
         var itemType = BridgeTypeGraph.CSharpType(valueProperties[property].Root.Element!.NonNullableType);
         var keyAccess = $"(({itemType})item!).{key.Name}";
         var keyExpression = key.PropertyType == typeof(string) ? keyAccess
             : key.PropertyType == typeof(Guid) ? keyAccess + ".ToString(\"D\")"
             : keyAccess + ".ToString(global::System.Globalization.CultureInfo.InvariantCulture)";
-        cs.AppendLine($"            new global::Runic.Application.Views.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}),");
+        cs.AppendLine($"            new global::Runic.Application.Views.BridgeCollectionDescriptor<{fullType}>(\"{WireName(property)}\", static vm => vm.{property.Name}, {property.Name}ValueCodec.WriteItem, static item => {keyExpression}{(hasValidation ? ", PublishesChanges: false" : "")}),");
     }
     cs.AppendLine("        ]");
     cs.AppendLine("        )");

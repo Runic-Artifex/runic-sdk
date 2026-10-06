@@ -1,5 +1,5 @@
 {
-  "description": "Recovery paths. A slow host retains at most 64 pending frames or 1 MiB of encoded characters before a full snapshot supersedes pending work; a client that misses a frame reads one snapshot.",
+  "description": "Recovery paths. A slow host retains at most 64 pending frames or 1 MiB of encoded characters before a full snapshot supersedes pending work; a client that misses a frame reads one snapshot, applies frames that arrive during the read after it, and retries a failed read.",
   "cases": [
     {
       "name": "64 pending frames",
@@ -46,6 +46,35 @@
       "dropped": [1],
       "recoveries": 1,
       "expected": { "revision": 3, "rows": [{ "id": 2, "label": "two" }, { "id": 3, "label": "three" }], "title": "rows" }
+    },
+    {
+      "name": "frames that arrive during a snapshot read are applied after it",
+      "initial": { "revision": 0, "rows": [{ "$rows": [0, 1] }], "title": "rows" },
+      "steps": [{ "each": [{ "op": "appendRows", "start": 1, "count": 4 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{ "$adds": [1, 1] }] },
+        { "__runicDelta": 1, "baseRevision": 1, "revision": 2, "changes": [{ "$adds": [2, 1] }] },
+        { "__runicDelta": 1, "baseRevision": 2, "revision": 3, "changes": [{ "$adds": [3, 1] }] },
+        { "__runicDelta": 1, "baseRevision": 3, "revision": 4, "changes": [{ "$adds": [4, 1] }] }
+      ],
+      "dropped": [1],
+      "recovery": { "revision": 3, "rows": [{ "$rows": [0, 4] }], "title": "rows" },
+      "recoveries": 1,
+      "expected": { "revision": 4, "rows": [{ "$rows": [0, 5] }], "title": "rows" }
+    },
+    {
+      "name": "a failed snapshot read is retried",
+      "initial": { "revision": 0, "rows": [{ "$rows": [0, 1] }], "title": "rows" },
+      "steps": [{ "each": [{ "op": "appendRows", "start": 1, "count": 3 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{ "$adds": [1, 1] }] },
+        { "__runicDelta": 1, "baseRevision": 1, "revision": 2, "changes": [{ "$adds": [2, 1] }] },
+        { "__runicDelta": 1, "baseRevision": 2, "revision": 3, "changes": [{ "$adds": [3, 1] }] }
+      ],
+      "dropped": [1],
+      "failedReads": 1,
+      "recoveries": 2,
+      "expected": { "revision": 3, "rows": [{ "$rows": [0, 4] }], "title": "rows" }
     }
   ]
 }

@@ -16,7 +16,7 @@ internal static class CollectionDeltaConformanceTests
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "fixtures", "collection-deltas");
         var files = Directory.GetFiles(directory, "*.json").OrderBy(path => path, StringComparer.Ordinal).ToArray();
-        Require(files.Length >= 7, $"The collection delta fixtures were not copied to {directory}.");
+        Require(files.Length >= 8, $"The collection delta fixtures were not copied to {directory}.");
         foreach (var file in files)
         {
             var fixture = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
@@ -33,6 +33,11 @@ internal static class CollectionDeltaConformanceTests
         var held = testCase["delivery"]?.GetValue<string>() == "held";
         using var transport = new FixtureTransport(held);
         using var bridge = new CollectionDeltaBridge(transport, model, Route);
+        if (testCase["error"]?.GetValue<string>() is { } error)
+        {
+            await RunInvalidKeyCaseAsync(name, testCase, model, transport, error);
+            return;
+        }
         RequireJson(name, "initial snapshot", initial, State(transport));
 
         var actions = new List<Action>();
@@ -59,6 +64,31 @@ internal static class CollectionDeltaConformanceTests
         for (var index = 0; index < frames.Count; index++)
             RequireJson(name, $"frame {index}", expectedFrames[index], frames[index]);
         RequireJson(name, "final snapshot", Expand(testCase["expected"]!), State(transport));
+    }
+
+    // The producer refuses the initial state, or the last mutation, and publishes nothing.
+    private static async Task RunInvalidKeyCaseAsync(string name, JsonObject testCase, CollectionDeltaViewModel model,
+        FixtureTransport transport, string error)
+    {
+        var mutations = testCase["steps"]!.AsArray().SelectMany(step => step!["each"]!.AsArray()).ToArray();
+        if (mutations.Length != 0)
+        {
+            RequireJson(name, "initial snapshot", Expand(testCase["initial"]!), State(transport));
+            foreach (var mutation in mutations[..^1]) Apply(model, mutation!);
+        }
+        try
+        {
+            if (mutations.Length == 0) State(transport);
+            else Apply(model, mutations[^1]!);
+        }
+        catch (InvalidOperationException exception)
+        {
+            Require(exception.Message == error, $"{name}: the producer failed with another message.\nexpected: {error}\nactual:   {exception.Message}");
+            var frames = await transport.WaitForAsync(0);
+            Require(frames.Count == 0, $"{name}: the producer published {frames.Count} frames for invalid keys.");
+            return;
+        }
+        throw new InvalidOperationException($"{name}: the producer accepted invalid keys.");
     }
 
     private static string State(FixtureTransport transport)

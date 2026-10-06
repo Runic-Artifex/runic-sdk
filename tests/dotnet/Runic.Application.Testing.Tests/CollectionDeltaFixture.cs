@@ -48,3 +48,33 @@ public sealed class MutableCollectionViewModel : INotifyPropertyChanged
 }
 
 public sealed partial class MutableCollectionWindow(MutableCollectionViewModel model) : RunicWindow<MutableCollectionViewModel>(model);
+
+public sealed record KeyedRow(string Key, string Label);
+
+public sealed class KeyedCollectionViewModel : INotifyPropertyChanged
+{
+    public KeyedCollectionViewModel() => Rows = new(Items);
+    [RunicIgnore]
+    public ObservableCollection<KeyedRow> Items { get; } = [];
+    [RunicCollection(nameof(KeyedRow.Key))]
+    public ReadOnlyObservableCollection<KeyedRow> Rows { get; }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class KeyedCollectionWindow(KeyedCollectionViewModel model) : RunicWindow<KeyedCollectionViewModel>(model);
+
+// Validation keeps collections on full states; their keys are still checked.
+public sealed class ValidatedCollectionViewModel : INotifyPropertyChanged, INotifyDataErrorInfo
+{
+    public ValidatedCollectionViewModel() => Rows = new(Items);
+    [RunicIgnore]
+    public ObservableCollection<KeyedRow> Items { get; } = [];
+    [RunicCollection(nameof(KeyedRow.Key))]
+    public ReadOnlyObservableCollection<KeyedRow> Rows { get; }
+    public bool HasErrors => false;
+    public System.Collections.IEnumerable GetErrors(string? propertyName) => Array.Empty<string>();
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class ValidatedCollectionWindow(ValidatedCollectionViewModel model) : RunicWindow<ValidatedCollectionViewModel>(model);

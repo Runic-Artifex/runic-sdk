@@ -55,8 +55,8 @@ clients with the component lifecycle.
 A .NET ViewModel can mark a read-only collection of DTO rows with
 `[RunicCollection(nameof(Row.Id))]`. Its generated client then receives indexed
 add, remove, replace and move frames instead of the whole state, applies them on
-top of its current revision, and reads one fresh snapshot if a frame is missing
-or invalid. Rows that a frame does not touch keep their object identity, so
+top of its current revision, and reads a fresh snapshot if a frame is missing
+or invalid, retrying a failed read and keeping frames that arrive meanwhile. Rows that a frame does not touch keep their object identity, so
 frameworks can skip rendering them. Clients still see a complete array in
 `snapshot` and `subscribe`.
 

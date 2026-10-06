@@ -5,7 +5,7 @@ import { OperationChannel, type BridgeStreamOperation } from "./operations.js";
 import { errorMessage, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import { bridgeWire } from "./wire.js";
-import { applyCollectionDelta, validateCollections, type BridgeCollectionDefinition } from "./collections.js";
+import { applyCollectionDelta, applyWireDelta, sameWire, validateCollections, type BridgeCollectionDefinition } from "./collections.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState> {
@@ -90,30 +90,82 @@ function unpack(json: string, entry: SharedEntry, route: string): unknown {
   return state;
 }
 
+// Recovery reads a snapshot up to four times, waiting 250, 500 and 1,000 ms
+// between failed reads. Frames that arrive meanwhile are kept, up to the
+// producer's own bound of 64 pending frames, and applied after the read.
+const recoveryAttempts = 4;
+const recoveryDelay = 250;
+const maximumBufferedFrames = 64;
+
 function createEntry(contract: string, route: string, bridge: RunicBridgeClient, routeEntry: SharedRoute,
   hydrate: (wire: unknown) => unknown, collections: Readonly<Record<string, BridgeCollectionDefinition>> = {}): SharedEntry {
-  let recovering: Promise<void> | undefined;
-  function recover(): void {
-    if (recovering || !entry.active || !routeEntry.active) return;
+  let recovering = false;
+  let buffered: unknown[] = [];
+  let missedRevision: number | undefined;
+  const live = () => entry.active && routeEntry.active;
+
+  // Reads the snapshot, retrying a failed read with backoff. Returns whether a state was accepted.
+  async function readRecoveryState(): Promise<boolean> {
     const snapshotRoute = `${route}Snapshot`;
-    const request = (async () => {
-      let reply: string;
-      try { reply = await bridge.call(snapshotRoute); }
-      catch (cause) { throw callFailed(bridge, "The state could not be re-read after an unusable collection change.", snapshotRoute, cause); }
-      unpack(reply, entry, snapshotRoute);
-    })();
-    recovering = request;
-    const settled = () => { if (recovering === request) recovering = undefined; };
-    request.then(settled, error => { settled(); reportBridgeError(error, snapshotRoute); });
+    for (let attempt = 1; ; attempt++) {
+      try {
+        let reply: string;
+        try { reply = await bridge.call(snapshotRoute); }
+        catch (cause) { throw callFailed(bridge, "The state could not be re-read after an unusable collection change.", snapshotRoute, cause); }
+        if (!live()) return false;
+        unpack(reply, entry, snapshotRoute);
+        return true;
+      } catch (error) {
+        if (!live()) return false;
+        // A reconnect re-reads every route itself; a disconnected Bridge cannot answer a retry.
+        const disconnected = !bridge.isConnected() || error instanceof BridgeError && error.kind === "disconnected";
+        if (disconnected || attempt === recoveryAttempts) { reportBridgeError(error, snapshotRoute); return false; }
+        emitErrorDiagnostic(error, snapshotRoute);
+        await new Promise<void>(resolve => setTimeout(resolve, recoveryDelay * 2 ** (attempt - 1)));
+        if (!live()) return false;
+      }
+    }
   }
+
+  function recover(): void {
+    if (recovering || !live()) return;
+    recovering = true;
+    void readRecoveryState().catch(error => { reportBridgeError(error); return false; }).then(recovered => {
+      recovering = false;
+      const frames = buffered;
+      const missed = missedRevision;
+      buffered = [];
+      missedRevision = undefined;
+      // After a failed recovery the client keeps its last state; the next frame that needs one recovers again.
+      if (!recovered || !live()) return;
+      for (const frame of frames) entry.accept(frame);
+      if (missed !== undefined && (entry.revision === undefined || missed > entry.revision)) recover();
+    });
+  }
+
+  function notify(current: unknown): void {
+    for (const lease of entry.leases) if (!lease.disposed) {
+      lease.current = current;
+      for (const listener of lease.listeners) {
+        try { listener(current); } catch (error) { reportBridgeError(error); }
+      }
+    }
+  }
+
   const entry: SharedEntry = {
     contract, route, bridge, routeEntry, leases: new Set(), hydrate, current: undefined, wire: undefined, revision: undefined,
     initializing: undefined, active: true,
     accept(wire) {
       const revision = (wire as { readonly revision: number }).revision;
-      if (!entry.active || !routeEntry.active) return entry.current ?? entry.hydrate(wire);
+      if (!live()) return entry.current ?? entry.hydrate(wire);
       const delta = wire as { readonly __runicDelta?: unknown; readonly baseRevision?: unknown; readonly changes?: unknown };
       if (delta.__runicDelta !== undefined) {
+        // Keep frames that arrive during a recovery read and apply them against the state it returns.
+        if (recovering) {
+          if (buffered.length < maximumBufferedFrames) buffered.push(wire);
+          else if (typeof revision === "number") missedRevision = Math.max(missedRevision ?? revision, revision);
+          return entry.current;
+        }
         if (typeof revision !== "number" || !Number.isSafeInteger(revision) || delta.__runicDelta !== 1) { recover(); return entry.current; }
         if (entry.revision !== undefined && revision <= entry.revision) return entry.current;
         if (entry.current === undefined || delta.baseRevision !== entry.revision ||
@@ -130,29 +182,20 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
         entry.current = current;
         entry.revision = revision;
         // Checked field baselines are unchanged by collection-only frames.
-        entry.wire = { ...(entry.wire as object), revision };
-        for (const lease of entry.leases) if (!lease.disposed) {
-          lease.current = current;
-          for (const listener of lease.listeners) {
-            try { listener(current); } catch (error) { reportBridgeError(error); }
-          }
-        }
+        entry.wire = { ...applyWireDelta(entry.wire, delta.changes as readonly unknown[]), revision };
+        notify(current);
         return current;
       }
-      if (entry.current === undefined || entry.revision === undefined || revision >= entry.revision) {
+      // A full state at the current revision that matches the current one is a repeat.
+      if (entry.current === undefined || entry.revision === undefined || revision > entry.revision ||
+        revision === entry.revision && !sameWire(wire, entry.wire)) {
         // Decode first: a state that fails validation must not advance the revision.
         const current = entry.hydrate(wire);
         validateCollections(current, collections);
         entry.revision = revision;
         entry.wire = wire;
         entry.current = current;
-        for (const lease of entry.leases) if (!lease.disposed) {
-          lease.current = current;
-          for (const listener of lease.listeners) {
-            try { listener(current); }
-            catch (error) { reportBridgeError(error); }
-          }
-        }
+        notify(current);
       }
       return entry.current;
     },

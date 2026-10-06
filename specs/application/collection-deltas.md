@@ -19,16 +19,31 @@ generated client registers a codec and key function for the field with
 `defineCollection` (see the [views package guide](../../packages/web/views/README.md#incremental-collections)).
 The key property is a nonnullable `string`, `Guid` or `Int32`. Its wire key is the
 string itself, the lowercase `D` form of a `Guid`, or the invariant decimal form
-of an `Int32`. Keys must be nonempty and unique within the field. The client
-validates keys in full states as well as frames: a full state with an empty or
-duplicate key fails the initial connection (the snapshot reply is an invalid
-state) or, when pushed later, is rejected and reported, so the client stays at
-its last state.
-The producer does not check keys, so such rows leave the route stuck.
+of an `Int32`. Keys must be nonempty and unique within the field, and rows must
+not be null.
+
+The producer checks every key it writes and throws an
+`InvalidOperationException` that names the model, the field and the row or key,
+for example `CollectionDeltaViewModel.rows: rows 0 and 1 have the duplicate key '1'.`
+([fixture](fixtures/collection-deltas/keys.json)):
+
+- A full state checks every row, so a snapshot or command reply fails and a
+  pushed state is not published (the delivery logs the failure).
+- A collection notification that would publish a frame checks the changed rows
+  against the keys of the last full state and the frames since, so the
+  `Add`, `Insert` or indexer set that introduced the key throws. The change is
+  not published, and the next change publishes a full state, which is checked
+  again. While a full state is already pending, its capture does the check.
+
+The client also validates keys in full states as well as frames: a full state
+with an empty or duplicate key fails the initial connection (the snapshot reply
+is an invalid state) or, when pushed later, is rejected and reported, so the
+client stays at its last state.
 
 A ViewModel that implements `INotifyDataErrorInfo`, or whose state graph
-contains a type that does, never publishes frames: the generated bridge omits
-every collection descriptor so validation stays atomic with full states. Its
+contains a type that does, never publishes frames: the generated bridge marks
+every collection descriptor `PublishesChanges: false` so validation stays atomic
+with full states. The producer still checks keys in those full states, and the
 generated client still registers `defineCollection` codecs, which then only
 validate full states.
 
@@ -138,7 +153,9 @@ always captures its state at once.
 
 A route retains at most 64 undelivered entries, or 1,048,576 characters
 (UTF-16 code units of the encoded JSON), in its delivery queue. The entry being
-delivered does not count. When a new frame would exceed either bound, the
+delivered does not count. The limit counts characters, not bytes, so it is a
+loose memory bound: .NET holds those characters in about 2 MiB, and their UTF-8
+encoding can be up to 3 MiB. When a new frame would exceed either bound, the
 producer publishes a recovery state instead. That state supersedes everything
 queued and becomes the next frame's baseline
 ([fixture](fixtures/collection-deltas/recovery.json)). It is captured at once,
@@ -174,18 +191,40 @@ incoming frame it:
    no change touched keep their object identity, as do non-collection members.
    Checked-field versions are unchanged.
 
-A full state is accepted when its revision is at least the current revision,
-whether it is pushed, returned by a route, or read by recovery, so a repeated
-full state notifies subscribers again.
+A full state, whether it is pushed, returned by a route, or read by recovery,
+is accepted when its revision is greater than the current revision, or equal
+to it and its content differs from the current state. The client keeps the
+current wire state, with applied frames, for that comparison. A repeated full
+state, or a command reply that matches the frames already applied, therefore
+does not notify subscribers again. An equal revision with other content occurs
+when a command changes state without a change notification; the reply then
+carries the new content at the old revision.
 
 ### `recover()`
 
-Recovery calls the route's `{route}Snapshot` once and accepts the returned
-state. While that read is in flight, further frames that need recovery are
-dropped rather than queued; frames that arrive after it completes are judged
-against the recovered revision. A failed read is reported to the page's error
-handler (`reportError`, or `console.error`) and is not retried: the client keeps
-its last state until the next push or reply. Command replies and reconnects always carry full states.
+Recovery calls the route's `{route}Snapshot` and accepts the returned state.
+
+- **Frames during the read.** While a recovery read is in flight, every frame
+  that arrives is kept, in order, up to 64 frames (the producer's own pending
+  bound). After the state is accepted the client applies them as if they
+  arrived then: frames at or below the recovered revision are ignored, and a
+  frame that does not continue the recovered state starts another recovery.
+  If more than 64 frames arrived, the client recovers again when the newest
+  discarded frame is above the recovered revision
+  ([fixture](fixtures/collection-deltas/recovery.json), "frames that arrive
+  during a snapshot read are applied after it").
+- **Failed reads.** A failed read is retried, up to four reads in total, after
+  250, 500 and 1,000 ms. Each failure that is retried is reported as a
+  diagnostic (`onBridgeDiagnostic`); the last one is also reported to the
+  page's error handler (`reportError`, or `console.error`). The client stops
+  retrying, and reports the failure, as soon as the Bridge is disconnected (a
+  reconnect re-reads every route), and stops silently once the route is
+  disposed. After a recovery that failed, the client keeps its last state and
+  discards the frames it kept; the next frame that needs recovery starts a new
+  one ([fixture](fixtures/collection-deltas/recovery.json), "a failed snapshot
+  read is retried").
+
+Command replies and reconnects always carry full states.
 
 ## Conformance fixtures
 
@@ -201,7 +240,10 @@ collection of `{ id, label }` rows keyed by `id` and a `title` string (`"rows"`)
 | `frames` | The exact states and frames the host receives, in order. |
 | `expected` | The route's snapshot state after the steps, and the client state after applying `frames`. |
 | `dropped` | Optional. Indices of frames the client does not receive. |
-| `recoveries` | Optional, default 0. The number of snapshot reads the client performs. Recovery reads answer `expected`. |
+| `recovery` | Optional, client only. The state recovery reads answer, default `expected`. An older state shows that the client keeps frames that arrive during the read. |
+| `failedReads` | Optional, client only, default 0. The number of recovery reads that fail before one answers. |
+| `recoveries` | Optional, default 0. The number of snapshot reads the client performs for recovery, including failed reads. |
+| `error` | Optional. The message of the `InvalidOperationException` the producer throws for invalid keys: when it reads `initial` if `steps` is empty, otherwise at the last mutation. Such a case has no `frames` or `expected`, and the producer publishes nothing. |
 
 Mutations are `{ "op": "insert", "index", "item" }`, `{ "op": "removeAt", "index" }`,
 `{ "op": "set", "index", "item" }`, `{ "op": "move", "oldIndex", "newIndex" }`
@@ -219,7 +261,9 @@ generator:
 The .NET test (`CollectionDeltaConformanceTests` in
 `tests/dotnet/Runic.Application.Testing.Tests`) drives the producer through the
 steps and requires byte-identical frames and snapshot states after expanding the
-generators and encoding them compactly. The views test
+generators and encoding them compactly, or the exact `error`. The views test
 (`packages/web/views/test/collection-fixtures.test.ts`) serves `initial`, pushes
-every frame not in `dropped` twice, and requires the client state to equal
-`expected` after the given number of recoveries.
+every frame not in `dropped` twice, requires each frame up to the first dropped
+one to notify subscribers exactly once, and requires the client state to equal
+`expected` after the given number of recoveries. For an `error` case without
+steps it requires the client to reject `initial`.

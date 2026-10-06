@@ -63,6 +63,67 @@ internal static class CollectionDeltaTests
         using var oversized = await NextAsync(transport);
         Require(oversized.RootElement.GetProperty("rows").GetArrayLength() == 4100,
             "An oversized changeset did not fall back to a full snapshot.");
+
+        await InvalidKeysFailFastAsync();
+    }
+
+    // specs/application/collection-deltas.md: the producer refuses keys the client rejects.
+    private static async Task InvalidKeysFailFastAsync()
+    {
+        const string Rule = ". [RunicCollection] keys must be nonempty and unique within the collection.";
+        foreach (var (row, problem) in new[] { (new KeyedRow("", "empty"), "row 1 has an empty key"), (new KeyedRow(null!, "null"), "row 1 has a null key") })
+        {
+            var initial = new KeyedCollectionViewModel();
+            initial.Items.Add(new("a", "one"));
+            initial.Items.Add(row);
+            using var initialTransport = new InMemoryViewTransport();
+            using var initialBridge = new KeyedCollectionBridge(initialTransport, initial, "keyed");
+            RequireFailure(() => initialTransport.Call("keyedSnapshot"), "KeyedCollectionViewModel.rows: " + problem + Rule);
+        }
+
+        var model = new KeyedCollectionViewModel();
+        model.Items.Add(new("a", "one"));
+        using var transport = new InMemoryViewTransport();
+        using var bridge = new KeyedCollectionBridge(transport, model, "keyed");
+        using (JsonDocument.Parse(transport.Call("keyedSnapshot"))) { }
+        foreach (var (mutate, undo, problem) in new (Action, Action, string)[]
+        {
+            (() => model.Items.Add(new("", "empty")), () => model.Items.RemoveAt(1), "row 1 has an empty key"),
+            (() => model.Items.Add(null!), () => model.Items.RemoveAt(1), "row 1 is null"),
+            (() => model.Items.Insert(0, new("a", "again")), () => model.Items.RemoveAt(0), "rows 0 and 1 have the duplicate key 'a'"),
+        })
+        {
+            RequireFailure(mutate, "KeyedCollectionViewModel.rows: " + problem + Rule);
+            await Task.Delay(50);
+            Require(transport.DrainPublications().Count == 0, $"A rejected key was published: {problem}.");
+            // Once the keys are valid again, the next change publishes a full state.
+            undo();
+            using var recovered = await NextAsync(transport);
+            Require(recovered.RootElement.GetProperty("rows").GetArrayLength() == 1 && !recovered.RootElement.TryGetProperty("__runicDelta", out _),
+                $"The route did not recover with a full state after {problem}.");
+        }
+        model.Items.Add(new("b", "two"));
+        using var frame = await NextAsync(transport);
+        Require(frame.RootElement.GetProperty("__runicDelta").GetInt32() == 1, "Frames did not resume after the keys were fixed.");
+
+        var validated = new ValidatedCollectionViewModel();
+        using var validatedTransport = new InMemoryViewTransport();
+        using var validatedBridge = new ValidatedCollectionBridge(validatedTransport, validated, "validated");
+        validated.Items.Add(new("a", "one"));
+        validated.Items.Add(new("a", "again"));
+        RequireFailure(() => validatedTransport.Call("validatedSnapshot"),
+            "ValidatedCollectionViewModel.rows: rows 0 and 1 have the duplicate key 'a'" + Rule);
+    }
+
+    private static void RequireFailure(Action action, string message)
+    {
+        try { action(); }
+        catch (InvalidOperationException error)
+        {
+            Require(error.Message == message, $"Expected \"{message}\" but the producer failed with \"{error.Message}\".");
+            return;
+        }
+        throw new InvalidOperationException($"The producer accepted an invalid key: {message}");
     }
 
     private static async Task<JsonDocument> NextAsync(InMemoryViewTransport transport)

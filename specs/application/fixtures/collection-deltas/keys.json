@@ -1,0 +1,23 @@
+{
+  "description": "Invalid keys. The producer refuses to write a full state or frame whose collection has a null row or a null, empty or duplicate key, and names the field and key. The client rejects the same states.",
+  "cases": [
+    {
+      "name": "a duplicate key in a full state",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 1, "label": "again" }], "title": "rows" },
+      "steps": [],
+      "error": "CollectionDeltaViewModel.rows: rows 0 and 1 have the duplicate key '1'. [RunicCollection] keys must be nonempty and unique within the collection."
+    },
+    {
+      "name": "an added row with a duplicate key",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }], "title": "rows" },
+      "steps": [{ "each": [{ "op": "insert", "index": 0, "item": { "id": 1, "label": "again" } }] }],
+      "error": "CollectionDeltaViewModel.rows: rows 0 and 1 have the duplicate key '1'. [RunicCollection] keys must be nonempty and unique within the collection."
+    },
+    {
+      "name": "a replacement row with another row's key",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }], "title": "rows" },
+      "steps": [{ "each": [{ "op": "set", "index": 1, "item": { "id": 1, "label": "again" } }] }],
+      "error": "CollectionDeltaViewModel.rows: rows 0 and 1 have the duplicate key '1'. [RunicCollection] keys must be nonempty and unique within the collection."
+    }
+  ]
+}

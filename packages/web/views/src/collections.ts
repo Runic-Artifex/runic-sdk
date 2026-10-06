@@ -87,3 +87,39 @@ export function applyCollectionDelta(state: unknown, changes: unknown,
   for (const field of edited) keys(next[field] as readonly unknown[], definitions[field]!);
   return next;
 }
+
+/**
+ * Applies a frame that `applyCollectionDelta` accepted to the wire state, so the
+ * wire stays comparable with a later full state at the same revision.
+ */
+export function applyWireDelta(wire: unknown, changes: readonly unknown[]): Record<string, unknown> {
+  const next = { ...(wire as Record<string, unknown>) };
+  const edited = new Set<string>();
+  for (const change of changes as readonly { field: string; kind: string; index: number; oldIndex: number; keys: unknown[]; items: unknown[] }[]) {
+    if (!edited.has(change.field)) { next[change.field] = [...(next[change.field] as unknown[])]; edited.add(change.field); }
+    const rows = next[change.field] as unknown[];
+    const count = change.keys.length;
+    if (change.kind === "add") rows.splice(change.index, 0, ...change.items);
+    else if (change.kind === "remove") rows.splice(change.index, count);
+    else if (change.kind === "replace") rows.splice(change.index, count, ...change.items);
+    else rows.splice(change.index, 0, ...rows.splice(change.oldIndex, count));
+  }
+  return next;
+}
+
+/** Compares two decoded JSON values structurally. */
+export function sameWire(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left)) {
+    if (!Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index++) if (!sameWire(left[index], right[index])) return false;
+    return true;
+  }
+  if (Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left);
+  if (leftKeys.length !== Object.keys(right).length) return false;
+  for (const key of leftKeys)
+    if (!Object.hasOwn(right, key) || !sameWire((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])) return false;
+  return true;
+}
