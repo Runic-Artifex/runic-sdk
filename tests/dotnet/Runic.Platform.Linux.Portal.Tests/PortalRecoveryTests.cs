@@ -24,10 +24,13 @@ internal static class PortalRecoveryTests
 
         // First replace an idle portal. A read-only capability probe permits the
         // asynchronous owner notification to settle without replaying submissions.
+        // The previous owner is still alive, so a probe can succeed against it before
+        // the owner change is observed. Wait until the client registered with the new owner.
         Check(await second.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting | RequestNameOptions.AllowReplacement), "idle portal replacement");
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
         {
-            while (await notifications.RequestPermissionAsync(deadline.Token) is not PlatformResult<Unit>.Success)
+            while (await notifications.RequestPermissionAsync(deadline.Token) is not PlatformResult<Unit>.Success
+                || !idleReplacement.Calls.Contains("Register"))
                 await Task.Delay(10, deadline.Token);
         }
         Check(await notifications.ShowAsync(new("idle-after", "After idle restart", "Body")) is PlatformResult<Unit>.Success, "idle service recovers without application restart");
