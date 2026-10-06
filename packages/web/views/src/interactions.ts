@@ -1,5 +1,5 @@
 import { BridgeError } from "./errors.js";
-import type { RunicBridgeClient } from "./transport.js";
+import { reportBridgeError, type RunicBridgeClient } from "./transport.js";
 
 export interface BridgeInteractionContext {
   /** Aborts when .NET cancels the request, the handler is replaced, or the View is disposed. */
@@ -69,7 +69,10 @@ export class InteractionRuntime {
   async ready(): Promise<void> {
     if (this.handlers.size === 0) return;
     try { await this.capabilitySync; }
-    catch { throw new BridgeError(this.scope.bridge.isConnected() ? "failed" : "disconnected", "The interaction handler could not be registered."); }
+    catch (cause) {
+      throw new BridgeError(this.scope.bridge.isConnected() ? "failed" : "disconnected", "The interaction handler could not be registered.",
+        { cause, route: "__runicInteractionControl" });
+    }
     if (this.unavailable) throw new BridgeError("disconnected", "The interaction presentation is no longer available.");
   }
 
@@ -113,7 +116,12 @@ export class InteractionRuntime {
       ownerEpoch: request.ownerEpoch, name: request.name, contract: request.contract };
     if (kind === "answered") payload["output"] = output;
     try { await this.scope.bridge.call("__runicInteractionReply", jsonForInteraction(payload)); }
-    catch { /* The request will be cancelled by its presentation lifecycle. */ }
+    catch (cause) {
+      // The presentation lifecycle cancels the request on .NET; a closed transport is expected here.
+      if (this.scope.bridge.isConnected())
+        reportBridgeError(new BridgeError("failed", `The ${request.name} interaction reply could not be delivered.`,
+          { cause, route: "__runicInteractionReply" }));
+    }
   }
 
   private abortActive(): void {
@@ -208,7 +216,9 @@ export class InteractionRuntime {
       if (this.disposed || !this.scope.live() || controller.signal.aborted || this.handlers.get(key) !== handler)
         await this.reply(requestIdentity, "cancelled");
       else await this.reply(requestIdentity, "answered", definition.encodeOutput(output));
-    } catch {
+    } catch (error) {
+      // .NET receives only "failed"; the handler's error stays local.
+      if (!controller.signal.aborted) reportBridgeError(error, `${this.scope.route}:${request["name"]}`);
       await this.reply(requestIdentity, controller.signal.aborted ? "cancelled" : "failed");
     } finally {
       handler.controller.signal.removeEventListener("abort", abortFromHandler);
@@ -223,6 +233,7 @@ export class InteractionRuntime {
     while (this.running()) {
       try { await this.capabilitySync; }
       catch {
+        // ready() passes this failure to the command that awaits it; the loop retries.
         if (this.unavailable || !this.scope.bridge.isConnected()) { this.stopLoops(); return; }
         await this.waitForRetry();
         this.syncCapabilities();
@@ -235,6 +246,7 @@ export class InteractionRuntime {
         envelope = JSON.parse(await this.scope.bridge.call("__runicInteractionWait",
           jsonForInteraction({ route: this.scope.route, presentationId, generation: this.capabilityGeneration, handlers })));
       } catch {
+        // A dropped long poll is retried with backoff; a closed transport ends the loop.
         if (!this.scope.bridge.isConnected()) { this.stopLoops(); return; }
         await this.waitForRetry();
         continue;
@@ -258,6 +270,7 @@ export class InteractionRuntime {
         envelope = JSON.parse(await this.scope.bridge.call("__runicInteractionControlWait",
           jsonForInteraction({ route: this.scope.route, presentationId })));
       } catch {
+        // A dropped long poll is retried with backoff; a closed transport ends the loop.
         if (!this.scope.bridge.isConnected()) { this.stopLoops(); return; }
         await this.waitForRetry();
         continue;

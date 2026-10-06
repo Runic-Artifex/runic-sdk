@@ -1,3 +1,4 @@
+import { BridgeError } from "./errors.js";
 import { hostCallbacks, reportBridgeError, type RunicBridgeClient } from "./transport.js";
 
 // The page-wide runtime lives on the window under a registered symbol. Every
@@ -96,10 +97,16 @@ function resumeAfterReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient)
     if (!route.active || route.bridge !== bridge) continue;
     for (const entry of route.entries.values()) {
       if (!entry.active) continue;
-      void bridge.call(`${route.route}Snapshot`).then(json => {
+      const snapshotRoute = `${route.route}Snapshot`;
+      void bridge.call(snapshotRoute).then(json => {
         const reply = JSON.parse(json) as { readonly state?: unknown };
         if (entry.active && reply.state !== null && reply.state !== undefined) entry.accept(reply.state);
-      }).catch(() => {});
+      }).catch(cause => {
+        // The route keeps its last state and the next push or call refreshes it.
+        if (!entry.active || runtime.bridge !== bridge) return;
+        reportBridgeError(cause instanceof BridgeError ? cause : new BridgeError(bridge.isConnected() ? "failed" : "disconnected",
+          "The state after a reconnect could not be read.", { cause, route: snapshotRoute }), snapshotRoute);
+      });
       for (const lease of entry.leases)
         if (lease.mounted && lease.mountToken && !lease.disposed) void remountLease(bridge, route.route, lease, lease.mountToken);
     }
@@ -110,7 +117,13 @@ async function remountLease(bridge: RunicBridgeClient, route: string, lease: Sha
   // .NET answers "ignored" while the former connection still owns the token.
   for (let attempt = 0; attempt < 20 && !lease.disposed; attempt++) {
     let reply: string;
-    try { reply = await bridge.call(`${route}Mount`, token); } catch { return; }
+    try { reply = await bridge.call(`${route}Mount`, token); }
+    catch (cause) {
+      // The View stays unmounted until the next reconnect re-sends the token.
+      if (!lease.disposed) reportBridgeError(new BridgeError(bridge.isConnected() ? "failed" : "disconnected",
+        "The View could not be mounted again after a reconnect.", { cause, route: `${route}Mount` }));
+      return;
+    }
     if (reply !== "ignored") return;
     await new Promise<void>(resolve => setTimeout(resolve, 250));
   }
@@ -131,7 +144,10 @@ export function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient
       let accepted: unknown;
       for (const entry of sharedRoute.entries.values()) {
         try { accepted = entry.accept(state); }
-        catch (error) { reportBridgeError(error); }
+        catch (cause) {
+          reportBridgeError(new BridgeError("failed", `The Bridge pushed an invalid state for ${route}: ${errorMessage(cause)}`,
+            { cause, route: callbackName }));
+        }
       }
       return accepted;
     },
@@ -139,4 +155,9 @@ export function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient
   runtime.routes.set(route, sharedRoute);
   callbacks[callbackName] = sharedRoute.callback;
   return sharedRoute;
+}
+
+/** The message of a caught value, for an error that wraps it. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

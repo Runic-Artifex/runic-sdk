@@ -1,6 +1,13 @@
-export { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind } from "./errors.js";
+export {
+  BridgeError,
+  BridgeOperationUncertainError,
+  type BridgeErrorKind,
+  type BridgeErrorOptions,
+  type BridgeFailureDetail,
+} from "./errors.js";
+export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticListener } from "./diagnostics.js";
 export { bridgeWire, decodeBridgeValidation, type BridgeValidationMessage, type BridgeValidationState } from "./wire.js";
-export { waitForBridge, type RunicBridgeClient } from "./transport.js";
+export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export { defineCollection, type BridgeCollectionDefinition } from "./collections.js";
 export { collectionViewport, type CollectionViewport } from "./viewport.js";
 export {
@@ -22,6 +29,7 @@ export type {
   BridgeOperationStatusKind,
   BridgeOperationStreamItem,
   BridgeOperationStreamPage,
+  BridgeOperationWaitOptions,
   BridgeStreamOperation,
 } from "./operations.js";
 export type { BridgeInteractionContext, InteractionDefinition, InteractionSurface } from "./interactions.js";
