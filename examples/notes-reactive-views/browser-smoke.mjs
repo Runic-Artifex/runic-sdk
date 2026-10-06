@@ -231,6 +231,24 @@ try {
   if (!afterReloadRoute || afterReloadRoute.activationCount !== afterReload.activationCount + 1
       || afterReloadRoute.deactivationCount !== afterReload.deactivationCount + 1)
     throw new Error(`Navigation after reload did not release and reacquire the lease: ${JSON.stringify(afterReloadRoute)}`);
+  // CS-WebUI before 2.5.0-beta.4.6 did not terminate encoded UTF-8 replies,
+  // so a large non-ASCII reply could reach the page with stray trailing bytes.
+  const unicodeTitle = "Grüße, 日本語, emoji 🎉 — ".repeat(120);
+  await change("#document-pane [data-title]", unicodeTitle);
+  await retry(async () => (await snapshot(editorRoute)).state?.title === unicodeTitle);
+  const corruptReplies = await evaluate(`(async () => {
+    const corrupt = [];
+    for (let index = 0; index < 300; index++) {
+      const raw = await window.__runicBridge.call(${JSON.stringify(editorRoute + "Snapshot")});
+      let title;
+      try { title = JSON.parse(raw).state?.title; } catch {}
+      if (title !== ${JSON.stringify(unicodeTitle)}) corrupt.push(raw.slice(-40));
+      await window.__runicBridge.call("shellSnapshot");
+    }
+    return corrupt;
+  })()`, { timeout: 60_000 });
+  if (corruptReplies.length)
+    throw new Error(`${corruptReplies.length} non-ASCII Bridge replies were corrupted; endings: ${JSON.stringify(corruptReplies.slice(0, 3))}`);
   await change("#document-pane [data-title]", "Operation roundtrip");
   await retry(async () => (await snapshot(editorRoute)).state?.canSave === true);
   const requestId = "browser-operation-roundtrip";
