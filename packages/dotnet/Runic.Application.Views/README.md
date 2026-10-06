@@ -264,36 +264,46 @@ enable it for a distributed build.
 `OpenWindow` (CS-WebUI) and `OpenDesktopWindowAsync` (Desktop) pass the scope's
 `ILoggerFactory` to the Window's `WindowContentSession` when one is registered,
 for example with `services.AddLogging(...)`. A session constructed directly
-takes it as `loggerFactory`. Without one, failures are written to
-`System.Diagnostics.Trace` as before. Log entries name the ViewModel type,
-member, route and exception type. They carry the exception itself only where
-a reply may carry its detail (see above), because its message can contain
-application data.
+takes it as `loggerFactory`. Without a factory, each entry is written to
+`System.Diagnostics.Trace` (`TraceError`, or `TraceWarning` for warnings) as
+its formatted message followed by the exception; a failed View mount goes to
+standard error instead.
 
-| Event ID | Name | Level | Logged when |
-| --- | --- | --- | --- |
-| 1000 | `BridgeCommandFailed` | Error | A command throws. |
-| 1001 | `BridgeSetterFailed` | Error | A property setter throws. |
-| 1002 | `BridgeFieldWriteFailed` | Error | A checked field write throws. |
-| 1003 | `BridgeOperationAdmissionFailed` | Error | An operation cannot start. |
-| 1004 | `BridgeOperationFailed` | Error | An admitted operation throws. |
-| 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes. |
-| 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. |
-| 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. |
-| 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. Without a logger this still goes to standard error. |
-| 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. |
-| 1030 | `ModelTurnFailed` | Error | A posted model-context turn throws. |
-| 1031 | `ModelTurnDropped` | Warning | Disposal drops a posted turn. |
-| 1032 | `UnhandledTurnHandlerFailed` | Error | An `UnhandledTurnException` handler throws. |
-| 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. |
-| 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. |
-| 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. |
-| 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. |
+Every entry carries the exception, in every environment: logs belong to the
+operator, whereas `BridgeDiagnostics` governs only what a Bridge reply shows
+to web content. Exception messages can contain application data, so treat log
+output accordingly. The message properties are listed per event.
 
-Events 1000-1033 use the category `Runic.Application.Views`
-(`RunicViewsTelemetry.LogCategory`), except that a `RunicModelContext` logs to
-`ILogger<RunicModelContext>`. Event 2000 uses `Runic.Application.Desktop`.
-Events 3000-3001 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
+| Event ID | Name | Level | Logged when | Properties |
+| --- | --- | --- | --- | --- |
+| 1000 | `BridgeCommandFailed` | Error | A command throws. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1001 | `BridgeSetterFailed` | Error | A property setter throws. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1002 | `BridgeFieldWriteFailed` | Error | A checked field write throws. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1003 | `BridgeOperationAdmissionFailed` | Error | Admitting an operation throws. | `Model`, `Member`, `Route`, `ErrorType` |
+| 1004 | `BridgeOperationFailed` | Error | An admitted operation throws. | `Member`, `ErrorType` |
+| 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes. | `ErrorType` |
+| 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. | `Model`, `Route`, `ErrorType` |
+| 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. | `Model`, `Route`, `ErrorType` |
+| 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
+| 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
+| 1030 | `ModelTurnFailed` | Error | A posted model-context turn throws. | `ErrorType` |
+| 1031 | `ModelTurnDropped` | Warning | Disposal drops a posted turn. | `ErrorType` |
+| 1032 | `UnhandledTurnHandlerFailed` | Error | An `UnhandledTurnException` handler throws. | `ErrorType` |
+| 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. | `ErrorType` |
+| 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
+| 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
+| 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |
+
+`Model` is the ViewModel type name, `Member` the command or property, and
+`Route` the Bridge route (a content presentation's route is per instance, such
+as `content12`).
+
+Events 1000-1021 use the category `Runic.Application.Views`
+(`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
+`RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
+`WindowContentSession` with a logger factory created it, and otherwise the
+`Trace` output. Event 2000 uses `Runic.Application.Desktop`. Events 3000-3001
+use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`
 named `Runic.Application.Views` (`RunicViewsTelemetry.ActivitySourceName` and
@@ -311,9 +321,11 @@ exception types, never arguments or state.
 
 Spans are named `<kind> <Model>.<Member>` and have the tags
 `runic.bridge.kind`, `runic.bridge.model`, `runic.bridge.member`,
-`runic.bridge.route` and `runic.bridge.outcome` (`ok`, `rejected`,
-`cancelled`, `failed` or `disconnected`). A failed span has the status `Error`
-and `error.type`.
+`runic.bridge.route` and `runic.bridge.outcome`. The outcome is `ok`,
+`rejected`, `cancelled`, `failed` or `disconnected`. An admission can also be
+`unavailable`, `capacity`, `duplicate` or `expired`, and an operation whose
+result could not be delivered is `delivery_failed`. A failed span has the
+status `Error` and `error.type`.
 
 | Instrument | Type | Unit | Tags |
 | --- | --- | --- | --- |
@@ -324,11 +336,12 @@ and `error.type`.
 | `runic.bridge.snapshot.size` | Histogram | `By` | model, frame |
 | `runic.bridge.snapshot.delivery.duration` | Histogram | `s` | model, frame |
 | `runic.bridge.snapshot.recoveries` | Counter | `{snapshot}` | model |
-| `runic.bridge.snapshot.queue.depth` | UpDownCounter | `{frame}` | none |
+| `runic.bridge.snapshot.queue.depth` | ObservableUpDownCounter | `{frame}` | none |
 
-Route names of content presentations identify one instance, so they are span
-tags but not metric tags. The queue depth counts frames waiting for a slow
-host across all Bridges.
+Route names are span tags but not metric tags, because content routes identify
+one instance. The duration histograms advise buckets from 0.5 ms to 10 s, and
+the size histogram from 256 B to 4 MiB. The queue depth reports the frames
+waiting for slow hosts across all Bridges when it is observed.
 
 ## Incremental generation
 

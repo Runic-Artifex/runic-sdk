@@ -44,8 +44,11 @@ internal static class TelemetryTests
         using var bridge = new FailingBridge(transport, model, content);
 
         using var reply = JsonDocument.Parse(transport.Call("failingThrow"));
-        Require(reply.RootElement.GetProperty("error").GetProperty("kind").GetString() == "failed",
-            $"The command did not fail: {reply.RootElement}");
+        var error = reply.RootElement.GetProperty("error");
+        Require(error.GetProperty("kind").GetString() == "failed", $"The command did not fail: {reply.RootElement}");
+        // D-12: the reply follows D-1, but the operator's log always has the exception.
+        Require(error.TryGetProperty("detail", out _) == development,
+            $"The reply detail did not follow BridgeDiagnostics: {reply.RootElement}");
 
         var entry = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1000)
             ?? throw new InvalidOperationException($"No BridgeCommandFailed entry was logged: {string.Join(", ", logs.Entries.Select(e => e.EventId))}");
@@ -57,10 +60,8 @@ internal static class TelemetryTests
             $"The entry was not structured: {string.Join(", ", entry.State)}");
         Require(!entry.Message.Contains("customer-secret", StringComparison.Ordinal),
             $"The log message leaked the exception message: {entry.Message}");
-        if (development)
-            Require(entry.Exception is InvalidOperationException, "A development entry did not carry its exception.");
-        else
-            Require(entry.Exception is null, "A production entry carried exception detail.");
+        Require(entry.Exception is InvalidOperationException { Message: "Disk full for customer-secret." },
+            "The entry did not carry its exception.");
 
         var activity = telemetry.Activities.SingleOrDefault(activity => activity.OperationName == "runic.bridge.command")
             ?? throw new InvalidOperationException("No runic.bridge.command activity was recorded.");
@@ -96,7 +97,7 @@ internal static class TelemetryTests
 
         var entry = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1004)
             ?? throw new InvalidOperationException("No BridgeOperationFailed entry was logged.");
-        Require(entry.State["Member"] as string == "FailAsync" && entry.Exception is null,
+        Require(entry.State["Member"] as string == "FailAsync" && entry.Exception is InvalidOperationException,
             $"The operation entry was wrong: {string.Join(", ", entry.State)}");
         Require(telemetry.Activities.Any(activity => activity.OperationName == "runic.bridge.operation.start"
             && activity.GetTagItem("runic.bridge.outcome") as string == "ok"),
@@ -104,6 +105,11 @@ internal static class TelemetryTests
         Require(telemetry.Activities.Any(activity => activity.OperationName == "runic.bridge.operation"
             && activity.Status == ActivityStatusCode.Error),
             "The failed operation span was not recorded.");
+
+        using var duplicate = JsonDocument.Parse(transport.Call("failingStartFailAsync", new(StringValue: "telemetry-failure")));
+        Require(telemetry.Activities.Any(activity => activity.OperationName == "runic.bridge.operation.start"
+            && activity.GetTagItem("runic.bridge.outcome") as string != "ok"),
+            $"A repeated admission was reported as ok: {duplicate.RootElement}");
     }
 
     private static async Task SnapshotFramesAreMeasuredAsync()
@@ -123,6 +129,10 @@ internal static class TelemetryTests
         Require(telemetry.Count("runic.bridge.snapshot.delivery.duration") >= 1, "The delivery duration was not recorded.");
         Require(telemetry.Sum("runic.bridge.calls", ("runic.bridge.kind", "set"), ("runic.bridge.outcome", "ok")) == 1,
             "The setter call was not counted.");
+        telemetry.Observe();
+        Require(telemetry.Count("runic.bridge.snapshot.queue.depth") == 1
+            && telemetry.Sum("runic.bridge.snapshot.queue.depth") >= 0,
+            "A listener could not observe the delivery queue depth.");
     }
 
     private static void ModelContextLogsUnhandledTurns()
@@ -136,7 +146,7 @@ internal static class TelemetryTests
         context.DisposeAsync().AsTask().GetAwaiter().GetResult();
         var entry = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1030)
             ?? throw new InvalidOperationException("No ModelTurnFailed entry was logged.");
-        Require(entry.Category == typeof(RunicModelContext).FullName && entry.Exception is null,
+        Require(entry.Category == typeof(RunicModelContext).FullName && entry.Exception is InvalidOperationException,
             $"The model context entry was wrong: {entry.Category}");
     }
 
@@ -232,6 +242,8 @@ internal static class TelemetryTests
 
         public double Sum(string instrument, params (string Key, string? Value)[] tags) =>
             Matching(instrument, tags).Sum(measurement => measurement.Value);
+
+        public void Observe() => _meters.RecordObservableInstruments();
 
         public int Count(string instrument) => Matching(instrument, []).Count();
 

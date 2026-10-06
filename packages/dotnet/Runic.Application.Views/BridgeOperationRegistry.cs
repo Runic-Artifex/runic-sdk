@@ -260,7 +260,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             terminal = BridgeOperationStatusKind.Failed;
             // The bounded message is the wire contract. Exception detail joins
             // it only when BridgeDiagnostics allows local failure detail.
-            ViewsLog.OperationFailed(_logger, BridgeTelemetry.LoggedException(error), entry.Request?.Member ?? "(unnamed)", BridgeTelemetry.ErrorType(error));
+            ViewsLog.OperationFailed(_logger, error, entry.Request?.Member ?? "(unnamed)", BridgeTelemetry.ErrorType(error));
             failure = "The operation failed.";
             failureDetail = BridgeDiagnostics.Capture(error);
         }
@@ -467,7 +467,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             // User cancellation callbacks must not stop host shutdown. The
             // linked operation token was still signalled; terminal work is
             // observed through each entry's task.
-            ViewsLog.OperationCancellationCallbackFailed(_logger, BridgeTelemetry.LoggedException(error), BridgeTelemetry.ErrorType(error));
+            ViewsLog.OperationCancellationCallbackFailed(_logger, error, BridgeTelemetry.ErrorType(error));
         }
     }
 

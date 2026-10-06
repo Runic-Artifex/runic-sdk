@@ -59,8 +59,8 @@ internal sealed class WindowCloseController : IDisposable
         }
         catch (Exception error)
         {
-            if (_logger is null) Trace.TraceError("A window close cancellation callback failed.");
-            else DesktopLog.CloseCancellationCallbackFailed(_logger, DesktopLog.ErrorType(error));
+            if (_logger is null) Trace.TraceError($"A window close cancellation callback failed: {error}");
+            else DesktopLog.CloseCancellationCallbackFailed(_logger, error, DesktopLog.ErrorType(error));
         }
         finally
         {
@@ -88,8 +88,8 @@ internal sealed class WindowCloseController : IDisposable
         catch (Exception error)
         {
             // A failed prompt must never become implicit permission to discard application state.
-            if (_logger is null) Trace.TraceError("Window close confirmation failed; the window was kept open.");
-            else DesktopLog.CloseConfirmationFailed(_logger, DesktopLog.ErrorType(error));
+            if (_logger is null) Trace.TraceError($"Window close confirmation failed; the window was kept open: {error}");
+            else DesktopLog.CloseConfirmationFailed(_logger, error, DesktopLog.ErrorType(error));
             return false;
         }
     }

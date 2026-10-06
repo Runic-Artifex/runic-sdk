@@ -456,7 +456,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.SetterFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, property.Name, _name, BridgeTelemetry.ErrorType(error));
+                ViewsLog.SetterFailed(_logger, error, ModelName, property.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeTerminal(new("failed", $"Could not update {property.Name}.", BridgeDiagnostics.Capture(error)));
             }
         }
@@ -504,7 +504,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.FieldWriteFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, property.Descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
+                ViewsLog.FieldWriteFailed(_logger, error, ModelName, property.Descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}.", BridgeDiagnostics.Capture(error)));
             }
         }
@@ -587,7 +587,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.CommandFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
+                ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeTerminal(new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(error)));
             }
         }
@@ -641,7 +641,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         catch (Exception error)
         {
             call.Complete(BridgeCallOutcome.Failed, error);
-            ViewsLog.CommandFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
+            ViewsLog.CommandFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
             var detail = BridgeDiagnostics.Capture(error);
             return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
         }
@@ -731,7 +731,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                         return InvokeCommandAsync(descriptor, argument, cancellation);
                     }));
                 var reply = BridgeOperationRouter.EncodeAdmission(admission);
-                call.Complete(BridgeCallOutcome.Ok);
+                call.Complete(BridgeCallOutcome.Of(admission.Kind, admission.Reason));
                 return reply;
             }
             catch (OperationCanceledException)
@@ -747,7 +747,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error)
             {
                 call.Complete(BridgeCallOutcome.Failed, error);
-                ViewsLog.OperationAdmissionFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
+                ViewsLog.OperationAdmissionFailed(_logger, error, ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeDiagnostics.Capture(error));
             }
         }
@@ -762,7 +762,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         try
         {
             var result = await run().ConfigureAwait(false);
-            call.Complete(BridgeCallOutcome.Ok);
+            call.Complete(result.DeliveryFailure is null ? BridgeCallOutcome.Ok : BridgeCallOutcome.DeliveryFailed);
             return result;
         }
         catch (OperationCanceledException)

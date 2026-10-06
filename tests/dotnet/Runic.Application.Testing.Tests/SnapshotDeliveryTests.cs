@@ -20,7 +20,7 @@ internal static class SnapshotDeliveryTests
             throw new InvalidOperationException("A native delivery callback could not read the model from outside its turn.");
 
         using var slow = new SlowTransport();
-        using var delivery = new BridgeSnapshotDelivery(slow, "rows", BridgeModelTurn.For(new Model()));
+        using var delivery = new BridgeSnapshotDelivery(slow, "rows", BridgeModelTurn.For(new Model()), nameof(Model));
         try
         {
             if (!delivery.EnqueueDelta("first")) throw new InvalidOperationException("The first delta was rejected.");

@@ -137,7 +137,7 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IDisposable
             catch (Exception error)
             {
                 if (_logger is null) Trace.TraceError($"Bridge snapshot delivery for {name} failed: {error}");
-                else DesktopLog.SnapshotDeliveryFailed(_logger, IncludesFailureDetail() ? error : null, name,
+                else DesktopLog.SnapshotDeliveryFailed(_logger, error, name,
                     error.GetType().FullName ?? error.GetType().Name);
             }
 
@@ -152,15 +152,6 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IDisposable
                 delivery.Pending = null;
             }
         }
-    }
-
-    // Exception detail joins a log entry only where it may join a Bridge reply (D-1).
-    private static bool IncludesFailureDetail()
-    {
-        if (BridgeDiagnostics.IncludeFailureDetail is { } configured) return configured;
-        var environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
-        if (string.IsNullOrEmpty(environment)) environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-        return string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase);
     }
 
     private void Remove(Registration registration)

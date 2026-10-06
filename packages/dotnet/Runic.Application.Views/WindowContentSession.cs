@@ -1051,7 +1051,7 @@ public sealed class WindowContentSession : IDisposable
                 if (release is { } value) CompleteRelease(value);
                 BridgeTelemetry.RecordFailure("mount", null, null, exception);
                 if (_session.HasLogger)
-                    ViewsLog.MountFailed(_session.Logger, BridgeTelemetry.LoggedException(exception), _route, BridgeTelemetry.ErrorType(exception));
+                    ViewsLog.MountFailed(_session.Logger, exception, _route, BridgeTelemetry.ErrorType(exception));
                 else Console.Error.WriteLine($"Runic View mount failed: {exception}");
                 throw;
             }
@@ -1155,7 +1155,7 @@ public sealed class WindowContentSession : IDisposable
                             lock (_gate) release = ReleaseMountCore(token, "The browser presentation could not be mounted.");
                             if (release is { } value) CompleteRelease(value);
                             BridgeTelemetry.RecordFailure("mount", null, null, exception);
-                            ViewsLog.RemountFailed(_session.Logger, BridgeTelemetry.LoggedException(exception), _route, BridgeTelemetry.ErrorType(exception));
+                            ViewsLog.RemountFailed(_session.Logger, exception, _route, BridgeTelemetry.ErrorType(exception));
                         }
                     }
                 });

@@ -14,13 +14,12 @@ namespace Runic.Application.Views;
 // A recovery state is captured at once (Enqueue) so frames can queue behind it;
 // if one cannot, the queued state reverts to a request.
 internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn,
-    Func<string?> captureState, string? model = null, ILogger? logger = null) : IDisposable
+    Func<string?> captureState, string model, ILogger? logger = null) : IDisposable
 {
     private const int MaximumPendingFrames = 64;
     private const int MaximumPendingLength = 1024 * 1024;
     private readonly object _gate = new();
     private readonly Queue<(string Frame, bool State)> _pending = new();
-    private string Model => model ?? route;
     private readonly ILogger _logger = logger ?? TraceFallbackLogger.Instance;
     private int _pendingLength;
     private bool _stateRequested;
@@ -28,8 +27,8 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
     private bool _running;
     private bool _disposed;
 
-    public BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn)
-        : this(transport, route, modelTurn, static () => null)
+    public BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn, string model)
+        : this(transport, route, modelTurn, static () => null, model)
     {
     }
 
@@ -57,7 +56,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             if (_disposed) return;
             ClearPending();
             _pending.Enqueue((snapshot, true));
-            BridgeTelemetry.DeliveryQueueDepth.Add(1);
+            BridgeTelemetry.AddQueuedFrames(1);
             _pendingLength = snapshot.Length;
             _stateQueued = true;
             Start();
@@ -74,7 +73,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             if (_stateRequested || _pending.Count >= MaximumPendingFrames
                 || _pendingLength + delta.Length > MaximumPendingLength) return false;
             _pending.Enqueue((delta, false));
-            BridgeTelemetry.DeliveryQueueDepth.Add(1);
+            BridgeTelemetry.AddQueuedFrames(1);
             _pendingLength += delta.Length;
             Start();
             return true;
@@ -95,7 +94,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
 
     private void ClearPending()
     {
-        if (_pending.Count != 0) BridgeTelemetry.DeliveryQueueDepth.Add(-_pending.Count);
+        if (_pending.Count != 0) BridgeTelemetry.AddQueuedFrames(-_pending.Count);
         _pending.Clear();
         _pendingLength = 0;
         _stateRequested = false;
@@ -145,8 +144,8 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 // There is no PropertyChanged raiser to report to here. The
                 // producer still requires a full state, so its next change
                 // requests another capture.
-                BridgeTelemetry.RecordFailure("snapshot.capture", Model, null, error);
-                ViewsLog.SnapshotCaptureFailed(_logger, BridgeTelemetry.LoggedException(error), Model, route, BridgeTelemetry.ErrorType(error));
+                BridgeTelemetry.RecordFailure("snapshot.capture", model, null, error);
+                ViewsLog.SnapshotCaptureFailed(_logger, error, model, route, BridgeTelemetry.ErrorType(error));
             }
             var state = capture;
             if (!capture)
@@ -154,7 +153,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 {
                     if (_disposed || _pending.Count == 0) continue;
                     (snapshot, state) = _pending.Dequeue();
-                    BridgeTelemetry.DeliveryQueueDepth.Add(-1);
+                    BridgeTelemetry.AddQueuedFrames(-1);
                     _pendingLength -= snapshot.Length;
                     _stateQueued = false;
                 }
@@ -165,12 +164,12 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 if (transport is IAsyncBridgeTransport asynchronous)
                     await asynchronous.PublishAsync(route, snapshot).ConfigureAwait(false);
                 else transport.Publish(route, snapshot);
-                BridgeTelemetry.RecordFrame(Model, state ? "state" : "delta", snapshot, timestamp);
+                BridgeTelemetry.RecordFrame(model, state ? "state" : "delta", snapshot, timestamp);
             }
             catch (Exception error)
             {
-                BridgeTelemetry.RecordFailure("snapshot.delivery", Model, null, error);
-                ViewsLog.SnapshotDeliveryFailed(_logger, BridgeTelemetry.LoggedException(error), Model, route, BridgeTelemetry.ErrorType(error));
+                BridgeTelemetry.RecordFailure("snapshot.delivery", model, null, error);
+                ViewsLog.SnapshotDeliveryFailed(_logger, error, model, route, BridgeTelemetry.ErrorType(error));
             }
         }
     }

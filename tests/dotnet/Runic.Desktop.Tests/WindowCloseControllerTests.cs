@@ -92,7 +92,7 @@ public sealed class WindowCloseControllerTests
     }
 
     [Fact]
-    public async Task FailedConfirmationIsLoggedWithoutItsMessage()
+    public async Task FailedConfirmationIsLoggedWithItsException()
     {
         var logger = new CapturingLogger();
         using var controller = new WindowCloseController(
@@ -104,7 +104,7 @@ public sealed class WindowCloseControllerTests
         Assert.Equal(LogLevel.Error, entry.Level);
         Assert.Contains(typeof(InvalidOperationException).FullName!, entry.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("customer-secret", entry.Message, StringComparison.Ordinal);
-        Assert.Null(entry.Exception);
+        Assert.IsType<InvalidOperationException>(entry.Exception);
     }
 
     private sealed class CapturingLogger : ILogger

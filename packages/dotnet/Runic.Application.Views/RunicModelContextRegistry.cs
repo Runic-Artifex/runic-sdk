@@ -228,7 +228,7 @@ public sealed class RunicModelContextRegistry
             // itself to leave the turn.
             if (registration.Context.IsExecuting)
             {
-                _ = ObserveReleaseAsync(release);
+                _ = ObserveReleaseAsync(release, RunicModelContext.LoggerOf(registration.Context));
                 return;
             }
             release.AsTask().GetAwaiter().GetResult();
@@ -240,11 +240,11 @@ public sealed class RunicModelContextRegistry
             return owner.ReleaseAsync(registration, models);
         }
 
-        private static async Task ObserveReleaseAsync(ValueTask release)
+        private static async Task ObserveReleaseAsync(ValueTask release, Microsoft.Extensions.Logging.ILogger logger)
         {
             try { await release.ConfigureAwait(false); }
             catch (Exception error)
-        { ViewsLog.ModelContextReleaseFailed(TraceFallbackLogger.Instance, BridgeTelemetry.LoggedException(error), BridgeTelemetry.ErrorType(error)); }
+            { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
         }
     }
 }

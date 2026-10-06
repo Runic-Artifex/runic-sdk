@@ -91,6 +91,10 @@ public sealed class RunicModelContext : IRunicModelContext
     private bool _disposed;
     private readonly ILogger _logger;
 
+    // The logger of a RunicModelContext, or the Trace fallback for another context.
+    internal static ILogger LoggerOf(IRunicModelContext context) =>
+        (context as RunicModelContext)?._logger ?? TraceFallbackLogger.Instance;
+
     /// <summary>Creates a model context that writes unhandled turn failures to <see cref="System.Diagnostics.Trace"/>.</summary>
     public RunicModelContext() : this(null)
     {
@@ -257,10 +261,10 @@ public sealed class RunicModelContext : IRunicModelContext
         }
         catch (Exception reportError)
         {
-            ViewsLog.UnhandledTurnHandlerFailed(_logger, BridgeTelemetry.LoggedException(reportError), BridgeTelemetry.ErrorType(reportError));
+            ViewsLog.UnhandledTurnHandlerFailed(_logger, reportError, BridgeTelemetry.ErrorType(reportError));
         }
-        if (dropped) ViewsLog.ModelTurnDropped(_logger, null, BridgeTelemetry.ErrorType(error));
-        else ViewsLog.ModelTurnFailed(_logger, BridgeTelemetry.LoggedException(error), BridgeTelemetry.ErrorType(error));
+        if (dropped) ViewsLog.ModelTurnDropped(_logger, error, BridgeTelemetry.ErrorType(error));
+        else ViewsLog.ModelTurnFailed(_logger, error, BridgeTelemetry.ErrorType(error));
     }
 
     // A posted turn has no completion to fault. Dropping it at shutdown is
@@ -396,16 +400,16 @@ internal static class RunicModelContextDisposal
         if (shutdown.IsCompletedSuccessfully) return;
         if (context.IsExecuting)
         {
-            _ = ObserveAsync(shutdown);
+            _ = ObserveAsync(shutdown, RunicModelContext.LoggerOf(context));
             return;
         }
         shutdown.AsTask().GetAwaiter().GetResult();
     }
 
-    private static async Task ObserveAsync(ValueTask shutdown)
+    private static async Task ObserveAsync(ValueTask shutdown, ILogger logger)
     {
         try { await shutdown.ConfigureAwait(false); }
         catch (Exception error)
-        { ViewsLog.ModelContextReleaseFailed(TraceFallbackLogger.Instance, BridgeTelemetry.LoggedException(error), BridgeTelemetry.ErrorType(error)); }
+        { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
     }
 }

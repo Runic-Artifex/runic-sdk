@@ -36,6 +36,13 @@ internal static class BridgeTelemetry
     internal const string FrameTag = "runic.bridge.frame";
     internal const string ErrorTypeTag = "error.type";
 
+    // 0.5 ms to 10 s: Bridge calls are interactive, but operations and slow
+    // hosts can take seconds. Declared before the histograms that use it.
+    private static readonly InstrumentAdvice<double> SecondsAdvice = new()
+    {
+        HistogramBucketBoundaries = [0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+    };
+
     internal static readonly ActivitySource Source = new(RunicViewsTelemetry.ActivitySourceName, Version());
     internal static readonly Meter Meter = new(RunicViewsTelemetry.MeterName, Version());
 
@@ -44,22 +51,30 @@ internal static class BridgeTelemetry
     internal static readonly Counter<long> Failures = Meter.CreateCounter<long>(
         "runic.bridge.failures", "{failure}", "Bridge calls, snapshot captures and deliveries and View mounts that failed.");
     internal static readonly Histogram<double> CallDuration = Meter.CreateHistogram<double>(
-        "runic.bridge.call.duration", "s", "Duration of Bridge commands, property writes and operations.");
+        "runic.bridge.call.duration", "s", "Duration of Bridge commands, property writes and operations.",
+        advice: SecondsAdvice);
     internal static readonly Counter<long> SnapshotFrames = Meter.CreateCounter<long>(
         "runic.bridge.snapshot.frames", "{frame}", "State and collection delta frames delivered to a host.");
     internal static readonly Histogram<long> SnapshotSize = Meter.CreateHistogram<long>(
-        "runic.bridge.snapshot.size", "By", "UTF-8 size of delivered state and delta frames.");
+        "runic.bridge.snapshot.size", "By", "UTF-8 size of delivered state and delta frames.",
+        advice: new InstrumentAdvice<long>
+        {
+            // 256 B to 4 MiB in powers of four.
+            HistogramBucketBoundaries = [256, 1024, 4096, 16_384, 65_536, 262_144, 1_048_576, 4_194_304],
+        });
     internal static readonly Histogram<double> DeliveryDuration = Meter.CreateHistogram<double>(
-        "runic.bridge.snapshot.delivery.duration", "s", "Time a host took to accept one delivered frame.");
+        "runic.bridge.snapshot.delivery.duration", "s", "Time a host took to accept one delivered frame.",
+        advice: SecondsAdvice);
     internal static readonly Counter<long> RecoverySnapshots = Meter.CreateCounter<long>(
         "runic.bridge.snapshot.recoveries", "{snapshot}", "Full states sent because a slow host fell behind its delta frames.");
-    internal static readonly UpDownCounter<long> DeliveryQueueDepth = Meter.CreateUpDownCounter<long>(
-        "runic.bridge.snapshot.queue.depth", "{frame}", "Frames waiting in snapshot delivery queues.");
+    // Observed rather than added, so a listener that subscribes late reads the
+    // current depth instead of the changes after it subscribed.
+    private static long _queuedFrames;
+    internal static readonly ObservableUpDownCounter<long> DeliveryQueueDepth = Meter.CreateObservableUpDownCounter(
+        "runic.bridge.snapshot.queue.depth", static () => Interlocked.Read(ref _queuedFrames), "{frame}",
+        "Frames waiting in snapshot delivery queues.");
 
-    // Exception detail can contain paths and application data; it joins a log
-    // entry only where it may join a reply (BridgeDiagnostics, D-1).
-    internal static Exception? LoggedException(Exception error) =>
-        BridgeDiagnostics.IncludesFailureDetail ? error : null;
+    internal static void AddQueuedFrames(long change) => Interlocked.Add(ref _queuedFrames, change);
 
     internal static string ErrorType(Exception error) => error.GetType().FullName ?? error.GetType().Name;
 
@@ -102,6 +117,25 @@ internal static class BridgeCallOutcome
     internal const string Cancelled = "cancelled";
     internal const string Failed = "failed";
     internal const string Disconnected = "disconnected";
+    internal const string Unavailable = "unavailable";
+    internal const string Capacity = "capacity";
+    internal const string Duplicate = "duplicate";
+    internal const string Expired = "expired";
+    internal const string DeliveryFailed = "delivery_failed";
+
+    // An operation admission names why it did not start; only Accepted is ok.
+    internal static string Of(BridgeOperationAdmissionKind kind, string? reason) => kind switch
+    {
+        BridgeOperationAdmissionKind.Accepted => Ok,
+        BridgeOperationAdmissionKind.Duplicate => Duplicate,
+        BridgeOperationAdmissionKind.Expired => Expired,
+        _ => reason switch
+        {
+            "unavailable" => Unavailable,
+            "capacity" or "stream-capacity" => Capacity,
+            _ => Rejected,
+        },
+    };
 }
 
 // One traced and measured Bridge call. Start before the work and Complete it
