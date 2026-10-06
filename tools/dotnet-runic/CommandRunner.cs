@@ -38,7 +38,8 @@ internal static class CommandRunner
         {
             throw new DevUsageException(
                 "RAPPDEV1004",
-                $"Could not start '{executable}' in '{workingDirectory}'. Ensure it is installed and available on PATH.");
+                $"Could not start '{DescribeProgram(executable, arguments)}'. Ensure it is installed and available on PATH.",
+                $"Executable: {executable}\nWorking directory: {workingDirectory}\n");
         }
 
         // Captured commands are non-interactive: a prompt (npx install, git credentials) must see
@@ -86,13 +87,16 @@ internal static class CommandRunner
             : program;
     }
 
-    /// <summary>Describes a failed child process with its program and working directory.</summary>
+    /// <summary>Describes a failed child process without paths, for faults.</summary>
     internal static string DescribeFailure(
         string executable,
         IReadOnlyList<string> arguments,
-        string workingDirectory,
         int exitCode) =>
-        $"'{DescribeProgram(executable, arguments)}' exited with code {exitCode} in '{workingDirectory}'.";
+        $"'{DescribeProgram(executable, arguments)}' exited with code {exitCode}.";
+
+    /// <summary>Local-only detail: the working directory, then an optional hint.</summary>
+    internal static string LocalDetail(string workingDirectory, string? hint = null) =>
+        $"Working directory: {workingDirectory}\n" + (hint is null ? string.Empty : hint + "\n");
 
     /// <summary>Points to doctor for the selected project.</summary>
     internal static string DoctorHint(string projectPath) =>

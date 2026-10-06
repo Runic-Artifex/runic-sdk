@@ -81,8 +81,9 @@ internal sealed class HostProcessController : IAsyncDisposable
                 Console.Error.Write(build.StandardOutput);
                 throw new DevUsageException("RAPPDEV1006",
                     "The Window rebuild failed: " +
-                    CommandRunner.DescribeFailure(_dotnetHost, CreateRestartBuildArguments(_configuration, _options), _configuration.ProjectDirectory, build.ExitCode) +
-                    " The running application has been retained.");
+                    CommandRunner.DescribeFailure(_dotnetHost, CreateRestartBuildArguments(_configuration, _options), build.ExitCode) +
+                    " The running application has been retained.",
+                    CommandRunner.LocalDetail(_configuration.ProjectDirectory));
             }
             if (_host is not null)
             {

@@ -23,7 +23,9 @@ internal static class Program
     private const string ProjectDescription =
         "The project file, or a directory with one .csproj. Defaults to the current directory.";
 
-    internal static async Task<int> Main(string[] arguments)
+    internal static Task<int> Main(string[] arguments) => RunAsync(arguments);
+
+    internal static async Task<int> RunAsync(string[] arguments, ICommandConsole? console = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         return await new CommandApp(GeneratedCommandCatalog.Create())
@@ -32,7 +34,7 @@ internal static class Program
             CompletionExecutableName = "dotnet-runic",
             Version = Version,
             HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
-            Console = new SpectreCommandConsole(),
+            Console = console ?? new SpectreCommandConsole(),
             ExitCodePolicy = ToolExitCodePolicy.Instance,
         }.RunAsync(arguments).ConfigureAwait(false);
     }
@@ -90,31 +92,19 @@ internal static class Program
         CommandExecutionContext context,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
-        [Option("--configuration", "-c", Description = "The build configuration to evaluate.")] string configuration = "Debug")
+        [Option("--configuration", "-c", Description = "The build configuration to evaluate.")] string configuration = "Debug",
+        [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail for human output and never for JSON output.")] string failOn = "")
     {
         return ExecuteAsync<DoctorCommandResult>(context, stream: false, async output =>
         {
+            DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn, context.OutputMode);
             DoctorRun run = await DoctorApplication.InspectAsync(
                 new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration),
                 cancellationToken).ConfigureAwait(false);
             DoctorApplication.WriteReport(run.Project, run.Report);
-            DoctorCommandResult result = DoctorCommandResult.Create(run.Project, run.Report, output.ToString().TrimEnd());
-            // A runic.commandline/1 envelope carries a payload only on success,
-            // and JSON callers need the checks most when one fails. JSON output
-            // therefore reports every completed inspection and states its health
-            // in the payload; human output keeps the failing exit code.
-            if (context.OutputMode == CommandOutputMode.Json)
-            {
-                return CommandOutcome.Success(result, DoctorCommandResult.CreateDiagnostics(run.Report, context.Path));
-            }
-
-            return run.Report.IsHealthy
-                ? CommandOutcome.Success(result)
-                : CommandOutcome.Failure<DoctorCommandResult>(
-                    CommandExitCategory.CommandFailure,
-                    new CommandFault("RAPPCLI1000", "The doctor command found failing checks."),
-                    diagnostics: [],
-                    humanOutput: BoundedHumanOutput(output));
+            return DoctorOutcome.Create(
+                run, context.OutputMode, threshold, context.Path,
+                output.ToString().TrimEnd(), BoundedHumanOutput(output));
         });
     }
 
@@ -175,11 +165,11 @@ internal static class Program
         }
         catch (DevUsageException exception)
         {
-            return Failure<T>(CommandExitCategory.Usage, exception.Code, exception.Message, BoundedHumanOutput(output));
+            return Failure<T>(CommandExitCategory.Usage, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
         }
         catch (DevDevelopmentException exception)
         {
-            return Failure<T>(CommandExitCategory.CommandFailure, exception.Code, exception.Message, BoundedHumanOutput(output));
+            return Failure<T>(CommandExitCategory.CommandFailure, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
         }
         catch (System.Text.Json.JsonException)
         {
@@ -231,6 +221,9 @@ internal static class Program
             diagnostics: [],
             detail);
     }
+
+    private static string? WithDetail(string? humanOutput, string? localDetail) =>
+        string.IsNullOrEmpty(localDetail) ? humanOutput : string.Concat(humanOutput, localDetail);
 
     private static string? BoundedHumanOutput(StringWriter output)
     {

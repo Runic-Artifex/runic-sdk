@@ -89,7 +89,8 @@ internal sealed class RunningProcess : IAsyncDisposable
             process.Dispose();
             throw new DevUsageException(
                 "RAPPDEV1004",
-                $"Could not start '{executable}' in '{workingDirectory}'. Ensure it is installed and available on PATH, then run 'dotnet runic doctor'.");
+                $"Could not start '{CommandRunner.DescribeProgram(executable, arguments)}'. Ensure it is installed and available on PATH.",
+                $"Executable: {executable}\n" + CommandRunner.LocalDetail(workingDirectory, "Run 'dotnet runic doctor' to check prerequisites."));
         }
     }
 

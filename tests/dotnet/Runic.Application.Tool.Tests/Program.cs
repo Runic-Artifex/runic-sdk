@@ -38,6 +38,9 @@ internal static class Program
             ("--no-restore keeps MSBuild from installing frontend packages", NoRestoreSkipsFrontendInstall),
             ("child process failures name the program and directory", ChildFailuresNameProgramAndDirectory),
             ("every command option is described", EveryOptionIsDescribed),
+            ("doctor JSON reports unhealthy projects through the CLI", DoctorJsonThroughCli),
+            ("doctor --fail-on decides the exit in both modes", DoctorFailOnDecidesExit),
+            ("--no-restore requires installed frontend packages", NoRestoreRequiresInstalledPackages),
             ("development servers are inferred from the frontend", DevelopmentServersAreInferred),
             ("a development server owns the frontend build", DevelopmentServerOwnsFrontendBuild),
             ("compatibility authority includes the public Views packages", CompatibilityAuthorityIncludesViews),
@@ -438,9 +441,14 @@ internal static class Program
         IReadOnlyList<Runic.CommandLine.CommandDiagnostic> diagnostics =
             DoctorCommandResult.CreateDiagnostics(report, new Runic.CommandLine.CommandPath(["doctor"]));
         SequenceEqual(["doctor-check-failed", "doctor-check-warning"], diagnostics.Select(diagnostic => diagnostic.Kind).ToArray());
-        SequenceEqual(["lock-file", "Run npm and commit its lock file."], diagnostics[0].Arguments);
+        SequenceEqual(["RCLI8101", "RCLI8102"], diagnostics.Select(diagnostic => diagnostic.Code).ToArray());
+        SequenceEqual(["doctor.lock-file.failed", "doctor.compatibility-set.warning"],
+            diagnostics.Select(diagnostic => diagnostic.MessageKey).ToArray());
+        SequenceEqual(["lock-file"], diagnostics[0].Arguments);
         True(diagnostics.All(diagnostic => diagnostic.Severity == Runic.CommandLine.CommandDiagnosticSeverity.Warning),
             "A successful JSON envelope cannot carry error diagnostics.");
+        Equal(Runic.CommandLine.CommandDiagnosticSeverity.Error,
+            DoctorCommandResult.CreateDiagnostics(report, new Runic.CommandLine.CommandPath(["doctor"]), DoctorStatus.Failure)[0].Severity);
     }
 
     private static void NoRestoreSkipsFrontendInstall()
@@ -464,10 +472,137 @@ internal static class Program
     private static void ChildFailuresNameProgramAndDirectory()
     {
         string failure = CommandRunner.DescribeFailure(
-            "/usr/bin/dotnet", ["build", "/work/App.csproj"], "/work", 1);
-        Equal("'dotnet build' exited with code 1 in '/work'.", failure);
+            "/usr/bin/dotnet", ["build", "/work/App.csproj"], 1);
+        Equal("'dotnet build' exited with code 1.", failure);
+        Equal("Working directory: /work\nhint\n", CommandRunner.LocalDetail("/work", "hint"));
+        try
+        {
+            CommandRunner.RunAsync("/nonexistent/runic-tool", "/tmp", ["build"], CancellationToken.None).GetAwaiter().GetResult();
+            throw new InvalidOperationException("A missing executable started.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1004", error.Code);
+            DoesNotContain(error.Message, "/");
+            Contains(error.LocalDetail ?? string.Empty, "/nonexistent/runic-tool");
+        }
         Equal("npm", CommandRunner.DescribeProgram("npm", ["--version"]));
         Contains(CommandRunner.DoctorHint("/work/App.csproj"), "dotnet runic doctor --project \"/work/App.csproj\"");
+    }
+
+    private static string CreateCliDoctorProject(TestWorkspace workspace)
+    {
+        // A Desktop project without a lock file: doctor completes and reports lock-file as failing.
+        string project = workspace.Write("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RunicViewsWindowProject>true</RunicViewsWindowProject>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Runic.Application.Desktop" Version="0.6.0-preview.1" />
+              </ItemGroup>
+            </Project>
+            """);
+        workspace.Write("Frontend/package.json", """{"packageManager":"npm@10.0.0"}""");
+        return project;
+    }
+
+    private static (int ExitCode, string Output) RunCli(params string[] arguments)
+    {
+        var console = new CapturingConsole();
+        int exitCode = Runic.Application.Tool.Program.RunAsync(arguments, console).GetAwaiter().GetResult();
+        return (exitCode, console.Output);
+    }
+
+    private static void DoctorJsonThroughCli()
+    {
+        using var workspace = new TestWorkspace();
+        string project = CreateCliDoctorProject(workspace);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json");
+        Equal(0, exitCode);
+        var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult);
+        True(response.Success, "JSON doctor reports a completed inspection as a successful envelope.");
+        DoctorCommandResult payload = response.Payload!;
+        False(payload.Healthy, "A missing lock file makes the project unhealthy.");
+        Equal("desktop", payload.Host);
+        Equal("fail", payload.Checks.Single(check => check.Id == "lock-file").Status);
+        Equal("pass", payload.Checks.Single(check => check.Id == "browser").Status);
+        True(response.Diagnostics.Any(diagnostic => diagnostic.MessageKey == "doctor.lock-file.failed"),
+            "Each failing check is mirrored as a diagnostic.");
+    }
+
+    private static void DoctorFailOnDecidesExit()
+    {
+        using var workspace = new TestWorkspace();
+        string project = CreateCliDoctorProject(workspace);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "fail");
+        Equal(1, exitCode);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement root = document.RootElement;
+            False(root.GetProperty("success").GetBoolean(), "--fail-on fail fails the envelope.");
+            Equal(JsonValueKind.Null, root.GetProperty("payload").ValueKind);
+            JsonElement fault = root.GetProperty("fault");
+            Equal("RAPPCLI1009", fault.GetProperty("code").GetString());
+            Equal("fail", fault.GetProperty("details").GetProperty("lock-file").GetString());
+            JsonElement[] diagnostics = [.. root.GetProperty("diagnostics").EnumerateArray()];
+            True(diagnostics.Any(diagnostic => diagnostic.GetProperty("severity").GetString() == "error" &&
+                diagnostic.GetProperty("messageKey").GetString() == "doctor.lock-file.failed"),
+                "The failing check is an error diagnostic.");
+        }
+        Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult);
+
+        Equal(1, RunCli("doctor", "--project", project).ExitCode);
+        Equal(0, RunCli("doctor", "--project", project, "--fail-on", "never").ExitCode);
+        Equal(2, RunCli("doctor", "--project", project, "--fail-on", "sometimes").ExitCode);
+    }
+
+    private static void NoRestoreRequiresInstalledPackages()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        Write(Path.Combine(configuration.FrontendPackageDirectory, "package.json"), """{"packageManager":"npm@10.0.0"}""");
+        try
+        {
+            DevApplication.RequireInstalledFrontendPackages(configuration);
+            throw new InvalidOperationException("A missing node_modules was accepted with --no-restore.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1008", error.Code);
+            Contains(error.Message, "npm install");
+            DoesNotContain(error.Message, workspace.Root);
+        }
+        Directory.CreateDirectory(Path.Combine(configuration.FrontendPackageDirectory, "node_modules"));
+        DevApplication.RequireInstalledFrontendPackages(configuration);
+    }
+
+    private sealed class CapturingConsole : Runic.CommandLine.ICommandConsole
+    {
+        private readonly System.Text.StringBuilder _output = new();
+        internal string Output => _output.ToString();
+        public bool IsInteractive => false;
+        public bool IsInputRedirected => true;
+        public bool IsOutputRedirected => true;
+        public bool IsErrorRedirected => true;
+        public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
+        public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+        {
+            _output.Append(value.Span);
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken)
+        {
+            _output.Append(System.Text.Encoding.UTF8.GetString(value.Span));
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
     private static void EveryOptionIsDescribed()

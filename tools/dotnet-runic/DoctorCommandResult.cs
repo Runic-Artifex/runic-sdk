@@ -18,8 +18,9 @@ internal sealed record DoctorCommandResult(
     [property: JsonPropertyName("checks")] IReadOnlyList<DoctorCheckResult> Checks)
 {
     internal const string PayloadType = "runic.application.tool.doctor/1";
-    internal const string FailedCheckDiagnosticCode = "RCLI9101";
-    internal const string WarningCheckDiagnosticCode = "RCLI9102";
+    // RCLI8000-8999 is the application range of the runic.commandline/1 protocol.
+    internal const string FailedCheckDiagnosticCode = "RCLI8101";
+    internal const string WarningCheckDiagnosticCode = "RCLI8102";
 
     [JsonIgnore]
     internal string HumanOutput { get; init; } = string.Empty;
@@ -46,11 +47,16 @@ internal sealed record DoctorCommandResult(
     }
 
     /// <summary>
-    /// Mirrors failing and warning checks as envelope diagnostics. A successful
-    /// envelope cannot hold error diagnostics, so both use warning severity and
-    /// differ by code and kind; <see cref="Checks"/> stays authoritative.
+    /// Mirrors failing and warning checks as envelope diagnostics. Checks at or
+    /// above <paramref name="errorAt"/> are errors; the rest are warnings, as a
+    /// successful envelope cannot hold errors. The envelope redacts the message
+    /// and arguments of a diagnostic whose text contains a path, so the check id
+    /// is also carried in the never-redacted message key.
     /// </summary>
-    internal static IReadOnlyList<CommandDiagnostic> CreateDiagnostics(DoctorReport report, CommandPath path)
+    internal static IReadOnlyList<CommandDiagnostic> CreateDiagnostics(
+        DoctorReport report,
+        CommandPath path,
+        DoctorStatus? errorAt = null)
     {
         ArgumentNullException.ThrowIfNull(report);
         const int maximumDiagnostics = 32;
@@ -65,9 +71,12 @@ internal sealed record DoctorCommandResult(
                     check.Status == DoctorStatus.Failure ? "doctor-check-failed" : "doctor-check-warning",
                     check.Message,
                     CommandDiagnosticPhase.Execution,
-                    CommandDiagnosticSeverity.Warning,
-                    arguments: [check.Name, check.Remediation ?? string.Empty],
-                    path: path)),
+                    errorAt is { } threshold && check.Status >= threshold
+                        ? CommandDiagnosticSeverity.Error
+                        : CommandDiagnosticSeverity.Warning,
+                    arguments: [check.Name],
+                    path: path,
+                    messageKey: $"doctor.{check.Name}.{(check.Status == DoctorStatus.Failure ? "failed" : "warning")}")),
         ];
     }
 
@@ -90,6 +99,75 @@ internal sealed record DoctorCommandResult(
 }
 
 // Explicit names: the command codec does not apply context-level naming options.
+/// <summary>The status at which doctor fails.</summary>
+internal enum DoctorFailOn
+{
+    Never,
+    Fail,
+    Warn,
+}
+
+internal static class DoctorOutcome
+{
+    internal const string FaultCode = "RAPPCLI1009";
+
+    /// <summary>
+    /// Empty selects the mode default: human output fails on failing checks,
+    /// while JSON reports every completed inspection as a payload because a
+    /// failed runic.commandline/1 envelope cannot carry one.
+    /// </summary>
+    internal static DoctorFailOn ParseFailOn(string value, CommandOutputMode mode) =>
+        value switch
+        {
+            "" or null => mode == CommandOutputMode.Json ? DoctorFailOn.Never : DoctorFailOn.Fail,
+            "never" => DoctorFailOn.Never,
+            "fail" => DoctorFailOn.Fail,
+            "warn" => DoctorFailOn.Warn,
+            _ => throw new DevUsageException("RAPPCLI1010", "--fail-on must be never, fail or warn."),
+        };
+
+    internal static CommandOutcome<DoctorCommandResult> Create(
+        DoctorRun run,
+        CommandOutputMode mode,
+        DoctorFailOn failOn,
+        CommandPath path,
+        string report,
+        string? boundedHumanOutput)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        bool json = mode == CommandOutputMode.Json;
+        DoctorStatus? threshold = failOn switch
+        {
+            DoctorFailOn.Fail => DoctorStatus.Failure,
+            DoctorFailOn.Warn => DoctorStatus.Warning,
+            _ => null,
+        };
+        bool failed = threshold is { } limit && run.Report.Checks.Any(check => check.Status >= limit);
+        if (!failed)
+        {
+            DoctorCommandResult result = DoctorCommandResult.Create(run.Project, run.Report, report);
+            return json
+                ? CommandOutcome.Success(result, DoctorCommandResult.CreateDiagnostics(run.Report, path))
+                : CommandOutcome.Success(result);
+        }
+
+        const int maximumDetails = 32;
+        var details = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (DoctorCheck check in run.Report.Checks
+            .Where(static check => check.Status != DoctorStatus.Pass)
+            .OrderByDescending(static check => check.Status))
+        {
+            if (details.Count == maximumDetails) break;
+            details.TryAdd(check.Name, DoctorCommandResult.StatusName(check.Status));
+        }
+        return CommandOutcome.Failure<DoctorCommandResult>(
+            CommandExitCategory.CommandFailure,
+            new CommandFault(FaultCode, "Doctor checks failed.", details),
+            json ? DoctorCommandResult.CreateDiagnostics(run.Report, path, threshold) : [],
+            json ? null : boundedHumanOutput);
+    }
+}
+
 internal sealed record DoctorSummary(
     [property: JsonPropertyName("passed")] int Passed,
     [property: JsonPropertyName("warnings")] int Warnings,

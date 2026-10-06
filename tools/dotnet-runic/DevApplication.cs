@@ -40,6 +40,10 @@ internal static class DevApplication
         using var hangUp = PosixSignalRegistration.Create(PosixSignal.SIGHUP, stopHandler);
         try
         {
+            if (!options.Restore && configuration.NodeEnabled)
+            {
+                RequireInstalledFrontendPackages(configuration);
+            }
             if (options.Restore)
             {
                 using var phase = PhaseTimer.Start("Restoring Views Window dependencies");
@@ -188,11 +192,14 @@ internal static class DevApplication
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
                 completed == host.Completion
-                    ? $"The native host process ('{(options.WatchHost ? "dotnet watch" : "dotnet run")}') exited unexpectedly with code {exitCode} in '{configuration.ProjectDirectory}'. {CommandRunner.DoctorHint(configuration.ProjectPath)}"
+                    ? $"The native host process ('{(options.WatchHost ? "dotnet watch" : "dotnet run")}') exited unexpectedly with code {exitCode}."
                     : completed == developmentServer?.Completion
                         ? $"The {configuration.DevelopmentServerKind} development server " +
                           $"exited unexpectedly with code {exitCode}."
-                        : $"The frontend watcher exited unexpectedly with code {exitCode}.");
+                        : $"The frontend watcher exited unexpectedly with code {exitCode}.",
+                completed == host.Completion
+                    ? CommandRunner.LocalDetail(configuration.ProjectDirectory, CommandRunner.DoctorHint(configuration.ProjectPath))
+                    : null);
         }
         finally
         {
@@ -237,6 +244,28 @@ internal static class DevApplication
                 cancellationToken).ConfigureAwait(false);
         }
         phase.Complete();
+    }
+
+    /// <summary>
+    /// With --no-restore nothing installs the frontend packages, so a missing
+    /// node_modules would only surface later as a confusing build failure.
+    /// </summary>
+    internal static void RequireInstalledFrontendPackages(DevProjectConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (Directory.Exists(Path.Combine(configuration.FrontendPackageDirectory, "node_modules")) ||
+            (!string.IsNullOrWhiteSpace(configuration.WorkspaceRoot) &&
+             Directory.Exists(Path.Combine(configuration.WorkspaceRoot, "node_modules"))))
+        {
+            return;
+        }
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
+        throw new DevUsageException(
+            "RAPPDEV1008",
+            $"--no-restore needs installed frontend packages; run '{packageManager.Name} install' in the frontend directory or omit --no-restore.",
+            $"Frontend directory: {configuration.FrontendPackageDirectory}\n");
     }
 
     private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
@@ -455,7 +484,9 @@ internal static class DevApplication
         {
             throw new DevDevelopmentException(
                 code,
-                $"{message} {CommandRunner.DescribeFailure(executable, arguments, workingDirectory, result.ExitCode)} {remediation}");
+                $"{message} {CommandRunner.DescribeFailure(executable, arguments, result.ExitCode)}",
+                $"Failed program: {CommandRunner.DescribeProgram(executable, arguments)} (exit code {result.ExitCode})\n" +
+                CommandRunner.LocalDetail(workingDirectory, remediation));
         }
     }
 

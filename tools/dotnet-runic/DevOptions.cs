@@ -12,12 +12,20 @@ internal sealed record DevOptions(
     bool DryRun,
     IReadOnlyList<string> ApplicationArguments);
 
-internal sealed class DevUsageException(string code, string message) : Exception(message)
+/// <summary>A usage failure.</summary>
+/// <remarks>
+/// The message reaches the JSON fault and must not contain absolute paths.
+/// <see cref="LocalDetail"/> carries paths and hints for human output only.
+/// </remarks>
+internal sealed class DevUsageException(string code, string message, string? localDetail = null) : Exception(message)
 {
     internal string Code { get; } = code;
+    internal string? LocalDetail { get; } = localDetail;
 }
 
-internal sealed class DevDevelopmentException(string code, string message) : Exception(message)
+/// <summary>A development failure; see <see cref="DevUsageException"/> for the message rules.</summary>
+internal sealed class DevDevelopmentException(string code, string message, string? localDetail = null) : Exception(message)
 {
     internal string Code { get; } = code;
+    internal string? LocalDetail { get; } = localDetail;
 }

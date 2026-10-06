@@ -40,18 +40,36 @@ back to the platform WebView. Only browser smoke checks require Chromium.
 ### Doctor JSON output
 
 `dotnet runic doctor --output json` (or `RUNIC_COMMANDLINE_OUTPUT=json`) writes
-one `runic.commandline/1` envelope. Once the inspection runs, the envelope is
-successful (exit code 0) even when checks fail, because the envelope carries a
-payload only on success; read `payload.healthy` to decide. Human output keeps
-exit code 1 for failing checks. Errors that stop the inspection, such as a
-missing project, produce a failed envelope with a `fault` and no payload.
+one `runic.commandline/1` envelope. A `runic.commandline/1` envelope carries a
+payload only when it succeeds, so by default JSON output reports every completed
+inspection as a successful envelope (exit code 0) with the checks in the payload,
+even when checks fail; read `payload.healthy` to decide. Errors that stop the
+inspection, such as a missing project, produce a failed envelope with a `fault`
+and no payload.
+
+`--fail-on <never|fail|warn>` selects when doctor fails, with the same meaning in
+both output modes. The default is `fail` for human output and `never` for JSON
+output. When a check reaches the threshold, doctor exits with code 1. In JSON
+mode that is a failed envelope with no payload: the fault has code
+`RAPPCLI1009` and `details` mapping each non-passing check id to `fail` or
+`warn`, and the diagnostics mark the checks at the threshold as errors.
+
+Setting `RUNIC_COMMANDLINE_OUTPUT=json` therefore changes doctor's exit code:
+failing checks exit 0 unless `--fail-on` is given. Pass `--fail-on fail` in CI
+when the exit code must reflect the checks.
+
+In CI, either let the exit code decide or check the payload:
+
+```bash
+dotnet runic doctor --output json --fail-on fail > doctor.json
+dotnet runic doctor --output json | jq -e '.payload.healthy'
+```
 
 The payload type is `runic.application.tool.doctor/1`:
 
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "runic.application.tool.doctor/1",
   "type": "object",
   "additionalProperties": false,
   "required": ["project", "host", "healthy", "summary", "checks"],
@@ -87,11 +105,14 @@ The payload type is `runic.application.tool.doctor/1`:
 }
 ```
 
-The envelope's `diagnostics` repeat each failing check (code `RCLI9101`, kind
-`doctor-check-failed`) and warning (code `RCLI9102`, kind
-`doctor-check-warning`) with `arguments` `[id, remediation]`. They use warning
-severity because a successful envelope cannot hold errors, and the envelope
-redacts messages that contain paths, so `payload.checks` is authoritative.
+The envelope's `diagnostics` repeat each failing check (code `RCLI8101`, kind
+`doctor-check-failed`, message key `doctor.<id>.failed`) and each warning
+(code `RCLI8102`, kind `doctor-check-warning`, message key
+`doctor.<id>.warning`). A successful envelope cannot hold errors, so its
+diagnostics are warnings. The envelope replaces the message and drops the
+`arguments` (`[id]`) of a diagnostic whose text contains a path, but it never
+redacts the message key, which always names the check. `payload.checks` is the
+complete list.
 Check identifiers are `dotnet-sdk`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `compatibility-set`, `frontend-dev-server`,
 `vite-config`, `vite-entry` and `browser`.
