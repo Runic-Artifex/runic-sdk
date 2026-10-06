@@ -23,7 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="Runic.Desktop.PublicApi.txt" Link="Runic.Desktop.PublicApi.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/desktop/conformance/scenarios/*.json" Link="conformance/scenarios/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/desktop/conformance/vectors/*.json" Link="conformance/vectors/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../fixtures/desktop/evidence/conformance/dotnet-m6.json" Link="conformance/dotnet-m6.json" CopyToOutputDirectory="PreserveNewest" />

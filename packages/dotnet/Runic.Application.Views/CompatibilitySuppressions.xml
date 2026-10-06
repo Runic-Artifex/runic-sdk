@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.ViewModelBridge`1.#ctor(Runic.Application.Views.IBridgeTransport,`0,System.String,Runic.Application.Views.BridgeSnapshotWriter{`0},Runic.Application.Views.PropertyDescriptor{`0}[],Runic.Application.Views.CheckedPropertyDescriptor{`0}[],Runic.Application.Views.CommandDescriptor{`0}[],System.String,Runic.Application.Views.WindowContentSession,Runic.Application.Views.BridgeInteractionDescriptor{`0}[],Runic.Application.Views.BridgeDataSubscriptionMember[])</Target>
+    <Left>lib/net10.0/Runic.Application.Views.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.ViewModelBridge`1.#ctor(Runic.Application.Views.IBridgeTransport,`0,System.String,System.Action{System.Text.Json.Utf8JsonWriter,`0,System.Int64},Runic.Application.Views.PropertyDescriptor{`0}[],Runic.Application.Views.CommandDescriptor{`0}[],System.String,Runic.Application.Views.WindowContentSession,Runic.Application.Views.BridgeInteractionDescriptor{`0}[],Runic.Application.Views.BridgeDataSubscriptionMember[])</Target>
+    <Left>lib/net10.0/Runic.Application.Views.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

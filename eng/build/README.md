@@ -18,7 +18,10 @@ default; CI selects `Verification`, which treats warnings as errors and enables
 NuGet audit and trim/AOT analyzers for shipping projects. A shipping project sets
 `Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible;
 build-time tools such as BridgeCodegen leave it unset. Package versions come
-from `eng/Versions.props`. Desktop keeps its separate policy.
+from `eng/Versions.props`. Desktop keeps its separate policy and sets
+`IsAotCompatible` and `IsTrimmable` itself. `bun eng/generate-shipping-projects.mjs --check`
+fails when a listed shipping project lacks its policy's flag; template packages,
+which contain no assemblies, are exempt.
 
 Props are imported before a project's property groups. Matching targets are imported
 after its items. Root `Directory.Build.targets` applies Desktop's host profile
@@ -31,5 +34,21 @@ The project inventory in `shipping-projects.props` is generated from
 `eng/workspace.json`; regenerate it with `bun eng/generate-shipping-projects.mjs`
 when that inventory changes. External dependency ranges are preserved. Explicit
 internal `PackageReference` entries must also use exact `[version]` ranges.
+
+## Public API
+
+`public-api.targets` applies to every shipping library (tools and template packages
+expose no referenceable assemblies). It references
+`Microsoft.CodeAnalysis.PublicApiAnalyzers`, which compares the compiled public
+surface with the project's `PublicAPI.Shipped.txt` and `PublicAPI.Unshipped.txt`.
+These files are analyzer inputs and are not packed. A new or changed public member
+without a matching entry reports RS0016, a removed one RS0017; `Verification` builds
+treat both as errors. Add new API to `PublicAPI.Unshipped.txt` (the IDE code fix does
+this) and mark removals with `*REMOVED*` there.
+
+Packing also runs package validation against `RunicPackageValidationBaselineVersion`
+from `eng/Versions.props`, the last published release. An intentional binary break
+is recorded in the project's `CompatibilitySuppressions.xml`; regenerate it with
+`dotnet pack <project> -p:ApiCompatGenerateSuppressionFile=true`.
 
 Use root commands and the artifact/component inventory in `eng/workspace.json`.
