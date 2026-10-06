@@ -171,11 +171,13 @@ public static class DesktopBridgeWindowExtensions
         ArgumentNullException.ThrowIfNull(surfaceOptions);
         ArgumentNullException.ThrowIfNull(createWindow);
         // Fail before a surface or presentation exists, naming the missing registration.
-        var registrations = GetRegistrationDiagnostics<TViewModel>(services);
-        if (registrations.Count > 0)
+        var registrationErrors = GetRegistrationDiagnostics<TViewModel>(services)
+            .Where(static diagnostic => diagnostic.Severity == DesktopDiagnosticSeverity.Error)
+            .ToList();
+        if (registrationErrors.Count > 0)
         {
-            LogDiagnostics(services, registrations);
-            throw new DesktopConfigurationException(registrations);
+            LogDiagnostics(services, registrationErrors);
+            throw new DesktopConfigurationException(registrationErrors);
         }
 
         var scope = services.CreateAsyncScope();
@@ -241,7 +243,9 @@ public static class DesktopBridgeWindowExtensions
     /// <paramref name="windowOptions"/>.
     /// </summary>
     /// <remarks>
-    /// The result combines the ViewModel and generated Bridge registrations with
+    /// The result combines the generated Bridge registration (an error when missing) and the ViewModel
+    /// registration (a warning when the container does not confirm it through
+    /// <see cref="IServiceProviderIsService"/>; containers without that service are not checked) with
     /// <see cref="DesktopHost.Validate"/>. Registration failures are logged through the service provider's
     /// <see cref="ILoggerFactory"/>. Call <see cref="DesktopValidationResult.ThrowIfInvalid"/> to stop at startup.
     /// </remarks>
@@ -260,7 +264,9 @@ public static class DesktopBridgeWindowExtensions
     }
 
     // IServiceProviderIsService answers from registrations without constructing anything. A container
-    // without it cannot be inspected, so resolution reports a missing registration as before.
+    // without it cannot be inspected, so resolution reports a missing registration as before. Only a
+    // missing Bridge fails: a container can resolve a ViewModel it does not report, so an unconfirmed
+    // ViewModel is a warning.
     private static List<DesktopDiagnostic> GetRegistrationDiagnostics<TViewModel>(IServiceProvider services)
         where TViewModel : class
     {
@@ -273,9 +279,12 @@ public static class DesktopBridgeWindowExtensions
             diagnostics.Add(new DesktopDiagnostic(
                 DesktopErrorCategory.NotFound,
                 ViewModelNotRegisteredCode,
-                $"The ViewModel {viewModel} is not registered.",
+                $"The container does not report the ViewModel {viewModel} as registered; resolving it may fail.",
                 Retryable: false,
-                Remediation: $"Register it before building the service provider, for example services.AddScoped<{typeof(TViewModel).Name}>()."));
+                Remediation: $"Register it before building the service provider, for example services.AddScoped<{typeof(TViewModel).Name}>().")
+            {
+                Severity = DesktopDiagnosticSeverity.Warning,
+            });
         }
         if (!registered.IsService(typeof(Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>)) &&
             !registered.IsService(typeof(Func<IBridgeTransport, TViewModel, IDisposable>)))
@@ -298,7 +307,7 @@ public static class DesktopBridgeWindowExtensions
         if (diagnostics.Count == 0 || services.GetService(typeof(ILoggerFactory)) is not ILoggerFactory loggers)
             return;
         var logger = loggers.CreateLogger(DesktopBridgeTransport.LogCategory);
-        foreach (var diagnostic in diagnostics)
+        foreach (var diagnostic in diagnostics.Where(static item => item.Severity == DesktopDiagnosticSeverity.Error))
             DesktopLog.RegistrationMissing(logger, diagnostic.Code, diagnostic.Message, diagnostic.Remediation ?? string.Empty);
     }
 

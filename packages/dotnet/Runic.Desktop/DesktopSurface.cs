@@ -120,7 +120,10 @@ public sealed class DesktopSurface : IAsyncDisposable
                         "The embedded presentation was unavailable; the explicit browser fallback will be used.",
                         Retryable: true,
                         correlationId,
-                        "Install the platform WebView prerequisite to restore the preferred presentation."));
+                        FallbackRemediation(exception))
+                    {
+                        Severity = DesktopDiagnosticSeverity.Warning,
+                    });
                     actualBrowser = requestedBrowser == BrowserKind.Embedded ? BrowserKind.Any : requestedBrowser;
                     WithholdGrantsFromFallback(configured, correlationId);
                     await OpenCheckedAsync(actualBrowser, cancellationToken).ConfigureAwait(false);
@@ -328,6 +331,17 @@ public sealed class DesktopSurface : IAsyncDisposable
         _engine.SetAllowedPermissions(options.AllowedPermissions);
         _engine.SetCloseConfirmation(options.ConfirmCloseAsync);
     }
+
+    private static string FallbackRemediation(Exception exception) => exception is DesktopException { Code: var code }
+        ? code switch
+        {
+            "linux-embedded-backend-not-selected" =>
+                "Select a Linux toolkit with DesktopHostOptions.Linux.EmbeddedBackend to restore the preferred presentation.",
+            "gtk4-provider-missing" =>
+                "Set DesktopHostOptions.WindowHostFactory to Gtk4WindowHostFactory to restore the GTK4 presentation.",
+            _ => "Install the platform WebView prerequisite to restore the preferred presentation.",
+        }
+        : "Install the platform WebView prerequisite to restore the preferred presentation.";
 
     // A browser cannot limit a grant to the presented origin: Chromium's flag accepts capture for every
     // origin, and Firefox has no equivalent. The fallback therefore opens with the deny-by-default policy.

@@ -155,9 +155,9 @@ static async Task MissingRegistrationsFailBeforeASurfaceExists(DesktopHost host)
     await using (empty)
     {
         var validation = empty.ValidateDesktopWindow<OrderedCollectionModel>(host);
-        Require(validation.Errors.Any(static item => item.Code == "viewmodel-not-registered") &&
+        Require(validation.Warnings.Any(static item => item.Code == "viewmodel-not-registered") &&
             validation.Errors.Any(static item => item.Code == "bridge-not-registered"),
-            "Validation did not name the missing ViewModel and Bridge registrations.");
+            "Validation did not report the missing Bridge as an error and the unconfirmed ViewModel as a warning.");
         var created = false;
         try
         {
@@ -167,7 +167,7 @@ static async Task MissingRegistrationsFailBeforeASurfaceExists(DesktopHost host)
         }
         catch (DesktopConfigurationException error)
         {
-            Require(!created && error.Diagnostics.Count == 2 && error.Message.Contains("AddRunicViews()", StringComparison.Ordinal),
+            Require(!created && error.Diagnostics.Single().Code == "bridge-not-registered" && error.Message.Contains("AddRunicViews()", StringComparison.Ordinal),
                 "Opening without registrations did not fail early with an actionable message.");
         }
     }
@@ -181,8 +181,6 @@ static async Task MissingRegistrationsFailBeforeASurfaceExists(DesktopHost host)
     Require(!registered.Diagnostics.Any(static item => item.Code is "viewmodel-not-registered" or "bridge-not-registered"),
         "Validation reported registrations that exist.");
 }
-
-
 
 static void Require(bool condition, string message)
 {

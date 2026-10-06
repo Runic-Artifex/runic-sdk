@@ -46,6 +46,7 @@ internal static class DesktopWindowOptionValidation
     internal static void AddEmbeddedChecks(
         DesktopWindowOptions options,
         IDesktopWindowHostFactory? customFactory,
+        LinuxEmbeddedBackend? linuxBackend,
         List<DesktopDiagnostic> diagnostics)
     {
         const string presentation = "The embedded window";
@@ -74,11 +75,13 @@ internal static class DesktopWindowOptionValidation
             return;
         }
 
-        if (OperatingSystem.IsWindows())
+        // Without a built-in Linux toolkit, availability reports the missing selection or GTK4 provider instead.
+        if (OperatingSystem.IsWindows() ||
+            (OperatingSystem.IsLinux() && linuxBackend != LinuxEmbeddedBackend.Gtk3WebKit41))
         {
             return;
         }
-        var platform = OperatingSystem.IsMacOS() ? "The macOS WKWebView window" : "The WebKitGTK 4.1 window";
+        var platform = OperatingSystem.IsMacOS() ? "The macOS WKWebView window" : "The GTK 3 WebKitGTK 4.1 window";
         if (!string.IsNullOrWhiteSpace(options.ProfilePath))
         {
             diagnostics.Add(Ignored(platform, nameof(DesktopWindowOptions.ProfilePath), remediation));
@@ -198,8 +201,9 @@ internal static class DesktopWindowOptionValidation
         Height = options.Height,
         MinimumWidth = options.MinimumWidth,
         MinimumHeight = options.MinimumHeight,
-        X = options.X,
-        Y = options.Y,
+        // As when opening: a position applies only with both coordinates, and Centered replaces it.
+        X = options.X is not null && options.Y is not null && !options.Centered ? options.X : null,
+        Y = options.X is not null && options.Y is not null && !options.Centered ? options.Y : null,
         Centered = options.Centered,
         Resizable = options.Resizable,
         Frameless = options.Frameless,

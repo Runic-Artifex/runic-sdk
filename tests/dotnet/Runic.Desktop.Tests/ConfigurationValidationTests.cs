@@ -16,8 +16,8 @@ public sealed class ConfigurationValidationTests
 
     public static TheoryData<string, DesktopWindowOptions> Gtk4UnsupportedOptions => new()
     {
-        { "X", new DesktopWindowOptions { X = 10 } },
-        { "Y", new DesktopWindowOptions { Y = 10 } },
+        { "X", new DesktopWindowOptions { X = 10, Y = 20 } },
+        { "Y", new DesktopWindowOptions { X = 10, Y = 20 } },
         { "Centered", new DesktopWindowOptions { Centered = true } },
         { "Transparent", new DesktopWindowOptions { Transparent = true } },
         { "HighContrast", new DesktopWindowOptions { HighContrast = true } },
@@ -46,6 +46,30 @@ public sealed class ConfigurationValidationTests
         var error = Assert.Throws<DesktopConfigurationException>(validation.ThrowIfInvalid);
         Assert.Equal(DesktopConfigurationException.ConfigurationInvalidCode, error.Code);
         Assert.Contains($"window-option-unsupported: {diagnostic.Message}", error.Message);
+    }
+
+
+    [Fact]
+    [SupportedOSPlatform("linux")]
+    public async Task Gtk4PreflightMapsPlacementAsOpeningDoes()
+    {
+        await using var host = await StartGtk4HostAsync();
+
+        // One coordinate is ignored when opening, so GTK4 does not reject it; the pair check warns instead.
+        var lone = host.GetPresentationPreflight(new DesktopWindowOptions { HighContrast = false, X = 10 });
+        // Centered replaces a position, so only centering is rejected.
+        var centered = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            HighContrast = false,
+            X = 10,
+            Y = 20,
+            Centered = true,
+        });
+
+        var incomplete = Assert.Single(lone.OptionDiagnostics);
+        Assert.Equal("window-option-incomplete", incomplete.Code);
+        Assert.Equal(DesktopDiagnosticSeverity.Warning, incomplete.Severity);
+        Assert.Equal("DesktopWindowOptions.Centered", Assert.Single(centered.OptionDiagnostics).Option);
     }
 
     [Fact]
@@ -276,6 +300,35 @@ public sealed class ConfigurationValidationTests
         {
             folder.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public void LinuxSelectionDiagnosticsOfferABrowserAndReportUndefinedBackends()
+    {
+        var unselected = DesktopPlatform.GetLinuxSelectionDiagnostic(new LinuxDesktopOptions(), factory: null);
+        var undefined = DesktopPlatform.GetLinuxSelectionDiagnostic(
+            new LinuxDesktopOptions { EmbeddedBackend = (LinuxEmbeddedBackend)42 }, factory: null);
+
+        Assert.Equal("linux-embedded-backend-not-selected", unselected?.Code);
+        Assert.Contains("BrowserKind.Any", unselected!.Remediation);
+        Assert.Contains("EmbeddedThenBrowser", unselected.Remediation);
+        Assert.Equal("linux-embedded-backend-invalid", undefined?.Code);
+        Assert.Equal("DesktopHostOptions.Linux.EmbeddedBackend", undefined!.Option);
+    }
+
+    [Fact]
+    public async Task UnselectedLinuxToolkitIsNotNamedInOptionWarnings()
+    {
+        await using var host = await DesktopHost.StartAsync();
+
+        var preflight = host.GetPresentationPreflight(new DesktopWindowOptions { ProfilePath = "/tmp/runic-profile" });
+
+        // Windows applies the profile; Linux reports the missing toolkit through availability instead.
+        if (OperatingSystem.IsLinux())
+        {
+            Assert.Equal("linux-embedded-backend-not-selected", preflight.Diagnostic?.Code);
+        }
+        Assert.DoesNotContain(preflight.OptionDiagnostics, static item => item.Message.Contains("WebKitGTK", StringComparison.Ordinal));
     }
 
     [SupportedOSPlatform("linux")]

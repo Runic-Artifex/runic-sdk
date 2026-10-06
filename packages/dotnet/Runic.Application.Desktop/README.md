@@ -54,16 +54,19 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
   resolves its ViewModel, opens a `DesktopSurface` and its presentation, and
   attaches the generated Bridge.
 - `ValidateDesktopWindow<TViewModel>` checks, before any window opens, that the
-  ViewModel and its generated Bridge are registered and that
+  generated Bridge for the ViewModel is registered and that
   `DesktopHost.Validate` accepts the window options. It returns every problem
-  as a `DesktopDiagnostic` with a stable code (`viewmodel-not-registered`,
-  `bridge-not-registered`, and the
-  [Runic Desktop codes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md))
-  and remediation; `ThrowIfInvalid()` throws a `DesktopConfigurationException`.
-  `OpenDesktopWindowAsync` runs the registration checks itself before it creates
-  a surface, so a missing `AddRunicViews()` fails with that exception instead of
-  a dependency-injection error. Missing registrations are logged as event 2001
-  through the provider's `ILoggerFactory`.
+  as a `DesktopDiagnostic` with a stable code and remediation: an error
+  `bridge-not-registered`, the
+  [Runic Desktop codes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md),
+  and a warning `viewmodel-not-registered` when the container does not report
+  the ViewModel through `IServiceProviderIsService`. A container can resolve
+  services it does not report, so only the Bridge check fails; a container
+  without `IServiceProviderIsService` is not checked. `ThrowIfInvalid()` throws
+  a `DesktopConfigurationException`. `OpenDesktopWindowAsync` runs the Bridge
+  check itself before it creates a surface, so a missing `AddRunicViews()`
+  fails with that exception instead of a dependency-injection error. A missing
+  Bridge is logged as event 2001 through the provider's `ILoggerFactory`.
 - `DesktopBridgeWindow<TViewModel>` owns the Window's scope, surface, and attachment.
   It exposes `ViewModel`, `Surface`, `Presentation`, and `CloseAsync`, which
   stops new operations and waits for accepted ones before releasing the scope.

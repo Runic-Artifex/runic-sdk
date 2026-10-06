@@ -86,7 +86,8 @@ public sealed class DesktopHost : IAsyncDisposable
         DesktopWindowOptionValidation.AddPairChecks(configured, optionDiagnostics);
         if (preferredBrowser == BrowserKind.Embedded)
         {
-            DesktopWindowOptionValidation.AddEmbeddedChecks(configured, _options.WindowHostFactory, optionDiagnostics);
+            DesktopWindowOptionValidation.AddEmbeddedChecks(
+                configured, _options.WindowHostFactory, _options.Linux.EmbeddedBackend, optionDiagnostics);
         }
         else if (DesktopWindowOptionValidation.IsLaunchable(preferredBrowser))
         {
@@ -334,7 +335,7 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options.Linux);
         if (options.Linux.EmbeddedBackend is { } backend && !Enum.IsDefined(backend))
-            throw new ArgumentOutOfRangeException(nameof(options));
+            throw new ArgumentOutOfRangeException(nameof(options), "Linux.EmbeddedBackend contains an undefined value; select Gtk3WebKit41 or Gtk4WebKit6.");
         if (options.WindowHostFactory is ILinuxDesktopWindowHostFactory linux && options.Linux.EmbeddedBackend != linux.Backend)
             throw new ArgumentException("Linux.EmbeddedBackend must match the configured Linux window host factory.", nameof(options));
         ArgumentNullException.ThrowIfNull(options);
