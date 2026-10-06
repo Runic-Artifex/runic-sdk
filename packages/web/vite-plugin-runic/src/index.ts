@@ -199,7 +199,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         response.statusCode = 200;
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
-        response.end(JSON.stringify(state));
+        response.end(JSON.stringify(withoutFailures(state)));
       });
       viteServer.httpServer?.once("close", () => {
         server = undefined;
@@ -228,7 +228,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         context.commands.register({
           id: "runic:copy-diagnostic-state",
           title: "Runic: Copy sanitized diagnostic state",
-          handler: () => JSON.stringify(state, null, 2),
+          handler: () => JSON.stringify(withoutFailures(state), null, 2),
         });
       },
     },
@@ -339,6 +339,15 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
             `${entry.id} · ${entry.source} · ${entry.kind} · ${entry.timestamp}`, entry.label,
           ]))),
     },
+  };
+}
+
+// Failures keep file paths and stacks for the local dock only. The state
+// endpoint and the copied state stay path-free.
+function withoutFailures(current: RunicDevelopmentState): RunicDevelopmentState {
+  return {
+    ...current,
+    timeline: current.timeline.map(({ failure: _failure, ...entry }) => entry),
   };
 }
 

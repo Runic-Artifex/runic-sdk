@@ -175,7 +175,10 @@ status with `kind: "timedOut"` and `cancellation` set to .NET's answer
 (`cancellation-requested`, `unknown`, `expired`) or `unobserved` when the
 request failed. An operation that finished just before the cancellation keeps
 its real terminal status. `timedOut` is decided by the client; `completion`
-still reports the status .NET settles on.
+still reports the status .NET settles on. The cancellation applies to the
+operation itself, so every other observer of it, including another tab or a
+later `recover<Command>WithRequestId`, sees it cancelled. Use a timeout only
+when the caller owns the operation.
 
 ```ts
 const save = await editor.startSave();

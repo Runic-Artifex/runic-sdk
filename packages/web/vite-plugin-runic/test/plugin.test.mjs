@@ -382,6 +382,42 @@ test("keeps a bounded, credential-redacted failure only on error entries", () =>
   assert.equal(operation.failure, undefined);
 });
 
+test("redacts credential values in failures and leaves failures out of the state endpoint", () => {
+  const plugin = runic({ devtools: false });
+  let latest;
+  const middleware = [];
+  plugin.configureServer({
+    ws: { on: () => undefined, send: (message) => { latest = message.data; } },
+    middlewares: { use: (path, handler) => middleware.push([path, handler]) },
+    httpServer: undefined,
+  });
+  const secrets = [
+    ["access_token=abc123", "access_token=[redacted]"],
+    ["client_secret: s3cr3t", "client_secret: [redacted]"],
+    ["refresh_token=r1", "refresh_token=[redacted]"],
+    ["id_token=eyJhbGci", "id_token=[redacted]"],
+    [String.raw`{"password":"hunter2","user":"ann"}`, String.raw`{"password":"[redacted]","user":"ann"}`],
+    ["https://user:pa55@db.example/x", "https://user:[redacted]@db.example/x"],
+    ["Server=db;Pwd=hunter2;", "Server=db;Pwd=[redacted];"],
+    ["AccountKey=a+b/c==;EndpointSuffix=core", "AccountKey=[redacted];EndpointSuffix=core"],
+    ["Authorization: Bearer tok", "Authorization: [redacted]"],
+    ["sent Bearer tok", "sent Bearer [redacted]"],
+  ];
+  for (const [input, expected] of secrets) {
+    plugin.diagnostics.report({ source: "views", kind: "error", label: "editorSave failed",
+      failure: { type: "System.Exception", message: input, stack: `System.Exception: ${input}\n   at Save()` } });
+    const failure = latest.timeline.at(-1).failure;
+    assert.equal(failure.message, expected, input);
+    assert.equal(failure.stack.split("\n")[0], `System.Exception: ${expected}`, input);
+  }
+  let body = "";
+  middleware[0][1]({}, { setHeader: () => undefined, end: (text) => { body = text; } });
+  const state = JSON.parse(body);
+  assert.equal(state.timeline.length, secrets.length);
+  assert.ok(state.timeline.every((entry) => entry.failure === undefined), "The state endpoint exposed a failure.");
+  assert.ok(latest.timeline.every((entry) => entry.failure !== undefined), "The dock state lost its failures.");
+});
+
 test("injects the Views diagnostics client only while serving with DevTools enabled", async () => {
   const root = await fixtureRoot();
   for (const [devtools, expected] of [[undefined, true], [false, false]]) {

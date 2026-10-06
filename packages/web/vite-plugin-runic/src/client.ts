@@ -114,6 +114,15 @@ interface ViewsDiagnostic {
   readonly message?: unknown;
   readonly route?: unknown;
   readonly detail?: unknown;
+  readonly member?: unknown;
+  readonly requestId?: unknown;
+}
+
+// The error class a code comes from, for a failure without exception detail.
+function fallbackType(code: string): string {
+  if (code === "reported") return "Error";
+  if (code === "uncertain") return "BridgeOperationUncertainError";
+  return "BridgeError";
 }
 
 /** Forwards a Views runtime diagnostic to the DevTools timeline. */
@@ -122,15 +131,20 @@ function reportViewsDiagnostic(diagnostic: ViewsDiagnostic): void {
   const code = typeof diagnostic.code === "string" ? diagnostic.code.slice(0, 32) : "error";
   const message = typeof diagnostic.message === "string" ? diagnostic.message : "";
   const error = diagnostic.kind !== "operation";
+  const member = typeof diagnostic.member === "string" ? diagnostic.member.slice(0, 80) : undefined;
+  const requestId = typeof diagnostic.requestId === "string" ? diagnostic.requestId.slice(0, 80) : undefined;
   // The label stays short and path-free, so the timeline never redacts it.
   // An error's message, which may name files or packages, goes to the
   // failure, whose bounds keep paths.
   sendDiagnostic({
     source: "views",
     kind: error ? "error" : "operation",
-    label: `${route ?? "Bridge"} ${code}`,
-    detail: { code, ...(route ? { route } : {}), ...(error ? {} : { message }) },
-    ...(error ? { failure: diagnostic.detail ?? { type: "BridgeError", message } } : {}),
+    label: `${member ?? route ?? "Bridge"} ${code}`,
+    detail: {
+      code, ...(route ? { route } : {}), ...(member ? { member } : {}), ...(requestId ? { requestId } : {}),
+      ...(error ? {} : { message }),
+    },
+    ...(error ? { failure: diagnostic.detail ?? { type: fallbackType(code), message } } : {}),
   });
 }
 

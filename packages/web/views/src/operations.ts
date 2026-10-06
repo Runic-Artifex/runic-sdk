@@ -63,6 +63,15 @@ export interface BridgeStreamOperation<TResult = never> extends BridgeOperation<
 const statusKinds: readonly BridgeOperationStatusKind[] = ["running", "succeeded", "failed", "cancelled", "expired", "unknown"];
 
 
+// The value of a promise that has already resolved, or undefined. A
+// zero-delay timer runs after the promise's pending reactions.
+async function settledNow<T>(promise: Promise<T>): Promise<T | undefined> {
+  return Promise.race([
+    promise.then(value => value, () => undefined),
+    new Promise<undefined>(resolve => setTimeout(resolve, 0, undefined)),
+  ]);
+}
+
 /** Operation helpers bound to one route contract. */
 export class OperationChannel {
   constructor(private readonly bridge: RunicBridgeClient, private readonly contract: string) {}
@@ -137,13 +146,14 @@ export class OperationChannel {
       if (!Number.isFinite(timeout) || timeout < 0) throw new RangeError("The operation timeout must be a non-negative number of milliseconds.");
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<undefined>(resolve => { timer = setTimeout(resolve, timeout, undefined); });
+      const pending = wait();
       try {
-        const status = await Promise.race([wait(), deadline]);
+        const status = await Promise.race([pending, deadline]);
         if (status !== undefined) return status;
       } finally {
         clearTimeout(timer);
       }
-      return this.timeOut(member, requestId, decode, timeout);
+      return this.timeOut(member, requestId, decode, timeout, pending);
     };
     return {
       requestId,
@@ -157,8 +167,10 @@ export class OperationChannel {
 
   // The deadline passed: ask .NET to cancel, and report a finished operation
   // as its real terminal state. The pending wait settles independently.
+  // The cancellation applies to the operation, so every observer of it sees
+  // the cancelled outcome, not only the caller whose deadline passed.
   private async timeOut<TResult>(member: string, requestId: string, decode: (value: unknown) => TResult,
-    timeout: number): Promise<BridgeOperationStatus<TResult>> {
+    timeout: number, pending: Promise<BridgeOperationStatus<TResult>>): Promise<BridgeOperationStatus<TResult>> {
     let cancellation: BridgeOperationCancelKind | "unobserved";
     try { cancellation = (await this.cancel(member, requestId)).kind; }
     catch (error) {
@@ -166,15 +178,21 @@ export class OperationChannel {
       cancellation = "unobserved";
     }
     if (cancellation === "not-running") {
+      // The pending wait has usually settled by now; it is the authoritative
+      // terminal status and needs no further call.
+      const settled = await settledNow(pending);
+      if (settled !== undefined) return settled;
       try {
         const status = await this.status(member, requestId, false, decode);
         if (status.kind !== "running") return status;
       } catch (error) {
         emitErrorDiagnostic(error, "__runicOperationStatus");
+        const late = await settledNow(pending);
+        if (late !== undefined) return late;
       }
     }
     emitBridgeDiagnostic({
-      kind: "operation", code: "timedOut", route: member,
+      kind: "operation", code: "timedOut", route: "__runicOperationWait", member, requestId,
       message: `The operation ${member} (${requestId}) did not complete within ${timeout} ms; cancellation: ${cancellation}.`,
     });
     return { contract: this.contract, requestId, kind: "timedOut", cancellation };

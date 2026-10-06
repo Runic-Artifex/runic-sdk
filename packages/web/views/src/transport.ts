@@ -19,6 +19,7 @@ export interface WaitForBridgeOptions {
 type BridgeHost = typeof globalThis & { __runicBridge?: RunicBridgeClient };
 
 const defaultTimeout = 5_000;
+const unavailableReported = Symbol.for("runic.views.unavailableReported");
 
 // The message of an `unavailable` BridgeError, with the usual remediation.
 const missingBridgeMessage =
@@ -44,7 +45,11 @@ export async function waitForBridge(options: number | WaitForBridgeOptions = {})
         ? new BridgeError("unavailable", missingBridgeMessage)
         : new BridgeError("timeout", `The Runic Bridge is installed but did not connect to .NET within ${timeout} ms. ` +
           "Check that the .NET host is running and that its output shows no startup error.");
-      emitErrorDiagnostic(error);
+      // Every connect call fails the same way on a page without a Bridge;
+      // DevTools gets the missing Bridge once per page.
+      const page = globalThis as unknown as Record<symbol, unknown>;
+      if (error.kind !== "unavailable" || page[unavailableReported] !== true) emitErrorDiagnostic(error);
+      if (error.kind === "unavailable") page[unavailableReported] = true;
       throw error;
     }
     await new Promise<void>(resolve => setTimeout(resolve, 50));

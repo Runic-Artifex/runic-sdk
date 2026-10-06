@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { cp, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { BridgeError, BridgeOperationUncertainError, bridgeWire, connectView, defineCollection, onBridgeDiagnostic, waitForBridge,
   type BridgeDiagnostic } from "../dist/index.js";
 import { createMockBridge, installMockBridge, type MockBridge } from "../dist/mock.js";
@@ -43,6 +47,9 @@ test("waitForBridge tells a missing Bridge from one that does not connect", asyn
       error instanceof BridgeError && error.kind === "unavailable"
       && /window\.__runicBridge/.test(error.message) && /dotnet runic dev/.test(error.message) && /installMockBridge/.test(error.message));
     assert.equal(diagnostics.at(-1)?.code, "unavailable");
+    const reportedBefore = diagnostics.length;
+    await assert.rejects(waitForBridge({ timeout: 0 }), (error: unknown) => error instanceof BridgeError && error.kind === "unavailable");
+    assert.equal(diagnostics.length, reportedBefore, "A missing Bridge must reach DevTools once per page.");
 
     const bridge = freshBridge();
     bridge.disconnect();
@@ -140,6 +147,30 @@ test("a failed remount after a reconnect is reported instead of dropped", async 
   }
 });
 
+test("an error is reported once across copies of the package", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "runic-views-once-"));
+  const { diagnostics, restore } = observe();
+  try {
+    const dist = fileURLToPath(new URL("../dist/", import.meta.url));
+    await cp(dist, join(directory, "a"), { recursive: true });
+    await cp(dist, join(directory, "b"), { recursive: true });
+    type Diagnostics = typeof import("../dist/diagnostics.js");
+    const a = await import(pathToFileURL(join(directory, "a/diagnostics.js")).href) as Diagnostics;
+    const b = await import(pathToFileURL(join(directory, "b/diagnostics.js")).href) as Diagnostics;
+    const error = new BridgeError("failed", "once", { route: "counterOnce" });
+    a.emitErrorDiagnostic(error);
+    b.emitErrorDiagnostic(error);
+    assert.equal(diagnostics.filter(diagnostic => diagnostic.error === error).length, 1);
+    const frozen = Object.freeze(new Error("frozen"));
+    a.emitErrorDiagnostic(frozen);
+    a.emitErrorDiagnostic(frozen);
+    assert.equal(diagnostics.filter(diagnostic => diagnostic.error === frozen).length, 1);
+  } finally {
+    restore();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("a listener failure is reported with its route", async () => {
   const bridge = freshBridge();
   const counter = bridge.view("counter", { state: { count: 1, label: "one" } });
@@ -185,6 +216,9 @@ test("an operation wait with a timeout cancels and resolves to timedOut", async 
     assert.deepEqual(status, { contract, requestId: "slow", kind: "timedOut", cancellation: "cancellation-requested" });
     assert.deepEqual(cancels, ["slow"]);
     assert.equal(diagnostics.at(-1)?.code, "timedOut");
+    assert.equal(diagnostics.at(-1)?.route, "__runicOperationWait");
+    assert.equal(diagnostics.at(-1)?.member, "Save");
+    assert.equal(diagnostics.at(-1)?.requestId, "slow");
     await assert.rejects(operation.wait({ timeout: Number.NaN }), RangeError);
 
     finished.add("raced");
@@ -192,6 +226,19 @@ test("an operation wait with a timeout cancels and resolves to timedOut", async 
     const terminal = await raced.wait({ timeout: 0 });
     assert.equal(terminal.kind, "failed", "An operation that finished before the cancel keeps its real terminal state.");
     assert.deepEqual(terminal.error?.detail, { type: "System.IO.IOException", message: "Locked." });
+
+    // The wait settles while the cancel reports not-running; a failing status read must not hide it.
+    let releaseWait: (value: string) => void = () => {};
+    bridge.route("__runicOperationWait", identity => new Promise<string>(resolve => {
+      releaseWait = () => resolve(JSON.stringify({ contract, requestId: JSON.parse(String(identity)).requestId, kind: "succeeded" }));
+    }));
+    bridge.route("__runicOperationCancel", identity => {
+      releaseWait("");
+      return JSON.stringify({ contract, requestId: JSON.parse(String(identity)).requestId, kind: "not-running" });
+    });
+    bridge.route("__runicOperationStatus", () => { throw new Error("status lost"); });
+    const settled = await client.startOperation("Save", "settled", () => JSON.stringify({ requestId: "settled", input: null }), value => value);
+    assert.equal((await settled.wait({ timeout: 0 })).kind, "succeeded");
 
     bridge.route("__runicOperationCancel", () => { throw new Error("cancel lost"); });
     const unobserved = await client.startOperation("Save", "lost", () => JSON.stringify({ requestId: "lost", input: null }), value => value);

@@ -10,6 +10,9 @@ export interface BridgeDiagnostic {
   readonly route?: string;
   /** Development-only .NET failure detail, or the type and stack of a caught browser error. */
   readonly detail?: BridgeFailureDetail;
+  /** For an operation diagnostic: the command member and request id. */
+  readonly member?: string;
+  readonly requestId?: string;
   /** The error object, for local observers only. Never serialize it unfiltered. */
   readonly error?: unknown;
 }
@@ -38,16 +41,22 @@ export function onBridgeDiagnostic(listener: BridgeDiagnosticListener): () => vo
   return () => { set.delete(listener); };
 }
 
-// An error passes several layers (route call, connection, framework adapter);
-// it is reported at most once.
-const reported = new WeakSet<object>();
+// An error passes several layers (route call, connection, framework adapter)
+// and possibly several copies of this package; it is reported at most once.
+// The mark is a registered symbol on the error, shared by every copy. A frozen
+// error cannot be marked, so it falls back to this copy's set.
+const reportedMark = Symbol.for("runic.views.diagnosticReported");
+const reportedFrozen = new WeakSet<object>();
+
+function markReported(error: object): boolean {
+  if ((error as Record<symbol, unknown>)[reportedMark] === true || reportedFrozen.has(error)) return false;
+  if (!Reflect.defineProperty(error, reportedMark, { value: true })) reportedFrozen.add(error);
+  return true;
+}
 
 export function emitBridgeDiagnostic(diagnostic: BridgeDiagnostic): void {
   const error = diagnostic.error;
-  if (typeof error === "object" && error !== null) {
-    if (reported.has(error)) return;
-    reported.add(error);
-  }
+  if (typeof error === "object" && error !== null && !markReported(error)) return;
   for (const listener of [...listeners()]) {
     try { listener(diagnostic); } catch (failure) { console.error(failure); }
   }

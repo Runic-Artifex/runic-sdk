@@ -60,14 +60,20 @@ const maximumFailureMessageLength = 2_000;
 const maximumFailureStackLength = 8_000;
 const maximumFailureStackLines = 80;
 const redacted = "[redacted]";
-const sensitiveKey = /token|secret|capability|password|path|file(?:name)?|directory|cwd|frame|stack|authorization|cookie|credential|query|uri|url|api[-_]?key/iu;
-const sensitiveContent = /(?:bearer\s+\S+|(?:token|secret|password|authorization|cookie|credential|api[-_]?key)\s*[:=]\s*\S+)/iu;
+const sensitiveKey = /token|secret|capability|passw(?:or)?d|pwd|access[-_]?key|account[-_]?key|path|file(?:name)?|directory|cwd|frame|stack|authorization|cookie|credential|query|uri|url|api[-_]?key/iu;
+// A credential name may carry a prefix (`access_token`, `client_secret`) and a
+// closing JSON quote before its separator (`{"password":"x"}`).
+const credentialName = String.raw`[a-z0-9_.-]*(?:token|secret|passw(?:or)?d|pwd|authorization|cookie|credential|api[-_]?key|access[-_]?key|account[-_]?key)`;
+const credentialValue = String.raw`(?:bearer\s+)?(?:"[^"]*"|'[^']*'|[^\s"',;&}]+)`;
+const urlPassword = String.raw`[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:[^\s@/]+@`;
+const sensitiveContent = new RegExp(String.raw`bearer\s+\S+|${credentialName}["']?\s*[:=]\s*\S|${urlPassword}`, "iu");
 const pathLikeContent = /(?:\b[a-z][a-z0-9+.-]*:(?:\/\/|[\\/])|(?:^|[\s"'(=:])(?:~?\/|\.{1,2}[\\/]|[A-Za-z]:[\\/]|\\\\|[^\s/\\]+[\\/][^\s/\\]+))/iu;
 const controlCharacters = /[\u0000-\u001F\u007F]/u;
 const failureControlCharacters = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu;
 // Failure text keeps its structure and replaces only the secret value.
-const sensitiveAssignment = /\b(token|secret|password|authorization|cookie|credential|api[-_]?key)(\s*[:=]\s*)(?:bearer\s+)?\S+/giu;
-const bearerCredential = /\b(bearer)\s+\S+/giu;
+const sensitiveAssignment = new RegExp(String.raw`(${credentialName}["']?\s*[:=]\s*)(${credentialValue})`, "giu");
+const sensitiveUrlPassword = new RegExp(String.raw`([a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:)[^\s@/]+@`, "giu");
+const bearerCredential = /(bearer)\s+(?!\[redacted\])\S+/giu;
 
 /**
  * Converts an arbitrary diagnostic candidate into the only shape that may be
@@ -113,7 +119,11 @@ function failureText(value: unknown, maximumLength: number, multiline: boolean):
   if (!multiline) text = text.replace(/[\r\n\t]+/gu, " ");
   else text = text.split(/\r?\n/u).slice(0, maximumFailureStackLines).join("\n");
   if (text.length > maximumLength) text = `${text.slice(0, maximumLength - 1)}…`;
-  return text.replace(sensitiveAssignment, `$1$2${redacted}`).replace(bearerCredential, `$1 ${redacted}`);
+  return text
+    .replace(sensitiveAssignment, (_match, name: string, value: string) =>
+      `${name}${value.startsWith('"') ? `"${redacted}"` : value.startsWith("'") ? `'${redacted}'` : redacted}`)
+    .replace(sensitiveUrlPassword, `$1${redacted}@`)
+    .replace(bearerCredential, `$1 ${redacted}`);
 }
 
 export function diagnosticSource(value: unknown): RunicDiagnosticSource | undefined {
