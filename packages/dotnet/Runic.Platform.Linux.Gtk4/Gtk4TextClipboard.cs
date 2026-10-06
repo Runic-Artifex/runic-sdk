@@ -284,11 +284,11 @@ internal sealed partial class Gtk4TextClipboard(INativePickerOwner owner) : ITex
         (uint)Marshal.ReadInt32(error) == IoErrorQuark()
         && Marshal.ReadInt32(error, sizeof(uint)) is 15 or 1; // G_IO_ERROR_NOT_SUPPORTED, G_IO_ERROR_NOT_FOUND
 
-    // The GError message follows the domain and code, at pointer alignment.
+    // The GError domain and code identify the error. Its free-form message is omitted
+    // because it is not guaranteed to be free of paths or clipboard content.
     private static PlatformDiagnostic Diagnostic(nint error) => new(
         Marshal.PtrToStringUTF8(QuarkToString((uint)Marshal.ReadInt32(error))) ?? "GError",
-        Marshal.ReadInt32(error, sizeof(uint)),
-        Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(error, 2 * sizeof(int))));
+        Marshal.ReadInt32(error, sizeof(uint)));
 
     private static unsafe ReadOnlySpan<byte> BoundedUtf8(nint text, int maximumCharacters)
     {

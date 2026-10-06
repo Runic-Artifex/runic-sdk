@@ -71,41 +71,48 @@ public abstract record PlatformResult<T>
 
 /// <summary>
 /// Native error detail attached to a failure for logs and support. It is not
-/// intended for display, may be localized by the operating system, and never
-/// contains paths, file contents or native handles.
+/// intended for display and may be localized by the operating system. Messages come
+/// only from operating-system error tables or fixed provider text; free-form text from
+/// native services (GError and D-Bus messages, NSError descriptions) is omitted, so a
+/// diagnostic contains no paths, file contents or native handles.
 /// </summary>
 /// <param name="Domain">
-/// The native error space: <c>HRESULT</c>, <c>Win32</c>, <c>errno</c>, <c>OSStatus</c>,
+/// The native error space: <c>HRESULT</c>, <c>Win32</c>, <c>errno</c>, <c>OSStatus</c>, <c>IOReturn</c>,
 /// an <c>NSError</c> or <c>GError</c> domain, a D-Bus error name, or
 /// <c>org.freedesktop.portal.Request</c> for a portal response code.
 /// </param>
 /// <param name="Code">
-/// The native numeric code. HRESULTs keep their unsigned 32-bit value; the code is
+/// The native numeric code. HRESULT and IOReturn codes keep their unsigned 32-bit value; the code is
 /// zero when the domain itself names the error, as D-Bus error names do.
 /// </param>
 /// <param name="Message">A native description, when one is available.</param>
+/// <remarks>
+/// The factories describe a code only on the platform that defines it: HRESULT and Win32
+/// codes on Windows, <c>errno</c> on other systems. Elsewhere <see cref="Message"/> is null.
+/// </remarks>
 public sealed record PlatformDiagnostic(string Domain, long Code, string? Message = null)
 {
     /// <summary>Describes a COM or Windows Runtime HRESULT.</summary>
     public static PlatformDiagnostic FromHResult(int hresult) =>
-        new("HRESULT", unchecked((uint)hresult), Describe(hresult));
+        new("HRESULT", unchecked((uint)hresult), OperatingSystem.IsWindows() ? Describe(hresult) : null);
 
     /// <summary>Describes a Win32 error code, such as the value of <c>GetLastError</c>.</summary>
-    public static PlatformDiagnostic FromWin32Error(int error) => new("Win32", error, Describe(error));
+    public static PlatformDiagnostic FromWin32Error(int error) => new("Win32", error, OperatingSystem.IsWindows() ? Describe(error) : null);
 
     /// <summary>Describes a POSIX <c>errno</c> value.</summary>
-    public static PlatformDiagnostic FromErrno(int errno) => new("errno", errno, Describe(errno));
+    public static PlatformDiagnostic FromErrno(int errno) => new("errno", errno, OperatingSystem.IsWindows() ? null : Describe(errno));
 
     /// <summary>Formats the diagnostic as <c>Domain Code: Message</c>.</summary>
     public override string ToString()
     {
-        var code = Domain == "HRESULT"
+        var code = Domain is "HRESULT" or "IOReturn"
             ? $"0x{Code:X8}"
             : Code.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return Message is null ? $"{Domain} {code}" : $"{Domain} {code}: {Message}";
     }
 
-    // FormatMessage on Windows and strerror elsewhere; neither includes paths.
+    // FormatMessage on Windows and strerror elsewhere; neither includes paths. Callers
+    // pass only codes from the running platform's own error space.
     private static string? Describe(int code)
     {
         try

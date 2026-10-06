@@ -53,7 +53,7 @@ internal static class DesktopPortalTests
         Check(await notifications.ShowAsync(new("denied", "Title", "Body")) is PlatformResult<PlatformUnit>.Failed
         {
             Code: PlatformFailureCode.PermissionDenied,
-            Diagnostic: { Domain: "org.freedesktop.portal.Error.NotAllowed", Code: 0, Message: "Disabled by user" },
+            Diagnostic: { Domain: "org.freedesktop.portal.Error.NotAllowed", Code: 0, Message: null },
         }, "portal permission denial remains distinct and carries the D-Bus error");
         service.Deny = false;
         var path = System.IO.Path.GetTempFileName();

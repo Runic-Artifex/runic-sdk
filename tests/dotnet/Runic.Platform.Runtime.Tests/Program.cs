@@ -56,8 +56,12 @@ internal static class Conformance
         if (hresult.Domain != "HRESULT" || hresult.Code != 0x80070005L || !hresult.ToString().StartsWith("HRESULT 0x80070005", StringComparison.Ordinal))
             throw new InvalidOperationException($"HRESULT diagnostic lost its unsigned code: {hresult}");
         var errno = PlatformDiagnostic.FromErrno(13);
-        if (errno is not { Domain: "errno", Code: 13 } || string.IsNullOrWhiteSpace(errno.Message))
-            throw new InvalidOperationException($"errno diagnostic lost its code or native message: {errno}");
+        if (errno is not { Domain: "errno", Code: 13 } || OperatingSystem.IsWindows() != (errno.Message is null))
+            throw new InvalidOperationException($"errno diagnostic lost its code or described a foreign code: {errno}");
+        if (OperatingSystem.IsWindows() != (hresult.Message is not null) || OperatingSystem.IsWindows() != (PlatformDiagnostic.FromWin32Error(5).Message is not null))
+            throw new InvalidOperationException("A Windows code was described on another platform, or not on Windows.");
+        if (new PlatformDiagnostic("IOReturn", 0xE00002C2L).ToString() != "IOReturn 0xE00002C2")
+            throw new InvalidOperationException("An IOReturn code was not formatted as hexadecimal.");
         if (new PlatformDiagnostic("org.freedesktop.portal.Error.NotAllowed", 0).ToString() != "org.freedesktop.portal.Error.NotAllowed 0")
             throw new InvalidOperationException("A named diagnostic without a message formatted unexpectedly.");
         if (new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError).Diagnostic is not null)

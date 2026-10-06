@@ -16,7 +16,9 @@ internal static class PortalErrors
     internal static PlatformDiagnostic Response(uint code) => new("org.freedesktop.portal.Request", code,
         code switch { 1 => "The user cancelled the interaction.", 2 => "The user interaction ended in another way.", _ => null });
 
-    internal static PlatformDiagnostic Reply(DBusErrorReplyException error) => new(error.ErrorName, 0, error.ErrorMessage);
+    // The D-Bus error name identifies the error. The service's free-form message is omitted
+    // because it is not guaranteed to be free of paths.
+    internal static PlatformDiagnostic Reply(DBusErrorReplyException error) => new(error.ErrorName, 0);
 }
 internal interface IPortalTransport
 {

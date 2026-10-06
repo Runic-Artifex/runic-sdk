@@ -39,9 +39,13 @@ and disposal is asynchronous only. Accepted operations can keep the Window's DI
 scope alive after the visible window closes, so dispose the Window with
 `await using` before `WebUiApplication.Clean()`.
 
-State snapshots and collection delta frames are sent as ordered WebSocket messages
-to every connected client. Unlike Runic Desktop, CS-WebUI has no acknowledged
-multi-client send, so a slow browser is not throttled into a recovery snapshot.
+State snapshots and collection delta frames are written, in order, as WebSocket
+messages to every connected client. Runic Desktop waits until the WebView has run
+each frame. CS-WebUI cannot do that for several clients, so its writes block
+instead, under WebUI's process-wide send lock, until each socket accepts the frame or
+the write times out. A slow browser therefore holds back delivery at the TCP level.
+Frames queue in the bridge, which sends a recovery snapshot once the queue is full,
+and sends to every other CS-WebUI window in the process wait for the same lock.
 
 ## What Show opens
 

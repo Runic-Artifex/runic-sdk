@@ -12,5 +12,7 @@ names when both namespaces are imported.
 
 Branch on the failure code. When a provider observed a native error, `Failed.Diagnostic`
 carries a `PlatformDiagnostic` with its domain (`HRESULT`, `Win32`, `errno`, an
-`NSError`/`GError` domain or a D-Bus error name), numeric code and native message for
-logs and support. It is not intended for display and never contains paths.
+`NSError`/`GError` domain or a D-Bus error name), numeric code and, where the operating system's error table describes the code, its
+message. It is for logs and support, not display. Free-form text from native services
+(GError and D-Bus messages, NSError descriptions) is left out, so a diagnostic contains
+no paths.
