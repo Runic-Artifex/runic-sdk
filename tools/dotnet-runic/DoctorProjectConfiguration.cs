@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -29,18 +30,32 @@ internal sealed record DoctorProjectConfiguration(
 {
     internal const string CsWebUiPackage = "Runic.Application.CsWebUi";
     internal const string DesktopPackage = "Runic.Application.Desktop";
+    internal const string DesktopGtk4Package = "Runic.Desktop.Gtk4";
+
+    /// <summary>The semicolon-separated RuntimeIdentifiers property.</summary>
+    internal string RuntimeIdentifiers { get; init; } = string.Empty;
+
+    /// <summary>PublishAot, evaluated for the doctor target RID when one is given.</summary>
+    internal bool PublishAot { get; init; }
+
+    /// <summary>SelfContained, evaluated for the doctor target RID when one is given.</summary>
+    internal bool SelfContained { get; init; }
+
+    /// <summary>True when the project references the optional GTK 4 Desktop provider.</summary>
+    internal bool UsesGtk4 { get; init; }
 
     internal static async Task<DoctorProjectConfiguration> EvaluateAsync(
         string dotnetHost,
         string project,
         string configuration,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? targetRuntimeIdentifier = null)
     {
         DevProjectConfiguration development = await DevProjectConfiguration.EvaluateAsync(
             dotnetHost, project, configuration, cancellationToken).ConfigureAwait(false);
         string properties = await ReadProjectPropertiesAsync(
             dotnetHost, development.ProjectPath, development.ProjectDirectory,
-            configuration, cancellationToken).ConfigureAwait(false);
+            configuration, targetRuntimeIdentifier, cancellationToken).ConfigureAwait(false);
         using JsonDocument document = JsonDocument.Parse(properties);
         JsonElement values = document.RootElement.GetProperty("Properties");
         string Value(string name) => values.TryGetProperty(name, out var value)
@@ -59,8 +74,16 @@ internal sealed record DoctorProjectConfiguration(
             development.ViteDevServerEntry,
             development.ViteConfigurationPath,
             development.ViteDevServerEnabled,
-            DetectHost(document.RootElement));
+            DetectHost(document.RootElement))
+        {
+            RuntimeIdentifiers = Value("RuntimeIdentifiers"),
+            PublishAot = IsTrue(Value("PublishAot")),
+            SelfContained = IsTrue(Value("SelfContained")),
+            UsesGtk4 = References(document.RootElement, DesktopGtk4Package),
+        };
     }
+
+    private static bool IsTrue(string value) => value.Equals("true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Finds the Views host from the evaluated package and project references,
@@ -69,28 +92,30 @@ internal sealed record DoctorProjectConfiguration(
     /// </summary>
     internal static RunicViewsHost DetectHost(JsonElement evaluation)
     {
-        bool csWebUi = false;
-        bool desktop = false;
-        if (evaluation.TryGetProperty("Items", out JsonElement items) && items.ValueKind == JsonValueKind.Object)
+        bool csWebUi = References(evaluation, CsWebUiPackage) || References(evaluation, "Runic.Application.Views.CsWebUi");
+        bool desktop = References(evaluation, DesktopPackage);
+        return csWebUi ? RunicViewsHost.CsWebUi : desktop ? RunicViewsHost.Desktop : RunicViewsHost.Unknown;
+    }
+
+    /// <summary>Whether the evaluation has a package or project reference to <paramref name="name"/>.</summary>
+    internal static bool References(JsonElement evaluation, string name)
+    {
+        if (!evaluation.TryGetProperty("Items", out JsonElement items) || items.ValueKind != JsonValueKind.Object) return false;
+        foreach (string itemType in new[] { "PackageReference", "ProjectReference" })
         {
-            foreach (string itemType in new[] { "PackageReference", "ProjectReference" })
+            if (!items.TryGetProperty(itemType, out JsonElement references) || references.ValueKind != JsonValueKind.Array) continue;
+            foreach (JsonElement reference in references.EnumerateArray())
             {
-                if (!items.TryGetProperty(itemType, out JsonElement references) || references.ValueKind != JsonValueKind.Array) continue;
-                foreach (JsonElement reference in references.EnumerateArray())
+                if (!reference.TryGetProperty("Identity", out JsonElement identityNode)) continue;
+                string identity = identityNode.GetString() ?? string.Empty;
+                if (itemType == "ProjectReference")
                 {
-                    if (!reference.TryGetProperty("Identity", out JsonElement identityNode)) continue;
-                    string identity = identityNode.GetString() ?? string.Empty;
-                    if (itemType == "ProjectReference")
-                    {
-                        identity = Path.GetFileNameWithoutExtension(identity.Replace('\\', '/').Split('/')[^1]);
-                    }
-                    csWebUi |= identity.Equals(CsWebUiPackage, StringComparison.OrdinalIgnoreCase) ||
-                        identity.Equals("Runic.Application.Views.CsWebUi", StringComparison.OrdinalIgnoreCase);
-                    desktop |= identity.Equals(DesktopPackage, StringComparison.OrdinalIgnoreCase);
+                    identity = Path.GetFileNameWithoutExtension(identity.Replace('\\', '/').Split('/')[^1]);
                 }
+                if (identity.Equals(name, StringComparison.OrdinalIgnoreCase)) return true;
             }
         }
-        return csWebUi ? RunicViewsHost.CsWebUi : desktop ? RunicViewsHost.Desktop : RunicViewsHost.Unknown;
+        return false;
     }
 
     private static async Task<string> ReadProjectPropertiesAsync(
@@ -98,14 +123,22 @@ internal sealed record DoctorProjectConfiguration(
         string project,
         string projectDirectory,
         string configuration,
+        string? targetRuntimeIdentifier,
         CancellationToken cancellationToken)
     {
+        // A target RID is a global property, as with 'dotnet publish -r', so
+        // RID-conditioned PublishAot and SelfContained settings apply.
+        List<string> arguments =
+        [
+            "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained",
+            "-getItem:PackageReference,ProjectReference",
+        ];
+        if (targetRuntimeIdentifier is not null) arguments.Add($"-property:RuntimeIdentifier={targetRuntimeIdentifier}");
         CommandResult result = await CommandRunner.RunAsync(
             dotnetHost,
             projectDirectory,
-            ["msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-             "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,NETCoreSdkRuntimeIdentifier",
-             "-getItem:PackageReference,ProjectReference"],
+            arguments,
             cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {

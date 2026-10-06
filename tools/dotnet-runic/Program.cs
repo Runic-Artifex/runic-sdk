@@ -86,22 +86,24 @@ internal static partial class Program
             configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
 
     [Command("doctor", Description = "Check the project and development environment.",
-        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --output json"])]
+        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --rid win-x64", "dotnet runic doctor --output json"])]
     [CommandResult(DoctorCommandResult.PayloadType, typeof(DoctorCommandJsonContext))]
     internal static Task<CommandOutcome<DoctorCommandResult>> Doctor(
         CommandExecutionContext context,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration to evaluate.")] string configuration = "Debug",
-        [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail for human output and never for JSON output.")] string failOn = "")
+        [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail for human output and never for JSON output.")] string failOn = "",
+        [Option("--rid", "--runtime", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
     {
         return ExecuteAsync<DoctorCommandResult>(context, stream: false, async output =>
         {
             DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn, context.OutputMode);
+            DoctorTargetRid? target = string.IsNullOrEmpty(rid) ? null : DoctorTargetRid.Parse(rid);
             DoctorRun run = await DoctorApplication.InspectAsync(
-                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration),
+                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration, target),
                 cancellationToken).ConfigureAwait(false);
-            DoctorApplication.WriteReport(run.Project, run.Report);
+            DoctorApplication.WriteReport(run.Project, run.Report, run.Target);
             return DoctorOutcome.Create(
                 run, context.OutputMode, threshold, context.Path,
                 output.ToString().TrimEnd(), BoundedHumanOutput(output));

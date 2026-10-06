@@ -35,6 +35,15 @@ internal static class Program
             ("doctor scopes the browser check to the Views host", DoctorScopesBrowserCheckToHost),
             ("doctor detects the Views host from evaluated references", DoctorDetectsHostFromReferences),
             ("doctor JSON payload lists every check", DoctorJsonListsChecks),
+            ("doctor --rid accepts only runtime identifier syntax", DoctorRidParsesRuntimeIdentifiers),
+            ("doctor --rid rejects unsupported targets", DoctorRidRejectsUnsupportedTargets),
+            ("doctor --rid checks a Linux Native AOT target", DoctorRidChecksLinuxAot),
+            ("doctor --rid refuses cross-OS Native AOT", DoctorRidRefusesCrossOsAot),
+            ("doctor --rid checks framework-dependent and RuntimeIdentifiers", DoctorRidChecksFrameworkDependent),
+            ("doctor --rid checks GTK 4 and WebKitGTK 6", DoctorRidChecksGtk4),
+            ("doctor --rid checks Windows WebView2 and C++ tools", DoctorRidChecksWindows),
+            ("doctor --rid checks CS-WebUI presentation", DoctorRidChecksCsWebUi),
+            ("doctor --rid reports its target through the CLI", DoctorRidThroughCli),
             ("--no-restore keeps MSBuild from installing frontend packages", NoRestoreSkipsFrontendInstall),
             ("child process failures name the program and directory", ChildFailuresNameProgramAndDirectory),
             ("every command option is described", EveryOptionIsDescribed),
@@ -439,9 +448,10 @@ internal static class Program
         string json = JsonSerializer.Serialize(result, new DoctorCommandJsonContext(new JsonSerializerOptions()).DoctorCommandResult);
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
-        SequenceEqual(["project", "host", "healthy", "summary", "checks"],
+        SequenceEqual(["project", "host", "target", "healthy", "summary", "checks"],
             root.EnumerateObject().Select(property => property.Name).ToArray());
         Equal("desktop", root.GetProperty("host").GetString());
+        Equal(JsonValueKind.Null, root.GetProperty("target").ValueKind);
         False(root.GetProperty("healthy").GetBoolean(), "A failing check makes the payload unhealthy.");
         Equal(1, root.GetProperty("summary").GetProperty("failed").GetInt32());
         JsonElement[] checks = [.. root.GetProperty("checks").EnumerateArray()];
@@ -762,14 +772,42 @@ internal static class Program
 
     private sealed class FakeDoctorRuntime(CompatibilityToolchain toolchain) : IDoctorRuntime
     {
-        public string? GetEnvironmentVariable(string name) => null;
+        internal const string VsWhere = @"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe";
 
-        public string? FindExecutable(string name) => name is "dotnet" or "node" or "npm" ? name : null;
+        public DoctorHostPlatform Platform { get; init; } = new("linux", "x64", false, "6.12");
+        public HashSet<string> Executables { get; init; } = [];
+        public HashSet<string> Libraries { get; init; } = [];
+        public Dictionary<string, string> Environment { get; init; } = [];
+        public string? WebView2Version { get; init; }
+        public string? Gtk4Version { get; init; }
+        public HashSet<string> VisualStudioComponents { get; init; } = [];
+
+        public string? GetEnvironmentVariable(string name) => Environment.GetValueOrDefault(name);
+
+        public string? FindExecutable(string name) =>
+            name.EndsWith("vswhere.exe", StringComparison.Ordinal) ? (Executables.Contains("vswhere") ? VsWhere : null)
+            : name is "dotnet" or "node" or "npm" || Executables.Contains(name) ? name : null;
+
+        public bool IsNativeLibraryAvailable(string fileName) => Libraries.Contains(fileName);
+
+        public string? GetWebView2RuntimeVersion() => WebView2Version;
 
         public Task<CommandResult> RunAsync(
             string executable, string workingDirectory, IReadOnlyList<string> arguments,
             CancellationToken cancellationToken)
         {
+            if (executable == "pkg-config")
+            {
+                return Task.FromResult(Gtk4Version is null
+                    ? new CommandResult(1, string.Empty, "not found")
+                    : new CommandResult(0, Gtk4Version + "\n", string.Empty));
+            }
+            if (executable == VsWhere)
+            {
+                string component = arguments[arguments.ToList().IndexOf("-requires") + 1];
+                return Task.FromResult(new CommandResult(0,
+                    VisualStudioComponents.Contains(component) ? @"C:\VS" : string.Empty, string.Empty));
+            }
             string version = executable switch
             {
                 "dotnet" => toolchain.DotNetSdk,
@@ -779,6 +817,224 @@ internal static class Program
             };
             return Task.FromResult(new CommandResult(0, version, string.Empty));
         }
+    }
+
+    private static DoctorReport InspectTarget(
+        DoctorProjectConfiguration project, string rid, FakeDoctorRuntime runtime) =>
+        DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None, DoctorTargetRid.Parse(rid))
+            .GetAwaiter().GetResult();
+
+    private static DoctorCheck Check(DoctorReport report, string id) => report.Checks.Single(check => check.Name == id);
+
+    private static string[] TargetCheckIds(DoctorReport report) =>
+        [.. report.Checks.Select(check => check.Name).Where(name => name.StartsWith("target-", StringComparison.Ordinal))];
+
+    private static void DoctorRidParsesRuntimeIdentifiers()
+    {
+        DoctorTargetRid linux = DoctorTargetRid.Parse("linux-musl-arm64");
+        Equal("linux-musl", linux.Os);
+        Equal("arm64", linux.Architecture);
+        True(linux.Musl, "linux-musl is a musl target.");
+        Equal("linux", linux.Family);
+        Equal("osx", DoctorTargetRid.Parse("osx-arm64").Family);
+        True(DoctorTargetRid.Parse("ubuntu.22.04-x64") is { IsPortable: false }, "Version-specific RIDs are not portable.");
+        foreach (string invalid in new[] { "linux", "Linux-x64", "linux-x64 ", "-x64", "linux_x64", "../x64", "linux--x64" })
+        {
+            try
+            {
+                DoctorTargetRid.Parse(invalid);
+                throw new InvalidOperationException($"'{invalid}' was accepted as a runtime identifier.");
+            }
+            catch (DevUsageException error)
+            {
+                Equal("RAPPCLI1011", error.Code);
+            }
+        }
+    }
+
+    private static void DoctorRidRejectsUnsupportedTargets()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        var runtime = new FakeDoctorRuntime(authority.Toolchain);
+        foreach (string rid in new[] { "android-arm64", "browser-wasm", "win-x86", "linux-arm", "ubuntu.22.04-x64", "win10-x64" })
+        {
+            DoctorReport report = InspectTarget(desktop, rid, runtime);
+            Equal(DoctorStatus.Failure, Check(report, "target-rid").Status);
+            SequenceEqual(["target-rid"], TargetCheckIds(report));
+        }
+        DoctorReport csWebUi = InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, "win-arm64", runtime);
+        Equal(DoctorStatus.Failure, Check(csWebUi, "target-rid").Status);
+        Contains(Check(csWebUi, "target-rid").Message, "CS-WebUI");
+        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "win-arm64", runtime), "target-rid").Status);
+        Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-arm64", runtime), "target-rid").Status);
+    }
+
+    private static void DoctorRidChecksLinuxAot()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+            with { PublishAot = true };
+        var ready = new FakeDoctorRuntime(authority.Toolchain)
+        {
+            Executables = ["clang"],
+            Libraries = ["libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"],
+        };
+        DoctorReport report = InspectTarget(desktop, "linux-x64", ready);
+        SequenceEqual(["target-rid", "target-runtime-identifiers", "target-publish", "target-presentation"], TargetCheckIds(report));
+        True(report.Checks.Where(check => check.Name.StartsWith("target-", StringComparison.Ordinal)).All(check => check.Status == DoctorStatus.Pass),
+            "A Linux machine with clang and WebKitGTK passes a linux-x64 Native AOT target: " +
+            string.Join("; ", report.Checks.Select(check => $"{check.Name}={check.Status}")));
+        Contains(Check(report, "target-publish").Message, "clang");
+        Contains(Check(report, "target-presentation").Message, "WebKitGTK 4.1");
+
+        var bare = new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-3.so.0"] };
+        DoctorReport missing = InspectTarget(desktop, "linux-x64", bare);
+        Equal(DoctorStatus.Failure, Check(missing, "target-publish").Status);
+        Equal(DoctorStatus.Warning, Check(missing, "target-presentation").Status);
+        Contains(Check(missing, "target-presentation").Message, "libwebkit2gtk-4.1.so.0");
+        DoesNotContain(Check(missing, "target-presentation").Message, "libgtk-3.so.0");
+
+        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "linux-arm64", ready), "target-publish").Status);
+        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "linux-musl-x64", ready), "target-publish").Status);
+    }
+
+    private static void DoctorRidRefusesCrossOsAot()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+            with { PublishAot = true };
+        var linux = new FakeDoctorRuntime(authority.Toolchain) { Executables = ["clang"] };
+        foreach (string rid in new[] { "win-x64", "osx-arm64" })
+        {
+            DoctorReport report = InspectTarget(desktop, rid, linux);
+            DoctorCheck publish = Check(report, "target-publish");
+            Equal(DoctorStatus.Failure, publish.Status);
+            Contains(publish.Message, "does not cross operating systems");
+            Contains(publish.Remediation ?? string.Empty, "PublishAot=false");
+            DoctorCheck presentation = Check(report, "target-presentation");
+            Equal(DoctorStatus.Pass, presentation.Status);
+            Contains(presentation.Message, "cannot inspect");
+        }
+        var mac = new FakeDoctorRuntime(authority.Toolchain) { Platform = new("osx", "arm64", false, "15.4") };
+        DoctorReport noXcode = InspectTarget(desktop, "osx-arm64", mac);
+        Equal(DoctorStatus.Failure, Check(noXcode, "target-publish").Status);
+        Contains(Check(noXcode, "target-presentation").Message, "15.4");
+        var xcode = new FakeDoctorRuntime(authority.Toolchain) { Platform = mac.Platform, Executables = ["xcrun"] };
+        Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-x64", xcode), "target-publish").Status);
+    }
+
+    private static void DoctorRidChecksFrameworkDependent()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        var runtime = new FakeDoctorRuntime(authority.Toolchain);
+        DoctorCheck dependent = Check(InspectTarget(desktop, "win-x64", runtime), "target-publish");
+        Equal(DoctorStatus.Pass, dependent.Status);
+        Contains(dependent.Message, ".NET 10 and ASP.NET Core 10 runtimes");
+        Contains(Check(InspectTarget(desktop with { SelfContained = true }, "win-x64", runtime), "target-publish").Message,
+            "no .NET installation");
+        DoesNotContain(Check(InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, "win-x64", runtime), "target-publish").Message,
+            "ASP.NET Core");
+
+        DoctorProjectConfiguration declared = desktop with { RuntimeIdentifiers = "linux-x64; osx-arm64" };
+        Equal(DoctorStatus.Pass, Check(InspectTarget(declared, "osx-arm64", runtime), "target-runtime-identifiers").Status);
+        DoctorCheck absent = Check(InspectTarget(declared, "win-x64", runtime), "target-runtime-identifiers");
+        Equal(DoctorStatus.Warning, absent.Status);
+        Contains(absent.Remediation ?? string.Empty, "win-x64");
+    }
+
+    private static void DoctorRidChecksGtk4()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+            with { UsesGtk4 = true };
+        string[] gtk4 = ["libgtk-4.so.1", "libwebkitgtk-6.0.so.4"];
+        DoctorCheck current = Check(InspectTarget(desktop, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4], Executables = ["pkg-config"], Gtk4Version = "4.22.4" }),
+            "target-presentation");
+        Equal(DoctorStatus.Pass, current.Status);
+        Contains(current.Message, "GTK 4.22.4");
+        DoctorCheck old = Check(InspectTarget(desktop, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4], Executables = ["pkg-config"], Gtk4Version = "4.10.1" }),
+            "target-presentation");
+        Equal(DoctorStatus.Warning, old.Status);
+        Contains(old.Message, "4.12");
+        Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4] }), "target-presentation").Status);
+        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"] }), "target-presentation").Status);
+
+        using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Desktop"},{"Identity":"Runic.Desktop.Gtk4"}]}}""");
+        True(DoctorProjectConfiguration.References(evaluation.RootElement, DoctorProjectConfiguration.DesktopGtk4Package),
+            "A Runic.Desktop.Gtk4 package reference selects the GTK 4 checks.");
+    }
+
+    private static void DoctorRidChecksWindows()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+            with { PublishAot = true };
+        DoctorHostPlatform windows = new("win", "x64", false, "10.0.26100");
+        var bare = new FakeDoctorRuntime(authority.Toolchain) { Platform = windows };
+        DoctorReport missing = InspectTarget(desktop, "win-x64", bare);
+        Equal(DoctorStatus.Failure, Check(missing, "target-publish").Status);
+        Equal(DoctorStatus.Warning, Check(missing, "target-presentation").Status);
+        Contains(Check(missing, "target-presentation").Remediation ?? string.Empty, "WebView2 Runtime");
+
+        var installed = new FakeDoctorRuntime(authority.Toolchain)
+        {
+            Platform = windows,
+            Environment = new() { ["ProgramFiles(x86)"] = @"C:\Program Files (x86)" },
+            Executables = ["vswhere"],
+            VisualStudioComponents = ["Microsoft.VisualStudio.Component.VC.Tools.x86.x64"],
+            WebView2Version = "141.0.3537.71",
+        };
+        DoctorReport x64 = InspectTarget(desktop, "win-x64", installed);
+        Equal(DoctorStatus.Pass, Check(x64, "target-publish").Status);
+        Contains(Check(x64, "target-presentation").Message, "141.0.3537.71");
+        DoctorCheck arm64 = Check(InspectTarget(desktop, "win-arm64", installed), "target-publish");
+        Equal(DoctorStatus.Failure, arm64.Status);
+        Contains(arm64.Remediation ?? string.Empty, "VC.Tools.ARM64");
+    }
+
+    private static void DoctorRidChecksCsWebUi()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.CsWebUi", out var authority);
+        DoctorCheck browser = Check(InspectTarget(csWebUi, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] }), "target-presentation");
+        Equal(DoctorStatus.Pass, browser.Status);
+        Contains(browser.Message, "Chromium-family browser");
+        Equal(DoctorStatus.Pass, Check(InspectTarget(csWebUi, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"] }), "target-presentation").Status);
+        DoctorCheck neither = Check(InspectTarget(csWebUi, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-presentation");
+        Equal(DoctorStatus.Warning, neither.Status);
+        Contains(neither.Remediation ?? string.Empty, "WebKitGTK 4.1");
+        Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi, "linux-arm64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
+        Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi with { Host = RunicViewsHost.Unknown }, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain)), "target-presentation").Status);
+    }
+
+    private static void DoctorRidThroughCli()
+    {
+        using var workspace = new TestWorkspace();
+        string project = CreateCliDoctorProject(workspace);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "osx-arm64");
+        Equal(0, exitCode);
+        var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult);
+        DoctorCommandResult payload = response.Payload!;
+        Equal("osx-arm64", payload.Target);
+        Equal("pass", payload.Checks.Single(check => check.Id == "target-rid").Status);
+        True(payload.Checks.Any(check => check.Id == "target-presentation"), "The target adds presentation checks.");
+
+        (int invalidExit, string invalidOutput) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "Linux_x64");
+        Equal(2, invalidExit);
+        using JsonDocument invalid = JsonDocument.Parse(invalidOutput);
+        Equal("RAPPCLI1011", invalid.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        Equal(0, RunCli("doctor", "--project", project, "--output", "json", "--runtime", "linux-x64").ExitCode);
     }
 
     private static void CompatibilityAuthorityIncludesViews()
