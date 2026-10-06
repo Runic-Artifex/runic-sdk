@@ -41,3 +41,4 @@ export interface ViewReference<TClient = unknown> {
 }
 
 // CI measurement: views-only change, do not merge.
+// second sample
