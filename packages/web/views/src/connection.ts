@@ -1,7 +1,8 @@
-import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind } from "./errors.js";
+import { emitErrorDiagnostic } from "./diagnostics.js";
+import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
 import { InteractionRuntime, type InteractionDefinition, type InteractionSurface } from "./interactions.js";
 import { OperationChannel, type BridgeStreamOperation } from "./operations.js";
-import { sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
+import { errorMessage, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import { bridgeWire } from "./wire.js";
 import { applyCollectionDelta, validateCollections, type BridgeCollectionDefinition } from "./collections.js";
@@ -65,21 +66,27 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
     stream?: boolean): Promise<BridgeStreamOperation<TResult>>;
 }
 
-type Envelope = { readonly ok: boolean; readonly state: unknown; readonly error: { readonly kind: BridgeErrorKind; readonly message: string } | null };
+type EnvelopeError = { readonly kind: BridgeErrorKind; readonly message: string; readonly detail?: unknown };
+type Envelope = { readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null };
 
-const callFailed = (bridge: RunicBridgeClient, message: string) =>
-  new BridgeError(bridge.isConnected() ? "failed" : "disconnected", message);
+const callFailed = (bridge: RunicBridgeClient, message: string, route: string, cause: unknown) =>
+  new BridgeError(bridge.isConnected() ? "failed" : "disconnected", message, { cause, route });
 
-function unpack(json: string, entry: SharedEntry): unknown {
+function replyError(error: EnvelopeError | null, route: string, fallback: string): BridgeError {
+  const detail = decodeFailureDetail(error?.detail);
+  return new BridgeError(error?.kind ?? "failed", error?.message ?? fallback, { route, ...(detail === undefined ? {} : { detail }) });
+}
+
+function unpack(json: string, entry: SharedEntry, route: string): unknown {
   let reply: Envelope;
   try { reply = JSON.parse(json) as Envelope; }
-  catch { throw new BridgeError("failed", "The Bridge returned an invalid response."); }
-  if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.");
+  catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route }); }
+  if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.", { route });
   let state: unknown;
   try { state = reply.state === null ? undefined : entry.accept(reply.state); }
-  catch { throw new BridgeError("failed", "The Bridge returned an invalid state."); }
-  if (!reply.ok) throw new BridgeError(reply.error?.kind ?? "failed", reply.error?.message ?? "The call failed.");
-  if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.");
+  catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route }); }
+  if (!reply.ok) throw replyError(reply.error, route, "The call failed.");
+  if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.", { route });
   return state;
 }
 
@@ -88,10 +95,16 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
   let recovering: Promise<void> | undefined;
   function recover(): void {
     if (recovering || !entry.active || !routeEntry.active) return;
-    const request = (async () => { unpack(await bridge.call(`${route}Snapshot`), entry); })();
+    const snapshotRoute = `${route}Snapshot`;
+    const request = (async () => {
+      let reply: string;
+      try { reply = await bridge.call(snapshotRoute); }
+      catch (cause) { throw callFailed(bridge, "The state could not be re-read after an unusable collection change.", snapshotRoute, cause); }
+      unpack(reply, entry, snapshotRoute);
+    })();
     recovering = request;
     const settled = () => { if (recovering === request) recovering = undefined; };
-    request.then(settled, error => { settled(); reportBridgeError(error); });
+    request.then(settled, error => { settled(); reportBridgeError(error, snapshotRoute); });
   }
   const entry: SharedEntry = {
     contract, route, bridge, routeEntry, leases: new Set(), hydrate, current: undefined, wire: undefined, revision: undefined,
@@ -107,7 +120,13 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
           typeof delta.baseRevision !== "number" || revision <= delta.baseRevision) { recover(); return entry.current; }
         let current: unknown;
         try { current = applyCollectionDelta(entry.current, delta.changes, collections); }
-        catch { recover(); return entry.current; }
+        catch (cause) {
+          // Report why the change was unusable, then recover from a full snapshot.
+          reportBridgeError(new BridgeError("failed", `A collection change for ${route} could not be applied: ${errorMessage(cause)}`,
+            { cause, route: `__${route}Changed` }));
+          recover();
+          return entry.current;
+        }
         entry.current = current;
         entry.revision = revision;
         // Checked field baselines are unchanged by collection-only frames.
@@ -142,8 +161,8 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
   const initialization = (async () => {
     let reply: string;
     try { reply = await bridge.call(`${route}Snapshot`); }
-    catch { throw new BridgeError(bridge.isConnected() ? "failed" : "disconnected", "The Bridge call could not complete."); }
-    unpack(reply, entry);
+    catch (cause) { throw callFailed(bridge, "The Bridge call could not complete.", `${route}Snapshot`, cause); }
+    unpack(reply, entry, `${route}Snapshot`);
   })();
   entry.initializing = initialization;
   const settle = () => { if (entry.initializing === initialization) entry.initializing = undefined; };
@@ -157,6 +176,17 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
  * listeners, mount token and interaction handlers.
  */
 export async function connectView<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
+  try { return await connectRoute(options); }
+  catch (error) { emitErrorDiagnostic(error, `${options.route}Snapshot`); throw error; }
+}
+
+// Reports a failure that leaves a client method once, with its route, then rethrows it.
+async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
+  try { return await run(); }
+  catch (error) { emitErrorDiagnostic(error, route); throw error; }
+}
+
+async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
   const { route } = options;
   const bridge = await waitForBridge();
   const runtime = sharedRuntimeFor(bridge);
@@ -182,18 +212,23 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
     assertConnected();
     let reply: string;
     try { reply = await bridge.call(name, ...args); }
-    catch { throw callFailed(bridge, "The Bridge call could not complete."); }
-    if (lease.disposed || !isLive()) throw new BridgeError("disconnected", "This view was disposed. Reconnect for the current state.");
+    catch (cause) { throw callFailed(bridge, "The Bridge call could not complete.", name, cause); }
+    if (lease.disposed || !isLive()) throw new BridgeError("disconnected", "This view was disposed. Reconnect for the current state.", { route: name });
     return reply;
   }
   async function invoke(name: string, ...args: unknown[]): Promise<TState> {
-    return unpack(await call(name, args), shared) as TState;
+    return unpack(await call(name, args), shared, name) as TState;
   }
   function dispose(): void {
     if (lease.disposed) return;
     lease.disposed = true;
     interactions?.dispose();
-    if (lease.mounted && lease.mountToken) void bridge.call(`${route}Unmount`, lease.mountToken).catch(() => {});
+    if (lease.mounted && lease.mountToken) {
+      // .NET also releases the mount with the connection, so a closed transport is expected here.
+      void bridge.call(`${route}Unmount`, lease.mountToken).catch(cause => {
+        if (bridge.isConnected()) reportBridgeError(new BridgeError("failed", "The View could not be unmounted.", { cause, route: `${route}Unmount` }));
+      });
+    }
     lease.listeners.clear();
     shared.leases.delete(lease);
     if (shared.leases.size !== 0 || routeEntry.entries.get(contractId) !== shared) return;
@@ -214,10 +249,10 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
     try {
       lease.mounted = true;
       const acknowledged = await bridge.call(`${route}Mount`, mountToken);
-      if (acknowledged !== "ok") throw new BridgeError("disconnected", "The View mount was not accepted.");
+      if (acknowledged !== "ok") throw new BridgeError("disconnected", "The View mount was not accepted.", { route: `${route}Mount` });
     } catch (cause) {
       dispose();
-      throw cause instanceof BridgeError ? cause : new BridgeError("disconnected", "The View mount could not complete.");
+      throw cause instanceof BridgeError ? cause : new BridgeError("disconnected", "The View mount could not complete.", { cause, route: `${route}Mount` });
     }
   }
   if (!isLive()) { dispose(); throw new BridgeError("disconnected", "The Bridge session changed during connection."); }
@@ -238,27 +273,27 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
     },
     dispose,
     interactions: interactions?.surface ?? {},
-    invoke,
-    async command(name, ...args) {
+    invoke: (name, ...args) => observed(name, () => invoke(name, ...args)),
+    command: (name, ...args) => observed(name, async () => {
       await ready();
       return invoke(name, ...args);
-    },
-    async query(name, ...args) {
+    }),
+    query: (name, ...args) => observed(name, async () => {
       assertConnected();
       let reply: string;
       try { reply = await bridge.call(name, ...args); }
-      catch { throw callFailed(bridge, "The command availability query could not complete."); }
+      catch (cause) { throw callFailed(bridge, "The command availability query could not complete.", name, cause); }
       if (reply === "true") return true;
       if (reply === "false") return false;
-      throw new BridgeError("failed", "The command availability query returned an invalid response.");
-    },
-    async writeField(name, payload, decode) {
+      throw new BridgeError("failed", "The command availability query returned an invalid response.", { route: name });
+    }),
+    writeField: (name, payload, decode) => observed(name, async () => {
       const json = await call(name, [payload]);
       let reply: Envelope & { readonly receipt: unknown };
       try { reply = bridgeWire.object(JSON.parse(json), value => value) as unknown as typeof reply; }
-      catch { throw new BridgeError("failed", "The Bridge returned an invalid response."); }
+      catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route: name }); }
       if (reply.state !== null) shared.accept(reply.state);
-      if (!reply.ok) throw new BridgeError(reply.error?.kind ?? "failed", reply.error?.message ?? "The checked write failed.");
+      if (!reply.ok) throw replyError(reply.error, name, "The checked write failed.");
       try {
         const receipt = bridgeWire.object(reply.receipt, value => value);
         const baseline = (value: unknown) => bridgeWire.object(value, field => ({
@@ -272,8 +307,8 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
           case "rejected": return { kind: "rejected", message: bridgeWire.string(receipt["message"]) };
           default: throw new TypeError("Unknown checked write receipt kind.");
         }
-      } catch { throw new BridgeError("failed", "The Bridge returned an invalid checked write receipt."); }
-    },
+      } catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid checked write receipt: ${errorMessage(cause)}`, { cause, route: name }); }
+    }),
     fieldBaseline(field) {
       if (lease.disposed || !isLive() || lease.current === undefined) throw new BridgeError("disconnected", "ViewModel is not connected.");
       if (!options.checkedFields?.includes(field)) throw new BridgeError("failed", "The requested checked field is unavailable.");
@@ -285,27 +320,33 @@ export async function connectView<TState>(options: ViewConnectOptions<TState>): 
     },
     async startOperation(member, requestId, payload, decode, stream = false) {
       if (requestId.length === 0) throw new RangeError("Operation requestId is required.");
-      assertConnected();
-      await ready();
-      let reply: string;
-      try { reply = await bridge.call(`${route}Start${member}`, payload()); }
-      catch {
-        const recovered = await operations.status(member, requestId, false, decode);
-        if (recovered.kind === "unknown" || recovered.kind === "expired")
-          throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered.");
-        return operations.handle(member, requestId, decode, stream, recovered.kind === "running" ? undefined : recovered);
-      }
-      let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown };
-      try { admission = JSON.parse(reply) as typeof admission; }
-      catch { throw new BridgeError("failed", "The operation service returned invalid JSON."); }
-      if (admission.kind === "accepted" || admission.kind === "duplicate") {
-        const terminal = admission.terminal === null || admission.terminal === undefined
-          ? undefined : operations.parseStatus(JSON.stringify(admission.terminal), requestId, decode);
-        return operations.handle(member, requestId, decode, stream, terminal);
-      }
-      throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.");
+      const startRoute = `${route}Start${member}`;
+      return observed(startRoute, async () => {
+        assertConnected();
+        await ready();
+        let reply: string;
+        try { reply = await bridge.call(startRoute, payload()); }
+        catch (cause) {
+          const recovered = await operations.status(member, requestId, false, decode);
+          if (recovered.kind === "unknown" || recovered.kind === "expired")
+            throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered.", { cause });
+          return operations.handle(member, requestId, decode, stream, recovered.kind === "running" ? undefined : recovered);
+        }
+        let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown; readonly detail?: unknown };
+        try { admission = JSON.parse(reply) as typeof admission; }
+        catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
+        if (admission.kind === "accepted" || admission.kind === "duplicate") {
+          const terminal = admission.terminal === null || admission.terminal === undefined
+            ? undefined : operations.parseStatus(JSON.stringify(admission.terminal), requestId, decode);
+          return operations.handle(member, requestId, decode, stream, terminal);
+        }
+        const detail = decodeFailureDetail(admission.detail);
+        throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.",
+          { route: startRoute, ...(detail === undefined ? {} : { detail }) });
+      });
     },
-    recoverOperation: (member, requestId, decode, stream = false) => operations.recover(member, requestId, decode, stream),
+    recoverOperation: (member, requestId, decode, stream = false) =>
+      observed(`${route}Start${member}`, () => operations.recover(member, requestId, decode, stream)),
   };
 }
 

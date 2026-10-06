@@ -6,6 +6,7 @@ import {
 
 export type {
   RunicDiagnosticDetail,
+  RunicDiagnosticFailure,
   RunicDiagnosticDetailValue,
   RunicDiagnosticEntry,
   RunicDiagnosticSource,
@@ -102,6 +103,63 @@ async function defaultDispose(resource: unknown): Promise<void> {
   if (typeof dispose === "function") await dispose.call(resource);
 }
 
+// @runic-artifex/views publishes runtime failures on a page-wide listener set
+// under this registered symbol, so this client needs no dependency on it.
+const viewsDiagnosticsKey = Symbol.for("runic.views.diagnostics");
+const viewsListenerKey = "runic:views-listener";
+
+interface ViewsDiagnostic {
+  readonly kind?: unknown;
+  readonly code?: unknown;
+  readonly message?: unknown;
+  readonly route?: unknown;
+  readonly detail?: unknown;
+  readonly member?: unknown;
+  readonly requestId?: unknown;
+}
+
+// The error class a code comes from, for a failure without exception detail.
+function fallbackType(code: string): string {
+  if (code === "reported") return "Error";
+  if (code === "uncertain") return "BridgeOperationUncertainError";
+  return "BridgeError";
+}
+
+/** Forwards a Views runtime diagnostic to the DevTools timeline. */
+function reportViewsDiagnostic(diagnostic: ViewsDiagnostic): void {
+  const route = typeof diagnostic.route === "string" ? diagnostic.route.slice(0, 120) : undefined;
+  const code = typeof diagnostic.code === "string" ? diagnostic.code.slice(0, 32) : "error";
+  const message = typeof diagnostic.message === "string" ? diagnostic.message : "";
+  const error = diagnostic.kind !== "operation";
+  const member = typeof diagnostic.member === "string" ? diagnostic.member.slice(0, 80) : undefined;
+  const requestId = typeof diagnostic.requestId === "string" ? diagnostic.requestId.slice(0, 80) : undefined;
+  // The label stays short and path-free, so the timeline never redacts it.
+  // An error's message, which may name files or packages, goes to the
+  // failure, whose bounds keep paths.
+  sendDiagnostic({
+    source: "views",
+    kind: error ? "error" : "operation",
+    label: `${member ?? route ?? "Bridge"} ${code}`,
+    detail: {
+      code, ...(route ? { route } : {}), ...(member ? { member } : {}), ...(requestId ? { requestId } : {}),
+      ...(error ? {} : { message }),
+    },
+    ...(error ? { failure: diagnostic.detail ?? { type: fallbackType(code), message } } : {}),
+  });
+}
+
+function connectViewsDiagnostics(): void {
+  if (!hot) return;
+  const host = globalThis as unknown as Record<symbol, Set<(diagnostic: ViewsDiagnostic) => void> | undefined>;
+  const listeners = host[viewsDiagnosticsKey] ??= new Set();
+  // HMR re-evaluates this module; replace the listener of the previous copy.
+  const previous = hot.data[viewsListenerKey] as ((diagnostic: ViewsDiagnostic) => void) | undefined;
+  if (previous) listeners.delete(previous);
+  listeners.add(reportViewsDiagnostic);
+  hot.data[viewsListenerKey] = reportViewsDiagnostic;
+}
+
+connectViewsDiagnostics();
 hot?.on("runic:state", () => undefined);
 hot?.prune(async () => {
   for (const key of [...resources.keys()]) await disposeRunicHmrResource(key);

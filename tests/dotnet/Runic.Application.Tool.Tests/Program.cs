@@ -160,6 +160,18 @@ internal static class Program
         IReadOnlyDictionary<string, string?> environment = HostProcessController.CreateDevelopmentEnvironment(
             configuration, new Dictionary<string, string?>());
         Equal("1", environment["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"]);
+
+        // Unset: the Window runs as a development host.
+        IReadOnlyDictionary<string, string?> unset = HostProcessController.CreateDevelopmentEnvironment(
+            configuration, new Dictionary<string, string?>(), _ => null);
+        Equal("Development", unset["DOTNET_ENVIRONMENT"]);
+        // A developer's environment wins: the child inherits it unchanged.
+        foreach (string chosen in new[] { "DOTNET_ENVIRONMENT", "ASPNETCORE_ENVIRONMENT" })
+        {
+            IReadOnlyDictionary<string, string?> kept = HostProcessController.CreateDevelopmentEnvironment(
+                configuration, new Dictionary<string, string?>(), name => name == chosen ? "Staging" : null);
+            Equal(false, kept.ContainsKey("DOTNET_ENVIRONMENT"));
+        }
     }
 
     private static void DevelopmentServersBindLoopback()

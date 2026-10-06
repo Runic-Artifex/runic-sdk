@@ -131,6 +131,7 @@ await ToolkitTypedTests.RunAsync();
 await ValidationTests.RunAsync();
 await SnapshotDeliveryTests.RunAsync();
 await SnapshotBatchTests.RunAsync();
+await FailureDetailTests.RunAsync();
 await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();
 await ContentLifecycleTests.RunAsync();

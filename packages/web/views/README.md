@@ -39,7 +39,8 @@ counter.dispose();
 keeps its last `snapshot`, and `subscribe` delivers that state once and returns
 a no-op, so framework stores can read a client during teardown. Calls reject
 with a `BridgeError` whose `kind` is `rejected`, `cancelled`, `failed`,
-`disconnected` or `timeout`.
+`disconnected`, `timeout` or `unavailable`; see
+[Errors and diagnostics](#errors-and-diagnostics).
 
 All generated modules on a page share one runtime instance, even when several
 bundles or copies of this package load: a route has one push callback and one
@@ -141,3 +142,52 @@ operation status, and `disconnect()`/`reconnect()` exercise the reconnect path.
 
 The wire protocol is specified in the
 [Application Views specification](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application).
+
+## Errors and diagnostics
+
+A `BridgeError` names what failed and why:
+
+- `kind` is `rejected`, `cancelled`, `failed`, `disconnected`, `timeout`
+  (a Bridge is installed but did not connect in time) or `unavailable` (no
+  host installed `window.__runicBridge`, for example a frontend opened from a
+  plain Vite server; the message says how to fix it).
+- `route` is the Bridge route that failed, such as `counterIncrement`.
+- `cause` is the underlying error, such as the transport rejection or the
+  decoder error of an invalid state.
+- `detail` is `{type, message, stack}` of the .NET exception. .NET sends it
+  only in development: when the host environment is `Development`, which
+  `dotnet runic dev` sets, or when the application sets
+  `BridgeDiagnostics.IncludeFailureDetail = true`. Production replies carry
+  only the bounded message, such as `"Save failed."`.
+
+Generated clients wait up to five seconds for the host Bridge. To wait longer,
+call `waitForBridge` before the first `connect<Name>()`:
+
+```ts
+import { waitForBridge } from "@runic-artifex/views";
+
+await waitForBridge({ timeout: 30_000 }); // waitForBridge(30_000) also works
+```
+
+An operation's `wait({ timeout })` bounds how long the client waits. When the
+timeout passes, the client asks .NET to cancel the operation and resolves to a
+status with `kind: "timedOut"` and `cancellation` set to .NET's answer
+(`cancellation-requested`, `unknown`, `expired`) or `unobserved` when the
+request failed. An operation that finished just before the cancellation keeps
+its real terminal status. `timedOut` is decided by the client; `completion`
+still reports the status .NET settles on. The cancellation applies to the
+operation itself, so every other observer of it, including another tab or a
+later `recover<Command>WithRequestId`, sees it cancelled. Use a timeout only
+when the caller owns the operation.
+
+```ts
+const save = await editor.startSave();
+const status = await save.wait({ timeout: 10_000 });
+if (status.kind === "timedOut") showRetry();
+```
+
+`onBridgeDiagnostic(listener)` observes runtime failures: failed calls, a
+missing or unconnected Bridge, operation timeouts, and errors the runtime caught
+from listeners, invalid pushes and reconnect work (those are also passed to
+`reportError`). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
+forwards them to its DevTools dock during development.

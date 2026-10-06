@@ -6,7 +6,8 @@ export type MockState = Record<string, unknown>;
 /**
  * Answers one route suffix of a mock View. A returned object is merged into the
  * state, a boolean answers a `Can{Command}` query, and a string is the raw reply.
- * A thrown error becomes a failed reply; an error with a `kind` keeps that kind.
+ * A thrown error becomes a failed reply with its type, message and stack as
+ * `detail`; an error with a `kind` keeps that kind.
  */
 export type MockRoute = (state: MockState, ...args: unknown[]) =>
   MockState | boolean | string | void | Promise<MockState | boolean | string | void>;
@@ -58,7 +59,7 @@ export function createMockBridge(): MockBridge {
   let connected = true;
   let revision = 0;
 
-  const envelope = (view: RegisteredView, error?: { kind: string; message: string }) => JSON.stringify({
+  const envelope = (view: RegisteredView, error?: { kind: string; message: string; detail?: unknown }) => JSON.stringify({
     ok: error === undefined, state: { ...view.state, revision: view.revision }, error: error ?? null, protocol: 1,
   });
   const commit = (view: RegisteredView, next: MockState) => { view.state = next; view.revision = ++revision; };
@@ -75,7 +76,11 @@ export function createMockBridge(): MockBridge {
         return envelope(view);
       } catch (error) {
         const kind = typeof (error as { kind?: unknown })?.kind === "string" ? (error as { kind: string }).kind : "failed";
-        return envelope(view, { kind, message: error instanceof Error ? error.message : String(error) });
+        // Like .NET in development, the reply carries the thrown error's detail.
+        const detail = error instanceof Error
+          ? { type: error.name, message: error.message, ...(typeof error.stack === "string" ? { stack: error.stack } : {}) }
+          : undefined;
+        return envelope(view, { kind, message: error instanceof Error ? error.message : String(error), ...(detail ? { detail } : {}) });
       }
     }
     if (suffix === "Snapshot") return envelope(view);

@@ -349,6 +349,121 @@ test("accepts view, asset, and translation summaries through one bounded timelin
   );
 });
 
+test("keeps a bounded, credential-redacted failure only on error entries", () => {
+  const plugin = runic({ devtools: false });
+  let latest;
+  plugin.configureServer({
+    ws: { on: () => undefined, send: (message) => { latest = message.data; } },
+    middlewares: { use: () => undefined },
+    httpServer: undefined,
+  });
+  const stack = [
+    "System.InvalidOperationException: Disk full at /home/dev/notes.db",
+    ...Array.from({ length: 200 }, (_, index) => `   at Notes.Save${index}() in /home/dev/Notes/Editor.cs:line ${index}`),
+  ].join("\n");
+  plugin.diagnostics.report({
+    source: "views",
+    kind: "error",
+    label: "editorSave failed",
+    failure: { type: "System.InvalidOperationException", message: "Disk full. Authorization: Bearer must-not-escape", stack },
+  });
+  plugin.diagnostics.report({
+    source: "views",
+    kind: "operation",
+    label: "Save timedOut",
+    failure: { type: "Ignored", message: "Not an error entry." },
+  });
+  const [error, operation] = latest.timeline;
+  assert.equal(error.failure.type, "System.InvalidOperationException");
+  assert.equal(error.failure.message, "Disk full. Authorization: [redacted]");
+  assert.match(error.failure.stack, /^System\.InvalidOperationException: Disk full at \/home\/dev\/notes\.db\n   at Notes\.Save0\(\) in \/home\/dev\/Notes\/Editor\.cs:line 0/);
+  assert.ok(error.failure.stack.length <= 8_000);
+  assert.ok(error.failure.stack.split("\n").length <= 80);
+  assert.equal(operation.failure, undefined);
+});
+
+test("redacts credential values in failures and leaves failures out of the state endpoint", () => {
+  const plugin = runic({ devtools: false });
+  let latest;
+  const middleware = [];
+  plugin.configureServer({
+    ws: { on: () => undefined, send: (message) => { latest = message.data; } },
+    middlewares: { use: (path, handler) => middleware.push([path, handler]) },
+    httpServer: undefined,
+  });
+  const secrets = [
+    ["access_token=abc123", "access_token=[redacted]"],
+    ["client_secret: s3cr3t", "client_secret: [redacted]"],
+    ["refresh_token=r1", "refresh_token=[redacted]"],
+    ["id_token=eyJhbGci", "id_token=[redacted]"],
+    [String.raw`{"password":"hunter2","user":"ann"}`, String.raw`{"password":"[redacted]","user":"ann"}`],
+    ["https://user:pa55@db.example/x", "https://user:[redacted]@db.example/x"],
+    ["Server=db;Pwd=hunter2;", "Server=db;Pwd=[redacted];"],
+    ["AccountKey=a+b/c==;EndpointSuffix=core", "AccountKey=[redacted];EndpointSuffix=core"],
+    ["Authorization: Bearer tok", "Authorization: [redacted]"],
+    ["sent Bearer tok", "sent Bearer [redacted]"],
+  ];
+  for (const [input, expected] of secrets) {
+    plugin.diagnostics.report({ source: "views", kind: "error", label: "editorSave failed",
+      failure: { type: "System.Exception", message: input, stack: `System.Exception: ${input}\n   at Save()` } });
+    const failure = latest.timeline.at(-1).failure;
+    assert.equal(failure.message, expected, input);
+    assert.equal(failure.stack.split("\n")[0], `System.Exception: ${expected}`, input);
+  }
+  let body = "";
+  middleware[0][1]({}, { setHeader: () => undefined, end: (text) => { body = text; } });
+  const state = JSON.parse(body);
+  assert.equal(state.timeline.length, secrets.length);
+  assert.ok(state.timeline.every((entry) => entry.failure === undefined), "The state endpoint exposed a failure.");
+  assert.ok(latest.timeline.every((entry) => entry.failure !== undefined), "The dock state lost its failures.");
+});
+
+test("injects the Views diagnostics client only while serving with DevTools enabled", async () => {
+  const root = await fixtureRoot();
+  for (const [devtools, expected] of [[undefined, true], [false, false]]) {
+    const server = await createServer({
+      root,
+      configFile: false,
+      logLevel: "silent",
+      plugins: [runic(devtools === undefined ? {} : { devtools })],
+      server: { host: "127.0.0.1", port: 0, strictPort: false },
+    });
+    try {
+      await server.listen();
+      const html = await fetch(`http://127.0.0.1:${serverPort(server)}/`).then((response) => response.text());
+      assert.equal(html.includes(`<script type="module" src="/@id/virtual:runic/client"></script>`), expected, html);
+    } finally {
+      await server.close();
+    }
+  }
+  await rm(root, { recursive: true, force: true });
+  const plugin = runic();
+  plugin.configResolved({ command: "build", mode: "production", root: process.cwd(), plugins: [] });
+  assert.deepEqual(plugin.transformIndexHtml.handler(), []);
+});
+
+test("forwards a Views BridgeError with its .NET detail to the timeline", async () => {
+  const sent = await executeViewsForwarding();
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent[0], {
+    event: "runic:diagnostic",
+    data: {
+      source: "views",
+      kind: "error",
+      label: "editorSave failed",
+      detail: { code: "failed", route: "editorSave" },
+      failure: {
+        type: "System.InvalidOperationException",
+        message: "Disk full.",
+        stack: "System.InvalidOperationException: Disk full.\n   at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12",
+      },
+    },
+  });
+  assert.equal(sent[1].data.label, "Bridge unavailable");
+  assert.match(sent[1].data.failure.message, /window\.__runicBridge/);
+  assert.match(sent[1].data.failure.message, /@runic-artifex\/views\/mock/);
+});
+
 async function fixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), "runic-vite-fixture-"));
   await cp(join(process.cwd(), "test", "fixtures", "vite"), root, { recursive: true });
@@ -415,6 +530,60 @@ process.stdout.write(JSON.stringify(sent));
     "--eval",
     harness,
     Buffer.from(virtualCode).toString("base64"),
+  ], { cwd: process.cwd() });
+  return JSON.parse(stdout);
+}
+
+// Runs the built Views runtime and this package's client in one context, as
+// on a page, without either package depending on the other.
+async function executeViewsForwarding() {
+  const harness = String.raw`
+import { readFile } from "node:fs/promises";
+import { createContext, SourceTextModule } from "node:vm";
+
+const sent = [];
+const hot = { data: {}, send(event, data) { sent.push({ event, data }); }, on() {}, prune() {} };
+const context = createContext({ setTimeout, clearTimeout });
+const modules = new Map();
+async function load(path, identifier, meta) {
+  const module = new SourceTextModule(await readFile(path, "utf8"), {
+    context, identifier, ...(meta ? { initializeImportMeta: meta } : {}),
+  });
+  modules.set(identifier, module);
+  return module;
+}
+const views = "../views/dist/";
+const errors = await load(views + "errors.js", "views/errors");
+const diagnosticsModule = await load(views + "diagnostics.js", "views/diagnostics");
+const transport = await load(views + "transport.js", "views/transport");
+const pluginDiagnostics = await load("dist/diagnostics.js", "plugin/diagnostics");
+const client = await load("dist/client.js", "plugin/client", (meta) => { meta.hot = hot; });
+const link = (from) => (specifier) => {
+  const name = from + "/" + specifier.replace("./", "").replace(".js", "");
+  const module = modules.get(name);
+  return module ?? Promise.reject(new Error(specifier));
+};
+await errors.link(link("views"));
+await diagnosticsModule.link(link("views"));
+await transport.link(link("views"));
+await pluginDiagnostics.link(link("plugin"));
+await client.link(link("plugin"));
+await client.evaluate();
+await transport.evaluate();
+const { BridgeError } = errors.namespace;
+diagnosticsModule.namespace.emitErrorDiagnostic(new BridgeError("failed", "Save failed.", {
+  route: "editorSave",
+  detail: {
+    type: "System.InvalidOperationException",
+    message: "Disk full.",
+    stack: "System.InvalidOperationException: Disk full.\n   at Notes.Editor.Save() in /src/Notes/Editor.cs:line 12",
+  },
+}));
+await transport.namespace.waitForBridge({ timeout: 0 }).catch(() => undefined);
+process.stdout.write(JSON.stringify(sent));
+`;
+  const { stdout } = await execFile(process.execPath, [
+    "--experimental-vm-modules", "--input-type=module", "--eval", harness,
   ], { cwd: process.cwd() });
   return JSON.parse(stdout);
 }

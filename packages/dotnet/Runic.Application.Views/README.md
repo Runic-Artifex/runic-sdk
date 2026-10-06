@@ -246,6 +246,18 @@ across model frameworks; it does not run validation rules itself.
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.
 
+## Failure detail in development
+
+A command, setter, checked write or operation that throws replies with a
+bounded message such as `"Save failed."`; the exception goes to `Trace`. In
+development the error also carries `detail: {type, message, stack}`, which the
+TypeScript runtime exposes as `BridgeError.detail` and the Vite plugin shows in
+DevTools. Development means `DOTNET_ENVIRONMENT` (or else
+`ASPNETCORE_ENVIRONMENT`) is `Development`, which `dotnet runic dev` sets.
+Set `BridgeDiagnostics.IncludeFailureDetail` to `true` or `false` to choose
+explicitly. Detail can contain file paths and application data, so do not
+enable it for a distributed build.
+
 ## Incremental generation
 
 The generator caches successful multi-view generation in its C# `obj` output

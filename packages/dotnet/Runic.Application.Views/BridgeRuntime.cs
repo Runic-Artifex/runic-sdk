@@ -139,7 +139,8 @@ public sealed record CommandDescriptor<T>(
     Func<BridgeOperationStream>? CreateStream = null,
     Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync = null);
 
-internal sealed record BridgeFailure(string Kind, string Message);
+// Detail is present only when BridgeDiagnostics allows local failure detail.
+internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null);
 
 /// <summary>The Views wire protocol described in specs/application/README.md.</summary>
 public static class BridgeProtocol
@@ -441,12 +442,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
-                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value."));
+                return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeDiagnostics.Capture(error)));
             }
             catch (Exception error)
             {
                 Trace.TraceError($"Bridge setter {property.Name} failed: {error}");
-                return EncodeTerminal(new("failed", $"Could not update {property.Name}."));
+                return EncodeTerminal(new("failed", $"Could not update {property.Name}.", BridgeDiagnostics.Capture(error)));
             }
         }
     }
@@ -478,7 +479,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException or OverflowException)
             {
-                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write."));
+                return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeDiagnostics.Capture(error)));
             }
 
             try
@@ -489,7 +490,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (Exception error)
             {
                 Trace.TraceError($"Bridge checked setter {property.Descriptor.Name} failed: {error}");
-                return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}."));
+                return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}.", BridgeDiagnostics.Capture(error)));
             }
         }
     }
@@ -554,12 +555,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
-                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."));
+                return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error)));
             }
             catch (Exception error)
             {
                 Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
-                return EncodeTerminal(new("failed", $"{descriptor.Name} failed."));
+                return EncodeTerminal(new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(error)));
             }
         }
     }
@@ -593,11 +594,15 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         catch (OperationCanceledException)
         { return ReplyAfterCommand(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
-        { return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument."))); }
+        {
+            var detail = BridgeDiagnostics.Capture(error);
+            return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", detail)));
+        }
         catch (Exception error)
         {
             Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
-            return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.")));
+            var detail = BridgeDiagnostics.Capture(error);
+            return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
         }
     }
 
@@ -688,11 +693,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             catch (OperationCanceledException)
             { return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled."); }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
-            { return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument."); }
+            { return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error)); }
             catch (Exception error)
             {
                 Trace.TraceError($"Bridge operation admission {descriptor.Name} failed: {error}");
-                return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.");
+                return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeDiagnostics.Capture(error));
             }
         }
     }
@@ -711,11 +716,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     // separates their advanced request-id namespaces.
     private string OperationContract() => $"{typeof(T).FullName}:{_contractFingerprint}:{_name}";
 
-    private static string EncodeOperationStartFailure(string kind, string reason) => WriteJson(writer =>
+    private static string EncodeOperationStartFailure(string kind, string reason, BridgeFailureDetail? detail = null) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteString("kind", kind);
         writer.WriteString("reason", reason);
+        BridgeDiagnostics.Write(writer, detail);
         writer.WriteEndObject();
     });
 
@@ -842,6 +848,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             writer.WriteStartObject();
             writer.WriteString("kind", error.Kind);
             writer.WriteString("message", error.Message);
+            BridgeDiagnostics.Write(writer, error.Detail);
             writer.WriteEndObject();
         }
         if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);

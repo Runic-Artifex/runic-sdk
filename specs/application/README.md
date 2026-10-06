@@ -74,7 +74,9 @@ routes exist only for a root bridge that exposes interactions.
 ```
 
 `error` is `{kind, message}` with `kind` one of `rejected`, `cancelled`,
-`failed` or `disconnected`; `ok` is false exactly when `error` is set. `state`
+`failed` or `disconnected`; `ok` is false exactly when `error` is set. In
+development (`BridgeDiagnostics`), an error caused by an exception adds
+`detail: {type, message, stack}`; production replies never carry it. `state`
 is null when the bridge was detached or closed. A checked write adds `receipt`:
 `applied` or `committed-with-error` with `snapshot: {value, version}`,
 `conflict` with `incoming`, or `rejected` with `message`.
@@ -146,7 +148,7 @@ A `Start` route admits a recoverable operation and answers
 `kind` is `accepted`, `duplicate`, `expired` or `rejected`; `reason` names a
 rejection (`owner-closing`, `owner-disposed`, `identity-conflict`, `capacity`,
 `unavailable`, `stream-capacity`). A failed admission before identity checks
-answers `{kind, reason}`. `contract` is
+answers `{kind, reason}`, with `detail` as in a reply error. `contract` is
 `{ViewModel full name}:{fingerprint}:{route prefix}`. A request id is bound to the
 command member and the canonical input digest: reusing it for other work is
 `identity-conflict`, and a retry observes the original operation.
@@ -155,7 +157,8 @@ A status is `{contract, requestId, kind}` with `kind` one of `running`,
 `succeeded`, `failed`, `cancelled`, `expired`, `unknown`. Success may add
 `result`, `delivery: {kind, message}` (`result-too-large`,
 `result-encoding-failed`, `stream-overflow`, `stream-retention-too-large`) and
-`stream: true`; failure adds `error`. A cancel answers `cancellation-requested`,
+`stream: true`; failure adds `error: {kind, message}`, with `detail` in
+development. A cancel answers `cancellation-requested`,
 `not-running`, `unknown` or `expired`; cancellation never rewrites a success. A
 stream page adds `cursor`, `completed`, `items: [{sequence, value}]` and
 `delivery`. Malformed requests answer `{kind: "invalid-request"}`.

@@ -195,8 +195,10 @@ internal sealed class HostProcessController : IAsyncDisposable
 
     internal static IReadOnlyDictionary<string, string?> CreateDevelopmentEnvironment(
         DevProjectConfiguration configuration,
-        IReadOnlyDictionary<string, string?> developmentEnvironment)
+        IReadOnlyDictionary<string, string?> developmentEnvironment,
+        Func<string, string?>? readEnvironment = null)
     {
+        readEnvironment ??= Environment.GetEnvironmentVariable;
         var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             ["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"] = developmentEnvironment.Count == 0 ? null :
@@ -211,6 +213,13 @@ internal sealed class HostProcessController : IAsyncDisposable
             [AngularDevelopmentServer.ServerEnvironmentVariable] = null,
             [AngularDevelopmentServer.KindEnvironmentVariable] = null,
         };
+        // The app runs as a development host, so Bridge failures carry local
+        // detail (BridgeDiagnostics). An environment the developer chose wins.
+        if (string.IsNullOrEmpty(readEnvironment("DOTNET_ENVIRONMENT")) &&
+            string.IsNullOrEmpty(readEnvironment("ASPNETCORE_ENVIRONMENT")))
+        {
+            environment["DOTNET_ENVIRONMENT"] = "Development";
+        }
         foreach ((string key, string? value) in developmentEnvironment)
         {
             environment[key] = value;
