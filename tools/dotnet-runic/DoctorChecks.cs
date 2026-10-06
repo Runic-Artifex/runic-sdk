@@ -83,12 +83,21 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
         IsMuslHost(),
         Environment.OSVersion.Version.ToString());
 
-    // The tool's RID is portable linux-x64 on a musl host too, so look for the
-    // musl dynamic loader as well.
+    // The tool's RID is portable linux-x64 on a musl host too, so ask which
+    // dynamic loader this process uses. A glibc distribution can install musl
+    // beside glibc, so /lib/ld-musl-* only decides when the process maps are
+    // unreadable or name neither loader.
     private static bool IsMuslHost()
     {
         if (!OperatingSystem.IsLinux()) return false;
         if (RuntimeInformation.RuntimeIdentifier.StartsWith("linux-musl", StringComparison.Ordinal)) return true;
+        try
+        {
+            string maps = File.ReadAllText("/proc/self/maps");
+            if (maps.Contains("/ld-musl-", StringComparison.Ordinal)) return true;
+            if (maps.Contains("/ld-linux", StringComparison.Ordinal)) return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         try { return Directory.Exists("/lib") && Directory.EnumerateFiles("/lib", "ld-musl-*").Any(); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
     }

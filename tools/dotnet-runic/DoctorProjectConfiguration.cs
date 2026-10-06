@@ -42,6 +42,9 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>SelfContained, evaluated for the doctor target RID when one is given.</summary>
     internal bool SelfContained { get; init; }
 
+    /// <summary>False when StripSymbols is explicitly false; Native AOT then needs no objcopy.</summary>
+    internal bool StripSymbols { get; init; } = true;
+
     /// <summary>True when the project references the optional GTK 4 Desktop provider.</summary>
     internal bool UsesGtk4 { get; init; }
 
@@ -93,6 +96,7 @@ internal sealed record DoctorProjectConfiguration(
             RuntimeIdentifiers = Value("RuntimeIdentifiers"),
             PublishAot = IsTrue(Value("PublishAot")),
             SelfContained = IsTrue(Value("SelfContained")),
+            StripSymbols = !Value("StripSymbols").Equals("false", StringComparison.OrdinalIgnoreCase),
             UsesGtk4 = References(document.RootElement, DesktopGtk4Package),
         };
     }
@@ -145,7 +149,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));

@@ -911,6 +911,10 @@ internal static class Program
             new FakeDoctorRuntime(authority.Toolchain) { Executables = ["clang"] }), "target-publish");
         Equal(DoctorStatus.Failure, noObjcopy.Status);
         Contains(noObjcopy.Message, "objcopy");
+        DoctorCheck unstripped = Check(InspectTarget(desktop with { StripSymbols = false }, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Executables = ["clang"] }), "target-publish");
+        Equal(DoctorStatus.Pass, unstripped.Status);
+        DoesNotContain(unstripped.Message, "objcopy");
     }
 
     private static void DoctorRidRefusesCrossOsAot()
@@ -1078,6 +1082,7 @@ internal static class Program
               </PropertyGroup>
               <PropertyGroup Condition="'$(Configuration)' == 'Release'">
                 <PublishSelfContained>true</PublishSelfContained>
+                <StripSymbols>false</StripSymbols>
               </PropertyGroup>
             </Project>
             """);
@@ -1090,11 +1095,13 @@ internal static class Program
         DoctorProjectConfiguration windows = Evaluate("Release", "win-x64");
         True(windows.PublishAot, "A RID-conditioned PublishAot applies to its RID.");
         True(windows.SelfContained, "PublishSelfContained applies while publishing.");
+        False(windows.StripSymbols, "An explicit StripSymbols=false is evaluated.");
         DoctorProjectConfiguration linux = Evaluate("Release", "linux-x64");
         False(linux.PublishAot, "A RID-conditioned PublishAot does not apply to another RID.");
         True(linux.SelfContained, "A Release-conditioned PublishSelfContained applies in Release.");
         DoctorProjectConfiguration debug = Evaluate("Debug", "linux-x64");
         False(debug.SelfContained, "A Release-conditioned PublishSelfContained does not apply in Debug.");
+        True(debug.StripSymbols, "StripSymbols defaults to true.");
         DoctorProjectConfiguration switches = Evaluate("Debug", "linux-x64", aot: true, selfContained: true);
         True(switches.PublishAot, "--aot sets PublishAot.");
         True(switches.SelfContained, "--self-contained sets SelfContained.");

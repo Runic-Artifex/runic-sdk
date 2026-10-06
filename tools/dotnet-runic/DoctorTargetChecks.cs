@@ -190,7 +190,8 @@ internal static class DoctorTargetChecks
                 bool crossArchitecture = host.Architecture != target.Architecture;
                 bool crossLibc = host.Musl != target.Musl;
                 string? compiler = runtime.FindExecutable("clang") ?? runtime.FindExecutable("gcc");
-                bool objcopy = runtime.FindExecutable("objcopy") is not null || runtime.FindExecutable("llvm-objcopy") is not null;
+                bool objcopy = !project.StripSymbols ||
+                    runtime.FindExecutable("objcopy") is not null || runtime.FindExecutable("llvm-objcopy") is not null;
                 if (compiler is null || !objcopy)
                 {
                     checks.Add(Fail(id, compiler is null
@@ -205,7 +206,7 @@ internal static class DoctorTargetChecks
                 }
                 else
                 {
-                    checks.Add(Pass(id, $"Native AOT can compile {target.Value} here with {Path.GetFileName(compiler)} and objcopy; it also needs the zlib development package."));
+                    checks.Add(Pass(id, $"Native AOT can compile {target.Value} here with {Path.GetFileName(compiler)}{(project.StripSymbols ? " and objcopy" : string.Empty)}; it also needs the zlib development package."));
                 }
                 return;
             case "osx":
