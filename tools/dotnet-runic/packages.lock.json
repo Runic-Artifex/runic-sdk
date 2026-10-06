@@ -1,0 +1,43 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0": {
+      "Microsoft.NET.ILLink.Tasks": {
+        "type": "Direct",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "xi+BDjFpW+Sb+MHFHaH6Y/gV9I8BluFwRXc1QyCdoZbIK26eNiBeFuMTe/FMwc33G1wdHCyDg7CVTmb8OdQrMQ=="
+      },
+      "Runic.CommandLine": {
+        "type": "Direct",
+        "requested": "[0.6.0-preview.1, )",
+        "resolved": "0.6.0-preview.1",
+        "contentHash": "vqoZBgrJWgP+X9ooMqNBxXyFmAnkWBih62yOhSGF/JG1Lwp1Y52qAs2wJNWeRzpwn3cO9F89VhXyS/emYGgnoA=="
+      },
+      "Runic.CommandLine.Spectre": {
+        "type": "Direct",
+        "requested": "[0.6.0-preview.1, )",
+        "resolved": "0.6.0-preview.1",
+        "contentHash": "gN11qnAy8RfB51yT6a7GEBitUpalZwa9ox4g+gM8/ORoJQc9FwFbJJBcoSXKe9WX/5mWD8qMP90wjPcr2ADXDg==",
+        "dependencies": {
+          "Runic.CommandLine": "[0.6.0-preview.1]",
+          "Spectre.Console": "0.57.2"
+        }
+      },
+      "Spectre.Console.Ansi": {
+        "type": "Transitive",
+        "resolved": "0.57.2",
+        "contentHash": "Y1+u73shwP+JYHmrkdN6bSt2kaGBEAafhi2nrecczbXdFRey+k7J/WF9YPfcB0rqivv2S8fmif6FSBq9m/AFvw=="
+      },
+      "Spectre.Console": {
+        "type": "CentralTransitive",
+        "requested": "[0.57.2, )",
+        "resolved": "0.57.2",
+        "contentHash": "wzsB+P9i6F9G+cFOJxRotCiQWNSzZVAMxi8YMiHlGXXU1JLMXGp7zSSqBMmROZS2bzpK5jk+Saa7Evp8HwqhKg==",
+        "dependencies": {
+          "Spectre.Console.Ansi": "0.57.2"
+        }
+      }
+    }
+  }
+}
