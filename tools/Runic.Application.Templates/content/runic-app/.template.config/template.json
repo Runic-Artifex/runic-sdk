@@ -176,10 +176,24 @@
         ]
       }
     },
-    "frontendPackageName": {
+    "derivedFrontendPackageName": {
       "type": "derived",
       "valueSource": "name",
       "valueTransform": "npmPackageName",
+      "description": "The project name as an npm package name; empty when no npm characters remain."
+    },
+    "fallbackFrontendPackageName": {
+      "type": "generated",
+      "generator": "constant",
+      "parameters": { "value": "app" }
+    },
+    "frontendPackageName": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "derivedFrontendPackageName",
+        "fallbackVariableName": "fallbackFrontendPackageName"
+      },
       "replaces": "@runic-artifex/runic-app-starter",
       "description": "The frontend package.json name, derived from the project name."
     }
@@ -190,8 +204,13 @@
     },
     "npmUrlSafeCharacters": {
       "identifier": "replace",
-      "pattern": "-*[^a-z0-9._~-][^a-z0-9._~]*",
+      "pattern": "-*[^a-z0-9._-][^a-z0-9._]*",
       "replacement": "-"
+    },
+    "npmMaximumLength": {
+      "identifier": "replace",
+      "pattern": "^(.{214}).+$",
+      "replacement": "$1"
     },
     "npmTrimmedSeparators": {
       "identifier": "replace",
@@ -200,7 +219,7 @@
     },
     "npmPackageName": {
       "identifier": "chain",
-      "steps": [ "npmKebabCase", "npmUrlSafeCharacters", "npmTrimmedSeparators" ]
+      "steps": [ "npmKebabCase", "npmUrlSafeCharacters", "npmMaximumLength", "npmTrimmedSeparators" ]
     }
   },
   "primaryOutputs": [

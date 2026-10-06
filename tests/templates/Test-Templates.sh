@@ -377,13 +377,18 @@ verify_creator() {
 # Project names that are not npm names still produce a valid frontend package name.
 verify_package_names() {
   local names_directory="$template_tmp/package-names"
-  local project_name expected generated
+  local case_entry project_name expected generated index=0
+  local long_name
+  long_name="$(printf 'a%.0s' {1..220})"
   mkdir -p "$names_directory"
-  for case_entry in "Contoso.Notes App|contoso-notes-app" "_My__API.|my-api" "Café Notes|caf-notes"; do
+  # Names without npm characters fall back to "app"; npm names have at most 214 characters.
+  for case_entry in "Contoso.Notes App|contoso-notes-app" "_My__API.|my-api" "Café Notes|caf-notes" \
+    "日本語|app" "___|app" "$long_name|${long_name:0:214}"; do
     project_name="${case_entry%%|*}"
     expected="${case_entry#*|}"
-    (cd "$names_directory" && dotnet new runic-app --name "$project_name" --output "$expected" --frontend svelte)
-    generated="$(bun -e 'process.stdout.write(require(process.argv[1]).name)' "$names_directory/$expected/Frontend/package.json")"
+    index=$((index + 1))
+    (cd "$names_directory" && dotnet new runic-app --name "$project_name" --output "case-$index" --frontend svelte)
+    generated="$(bun -e 'process.stdout.write(require(process.argv[1]).name)' "$names_directory/case-$index/Frontend/package.json")"
     if [[ "$generated" != "$expected" ]]; then
       echo "Project '$project_name' produced frontend package name '$generated', expected '$expected'." >&2
       exit 1
