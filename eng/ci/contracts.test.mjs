@@ -155,3 +155,23 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
   for (const id of ['native'])
     assert.deepEqual(workflow.jobs[id].strategy.matrix.include.map(item => item.rid), ['linux-x64', 'win-x64', 'osx-arm64']);
 });
+
+test('template lanes cover every framework once and run the creator check in one lane', () => {
+  const { strategy, steps } = workflow.jobs.templates;
+  assert.deepEqual(strategy.matrix.framework, ['react', 'vue', 'svelte', 'angular']);
+  assert.deepEqual(strategy.matrix.include, [{ framework: 'react', creator: '1' }]);
+  const step = steps.find(item => item.run === 'bun run verify:templates');
+  assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.framework }}');
+  assert.equal(step?.env.RUNIC_TEMPLATE_CREATOR, "${{ matrix.creator || '0' }}");
+});
+
+test('remote actions are pinned to a commit with their release tag', () => {
+  const files = execFileSync('git', ['ls-files', '-z', '.github', 'eng/ci/fixtures'], { cwd: root, encoding: 'utf8' })
+    .split('\0').filter(path => /\.ya?ml$/.test(path));
+  const references = files.flatMap(path => [...readFileSync(resolve(root, path), 'utf8')
+    .matchAll(/^\s*(?:-\s*)?uses:\s*(\S+)(.*)$/gm)].map(match => ({ path, action: match[1], comment: match[2].trim() })))
+    .filter(item => !item.action.startsWith('./'));
+  assert.ok(references.length > 0);
+  for (const item of references)
+    assert.match(`${item.action} ${item.comment}`, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, `${item.path}: ${item.action}`);
+});

@@ -10,7 +10,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-dotnet@v6
+    - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
       if: inputs.dotnet == 'true'
       with:
         global-json-file: global.json
@@ -20,7 +20,7 @@ runs:
     - name: Snapshot source and lockfiles
       shell: bash
       run: bun eng/ci/source-state.mjs capture
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       if: inputs.node == 'true'
       with:
         node-version-file: .node-version
@@ -28,11 +28,11 @@ runs:
       if: inputs.node == 'true'
       shell: bash
       run: npm install --global npm@12.2.0 pnpm@12.9.1 --allow-scripts=pnpm
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock') }}
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       if: inputs.dotnet == 'true'
       with:
         path: .cache/nuget

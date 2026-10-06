@@ -1,6 +1,10 @@
 {
   "schemaVersion": 2,
   "version": "0.6.0-preview.1",
+  "dynamicData": {
+    "repository": "Runic-Artifex/DynamicData",
+    "forkRevision": "edd2d175794afc86e964a06cb55329f44793009f"
+  },
   "npm": [
     {
       "name": "@runic-artifex/angular",

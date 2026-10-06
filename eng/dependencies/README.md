@@ -6,6 +6,15 @@ and workflow/composite-action references, then queries npm, NuGet and GitHub rel
 metadata. It is read-only, bounds requests, and exits unsuccessfully if a registry
 query fails. GitHub queries use the existing `gh` authentication. Review `latest`,
 `rc`, `beta` and `next` separately; the command never selects or installs a candidate.
+The weekly [dependency audit workflow](../../.github/workflows/dependency-audit.yml)
+retains this output and fails when `bun audit` or NuGet reports a known
+vulnerability; it never changes dependencies.
+
+Workflows pin every remote action to a full commit SHA followed by its release tag
+(`uses: owner/action@<sha> # vX.Y.Z`). The audit reads the tag from that comment,
+and a CI contract test rejects unpinned references. Update the SHA and the comment
+together, from the tag's commit. This replaces the earlier first-party major tags
+in the decisions below.
 
 `eng/toolchain.mjs` reads the actual maintained SDK, Node, Bun, npm and pnpm pins;
 dependency audits and template lock generation use that reader, not a release receipt.

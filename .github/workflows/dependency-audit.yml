@@ -1,0 +1,56 @@
+name: Dependency audit
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dependency-audit
+  cancel-in-progress: true
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
+jobs:
+  # Reports known vulnerabilities and available versions. Upgrades remain
+  # deliberate decisions (eng/dependencies/README.md); nothing is changed here.
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+      - name: Review available dependency versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p artifacts/dependency-audit
+          bun run dependencies:audit > artifacts/dependency-audit/versions.json
+      - name: Check npm packages for known vulnerabilities
+        if: ${{ !cancelled() }}
+        run: bun audit
+      - name: Check NuGet packages for known vulnerabilities
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p artifacts/dependency-audit
+          dotnet restore RunicSdk.Core.slnx
+          dotnet list RunicSdk.Core.slnx package --vulnerable --include-transitive --format json > artifacts/dependency-audit/nuget-vulnerable.json
+          bun -e '
+            const report = JSON.parse(require("node:fs").readFileSync("artifacts/dependency-audit/nuget-vulnerable.json", "utf8"));
+            const found = report.projects.flatMap(project => (project.frameworks ?? []).flatMap(framework =>
+              [...(framework.topLevelPackages ?? []), ...(framework.transitivePackages ?? [])]
+                .map(item => project.path + ": " + item.id + " " + item.resolvedVersion)));
+            for (const line of new Set(found)) console.log(line);
+            if (found.length) process.exit(1);
+            console.log("No known vulnerable NuGet packages.");
+          '
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() }}
+        with:
+          name: dependency-audit-${{ github.run_id }}
+          path: artifacts/dependency-audit
+          if-no-files-found: ignore
+          retention-days: 30

@@ -33,11 +33,16 @@ await secondContext.InvokeAsync(() => { });
 using var outside = JsonDocument.Parse(transport.Call("rowsSnapshot"));
 if (outside.RootElement.GetProperty("state").GetProperty("revision").GetInt64() != before)
     throw new InvalidOperationException("Off-screen updates crossed the presentation bridge.");
-using var back = first.SetViewportCommand.Execute(new(0, 20)).Subscribe();
+var returned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+using var back = first.SetViewportCommand.Execute(new(0, 20)).Subscribe(Witness.Create<ReactiveUI.Primitives.RxVoid>(
+    _ => returned.TrySetResult(), error => returned.TrySetException(error)));
+await returned.Task.WaitAsync(TimeSpan.FromSeconds(10));
 await firstContext.InvokeAsync(() => { });
 await firstContext.InvokeAsync(() => { });
 using var final = JsonDocument.Parse(transport.Call("rowsSnapshot"));
 var baseline = final.RootElement.GetProperty("state").GetProperty("revision").GetInt64();
+// Delivery is asynchronous: drain the viewport move's frames before counting.
+await transport.WaitForRevisionAsync(baseline);
 transport.Frames.Clear();
 store.Update(10);
 await firstContext.InvokeAsync(() => { });

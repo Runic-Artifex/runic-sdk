@@ -3,9 +3,24 @@ description: Install pinned Playwright Chromium and its platform dependencies.
 runs:
   using: composite
   steps:
+    - name: Resolve the pinned Playwright version
+      id: playwright
+      shell: bash
+      run: bun -e 'console.log("version=" + require("playwright-core/package.json").version)' >> "$GITHUB_OUTPUT"
+    # Playwright's default browser directory differs per OS. The key also names
+    # the OS and architecture, so a cache never crosses platforms.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.os == 'Windows' && '~/AppData/Local/ms-playwright' || runner.os == 'macOS' && '~/Library/Caches/ms-playwright' || '~/.cache/ms-playwright' }}
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
     - shell: bash
       run: |
-        bunx --bun playwright-core install --with-deps chromium
+        # Only Linux needs system packages; they are not part of the cached directory.
+        if [[ "$RUNNER_OS" == Linux ]]; then
+          bunx --bun playwright-core install --with-deps chromium
+        else
+          bunx --bun playwright-core install chromium
+        fi
         bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path); console.log("WEBUI_BROWSER_PATH=" + path)' >> "$GITHUB_ENV"
     - name: Check the installed browser can start
       shell: bash

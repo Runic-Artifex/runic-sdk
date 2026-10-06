@@ -23,7 +23,7 @@ jobs:
     outputs:
       web: ${{ steps.plan.outputs.web }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -40,7 +40,7 @@ jobs:
         run: bun eng/ci/source-state.mjs check
       - name: Archive reusable Linux build outputs
         run: bun eng/ci/build-artifact.mjs create
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sdk-build-${{ github.run_id }}
           path: artifacts/ci-build
@@ -57,7 +57,7 @@ jobs:
       matrix:
         suite: [platform, assets, application]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -78,7 +78,7 @@ jobs:
       max-parallel: 3
       matrix: ${{ fromJSON(needs.build.outputs.web) }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -110,6 +110,17 @@ jobs:
         run: bun tools/dotnet-runic/metadata/generate.mjs --check
       - name: Check generated packing project inventory
         run: bun eng/generate-shipping-projects.mjs --check
+      # The flake provides the same actionlint version for local runs.
+      - name: Lint workflows
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL -o "$archive" "https://github.com/rhysd/actionlint/releases/download/v$ACTIONLINT_VERSION/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "$ACTIONLINT_SHA256  $archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   framework-consumers:
@@ -117,7 +128,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -140,7 +151,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -190,7 +201,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -201,7 +212,7 @@ jobs:
         run: bun eng/release/verify-template-locks.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -213,13 +224,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
           node: "true"
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
@@ -238,22 +249,34 @@ jobs:
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:
+    name: Templates / ${{ matrix.framework }}
     needs: packages
     runs-on: ubuntu-24.04
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        framework: [react, vue, svelte, angular]
+        # The guided creator check is framework-independent; run it once.
+        include:
+          - framework: react
+            creator: "1"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
           node: "true"
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
       - name: Verify generated template applications
         run: bun run verify:templates
+        env:
+          RUNIC_TEMPLATE_FRAMEWORKS: ${{ matrix.framework }}
+          RUNIC_TEMPLATE_CREATOR: ${{ matrix.creator || '0' }}
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   native:
@@ -277,7 +300,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
@@ -300,7 +323,7 @@ jobs:
           --blame-hang-timeout 2m --blame-hang-dump-type none
       - name: Retain desktop contract diagnostics
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: native-tests-${{ matrix.rid }}-${{ github.run_id }}
           path: artifacts/native-tests
@@ -406,7 +429,7 @@ jobs:
           tar -czf artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz -C artifacts/platform-sandbox RunicPlatform.app
       - name: Retain macOS sandbox permission fixture
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: platform-sandbox-${{ matrix.rid }}-${{ github.run_id }}
           path: artifacts/platform-sandbox-${{ matrix.rid }}.tar.gz
