@@ -24,6 +24,7 @@ internal static class DataCodecTests
 
         Require(BridgeWire.StructuralEquals("{\"b\":2,\"a\":1}", "{\"a\":1,\"b\":2}"),
             "Structural equality must order object keys canonically.");
+        CanonicalFormIsShared();
         Require(Throws<FormatException>(() => BridgeWire.ReadInt64(Json("9007199254740993"))),
             "An unsafe JSON number must not be accepted as an Int64 string.");
         Require(Throws<FormatException>(() => BridgeWire.ReadDouble(Json("1e999"))),
@@ -62,6 +63,54 @@ internal static class DataCodecTests
         Require(Json(encodedOffset).GetString() == "2026-10-03T14:34:56.0000000+02:00" && offsetCodec.Decode(encodedOffset) is var decodedOffset
             && decodedOffset == offset && decodedOffset.Offset == offset.Offset,
             $"A DateTimeOffset did not keep its offset on the wire: {encodedOffset}.");
+    }
+
+    // BridgeWire, checked-field equality, operation input digests and
+    // interaction reply signatures share one canonical form.
+    private static void CanonicalFormIsShared()
+    {
+        string Canonical(string json) => System.Text.Encoding.UTF8.GetString(BridgeWire.Canonicalize(System.Text.Encoding.UTF8.GetBytes(json)));
+        foreach (var (input, expected) in new[]
+        {
+            ("1.0", "1"), ("1e0", "1"), ("10e-1", "1"), ("-0", "0"), ("-0.0e5", "0"), ("100", "100"), ("0.5", "0.5"),
+            ("1.2500", "1.25"), ("0.000001", "0.000001"), ("1E-7", "1e-7"), ("123456789012345678901", "123456789012345678901"),
+            ("1e21", "1e+21"), ("-12.5e30", "-1.25e+31"), ("0.1000000000000000000000000000001", "0.1000000000000000000000000000001"),
+            ("1e-30", "1e-30"), ("9007199254740993", "9007199254740993"),
+        })
+            Require(Canonical(input) == expected, $"The canonical form of {input} is {Canonical(input)}, not {expected}.");
+        // Exact: values that differ only beyond double or decimal precision stay distinct.
+        Require(!BridgeWire.StructuralEquals("1e-30", "0") && !BridgeWire.StructuralEquals("9007199254740993", "9007199254740992")
+            && !BridgeWire.StructuralEquals("0.1000000000000000000000000000001", "0.1"),
+            "Canonical numbers were rounded.");
+        Require(BridgeWire.StructuralEquals("{\"a\":[1.0,{\"y\":2,\"x\":1e0}]}", "{\"a\":[1,{\"x\":1,\"y\":2.00}]}"),
+            "Canonical numbers were not compared by value inside nested values.");
+        Require(Canonical("{\"b\":\"\\u0041<\",\"\\u00e9\":1,\"a\":{\"z\":true,\"m\":null}}")
+            == "{\"a\":{\"m\":null,\"z\":true},\"b\":\"A\\u003C\",\"\\u00E9\":1}",
+            "Canonical members were not sorted or strings were not re-escaped.");
+        Require(Throws<FormatException>(() => BridgeWire.Canonicalize("{\"a\":1,\"a\":1}"u8))
+            && Throws<FormatException>(() => BridgeWire.Canonicalize("{\"b\":1,\"a\":[{\"x\":1,\"y\":2,\"x\":3}]}"u8))
+            && Throws<FormatException>(() => BridgeOperationRequest.CanonicalDigest("{\"a\":1,\"a\":2}")),
+            "A canonical value accepted duplicate member names.");
+        Require(BridgeOperationRequest.CanonicalDigest("{\"n\":1e-30}") != BridgeOperationRequest.CanonicalDigest("{\"n\":0}")
+            && BridgeOperationRequest.CanonicalDigest("{\"n\":[1.50]}") == BridgeOperationRequest.CanonicalDigest("{\"n\":[15e-1]}"),
+            "The operation digest did not use the shared canonical numbers.");
+        // Generated writers emit declaration order, so a large array of unsorted
+        // objects is the common case. Sorting must not copy the enclosing document.
+        var rows = "[" + string.Join(",", Enumerable.Range(0, 16000).Select(id => $"{{\"label\":\"row {id}\",\"id\":{id}}}")) + "]";
+        var rowBytes = System.Text.Encoding.UTF8.GetBytes(rows);
+        _ = BridgeWire.Canonicalize(rowBytes);
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var sortedRows = BridgeWire.Canonicalize(rowBytes);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Require(System.Text.Encoding.UTF8.GetString(sortedRows).StartsWith("[{\"id\":0,\"label\":\"row 0\"},{\"id\":1,", StringComparison.Ordinal),
+            "A large array of unsorted objects was not canonicalized.");
+        Require(allocated < 8L * rowBytes.Length,
+            $"Canonicalizing {rowBytes.Length} bytes of unsorted objects allocated {allocated} bytes.");
+        Require(Canonical("{\"\\u00e9\":1,\"z\":2,\"\\u00e0\":3,\"a\":4}") == "{\"a\":4,\"z\":2,\"\\u00E0\":3,\"\\u00E9\":1}",
+            "Decoded and ASCII member names were not ordered ordinally.");
+        var codec = new BridgeValueCodec<decimal>(element => element.GetDecimal(), (writer, value) => writer.WriteNumberValue(value));
+        Require(codec.StructuralEquals(1.0m, 1.00m) && codec.Encode(1.50m) == "1.5" && !codec.StructuralEquals(1m, 2m),
+            "Codec equality did not compare numbers by value.");
     }
 
     private static WireSample Read(JsonElement element) => new(

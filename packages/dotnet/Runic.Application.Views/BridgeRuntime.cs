@@ -86,22 +86,24 @@ public sealed class CheckedPropertyDescriptor<T>(
     internal Func<JsonElement, object?>? Read { get; } = ReadValue;
     internal Action<Utf8JsonWriter, object?>? Write { get; } = WriteValue;
 
+    // A detached copy of a mutable value: decode what the generated writer wrote.
     internal object? Snapshot(object? value)
     {
         if (ValueKind is not CheckedFieldValueKind.Json) return value;
-        using var document = JsonDocument.Parse(Encode(value));
+        using var raw = BridgeCanonicalJson.WriteRaw(Write!, value);
+        using var document = JsonDocument.Parse(raw.WrittenMemory);
         return Read!(document.RootElement);
     }
 
-    internal string Encode(object? value) => BridgeWire.EncodeCanonical(writer => Write!(writer, value));
+    internal string Encode(object? value) => BridgeCanonicalJson.Encode(Write!, value);
 
     internal IEqualityComparer<object?> Comparer => ValueKind is CheckedFieldValueKind.Json
         ? new WireComparer(this) : EqualityComparer<object?>.Default;
 
     private sealed class WireComparer(CheckedPropertyDescriptor<T> owner) : IEqualityComparer<object?>
     {
-        public new bool Equals(object? left, object? right) => owner.Encode(left) == owner.Encode(right);
-        public int GetHashCode(object? value) => StringComparer.Ordinal.GetHashCode(owner.Encode(value));
+        public new bool Equals(object? left, object? right) => BridgeCanonicalJson.Equal(owner.Write!, left, right);
+        public int GetHashCode(object? value) => BridgeCanonicalJson.Hash(owner.Write!, value);
     }
 }
 
@@ -309,7 +311,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _incrementalCollections = collections ?? [];
         _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
             .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
-        _delivery = new(transport, name, _modelTurn);
+        _delivery = new(transport, name, _modelTurn, CaptureRequestedState);
         _name = name;
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
         _writeSnapshotWithFields = writeSnapshotWithFields;
@@ -359,7 +361,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                             () => descriptor.Get(_vm), value => descriptor.Set(_vm, value),
                             snapshot: descriptor.Snapshot, equalityComparer: descriptor.Comparer,
                             canonicalize: value => EncodeCheckedValue(value, descriptor),
-                            retainedValueByteCount: value => Encoding.UTF8.GetByteCount(EncodeCheckedValue(value, descriptor)));
+                            retainedValueByteCount: value => BridgeCanonicalJson.Length(WriteCheckedValue, (value, descriptor)));
                         bindings.Add(field.Lease);
                         checkedBindings.Add(new CheckedPropertyBinding(descriptor, field.Registry));
                     }
@@ -508,7 +510,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     };
 
     private static string EncodeCheckedValue(object? value, CheckedPropertyDescriptor<T> descriptor) =>
-        BridgeWire.EncodeCanonical(writer => WriteCheckedValue(writer, value, descriptor));
+        BridgeCanonicalJson.Encode(WriteCheckedValue, (value, descriptor));
+
+    private static void WriteCheckedValue(Utf8JsonWriter writer, (object? Value, CheckedPropertyDescriptor<T> Descriptor) checkedValue) =>
+        WriteCheckedValue(writer, checkedValue.Value, checkedValue.Descriptor);
 
     private static void WriteCheckedValue(Utf8JsonWriter writer, object? value, CheckedPropertyDescriptor<T> descriptor)
     {
@@ -733,11 +738,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
     {
-        if (!includeSnapshot) return EncodeReply(error, snapshot: null);
+        if (!includeSnapshot) return EncodeReply(error, writeState: null);
         try
         {
-            var snapshot = WriteSnapshot();
-            return IsInactive ? EncodeWithoutSnapshot(error) : EncodeReply(error, snapshot, protocol);
+            var reply = EncodeReply(error, WriteSnapshot, protocol);
+            return IsInactive ? EncodeWithoutSnapshot(error) : reply;
         }
         catch (BridgeSnapshotDetachedException)
         {
@@ -745,16 +750,17 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-    private string WriteSnapshot()
+    // Writes the state straight into the reply or delivery writer: a reply
+    // that is discarded (detached, inactive) is simply not returned.
+    private void WriteSnapshot(Utf8JsonWriter writer)
     {
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer))
         using (BridgeSnapshotPublication.Enter(() => IsInactive))
             if (_writeSnapshotWithFields is { } writerWithFields)
                 writerWithFields(writer, _vm, _revision, WriteFieldMetadata);
             else _writeSnapshot(writer, _vm, _revision);
-        return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
     }
+
+    private string WriteSnapshot() => WriteJson(WriteSnapshot);
 
     private void WriteFieldMetadata(Utf8JsonWriter writer)
     {
@@ -775,13 +781,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         try
         {
-            var snapshot = WriteSnapshot();
-            return IsInactive ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed.")) : WriteJson(writer =>
+            var reply = WriteJson(writer =>
             {
                 writer.WriteStartObject();
                 writer.WriteBoolean("ok", true);
                 writer.WritePropertyName("state");
-                using (var document = JsonDocument.Parse(snapshot)) document.RootElement.WriteTo(writer);
+                WriteSnapshot(writer);
                 writer.WriteNull("error");
                 writer.WritePropertyName("receipt");
                 writer.WriteStartObject();
@@ -810,6 +815,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             });
+            return IsInactive ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed.")) : reply;
         }
         catch (BridgeSnapshotDetachedException)
         {
@@ -830,17 +836,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     // The snapshot route, which a client reads first, states the wire protocol
     // version. Clients ignore envelope members they do not know.
-    private static string EncodeReply(BridgeFailure? error, string? snapshot, bool protocol = false) => WriteJson(writer =>
+    private static string EncodeReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeState, bool protocol = false) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteBoolean("ok", error is null);
         writer.WritePropertyName("state");
-        if (snapshot is null) writer.WriteNullValue();
-        else
-        {
-            using var document = JsonDocument.Parse(snapshot);
-            document.RootElement.WriteTo(writer);
-        }
+        if (writeState is null) writer.WriteNullValue();
+        else writeState(writer);
         if (error is null) writer.WriteNull("error");
         else
         {
@@ -857,9 +859,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private static string WriteJson(Action<Utf8JsonWriter> write)
     {
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer)) write(writer);
-        return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
+        using var scratch = BridgeJsonScratch.Rent();
+        write(scratch.Writer);
+        scratch.Writer.Flush();
+        return Encoding.UTF8.GetString(scratch.Written);
     }
 
     private void OnChanged(object? sender, PropertyChangedEventArgs e) => _modelTurn.Run(() => OnChangedCore(sender, e));
@@ -915,20 +918,56 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
+    // Requests a full state; the delivery captures it when the host can take
+    // it (CaptureRequestedState). Until then every change, including a
+    // collection change, is folded into that state: _requiresSnapshot stays set.
     private void PublishSnapshotCore()
+    {
+        _requiresSnapshot = true;
+        _pendingCollectionChanges.Clear();
+        _delivery.RequestState();
+    }
+
+    // Called by the delivery in the model turn after it took the request.
+    private string? CaptureRequestedState()
+    {
+        lock (_modelGate)
+        {
+            if (IsInactive) return null;
+            // Do not show the host a half-applied batch. The batch flush
+            // requests the state again.
+            if (BridgeSnapshotBatch.TryDefer(_vm, this)) return null;
+            var state = CaptureState();
+            return IsInactive ? null : state;
+        }
+    }
+
+    // A recovery state follows frames the host has not taken. It is captured
+    // at once so later frames can queue behind it, unless a captured state is
+    // already queued: a frame that does not fit behind that one turns it back
+    // into a request instead of serializing another full state per change.
+    private void PublishRecoverySnapshotCore()
+    {
+        if (_delivery.StateQueued) { PublishSnapshotCore(); return; }
+        var state = CaptureState();
+        if (state is not null && !IsInactive) _delivery.Enqueue(state);
+    }
+
+    private string? CaptureState()
     {
         try
         {
             var state = WriteSnapshot();
-            if (!IsInactive) _delivery.Enqueue(state);
             _publishedRevision = _revision;
             _requiresSnapshot = false;
             _pendingCollectionChanges.Clear();
+            return state;
         }
         catch (BridgeSnapshotDetachedException)
         {
             // The session detached this route after this callback started.
             // There is no current endpoint to publish to.
+            return null;
         }
     }
 
@@ -992,14 +1031,14 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 foreach (var key in change.Keys) writer.WriteStringValue(key);
                 writer.WriteEndArray();
                 writer.WriteStartArray("items");
-                foreach (var item in change.Items) writer.WriteRawValue(item);
+                foreach (var item in change.Items) writer.WriteRawValue(item, skipInputValidation: true);
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
             writer.WriteEndObject();
         });
-        if (!_delivery.EnqueueDelta(delta)) { PublishSnapshotCore(); return; }
+        if (!_delivery.EnqueueDelta(delta)) { PublishRecoverySnapshotCore(); return; }
         _publishedRevision = _revision;
         _pendingCollectionChanges.Clear();
     }

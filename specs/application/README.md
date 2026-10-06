@@ -28,7 +28,14 @@ publication:
   `clientId:connectionId`; Desktop uses its connection id for both, so a
   reconnect has new keys.
 - `Publish(route, state)` makes the browser call `__{route}Changed(state)`.
-  Full snapshots coalesce: a newer state may replace one not yet sent.
+  Full snapshots coalesce: a newer state may replace one not yet sent, and a
+  state is serialized when the host can take it rather than on every change.
+  Because that capture runs on the delivery thread, a snapshot writer that
+  throws (including `ObjectDisposedException` from a getter) no longer throws
+  to the code that raised `PropertyChanged`. The failure is traced with
+  `Trace.TraceError`, nothing is published, and the next change requests a
+  new capture. Route replies still capture immediately and report a writer
+  failure to the caller.
   Dependent collection deltas remain ordered. An `IAsyncBridgeTransport`
   acknowledges each delivery outside the model context before the next frame
   is sent; Desktop implements this path.
@@ -206,6 +213,23 @@ Routes are synchronous. A bridge runs its work inline when its model context
 reports `IsExecuting`, and otherwise blocks until `InvokeAsync` completes.
 Content exposed in a window binds to the window graph's context while attached.
 Teardown runs inline when an application-owned context was disposed first.
+
+A requested full state is captured by the delivery thread in a model turn.
+With a model context that turn is the context's; without one, the capture
+runs on a thread-pool thread while holding the model gate that also serializes
+routes and change notifications. Snapshot writers and the getters they call
+must therefore not assume the thread that raised `PropertyChanged`.
+
+## Canonical values
+
+Checked-field equality and receipts, operation input digests, interaction
+reply signatures and `BridgeWire.EncodeCanonical` share one canonical JSON form:
+no whitespace; object members sorted by ordinal (UTF-16) name; numbers written
+by exact decimal value in the ECMAScript `Number::toString` layout (`1.0`,
+`1e0` and `10e-1` are `1`, `-0` is `0`, nothing is rounded); strings re-escaped
+by the default `Utf8JsonWriter` encoder. An object with a duplicate member name
+is rejected, as is a number whose decimal exponent exceeds ±100,000. Checked-field
+equality treats byte-identical writer output as equal without validating it.
 
 ## Compatibility
 
