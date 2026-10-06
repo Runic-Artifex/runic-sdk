@@ -7,6 +7,7 @@ Namespace: `Runic.Assets`
 - `AssetCacheMode`
 - `AssetDescriptor`
 - `AssetManifest`
+- `AssetRoutingOptions`
 - `IAssetManifestProvider`
 - `IAssetSource`
 - `IAssetSnapshotSource`

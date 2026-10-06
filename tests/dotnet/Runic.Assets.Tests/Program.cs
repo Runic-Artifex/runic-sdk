@@ -20,6 +20,8 @@ internal static class Program
     private static readonly TestCase[] Tests =
     [
         new("paths reject traversal and ambiguous syntax", SafePaths),
+        new("lookups return false for invalid paths", InvalidLookups),
+        new("request routing serves the root and SPA fallback by policy", RequestRouting),
         new("manifest metadata and ordering are deterministic", DeterministicManifest),
         new("embedded assets validate and open offline", EmbeddedAssets),
         new("development documents replace only a bounded immutable entry", DevelopmentDocument),
@@ -74,18 +76,73 @@ internal static class Program
     private static Task SafePaths()
     {
         Equal("assets/app.js", AssetPath.Normalize(@"assets\app.js"));
-        foreach (string hostile in new[]
-        {
-            "", " index.html", "/index.html", @"C:\index.html", "../index.html",
-            "assets/../index.html", "./index.html", "assets//app.js", "assets/%2e%2e/app.js",
-            "app.js?x=1", "app.js#fragment", "assets/na:me.js", "assets/\0.js",
-        })
+        foreach (string hostile in HostilePaths)
         {
             Throws<ArgumentException>(() => AssetPath.Normalize(hostile));
         }
 
         return Task.CompletedTask;
     }
+
+    private static Task InvalidLookups()
+    {
+        AssetManifest manifest = NewRoutingManifest();
+        foreach (string hostile in HostilePaths)
+        {
+            True(!AssetPath.TryNormalize(hostile, out string? normalized));
+            True(normalized is null);
+            True(!manifest.TryGetAsset(hostile, out AssetDescriptor? asset));
+            True(asset is null);
+            True(hostile.Length == 0 || !manifest.TryResolveRequestPath("/" + hostile, null, out _));
+        }
+
+        True(!AssetPath.TryNormalize(null, out _));
+        True(AssetPath.TryNormalize(@"assets\app.js", out string? canonical));
+        Equal("assets/app.js", canonical);
+        True(manifest.TryGetAsset(@"assets\app.js", out AssetDescriptor? found));
+        Equal("assets/app.js", found!.RelativePath);
+        True(!manifest.TryGetAsset("Assets/app.js", out _));
+        Throws<ArgumentNullException>(() => manifest.TryGetAsset(null!, out _));
+        return Task.CompletedTask;
+    }
+
+    private static Task RequestRouting()
+    {
+        AssetManifest manifest = NewRoutingManifest();
+        var exact = new AssetRoutingOptions { ServeEntryPointAtRoot = false, EnableSinglePageApplicationFallback = false };
+        string? Resolve(string? path, AssetRoutingOptions? options) =>
+            manifest.TryResolveRequestPath(path, options, out AssetDescriptor? asset) ? asset.RelativePath : null;
+
+        foreach (string? root in new[] { null, "", "/" })
+        {
+            Equal("index.html", Resolve(root, null));
+            Equal(null, Resolve(root, exact));
+        }
+
+        Equal("assets/app.js", Resolve("/assets/app.js", null));
+        Equal("assets/app.js", Resolve("assets/app.js", exact));
+        Equal("index.html", Resolve("/settings/profile", null));
+        Equal(null, Resolve("/settings/profile", exact));
+        Equal(null, Resolve("/settings/profile", new AssetRoutingOptions { EnableSinglePageApplicationFallback = false }));
+        Equal(null, Resolve("/missing.js", null));
+        Equal(null, Resolve("/settings/", null));
+        Equal(null, Resolve("//index.html", null));
+        Equal(null, Resolve("/../index.html", null));
+        return Task.CompletedTask;
+    }
+
+    private static readonly string[] HostilePaths =
+    [
+        "", " index.html", "/index.html", @"C:\index.html", "../index.html",
+        "assets/../index.html", "./index.html", "assets//app.js", "assets/%2e%2e/app.js",
+        "app.js?x=1", "app.js#fragment", "assets/na:me.js", "assets/\0.js",
+    ];
+
+    private static AssetManifest NewRoutingManifest() => new(
+    [
+        new AssetDescriptor("index.html", "text/html", 1, new string('a', 64), isEntryPoint: true),
+        new AssetDescriptor("assets/app.js", "text/javascript", 1, new string('b', 64)),
+    ]);
 
     private static Task DeterministicManifest()
     {
@@ -373,13 +430,6 @@ internal static class Program
             .WriteAssetAsync(unsatisfiable, source, descriptor)
             .ConfigureAwait(false);
         Equal(StatusCodes.Status416RangeNotSatisfiable, unsatisfiable.Response.StatusCode);
-
-        var unsafeSource = new InMemoryAssetSource(
-            ("index.html", "unowned", "text/html", true, AssetCacheMode.Revalidate));
-        Throws<ArgumentException>(() => RunicAssetEndpointExtensions
-            .WriteAssetAsync(new DefaultHttpContext(), unsafeSource, unsafeSource.Manifest.EntryPoint)
-            .GetAwaiter()
-            .GetResult());
 
         var unknownUnit = new DefaultHttpContext();
         unknownUnit.Response.Body = new MemoryStream();
@@ -904,53 +954,6 @@ internal static class Program
     }
 
     private sealed record TestCase(string Name, Func<Task> Body);
-
-    private sealed class InMemoryAssetSource : IAssetSource
-    {
-        private readonly Dictionary<string, byte[]> _contents = new(StringComparer.Ordinal);
-
-        public InMemoryAssetSource(
-            params (string Path, string Content, string MediaType, bool EntryPoint, AssetCacheMode CacheMode)[] assets)
-        {
-            var descriptors = new List<AssetDescriptor>();
-            foreach (var asset in assets)
-            {
-                byte[] content = Encoding.UTF8.GetBytes(asset.Content);
-                _contents.Add(asset.Path, content);
-                descriptors.Add(new AssetDescriptor(
-                    asset.Path,
-                    asset.MediaType,
-                    content.Length,
-                    Convert.ToHexString(SHA256.HashData(content)),
-                    asset.EntryPoint,
-                    asset.CacheMode));
-            }
-
-            Manifest = new AssetManifest(descriptors);
-        }
-
-        public AssetManifest Manifest { get; }
-
-        public ValueTask ValidateAsync(CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.CompletedTask;
-        }
-
-        public ValueTask<Stream> OpenReadAsync(
-            string relativePath,
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            string normalized = AssetPath.Normalize(relativePath);
-            if (!_contents.TryGetValue(normalized, out byte[]? content))
-            {
-                throw new FileNotFoundException("Missing test asset.", normalized);
-            }
-
-            return ValueTask.FromResult<Stream>(new MemoryStream(content, writable: false));
-        }
-    }
 
     private sealed class ThrowingAssetSource : IAssetSource
     {

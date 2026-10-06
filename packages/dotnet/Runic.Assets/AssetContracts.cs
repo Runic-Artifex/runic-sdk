@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -158,9 +159,71 @@ public sealed class AssetManifest
         }
     }
 
-    /// <summary>Finds one exact, case-sensitive path.</summary>
-    public bool TryGetAsset(string relativePath, out AssetDescriptor? asset) =>
-        _byPath.TryGetValue(AssetPath.Normalize(relativePath), out asset);
+    /// <summary>
+    /// Finds one exact, case-sensitive path. Returns <see langword="false"/> when the path is not
+    /// declared or is not a valid asset path (see <see cref="AssetPath.TryNormalize"/>).
+    /// </summary>
+    public bool TryGetAsset(string relativePath, [NotNullWhen(true)] out AssetDescriptor? asset)
+    {
+        ArgumentNullException.ThrowIfNull(relativePath);
+        asset = null;
+        return AssetPath.TryNormalize(relativePath, out string? normalized)
+            && _byPath.TryGetValue(normalized, out asset);
+    }
+
+    /// <summary>
+    /// Resolves a host request path, relative to where the asset source is mounted, using the
+    /// routing rules shared by every Runic Assets host adapter. An empty path or <c>/</c> resolves
+    /// to the entry point when <see cref="AssetRoutingOptions.ServeEntryPointAtRoot"/> is set.
+    /// Other paths may start with one <c>/</c> and resolve to an exact manifest path. A missing
+    /// path whose last segment has no file extension resolves to the entry point when
+    /// <see cref="AssetRoutingOptions.EnableSinglePageApplicationFallback"/> is set. Invalid and
+    /// unmatched paths return <see langword="false"/>.
+    /// </summary>
+    public bool TryResolveRequestPath(
+        string? requestPath,
+        AssetRoutingOptions? options,
+        [NotNullWhen(true)] out AssetDescriptor? asset)
+    {
+        AssetRoutingOptions selected = options ?? AssetRoutingOptions.Default;
+        asset = null;
+        if (string.IsNullOrEmpty(requestPath) || requestPath == "/")
+        {
+            if (!selected.ServeEntryPointAtRoot)
+            {
+                return false;
+            }
+
+            asset = EntryPoint;
+            return true;
+        }
+
+        string relative = requestPath[0] == '/' ? requestPath[1..] : requestPath;
+        if (!AssetPath.TryNormalize(relative, out string? normalized))
+        {
+            return false;
+        }
+
+        if (_byPath.TryGetValue(normalized, out asset))
+        {
+            return true;
+        }
+
+        if (selected.EnableSinglePageApplicationFallback && !HasFileExtension(normalized))
+        {
+            asset = EntryPoint;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasFileExtension(string path)
+    {
+        int nameStart = path.LastIndexOf('/') + 1;
+        int dot = path.LastIndexOf('.');
+        return dot > nameStart && dot < path.Length - 1;
+    }
 }
 
 /// <summary>Publishes immutable manifest snapshots when a live asset source changes.</summary>

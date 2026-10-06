@@ -15,21 +15,20 @@ public static class RunicAssetEndpointExtensions
 {
     private static readonly string[] ReadMethods = [HttpMethods.Get, HttpMethods.Head];
 
-    /// <summary>Maps GET and HEAD for all exact manifest paths below an optional route prefix.</summary>
+    /// <summary>
+    /// Maps GET and HEAD below an optional route prefix. Request paths resolve with
+    /// <see cref="AssetManifest.TryResolveRequestPath"/>, the same rules and defaults the Desktop
+    /// adapter uses: the prefix root serves the entry point and missing extensionless paths fall
+    /// back to it unless <paramref name="routing"/> disables them.
+    /// </summary>
     public static IEndpointConventionBuilder MapRunicAssetSource(
         this IEndpointRouteBuilder endpoints,
-        IAssetSource source,
-        string routePrefix = "")
+        IAssetSnapshotSource source,
+        string routePrefix = "",
+        AssetRoutingOptions? routing = null)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
         ArgumentNullException.ThrowIfNull(source);
-        if (source is not IAssetSnapshotSource)
-        {
-            throw new ArgumentException(
-                "ASP.NET Core delivery requires a source that atomically owns descriptor-and-stream snapshots.",
-                nameof(source));
-        }
-
         routePrefix = NormalizePrefix(routePrefix);
 
         string route = "/" + (routePrefix.Length == 0 ? "" : routePrefix + "/") + "{**runicAssetPath}";
@@ -39,34 +38,27 @@ public static class RunicAssetEndpointExtensions
             async context =>
             {
                 string? requested = context.Request.RouteValues["runicAssetPath"] as string;
-                if (requested is null
-                    || !TryFind(source.Manifest, requested, out AssetDescriptor? descriptor))
+                if (!source.Manifest.TryResolveRequestPath(requested, routing, out AssetDescriptor? descriptor))
                 {
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
                 }
 
-                await WriteAssetAsync(context, source, descriptor!).ConfigureAwait(false);
+                await WriteAssetAsync(context, source, descriptor).ConfigureAwait(false);
             });
     }
 
     /// <summary>Writes one declared asset with its manifest-owned HTTP metadata.</summary>
     public static async Task WriteAssetAsync(
         HttpContext context,
-        IAssetSource source,
+        IAssetSnapshotSource source,
         AssetDescriptor descriptor)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(descriptor);
-        if (source is not IAssetSnapshotSource snapshots)
-        {
-            throw new ArgumentException(
-                "ASP.NET Core delivery requires a source that atomically owns descriptor-and-stream snapshots.",
-                nameof(source));
-        }
 
-        await using AssetReadSnapshot snapshot = await snapshots.OpenSnapshotAsync(
+        await using AssetReadSnapshot snapshot = await source.OpenSnapshotAsync(
             descriptor.RelativePath,
             context.RequestAborted).ConfigureAwait(false);
         AssetDescriptor current = snapshot.Descriptor;
@@ -138,22 +130,6 @@ public static class RunicAssetEndpointExtensions
         ArgumentNullException.ThrowIfNull(routePrefix);
         string normalized = routePrefix.Trim('/');
         return normalized.Length == 0 ? "" : AssetPath.Normalize(normalized);
-    }
-
-    private static bool TryFind(
-        AssetManifest manifest,
-        string requested,
-        out AssetDescriptor? descriptor)
-    {
-        try
-        {
-            return manifest.TryGetAsset(requested, out descriptor);
-        }
-        catch (ArgumentException)
-        {
-            descriptor = null;
-            return false;
-        }
     }
 
     private static bool MatchesIfNoneMatch(StringValues values, string entityTag)

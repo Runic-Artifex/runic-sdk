@@ -3,8 +3,8 @@
 `Runic.Assets` gives a .NET application one portable, validated description of
 its static files. Embed a Vite build for NativeAOT-friendly deployment, use
 explicit assembly resources for a small bundle, or use a refreshable directory
-while developing—then attach the same `IAssetSource` to the host adapter you
-choose.
+while developing—then attach the same `IAssetSnapshotSource` to the host
+adapter you choose.
 
 ## Install
 
@@ -47,6 +47,8 @@ statistics. To use an existing canonical archive, set
 `RunicAssetsEmbeddedArchive` instead of `RunicAssetsDist`. Set
 `RunicAssetsEmbeddedResourceName` if you need a resource name other than
 `Runic.Assets.StaticFiles`, and supply that name to `ReadEmbedded`.
+To produce an archive in a separate step, run the packaged packer directly; see
+the [packer README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/Runic.Assets.Packer/README.md).
 
 Directory archives mark a file `Immutable` (`public, max-age=31536000,
 immutable`) only when its name carries a content hash, such as Vite's
@@ -103,7 +105,10 @@ reproducible deployed bundle.
 ## Guarantees and limits
 
 `AssetPath` rejects rooted, traversal, encoded, ambiguous, and
-control-character paths. `AssetManifest` is immutable and ordinally ordered.
+control-character paths. `AssetPath.TryNormalize`, `AssetManifest.TryGetAsset`
+and `AssetManifest.TryResolveRequestPath` return `false` for such paths instead
+of throwing, so request handlers can pass untrusted paths to them directly.
+`AssetManifest` is immutable and ordinally ordered.
 Each entry carries media type, length, SHA-256 digest, strong entity tag,
 Subresource Integrity token, and cache policy. CSP is host policy rather than
 archive content: the archive cannot safely invent an application's script or

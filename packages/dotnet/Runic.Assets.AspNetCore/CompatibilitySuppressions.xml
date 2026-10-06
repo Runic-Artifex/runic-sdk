@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Assets.AspNetCore.RunicAssetEndpointExtensions.MapRunicAssetSource(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder,Runic.Assets.IAssetSource,System.String)</Target>
+    <Left>lib/net10.0/Runic.Assets.AspNetCore.dll</Left>
+    <Right>lib/net10.0/Runic.Assets.AspNetCore.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Assets.AspNetCore.RunicAssetEndpointExtensions.WriteAssetAsync(Microsoft.AspNetCore.Http.HttpContext,Runic.Assets.IAssetSource,Runic.Assets.AssetDescriptor)</Target>
+    <Left>lib/net10.0/Runic.Assets.AspNetCore.dll</Left>
+    <Right>lib/net10.0/Runic.Assets.AspNetCore.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>
