@@ -33,7 +33,11 @@ try {
     return current.count === "1" && current.status === "Incremented.";
   }, "first command");
   await evaluate('document.querySelector("#step").focus(); document.querySelector("#step").value = "3"; document.querySelector("#step").blur()');
-  await retry(async () => (await state()).status === "Step updated.", "writable property");
+  await retry(async () => {
+    const current = await state();
+    if (current.status !== "Step updated.") throw new Error(`state: ${JSON.stringify(current)}`);
+    return true;
+  }, "writable property");
   await evaluate('document.querySelector("#increment").click()');
   await retry(async () => (await state()).count === "4", "updated command");
   await evaluate("location.reload()");

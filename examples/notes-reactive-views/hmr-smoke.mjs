@@ -41,7 +41,7 @@ const host = viaRunicDev
 let hostOutput = "", hostErrors = "", serverOutput = "";
 host.stdout.on("data", chunk => { hostOutput += chunk.toString(); });
 host.stderr.on("data", chunk => { hostErrors += chunk.toString(); });
-let devServer, originalShell, probeFile, devPorts;
+let devServer, originalShell, probeFile, devPorts, completed = false, cleanupError;
 try {
   let url;
   if (viaRunicDev) {
@@ -83,7 +83,7 @@ try {
     }, 30_000);
   }
 
-  browser = await launchChromium(url, { profilePrefix: `runic-${frontend}-reactive-hmr-` });
+  browser = await launchChromium(url, { profilePrefix: `runic-${frontend}-reactive-hmr-`, timeout: 15_000 });
   const { evaluate } = browser;
   const query = expression => evaluate(expression);
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -167,13 +167,16 @@ try {
   } else {
     console.log(`${frontend.toUpperCase()}_REACTIVE_${viaIde ? "IDE_" : ""}HMR_OK|same-document|shared-state|command|route-cleanup`);
   }
+  completed = true;
 } finally {
   if (originalShell !== undefined) await writeFile(shellFile, originalShell);
-  await browser?.close().catch(error => console.error(error));
+  await browser?.close().catch(error => { cleanupError = error; });
   devServer?.kill("SIGTERM");
   if (viaRunicDev) host.kill("SIGTERM");
   else if (!host.stdin.writableEnded) host.stdin.end("\n");
   await pause(300);
   if (host.exitCode === null) host.kill("SIGTERM");
   if (probeFile) await rm(probeFile, { force: true });
+  // Report a Chromium cleanup failure without hiding the journey's own failure.
+  if (cleanupError) { if (completed) throw cleanupError; console.error(cleanupError); }
 }

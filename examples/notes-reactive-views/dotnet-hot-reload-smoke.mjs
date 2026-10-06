@@ -33,13 +33,13 @@ const watch = spawn("dotnet", ["watch", "--non-interactive", "--project", projec
 let output = "", errors = "";
 watch.stdout.on("data", chunk => { output += chunk.toString(); });
 watch.stderr.on("data", chunk => { errors += chunk.toString(); });
-let original;
+let original, completed = false, cleanupError;
 try {
   await retry(() => {
     if (watch.exitCode !== null) throw new Error(`dotnet watch exited:\n${output}\n${errors}`);
     return output.includes(`:${port}`) && output.includes("Main:");
   }, 90_000);
-  browser = await launchChromium(url, { profilePrefix: "runic-dotnet-hot-reload-" });
+  browser = await launchChromium(url, { profilePrefix: "runic-dotnet-hot-reload-", timeout: 30_000 });
   const { evaluate } = browser;
   const query = expression => evaluate(expression);
   const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
@@ -86,14 +86,17 @@ try {
       throw new Error(`Hot Reload restarted the Editor activation: ${JSON.stringify(updated)}`);
     console.log("REACTIVE_NOTES_DOTNET_HOT_RELOAD_OK|method-body|state-retained|command-updated");
   }
+  completed = true;
 } catch (cause) {
   throw new Error(`${cause}\nwatch output:\n${output.slice(-5000)}\nwatch errors:\n${errors.slice(-2500)}`);
 } finally {
-  await browser?.close().catch(error => console.error(error));
+  await browser?.close().catch(error => { cleanupError = error; });
   try { process.kill(-watch.pid, "SIGTERM"); } catch { /* Already stopped. */ }
   await pause(350);
   if (watch.exitCode === null && watch.signalCode === null) {
     try { process.kill(-watch.pid, "SIGKILL"); } catch { /* Already stopped. */ }
   }
   if (original !== undefined) await writeFile(source, original);
+  // Report a Chromium cleanup failure without hiding the journey's own failure.
+  if (cleanupError) { if (completed) throw cleanupError; console.error(cleanupError); }
 }

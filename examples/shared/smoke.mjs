@@ -6,7 +6,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const configuredScale = Number(process.env.RUNIC_SMOKE_TIMEOUT_SCALE ?? 1);
+const configuredScale = Number(process.env.RUNIC_SMOKE_TIMEOUT_SCALE || 1);
 if (!Number.isFinite(configuredScale) || configuredScale <= 0)
   throw new Error(`RUNIC_SMOKE_TIMEOUT_SCALE must be a positive number, got ${process.env.RUNIC_SMOKE_TIMEOUT_SCALE}.`);
 
@@ -107,8 +107,8 @@ export async function launchChromium(url, { profilePrefix = "runic-smoke-", time
       if (closed) throw new Error(`DevTools connection is closed; cannot send ${method}`);
       const id = ++nextId;
       const response = new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
-      socket.send(JSON.stringify({ id, method, params }));
       try {
+        socket.send(JSON.stringify({ id, method, params }));
         const message = await within(response, scaled(commandTimeout), `DevTools ${method}`);
         if (message.error || message.result?.exceptionDetails) throw new Error(JSON.stringify(message));
         return message.result;

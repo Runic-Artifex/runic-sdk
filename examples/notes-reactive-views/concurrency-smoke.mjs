@@ -31,7 +31,7 @@ const host = spawn("dotnet", [dll, "--serve-only", "--verify-multi-client", "--m
 let output = "", errors = "";
 host.stdout.on("data", chunk => { output += chunk.toString(); });
 host.stderr.on("data", chunk => { errors += chunk.toString(); });
-let first, second;
+let first, second, completed = false;
 try {
   let url;
   await retry(() => {
@@ -96,9 +96,13 @@ try {
   if (host.exitCode !== 0)
     throw new Error(`The final browser exit did not release the View: ${output}\n${errors}`);
   console.log("REACTIVE_NOTES_CONCURRENCY_OK|two-clients|collection-reorder-prune-restore|overlapping-routes|survivor|final-disconnect");
+  completed = true;
 } finally {
-  await Promise.allSettled([first?.dispose(), second?.dispose()]);
+  const cleanup = await Promise.allSettled([first?.dispose(), second?.dispose()]);
   if (!host.stdin.writableEnded) host.stdin.end("\n");
   await pause(300);
   if (host.exitCode === null) host.kill("SIGTERM");
+  // Report a Chromium cleanup failure without hiding the journey's own failure.
+  const cleanupError = cleanup.find(result => result.status === "rejected")?.reason;
+  if (cleanupError) { if (completed) throw cleanupError; console.error(cleanupError); }
 }
