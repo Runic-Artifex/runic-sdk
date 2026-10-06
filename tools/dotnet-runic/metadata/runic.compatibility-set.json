@@ -147,6 +147,11 @@
     },
     {
       "ecosystem": "npm",
+      "identity": "@runic-artifex/views-effect",
+      "version": "0.6.0-preview.1"
+    },
+    {
+      "ecosystem": "npm",
       "identity": "@runic-artifex/react",
       "version": "0.6.0-preview.1"
     },
