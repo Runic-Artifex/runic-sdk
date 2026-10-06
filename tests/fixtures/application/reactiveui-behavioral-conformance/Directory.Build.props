@@ -2,6 +2,8 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <!-- Both conformance projects share this directory. -->
+    <NuGetLockFilePath>packages.$(MSBuildProjectName).lock.json</NuGetLockFilePath>
     <BaseOutputPath>$(MSBuildThisFileDirectory)bin/$(MSBuildProjectName)/</BaseOutputPath>
   </PropertyGroup>
 </Project>

@@ -15,22 +15,41 @@ env:
   CONFIGURATION: Release
   NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
 jobs:
+  # Pull requests run the jobs whose inputs changed (eng/ci/plan.mjs); pushes and
+  # manual runs plan everything. Planned skips still report, and `verify` accepts a
+  # skipped job only when this plan skipped it.
+  plan:
+    name: Plan affected jobs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      managed: ${{ steps.plan.outputs.managed }}
+      web: ${{ steps.plan.outputs.web }}
+      skip: ${{ steps.plan.outputs.skip }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The pull request merge commit and its base parent.
+          fetch-depth: 2
+      - uses: ./.github/actions/setup-sdk
+        with:
+          dotnet: "false"
+          install: "false"
+      - name: Plan jobs from the changed files
+        id: plan
+        run: bun eng/ci/plan.mjs >> "$GITHUB_OUTPUT"
   build:
     name: Build shared SDK inputs
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    outputs:
-      web: ${{ steps.plan.outputs.web }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
-      - name: Discover web test suites
-        id: plan
-        run: bun eng/ci/plan.mjs >> "$GITHUB_OUTPUT"
       - name: Restore managed dependencies
-        run: dotnet restore RunicSdk.Core.slnx
+        run: dotnet restore RunicSdk.Core.slnx --locked-mode
       - name: Build managed SDK, tools and test executables
         run: bun eng/run.mjs build-core
       - name: Build web packages
@@ -48,13 +67,14 @@ jobs:
           retention-days: 30
   managed:
     name: Managed / ${{ matrix.suite }}
-    needs: build
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'managed') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
-        suite: [platform, assets, application]
+        suite: ${{ fromJSON(needs.plan.outputs.managed) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,21 +89,26 @@ jobs:
         run: bun eng/ci/source-state.mjs check
   web:
     name: Web / ${{ matrix.package }}
-    needs: build
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'web') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
       max-parallel: 3
-      matrix: ${{ fromJSON(needs.build.outputs.web) }}
+      matrix: ${{ fromJSON(needs.plan.outputs.web) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Web package tests do not run managed code.
       - uses: ./.github/actions/setup-sdk
         with:
+          nuget: none
           node: ${{ matrix.node && 'true' || 'false' }}
       - uses: ./.github/actions/restore-build
+        with:
+          nuget: "false"
       - uses: ./.github/actions/install-browser
         if: matrix.package == 'vite-plugin-runic'
       - name: Run package tests
@@ -123,17 +148,22 @@ jobs:
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   framework-consumers:
-    needs: build
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'framework-consumers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Svelte checks and npm consumers do not run managed code.
       - uses: ./.github/actions/setup-sdk
         with:
+          nuget: none
           node: "true"
       - uses: ./.github/actions/restore-build
+        with:
+          nuget: "false"
       - name: Check Svelte integration types
         working-directory: packages/web/svelte
         run: bun run --bun check
@@ -146,7 +176,8 @@ jobs:
         run: bun eng/ci/source-state.mjs check
   views:
     name: Window and View journeys
-    needs: build
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'views') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -196,7 +227,8 @@ jobs:
         run: bun eng/ci/source-state.mjs check
   packages:
     name: Materialize package candidates
-    needs: build
+    needs: [plan, build]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'packages') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -219,7 +251,8 @@ jobs:
           overwrite: true
           retention-days: 30
   package-consumers:
-    needs: packages
+    needs: [plan, packages]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'package-consumers') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -249,7 +282,8 @@ jobs:
         run: bun eng/ci/source-state.mjs check
   templates:
     name: Templates / ${{ matrix.framework }}
-    needs: packages
+    needs: [plan, packages]
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'templates') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -280,6 +314,8 @@ jobs:
         run: bun eng/ci/source-state.mjs check
   native:
     name: Native / ${{ matrix.rid }}
+    needs: plan
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native') }}
     strategy:
       fail-fast: false
       matrix:
@@ -304,6 +340,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
         with:
+          nuget: native
           node: "true"
       - uses: ./.github/actions/install-browser
       # Generated Views clients import the workspace runtime from its build output.
@@ -445,7 +482,6 @@ jobs:
       - name: Publish Window and View application with NativeAOT
         shell: bash
         run: |
-          bun run --cwd packages/web/views build
           dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
           dotnet publish tests/fixtures/application/cswebui-window-probes/CsWebUiWindowProbes.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-probes-aot
           if [[ "$RUNNER_OS" == Linux ]]; then
@@ -471,17 +507,20 @@ jobs:
   verify:
     name: verify
     if: always()
-    needs: [build, managed, web, engineering, framework-consumers, views, packages, package-consumers, templates, native]
+    needs: [plan, build, managed, web, engineering, framework-consumers, views, packages, package-consumers, templates, native]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - name: Require every verification job to pass
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: eng/ci/gate.mjs
+          sparse-checkout-cone-mode: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - name: Require every planned verification job to pass
         env:
-          RESULTS: ${{ join(needs.*.result, ',') }}
-        run: |
-          IFS=',' read -ra results <<< "$RESULTS"
-          for result in "${results[@]}"; do
-            if [[ "$result" != success ]]; then
-              echo "Verification is incomplete: $RESULTS"
-              exit 1
-            fi
-          done
+          NEEDS: ${{ toJSON(needs) }}
+          SKIP: ${{ needs.plan.outputs.skip }}
+        run: bun eng/ci/gate.mjs

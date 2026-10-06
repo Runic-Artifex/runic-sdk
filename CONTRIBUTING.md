@@ -75,9 +75,11 @@ without a scope lists the available checks and explicitly reports that no tests
 ran. Managed groups build/run their executable suites; single .NET test projects
 use `dotnet test` when appropriate. Package scripts own their web tests.
 
-GitHub runs full CI, including package/template consumers and native checks on
-Linux x64, Windows x64 and macOS arm64. Do not routinely duplicate the entire
-workflow locally. `bun run affected <base-ref>` helps select relevant components
+GitHub CI includes package/template consumers and native checks on Linux x64,
+Windows x64 and macOS arm64. Pushes to `main` run every job. Pull requests run
+the jobs whose inputs changed, using component ownership in `eng/workspace.json`;
+see [affected-only pull requests](eng/ci/README.md#affected-only-pull-requests).
+Do not routinely duplicate the entire workflow locally. `bun run affected <base-ref>` helps select relevant components
 and consumers; include consumers when changing a shared contract.
 
 For workflow debugging, `bun run ci --job templates` or `bun run ci` can run the
@@ -118,6 +120,10 @@ Commit the resulting changes. `regen` does not change lockfiles or anything outs
 the solution:
 
 - Run `bun install` for `bun.lock`.
+- Run `bun run lock:nuget` for the NuGet `packages.lock.json` files after changing
+  a project or package reference, `Directory.Packages.props`, the .NET SDK pin or
+  the projects in `RunicSdk.Core.slnx`. CI restores with `--locked-mode`. When a
+  rebase conflicts on lock files, take either side and rerun the command.
 - Run `bun eng/dependencies/update-template-locks.mjs` for the starter locks
   (see [dependency review](eng/dependencies/README.md)).
 - Run `bun install` in the example's frontend directory for an example lockfile.
