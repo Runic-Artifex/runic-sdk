@@ -29,6 +29,7 @@ export function selectArtifact(artifacts, run) {
   if (artifact.expired) throw new Error(`The ${name} artifact of ${run.html_url} has expired. Rerun all jobs of that CI run to regenerate it, or prepare a new version.`);
   assert.equal(artifact.workflow_run?.id, run.id, 'Artifact belongs to a different run');
   assert.equal(artifact.workflow_run?.head_sha, run.head_sha, 'Artifact belongs to a different commit');
+  assert(Number.isSafeInteger(artifact.id) && artifact.id > 0, 'Artifact has no id');
   return artifact;
 }
 
@@ -43,7 +44,9 @@ export async function findCiPackages({repository, sha, token, fetchImpl = fetch}
   const query = new URLSearchParams({head_sha: sha, event: 'push', branch: 'main', per_page: '100'});
   const run = selectCiRun((await api(`actions/workflows/ci.yml/runs?${query}`)).workflow_runs, {repository, sha});
   const artifact = selectArtifact((await api(`actions/runs/${run.id}/artifacts?name=${artifactName(run.id)}`)).artifacts, run);
-  return {runId: String(run.id), runUrl: run.html_url, artifact: artifact.name};
+  // Download by id: re-uploading under the same name creates a new id, so the bytes
+  // downloaded later are exactly the artifact selected here.
+  return {runId: String(run.id), runUrl: run.html_url, artifact: artifact.name, artifactId: String(artifact.id)};
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
@@ -51,8 +54,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   assert(repository && sha && token && output, 'Run in GitHub Actions with GH_TOKEN');
   try {
     const found = await findCiPackages({repository, sha, token});
-    appendFileSync(output, `run-id=${found.runId}\nartifact=${found.artifact}\n`);
-    console.log(`Reusing ${found.artifact} from ${found.runUrl}`);
+    appendFileSync(output, `run-id=${found.runId}\nartifact-id=${found.artifactId}\n`);
+    console.log(`Reusing ${found.artifact} (artifact ${found.artifactId}) from ${found.runUrl}`);
   } catch (error) {
     console.log(`::error title=No reusable CI packages::${error.message}`);
     process.exit(1);

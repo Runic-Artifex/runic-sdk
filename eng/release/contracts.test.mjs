@@ -79,6 +79,10 @@ test('registry polling retries availability and transient status with Retry-Afte
   fetchImpl:async()=>new Response('',{status:statuses.shift(),headers:{'retry-after':'2'}})
  });
  expect(response.status).toBe(200);expect(delays).toEqual([2000,2000,2000]);
+ const waiting=[401,404,200];
+ expect((await fetchRegistry('https://registry.npmjs.org/-/package/new/dist-tags',{waitForAvailability:true,now:()=>0,sleep:async()=>{},
+  fetchImpl:async()=>new Response('',{status:waiting.shift()})})).status).toBe(200);
+ expect((await fetchRegistry('https://registry.npmjs.org/test',{fetchImpl:async()=>new Response('',{status:401})})).status).toBe(401);
  let attempts=0;
  expect((await fetchRegistry('https://registry.npmjs.org/test',{fetchImpl:async()=>{attempts++;return new Response('',{status:404});}})).status).toBe(404);
  expect(attempts).toBe(1);

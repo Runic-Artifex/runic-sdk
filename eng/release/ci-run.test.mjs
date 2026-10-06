@@ -16,20 +16,21 @@ test('fails clearly when CI for the commit is missing, running or failed', () =>
   expect(() => selectCiRun([run(5, {conclusion: 'failure'})], {repository, sha})).toThrow('concluded failure');
 });
 test('requires the single unexpired package artifact of that run', () => {
-  const artifact = {name: 'runic-sdk-7', expired: false, workflow_run: {id: 7, head_sha: sha}};
+  const artifact = {id: 70, name: 'runic-sdk-7', expired: false, workflow_run: {id: 7, head_sha: sha}};
   expect(selectArtifact([artifact, {...artifact, name: 'sdk-build-7'}], run(7))).toBe(artifact);
   expect(() => selectArtifact([], run(7))).toThrow('no single runic-sdk-7');
   expect(() => selectArtifact([{...artifact, expired: true}], run(7))).toThrow('expired');
   expect(() => selectArtifact([{...artifact, workflow_run: {id: 7, head_sha: 'c'.repeat(40)}}], run(7))).toThrow();
+  expect(() => selectArtifact([{...artifact, id: undefined}], run(7))).toThrow('no id');
 });
 test('queries GitHub for push runs of the commit and reports the run and artifact to download', async () => {
   const requests = [];
   const fetchImpl = async (url, init) => {
     requests.push({url: new URL(url), auth: init.headers.authorization});
-    return Response.json(url.includes('/artifacts') ? {artifacts: [{name: 'runic-sdk-8', expired: false, workflow_run: {id: 8, head_sha: sha}}]}
+    return Response.json(url.includes('/artifacts') ? {artifacts: [{id: 80, name: 'runic-sdk-8', expired: false, workflow_run: {id: 8, head_sha: sha}}]}
       : {workflow_runs: [run(8)]});
   };
-  expect(await findCiPackages({repository, sha, token: 't', fetchImpl})).toEqual({runId: '8', runUrl: run(8).html_url, artifact: 'runic-sdk-8'});
+  expect(await findCiPackages({repository, sha, token: 't', fetchImpl})).toEqual({runId: '8', runUrl: run(8).html_url, artifact: 'runic-sdk-8', artifactId: '80'});
   expect(requests[0].url.pathname).toBe(`/repos/${repository}/actions/workflows/ci.yml/runs`);
   expect(Object.fromEntries(requests[0].url.searchParams)).toMatchObject({head_sha: sha, event: 'push', branch: 'main'});
   expect(requests.every(r => r.auth === 'Bearer t')).toBe(true);

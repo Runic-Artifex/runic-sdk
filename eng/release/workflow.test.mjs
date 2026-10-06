@@ -16,8 +16,10 @@ test('publication reuses the package artifact of the successful CI push run with
     expect(job.needs).toContain('preflight');
     expect(job.env.CI_RUN_ID).toBe('${{ needs.preflight.outputs.ci-run-id }}');
     const download = job.steps.find(s => s.uses?.startsWith('actions/download-artifact@'));
-    expect(download.with).toMatchObject({name: '${{ needs.preflight.outputs.artifact }}', path: 'artifacts/packages',
+    // By id, so a later re-upload under the same name cannot change what is published.
+    expect(download.with).toEqual({'artifact-ids': '${{ needs.preflight.outputs.artifact-id }}', path: 'artifacts/packages',
       'run-id': '${{ needs.preflight.outputs.ci-run-id }}', 'github-token': '${{ github.token }}'});
+    expect(job.steps.some(s => s.uses === './.github/actions/setup-sdk' || /bun install|npm (ci|install)(?! --global npm@[0-9.]+ --ignore-scripts$)/.test(s.run ?? ''))).toBe(false);
     expect(job.permissions.actions).toBe('read');
     expect(runs(job)).not.toMatch(/run\.mjs pack|verify-packages|verify:|bun run test|eng\/test\.mjs/);
   }

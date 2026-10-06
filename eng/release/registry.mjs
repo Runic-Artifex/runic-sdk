@@ -13,7 +13,9 @@ export async function fetchRegistry(url, {waitForAvailability=false, fetchImpl=f
     const remaining=deadline-now();
     assert(remaining>0,'Registry retry budget expired');
     const response=await fetchImpl(url,{signal:AbortSignal.timeout(Math.max(1,Math.min(30000,remaining)))});
-    const retry=[429,503].includes(response.status) || (waitForAvailability && response.status===404);
+    // npm answers 401 for a scoped name it does not know yet, so a just-published
+    // package can report 401 or 404 until the registry exposes it.
+    const retry=[429,503].includes(response.status) || (waitForAvailability && [401,404].includes(response.status));
     if(!retry || attempt===maxAttempts-1) return response;
     const header=response.headers.get('retry-after');
     let delay= Math.min(15000,1000 * 2**attempt);

@@ -40,9 +40,10 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
 ## Workflow jobs and dry run
 
 - `preflight` (`contents: read`, `actions: read`) checks the requested version and
-  runs `eng/release/ci-run.mjs` to find the CI run and its package artifact.
+  runs `eng/release/ci-run.mjs` to find the CI run and the id of its package artifact.
 - `candidate` (`contents: read`, `actions: read`, no environment) downloads the
-  artifact with `actions/download-artifact` (`run-id`, `github-token`), records it
+  artifact with `actions/download-artifact` (`artifact-ids`, `run-id`, `github-token`;
+  a re-upload under the same name gets a new id, so it cannot swap the bytes), records it
   with `cli.mjs prepare` and uploads the inventory as `release-candidate-<run id>`.
   It then runs the publication checks read-only: `cli.mjs publish --dry-run`
   (which versions are missing; published versions must have matching contents),
@@ -52,6 +53,7 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
   `preview` environment and the only one with `id-token: write` and
   `contents: write`. It downloads the same artifact, verifies it against the
   candidate inventory, then publishes, creates the release and moves `latest`.
+  It installs no workspace dependencies: the release scripts use only built-in modules.
 
 A dry run therefore ends after `candidate`, with no OIDC token, registry write,
 tag or release. A failing dry-run check is the failure the real run would hit.
@@ -82,7 +84,8 @@ It reuses the same CI artifact, checks already published versions for matching
 contents, and publishes only missing packages. Changed package contents require a new version. Registry indexing and public installation do not block GitHub release creation;
 NuGet can take up to an hour to expose newly accepted packages. Assets upload to a draft before
 it becomes public, so interrupted uploads can be resumed. An existing published
-release for the same source is preserved on retry. CI package artifacts are kept for 30 days. If the artifact
+release for the same source is preserved on retry, so a rerun after a partial
+publication finishes the remaining steps, including moving `latest`. CI package artifacts are kept for 30 days. If the artifact
 expired, rerun all jobs of the CI run (which uploads it again), or prepare a new version.
 
 After indexing, optional diagnostics can be run with `bun eng/release/cli.mjs
