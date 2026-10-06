@@ -185,8 +185,22 @@
     }
   },
   "forms": {
-    "npmPackageName": {
+    "npmKebabCase": {
       "identifier": "kebabCase"
+    },
+    "npmUrlSafeCharacters": {
+      "identifier": "replace",
+      "pattern": "-*[^a-z0-9._~-][^a-z0-9._~]*",
+      "replacement": "-"
+    },
+    "npmTrimmedSeparators": {
+      "identifier": "replace",
+      "pattern": "^[._-]+|[._-]+$",
+      "replacement": ""
+    },
+    "npmPackageName": {
+      "identifier": "chain",
+      "steps": [ "npmKebabCase", "npmUrlSafeCharacters", "npmTrimmedSeparators" ]
     }
   },
   "primaryOutputs": [

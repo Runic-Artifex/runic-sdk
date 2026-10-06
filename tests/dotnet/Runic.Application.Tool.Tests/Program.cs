@@ -234,7 +234,7 @@ internal static class Program
         using var workspace = new TestWorkspace();
         var configuration = CreateConfiguration(workspace, "vite");
         // The Vite development server serves index.html with root-absolute script paths.
-        string html = "<html><head><title>App</title><script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script><script src=\"./runic-desktop-views.js\"></script></head><body><script type=\"module\" src=\"/src/main.ts\"></script><link href=\"/src/app.css\"></body></html>";
+        string html = "<html><head><title>App</title><script src=\"./runic-desktop.js\"></script><script src=\"/webui.js\"></script><script src=\"runic-cswebui.js\"></script><script src=\"./runic-desktop-views.js\"></script></head><body><script type=\"module\" src=\"/src/main.ts\"></script><link href=\"/src/app.css\"></body></html>";
         FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "index.html", html);
         string generated = File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "index.html"));
@@ -244,6 +244,7 @@ internal static class Program
         Contains(generated, "<script src=\"webui.js\">");
         Contains(generated, "<script src=\"runic-cswebui.js\">");
         Contains(generated, "<script src=\"runic-desktop-views.js\">");
+        Contains(generated, "<script src=\"runic-desktop.js\">");
         Throws<DevUsageException>(() => FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "../escape.html", html));
     }
