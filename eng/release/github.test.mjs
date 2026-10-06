@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { VERSION, sha256 } from './artifacts.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const source = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
-function fixture(mode, check) {
+function fixture(mode, check, extra = []) {
   const directory = mkdtempSync(join(tmpdir(), 'runic-release-test-'));
   try {
     const bin = join(directory, 'bin'), packages = join(directory, 'packages'), output = join(directory, 'output');
@@ -16,7 +16,7 @@ function fixture(mode, check) {
     writeFileSync(join(packages, 'nuget', 'test.nupkg'), 'nuget fixture');
     const calls = join(directory, 'calls.jsonl');
     writeFileSync(join(bin, 'gh'), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';\nconst args=process.argv.slice(2);appendFileSync(process.env.TEST_CALLS,JSON.stringify(args)+'\\n');\nif(args[0]==='release'&&args[1]==='view'){if(!['existing','wrong-release','draft'].includes(process.env.TEST_MODE))process.exit(1);console.log(JSON.stringify({isDraft:process.env.TEST_MODE==='draft',targetCommitish:process.env.TEST_SOURCE}));}\nif(args[0]==='api'){if(process.env.TEST_MODE==='new')process.exit(1);console.log(process.env.TEST_MODE.startsWith('wrong')?'f'.repeat(40):process.env.TEST_SOURCE);}\n`, {mode: 0o755});
-    const result = spawnSync(process.execPath, [join(root, 'eng/release/github.mjs'), packages, output], {
+    const result = spawnSync(process.execPath, [join(root, 'eng/release/github.mjs'), packages, output, ...extra], {
       cwd: root, encoding: 'utf8', env: {...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, TEST_MODE: mode, TEST_SOURCE: source, TEST_CALLS: calls},
     });
     check(result, output, readFileSync(calls, 'utf8').trim().split('\n').map(line => JSON.parse(line)));
@@ -50,3 +50,14 @@ test('an interrupted draft upload is resumed before the release becomes public',
   expect(calls.find(args => args[1] === 'upload')).toContain('--clobber');
   expect(calls.at(-1)).toContain('--draft=false');
 }));
+
+test('a dry run checks tag and release ownership but never creates, uploads or publishes', () => {
+  for (const mode of ['new', 'draft', 'existing']) fixture(mode, (result, output, calls) => {
+    expect(result.status).toBe(0); expect(existsSync(output)).toBe(false);
+    expect(calls.every(args => (args[0] === 'release' && args[1] === 'view') || args[0] === 'api')).toBe(true);
+  }, ['--dry-run']);
+  for (const mode of ['wrong-release', 'wrong-tag']) fixture(mode, (result, output, calls) => {
+    expect(result.status).not.toBe(0);
+    expect(calls.every(args => (args[0] === 'release' && args[1] === 'view') || args[0] === 'api')).toBe(true);
+  }, ['--dry-run']);
+});

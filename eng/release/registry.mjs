@@ -59,6 +59,7 @@ export function needsLatest(current, version) {
 }
 export async function npmLatest(name, options={}) {
   const response=await fetchRegistry(`https://registry.npmjs.org/-/package/${encodeURIComponent(name)}/dist-tags`,options);
+  if (response.status === 404 && !options.waitForAvailability) return undefined;
   assert(response.ok, `npm dist-tag lookup failed for ${name}: ${response.status}`);
   return (await response.json()).latest;
 }
