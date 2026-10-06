@@ -57,12 +57,14 @@ internal sealed partial record DoctorTargetRid(string Value, string Os, string A
 /// </summary>
 internal static class DoctorTargetChecks
 {
-    // Runtime identifiers that Runic CI publishes and runs for every change.
+    // These RID sets are hard-coded until W130-031's support metadata becomes
+    // their source of truth.
+    // Runtime identifiers that Runic CI builds and runs for every change.
     private static readonly HashSet<string> CiVerified = new(StringComparer.Ordinal) { "linux-x64", "win-x64", "osx-arm64" };
 
     // RIDs with packaged native assets but without CI coverage. CS-WebUI uses the
-    // CsWebUi.Native runtimes (no win-arm64); Runic Desktop uses the WebView2
-    // loader on Windows and system WebKit libraries elsewhere.
+    // CsWebUi.Native runtimes (glibc builds only, no win-arm64); Runic Desktop uses
+    // the WebView2 loader on Windows and system WebKit libraries elsewhere.
     private static readonly HashSet<string> DesktopUnverified = new(StringComparer.Ordinal)
     {
         "win-arm64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64",
@@ -70,7 +72,7 @@ internal static class DoctorTargetChecks
 
     private static readonly HashSet<string> CsWebUiUnverified = new(StringComparer.Ordinal)
     {
-        "linux-arm64", "osx-x64", "linux-musl-x64", "linux-musl-arm64",
+        "linux-arm64", "osx-x64",
     };
 
     private const string Gtk3Library = "libgtk-3.so.0";
@@ -118,9 +120,15 @@ internal static class DoctorTargetChecks
                 "Publish for win-x64, which runs under emulation on Windows on Arm, or use the Runic Desktop host."));
             return false;
         }
+        if (project.Host == RunicViewsHost.CsWebUi && target.Musl)
+        {
+            checks.Add(Fail(id, $"CS-WebUI ships no native library for {target.Value}; its Linux library needs glibc 2.34 or newer.",
+                "Publish for a glibc distribution (linux-x64 or linux-arm64), or use the Runic Desktop host."));
+            return false;
+        }
         if (CiVerified.Contains(target.Value))
         {
-            checks.Add(Pass(id, $"{target.Value} is a supported target that Runic CI publishes and runs."));
+            checks.Add(Pass(id, $"{target.Value} is a supported target that Runic CI builds and runs."));
             return true;
         }
         bool packaged = project.Host switch
@@ -159,12 +167,12 @@ internal static class DoctorTargetChecks
         const string id = "target-publish";
         if (!project.PublishAot)
         {
-            string major = TargetFrameworkMajor(project.TargetFramework);
+            string version = TargetFrameworkMajor(project.TargetFramework) is { Length: > 0 } major ? $" {major}" : string.Empty;
             checks.Add(Pass(id, project.SelfContained
                 ? $"The project publishes a self-contained {target.Value} application without Native AOT; target machines need no .NET installation."
                 : project.Host == RunicViewsHost.Desktop
-                    ? $"The project publishes framework-dependent for {target.Value}; target machines need the .NET {major} and ASP.NET Core {major} runtimes."
-                    : $"The project publishes framework-dependent for {target.Value}; target machines need the .NET {major} runtime."));
+                    ? $"The project publishes framework-dependent for {target.Value}; target machines need the .NET{version} and ASP.NET Core{version} runtimes."
+                    : $"The project publishes framework-dependent for {target.Value}; target machines need the .NET{version} runtime."));
             return;
         }
 
@@ -182,10 +190,13 @@ internal static class DoctorTargetChecks
                 bool crossArchitecture = host.Architecture != target.Architecture;
                 bool crossLibc = host.Musl != target.Musl;
                 string? compiler = runtime.FindExecutable("clang") ?? runtime.FindExecutable("gcc");
-                if (compiler is null)
+                bool objcopy = runtime.FindExecutable("objcopy") is not null || runtime.FindExecutable("llvm-objcopy") is not null;
+                if (compiler is null || !objcopy)
                 {
-                    checks.Add(Fail(id, "Native AOT needs clang or gcc on PATH to link the executable.",
-                        "Install clang and the zlib development package (for example clang and zlib1g-dev)."));
+                    checks.Add(Fail(id, compiler is null
+                            ? "Native AOT needs clang or gcc on PATH to link the executable."
+                            : "Native AOT needs objcopy or llvm-objcopy on PATH to strip symbols into a separate file.",
+                        "Install clang, binutils (objcopy) and the zlib development package (for example clang, binutils and zlib1g-dev), or set StripSymbols=false."));
                 }
                 else if (crossArchitecture || crossLibc)
                 {
@@ -194,7 +205,7 @@ internal static class DoctorTargetChecks
                 }
                 else
                 {
-                    checks.Add(Pass(id, $"Native AOT can compile {target.Value} here with {Path.GetFileName(compiler)}; it also needs the zlib development package."));
+                    checks.Add(Pass(id, $"Native AOT can compile {target.Value} here with {Path.GetFileName(compiler)} and objcopy; it also needs the zlib development package."));
                 }
                 return;
             case "osx":
@@ -297,8 +308,12 @@ internal static class DoctorTargetChecks
             default:
                 string gtk = project.UsesGtk4 ? Gtk4Library : Gtk3Library;
                 string webkit = project.UsesGtk4 ? WebKit6Library : WebKit41Library;
-                string[] missing = [.. new[] { gtk, webkit }.Where(library => !runtime.IsNativeLibraryAvailable(library))];
-                if (missing.Length != 0)
+                var missing = new List<string>();
+                foreach (string library in new[] { gtk, webkit })
+                {
+                    if (!await runtime.IsNativeLibraryAvailableAsync(library, cancellationToken).ConfigureAwait(false)) missing.Add(library);
+                }
+                if (missing.Count != 0)
                 {
                     return new(DoctorStatus.Warning, $"This machine is missing {string.Join(" and ", missing)}.",
                         project.UsesGtk4

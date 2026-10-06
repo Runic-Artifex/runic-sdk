@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,18 +45,31 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>True when the project references the optional GTK 4 Desktop provider.</summary>
     internal bool UsesGtk4 { get; init; }
 
+    /// <summary>
+    /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
+    /// SelfContained for the --aot and --self-contained switches.
+    /// </summary>
+    internal static IReadOnlyList<string> PublishProperties(DoctorTargetRid target, bool aot, bool selfContained)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        List<string> properties = [$"RuntimeIdentifier={target.Value}", "_IsPublishing=true"];
+        if (aot) properties.Add("PublishAot=true");
+        if (selfContained) properties.AddRange(["SelfContained=true", "_CommandLineDefinedSelfContained=true"]);
+        return properties;
+    }
+
     internal static async Task<DoctorProjectConfiguration> EvaluateAsync(
         string dotnetHost,
         string project,
         string configuration,
         CancellationToken cancellationToken,
-        string? targetRuntimeIdentifier = null)
+        IReadOnlyList<string>? publishProperties = null)
     {
         DevProjectConfiguration development = await DevProjectConfiguration.EvaluateAsync(
             dotnetHost, project, configuration, cancellationToken).ConfigureAwait(false);
         string properties = await ReadProjectPropertiesAsync(
             dotnetHost, development.ProjectPath, development.ProjectDirectory,
-            configuration, targetRuntimeIdentifier, cancellationToken).ConfigureAwait(false);
+            configuration, publishProperties ?? [], cancellationToken).ConfigureAwait(false);
         using JsonDocument document = JsonDocument.Parse(properties);
         JsonElement values = document.RootElement.GetProperty("Properties");
         string Value(string name) => values.TryGetProperty(name, out var value)
@@ -123,18 +137,18 @@ internal sealed record DoctorProjectConfiguration(
         string project,
         string projectDirectory,
         string configuration,
-        string? targetRuntimeIdentifier,
+        IReadOnlyList<string> publishProperties,
         CancellationToken cancellationToken)
     {
-        // A target RID is a global property, as with 'dotnet publish -r', so
-        // RID-conditioned PublishAot and SelfContained settings apply.
+        // For --rid, the global properties of 'dotnet publish -r' make RID- and
+        // publish-conditioned PublishAot and SelfContained settings apply.
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
             "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained",
             "-getItem:PackageReference,ProjectReference",
         ];
-        if (targetRuntimeIdentifier is not null) arguments.Add($"-property:RuntimeIdentifier={targetRuntimeIdentifier}");
+        arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));
         CommandResult result = await CommandRunner.RunAsync(
             dotnetHost,
             projectDirectory,

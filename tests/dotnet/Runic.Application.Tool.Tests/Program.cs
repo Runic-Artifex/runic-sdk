@@ -44,6 +44,7 @@ internal static class Program
             ("doctor --rid checks Windows WebView2 and C++ tools", DoctorRidChecksWindows),
             ("doctor --rid checks CS-WebUI presentation", DoctorRidChecksCsWebUi),
             ("doctor --rid reports its target through the CLI", DoctorRidThroughCli),
+            ("doctor --rid evaluates the project as dotnet publish -r does", DoctorRidEvaluatesLikePublish),
             ("--no-restore keeps MSBuild from installing frontend packages", NoRestoreSkipsFrontendInstall),
             ("child process failures name the program and directory", ChildFailuresNameProgramAndDirectory),
             ("every command option is described", EveryOptionIsDescribed),
@@ -788,7 +789,8 @@ internal static class Program
             name.EndsWith("vswhere.exe", StringComparison.Ordinal) ? (Executables.Contains("vswhere") ? VsWhere : null)
             : name is "dotnet" or "node" or "npm" || Executables.Contains(name) ? name : null;
 
-        public bool IsNativeLibraryAvailable(string fileName) => Libraries.Contains(fileName);
+        public Task<bool> IsNativeLibraryAvailableAsync(string fileName, CancellationToken cancellationToken) =>
+            Task.FromResult(Libraries.Contains(fileName));
 
         public string? GetWebView2RuntimeVersion() => WebView2Version;
 
@@ -867,6 +869,14 @@ internal static class Program
         Equal(DoctorStatus.Failure, Check(csWebUi, "target-rid").Status);
         Contains(Check(csWebUi, "target-rid").Message, "CS-WebUI");
         Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "win-arm64", runtime), "target-rid").Status);
+        foreach (string musl in new[] { "linux-musl-x64", "linux-musl-arm64" })
+        {
+            DoctorReport cswebuiMusl = InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, musl, runtime);
+            Equal(DoctorStatus.Failure, Check(cswebuiMusl, "target-rid").Status);
+            Contains(Check(cswebuiMusl, "target-rid").Message, "glibc");
+            SequenceEqual(["target-rid"], TargetCheckIds(cswebuiMusl));
+            Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, musl, runtime), "target-rid").Status);
+        }
         Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-arm64", runtime), "target-rid").Status);
     }
 
@@ -877,7 +887,7 @@ internal static class Program
             with { PublishAot = true };
         var ready = new FakeDoctorRuntime(authority.Toolchain)
         {
-            Executables = ["clang"],
+            Executables = ["clang", "objcopy"],
             Libraries = ["libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"],
         };
         DoctorReport report = InspectTarget(desktop, "linux-x64", ready);
@@ -897,6 +907,10 @@ internal static class Program
 
         Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "linux-arm64", ready), "target-publish").Status);
         Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "linux-musl-x64", ready), "target-publish").Status);
+        DoctorCheck noObjcopy = Check(InspectTarget(desktop, "linux-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Executables = ["clang"] }), "target-publish");
+        Equal(DoctorStatus.Failure, noObjcopy.Status);
+        Contains(noObjcopy.Message, "objcopy");
     }
 
     private static void DoctorRidRefusesCrossOsAot()
@@ -936,6 +950,9 @@ internal static class Program
             "no .NET installation");
         DoesNotContain(Check(InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, "win-x64", runtime), "target-publish").Message,
             "ASP.NET Core");
+        // A multi-targeted project has no single TargetFramework in its outer evaluation.
+        Contains(Check(InspectTarget(desktop with { TargetFramework = string.Empty }, "win-x64", runtime), "target-publish").Message,
+            "the .NET and ASP.NET Core runtimes");
 
         DoctorProjectConfiguration declared = desktop with { RuntimeIdentifiers = "linux-x64; osx-arm64" };
         Equal(DoctorStatus.Pass, Check(InspectTarget(declared, "osx-arm64", runtime), "target-runtime-identifiers").Status);
@@ -1035,6 +1052,65 @@ internal static class Program
         using JsonDocument invalid = JsonDocument.Parse(invalidOutput);
         Equal("RAPPCLI1011", invalid.RootElement.GetProperty("fault").GetProperty("code").GetString());
         Equal(0, RunCli("doctor", "--project", project, "--output", "json", "--runtime", "linux-x64").ExitCode);
+        (int aliasExit, string aliasOutput) = RunCli("doctor", "--project", project, "--output", "json", "-r", "win-x64");
+        Equal(0, aliasExit);
+        Equal("win-x64", Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(aliasOutput), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!.Target);
+        (int aotExit, string aotOutput) = RunCli("doctor", "--project", project, "--output", "json", "--aot");
+        Equal(2, aotExit);
+        using JsonDocument aotWithoutRid = JsonDocument.Parse(aotOutput);
+        Equal("RAPPCLI1011", aotWithoutRid.RootElement.GetProperty("fault").GetProperty("code").GetString());
+    }
+
+    private static void DoctorRidEvaluatesLikePublish()
+    {
+        using var workspace = new TestWorkspace();
+        string project = workspace.Write("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RunicViewsWindowProject>true</RunicViewsWindowProject>
+              </PropertyGroup>
+              <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+                <PublishAot>true</PublishAot>
+              </PropertyGroup>
+              <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+                <PublishSelfContained>true</PublishSelfContained>
+              </PropertyGroup>
+            </Project>
+            """);
+        workspace.Write("Frontend/package.json", """{"packageManager":"npm@10.0.0"}""");
+        DoctorProjectConfiguration Evaluate(string configuration, string rid, bool aot = false, bool selfContained = false) =>
+            DoctorProjectConfiguration.EvaluateAsync("dotnet", project, configuration, CancellationToken.None,
+                DoctorProjectConfiguration.PublishProperties(DoctorTargetRid.Parse(rid), aot, selfContained))
+                .GetAwaiter().GetResult();
+
+        DoctorProjectConfiguration windows = Evaluate("Release", "win-x64");
+        True(windows.PublishAot, "A RID-conditioned PublishAot applies to its RID.");
+        True(windows.SelfContained, "PublishSelfContained applies while publishing.");
+        DoctorProjectConfiguration linux = Evaluate("Release", "linux-x64");
+        False(linux.PublishAot, "A RID-conditioned PublishAot does not apply to another RID.");
+        True(linux.SelfContained, "A Release-conditioned PublishSelfContained applies in Release.");
+        DoctorProjectConfiguration debug = Evaluate("Debug", "linux-x64");
+        False(debug.SelfContained, "A Release-conditioned PublishSelfContained does not apply in Debug.");
+        DoctorProjectConfiguration switches = Evaluate("Debug", "linux-x64", aot: true, selfContained: true);
+        True(switches.PublishAot, "--aot sets PublishAot.");
+        True(switches.SelfContained, "--self-contained sets SelfContained.");
+
+        // Without -c, --rid evaluates Release like dotnet publish.
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "linux-x64");
+        Equal(0, exitCode);
+        DoctorCommandResult payload = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!;
+        Contains(payload.Checks.Single(check => check.Id == "target-publish").Message, "self-contained");
+        (_, string debugOutput) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "linux-x64", "-c", "Debug");
+        Contains(Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(debugOutput), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!.Checks.Single(check => check.Id == "target-publish").Message,
+            "framework-dependent");
     }
 
     private static void CompatibilityAuthorityIncludesViews()

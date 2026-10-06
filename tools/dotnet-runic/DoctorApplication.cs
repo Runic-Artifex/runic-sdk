@@ -21,7 +21,7 @@ internal static class DoctorApplication
                 project,
                 options.Configuration,
                 cancellationToken,
-                options.Target?.Value)
+                options.Target is null ? null : DoctorProjectConfiguration.PublishProperties(options.Target, options.Aot, options.SelfContained))
             .ConfigureAwait(false);
         DoctorReport report = await DoctorChecks
             .InspectAsync(

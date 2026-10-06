@@ -36,7 +36,7 @@ internal interface IDoctorRuntime
     string? FindExecutable(string name);
     DoctorHostPlatform Platform { get; }
     /// <summary>Finds a native library by file name in the loader search path without loading it.</summary>
-    bool IsNativeLibraryAvailable(string fileName);
+    Task<bool> IsNativeLibraryAvailableAsync(string fileName, CancellationToken cancellationToken);
     /// <summary>The installed Microsoft Edge WebView2 Runtime version, or null.</summary>
     string? GetWebView2RuntimeVersion();
     Task<CommandResult> RunAsync(
@@ -61,7 +61,10 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
         string[] extensions = OperatingSystem.IsWindows()
             ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [string.Empty];
-        foreach (string directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        // A relative PATH entry would resolve against the project directory, so a
+        // checked-out file could run as pkg-config, ldconfig or a compiler.
+        foreach (string directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(Path.IsPathFullyQualified))
         foreach (string extension in extensions)
         {
             string candidate = Path.Combine(directory, name + extension);
@@ -77,25 +80,36 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
     public DoctorHostPlatform Platform { get; } = new(
         OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsLinux() ? "linux" : "unknown",
         RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant(),
-        RuntimeInformation.RuntimeIdentifier.StartsWith("linux-musl", StringComparison.Ordinal),
+        IsMuslHost(),
         Environment.OSVersion.Version.ToString());
+
+    // The tool's RID is portable linux-x64 on a musl host too, so look for the
+    // musl dynamic loader as well.
+    private static bool IsMuslHost()
+    {
+        if (!OperatingSystem.IsLinux()) return false;
+        if (RuntimeInformation.RuntimeIdentifier.StartsWith("linux-musl", StringComparison.Ordinal)) return true;
+        try { return Directory.Exists("/lib") && Directory.EnumerateFiles("/lib", "ld-musl-*").Any(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
 
     // Mirrors Runic.Desktop's LinuxDesktopRuntime.IsLibraryAvailable: the loader
     // path, the standard library directories, then the ldconfig cache.
-    public bool IsNativeLibraryAvailable(string fileName)
+    public async Task<bool> IsNativeLibraryAvailableAsync(string fileName, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsLinux()) return false;
         string triplet = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "aarch64" : "x86_64";
         IEnumerable<string> directories = (Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? string.Empty)
             .Split(':', StringSplitOptions.RemoveEmptyEntries)
+            .Where(Path.IsPathFullyQualified)
             .Concat(["/lib", "/usr/lib", "/lib64", "/usr/lib64", $"/lib/{triplet}-linux-gnu", $"/usr/lib/{triplet}-linux-gnu"]);
         if (directories.Any(directory => File.Exists(Path.Combine(directory, fileName)))) return true;
         string? ldconfig = File.Exists("/sbin/ldconfig") ? "/sbin/ldconfig" : FindExecutable("ldconfig");
         if (ldconfig is null) return false;
         try
         {
-            CommandResult cache = CommandRunner.RunAsync(ldconfig, Environment.CurrentDirectory, ["-p"], CancellationToken.None)
-                .GetAwaiter().GetResult();
+            CommandResult cache = await CommandRunner.RunAsync(ldconfig, Path.GetTempPath(), ["-p"], cancellationToken)
+                .ConfigureAwait(false);
             return cache.ExitCode == 0 && cache.StandardOutput.Split('\n').Any(line =>
                 line.TrimStart().StartsWith(fileName + " ", StringComparison.Ordinal) &&
                 line.Split("=>", StringSplitOptions.TrimEntries) is [_, var path] && File.Exists(path));

@@ -86,13 +86,15 @@ internal static partial class Program
             configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
 
     [Command("doctor", Description = "Check the project and development environment.",
-        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --rid win-x64", "dotnet runic doctor --output json"])]
+        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --rid linux-x64 --aot", "dotnet runic doctor --output json"])]
     [CommandResult(DoctorCommandResult.PayloadType, typeof(DoctorCommandJsonContext))]
     internal static Task<CommandOutcome<DoctorCommandResult>> Doctor(
         CommandExecutionContext context,
+        [Option("--aot", Description = "With --rid, check a publish with -p:PublishAot=true.")] bool aot,
+        [Option("--self-contained", Description = "With --rid, check a publish with --self-contained true.")] bool selfContained,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
-        [Option("--configuration", "-c", Description = "The build configuration to evaluate.")] string configuration = "Debug",
+        [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --rid as dotnet publish does.")] string configuration = "",
         [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail for human output and never for JSON output.")] string failOn = "",
         [Option("--rid", "--runtime", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
     {
@@ -100,8 +102,13 @@ internal static partial class Program
         {
             DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn, context.OutputMode);
             DoctorTargetRid? target = string.IsNullOrEmpty(rid) ? null : DoctorTargetRid.Parse(rid);
+            if (target is null && (aot || selfContained))
+            {
+                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot and --self-contained require --rid.");
+            }
+            string evaluated = configuration.Length != 0 ? configuration : target is null ? "Debug" : "Release";
             DoctorRun run = await DoctorApplication.InspectAsync(
-                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration, target),
+                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, evaluated, target, aot, selfContained),
                 cancellationToken).ConfigureAwait(false);
             DoctorApplication.WriteReport(run.Project, run.Report, run.Target);
             return DoctorOutcome.Create(
