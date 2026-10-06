@@ -2,6 +2,7 @@
   <Import Project="../../../eng/build/assets.props" />
   <PropertyGroup>
     <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
+    <RunicAssetsShippingProject>true</RunicAssetsShippingProject>
     <AssemblyName>Runic.Assets.Desktop</AssemblyName>
     <RootNamespace>Runic.Assets.Desktop</RootNamespace>
     <PackageId>Runic.Assets.Desktop</PackageId>

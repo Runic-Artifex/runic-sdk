@@ -4,13 +4,28 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { checkShippingProjects, shippingProjects } from "./generate-shipping-projects.mjs";
+import { checkShippingProjects, shippingPolicyErrors, shippingProjects } from "./generate-shipping-projects.mjs";
 
 test("shipping project inventory matches the workspace", checkShippingProjects);
 test("shipping project generation rejects ambiguous identities and escaping paths", () => {
   const entry = { name: "Runic.Example", project: "packages/dotnet/Example/Example.csproj" };
   assert.throws(() => shippingProjects({ nuget: [entry, entry] }), /Duplicate/);
   assert.throws(() => shippingProjects({ nuget: [{ ...entry, project: "packages/../outside.csproj" }] }), /Invalid/);
+});
+test("shipping projects must set their component shipping flag", () => {
+  const sources = {
+    "packages/a.csproj": '<Import Project="../../eng/build/assets.props" /><RunicAssetsShippingProject>true</RunicAssetsShippingProject>',
+    "packages/b.csproj": '<Import Project="../../eng/build/assets.props" />',
+    "packages/c.csproj": '<Import Project="../../eng/build/desktop.props" /><IsAotCompatible>true</IsAotCompatible>',
+    "tools/d.csproj": '<Import Project="../../eng/build/application.props" /><PackageType>Template</PackageType><IncludeBuildOutput>false</IncludeBuildOutput>',
+    "tools/e.csproj": "<Project />",
+  };
+  const workspace = { nuget: Object.keys(sources).map(project => ({ project })) };
+  assert.deepEqual(shippingPolicyErrors(workspace, project => sources[project]), [
+    "packages/b.csproj must set <RunicAssetsShippingProject>true</RunicAssetsShippingProject> for assets.props",
+    "packages/c.csproj must set <IsTrimmable>true</IsTrimmable> for desktop.props",
+    "tools/e.csproj imports no shipping build policy from eng/build",
+  ]);
 });
 
 test("real NuGet pack pins shipping project dependencies and preserves external ranges", { timeout: 120000 }, () => {
