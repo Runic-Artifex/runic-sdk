@@ -10,7 +10,7 @@ const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
   assert.equal(workspace.nuget.length, 22);
-  assert.equal(workspace.npm.length, 7);
+  assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
   for (const p of workspace.nuget) {
@@ -103,11 +103,15 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    ["desktop", "assets", "platform", "application", "vite", "svelte", "templates", "examples"].sort(),
+    ["desktop", "assets", "platform", "application", "views-effect", "vite", "svelte", "templates", "examples"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["packages/web/svelte/src/index.ts"]).sort(),
     ["svelte", "templates", "examples"].sort(),
+  );
+  assert.deepEqual(
+    affectedComponents(["packages/web/views-effect/src/view.ts"]).sort(),
+    ["views-effect", "examples"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["eng/build/desktop.props"]).sort(),
