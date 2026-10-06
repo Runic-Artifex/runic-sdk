@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,11 @@ internal interface IDoctorRuntime
 {
     string? GetEnvironmentVariable(string name);
     string? FindExecutable(string name);
+    DoctorHostPlatform Platform { get; }
+    /// <summary>Finds a native library by file name in the loader search path without loading it.</summary>
+    Task<bool> IsNativeLibraryAvailableAsync(string fileName, CancellationToken cancellationToken);
+    /// <summary>The installed Microsoft Edge WebView2 Runtime version, or null.</summary>
+    string? GetWebView2RuntimeVersion();
     Task<CommandResult> RunAsync(
         string executable,
         string workingDirectory,
@@ -55,7 +61,10 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
         string[] extensions = OperatingSystem.IsWindows()
             ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             : [string.Empty];
-        foreach (string directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        // A relative PATH entry would resolve against the project directory, so a
+        // checked-out file could run as pkg-config, ldconfig or a compiler.
+        foreach (string directory in path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(Path.IsPathFullyQualified))
         foreach (string extension in extensions)
         {
             string candidate = Path.Combine(directory, name + extension);
@@ -67,6 +76,76 @@ internal sealed class SystemDoctorRuntime : IDoctorRuntime
     public Task<CommandResult> RunAsync(string executable, string workingDirectory,
         IReadOnlyList<string> arguments, CancellationToken cancellationToken) =>
         CommandRunner.RunAsync(executable, workingDirectory, arguments, cancellationToken);
+
+    public DoctorHostPlatform Platform { get; } = new(
+        OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsLinux() ? "linux" : "unknown",
+        RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant(),
+        IsMuslHost(),
+        Environment.OSVersion.Version.ToString());
+
+    // The tool's RID is portable linux-x64 on a musl host too, so ask which
+    // dynamic loader this process uses. A glibc distribution can install musl
+    // beside glibc, so /lib/ld-musl-* only decides when the process maps are
+    // unreadable or name neither loader.
+    private static bool IsMuslHost()
+    {
+        if (!OperatingSystem.IsLinux()) return false;
+        if (RuntimeInformation.RuntimeIdentifier.StartsWith("linux-musl", StringComparison.Ordinal)) return true;
+        try
+        {
+            string maps = File.ReadAllText("/proc/self/maps");
+            if (maps.Contains("/ld-musl-", StringComparison.Ordinal)) return true;
+            if (maps.Contains("/ld-linux", StringComparison.Ordinal)) return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+        try { return Directory.Exists("/lib") && Directory.EnumerateFiles("/lib", "ld-musl-*").Any(); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    // Mirrors Runic.Desktop's LinuxDesktopRuntime.IsLibraryAvailable: the loader
+    // path, the standard library directories, then the ldconfig cache.
+    public async Task<bool> IsNativeLibraryAvailableAsync(string fileName, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsLinux()) return false;
+        string triplet = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "aarch64" : "x86_64";
+        IEnumerable<string> directories = (Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? string.Empty)
+            .Split(':', StringSplitOptions.RemoveEmptyEntries)
+            .Where(Path.IsPathFullyQualified)
+            .Concat(["/lib", "/usr/lib", "/lib64", "/usr/lib64", $"/lib/{triplet}-linux-gnu", $"/usr/lib/{triplet}-linux-gnu"]);
+        if (directories.Any(directory => File.Exists(Path.Combine(directory, fileName)))) return true;
+        string? ldconfig = File.Exists("/sbin/ldconfig") ? "/sbin/ldconfig" : FindExecutable("ldconfig");
+        if (ldconfig is null) return false;
+        try
+        {
+            CommandResult cache = await CommandRunner.RunAsync(ldconfig, Path.GetTempPath(), ["-p"], cancellationToken)
+                .ConfigureAwait(false);
+            return cache.ExitCode == 0 && cache.StandardOutput.Split('\n').Any(line =>
+                line.TrimStart().StartsWith(fileName + " ", StringComparison.Ordinal) &&
+                line.Split("=>", StringSplitOptions.TrimEntries) is [_, var path] && File.Exists(path));
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException or DevDevelopmentException)
+        {
+            return false;
+        }
+    }
+
+    public string? GetWebView2RuntimeVersion()
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        // The evergreen runtime registers its version under EdgeUpdate, per machine or per user.
+        const string client = @"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}";
+        foreach ((Microsoft.Win32.RegistryKey root, string key) in new[]
+        {
+            (Microsoft.Win32.Registry.LocalMachine, @"SOFTWARE\WOW6432Node\" + client),
+            (Microsoft.Win32.Registry.LocalMachine, @"SOFTWARE\" + client),
+            (Microsoft.Win32.Registry.CurrentUser, @"Software\" + client),
+        })
+        {
+            using Microsoft.Win32.RegistryKey? entry = root.OpenSubKey(key);
+            if (entry?.GetValue("pv") is string version && version.Length > 0 && version != "0.0.0.0") return version;
+        }
+        return null;
+    }
 }
 
 internal static class DoctorChecks
@@ -77,7 +156,8 @@ internal static class DoctorChecks
         DoctorProjectConfiguration project,
         string dotnetHost,
         IDoctorRuntime runtime,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DoctorTargetRid? target = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentException.ThrowIfNullOrWhiteSpace(dotnetHost);
@@ -90,6 +170,10 @@ internal static class DoctorChecks
         CheckCompatibilitySet(checks, project);
         CheckFrontendDevelopment(checks, project);
         CheckBrowser(checks, project, runtime);
+        if (target is not null)
+        {
+            await DoctorTargetChecks.InspectAsync(checks, project, target, runtime, cancellationToken).ConfigureAwait(false);
+        }
         return new DoctorReport(checks);
     }
 
@@ -332,17 +416,24 @@ internal static class DoctorChecks
                 : Fail("browser", "RUNIC_BROWSER_PATH points to a missing file.", "Set it to an installed Chromium-family browser or unset it."));
             return;
         }
-        string[] candidates = OperatingSystem.IsWindows()
-            ? ["msedge", "chrome", "chromium"]
-            : OperatingSystem.IsMacOS()
-                ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
-                : ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge"];
-        string? browser = candidates.Select(runtime.FindExecutable).FirstOrDefault(static path => path is not null);
+        string? browser = FindBrowser(runtime);
         checks.Add(browser is not null
             ? Pass("browser", $"Found browser '{browser}'.")
             : Warn("browser", "No Chromium-family browser was found on PATH.", project.Host == RunicViewsHost.CsWebUi
                 ? "CS-WebUI opens the app in an installed browser, preferring Chromium-family browsers, and falls back to the platform WebView. Install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."
                 : $"The project references neither {DoctorProjectConfiguration.CsWebUiPackage} nor {DoctorProjectConfiguration.DesktopPackage}. A browser-based host prefers an installed Chromium-family browser; install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."));
+    }
+
+    /// <summary>Finds a Chromium-family browser on this machine.</summary>
+    internal static string? FindBrowser(IDoctorRuntime runtime)
+    {
+        string[] candidates = runtime.Platform.Os switch
+        {
+            "win" => ["msedge", "chrome", "chromium"],
+            "osx" => ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"],
+            _ => ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "microsoft-edge"],
+        };
+        return candidates.Select(runtime.FindExecutable).FirstOrDefault(static path => path is not null);
     }
 
     private static bool IsRunicIdentity(string identity) =>

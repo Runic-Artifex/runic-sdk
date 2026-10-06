@@ -40,6 +40,34 @@ follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
 
+### Deployment checks for a target
+
+`dotnet runic doctor --rid <rid>` (also `--runtime` or `-r`) adds checks for
+publishing to a runtime identifier. Doctor evaluates the project with the
+global properties of `dotnet publish -r <rid>` (`RuntimeIdentifier=<rid>` and
+`_IsPublishing=true`), and in Release unless you pass `-c`, so RID-, publish- and
+configuration-conditioned `PublishAot`, `PublishSelfContained` and
+`SelfContained` settings apply. Doctor does not see properties passed to
+`dotnet publish` on its command line; `--aot` and `--self-contained` check a
+publish with `-p:PublishAot=true` or `--self-contained true`. A malformed RID, or
+`--aot` or `--self-contained` without `--rid`, is a usage error (`RAPPCLI1011`,
+exit code 2).
+
+| Check | What it reports |
+| --- | --- |
+| `target-rid` | Passes for `linux-x64`, `win-x64` and `osx-arm64`, which Runic CI builds and runs. Warns for targets with native support but no CI coverage: `linux-arm64` and `osx-x64`, plus `win-arm64`, `linux-musl-x64` and `linux-musl-arm64` for Runic Desktop. Fails for other RIDs, version-specific RIDs such as `win10-x64`, and, with CS-WebUI, `win-arm64` and the musl RIDs, for which CS-WebUI ships no native library (its Linux library needs glibc). After a failure doctor skips the other target checks. |
+| `target-runtime-identifiers` | Warns when the project declares `RuntimeIdentifiers` without the target, which breaks `dotnet publish --no-restore`. |
+| `target-publish` | Without Native AOT, says what target machines need: nothing for a self-contained publish, otherwise the .NET runtime, plus the ASP.NET Core runtime for Runic Desktop. With `PublishAot=true`, fails when the target is another operating system, because Native AOT does not cross operating systems. On the same operating system it checks the native toolchain: clang or gcc and, unless `StripSymbols` is `false`, objcopy on Linux, the Xcode command-line tools on macOS, and the Visual Studio C++ tools for the target architecture on Windows (through `vswhere`). A Linux target with another architecture or C library warns that it needs a sysroot. |
+| `target-presentation` | Names the native runtime that target machines need. Runic Desktop needs the WebView2 Runtime on Windows, GTK 3 and WebKitGTK 4.1 on Linux (GTK 4.12 or newer and WebKitGTK 6.0 when the project references `Runic.Desktop.Gtk4`), and WKWebView, which macOS includes. CS-WebUI needs an installed browser and falls back to the same platform WebView. When the target has the host's operating system, doctor also inspects this machine and warns when the runtime is missing. It reads the GTK 4 version through `pkg-config` when available. Doctor cannot inspect another operating system, so it reports those requirements as passing. |
+
+Run doctor with `--rid` on the machine or CI runner that publishes, and once for
+each target:
+
+```bash
+dotnet runic doctor --rid linux-x64 --fail-on fail
+dotnet runic doctor --rid win-x64 --aot --fail-on fail
+```
+
 ### Doctor JSON output
 
 `dotnet runic doctor --output json` (or `RUNIC_COMMANDLINE_OUTPUT=json`) writes
@@ -75,10 +103,11 @@ The payload type is `runic.application.tool.doctor/1`:
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
-  "required": ["project", "host", "healthy", "summary", "checks"],
+  "required": ["project", "host", "target", "healthy", "summary", "checks"],
   "properties": {
     "project": { "type": "string", "description": "Absolute path of the inspected project file." },
     "host": { "enum": ["cswebui", "desktop", "unknown"], "description": "The referenced Runic Views host." },
+    "target": { "type": ["string", "null"], "description": "The --rid runtime identifier; null without --rid." },
     "healthy": { "type": "boolean", "description": "False when any check has status fail." },
     "summary": {
       "type": "object",
@@ -118,7 +147,9 @@ redacts the message key, which always names the check. `payload.checks` is the
 complete list.
 Check identifiers are `dotnet-sdk`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `compatibility-set`, `frontend-dev-server`,
-`vite-config`, `vite-entry` and `browser`.
+`vite-config`, `vite-entry` and `browser`. With `--rid`, the payload also lists
+`target-rid`, `target-runtime-identifiers`, `target-publish` and
+`target-presentation`.
 
 ## Project properties
 

@@ -13,6 +13,7 @@ namespace Runic.Application.Tool;
 internal sealed record DoctorCommandResult(
     [property: JsonPropertyName("project")] string Project,
     [property: JsonPropertyName("host")] string Host,
+    [property: JsonPropertyName("target")] string? Target,
     [property: JsonPropertyName("healthy")] bool Healthy,
     [property: JsonPropertyName("summary")] DoctorSummary Summary,
     [property: JsonPropertyName("checks")] IReadOnlyList<DoctorCheckResult> Checks)
@@ -30,13 +31,15 @@ internal sealed record DoctorCommandResult(
     internal static DoctorCommandResult Create(
         DoctorProjectConfiguration project,
         DoctorReport report,
-        string humanOutput)
+        string humanOutput,
+        DoctorTargetRid? target = null)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(report);
         return new DoctorCommandResult(
             project.ProjectPath,
             HostName(project.Host),
+            target?.Value,
             report.IsHealthy,
             new DoctorSummary(report.Passed, report.Warnings, report.Failed),
             [.. report.Checks.Select(static check => new DoctorCheckResult(
@@ -145,7 +148,7 @@ internal static class DoctorOutcome
         bool failed = threshold is { } limit && run.Report.Checks.Any(check => check.Status >= limit);
         if (!failed)
         {
-            DoctorCommandResult result = DoctorCommandResult.Create(run.Project, run.Report, report);
+            DoctorCommandResult result = DoctorCommandResult.Create(run.Project, run.Report, report, run.Target);
             return json
                 ? CommandOutcome.Success(result, DoctorCommandResult.CreateDiagnostics(run.Report, path))
                 : CommandOutcome.Success(result);

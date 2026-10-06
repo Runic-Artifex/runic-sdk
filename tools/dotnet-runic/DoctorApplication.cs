@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
 
-internal sealed record DoctorRun(DoctorProjectConfiguration Project, DoctorReport Report);
+internal sealed record DoctorRun(DoctorProjectConfiguration Project, DoctorReport Report, DoctorTargetRid? Target = null);
 
 internal static class DoctorApplication
 {
@@ -20,23 +20,28 @@ internal static class DoctorApplication
                 dotnetHost,
                 project,
                 options.Configuration,
-                cancellationToken)
+                cancellationToken,
+                options.Target is null ? null : DoctorProjectConfiguration.PublishProperties(options.Target, options.Aot, options.SelfContained))
             .ConfigureAwait(false);
         DoctorReport report = await DoctorChecks
             .InspectAsync(
                 configuration,
                 dotnetHost,
                 SystemDoctorRuntime.Instance,
-                cancellationToken)
+                cancellationToken,
+                options.Target)
             .ConfigureAwait(false);
-        return new DoctorRun(configuration, report);
+        return new DoctorRun(configuration, report, options.Target);
     }
 
     internal static void WriteReport(
         DoctorProjectConfiguration project,
-        DoctorReport report)
+        DoctorReport report,
+        DoctorTargetRid? target = null)
     {
-        Console.WriteLine($"Runic Application doctor: {project.ProjectPath}");
+        Console.WriteLine(target is null
+            ? $"Runic Application doctor: {project.ProjectPath}"
+            : $"Runic Application doctor: {project.ProjectPath} (target {target.Value})");
         foreach (DoctorCheck check in report.Checks)
         {
             Console.WriteLine(
