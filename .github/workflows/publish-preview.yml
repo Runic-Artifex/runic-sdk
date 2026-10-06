@@ -45,8 +45,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node eng/release/ci-run.mjs
-  # Read-only: verifies the CI packages and checks registries, tag and release.
-  # In a dry run this is the last job; it never holds OIDC or write permissions.
+  # Read-only: verifies the CI packages, describes the release (bundle, SBOM,
+  # checksums) and checks registries, tag and release. In a dry run this is the
+  # last job; it never holds OIDC, attestation or write permissions.
   candidate:
     needs: preflight
     runs-on: ubuntu-24.04
@@ -54,6 +55,9 @@ jobs:
     permissions:
       contents: read
       actions: read
+    outputs:
+      # sha256sum lines of every candidate file; publish checks its download against them.
+      release-sha256: ${{ steps.describe.outputs.sha256 }}
     env:
       CI_RUN_ID: ${{ needs.preflight.outputs.ci-run-id }}
     steps:
@@ -75,10 +79,20 @@ jobs:
         run: |
           mkdir -p artifacts/release
           bun eng/release/cli.mjs prepare artifacts/packages "$GITHUB_SHA" "$CI_RUN_ID" artifacts/release/packages.json
+      # Standard library only: the SBOM generator installs and executes nothing from the packages.
+      - name: Describe the release (package bundle, CycloneDX SBOM, checksums)
+        id: describe
+        run: |
+          bun eng/release/github.mjs describe artifacts/packages artifacts/release
+          {
+            echo 'sha256<<SHA256'
+            (cd artifacts/release && sha256sum -- *)
+            echo SHA256
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-candidate-${{ github.run_id }}
-          path: artifacts/release/packages.json
+          path: artifacts/release
           if-no-files-found: error
           retention-days: 30
           overwrite: true
@@ -89,7 +103,7 @@ jobs:
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bun eng/release/github.mjs artifacts/packages artifacts/release --dry-run
+        run: bun eng/release/github.mjs release artifacts/release --dry-run
       - name: Check npm latest without moving it
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: bun eng/release/cli.mjs tag-latest artifacts/release/packages.json --dry-run
@@ -102,6 +116,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
+      attestations: write
       actions: read
     env:
       CI_RUN_ID: ${{ needs.preflight.outputs.ci-run-id }}
@@ -133,8 +148,33 @@ jobs:
         with:
           name: release-candidate-${{ github.run_id }}
           path: artifacts/release
+      - name: Check the candidate files against the candidate job
+        working-directory: artifacts/release
+        env:
+          RELEASE_SHA256: ${{ needs.candidate.outputs.release-sha256 }}
+        run: |
+          test -n "$RELEASE_SHA256"
+          printf '%s\n' "$RELEASE_SHA256" | sha256sum --check --strict
       - name: Verify packages against the candidate inventory
         run: bun eng/release/cli.mjs verify artifacts/packages artifacts/release/packages.json
+      # Attest the verified bytes before anything is published: every package and release asset.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/packages/nuget/*.nupkg
+            artifacts/packages/npm/*.tgz
+            artifacts/release/runic-sdk-${{ inputs.version }}-packages.tar.gz
+            artifacts/release/runic-sdk-${{ inputs.version }}.cdx.json
+            artifacts/release/SHA256SUMS
+      - name: Attest the SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/packages/nuget/*.nupkg
+            artifacts/packages/npm/*.tgz
+            artifacts/release/runic-sdk-${{ inputs.version }}-packages.tar.gz
+          sbom-path: artifacts/release/runic-sdk-${{ inputs.version }}.cdx.json
       - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget
         with:
@@ -146,7 +186,7 @@ jobs:
       - name: Create GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bun eng/release/github.mjs artifacts/packages artifacts/release
+        run: bun eng/release/github.mjs release artifacts/release
       - name: Move npm latest to this preview
         run: bun eng/release/cli.mjs tag-latest artifacts/release/packages.json
       - name: Note the documentation catalog step

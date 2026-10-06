@@ -14,9 +14,9 @@ releases and their evidence remain historical records.
 4. Run **Publish preview** on `main`, entering that version.
 5. The workflow finds the successful CI push run of the dispatched commit, downloads
    its `runic-sdk-<run id>` package artifact, verifies the inventory against the
-   requested version and commit, publishes those exact packages, creates the GitHub
-   prerelease with generated change notes, a package bundle and one checksum file,
-   and moves npm `latest`.
+   requested version and commit, attests their build provenance and SBOM, publishes
+   those exact packages, creates the GitHub prerelease with generated change notes, a
+   package bundle, a CycloneDX SBOM and one checksum file, and moves npm `latest`.
 6. Afterwards, move each library's `PublicAPI.Unshipped.txt` entries into
    `PublicAPI.Shipped.txt`. A `*REMOVED*` entry is not moved: delete it together
    with the Shipped line it names. Then set `RunicPackageValidationBaselineVersion`
@@ -44,20 +44,58 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
 - `candidate` (`contents: read`, `actions: read`, no environment) downloads the
   artifact with `actions/download-artifact` (`artifact-ids`, `run-id`, `github-token`;
   a re-upload under the same name gets a new id, so it cannot swap the bytes), records it
-  with `cli.mjs prepare` and uploads the inventory as `release-candidate-<run id>`.
+  with `cli.mjs prepare`, and writes the release assets with `github.mjs describe`:
+  the package bundle, a CycloneDX 1.6 SBOM (`sbom.py`, standard library only; it
+  reads package metadata and executes nothing) and `SHA256SUMS`. Bundle and SBOM are
+  deterministic for a commit. It uploads these files as `release-candidate-<run id>`
+  and passes their `sha256sum` lines to `publish` as the job output `release-sha256`.
   It then runs the publication checks read-only: `cli.mjs publish --dry-run`
   (which versions are missing; published versions must have matching contents),
-  `github.mjs --dry-run` (the tag and any release belong to this commit) and
+  `github.mjs release --dry-run` (the tag and any release belong to this commit) and
   `cli.mjs tag-latest --dry-run` (where npm `latest` would move).
 - `publish` runs only when **dry-run** is unchecked. It is the only job in the
-  `preview` environment and the only one with `id-token: write` and
-  `contents: write`. It downloads the same artifact, verifies it against the
-  candidate inventory, then publishes, creates the release and moves `latest`.
-  It installs no workspace dependencies: the release scripts use only built-in modules.
+  `preview` environment and the only one with `id-token: write`,
+  `attestations: write` and `contents: write`. It downloads the same artifact and
+  the candidate files, checks the files against `release-sha256`, verifies the
+  packages against the candidate inventory, and attests those verified bytes before
+  anything is published: `actions/attest-build-provenance` covers every `.nupkg`,
+  every npm `.tgz` and the three release assets; `actions/attest` attaches the SBOM
+  to the packages and the bundle. Then it publishes (npm also with `--provenance`),
+  creates the release and moves `latest`. It installs no workspace dependencies:
+  the release scripts use only built-in modules.
 
-A dry run therefore ends after `candidate`, with no OIDC token, registry write,
-tag or release. A failing dry-run check is the failure the real run would hit.
-`eng/release/workflow.test.mjs` and `ci-run.test.mjs` pin this contract.
+A dry run therefore ends after `candidate`, with no OIDC token, attestation,
+registry write, tag or release. A failing dry-run check is the failure the real
+run would hit. `eng/release/workflow.test.mjs`, `github.test.mjs`, `sbom.test.mjs`
+and `ci-run.test.mjs` pin this contract.
+
+## Verifying a release
+
+Every package and release asset has a signed build-provenance attestation from
+`publish-preview.yml` on `main`, and the packages and bundle have an SBOM
+attestation. Verify with the GitHub CLI (`gh auth login` first):
+
+```sh
+version=0.7.0-preview.1
+gh release download "v$version" -R Runic-Artifex/runic-sdk
+gh attestation verify "runic-sdk-$version-packages.tar.gz" -R Runic-Artifex/runic-sdk
+tar -xzf "runic-sdk-$version-packages.tar.gz"
+gh attestation verify "nuget/Runic.Application.$version.nupkg" -R Runic-Artifex/runic-sdk \
+  --signer-workflow Runic-Artifex/runic-sdk/.github/workflows/publish-preview.yml
+# The SBOM attestation (CycloneDX); the release asset runic-sdk-<version>.cdx.json is the same document.
+gh attestation verify "nuget/Runic.Application.$version.nupkg" -R Runic-Artifex/runic-sdk \
+  --predicate-type https://cyclonedx.org/bom
+# npm serves the published bytes unchanged, so a registry tarball verifies directly.
+npm pack "@runic-artifex/views@$version"
+gh attestation verify "runic-artifex-views-$version.tgz" -R Runic-Artifex/runic-sdk
+```
+
+`sha256sum --check SHA256SUMS` checks the bundle and SBOM. NuGet.org adds its
+repository signature (`.signature.p7s`) to every package it accepts, so a `.nupkg`
+downloaded from NuGet.org has different bytes from the attested one and does not
+verify by itself. Verify the copy from the release bundle; every entry of the
+NuGet.org package except `.signature.p7s` is identical to it, and
+`dotnet nuget verify --all <package>` checks the NuGet.org signature.
 
 Rerunning Publish preview for a version packed with the old flow, such as
 0.6.0-preview.1, fails its registry check, also in a dry run. Packing now re-gzips npm archives to stamp
@@ -103,6 +141,7 @@ For packaging/release-tool changes, use focused checks:
 ```sh
 bun run test eng/release/contracts.test.mjs
 bun run test eng/release/workflow.test.mjs
+bun test eng/release/github.test.mjs eng/release/sbom.test.mjs
 bun run test eng/release/ci-run.test.mjs
 bun test eng/release/template-locks.test.mjs
 ```
