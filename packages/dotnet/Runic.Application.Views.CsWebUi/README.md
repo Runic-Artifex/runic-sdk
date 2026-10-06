@@ -5,6 +5,7 @@ This is the default host of the `runic-app` project template.
 
 ```sh
 dotnet add package Runic.Application.CsWebUi --prerelease
+dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
 ```csharp

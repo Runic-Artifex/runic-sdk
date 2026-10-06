@@ -73,6 +73,11 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
   for (const library of libraries.filter(name => ownedPackages.has(name.split("/")[0].toLowerCase()))) {
     assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
   }
+  // Host adapters use the DI abstractions; the application chooses and references a container.
+  if (["Runic.Application.Desktop", "Runic.Application.CsWebUi"].includes(label)) {
+    assert.ok(!libraries.some(library => library.split("/")[0].toLowerCase() === "microsoft.extensions.dependencyinjection"),
+      `${label} unexpectedly depends on the Microsoft.Extensions.DependencyInjection container`);
+  }
   const isolated = platformOnly;
   if (!isolated) return;
 

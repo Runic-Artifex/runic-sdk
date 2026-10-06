@@ -45,6 +45,7 @@ folder, then replace the `Import` and `ProjectReference` lines in
 <ItemGroup>
   <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   <PackageReference Include="Runic.Application.CsWebUi" Version="<VERSION>" />
+  <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
 </ItemGroup>
 ```
 

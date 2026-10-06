@@ -7,6 +7,7 @@ platform services.
 
 ```sh
 dotnet add package Runic.Application.Desktop --prerelease
+dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
 New projects can start with this host: `dotnet new runic-app --host desktop`.
