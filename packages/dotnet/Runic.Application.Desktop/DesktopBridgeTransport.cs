@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Text.Encodings.Web;
 using Runic.Application.Views;
@@ -17,6 +18,7 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IDisposable
     private readonly object _gate = new();
     private readonly DesktopSurface _surface;
     private readonly Func<string, Task> _runJavaScript;
+    private readonly ILogger? _logger;
     private readonly HashSet<Registration> _registrations = [];
     private readonly Dictionary<string, Delivery> _deliveries = new(StringComparer.Ordinal);
     private bool _disposed;
@@ -27,11 +29,21 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IDisposable
     {
     }
 
+    // The log category of Desktop Bridge delivery failures.
+    internal const string LogCategory = "Runic.Application.Desktop";
+
+    // Without a logger, delivery failures are written to System.Diagnostics.Trace.
+    internal DesktopBridgeTransport(DesktopSurface surface, ILogger? logger)
+        : this(surface ?? throw new ArgumentNullException(nameof(surface)), script => surface.RunJavaScriptAsync(script), logger)
+    {
+    }
+
     // The script runner is replaceable for headless tests of delivery order.
-    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, Task> runJavaScript)
+    internal DesktopBridgeTransport(DesktopSurface surface, Func<string, Task> runJavaScript, ILogger? logger = null)
     {
         _surface = surface;
         _runJavaScript = runJavaScript;
+        _logger = logger;
     }
 
     internal int RegisteredRouteCount
@@ -122,7 +134,12 @@ public sealed class DesktopBridgeTransport : IAsyncBridgeTransport, IDisposable
         while (true)
         {
             try { await _runJavaScript($"globalThis[{callback}]?.({stateJson});").ConfigureAwait(false); }
-            catch (Exception error) { Trace.TraceError($"Bridge snapshot delivery for {name} failed: {error}"); }
+            catch (Exception error)
+            {
+                if (_logger is null) Trace.TraceError($"Bridge snapshot delivery for {name} failed: {error}");
+                else DesktopLog.SnapshotDeliveryFailed(_logger, error, name,
+                    error.GetType().FullName ?? error.GetType().Name);
+            }
 
             lock (_gate)
             {

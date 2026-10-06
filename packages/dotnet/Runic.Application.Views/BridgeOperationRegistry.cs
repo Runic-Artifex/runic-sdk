@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
@@ -10,6 +11,7 @@ namespace Runic.Application.Views;
 internal sealed class BridgeOperationRegistry : IDisposable
 {
     private readonly object _gate = new();
+    private readonly ILogger _logger;
     private readonly Dictionary<string, Entry> _operations = new(StringComparer.Ordinal);
     private readonly Queue<Entry> _terminals = new();
     private readonly Dictionary<string, BridgeOperationRequest?> _expiredIds = new(StringComparer.Ordinal);
@@ -35,8 +37,10 @@ internal sealed class BridgeOperationRegistry : IDisposable
         int maximumRetainedExpiredIds = 128,
         int maximumRetainedResultBytes = 262_144,
         int maximumRunningStreamBytes = 262_144,
+        ILogger? logger = null,
         CancellationToken ownerShutdown = default)
     {
+        _logger = logger ?? TraceFallbackLogger.Instance;
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumOperations, 1);
         if (maximumRetainedTerminals < 0 || maximumRetainedTerminals > maximumOperations)
@@ -256,7 +260,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             terminal = BridgeOperationStatusKind.Failed;
             // The bounded message is the wire contract. Exception detail joins
             // it only when BridgeDiagnostics allows local failure detail.
-            System.Diagnostics.Trace.TraceError($"Bridge operation {entry.Request?.Member ?? entry.RequestId} failed: {error}");
+            ViewsLog.OperationFailed(_logger, error, entry.Request?.Member ?? "(unnamed)", BridgeTelemetry.ErrorType(error));
             failure = "The operation failed.";
             failureDetail = BridgeDiagnostics.Capture(error);
         }
@@ -463,7 +467,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             // User cancellation callbacks must not stop host shutdown. The
             // linked operation token was still signalled; terminal work is
             // observed through each entry's task.
-            System.Diagnostics.Trace.TraceWarning($"A bridge operation cancellation callback failed: {error}");
+            ViewsLog.OperationCancellationCallbackFailed(_logger, error, BridgeTelemetry.ErrorType(error));
         }
     }
 

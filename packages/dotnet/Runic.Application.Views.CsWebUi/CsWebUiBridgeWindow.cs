@@ -1,5 +1,6 @@
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 
 namespace Runic.Application.Views.CsWebUi;
@@ -274,7 +275,8 @@ public static class CsWebUiBridgeWindowExtensions
             transport = window.CreateBridgeSession();
             content = new WindowContentSession(transport,
                 scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
-                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>());
+                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>(),
+                loggerFactory: scope.ServiceProvider.GetService<ILoggerFactory>());
             // Only the all-events binding receives disconnects. runic-cswebui.js
             // stops WebUI from also sending click events for elements with ids.
             connectionBinding = window.Bind("", e =>

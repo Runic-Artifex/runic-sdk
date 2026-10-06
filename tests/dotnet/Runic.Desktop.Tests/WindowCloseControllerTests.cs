@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
@@ -88,5 +89,33 @@ public sealed class WindowCloseControllerTests
         Assert.False(await controller.RequestAsync());
         Assert.False(await controller.RequestAsync());
         Assert.Equal(0, closes);
+    }
+
+    [Fact]
+    public async Task FailedConfirmationIsLoggedWithItsException()
+    {
+        var logger = new CapturingLogger();
+        using var controller = new WindowCloseController(
+            _ => ValueTask.FromException<bool>(new InvalidOperationException("customer-secret")),
+            () => ValueTask.CompletedTask, logger);
+        Assert.False(await controller.RequestAsync());
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(3001, entry.EventId.Id);
+        Assert.Equal(LogLevel.Error, entry.Level);
+        Assert.Contains(typeof(InvalidOperationException).FullName!, entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("customer-secret", entry.Message, StringComparison.Ordinal);
+        Assert.IsType<InvalidOperationException>(entry.Exception);
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public List<(LogLevel Level, EventId EventId, string Message, Exception? Exception)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            lock (Entries) Entries.Add((logLevel, eventId, formatter(state, exception), exception));
+        }
     }
 }

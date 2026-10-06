@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace Runic.Application.Views;
 
 /// <summary>
@@ -87,6 +89,20 @@ public sealed class RunicModelContext : IRunicModelContext
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _draining;
     private bool _disposed;
+    private readonly ILogger _logger;
+
+    // The logger of a RunicModelContext, or the Trace fallback for another context.
+    internal static ILogger LoggerOf(IRunicModelContext context) =>
+        (context as RunicModelContext)?._logger ?? TraceFallbackLogger.Instance;
+
+    /// <summary>Creates a model context that writes unhandled turn failures to <see cref="System.Diagnostics.Trace"/>.</summary>
+    public RunicModelContext() : this(null)
+    {
+    }
+
+    /// <summary>Creates a model context that logs unhandled turn failures to <paramref name="logger"/>.</summary>
+    /// <param name="logger">The logger, or <see langword="null"/> for <see cref="System.Diagnostics.Trace"/> output.</param>
+    public RunicModelContext(ILogger<RunicModelContext>? logger) => _logger = logger ?? (ILogger)TraceFallbackLogger.Instance;
 
     /// <inheritdoc />
     public event Action<Exception>? UnhandledTurnException;
@@ -245,10 +261,10 @@ public sealed class RunicModelContext : IRunicModelContext
         }
         catch (Exception reportError)
         {
-            System.Diagnostics.Trace.TraceError(reportError.ToString());
+            ViewsLog.UnhandledTurnHandlerFailed(_logger, reportError, BridgeTelemetry.ErrorType(reportError));
         }
-        if (dropped) System.Diagnostics.Trace.TraceWarning(error.Message);
-        else System.Diagnostics.Trace.TraceError(error.ToString());
+        if (dropped) ViewsLog.ModelTurnDropped(_logger, error, BridgeTelemetry.ErrorType(error));
+        else ViewsLog.ModelTurnFailed(_logger, error, BridgeTelemetry.ErrorType(error));
     }
 
     // A posted turn has no completion to fault. Dropping it at shutdown is
@@ -384,15 +400,16 @@ internal static class RunicModelContextDisposal
         if (shutdown.IsCompletedSuccessfully) return;
         if (context.IsExecuting)
         {
-            _ = ObserveAsync(shutdown);
+            _ = ObserveAsync(shutdown, RunicModelContext.LoggerOf(context));
             return;
         }
         shutdown.AsTask().GetAwaiter().GetResult();
     }
 
-    private static async Task ObserveAsync(ValueTask shutdown)
+    private static async Task ObserveAsync(ValueTask shutdown, ILogger logger)
     {
         try { await shutdown.ConfigureAwait(false); }
-        catch (Exception error) { System.Diagnostics.Trace.TraceError(error.ToString()); }
+        catch (Exception error)
+        { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
     }
 }

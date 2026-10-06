@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Desktop;
 
@@ -182,11 +183,13 @@ public static class DesktopBridgeWindowExtensions
             var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
             var attachWithContent = scope.ServiceProvider.GetService<
                 Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>>();
+            var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
             surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
-            transport = new DesktopBridgeTransport(surface);
+            transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
             content = new WindowContentSession(transport,
                 scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
-                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>());
+                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>(),
+                loggerFactory: loggerFactory);
             connectionBinding = surface.SubscribeConnectionEvents(invocation =>
             {
                 if (invocation.Kind == PresentationEventKind.Disconnected)

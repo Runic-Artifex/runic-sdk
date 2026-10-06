@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop.Internal;
 
@@ -10,11 +11,13 @@ internal sealed class WindowCloseController : IDisposable
     private readonly Func<ValueTask> _close;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _token;
+    private readonly ILogger? _logger;
     private Task<bool>? _pending;
     private bool _stopped;
 
-    internal WindowCloseController(Func<CancellationToken, ValueTask<bool>> confirm, Func<ValueTask> close)
+    internal WindowCloseController(Func<CancellationToken, ValueTask<bool>> confirm, Func<ValueTask> close, ILogger? logger = null)
     {
+        _logger = logger;
         _confirm = confirm;
         _close = close;
         _token = _lifetime.Token;
@@ -54,9 +57,10 @@ internal sealed class WindowCloseController : IDisposable
         {
             await _lifetime.CancelAsync().ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception error)
         {
-            Trace.TraceError("A window close cancellation callback failed.");
+            if (_logger is null) Trace.TraceError($"A window close cancellation callback failed: {error}");
+            else DesktopLog.CloseCancellationCallbackFailed(_logger, error, DesktopLog.ErrorType(error));
         }
         finally
         {
@@ -81,10 +85,11 @@ internal sealed class WindowCloseController : IDisposable
         {
             return false;
         }
-        catch (Exception)
+        catch (Exception error)
         {
             // A failed prompt must never become implicit permission to discard application state.
-            Trace.TraceError("Window close confirmation failed; the window was kept open.");
+            if (_logger is null) Trace.TraceError($"Window close confirmation failed; the window was kept open: {error}");
+            else DesktopLog.CloseConfirmationFailed(_logger, error, DesktopLog.ErrorType(error));
             return false;
         }
     }

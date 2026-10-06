@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Desktop.DesktopHostOptions.LoggerFactory.get -> Microsoft.Extensions.Logging.ILoggerFactory?
+Runic.Desktop.DesktopHostOptions.LoggerFactory.init -> void
