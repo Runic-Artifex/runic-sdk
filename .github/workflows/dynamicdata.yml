@@ -2,9 +2,9 @@ name: DynamicData consumer
 on:
   push:
     branches: [main]
-    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', '.github/workflows/dynamicdata.yml']
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
   pull_request:
-    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', '.github/workflows/dynamicdata.yml']
+    paths: ['packages/dotnet/Runic.Application.*/**', 'packages/web/views/**', 'tools/Runic.Application.Views.*/**', 'examples/dynamicdata/**', 'tests/fixtures/application/dynamicdata/**', 'eng/workspace.json', '.github/workflows/dynamicdata.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,10 +22,14 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-sdk
+      # eng/workspace.json owns the reviewed fork revision; see examples/dynamicdata/README.md.
+      - name: Read the pinned DynamicData fork revision
+        id: fork
+        run: bun -e 'const { dynamicData } = JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")); console.log("repository=" + dynamicData.repository + "\nrevision=" + dynamicData.forkRevision)' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          repository: Runic-Artifex/DynamicData
-          ref: edd2d175794afc86e964a06cb55329f44793009f
+          repository: ${{ steps.fork.outputs.repository }}
+          ref: ${{ steps.fork.outputs.revision }}
           path: .cache/dynamicdata-fork
           fetch-depth: 0
           persist-credentials: false
