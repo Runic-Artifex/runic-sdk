@@ -34,14 +34,53 @@ test('a dry run performs every read-only check and never reaches OIDC, registry 
   expect(candidate.environment).toBeUndefined();
   expect(candidate.permissions).toEqual({contents: 'read', actions: 'read'});
   expect(candidate.steps.some(s => s.uses?.startsWith('NuGet/login'))).toBe(false);
-  const checks = candidate.steps.filter(s => /cli\.mjs (publish|tag-latest)|github\.mjs/.test(s.run ?? ''));
-  expect(checks.map(s => s.run.match(/cli\.mjs (publish|tag-latest)|github\.mjs/)[0])).toEqual(['cli.mjs publish', 'github.mjs', 'cli.mjs tag-latest']);
+  const checks = candidate.steps.filter(s => /cli\.mjs (publish|tag-latest)|github\.mjs release/.test(s.run ?? ''));
+  expect(checks.map(s => s.run.match(/cli\.mjs (publish|tag-latest)|github\.mjs release/)[0])).toEqual(['cli.mjs publish', 'github.mjs release', 'cli.mjs tag-latest']);
   for (const step of checks) expect(step.run.trim().endsWith('--dry-run')).toBe(true);
   expect(publish.if).toBe('${{ !inputs.dry-run }}');
   expect(publish.environment).toBe('preview');
-  expect(publish.permissions).toEqual({contents: 'write', 'id-token': 'write', actions: 'read'});
+  expect(publish.permissions).toEqual({contents: 'write', 'id-token': 'write', attestations: 'write', actions: 'read'});
   expect(runs(publish)).not.toContain('--dry-run');
-  expect(Object.entries(release.jobs).filter(([, job]) => job.permissions?.['id-token']).map(([name]) => name)).toEqual(['publish']);
+  for (const permission of ['id-token', 'attestations', 'contents'])
+    expect(Object.entries(release.jobs).filter(([, job]) => job.permissions?.[permission] === 'write').map(([name]) => name)).toEqual(['publish']);
+  for (const job of Object.values(release.jobs)) expect(job.permissions).toBeDefined();
+  expect(release.permissions).toEqual({contents: 'read'});
+});
+test('only the publish job attests, after verifying and before publishing, every package and release asset', () => {
+  const release = workflow('publish-preview.yml');
+  const attesting = Object.entries(release.jobs).filter(([, job]) => job.steps.some(s => s.uses?.startsWith('actions/attest')));
+  expect(attesting.map(([name]) => name)).toEqual(['publish']);
+  const steps = release.jobs.publish.steps;
+  const attest = steps.filter(s => s.uses?.startsWith('actions/attest'));
+  expect(attest.map(s => s.uses.split('@')[0])).toEqual(['actions/attest-build-provenance', 'actions/attest']);
+  for (const step of attest) expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+  const lines = step => step.with['subject-path'].trim().split('\n');
+  const packages = ['artifacts/packages/nuget/*.nupkg', 'artifacts/packages/npm/*.tgz'];
+  const bundle = 'artifacts/release/runic-sdk-${{ inputs.version }}-packages.tar.gz', sbom = 'artifacts/release/runic-sdk-${{ inputs.version }}.cdx.json';
+  expect(lines(attest[0])).toEqual([...packages, bundle, sbom, 'artifacts/release/SHA256SUMS']);
+  expect(lines(attest[1])).toEqual([...packages, bundle]);
+  expect(attest[1].with['sbom-path']).toBe(sbom);
+  const index = predicate => steps.findIndex(predicate);
+  const first = index(s => s.uses?.startsWith('actions/attest'));
+  expect(index(s => s.run?.includes('sha256sum --check --strict'))).toBeLessThan(first);
+  expect(index(s => s.run?.includes('cli.mjs verify'))).toBeLessThan(first);
+  for (const write of ['cli.mjs publish', 'github.mjs release', 'cli.mjs tag-latest']) expect(index(s => s.run?.includes(write))).toBeGreaterThan(first);
+  expect(index(s => s.uses?.startsWith('NuGet/login'))).toBeGreaterThan(first);
+});
+test('the read-only candidate describes the release and hands its files to publish by hash', () => {
+  const {candidate, publish} = workflow('publish-preview.yml').jobs;
+  const describe = candidate.steps.find(s => s.id === 'describe');
+  expect(describe.run).toContain('github.mjs describe artifacts/packages artifacts/release');
+  expect(describe.run).toContain('sha256sum -- *');
+  expect(candidate.outputs['release-sha256']).toBe('${{ steps.describe.outputs.sha256 }}');
+  const upload = candidate.steps.find(s => s.uses?.startsWith('actions/upload-artifact@'));
+  expect(candidate.steps.indexOf(upload)).toBeGreaterThan(candidate.steps.indexOf(describe));
+  expect(upload.with.path).toBe('artifacts/release');
+  expect(candidate.steps.find(s => /github\.mjs release/.test(s.run ?? '')).run.trim()).toBe('bun eng/release/github.mjs release artifacts/release --dry-run');
+  const check = publish.steps.find(s => s.run?.includes('sha256sum --check --strict'));
+  expect(check['working-directory']).toBe('artifacts/release');
+  expect(check.env.RELEASE_SHA256).toBe('${{ needs.candidate.outputs.release-sha256 }}');
+  expect(publish.steps.indexOf(check)).toBeGreaterThan(publish.steps.findIndex(s => s.with?.name === 'release-candidate-${{ github.run_id }}'));
 });
 test('publication verifies the candidate inventory and does not wait for registry indexing', () => {
   const release = workflow('publish-preview.yml');
