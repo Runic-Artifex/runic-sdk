@@ -1,3 +1,34 @@
 #nullable enable
 Runic.Desktop.DesktopHostOptions.LoggerFactory.get -> Microsoft.Extensions.Logging.ILoggerFactory?
 Runic.Desktop.DesktopHostOptions.LoggerFactory.init -> void
+const Runic.Desktop.DesktopConfigurationException.ConfigurationInvalidCode = "desktop-configuration-invalid" -> string!
+override Runic.Desktop.DesktopValidationResult.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopValidationResult.GetHashCode() -> int
+override Runic.Desktop.DesktopValidationResult.ToString() -> string!
+Runic.Desktop.DesktopConfigurationException
+Runic.Desktop.DesktopConfigurationException.DesktopConfigurationException(System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! diagnostics) -> void
+Runic.Desktop.DesktopConfigurationException.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.DesktopDiagnostic.Option.get -> string?
+Runic.Desktop.DesktopDiagnostic.Option.init -> void
+Runic.Desktop.DesktopDiagnosticSeverity
+Runic.Desktop.DesktopDiagnosticSeverity.Error = 0 -> Runic.Desktop.DesktopDiagnosticSeverity
+Runic.Desktop.DesktopDiagnostic.Severity.get -> Runic.Desktop.DesktopDiagnosticSeverity
+Runic.Desktop.DesktopDiagnostic.Severity.init -> void
+Runic.Desktop.DesktopDiagnosticSeverity.Warning = 1 -> Runic.Desktop.DesktopDiagnosticSeverity
+Runic.Desktop.DesktopHost.Validate(Runic.Desktop.DesktopWindowOptions? options = null) -> Runic.Desktop.DesktopValidationResult!
+Runic.Desktop.DesktopPresentationPreflight.OptionDiagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.DesktopPresentationPreflight.OptionDiagnostics.init -> void
+Runic.Desktop.DesktopValidationResult
+Runic.Desktop.DesktopValidationResult.<Clone>$() -> Runic.Desktop.DesktopValidationResult!
+Runic.Desktop.DesktopValidationResult.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! Diagnostics) -> void
+Runic.Desktop.DesktopValidationResult.DesktopValidationResult(System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>! Diagnostics) -> void
+Runic.Desktop.DesktopValidationResult.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.DesktopValidationResult.Diagnostics.init -> void
+Runic.Desktop.DesktopValidationResult.Equals(Runic.Desktop.DesktopValidationResult? other) -> bool
+Runic.Desktop.DesktopValidationResult.Errors.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.DesktopValidationResult.IsValid.get -> bool
+Runic.Desktop.DesktopValidationResult.ThrowIfInvalid() -> void
+Runic.Desktop.DesktopValidationResult.Warnings.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.IDesktopWindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+static Runic.Desktop.DesktopValidationResult.operator !=(Runic.Desktop.DesktopValidationResult? left, Runic.Desktop.DesktopValidationResult? right) -> bool
+static Runic.Desktop.DesktopValidationResult.operator ==(Runic.Desktop.DesktopValidationResult? left, Runic.Desktop.DesktopValidationResult? right) -> bool

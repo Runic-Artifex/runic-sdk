@@ -29,7 +29,11 @@ WebView. It does not load the native WebUI library.
 ```csharp
 using Runic.Desktop;
 
-await using var host = await DesktopHost.StartAsync();
+await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    // Windows uses WebView2 and macOS WKWebView; Linux selects a toolkit explicitly.
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+});
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
     Content = """
@@ -68,31 +72,43 @@ Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or
 lifecycle.
 
-Inspect presentation readiness before doing application work:
+Windows open in the embedded WebView unless `DesktopWindowOptions.Browser`
+selects an installed browser. Check a window request at startup, before doing
+application work:
 
 ```csharp
-await using var host = await DesktopHost.StartAsync();
-var preflight = host.GetPresentationPreflight(new DesktopWindowOptions
+var windowOptions = new DesktopWindowOptions
 {
-    Browser = BrowserKind.Embedded,
     PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
-});
-if (!preflight.IsAvailable)
+    Width = 1000,
+    Height = 700,
+};
+var validation = host.Validate(windowOptions);
+foreach (var warning in validation.Warnings)
 {
-    Console.Error.WriteLine($"{preflight.Diagnostic?.Code}: {preflight.Diagnostic?.Remediation}");
+    Console.Error.WriteLine($"{warning.Code} ({warning.Option}): {warning.Message}");
 }
+validation.ThrowIfInvalid();
 ```
+
+`Validate` reports a missing WebView runtime, browser or Linux toolkit, every
+window option the selected host rejects or ignores, and how permission grants
+apply, each with a stable code and remediation, without starting a
+presentation. It logs the diagnostics through `DesktopHostOptions.LoggerFactory`.
+`ThrowIfInvalid` throws a `DesktopConfigurationException` that lists the
+errors; warnings name options the presentation ignores. `GetPresentationPreflight`
+returns the same checks as typed results.
 
 The default `RequestedOnly` policy never changes presentation mode. Applications
 that deliberately prefer a WebView but can continue in a browser can select
 `DesktopPresentationPolicy.EmbeddedThenBrowser`; the resulting
 `DesktopWindow.FellBack` property and the diagnostic sink make that decision
-observable. The typed preflight reports the preferred host, the policy's only
-permitted fallback, capability limits, and safe prerequisite remediation without
-starting a presentation. Camera and microphone access remains denied unless
+observable. Camera and microphone access remains denied unless
 `DesktopPermissionGrant.MediaCapture` is explicitly selected for the window.
-WebView2 and WebKitGTK windows grant it only to the presented origin; WKWebView
-windows do not implement the grant.
+WebView2, WebKitGTK and GTK4 windows grant it only to the presented origin;
+WKWebView windows and Firefox ask the user instead, and an explicitly selected
+Chromium-based browser accepts capture for every origin it opens. A browser
+fallback opens without the grant.
 
 The retained `webui-compat/52f9e75` direct-capability profile cannot carry a
 structured invocation failure on its legacy wire response. It reports only the

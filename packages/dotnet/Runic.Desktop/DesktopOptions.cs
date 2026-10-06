@@ -154,8 +154,11 @@ public enum DesktopPermissionGrant
 
     /// <summary>Allow camera and microphone capture for the presentation.</summary>
     /// <remarks>
-    /// WebView2 and WebKitGTK windows grant it only to the origin of the presented URL, never screen capture.
-    /// WKWebView windows do not implement the grant; WebKit's default handling applies on macOS.
+    /// WebView2, WebKitGTK and GTK 4 windows grant it only to the origin of the presented URL, never screen capture.
+    /// WKWebView windows do not apply the grant; WebKit asks the user on macOS. An explicitly selected
+    /// Chromium-based browser accepts capture for every origin it opens, and Firefox asks the user. A
+    /// <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/> fallback opens without the grant.
+    /// <see cref="DesktopHost.Validate"/> reports each of these cases before the window opens.
     /// </remarks>
     MediaCapture = 1 << 0,
 }
@@ -183,7 +186,9 @@ public sealed record DesktopWindowOptions
     /// CloseAsync and disposal bypass confirmation; marshal native UI work to its owning thread.</remarks>
     public Func<CancellationToken, ValueTask<bool>>? ConfirmCloseAsync { get; init; }
 
-    public BrowserKind Browser { get; init; } = BrowserKind.Any;
+    /// <summary>Gets the presentation: the platform's embedded WebView by default, or an installed browser.</summary>
+    /// <remarks>On Linux, the embedded WebView requires <see cref="DesktopHostOptions.Linux"/> to select a toolkit.</remarks>
+    public BrowserKind Browser { get; init; } = BrowserKind.Embedded;
     public DesktopPresentationPolicy PresentationPolicy { get; init; }
     public DesktopPermissionGrant AllowedPermissions { get; init; }
     public uint Width { get; init; } = 800;

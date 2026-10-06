@@ -79,7 +79,9 @@ public static class DesktopPlatform
         return new(backend, discovered, discovered ? null : Missing(
             backend == LinuxEmbeddedBackend.Gtk3WebKit41 ? "webkitgtk-runtime-missing" : "webkitgtk6-runtime-missing",
             $"The runtime libraries for {backend} were not discovered.",
-            $"Install {gtk} and {webkit} in the native loader search path. GTK4 also requires the Runic.Desktop.Gtk4 provider."));
+            backend == LinuxEmbeddedBackend.Gtk3WebKit41
+                ? $"Install {gtk} and {webkit} (for example libgtk-3-0 and libwebkit2gtk-4.1-0) in the native loader search path."
+                : $"Install GTK 4.12 or newer and WebKitGTK 6.0 ({gtk} and {webkit}, for example libgtk-4-1 and libwebkitgtk-6.0-4), and reference the Runic.Desktop.Gtk4 provider."));
     }
 
     /// <summary>Opens a URL through the operating system's default URL handler.</summary>
@@ -115,7 +117,7 @@ public static class DesktopPlatform
             if (selection is not null) return selection;
             if (!LinuxWebKitGtkHost.IsSupported)
                 return Missing("webkitgtk-runtime-missing", "GTK 3 and WebKitGTK 4.1 are unavailable.",
-                    "Install GTK 3 and WebKitGTK 4.1, or select an installed browser.");
+                    "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0), or select an installed browser. dotnet runic doctor --rid <rid> checks a deployment target.");
             if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY")) &&
                 string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
             {
@@ -146,8 +148,15 @@ public static class DesktopPlatform
     {
         if (linux.EmbeddedBackend is not { } backend)
             return Missing("linux-embedded-backend-not-selected", "No Linux embedded backend is selected.",
-                "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6; register Gtk4WindowHostFactory for GTK4.");
-        if (!Enum.IsDefined(backend)) throw new ArgumentOutOfRangeException(nameof(linux));
+                "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6 (GTK4 also needs WindowHostFactory = new Gtk4WindowHostFactory()), " +
+                "or keep an installed browser with DesktopWindowOptions.Browser = BrowserKind.Any or PresentationPolicy = EmbeddedThenBrowser.");
+        if (!Enum.IsDefined(backend))
+            return new DesktopDiagnostic(DesktopErrorCategory.InvalidArgument, "linux-embedded-backend-invalid",
+                $"Linux.EmbeddedBackend has the undefined value {(int)backend}.", Retryable: false, CorrelationId: string.Empty,
+                Remediation: "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6.")
+            {
+                Option = "DesktopHostOptions.Linux.EmbeddedBackend",
+            };
         if (!LinuxDesktopRuntime.CanUse(backend))
             return Missing("linux-embedded-backend-conflict", "Another Linux toolkit is already initialized.", "Start a new process to select a different toolkit.");
         if (backend == LinuxEmbeddedBackend.Gtk4WebKit6 && factory is not ILinuxDesktopWindowHostFactory { Backend: LinuxEmbeddedBackend.Gtk4WebKit6 })

@@ -10,6 +10,7 @@ public sealed class DesktopHost : IAsyncDisposable
     private readonly DesktopHostOptions _options;
     private readonly PresentationHostCore _core;
     private readonly ConcurrentDictionary<Guid, DesktopSurface> _surfaces = new();
+    private readonly ILogger? _logger;
     private int _disposed;
 
     private DesktopHost(DesktopHostOptions options)
@@ -17,6 +18,7 @@ public sealed class DesktopHost : IAsyncDisposable
         ValidateOptions(options);
         _options = options;
         _core = CreateCore(options, options.Port);
+        _logger = options.LoggerFactory?.CreateLogger(DesktopLog.Category);
     }
 
     /// <summary>Creates a host. Its listener binds when the first surface starts.</summary>
@@ -66,6 +68,10 @@ public sealed class DesktopHost : IAsyncDisposable
     }
 
     /// <summary>Evaluates one requested presentation and its explicit fallback policy without starting a browser or WebView.</summary>
+    /// <remarks>
+    /// <see cref="DesktopPresentationPreflight.OptionDiagnostics"/> reports each window option and permission grant
+    /// the preferred presentation or its fallback rejects or ignores.
+    /// </remarks>
     public DesktopPresentationPreflight GetPresentationPreflight(DesktopWindowOptions? options = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -76,19 +82,81 @@ public sealed class DesktopHost : IAsyncDisposable
             ? BrowserKind.Embedded
             : configured.Browser;
         var preferred = FindAvailability(availability, preferredBrowser) ?? Unavailable(preferredBrowser);
+        var optionDiagnostics = new List<DesktopDiagnostic>();
+        DesktopWindowOptionValidation.AddPairChecks(configured, optionDiagnostics);
+        if (preferredBrowser == BrowserKind.Embedded)
+        {
+            DesktopWindowOptionValidation.AddEmbeddedChecks(
+                configured, _options.WindowHostFactory, _options.Linux.EmbeddedBackend, optionDiagnostics);
+        }
+        else if (DesktopWindowOptionValidation.IsLaunchable(preferredBrowser))
+        {
+            DesktopWindowOptionValidation.AddBrowserChecks(
+                configured, ConcreteBrowser(preferredBrowser, preferred), isFallback: false, optionDiagnostics);
+        }
+
         DesktopPresentationAvailability? fallback = null;
         if (configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser)
         {
             var fallbackBrowser = configured.Browser == BrowserKind.Embedded ? BrowserKind.Any : configured.Browser;
             fallback = FindAvailability(availability, fallbackBrowser) ?? Unavailable(fallbackBrowser);
+            if (DesktopWindowOptionValidation.IsLaunchable(fallbackBrowser))
+            {
+                DesktopWindowOptionValidation.AddBrowserChecks(
+                    configured, ConcreteBrowser(fallbackBrowser, fallback), isFallback: true, optionDiagnostics);
+            }
         }
 
         return new DesktopPresentationPreflight(
             configured.Browser,
             configured.PresentationPolicy,
             preferred,
-            fallback);
+            fallback)
+        {
+            OptionDiagnostics = optionDiagnostics,
+        };
     }
+
+    /// <summary>
+    /// Checks a window request before it opens: the presentation and its prerequisites, the window options, and the
+    /// permission grants. Each diagnostic is also logged through <see cref="DesktopHostOptions.LoggerFactory"/>.
+    /// </summary>
+    /// <remarks>
+    /// Call it at startup and use <see cref="DesktopValidationResult.ThrowIfInvalid"/> to stop before any window
+    /// opens. Opening the window repeats the checks it depends on; validation does not start a browser or WebView.
+    /// </remarks>
+    public DesktopValidationResult Validate(DesktopWindowOptions? options = null)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        List<DesktopDiagnostic> diagnostics = [];
+        try
+        {
+            var preflight = GetPresentationPreflight(options);
+            if (preflight.Diagnostic is { } unavailable)
+            {
+                diagnostics.Add(unavailable);
+            }
+            diagnostics.AddRange(preflight.OptionDiagnostics);
+        }
+        catch (ArgumentException error)
+        {
+            diagnostics.Add(DesktopWindowOptionValidation.Invalid(error.Message));
+        }
+
+        if (_logger is { } logger)
+        {
+            foreach (var diagnostic in diagnostics)
+            {
+                DesktopLog.Diagnostic(logger, diagnostic);
+            }
+        }
+        return new DesktopValidationResult(diagnostics);
+    }
+
+    private static BrowserKind? ConcreteBrowser(BrowserKind requested, DesktopPresentationAvailability availability) =>
+        requested is BrowserKind.Any or BrowserKind.ChromiumBased
+            ? availability.IsAvailable ? availability.Browser : null
+            : requested;
 
     /// <summary>Creates and starts one isolated surface namespace.</summary>
     public async ValueTask<DesktopSurface> CreateSurfaceAsync(
@@ -118,7 +186,7 @@ public sealed class DesktopHost : IAsyncDisposable
             _options.WaitForConnection,
             _options.ConnectionTimeout,
             _options.DiagnosticSink,
-            _options.LoggerFactory?.CreateLogger(DesktopLog.Category));
+            _logger);
         var engine = new WebUiWindow(core, path, security, runtime);
         var surface = new DesktopSurface(this, id, engine, isolatedCore);
         if (!_surfaces.TryAdd(id, surface))
@@ -191,6 +259,14 @@ public sealed class DesktopHost : IAsyncDisposable
 
     internal void Report(DesktopDiagnostic diagnostic) => _options.DiagnosticSink?.Invoke(diagnostic);
 
+    // Reports a configuration limitation found while opening, to the sink and the Desktop logger.
+    internal void ReportConfiguration(DesktopDiagnostic diagnostic)
+    {
+        Report(diagnostic);
+        if (_logger is { } logger) DesktopLog.Diagnostic(logger, diagnostic);
+        else System.Diagnostics.Trace.TraceWarning($"{diagnostic.Code}: {diagnostic.Message}");
+    }
+
     internal DesktopPresentationAvailability? FindAvailability(BrowserKind browser)
     {
         return FindAvailability(GetAvailability(), browser);
@@ -216,12 +292,14 @@ public sealed class DesktopHost : IAsyncDisposable
         return presentations.FirstOrDefault(candidate => candidate.Browser == browser);
     }
 
-    private static DesktopPresentationAvailability Unavailable(BrowserKind browser) => new(
+    internal static DesktopPresentationAvailability Unavailable(BrowserKind browser) => new(
         browser,
         IsAvailable: false,
         ExecutablePath: null,
         DesktopWindowCapabilities.None,
-        new DesktopDiagnostic(
+        !DesktopWindowOptionValidation.IsLaunchable(browser)
+            ? DesktopWindowOptionValidation.BrowserUnsupported(browser)
+            : new DesktopDiagnostic(
             DesktopErrorCategory.Unavailable,
             "presentation-unavailable",
             $"No supported presentation was discovered for {browser}.",
@@ -257,7 +335,7 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options.Linux);
         if (options.Linux.EmbeddedBackend is { } backend && !Enum.IsDefined(backend))
-            throw new ArgumentOutOfRangeException(nameof(options));
+            throw new ArgumentOutOfRangeException(nameof(options), "Linux.EmbeddedBackend contains an undefined value; select Gtk3WebKit41 or Gtk4WebKit6.");
         if (options.WindowHostFactory is ILinuxDesktopWindowHostFactory linux && options.Linux.EmbeddedBackend != linux.Backend)
             throw new ArgumentException("Linux.EmbeddedBackend must match the configured Linux window host factory.", nameof(options));
         ArgumentNullException.ThrowIfNull(options);

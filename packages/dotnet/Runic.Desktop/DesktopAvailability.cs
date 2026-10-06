@@ -28,6 +28,39 @@ public sealed record DesktopPresentationPreflight(
     public DesktopDiagnostic? Diagnostic => IsAvailable
         ? null
         : Preferred.Diagnostic ?? Fallback?.Diagnostic;
+
+    /// <summary>
+    /// Gets one diagnostic per requested window option or permission grant that the preferred presentation, or its
+    /// declared fallback, rejects (<see cref="DesktopDiagnosticSeverity.Error"/>) or ignores
+    /// (<see cref="DesktopDiagnosticSeverity.Warning"/>). <see cref="DesktopDiagnostic.Option"/> names the option.
+    /// </summary>
+    public IReadOnlyList<DesktopDiagnostic> OptionDiagnostics { get; init; } = [];
+}
+
+/// <summary>Collects every configuration check run before a Desktop window opens.</summary>
+public sealed record DesktopValidationResult(IReadOnlyList<DesktopDiagnostic> Diagnostics)
+{
+    /// <summary>Gets whether no check failed. Warnings do not make a configuration invalid.</summary>
+    public bool IsValid => !Diagnostics.Any(static diagnostic => diagnostic.Severity == DesktopDiagnosticSeverity.Error);
+
+    /// <summary>Gets the checks that fail the configuration.</summary>
+    public IReadOnlyList<DesktopDiagnostic> Errors => Diagnostics
+        .Where(static diagnostic => diagnostic.Severity == DesktopDiagnosticSeverity.Error)
+        .ToArray();
+
+    /// <summary>Gets the options the presentation will ignore or narrow.</summary>
+    public IReadOnlyList<DesktopDiagnostic> Warnings => Diagnostics
+        .Where(static diagnostic => diagnostic.Severity == DesktopDiagnosticSeverity.Warning)
+        .ToArray();
+
+    /// <summary>Throws a <see cref="DesktopConfigurationException"/> listing every error, if any check failed.</summary>
+    public void ThrowIfInvalid()
+    {
+        if (!IsValid)
+        {
+            throw new DesktopConfigurationException(Errors);
+        }
+    }
 }
 
 /// <summary>Reports the presentation hosts and prerequisites visible to the current process.</summary>
