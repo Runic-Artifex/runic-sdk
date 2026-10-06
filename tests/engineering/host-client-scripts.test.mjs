@@ -149,3 +149,35 @@ test("example copies of runic-cswebui.js match the package script", () => {
       expect(readFileSync(resolve(root, `examples/${example}/${frontend}/public/runic-cswebui.js`), "utf8"), `${example}/${frontend}`)
         .toBe(expected);
 });
+
+// The all-events binding delivers disconnects, but WebUI then also sends a click
+// event for each element with an id. Those collide with Bridge calls (#53), so
+// the script marks the elements as WebUI does once it has attached a listener.
+test("runic-cswebui.js stops WebUI from sending click events for elements with ids", () => {
+  const element = (id, children = []) => ({
+    nodeType: 1, id, dataset: {},
+    querySelectorAll: () => children.flatMap(child => [child, ...child.querySelectorAll("[id]")]).filter(child => child.id),
+  });
+  const main = element("main");
+  const plain = element("", [main]);
+  const documentElement = element("", [plain]);
+  let observe;
+  const context = {
+    history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console,
+    document: { documentElement },
+    MutationObserver: class { constructor(callback) { observe = callback; } observe() {} },
+  };
+  context.window = context;
+  context.globalThis = context;
+  runInNewContext(readFileSync(resolve(root, scripts[0]), "utf8"), context);
+  expect(main.dataset.webui_click_is_set).toBe("true");
+  expect(plain.dataset.webui_click_is_set).toBeUndefined();
+
+  const pane = element("pane");
+  const added = element("", [pane]);
+  const renamed = element("status");
+  observe([{ type: "childList", addedNodes: [added, { nodeType: 3 }] }, { type: "attributes", target: renamed }]);
+  expect(pane.dataset.webui_click_is_set).toBe("true");
+  expect(renamed.dataset.webui_click_is_set).toBe("true");
+  expect(added.dataset.webui_click_is_set).toBeUndefined();
+});

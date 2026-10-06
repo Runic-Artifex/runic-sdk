@@ -295,6 +295,8 @@ public static class CsWebUiBridgeWindowExtensions
             content = new WindowContentSession(transport,
                 scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
                 modelContext: scope.ServiceProvider.GetService<IRunicModelContext>());
+            // Only the all-events binding receives disconnects. runic-cswebui.js
+            // stops WebUI from also sending click events for elements with ids.
             connectionBinding = window.Bind("", e =>
             {
                 if (e.EventType == WebUiEventType.Disconnected)

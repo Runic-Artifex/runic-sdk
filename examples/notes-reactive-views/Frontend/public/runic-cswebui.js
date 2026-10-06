@@ -32,6 +32,27 @@
     };
   }
 
+  // The window's all-events binding delivers disconnects to .NET, and WebUI has
+  // no narrower way to receive them. With it, WebUI also sends a click event for
+  // every element with an id, in parallel with the Bridge calls that click
+  // starts, and those can collide in native WebUI (#53). Runic does not use the
+  // click events. WebUI skips elements it already marked, so mark each element
+  // with an id before WebUI's next scan.
+  function suppressClickEvents(node) {
+    if (node.nodeType !== 1) return;
+    if (node.id) node.dataset.webui_click_is_set = "true";
+    for (const element of node.querySelectorAll("[id]")) element.dataset.webui_click_is_set = "true";
+  }
+  if (typeof MutationObserver === "function" && typeof document === "object") {
+    new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type === "attributes") suppressClickEvents(record.target);
+        else for (const node of record.addedNodes) suppressClickEvents(node);
+      }
+    }).observe(document, { childList: true, subtree: true, attributes: true, attributeFilter: ["id"] });
+    if (document.documentElement) suppressClickEvents(document.documentElement);
+  }
+
   // Native WebUI claims an event slot for each incoming call on its own thread
   // without holding its lock for the whole claim. Two calls arriving together
   // can share one slot: one of them then never receives a reply, and either
