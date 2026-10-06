@@ -19,7 +19,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
     private const int MaximumPendingFrames = 64;
     private const int MaximumPendingLength = 1024 * 1024;
     private readonly object _gate = new();
-    private readonly Queue<(string Frame, bool State)> _pending = new();
+    private readonly Queue<(string Frame, string Kind)> _pending = new();
     private readonly ILogger _logger = logger ?? TraceFallbackLogger.Instance;
     private int _pendingLength;
     private bool _stateRequested;
@@ -55,7 +55,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         {
             if (_disposed) return;
             ClearPending();
-            _pending.Enqueue((snapshot, true));
+            _pending.Enqueue((snapshot, "state"));
             BridgeTelemetry.AddQueuedFrames(1);
             _pendingLength = snapshot.Length;
             _stateQueued = true;
@@ -72,11 +72,27 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             if (_disposed) return true;
             if (_stateRequested || _pending.Count >= MaximumPendingFrames
                 || _pendingLength + delta.Length > MaximumPendingLength) return false;
-            _pending.Enqueue((delta, false));
+            _pending.Enqueue((delta, "delta"));
             BridgeTelemetry.AddQueuedFrames(1);
             _pendingLength += delta.Length;
             Start();
             return true;
+        }
+    }
+
+    // Tells the client why the route publishes nothing for now (see
+    // ViewModelBridge.ReportRejectedKeys). It supersedes queued frames, which
+    // the client cannot use without the full state that follows.
+    public void EnqueueFailure(string failure)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            ClearPending();
+            _pending.Enqueue((failure, "failure"));
+            BridgeTelemetry.AddQueuedFrames(1);
+            _pendingLength = failure.Length;
+            Start();
         }
     }
 
@@ -147,12 +163,12 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 BridgeTelemetry.RecordFailure("snapshot.capture", model, null, error);
                 ViewsLog.SnapshotCaptureFailed(_logger, error, model, route, BridgeTelemetry.ErrorType(error));
             }
-            var state = capture;
+            var kind = "state";
             if (!capture)
                 lock (_gate)
                 {
                     if (_disposed || _pending.Count == 0) continue;
-                    (snapshot, state) = _pending.Dequeue();
+                    (snapshot, kind) = _pending.Dequeue();
                     BridgeTelemetry.AddQueuedFrames(-1);
                     _pendingLength -= snapshot.Length;
                     _stateQueued = false;
@@ -164,7 +180,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 if (transport is IAsyncBridgeTransport asynchronous)
                     await asynchronous.PublishAsync(route, snapshot).ConfigureAwait(false);
                 else transport.Publish(route, snapshot);
-                BridgeTelemetry.RecordFrame(model, state ? "state" : "delta", snapshot, timestamp);
+                BridgeTelemetry.RecordFrame(model, kind, snapshot, timestamp);
             }
             catch (Exception error)
             {

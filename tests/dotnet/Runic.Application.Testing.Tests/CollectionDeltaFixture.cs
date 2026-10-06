@@ -48,3 +48,62 @@ public sealed class MutableCollectionViewModel : INotifyPropertyChanged
 }
 
 public sealed partial class MutableCollectionWindow(MutableCollectionViewModel model) : RunicWindow<MutableCollectionViewModel>(model);
+
+public sealed record KeyedRow(string Key, string Label);
+
+public sealed class KeyedCollectionViewModel : INotifyPropertyChanged
+{
+    public KeyedCollectionViewModel()
+    {
+        Rows = new(Items);
+        AddDuplicateCommand = new CommunityToolkit.Mvvm.Input.RelayCommand(() => Items.Add(new(Items[0].Key, "duplicate")));
+    }
+    public CommunityToolkit.Mvvm.Input.IRelayCommand AddDuplicateCommand { get; }
+    [RunicIgnore]
+    public ObservableCollection<KeyedRow> Items { get; } = [];
+    [RunicCollection(nameof(KeyedRow.Key))]
+    public ReadOnlyObservableCollection<KeyedRow> Rows { get; }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class KeyedCollectionWindow(KeyedCollectionViewModel model) : RunicWindow<KeyedCollectionViewModel>(model);
+
+// Validation keeps collections on full states; their keys are still checked.
+public sealed class ValidatedCollectionViewModel : INotifyPropertyChanged, INotifyDataErrorInfo
+{
+    public ValidatedCollectionViewModel() => Rows = new(Items);
+    [RunicIgnore]
+    public ObservableCollection<KeyedRow> Items { get; } = [];
+    [RunicCollection(nameof(KeyedRow.Key))]
+    public ReadOnlyObservableCollection<KeyedRow> Rows { get; }
+    public bool HasErrors => false;
+    public System.Collections.IEnumerable GetErrors(string? propertyName) => Array.Empty<string>();
+    public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class ValidatedCollectionWindow(ValidatedCollectionViewModel model) : RunicWindow<ValidatedCollectionViewModel>(model);
+
+public sealed class MutableKeyedRow(string key, string label) : INotifyPropertyChanged
+{
+    private string _key = key;
+    public string Key
+    {
+        get => _key;
+        set { _key = value; PropertyChanged?.Invoke(this, new(nameof(Key))); }
+    }
+    public string Label { get; } = label;
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed class MutableKeyedViewModel : INotifyPropertyChanged
+{
+    public MutableKeyedViewModel() => Rows = new(Items);
+    [RunicIgnore]
+    public ObservableCollection<MutableKeyedRow> Items { get; } = [new("a", "one"), new("b", "two")];
+    [RunicCollection(nameof(MutableKeyedRow.Key))]
+    public ReadOnlyObservableCollection<MutableKeyedRow> Rows { get; }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class MutableKeyedWindow(MutableKeyedViewModel model) : RunicWindow<MutableKeyedViewModel>(model);

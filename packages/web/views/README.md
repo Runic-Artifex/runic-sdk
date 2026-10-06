@@ -56,10 +56,13 @@ controllers in [Framework bindings](#framework-bindings).
 A .NET ViewModel can mark a read-only collection of DTO rows with
 `[RunicCollection(nameof(Row.Id))]`. Its generated client then receives indexed
 add, remove, replace and move frames instead of the whole state, applies them on
-top of its current revision, and reads one fresh snapshot if a frame is missing
-or invalid. Rows that a frame does not touch keep their object identity, so
-frameworks can skip rendering them. Clients still see a complete array in
-`snapshot` and `subscribe`.
+top of its current revision, and reads a fresh snapshot if a frame is missing
+or invalid, retrying a failed read and keeping frames that arrive meanwhile.
+Rows that a frame does not touch keep their object identity, so frameworks can
+skip rendering them. Clients still see a complete array in `snapshot` and
+`subscribe`. If the .NET collection has a null row or a null, empty or
+duplicate key, the route keeps its last state and reports the failure through
+`onBridgeDiagnostic` until the keys are valid again.
 
 ### `defineCollection(decode, key)`
 

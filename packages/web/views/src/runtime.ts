@@ -23,6 +23,8 @@ export interface SharedEntry {
   readonly leases: Set<SharedLease>;
   readonly hydrate: (wire: unknown) => unknown;
   readonly accept: (wire: unknown) => unknown;
+  /** Stops pending timers when the entry is released. Absent in entries made by older copies of this package. */
+  readonly close?: () => void;
   current: unknown | undefined;
   wire: unknown | undefined;
   revision: number | undefined;

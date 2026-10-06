@@ -16,13 +16,20 @@ internal static class CollectionDeltaConformanceTests
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "fixtures", "collection-deltas");
         var files = Directory.GetFiles(directory, "*.json").OrderBy(path => path, StringComparer.Ordinal).ToArray();
-        Require(files.Length >= 7, $"The collection delta fixtures were not copied to {directory}.");
-        foreach (var file in files)
+        Require(files.Length >= 8, $"The collection delta fixtures were not copied to {directory}.");
+        // Failure notices and replies carry no development detail, so frames are byte-identical.
+        var detail = BridgeDiagnostics.IncludeFailureDetail;
+        BridgeDiagnostics.IncludeFailureDetail = false;
+        try
         {
-            var fixture = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
-            foreach (var testCase in fixture["cases"]!.AsArray())
-                await RunCaseAsync($"{Path.GetFileName(file)}: {testCase!["name"]}", testCase.AsObject());
+            foreach (var file in files)
+            {
+                var fixture = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+                foreach (var testCase in fixture["cases"]!.AsArray())
+                    await RunCaseAsync($"{Path.GetFileName(file)}: {testCase!["name"]}", testCase.AsObject());
+            }
         }
+        finally { BridgeDiagnostics.IncludeFailureDetail = detail; }
     }
 
     private static async Task RunCaseAsync(string name, JsonObject testCase)
@@ -33,6 +40,12 @@ internal static class CollectionDeltaConformanceTests
         var held = testCase["delivery"]?.GetValue<string>() == "held";
         using var transport = new FixtureTransport(held);
         using var bridge = new CollectionDeltaBridge(transport, model, Route);
+        var error = testCase["error"]?.GetValue<string>();
+        if (error is not null && testCase["steps"]!.AsArray().Count == 0)
+        {
+            RequireFailure(name, "initial snapshot", error, transport);
+            return;
+        }
         RequireJson(name, "initial snapshot", initial, State(transport));
 
         var actions = new List<Action>();
@@ -58,7 +71,18 @@ internal static class CollectionDeltaConformanceTests
             $"{name}: expected {expectedFrames.Length} frames, observed {frames.Count}:\n{string.Join("\n", frames.Select(Abbreviate))}");
         for (var index = 0; index < frames.Count; index++)
             RequireJson(name, $"frame {index}", expectedFrames[index], frames[index]);
-        RequireJson(name, "final snapshot", Expand(testCase["expected"]!), State(transport));
+        if (error is not null) RequireFailure(name, "final snapshot", error, transport);
+        else RequireJson(name, "final snapshot", Expand(testCase["expected"]!), State(transport));
+    }
+
+    // A snapshot read of invalid keys fails with the bounded reason instead of a state.
+    private static void RequireFailure(string name, string what, string error, FixtureTransport transport)
+    {
+        using var reply = JsonDocument.Parse(transport.Inner.Call($"{Route}Snapshot"));
+        var root = reply.RootElement;
+        Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("state").ValueKind == JsonValueKind.Null &&
+            root.GetProperty("error").GetProperty("message").GetString() == error,
+            $"{name}: {what} did not fail with the fixture error.\nexpected: {error}\nactual:   {root.GetRawText()}");
     }
 
     private static string State(FixtureTransport transport)

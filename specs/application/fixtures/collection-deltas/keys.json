@@ -1,0 +1,44 @@
+{
+  "description": "Invalid keys. The producer never writes a full state or frame whose collection has a null row or a null, empty or duplicate key. A snapshot read fails with the reason; a change publishes a failure notice instead and nothing else until the keys are valid again. error is the bounded reason, without key values.",
+  "cases": [
+    {
+      "name": "a duplicate key in a full state",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 1, "label": "again" }], "title": "rows" },
+      "steps": [],
+      "frames": [],
+      "error": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection."
+    },
+    {
+      "name": "an added row with a duplicate key",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }], "title": "rows" },
+      "steps": [{ "each": [{ "op": "insert", "index": 0, "item": { "id": 1, "label": "again" } }] }],
+      "frames": [
+        { "__runicFailure": 1, "revision": 1, "error": { "kind": "failed", "message": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection." } }
+      ],
+      "error": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection."
+    },
+    {
+      "name": "a replacement row with another row's key",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }], "title": "rows" },
+      "steps": [{ "each": [{ "op": "set", "index": 1, "item": { "id": 1, "label": "again" } }] }],
+      "frames": [
+        { "__runicFailure": 1, "revision": 1, "error": { "kind": "failed", "message": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection." } }
+      ],
+      "error": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection."
+    },
+    {
+      "name": "fixed keys publish a full state",
+      "delivery": "held",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }], "title": "rows" },
+      "steps": [{ "each": [
+        { "op": "insert", "index": 0, "item": { "id": 1, "label": "again" } },
+        { "op": "removeAt", "index": 0 }
+      ] }],
+      "frames": [
+        { "__runicFailure": 1, "revision": 1, "error": { "kind": "failed", "message": "CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection." } },
+        { "revision": 2, "rows": [{ "id": 1, "label": "one" }], "title": "rows" }
+      ],
+      "expected": { "revision": 2, "rows": [{ "id": 1, "label": "one" }], "title": "rows" }
+    }
+  ]
+}

@@ -12,10 +12,14 @@ type Wire = { readonly revision: number; readonly rows: unknown; readonly title:
 type FixtureCase = {
   readonly name: string;
   readonly initial: unknown;
-  readonly frames: readonly unknown[];
-  readonly expected: unknown;
+  readonly steps: readonly unknown[];
+  readonly frames?: readonly unknown[];
+  readonly expected?: unknown;
   readonly dropped?: readonly number[];
+  readonly recovery?: unknown;
+  readonly failedReads?: number;
   readonly recoveries?: number;
+  readonly error?: string;
 };
 
 const directory = new URL("../../../../specs/application/fixtures/collection-deltas/", import.meta.url);
@@ -47,13 +51,16 @@ function expand(value: unknown): unknown {
   return value;
 }
 
-/** Connects a client whose snapshot route answers `initial` first and `recovery` afterwards. */
-async function connectRows(initial: unknown, recovery: unknown) {
+/** Connects a client whose snapshot route answers `initial` first, then fails `failedReads` times, then answers `recovery`. */
+async function connectRows(initial: unknown, recovery: unknown, failedReads = 0) {
   delete host[Symbol.for("runic.views.generated-client-runtime")];
   const bridge = installMockBridge(createMockBridge());
   let reads = 0;
-  bridge.route("rowsSnapshot", () =>
-    JSON.stringify({ ok: true, state: reads++ === 0 ? initial : recovery, error: null, protocol: 1 }));
+  bridge.route("rowsSnapshot", () => {
+    const read = reads++;
+    if (read > 0 && read <= failedReads) throw new Error("The snapshot read failed.");
+    return JSON.stringify({ ok: true, state: read === 0 ? initial : recovery, error: null, protocol: 1 });
+  });
   const client = await connectView({ contract: "Tests.CollectionDeltaViewModel:fixtures", route: "rows", mount: false, collections, hydrate });
   const push = host["__rowsChanged"] as (wire: unknown) => void;
   return { client, push, recoveries: () => reads - 1 };
@@ -77,40 +84,66 @@ type Change = { readonly kind: string; readonly index: number; readonly oldIndex
 
 const fixtures = readdirSync(directory).filter(name => name.endsWith(".json")).sort();
 
-test("every frame kind and recovery path has a fixture", () => {
-  assert.deepEqual(fixtures, ["add.json", "batch.json", "move.json", "overflow.json", "recovery.json", "remove.json", "replace.json"]);
+test("every frame kind, recovery path and key check has a fixture", () => {
+  assert.deepEqual(fixtures, ["add.json", "batch.json", "keys.json", "move.json", "overflow.json", "recovery.json", "remove.json", "replace.json"]);
 });
 
 for (const file of fixtures) {
   const fixture = JSON.parse(readFileSync(new URL(file, directory), "utf8")) as { readonly cases: readonly FixtureCase[] };
   for (const testCase of fixture.cases) {
+    if (testCase.error !== undefined && testCase.steps.length === 0) {
+      // The client also rejects a full state with the keys the producer refuses.
+      test(`${file}: ${testCase.name}`, async () => {
+        await assert.rejects(connectRows(expand(testCase.initial), undefined), /invalid state/);
+      });
+      continue;
+    }
     test(`${file}: ${testCase.name}`, async () => {
-      const expected = expand(testCase.expected);
+      // A case with an error keeps its initial state.
+      const expected = expand(testCase.expected ?? testCase.initial);
       let reference = expand(testCase.initial) as Wire;
-      const { client, push, recoveries } = await connectRows(reference, expected);
+      const { client, push, recoveries } = await connectRows(reference, expand(testCase.recovery ?? testCase.expected), testCase.failedReads);
       let notifications = 0;
       client.subscribe(() => { notifications++; });
-      const firstDropped = Math.min(...(testCase.dropped ?? [Infinity]));
-      for (const [index, frame] of testCase.frames.entries()) {
-        if (testCase.dropped?.includes(index)) continue;
-        const wire = expand(frame);
-        const before = notifications;
-        // A repeated frame is a duplicate and must not change the result.
-        push(wire); push(wire);
-        if (index > firstDropped) continue;
-        // Until a frame is missed, every frame applies without recovery and
-        // matches an independent reading of the frame format.
-        reference = applyReference(reference, wire);
-        assert.equal(recoveries(), 0, `frame ${index} needed a recovery`);
-        // A repeated full state at the same revision is accepted again; a repeated delta is not.
-        if ((wire as { __runicDelta?: number }).__runicDelta === undefined) assert.ok(notifications > before, `frame ${index} was not applied`);
-        else assert.equal(notifications - before, 1, `frame ${index} was not applied exactly once`);
-        assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} produced another state`);
-      }
-      if (testCase.dropped === undefined) assert.deepEqual(reference, expected);
-      await new Promise(resolve => setTimeout(resolve, 0));
-      assert.equal(recoveries(), testCase.recoveries ?? 0);
-      assert.deepEqual(client.snapshot, hydrate(expected as Wire));
+      const target = globalThis as { reportError?: ((error: unknown) => void) | undefined };
+      const previousReport = target.reportError;
+      const reported: unknown[] = [];
+      target.reportError = error => { reported.push(error); };
+      try {
+        const firstDropped = Math.min(...(testCase.dropped ?? [Infinity]));
+        for (const [index, frame] of testCase.frames!.entries()) {
+          if (testCase.dropped?.includes(index)) continue;
+          const wire = expand(frame);
+          const before = notifications;
+          if ((wire as { __runicFailure?: number }).__runicFailure !== undefined) {
+            // A failure notice is reported each time and changes nothing.
+            const failures = reported.length;
+            push(wire); push(wire);
+            assert.equal(reported.length - failures, 2, `frame ${index} was not reported`);
+            assert.match(String((reported.at(-1) as Error).message), /\[RunicCollection\] keys/);
+            assert.equal(notifications, before, `frame ${index} notified subscribers`);
+            assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} changed the state`);
+            continue;
+          }
+          // A repeated frame is a duplicate and must not change the result.
+          push(wire); push(wire);
+          if (index > firstDropped) continue;
+          // Until a frame is missed, every frame applies without recovery and
+          // matches an independent reading of the frame format.
+          reference = applyReference(reference, wire);
+          assert.equal(recoveries(), 0, `frame ${index} needed a recovery`);
+          // A repeated state or frame at the same revision does not notify again.
+          assert.equal(notifications - before, 1, `frame ${index} was not applied exactly once`);
+          assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} produced another state`);
+        }
+        if (testCase.dropped === undefined) assert.deepEqual(reference, expected);
+        // A failed read is retried after a backoff of at least 250 ms.
+        for (let waited = 0; recoveries() < (testCase.recoveries ?? 0) && waited < 3000; waited += 10)
+          await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(recoveries(), testCase.recoveries ?? 0);
+        assert.deepEqual(client.snapshot, hydrate(expected as Wire));
+      } finally { target.reportError = previousReport; }
       client.dispose();
     });
   }
@@ -119,7 +152,7 @@ for (const file of fixtures) {
 test("a frame above 4096 changes is rejected and recovered with one snapshot read", async () => {
   const fixture = JSON.parse(readFileSync(new URL("overflow.json", directory), "utf8")) as { readonly cases: readonly FixtureCase[] };
   const atCap = fixture.cases[0]!;
-  const frame = expand(atCap.frames[0]) as { changes: unknown[] };
+  const frame = expand(atCap.frames![0]) as { changes: unknown[] };
   frame.changes.push(...(expand([{ $adds: [4096, 1] }]) as unknown[]));
   const recovery = expand({ revision: 4097, rows: [{ $rows: [0, 4097] }], title: "rows" });
   const { client, push, recoveries } = await connectRows(expand(atCap.initial), recovery);
