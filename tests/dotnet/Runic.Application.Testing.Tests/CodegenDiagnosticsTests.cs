@@ -46,10 +46,77 @@ internal static class CodegenDiagnosticsTests
                         $"{name}: the generator output did not contain '{text}'.\n{output}");
             }
 
-            await Reject("HashSetValue", """
+            // Each diagnostic has its own ID and points at the declaration
+            // through the fixture's PDB: "<file>(<line>,<column>): error <ID>: ".
+            async Task RejectAt(string name, string members, string code, string declaration, params string[] expected)
+            {
+                var source = Preamble + members;
+                var output = await GenerateAsync(generator, temporaryRoot, name, source).ConfigureAwait(false);
+                var line = source[..source.IndexOf(declaration, StringComparison.Ordinal)].Count(character => character == '\n') + 1;
+                var location = $"{Path.Combine(temporaryRoot, name, "Fixture.cs")}({line},";
+                Require(output.Split('\n').Any(text => text.StartsWith(location, StringComparison.Ordinal)
+                        && text.Contains($": error {code}: ", StringComparison.Ordinal)),
+                    $"{name}: expected 'error {code}' at line {line} of the fixture.\n{output}");
+                foreach (var text in expected)
+                    Require(output.Contains(text, StringComparison.Ordinal),
+                        $"{name}: the generator output did not contain '{text}'.\n{output}");
+            }
+
+            await RejectAt("HashSetValue", """
                 public sealed class SetViewModel : FixtureModel { public HashSet<string> Tags { get; } = []; }
                 public sealed partial class SetWindow(SetViewModel model) : RunicWindow<SetViewModel>(model);
-                """, "error RUNICBRIDGE003:", "System.Collections.Generic.HashSet`1", "is not a supported bridge collection").ConfigureAwait(false);
+                """, "RUNICBRIDGE003", "public sealed class SetViewModel",
+                "System.Collections.Generic.HashSet`1", "is not a supported bridge collection").ConfigureAwait(false);
+            // A nested DTO member points at the DTO property, not the ViewModel.
+            await RejectAt("NestedValue", """
+                public sealed class Row
+                {
+                    public string Name { get; init; } = "";
+                    public object Value { get; init; } = new();
+                }
+                public sealed class RowViewModel : FixtureModel { public Row Current { get; } = new(); }
+                public sealed partial class RowWindow(RowViewModel model) : RunicWindow<RowViewModel>(model);
+                """, "RUNICBRIDGE003", "public object Value", "RowViewModel.Current.value").ConfigureAwait(false);
+            await RejectAt("InternalWindow", """
+                public sealed class HiddenViewModel : FixtureModel { public string Title { get; } = ""; }
+                internal sealed partial class HiddenWindow(HiddenViewModel model) : RunicWindow<HiddenViewModel>(model)
+                {
+                    public string Caption => "hidden";
+                }
+                """, "RUNICBRIDGE006", "internal sealed partial class HiddenWindow", "Fixture.HiddenWindow: a Runic Window or View must be a public").ConfigureAwait(false);
+            await RejectAt("EmptyViewModel", """
+                public sealed class EmptyViewModel : FixtureModel
+                {
+                    internal string Hidden => "";
+                }
+                public sealed partial class EmptyWindow(EmptyViewModel model) : RunicWindow<EmptyViewModel>(model);
+                """, "RUNICBRIDGE007", "internal string Hidden",
+                "EmptyViewModel: a ViewModel needs at least one state property, command, or interaction.").ConfigureAwait(false);
+            await RejectAt("WriteOnlyState", """
+                public sealed class WriteOnlyViewModel : FixtureModel
+                {
+                    public string Name { set { } }
+                }
+                public sealed partial class WriteOnlyWindow(WriteOnlyViewModel model) : RunicWindow<WriteOnlyViewModel>(model);
+                """, "RUNICBRIDGE008", "public string Name { set { } }",
+                "WriteOnlyViewModel.Name: a public getter is required.").ConfigureAwait(false);
+            await RejectAt("UnkeyedCollection", """
+                public sealed class Item { public string Label { get; init; } = ""; }
+                public sealed class ItemsViewModel : FixtureModel
+                {
+                    [RunicCollection("Id")] public IReadOnlyList<Item> Items { get; } = [];
+                }
+                public sealed partial class ItemsWindow(ItemsViewModel model) : RunicWindow<ItemsViewModel>(model);
+                """, "RUNICBRIDGE010", "[RunicCollection(\"Id\")]",
+                "ItemsViewModel.Items: the collection key 'Id' must name").ConfigureAwait(false);
+            await RejectAt("SettableInteraction", """
+                public sealed class PromptViewModel : FixtureModel
+                {
+                    public ReactiveUI.Binding.Interaction<string, bool> Confirm { get; set; } = new();
+                }
+                public sealed partial class PromptWindow(PromptViewModel model) : RunicWindow<PromptViewModel>(model);
+                """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
+                "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow(ObjectViewModel model) : RunicWindow<ObjectViewModel>(model);
@@ -91,10 +158,10 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class SecondWindow(SecondViewModel model) : RunicWindow<SecondViewModel>(model);
                 """, "FirstViewModel.Values", "SecondViewModel.Value").ConfigureAwait(false);
             // A short ReactiveUI command name was sliced before its suffix check.
-            await Reject("ShortReactiveCommand", """
+            await RejectAt("ShortReactiveCommand", """
                 public sealed class GoViewModel : FixtureModel { public ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, ReactiveUI.Primitives.RxVoid> Go { get; } = null!; }
                 public sealed partial class GoWindow(GoViewModel model) : RunicWindow<GoViewModel>(model);
-                """, "Go: Bridge commands must end with Command.").ConfigureAwait(false);
+                """, "RUNICBRIDGE009", "public sealed class GoViewModel", "GoViewModel.Go: Bridge commands must end with Command.").ConfigureAwait(false);
             await Reject("ErrorsCollision", """
                 public sealed class ErrorsViewModel : FixtureModel, INotifyDataErrorInfo
                 {
@@ -132,14 +199,15 @@ internal static class CodegenDiagnosticsTests
                 """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
 
             // Toolkit commands have no result, so a result cardinality is a mistake.
-            await Reject("ToolkitResult", """
+            await RejectAt("ToolkitResult", """
                 public sealed class ResultViewModel : FixtureModel
                 {
                     [RunicCommandResult(BridgeCommandResultCardinality.Last)]
                     public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                 }
                 public sealed partial class ResultWindow(ResultViewModel model) : RunicWindow<ResultViewModel>(model);
-                """, "LoadCommand: RunicCommandResult selects a ReactiveUI command's result cardinality").ConfigureAwait(false);
+                """, "RUNICBRIDGE009", "public IAsyncRelayCommand LoadCommand",
+                "LoadCommand: RunicCommandResult selects a ReactiveUI command's result cardinality").ConfigureAwait(false);
 
             // The contract fingerprint follows the generated wire shape, so a
             // nullable ReactiveUI argument is a contract change for hot reload.
@@ -157,6 +225,18 @@ internal static class CodegenDiagnosticsTests
             Require(Fingerprint("FingerprintPlain", "ReactiveUI.ReactiveCommand<string, string>")
                 != Fingerprint("FingerprintNullable", "ReactiveUI.ReactiveCommand<string?, string>"),
                 "The contract fingerprint ignored a nullable ReactiveUI command input.");
+
+            // Named types are written to types.ts; a hand-written file there
+            // is reported instead of being overwritten.
+            var handWritten = Path.Combine(temporaryRoot, "HandWrittenTypes", "ts", "types.ts");
+            Directory.CreateDirectory(Path.GetDirectoryName(handWritten)!);
+            File.WriteAllText(handWritten, "export type Mine = string;\n");
+            await Reject("HandWrittenTypes", """
+                public sealed class PlainTitleViewModel : FixtureModel { public string Title { get; } = ""; }
+                public sealed partial class PlainTitleWindow(PlainTitleViewModel model) : RunicWindow<PlainTitleViewModel>(model);
+                """, "error RUNICBRIDGE004:", "types.ts is not generated").ConfigureAwait(false);
+            Require(File.ReadAllText(handWritten) == "export type Mine = string;\n",
+                "The generator overwrote a hand-written types.ts.");
 
             // A file that is not a .NET assembly is a diagnostic, not a crash.
             var invalidDirectory = Path.Combine(temporaryRoot, "InvalidImage");
@@ -210,8 +290,17 @@ internal static class CodegenDiagnosticsTests
         var directory = Path.Combine(temporaryRoot, name);
         Directory.CreateDirectory(directory);
         var assembly = Path.Combine(directory, $"Fixture{name}.dll");
-        var compilation = Compile(name, source);
-        var emitted = compilation.Emit(assembly);
+        // Emit a portable PDB over a source file on disk, as a project build
+        // does, so diagnostics can report source locations.
+        var sourcePath = Path.Combine(directory, "Fixture.cs");
+        File.WriteAllText(sourcePath, source);
+        var compilation = Compile(name, source, sourcePath);
+        Microsoft.CodeAnalysis.Emit.EmitResult emitted;
+        using (var image = File.Create(assembly))
+        using (var symbols = File.Create(Path.ChangeExtension(assembly, ".pdb")))
+            emitted = compilation.Emit(image, symbols, options: new Microsoft.CodeAnalysis.Emit.EmitOptions(
+                debugInformationFormat: Microsoft.CodeAnalysis.Emit.DebugInformationFormat.PortablePdb,
+                pdbFilePath: Path.ChangeExtension(assembly, ".pdb")));
         if (!emitted.Success)
             throw new InvalidOperationException($"{name}: the fixture did not compile.\n"
                 + string.Join('\n', emitted.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)));
@@ -224,14 +313,15 @@ internal static class CodegenDiagnosticsTests
         return (exitCode, text, directory);
     }
 
-    private static CSharpCompilation Compile(string name, string source)
+    private static CSharpCompilation Compile(string name, string source, string path = "")
     {
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(path => MetadataReference.CreateFromFile(path));
+            .Select(reference => MetadataReference.CreateFromFile(reference));
         return CSharpCompilation.Create($"Fixture{name}",
-            [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest))], references,
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+            [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest), path, System.Text.Encoding.UTF8)], references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable,
+                optimizationLevel: OptimizationLevel.Debug));
     }
 
     private static async Task<(int ExitCode, string Output)> RunProcessAsync(string generator, string assembly,

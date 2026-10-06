@@ -24,20 +24,23 @@ internal static class InteractionCodeEmitter
             var interaction = ReactiveInteractionInspector.InspectContract(property);
             if (interaction is null) continue;
             if (property.GetMethod is null)
-                throw new NotSupportedException($"{modelName}.{property.Name}: an interaction needs a public getter.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
+                    $"{modelName}.{property.Name}: an interaction needs a public getter.", property);
             if (property.SetMethod?.IsPublic == true)
-                throw new NotSupportedException($"{modelName}.{property.Name}: interactions are application-owned and cannot have a public setter.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
+                    $"{modelName}.{property.Name}: interactions are application-owned and cannot have a public setter.", property);
 
             var publicName = LowerFirst(property.Name);
             if (!names.Add(publicName))
-                throw new NotSupportedException($"{modelName}.{property.Name}: duplicate generated interaction name '{publicName}'.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                    $"{modelName}.{property.Name}: duplicate generated interaction name '{publicName}'.", property);
             plans.Add(new GeneratedInteractionPlan(property, interaction,
                 BridgeTypeGraph.Discover(interaction.Input,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 0),
-                    $"{modelName}.{property.Name}.input"),
+                    $"{modelName}.{property.Name}.input", property),
                 BridgeTypeGraph.Discover(interaction.Output,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 1),
-                    $"{modelName}.{property.Name}.output"),
+                    $"{modelName}.{property.Name}.output", property),
                 $"{contractFingerprint}:interaction:{property.Name}"));
         }
         return [.. plans];
@@ -177,6 +180,7 @@ internal static class InteractionCodeEmitter
         source.AppendLine($"export interface {shortName}Interactions {{");
         foreach (var plan in all)
         {
+            XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(plan.Property));
             source.AppendLine($"  readonly {LowerFirst(plan.Property.Name)}: {{");
             source.AppendLine($"    handle(handler: (input: {plan.Input.TypeScriptType()}, context: {shortName}InteractionContext) => {plan.Output.TypeScriptType()} | Promise<{plan.Output.TypeScriptType()}>): () => void;");
             source.AppendLine("  };");
@@ -216,7 +220,7 @@ internal static class InteractionCodeEmitter
         public void Add(string name, string owner)
         {
             if (_owners.TryGetValue(name, out var previous))
-                throw new BridgeNameCollisionException($"{modelName}: generated {surface} name '{name}' conflicts between {previous} and {owner}. Rename one member or add an explicit bridge alias.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision, $"{modelName}: generated {surface} name '{name}' conflicts between {previous} and {owner}. Rename one member or add an explicit bridge alias.");
             _owners.Add(name, owner);
         }
     }

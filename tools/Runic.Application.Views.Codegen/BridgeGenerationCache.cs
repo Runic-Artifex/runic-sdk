@@ -17,7 +17,9 @@ using Runic.Application.Views.Codegen.Toolkit;
 internal static class BridgeGenerationCache
 {
     private const string ManifestFileName = ".runic-bridge-generation-cache.json";
-    private const int SchemaVersion = 2;
+    // Version 3: generated TypeScript gained named types and XML documentation,
+    // so outputs recorded by earlier generators must regenerate.
+    private const int SchemaVersion = 3;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -102,6 +104,13 @@ internal static class BridgeGenerationCache
         foreach (var dependency in Directory.EnumerateFiles(modelDirectory, "*.dll")
                      .Select(Path.GetFullPath).OrderBy(path => path, StringComparer.Ordinal))
             inputs.Add("model-directory:" + dependency + ":" + HashFile(dependency));
+
+        // Generated TypeScript copies XML documentation comments. A comment edit
+        // does not necessarily change a deterministic assembly, so hash the
+        // documentation files beside the assemblies as well.
+        foreach (var documentation in Directory.EnumerateFiles(modelDirectory, "*.xml")
+                     .Select(Path.GetFullPath).OrderBy(path => path, StringComparer.Ordinal))
+            inputs.Add("model-documentation:" + documentation + ":" + HashFile(documentation));
 
         foreach (var runtime in GeneratorAndRuntimeAssemblies()
                      .OrderBy(path => path, StringComparer.Ordinal))

@@ -63,12 +63,14 @@ try
                 var model = ViewModelFor(type);
                 if (model is null) continue;
                 if (!type.IsClass || !type.IsPublic || type.IsNested)
-                    throw new InvalidOperationException($"{type.FullName}: a Runic Window or View must be a public, top-level concrete class.");
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                        $"{type.FullName}: a Runic Window or View must be a public, top-level concrete class.", type);
                 if (!viewTypes.TryGetValue(model, out var variants))
                     viewTypes.Add(model, variants = []);
                 var contract = ContractFor(type);
                 if (variants.Any(existing => string.Equals(ContractFor(existing), contract, StringComparison.OrdinalIgnoreCase)))
-                    throw new InvalidOperationException($"{model.FullName}: duplicate Runic View contract '{contract ?? "default"}'.");
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                        $"{type.FullName}: {model.FullName} already has a Runic View with contract '{contract ?? "default"}'.", type);
                 variants.Add(type);
             }
             catch (Exception error) when (Diagnostics.IsReportable(error))
@@ -79,19 +81,26 @@ try
         if (Diagnostics.HasErrors) return;
         var models = viewTypes.Keys.Select(type => (Model: type, Name: PublicName(type))).ToArray();
         if (models.Length == 0)
-            throw new InvalidOperationException($"{assembly.GetName().Name}: no Runic Window/View classes found.");
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                $"{assembly.GetName().Name}: no Runic Window/View classes found.");
         foreach (var group in models.GroupBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
-            throw new BridgeNameCollisionException($"Bridge ViewModel names must be unique within an application: {string.Join(" and ", group.Select(entry => entry.Model.FullName))} both use '{group.Key}'.");
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                $"Bridge ViewModel names must be unique within an application: {string.Join(" and ", group.Select(entry => entry.Model.FullName))} both use '{group.Key}'.",
+                group.Last().Model);
         var presentationKinds = models.SelectMany(entry => viewTypes.TryGetValue(entry.Model, out var variants)
-            ? variants.Select(view => PageKind(entry.Name, ContractFor(view)))
-            : [PageKind(entry.Name, null)]).ToArray();
-        foreach (var group in presentationKinds.GroupBy(kind => kind, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
-            throw new BridgeNameCollisionException($"Bridge presentation kinds must be unique across ViewModels and View contracts: '{group.Key}' is used more than once.");
+            ? variants.Select(view => (Kind: PageKind(entry.Name, ContractFor(view)), Member: (MemberInfo)view))
+            : [(Kind: PageKind(entry.Name, null), Member: entry.Model)]).ToArray();
+        foreach (var group in presentationKinds.GroupBy(kind => kind.Kind, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                $"Bridge presentation kinds must be unique across ViewModels and View contracts: '{group.Key}' is used by {string.Join(" and ", group.Select(kind => kind.Member.Name))}.",
+                group.Last().Member);
         if (aot)
         {
             var unsupported = models.FirstOrDefault(entry => ToolkitCommandInspector.HasUnsupportedAotValidation(entry.Model));
             if (unsupported.Model is not null)
-                throw new AotValidationException($"{unsupported.Model.FullName} inherits CommunityToolkit.Mvvm.ObservableValidator. Its validation failed in this prototype's Native AOT probe; use a framework-dependent publish until an AOT-safe validator is verified.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Aot,
+                    $"{unsupported.Model.FullName} inherits CommunityToolkit.Mvvm.ObservableValidator. Its validation failed in this prototype's Native AOT probe; use a framework-dependent publish until an AOT-safe validator is verified.",
+                    unsupported.Model);
         }
 
         Directory.CreateDirectory(positional[2]);
@@ -102,10 +111,17 @@ try
         var csharpOutputs = models.Select(entry => (Path: BridgeFileName(entry.Model), Owner: entry.Model.FullName!))
             .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
             .ToArray();
-        var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!)).ToArray();
+        var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
+            .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types")).ToArray();
         foreach (var group in csharpOutputs.Concat(typescriptOutputs)
             .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
-            throw new BridgeNameCollisionException($"generated file '{group.Key}' would be written by {string.Join(" and ", group.Select(output => output.Owner))}. Rename one type.");
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                $"generated file '{group.Key}' would be written by {string.Join(" and ", group.Select(output => output.Owner))}. Rename one type.",
+                models.FirstOrDefault(entry => group.Any(output => output.Owner == entry.Model.FullName)).Model);
+        var namedTypesPath = Path.Combine(positional[3], $"{TypeScriptNamedTypes.ModuleName}.ts");
+        if (File.Exists(namedTypesPath) && !GeneratedOutput.IsGenerated(namedTypesPath))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                $"{Path.GetFullPath(namedTypesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or set RunicBridgeTypescriptDir to a dedicated directory.");
         var expectedCsharp = csharpOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[2], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
         var expectedTypescript = typescriptOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[3], output.Path)))
@@ -137,6 +153,7 @@ try
             }
         }
         if (Diagnostics.HasErrors) return;
+        TypeScriptModules.WriteAll(positional[3]);
         var compositionPath = Path.Combine(positional[2], "RunicBridgeComposition.g.cs");
         if (compositionType is null)
         {
@@ -153,6 +170,7 @@ try
             throw new ArgumentException("Usage: BridgeCodegen <model.dll> <ViewModel type> <output.cs> <output.ts> [public name]");
         var model = Assembly.LoadFrom(Path.GetFullPath(args[0])).GetType(args[1], throwOnError: true)!;
         GenerateOne(model, args[2], args[3], args.Length == 5 ? args[4] : PublicName(model));
+        TypeScriptModules.WriteAll(Path.GetDirectoryName(Path.GetFullPath(args[3]))!);
     }
 }
 catch (Exception error) when (Diagnostics.IsReportable(error))
@@ -193,7 +211,8 @@ static string? ContractFor(MemberInfo member)
     var contract = attribute.ConstructorArguments.Single().Value as string;
     if (string.IsNullOrWhiteSpace(contract) || !char.IsLetter(contract[0])
         || !contract.All(char.IsLetterOrDigit))
-        throw new InvalidOperationException($"{member.Name}: a View contract must contain only letters and digits and start with a letter.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+            $"{member.DeclaringType?.Name}{(member.DeclaringType is null ? "" : ".")}{member.Name}: a View contract must contain only letters and digits and start with a letter.", member);
     return contract;
 }
 
@@ -210,7 +229,8 @@ static int InheritanceDepth(Type type)
 static void GenerateViewPartial(string path, Type view, Type model, string shortName)
 {
     if (view.ContainsGenericParameters)
-        throw new InvalidOperationException($"{view.FullName}: a Runic View must be a closed, named class.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+            $"{view.FullName}: a Runic View must be a closed, named class.", view);
     var cs = new StringBuilder();
     cs.AppendLine("// <auto-generated />");
     cs.AppendLine("#nullable enable");
@@ -318,9 +338,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
 {
     knownModels ??= [(model, shortName)];
     if (!typeof(INotifyPropertyChanged).IsAssignableFrom(model))
-        throw new InvalidOperationException($"{model.FullName} must implement INotifyPropertyChanged.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
+            $"{model.FullName} must implement INotifyPropertyChanged.", model);
     if (model.IsNested || !model.IsClass || !model.IsPublic)
-        throw new InvalidOperationException("This prototype supports public, top-level ViewModel classes.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
+            $"{model.FullName}: a Bridge ViewModel must be a public, top-level class.", model);
 
     var declared = model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
         .Where(property => property.GetIndexParameters().Length == 0
@@ -331,22 +353,28 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var contractFingerprint = BridgeContractShape.Compute(model);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
-        || ReactiveCommandInspector.InspectContract(property, CodegenOptions.ReactiveUiFlavor) is not null).ToArray();
+        || InspectCommand(model, property, () => ReactiveCommandInspector.InspectContract(property, CodegenOptions.ReactiveUiFlavor)) is not null).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property)).ToArray();
-    if (properties.Any(property => WireName(property) == "revision"))
-        throw new NotSupportedException($"{model.Name}.Revision conflicts with the generated Bridge revision field.");
+    if (properties.FirstOrDefault(property => WireName(property) == "revision") is { } revision)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+            $"{model.Name}.{revision.Name} conflicts with the generated Bridge revision field.", revision);
     var duplicateWireName = properties.GroupBy(WireName, StringComparer.Ordinal).FirstOrDefault(group => group.Count() > 1);
     if (duplicateWireName is not null)
-        throw new NotSupportedException($"{model.Name}: state properties share the generated wire name '{duplicateWireName.Key}'.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+            $"{model.Name}: state properties {string.Join(" and ", duplicateWireName.Select(property => property.Name))} share the generated wire name '{duplicateWireName.Key}'.",
+            duplicateWireName.Last());
     var nullability = new NullabilityInfoContext();
     if (properties.Length == 0 && commands.Length == 0 && interactions.Length == 0)
-        throw new InvalidOperationException("A ViewModel needs at least one state property, command, or interaction.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
+            $"{model.Name}: a ViewModel needs at least one state property, command, or interaction.", model);
     var contentProperties = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     var contentCollections = new Dictionary<PropertyInfo, (Type Model, string Name)[]>();
     var valueProperties = new Dictionary<PropertyInfo, BridgeTypeGraph>();
     foreach (var property in properties)
     {
-        if (property.GetMethod is null) throw new NotSupportedException($"{property.Name}: a public getter is required.");
+        if (property.GetMethod is null)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+                $"{model.Name}.{property.Name}: a public getter is required.", property);
         // A routed interface or base property may admit several registered
         // ViewModels. Emit the most specific class first: a base pattern ahead
         // of its derived class would hide the derived View (or fail to compile).
@@ -358,7 +386,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (contentModels.Length > 0 && property.PropertyType != typeof(object))
         {
             if (property.SetMethod?.IsPublic == true)
-                throw new NotSupportedException($"{property.Name}: ViewModel content must be set by .NET, not the web view.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+                    $"{model.Name}.{property.Name}: ViewModel content must be set by .NET, not the web view.", property);
             contentProperties.Add(property, contentModels);
             continue;
         }
@@ -374,16 +403,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             if (itemModels.Length > 0)
             {
                 if (property.SetMethod?.IsPublic == true)
-                    throw new NotSupportedException($"{property.Name}: ViewModel collections must be set by .NET, not the web view.");
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+                        $"{model.Name}.{property.Name}: ViewModel collections must be set by .NET, not the web view.", property);
                 contentCollections.Add(property, itemModels);
                 continue;
             }
             if (itemType == typeof(object) || typeof(INotifyPropertyChanged).IsAssignableFrom(itemType) &&
                 property.GetCustomAttribute<RunicCollectionAttribute>(true) is null)
-                throw new NotSupportedException($"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.");
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+                    $"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.", property);
         }
         valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
-            nullability.Create(property), $"{model.Name}.{property.Name}"));
+            nullability.Create(property), $"{model.Name}.{property.Name}", property));
     }
     var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
     foreach (var property in properties)
@@ -392,45 +423,53 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (property.SetMethod?.IsPublic == true || !valueProperties.TryGetValue(property, out var collectionGraph) ||
             collectionGraph.Root.Kind is not (BridgeWireKind.Array or BridgeWireKind.List) || collectionGraph.Root.IsNullable ||
             collectionGraph.Root.Element is not { IsNullable: false, Kind: BridgeWireKind.Dto } item)
-            throw new NotSupportedException($"{model.Name}.{property.Name}: RunicCollection requires a nonnullable, read-only collection of nonnullable DTO rows.");
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Collection,
+                $"{model.Name}.{property.Name}: RunicCollection requires a nonnullable, read-only collection of nonnullable DTO rows.", property);
         var key = item.Members.SingleOrDefault(member => member.Property.Name == attribute.KeyProperty);
         if (key is null || key.Type.IsNullable || key.Type.NonNullableType != typeof(string) && key.Type.NonNullableType != typeof(Guid) && key.Type.NonNullableType != typeof(int))
-            throw new NotSupportedException($"{model.Name}.{property.Name}: the collection key must name a nonnullable string, Guid or Int32 row property.");
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Collection,
+                $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid or Int32 row property.", property);
         incrementalCollections.Add(property, key.Property);
     }
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
     var contentBindings = contentProperties.Concat(contentCollections).ToArray();
     if ((hasContent || interactions.Length > 0) && registerGlobally)
-        throw new InvalidOperationException($"{model.Name} contains ViewModel content or interactions. Generate it with --no-registry and attach it through a window content session.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Invocation,
+            $"{model.Name} contains ViewModel content or interactions. Generate it with --no-registry (RunicBridgeRegisterGlobally=false) and attach it through a window content session.", model);
     var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
+    var commandSources = commands.ToDictionary(command => command, command => ToolkitSourceMethod(model, command));
     foreach (var command in commands)
     {
+        var source = (MemberInfo?)commandSources[command] ?? command;
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
-            throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
-        var toolkit = ToolkitCommandInspector.InspectContract(command);
-        var reactive = ReactiveCommandInspector.InspectContract(command, CodegenOptions.ReactiveUiFlavor);
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
+                $"{model.Name}.{command.Name}: Bridge commands must end with Command.", source);
+        var toolkit = InspectCommand(model, command, () => ToolkitCommandInspector.InspectContract(command));
+        var reactive = InspectCommand(model, command, () => ReactiveCommandInspector.InspectContract(command, CodegenOptions.ReactiveUiFlavor));
         var plainInput = command.GetCustomAttribute<RunicCommandInputAttribute>(true);
         var plan = toolkit is { } existing
             ? new GeneratedCommandPlan(false, existing.IsAsync, ToolkitContract: existing,
                 InputGraph: existing.Input is { } toolkitInput ? BridgeTypeGraph.Discover(toolkitInput,
                     ContractNullability.Argument(command, nullability, [toolkitInput], 0),
-                    $"{model.Name}.{command.Name}.input") : null)
+                    $"{model.Name}.{command.Name}.input", source) : null)
             : reactive is { } contract
                 ? GeneratedCommandPlan.Reactive(contract,
                     contract.HasInput ? BridgeTypeGraph.Discover(contract.Input,
                         ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 0),
-                        $"{model.Name}.{command.Name}.input") : null,
+                        $"{model.Name}.{command.Name}.input", source) : null,
                     contract.HasResult ? BridgeTypeGraph.Discover(contract.Result,
                         ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 1),
-                        $"{model.Name}.{command.Name}.result") : null)
+                        $"{model.Name}.{command.Name}.result", source) : null)
                 : plainInput is not null
                     ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
-                        rootPath: $"{model.Name}.{command.Name}.input"))
-                : throw new NotSupportedException($"{command.Name}: unsupported CommunityToolkit or ReactiveUI command shape.");
+                        rootPath: $"{model.Name}.{command.Name}.input", origin: source))
+                : throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
+                    $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput.", source);
         if (plan.ReactiveContract is null && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
-            throw new NotSupportedException($"{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; CommunityToolkit and plain commands have no result value.");
-        commandPlans.Add(command, plan);
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
+                $"{model.Name}.{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; CommunityToolkit and plain commands have no result value.", source);
+        commandPlans.Add(command, plan with { ParameterName = CommandParameterName(commandSources[command], plan) });
     }
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
     {
@@ -439,19 +478,22 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             plan.InputGraph?.TypeScriptType() ?? "never",
             plan.ResultGraph?.TypeScriptType() ?? "never",
             plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined as never",
-            plan.InputGraph?.EncodeTypeScript("input") ?? "undefined",
+            plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
             plan.HasArgument,
-            plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream);
+            plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream,
+            plan.ParameterName);
     }).ToArray();
 
     if (shortName.Length == 0 || !shortName.All(char.IsLetterOrDigit) || !char.IsLetter(shortName[0]))
-        throw new ArgumentException("The public Bridge name must be a C#/TypeScript identifier.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
+            $"{model.FullName}: the public Bridge name '{shortName}' must be a C#/TypeScript identifier.", model);
     var prefix = LowerFirst(shortName);
     var hasErrors = typeof(INotifyDataErrorInfo).IsAssignableFrom(model);
     var hasValidation = hasErrors || valueProperties.Values.Any(graph =>
         graph.Nodes.Any(node => typeof(INotifyDataErrorInfo).IsAssignableFrom(node.Type)));
-    if (hasValidation && properties.Any(property => WireName(property) == "validation"))
-        throw new NotSupportedException($"{model.Name}: validation is reserved for generated validation state. Alias the model property.");
+    if (hasValidation && properties.FirstOrDefault(property => WireName(property) == "validation") is { } validationProperty)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+            $"{model.Name}.{validationProperty.Name}: validation is reserved for generated validation state. Alias the model property.", validationProperty);
     // Checked writes require a WindowContentSession-owned provider. Keep the
     // established global Bridge surface direct until it gains an equivalent
     // explicit window owner. The window slice supports the scalar codecs that
@@ -618,10 +660,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 {
                     selectedView = variants.FirstOrDefault(view => ContractFor(view) == contract);
                     if (selectedView is null)
-                        throw new InvalidOperationException($"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract ?? "default"}'.");
+                        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                            $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract ?? "default"}'.", property);
                 }
                 else if (contract is not null)
-                    throw new InvalidOperationException($"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.");
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                            $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.", property);
                 var pageKind = PageKind(pageName, contract);
                 var contractArgument = contract is null ? "" : $", contract: \"{contract}\"";
                 cs.AppendLine($"                case {pageType} page:");
@@ -665,10 +709,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 {
                     selectedView = variants.SingleOrDefault(view => ContractFor(view) == contract);
                     if (selectedView is null)
-                        throw new InvalidOperationException($"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract ?? "default"}'.");
+                        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                            $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract ?? "default"}'.", property);
                 }
                 else if (contract is not null)
-                    throw new InvalidOperationException($"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.");
+                    throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
+                            $"{model.Name}.{property.Name}: no {pageModel.Name} View has contract '{contract}'.", property);
                 var pageKind = PageKind(pageName, contract);
                 var contractArgument = contract is null ? "" : $", contract: \"{contract}\"";
                 cs.AppendLine($"                    case {pageType} page:");
@@ -786,6 +832,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             : valueProperties.TryGetValue(property, out var valueGraph)
                 ? valueGraph.TypeScriptType()
                 : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
+        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
         ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};");
         if (hasErrors) ts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];");
     }
@@ -809,35 +856,42 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         ts.AppendLine();
     }
     OperationTypeScriptEmitter.AppendDefinitions(ts, operationPlans, shortName);
-    ts.AppendLine($"/** A connected {shortName} ViewModel. Dispose it when its presentation ends. */");
+    var modelDocumentation = XmlDocumentation.Summary(model);
+    XmlDocumentation.Append(ts, "", $"A connected {shortName} ViewModel. Dispose it when its presentation ends."
+        + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
     ts.AppendLine($"export interface {clientName} extends ViewClient<{shortName}State> {{");
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
+    {
+        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
+    }
     foreach (var property in checkedProperties)
+    {
+        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
         ts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: FieldWriteOptions<{TsPropertyType(property)}>): Promise<FieldWriteReceipt<{TsPropertyType(property)}>>;");
+    }
     if (needsCheckedWriter)
         ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): FieldBaseline<{shortName}CheckedFields[K]>;");
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
-        var input = plan.HasArgument ? $"argument: {CommandInputType(plan)}" : "";
+        var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
+        XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command]));
         ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{shortName}State>;");
-        if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}(argument: {CommandInputType(plan)}): Promise<boolean>;");
+        if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
     }
     foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
     {
         var plan = commandPlans[command];
         var operationName = command.Name[..^"Command".Length];
-        var input = plan.HasArgument ? $"argument: {CommandInputType(plan)}" : "";
+        var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
         var suffix = plan.HasArgument ? $", {input}" : "";
         ts.AppendLine($"  start{operationName}({input}): Promise<{shortName}{operationName}Operation>;");
         ts.AppendLine($"  start{operationName}WithRequestId(requestId: string{suffix}): Promise<{shortName}{operationName}Operation>;");
         ts.AppendLine($"  recover{operationName}WithRequestId(requestId: string): Promise<{shortName}{operationName}Operation>;");
     }
     ts.AppendLine("}");
-    ts.AppendLine($"/** @deprecated Use {clientName}. The connected client is not the logical .NET View. */");
-    ts.AppendLine($"export type {shortName}View = {clientName};");
     ts.AppendLine();
     var ownContracts = viewTypes is not null && viewTypes.TryGetValue(model, out var ownViews)
         ? ownViews.Select(ContractFor).ToArray() : [null];
@@ -946,7 +1000,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var graph = valueProperties[property];
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
-            ts.AppendLine($"  {TsPropertyName(WireName(property))}: defineCollection(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
+            ts.AppendLine($"  {TsPropertyName(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
         }
         ts.AppendLine("};");
     }
@@ -1005,12 +1059,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var name = command.Name[..^"Command".Length];
         var plan = commandPlans[command];
+        var parameter = plan.ParameterName;
         var argument = plan.InputGraph is { } inputGraph
-            ? $", JSON.stringify({inputGraph.EncodeTypeScript("argument")})"
-            : plan.HasStringArgument ? ", JSON.stringify(argument)" : "";
-        ts.AppendLine($"    async {LowerFirst(name)}({(plan.HasArgument ? "argument" : "")}) {{ return view.command(`${{route}}{name}`{argument}); }},");
+            ? $", JSON.stringify({inputGraph.EncodeTypeScript(parameter)})"
+            : plan.HasStringArgument ? $", JSON.stringify({parameter})" : "";
+        ts.AppendLine($"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.command(`${{route}}{name}`{argument}); }},");
         if (plan.HasArgument)
-            ts.AppendLine($"    async can{name}(argument) {{ return view.query(`${{route}}Can{name}`{argument}); }},");
+            ts.AppendLine($"    async can{name}({parameter}) {{ return view.query(`${{route}}Can{name}`{argument}); }},");
     }
     OperationTypeScriptEmitter.AppendClientMethods(ts, operationPlans);
     ts.AppendLine("  };");
@@ -1031,11 +1086,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.AppendLine("// <auto-generated />");
     ts.AppendLine($"import {{ {string.Join(", ", runtimeImports)} }} from \"@runic-artifex/views\";");
     ts.Append(contentImports);
+    ts.AppendLine(TypeScriptModules.NamedTypeImports);
     ts.AppendLine();
     ts.Append(body);
 
     WriteIfChanged(csharpPath, cs.ToString());
-    WriteIfChanged(typescriptPath, ts.ToString());
+    TypeScriptModules.Add(typescriptPath, ts.ToString());
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
     return hasContent || interactions.Length > 0;
 
@@ -1052,6 +1108,61 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
 
 }
 
+// The command inspectors live in adapter assemblies and report shape errors
+// as NotSupportedException; attach the command diagnostic code and location.
+static T? InspectCommand<T>(Type model, PropertyInfo command, Func<T?> inspect) where T : class
+{
+    try
+    {
+        return inspect();
+    }
+    catch (NotSupportedException error) when (error is not BridgeDiagnosticException and not BridgeTypeGraphException)
+    {
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command, $"{model.Name}.{error.Message}",
+            (MemberInfo?)ToolkitSourceMethod(model, command) ?? command);
+    }
+}
+
+// CommunityToolkit generates SaveCommand from [RelayCommand] Save, SaveAsync
+// or OnSave. The method carries the parameter name, documentation and the
+// source line that the generated property lacks.
+static MethodInfo? ToolkitSourceMethod(Type model, PropertyInfo command)
+{
+    if (!command.Name.EndsWith("Command", StringComparison.Ordinal)) return null;
+    var name = command.Name[..^"Command".Length];
+    return (command.DeclaringType ?? model).GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance
+            | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+        .Where(method => method.CustomAttributes.Any(attribute =>
+            attribute.AttributeType.FullName == "CommunityToolkit.Mvvm.Input.RelayCommandAttribute"))
+        .OrderBy(method => method.MetadataToken)
+        .FirstOrDefault(method =>
+        {
+            var candidate = method.Name;
+            if (candidate.Length > 2 && candidate.StartsWith("On", StringComparison.Ordinal) && char.IsUpper(candidate[2]))
+                candidate = candidate[2..];
+            if (candidate.Length > "Async".Length && candidate.EndsWith("Async", StringComparison.Ordinal))
+                candidate = candidate[..^"Async".Length];
+            return candidate == name;
+        });
+}
+
+// A [RelayCommand] property's generated comment only says which method it
+// wraps, so a Toolkit command uses its method's documentation alone.
+static string? CommandDocumentation(PropertyInfo command, MethodInfo? source) =>
+    source is null ? XmlDocumentation.Summary(command) : XmlDocumentation.Summary(source);
+
+// The TypeScript parameter of a command with an argument: the Toolkit method's
+// parameter name, else the argument's C# type name, else "input".
+static string CommandParameterName(MethodInfo? source, GeneratedCommandPlan plan)
+{
+    if (!plan.HasArgument) return "input";
+    var candidate = source?.GetParameters().FirstOrDefault(parameter => parameter.ParameterType != typeof(CancellationToken))?.Name;
+    if (candidate is null && plan.InputGraph?.Root is { Kind: BridgeWireKind.Dto or BridgeWireKind.Union or BridgeWireKind.Enum } root)
+        candidate = LowerFirst(root.NonNullableType.Name.Split('`')[0]);
+    if (candidate is null || !IsTypeScriptIdentifier(candidate)) return "input";
+    return TypeScriptModules.ReservedParameterNames.Contains(candidate) ? candidate + "Value" : candidate;
+}
+
 static string LowerFirst(string text) => char.ToLowerInvariant(text[0]) + text[1..];
 
 static string WireName(PropertyInfo property)
@@ -1060,7 +1171,8 @@ static string WireName(PropertyInfo property)
         ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name
         ?? LowerFirst(property.Name);
     if (string.IsNullOrWhiteSpace(name))
-        throw new NotSupportedException($"{property.DeclaringType?.Name}.{property.Name}: a bridge wire name is required.");
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+            $"{property.DeclaringType?.Name}.{property.Name}: a bridge wire name is required.", property);
     return name;
 }
 
@@ -1095,14 +1207,46 @@ static void WriteIfChanged(string path, string content)
     }
 }
 
-sealed class AotValidationException(string message) : Exception(message);
+/// <summary>
+/// Diagnostic IDs. The codegen section of the Runic.Application README
+/// documents each one with its remediation.
+/// </summary>
+static class BridgeDiagnosticCodes
+{
+    /// <summary>Invalid generator invocation or build configuration, or an internal generator error.</summary>
+    internal const string Invocation = "RUNICBRIDGE001";
+    /// <summary>The ViewModel's validation is not supported under Native AOT.</summary>
+    internal const string Aot = "RUNICBRIDGE002";
+    /// <summary>A state, command, or interaction value type is not a supported bridge value.</summary>
+    internal const string ValueType = "RUNICBRIDGE003";
+    /// <summary>Two generated names, routes, or files collide.</summary>
+    internal const string NameCollision = "RUNICBRIDGE004";
+    /// <summary>The model assembly or one of its dependencies could not be loaded.</summary>
+    internal const string AssemblyLoad = "RUNICBRIDGE005";
+    /// <summary>A Window or View class, or its View contract, is invalid.</summary>
+    internal const string View = "RUNICBRIDGE006";
+    /// <summary>A ViewModel class has an unsupported shape.</summary>
+    internal const string ViewModel = "RUNICBRIDGE007";
+    /// <summary>A state property or ViewModel content member has an unsupported shape.</summary>
+    internal const string State = "RUNICBRIDGE008";
+    /// <summary>A command has an unsupported name or shape.</summary>
+    internal const string Command = "RUNICBRIDGE009";
+    /// <summary>A RunicCollection member is not a keyed collection of DTO rows.</summary>
+    internal const string Collection = "RUNICBRIDGE010";
+    /// <summary>A ReactiveUI interaction has an unsupported shape.</summary>
+    internal const string Interaction = "RUNICBRIDGE011";
+}
 
-sealed class BridgeNameCollisionException(string message) : NotSupportedException(message);
+/// <summary>A generator diagnostic with its ID and the declaration it concerns.</summary>
+sealed class BridgeDiagnosticException(string code, string message, MemberInfo? member = null) : NotSupportedException(message)
+{
+    internal string Code { get; } = code;
+    internal MemberInfo? Member { get; } = member;
+}
 
 /// <summary>
-/// Writes MSBuild-recognised errors. Codes: RUNICBRIDGE001 unsupported model
-/// or option, 002 Native AOT validation, 003 unsupported bridge value type,
-/// 004 generated name collision, 005 the model assembly could not be loaded.
+/// Writes MSBuild canonical errors, with the source location of the member
+/// when the model assembly's PDB has one. Codes are in <see cref="BridgeDiagnosticCodes"/>.
 /// </summary>
 static class Diagnostics
 {
@@ -1118,21 +1262,95 @@ static class Diagnostics
         Environment.ExitCode = 1;
         var code = error switch
         {
-            AotValidationException => "RUNICBRIDGE002",
-            BridgeTypeGraphException => "RUNICBRIDGE003",
-            BridgeNameCollisionException => "RUNICBRIDGE004",
+            BridgeDiagnosticException diagnostic => diagnostic.Code,
+            BridgeTypeGraphException => BridgeDiagnosticCodes.ValueType,
             ReflectionTypeLoadException or FileNotFoundException or FileLoadException or BadImageFormatException
-                or TypeLoadException => "RUNICBRIDGE005",
-            _ => "RUNICBRIDGE001",
+                or TypeLoadException => BridgeDiagnosticCodes.AssemblyLoad,
+            _ => BridgeDiagnosticCodes.Invocation,
         };
+        var member = error switch
+        {
+            BridgeDiagnosticException diagnostic => diagnostic.Member,
+            BridgeTypeGraphException graph => graph.Member,
+            _ => null,
+        } ?? model;
         var message = error is ReflectionTypeLoadException load
             ? $"{error.Message} {string.Join(" ", load.LoaderExceptions.OfType<Exception>().Select(inner => inner.Message).Distinct())}"
             : error.Message;
-        // Reflection has no source location; name the ViewModel instead.
+        // Name the ViewModel when the message does not already start with it.
         if (model is not null && !message.StartsWith(model.Name, StringComparison.Ordinal)
             && !message.StartsWith(model.FullName ?? model.Name, StringComparison.Ordinal))
             message = $"{model.FullName}: {message}";
-        Console.Error.WriteLine($"error {code}: {message}");
+        var location = SourceLocator.Find(member);
+        Console.Error.WriteLine(location is { } at
+            ? $"{at.Path}({at.Line},{at.Column}): error {code}: {message}"
+            : $"error {code}: {message}");
+    }
+}
+
+/// <summary>
+/// Collects the generated ViewModel modules, then writes them together with
+/// the shared named-type module once every name is known.
+/// </summary>
+static class TypeScriptModules
+{
+    /// <summary>A line the module writer replaces with the named-type imports.</summary>
+    internal const string NamedTypeImports = "\u0002named-type-imports\u0002";
+
+    // Identifiers generated client methods use, and JavaScript reserved
+    // words. A command parameter with such a name gets a "Value" suffix.
+    internal static readonly HashSet<string> ReservedParameterNames = new(StringComparer.Ordinal)
+    {
+        "view", "route", "mount", "requestId", "bridgeWire", "BridgeError", "JSON", "String", "Number", "Object",
+        "globalThis", "hydrate", "bridgeContract", "collectionDefinitions", "interactionDefinitions", "checkedFieldNames",
+        "arguments", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete",
+        "do", "else", "enum", "eval", "export", "extends", "false", "finally", "for", "function", "if", "implements",
+        "import", "in", "instanceof", "interface", "let", "new", "null", "package", "private", "protected", "public",
+        "return", "static", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void",
+        "while", "with", "yield",
+    };
+
+    private static readonly List<(string Path, string Text)> Pending = [];
+
+    internal static void Add(string path, string text) => Pending.Add((path, text));
+
+    internal static void WriteAll(string directory)
+    {
+        TypeScriptNamedTypes.Complete(Pending.Select(module => module.Text));
+        foreach (var (path, text) in Pending)
+        {
+            var used = TypeScriptNamedTypes.Used(text);
+            var imports = used.Count == 0 ? ""
+                : $"import type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";{Environment.NewLine}"
+                  + $"export type {{ {string.Join(", ", used)} }} from \"./{TypeScriptNamedTypes.ModuleName}.js\";";
+            var resolved = TypeScriptNamedTypes.Resolve(text)
+                .Replace(NamedTypeImports + Environment.NewLine, imports.Length == 0 ? "" : imports + Environment.NewLine, StringComparison.Ordinal);
+            WriteFile(path, resolved);
+        }
+        var typesPath = Path.Combine(directory, $"{TypeScriptNamedTypes.ModuleName}.ts");
+        if (TypeScriptNamedTypes.Any)
+            WriteFile(typesPath, $"{GeneratedOutput.Header}{Environment.NewLine}{TypeScriptNamedTypes.Module()}");
+        else if (File.Exists(typesPath) && GeneratedOutput.IsGenerated(typesPath))
+            File.Delete(typesPath);
+        Pending.Clear();
+    }
+
+    private static void WriteFile(string path, string content)
+    {
+        var fullPath = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        if (File.Exists(fullPath) && File.ReadAllText(fullPath) == content) return;
+        // Frontend watchers must never observe a truncated module.
+        var temporary = Path.Combine(Path.GetDirectoryName(fullPath)!, $".{Path.GetFileName(fullPath)}.{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllText(temporary, content);
+            File.Move(temporary, fullPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 }
 
@@ -1166,6 +1384,8 @@ sealed record GeneratedCommandPlan(
     ToolkitCommandContract? ToolkitContract = null)
 {
     internal bool HasArgument => InputGraph is not null || HasStringArgument;
+    /// <summary>The generated TypeScript parameter name of the command argument.</summary>
+    internal string ParameterName { get; init; } = "input";
     /// <summary>True when the snapshot carries is&lt;Name&gt;Executing.</summary>
     internal bool HasExecutionState => ReactiveContract is not null || ToolkitContract is { IsAsync: true };
     internal static GeneratedCommandPlan Reactive(ReactiveCommandContract contract,

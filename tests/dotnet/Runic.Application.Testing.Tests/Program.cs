@@ -123,6 +123,7 @@ CheckedWriteGuaranteeTests.Run();
 DataCodecTests.Run();
 CodegenShapeTests.Run();
 await CodegenShapeTests.RunNullableReactiveAsync();
+CodegenShapeTests.RunTypeScriptSurface();
 await DataShapeTests.RunAsync();
 await OperationResultTests.RunAsync();
 await ModelContextTests.RunAsync();

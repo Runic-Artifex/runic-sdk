@@ -54,3 +54,44 @@ public sealed class NullableReactiveViewModel : ReactiveUI.ReactiveObject, IDisp
 }
 
 public sealed partial class NullableReactiveWindow(NullableReactiveViewModel model) : RunicWindow<NullableReactiveViewModel>(model);
+
+/// <summary>How the documented item is shown.</summary>
+public enum DocumentedLayout
+{
+    /// <summary>One item per row.</summary>
+    List,
+
+    /// <summary>Items in a grid.</summary>
+    Grid,
+}
+
+/// <summary>A documented item.</summary>
+/// <param name="Title">The item's <c>title</c>.</param>
+public sealed record DocumentedItem(string Title);
+
+/// <summary>
+/// Generated TypeScript names its enum and DTO types after the C# types,
+/// copies these XML comments and uses the command method's parameter name.
+/// </summary>
+public sealed partial class DocumentedViewModel : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+{
+    private DocumentedLayout _layout;
+
+    /// <summary>The current layout.</summary>
+    public DocumentedLayout Layout { get => _layout; private set => SetProperty(ref _layout, value); }
+
+    public DocumentedItem Item { get; } = new("first");
+
+    /// <summary>The note being edited.</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    private string _note = "";
+
+    // Also used by CodegenShapeViewModel: named types are declared once.
+    public CodegenPoint Corner { get; } = new(1, 2);
+
+    /// <summary>Switches to <paramref name="layout"/>.</summary>
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private void ChangeLayout(DocumentedLayout layout) => Layout = layout;
+}
+
+public sealed partial class DocumentedWindow(DocumentedViewModel model) : RunicWindow<DocumentedViewModel>(model);
