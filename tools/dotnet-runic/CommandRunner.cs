@@ -38,7 +38,8 @@ internal static class CommandRunner
         {
             throw new DevUsageException(
                 "RAPPDEV1004",
-                $"Could not start '{executable}'. Ensure it is installed and available on PATH.");
+                $"Could not start '{DescribeProgram(executable, arguments)}'. Ensure it is installed and available on PATH.",
+                $"Executable: {executable}\nWorking directory: {workingDirectory}\n");
         }
 
         // Captured commands are non-interactive: a prompt (npx install, git credentials) must see
@@ -74,6 +75,32 @@ internal static class CommandRunner
             await standardOutput.ConfigureAwait(false),
             await standardError.ConfigureAwait(false));
     }
+
+    /// <summary>Names a program by executable and verb, for example <c>dotnet build</c>.</summary>
+    internal static string DescribeProgram(string executable, IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        string program = Path.GetFileNameWithoutExtension(executable);
+        if (program.Length == 0) program = executable;
+        return arguments.Count > 0 && arguments[0].Length > 0 && arguments[0][0] != '-'
+            ? $"{program} {arguments[0]}"
+            : program;
+    }
+
+    /// <summary>Describes a failed child process without paths, for faults.</summary>
+    internal static string DescribeFailure(
+        string executable,
+        IReadOnlyList<string> arguments,
+        int exitCode) =>
+        $"'{DescribeProgram(executable, arguments)}' exited with code {exitCode}.";
+
+    /// <summary>Local-only detail: the working directory, then an optional hint.</summary>
+    internal static string LocalDetail(string workingDirectory, string? hint = null) =>
+        $"Working directory: {workingDirectory}\n" + (hint is null ? string.Empty : hint + "\n");
+
+    /// <summary>Points to doctor for the selected project.</summary>
+    internal static string DoctorHint(string projectPath) =>
+        $"Run 'dotnet runic doctor --project \"{projectPath}\"' to check prerequisites.";
 
     internal static ProcessStartInfo CreateStartInfo(
         string executable,

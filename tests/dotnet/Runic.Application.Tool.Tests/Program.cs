@@ -32,6 +32,17 @@ internal static class Program
             ("doctor accepts a healthy Views Window project", DoctorAcceptsViewsWindowProject),
             ("doctor guides an unrestored project instead of failing", DoctorGuidesUnrestoredProject),
             ("doctor accepts the Runic Desktop Views host", DoctorAcceptsDesktopHost),
+            ("doctor scopes the browser check to the Views host", DoctorScopesBrowserCheckToHost),
+            ("doctor detects the Views host from evaluated references", DoctorDetectsHostFromReferences),
+            ("doctor JSON payload lists every check", DoctorJsonListsChecks),
+            ("--no-restore keeps MSBuild from installing frontend packages", NoRestoreSkipsFrontendInstall),
+            ("child process failures name the program and directory", ChildFailuresNameProgramAndDirectory),
+            ("every command option is described", EveryOptionIsDescribed),
+            ("doctor JSON reports unhealthy projects through the CLI", DoctorJsonThroughCli),
+            ("doctor --fail-on decides the exit in both modes", DoctorFailOnDecidesExit),
+            ("--no-restore requires installed frontend packages", NoRestoreRequiresInstalledPackages),
+            ("JSON faults never contain absolute project paths", JsonFaultsOmitProjectPaths),
+            ("the fault backstop detects any rooted path", FaultBackstopDetectsRootedPaths),
             ("development servers are inferred from the frontend", DevelopmentServersAreInferred),
             ("a development server owns the frontend build", DevelopmentServerOwnsFrontendBuild),
             ("compatibility authority includes the public Views packages", CompatibilityAuthorityIncludesViews),
@@ -348,7 +359,330 @@ internal static class Program
         return new DoctorProjectConfiguration(
             Path.Combine(workspace.Root, "App.csproj"), workspace.Root, "net10.0", true,
             frontendDirectory, assets, "linux-x64", "/src/main.ts",
-            Path.Combine(frontendDirectory, "vite.config.ts"), true);
+            Path.Combine(frontendDirectory, "vite.config.ts"), true,
+            hostPackage switch
+            {
+                "Runic.Application.Desktop" => RunicViewsHost.Desktop,
+                "Runic.Application.CsWebUi" => RunicViewsHost.CsWebUi,
+                _ => RunicViewsHost.Unknown,
+            });
+    }
+
+    private static void DoctorScopesBrowserCheckToHost()
+    {
+        using (var workspace = new TestWorkspace())
+        {
+            DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+            DoctorReport report = DoctorChecks.InspectAsync(
+                desktop, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
+                .GetAwaiter().GetResult();
+            Equal(DoctorStatus.Pass, report.Checks.Single(check => check.Name == "browser").Status);
+            foreach (DoctorCheck check in report.Checks)
+            {
+                DoesNotContain(check.Message + " " + check.Remediation, "CS-WebUI");
+                DoesNotContain(check.Message + " " + check.Remediation, "WebView");
+            }
+        }
+
+        using (var workspace = new TestWorkspace())
+        {
+            DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.CsWebUi", out var authority);
+            DoctorCheck browser = DoctorChecks.InspectAsync(
+                csWebUi, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
+                .GetAwaiter().GetResult().Checks.Single(check => check.Name == "browser");
+            Equal(DoctorStatus.Warning, browser.Status);
+            Contains(browser.Remediation ?? string.Empty, "CS-WebUI");
+        }
+    }
+
+    private static void DoctorDetectsHostFromReferences()
+    {
+        static RunicViewsHost Detect(string json)
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            return DoctorProjectConfiguration.DetectHost(document.RootElement);
+        }
+
+        Equal(RunicViewsHost.Desktop, Detect("""{"Properties":{},"Items":{"PackageReference":[{"Identity":"Runic.Application.Desktop"}]}}"""));
+        Equal(RunicViewsHost.CsWebUi, Detect("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.CsWebUi"}]}}"""));
+        Equal(RunicViewsHost.CsWebUi, Detect("""{"Items":{"ProjectReference":[{"Identity":"..\\..\\packages\\Runic.Application.Views.CsWebUi\\Runic.Application.Views.CsWebUi.csproj"}]}}"""));
+        Equal(RunicViewsHost.Desktop, Detect("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Application.Desktop/Runic.Application.Desktop.csproj"}]}}"""));
+        Equal(RunicViewsHost.Unknown, Detect("""{"Properties":{}}"""));
+    }
+
+    private static void DoctorJsonListsChecks()
+    {
+        var project = new DoctorProjectConfiguration(
+            "/work/App.csproj", "/work", "net10.0", true, "/work/Frontend", "/work/obj/project.assets.json",
+            "linux-x64", "/src/main.ts", "/work/Frontend/vite.config.ts", true, RunicViewsHost.Desktop);
+        var report = new DoctorReport(
+        [
+            new DoctorCheck(DoctorStatus.Pass, "views-window", "The project uses the Runic Views Window model."),
+            new DoctorCheck(DoctorStatus.Warning, "compatibility-set", "Not restored.", "Run 'dotnet runic dev'."),
+            new DoctorCheck(DoctorStatus.Failure, "lock-file", "The workspace has no 'package-lock.json'.", "Run npm and commit its lock file."),
+        ]);
+        DoctorCommandResult result = DoctorCommandResult.Create(project, report, "human text");
+        Equal("human text", result.ToString());
+        // The command codec may build the context with its own options; names must not depend on them.
+        string json = JsonSerializer.Serialize(result, new DoctorCommandJsonContext(new JsonSerializerOptions()).DoctorCommandResult);
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        SequenceEqual(["project", "host", "healthy", "summary", "checks"],
+            root.EnumerateObject().Select(property => property.Name).ToArray());
+        Equal("desktop", root.GetProperty("host").GetString());
+        False(root.GetProperty("healthy").GetBoolean(), "A failing check makes the payload unhealthy.");
+        Equal(1, root.GetProperty("summary").GetProperty("failed").GetInt32());
+        JsonElement[] checks = [.. root.GetProperty("checks").EnumerateArray()];
+        Equal(3, checks.Length);
+        SequenceEqual(["id", "status", "message", "remediation"],
+            checks[0].EnumerateObject().Select(property => property.Name).ToArray());
+        Equal(JsonValueKind.Null, checks[0].GetProperty("remediation").ValueKind);
+        SequenceEqual(["pass", "warn", "fail"], checks.Select(check => check.GetProperty("status").GetString()!).ToArray());
+        Equal("lock-file", checks[2].GetProperty("id").GetString());
+
+        IReadOnlyList<Runic.CommandLine.CommandDiagnostic> diagnostics =
+            DoctorCommandResult.CreateDiagnostics(report, new Runic.CommandLine.CommandPath(["doctor"]));
+        SequenceEqual(["doctor-check-failed", "doctor-check-warning"], diagnostics.Select(diagnostic => diagnostic.Kind).ToArray());
+        SequenceEqual(["RCLI8101", "RCLI8102"], diagnostics.Select(diagnostic => diagnostic.Code).ToArray());
+        SequenceEqual(["doctor.lock-file.failed", "doctor.compatibility-set.warning"],
+            diagnostics.Select(diagnostic => diagnostic.MessageKey).ToArray());
+        SequenceEqual(["lock-file"], diagnostics[0].Arguments);
+        True(diagnostics.All(diagnostic => diagnostic.Severity == Runic.CommandLine.CommandDiagnosticSeverity.Warning),
+            "A successful JSON envelope cannot carry error diagnostics.");
+        Equal(Runic.CommandLine.CommandDiagnosticSeverity.Error,
+            DoctorCommandResult.CreateDiagnostics(report, new Runic.CommandLine.CommandPath(["doctor"]), DoctorStatus.Failure)[0].Severity);
+    }
+
+    private static void NoRestoreSkipsFrontendInstall()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        var noRestore = new DevOptions(null, "Debug", false, true, true, false, []);
+        string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, noRestore));
+        Contains(build, "-property:RunicBridgeInstallFrontend=false");
+        Contains(build, "--no-restore");
+        Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, noRestore)),
+            "--property:RunicBridgeInstallFrontend=false");
+        Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, noRestore)),
+            "-property:RunicBridgeInstallFrontend=false");
+
+        var restore = new DevOptions(null, "Debug", true, true, true, false, []);
+        DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, restore)),
+            "RunicBridgeInstallFrontend");
+    }
+
+    private static void ChildFailuresNameProgramAndDirectory()
+    {
+        string failure = CommandRunner.DescribeFailure(
+            "/usr/bin/dotnet", ["build", "/work/App.csproj"], 1);
+        Equal("'dotnet build' exited with code 1.", failure);
+        Equal("Working directory: /work\nhint\n", CommandRunner.LocalDetail("/work", "hint"));
+        try
+        {
+            CommandRunner.RunAsync("/nonexistent/runic-tool", "/tmp", ["build"], CancellationToken.None).GetAwaiter().GetResult();
+            throw new InvalidOperationException("A missing executable started.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1004", error.Code);
+            DoesNotContain(error.Message, "/");
+            Contains(error.LocalDetail ?? string.Empty, "/nonexistent/runic-tool");
+        }
+        Equal("npm", CommandRunner.DescribeProgram("npm", ["--version"]));
+        Contains(CommandRunner.DoctorHint("/work/App.csproj"), "dotnet runic doctor --project \"/work/App.csproj\"");
+    }
+
+    private static string CreateCliDoctorProject(TestWorkspace workspace)
+    {
+        // A Desktop project without a lock file: doctor completes and reports lock-file as failing.
+        string project = workspace.Write("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RunicViewsWindowProject>true</RunicViewsWindowProject>
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageReference Include="Runic.Application.Desktop" Version="0.6.0-preview.1" />
+              </ItemGroup>
+            </Project>
+            """);
+        workspace.Write("Frontend/package.json", """{"packageManager":"npm@10.0.0"}""");
+        return project;
+    }
+
+    private static (int ExitCode, string Output) RunCli(params string[] arguments)
+    {
+        var console = new CapturingConsole();
+        int exitCode = Runic.Application.Tool.Program.RunAsync(arguments, console).GetAwaiter().GetResult();
+        return (exitCode, console.Output);
+    }
+
+    private static void DoctorJsonThroughCli()
+    {
+        using var workspace = new TestWorkspace();
+        string project = CreateCliDoctorProject(workspace);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json");
+        Equal(0, exitCode);
+        var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult);
+        True(response.Success, "JSON doctor reports a completed inspection as a successful envelope.");
+        DoctorCommandResult payload = response.Payload!;
+        False(payload.Healthy, "A missing lock file makes the project unhealthy.");
+        Equal("desktop", payload.Host);
+        Equal("fail", payload.Checks.Single(check => check.Id == "lock-file").Status);
+        Equal("pass", payload.Checks.Single(check => check.Id == "browser").Status);
+        True(response.Diagnostics.Any(diagnostic => diagnostic.MessageKey == "doctor.lock-file.failed"),
+            "Each failing check is mirrored as a diagnostic.");
+    }
+
+    private static void DoctorFailOnDecidesExit()
+    {
+        using var workspace = new TestWorkspace();
+        string project = CreateCliDoctorProject(workspace);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "fail");
+        Equal(1, exitCode);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement root = document.RootElement;
+            False(root.GetProperty("success").GetBoolean(), "--fail-on fail fails the envelope.");
+            Equal(JsonValueKind.Null, root.GetProperty("payload").ValueKind);
+            JsonElement fault = root.GetProperty("fault");
+            Equal("RAPPCLI1009", fault.GetProperty("code").GetString());
+            Equal("fail", fault.GetProperty("details").GetProperty("lock-file").GetString());
+            JsonElement[] diagnostics = [.. root.GetProperty("diagnostics").EnumerateArray()];
+            True(diagnostics.Any(diagnostic => diagnostic.GetProperty("severity").GetString() == "error" &&
+                diagnostic.GetProperty("messageKey").GetString() == "doctor.lock-file.failed"),
+                "The failing check is an error diagnostic.");
+        }
+        Runic.CommandLine.CommandJsonEnvelopeReader.Read(
+            System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
+            DoctorCommandJsonContext.Default.DoctorCommandResult);
+
+        Equal(1, RunCli("doctor", "--project", project).ExitCode);
+        Equal(0, RunCli("doctor", "--project", project, "--fail-on", "never").ExitCode);
+        Equal(2, RunCli("doctor", "--project", project, "--fail-on", "sometimes").ExitCode);
+    }
+
+    private static void NoRestoreRequiresInstalledPackages()
+    {
+        using var workspace = new TestWorkspace();
+        var configuration = CreateConfiguration(workspace, "vite");
+        Write(Path.Combine(configuration.FrontendPackageDirectory, "package.json"), """{"packageManager":"npm@10.0.0"}""");
+        try
+        {
+            DevApplication.RequireInstalledFrontendPackages(configuration);
+            throw new InvalidOperationException("A missing node_modules was accepted with --no-restore.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1008", error.Code);
+            Contains(error.Message, "npm install");
+            DoesNotContain(error.Message, workspace.Root);
+        }
+        Directory.CreateDirectory(Path.Combine(configuration.FrontendPackageDirectory, "node_modules"));
+        DevApplication.RequireInstalledFrontendPackages(configuration);
+    }
+
+    private static void JsonFaultsOmitProjectPaths()
+    {
+        foreach (string project in new[] { "/run/user/1000/runic-missing/App.csproj", @"C:\Users\someone\App\App.csproj" })
+        {
+            (int exitCode, string output) = RunCli("doctor", "--output", "json", "--project", project);
+            Equal(2, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output);
+            JsonElement fault = document.RootElement.GetProperty("fault");
+            Equal("RAPPDEV1002", fault.GetProperty("code").GetString());
+            string text = fault.GetRawText();
+            DoesNotContain(text, "/run/");
+            DoesNotContain(text, "C:");
+            DoesNotContain(text, "Users");
+            DoesNotContain(text, Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar));
+            Equal("The selected project does not exist.", fault.GetProperty("message").GetString());
+        }
+
+        using var workspace = new TestWorkspace();
+        string broken = workspace.Write("Broken.csproj", "<Project>not xml");
+        (int brokenExit, string brokenOutput) = RunCli("doctor", "--output", "json", "--project", broken);
+        Equal(2, brokenExit);
+        using JsonDocument brokenDocument = JsonDocument.Parse(brokenOutput);
+        JsonElement brokenFault = brokenDocument.RootElement.GetProperty("fault");
+        Equal("RAPPDEV1003", brokenFault.GetProperty("code").GetString());
+        DoesNotContain(brokenFault.GetRawText(), workspace.Root);
+    }
+
+    private static void FaultBackstopDetectsRootedPaths()
+    {
+        foreach (string message in new[]
+        {
+            "Project '/run/user/1000/x/App.csproj' does not exist.",
+            "/opt/app failed",
+            @"Project 'C:\work\App.csproj' does not exist.",
+            "Project 'D:/work/App.csproj' does not exist.",
+            @"Share \\server\share failed.",
+            "Could not evaluate (/var/lib/x).",
+        })
+        {
+            True(Runic.Application.Tool.Program.ContainsRootedPath(message), $"'{message}' contains a rooted path.");
+            var outcome = Runic.Application.Tool.Program.Failure<ToolCommandResult>(
+                Runic.CommandLine.CommandExitCategory.Usage, "RAPPDEV1002", message);
+            Equal("The command could not be completed. See the local detail above.", outcome.Fault!.Message);
+            Contains(outcome.HumanOutput ?? string.Empty, message);
+        }
+        foreach (string message in new[]
+        {
+            "'dotnet build' exited with code 1.",
+            "Use npm/pnpm or Bun.",
+            "Timed out waiting for the Vite development server (Vite client: no response).",
+            "See https://example.com/docs for details.",
+        })
+        {
+            False(Runic.Application.Tool.Program.ContainsRootedPath(message), $"'{message}' contains no rooted path.");
+        }
+    }
+
+    private sealed class CapturingConsole : Runic.CommandLine.ICommandConsole
+    {
+        private readonly System.Text.StringBuilder _output = new();
+        internal string Output => _output.ToString();
+        public bool IsInteractive => false;
+        public bool IsInputRedirected => true;
+        public bool IsOutputRedirected => true;
+        public bool IsErrorRedirected => true;
+        public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
+        public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+        {
+            _output.Append(value.Span);
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken)
+        {
+            _output.Append(System.Text.Encoding.UTF8.GetString(value.Span));
+            return ValueTask.CompletedTask;
+        }
+        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private static void EveryOptionIsDescribed()
+    {
+        Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
+        foreach (Runic.CommandLine.CommandDescriptor command in catalog.Commands)
+        {
+            True(!string.IsNullOrWhiteSpace(command.Help.Description), $"{command.Name} needs a description.");
+            foreach (var option in command.Options)
+            {
+                True(!string.IsNullOrWhiteSpace(option.Help.Description), $"{command.Name} {option.Name} needs a description.");
+                if (option.Name == "--configuration")
+                {
+                    True(option.Aliases.Contains("-c"), $"{command.Name} --configuration needs the -c alias.");
+                }
+            }
+            foreach (var argument in command.Arguments)
+            {
+                True(!string.IsNullOrWhiteSpace(argument.Help.Description), $"{command.Name} {argument.Name} needs a description.");
+            }
+        }
     }
 
     private static void DoctorGuidesUnrestoredProject()

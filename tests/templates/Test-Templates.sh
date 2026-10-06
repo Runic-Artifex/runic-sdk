@@ -279,6 +279,15 @@ verify_template() {
     exit 1
   fi
   grep -Fq 'WARN compatibility-set: The project has not been restored yet' "$output/doctor-unrestored.txt"
+  # The browser check follows the host, before restore too; Desktop projects
+  # get no CS-WebUI advice.
+  if [[ "$host" == desktop ]]; then
+    grep -Fq 'PASS browser: Not required' "$output/doctor-unrestored.txt"
+    if grep -Fq 'CS-WebUI' "$output/doctor-unrestored.txt"; then
+      cat "$output/doctor-unrestored.txt" >&2
+      exit 1
+    fi
+  fi
   # RUNIC_APPLICATION_SERVE_ONLY is a CS-WebUI host contract. Desktop variants
   # open a native window, so automation covers their generation, build, and types.
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
@@ -298,6 +307,13 @@ verify_template() {
   fi
   grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
   grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
+  if [[ "$host" == desktop ]]; then
+    grep -Fq 'PASS browser: Not required' "$output/doctor.txt"
+    if grep -Fq 'CS-WebUI' "$output/doctor.txt"; then
+      cat "$output/doctor.txt" >&2
+      exit 1
+    fi
+  fi
 
   # A plain build installs the frontend packages with the selected manager.
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore

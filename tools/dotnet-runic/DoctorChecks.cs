@@ -99,14 +99,14 @@ internal static class DoctorChecks
         string? executable = runtime.FindExecutable(dotnetHost);
         if (executable is null)
         {
-            checks.Add(Fail("dotnet-sdk", $".NET SDK host '{dotnetHost}' is unavailable.", "Install the SDK targeted by this project and put dotnet on PATH."));
+            checks.Add(Fail("dotnet-sdk", $".NET SDK host '{Path.GetFileName(dotnetHost)}' is unavailable.", "Install the SDK targeted by this project and put dotnet on PATH."));
             return;
         }
         CommandResult result = await runtime.RunAsync(executable, project.ProjectDirectory, ["--version"], cancellationToken).ConfigureAwait(false);
         string version = result.StandardOutput.Trim();
         if (result.ExitCode != 0 || !Version.TryParse(NormalizeVersion(version), out Version? sdk))
         {
-            checks.Add(Fail("dotnet-sdk", $"Could not read a usable .NET SDK version from '{executable}'.", "Run dotnet --info and install the SDK selected by global.json."));
+            checks.Add(Fail("dotnet-sdk", $"Could not read a usable .NET SDK version from '{Path.GetFileName(executable)}'.", "Run dotnet --info and install the SDK selected by global.json."));
             return;
         }
         int? targetMajor = ParseTargetFrameworkMajor(project.TargetFramework);
@@ -318,6 +318,11 @@ internal static class DoctorChecks
     private static void CheckBrowser(List<DoctorCheck> checks, DoctorProjectConfiguration project,
         IDoctorRuntime runtime)
     {
+        if (project.Host == RunicViewsHost.Desktop)
+        {
+            checks.Add(Pass("browser", "Not required: Runic Desktop renders the app in its own native window."));
+            return;
+        }
         string? configured = runtime.GetEnvironmentVariable("RUNIC_BROWSER_PATH");
         if (!string.IsNullOrWhiteSpace(configured))
         {
@@ -335,7 +340,9 @@ internal static class DoctorChecks
         string? browser = candidates.Select(runtime.FindExecutable).FirstOrDefault(static path => path is not null);
         checks.Add(browser is not null
             ? Pass("browser", $"Found browser '{browser}'.")
-            : Warn("browser", "No Chromium-family browser was found on PATH.", "CS-WebUI opens the app in an installed browser, preferring Chromium-family browsers, and falls back to the platform WebView. Install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."));
+            : Warn("browser", "No Chromium-family browser was found on PATH.", project.Host == RunicViewsHost.CsWebUi
+                ? "CS-WebUI opens the app in an installed browser, preferring Chromium-family browsers, and falls back to the platform WebView. Install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."
+                : $"The project references neither {DoctorProjectConfiguration.CsWebUiPackage} nor {DoctorProjectConfiguration.DesktopPackage}. A browser-based host prefers an installed Chromium-family browser; install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."));
     }
 
     private static bool IsRunicIdentity(string identity) =>

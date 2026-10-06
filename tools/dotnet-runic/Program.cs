@@ -12,7 +12,7 @@ using Runic.CommandLine.Spectre;
 using Runic.CommandLine.Generated;
 namespace Runic.Application.Tool;
 
-internal static class Program
+internal static partial class Program
 {
 
     internal const int Success = 0;
@@ -20,7 +20,12 @@ internal static class Program
     internal const int UsageFailure = 2;
     internal const int InternalFailure = 3;
 
-    internal static async Task<int> Main(string[] arguments)
+    private const string ProjectDescription =
+        "The project file, or a directory with one .csproj. Defaults to the current directory.";
+
+    internal static Task<int> Main(string[] arguments) => RunAsync(arguments);
+
+    internal static async Task<int> RunAsync(string[] arguments, ICommandConsole? console = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         return await new CommandApp(GeneratedCommandCatalog.Create())
@@ -28,25 +33,26 @@ internal static class Program
             Name = "dotnet runic",
             CompletionExecutableName = "dotnet-runic",
             Version = Version,
-        HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
-            Console = new SpectreCommandConsole(),
+            HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
+            Console = console ?? new SpectreCommandConsole(),
             ExitCodePolicy = ToolExitCodePolicy.Instance,
         }.RunAsync(arguments).ConfigureAwait(false);
     }
 
-    [Command("dev", Description = "Run the application with development watchers.")]
+    [Command("dev", Description = "Run the application with development watchers.",
+        Examples = ["dotnet runic dev", "dotnet runic dev --project ./MyApp.csproj -- --app-argument"])]
     [DefaultCommand]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Dev(
         CommandExecutionContext context,
-        [Option("--no-restore")] bool noRestore,
-        [Option("--no-frontend-watch")] bool noFrontendWatch,
-        [Option("--no-dotnet-watch")] bool noDotNetWatch,
-        [Option("--dry-run")] bool dryRun,
-        [Argument(AllowMultipleValues = true)] IReadOnlyList<string> applicationArguments,
+        [Option("--no-restore", Description = "Skip the .NET restore and the JavaScript package install. The build does not install missing frontend packages either.")] bool noRestore,
+        [Option("--no-frontend-watch", Description = "Build the frontend once instead of starting its development server or watcher.")] bool noFrontendWatch,
+        [Option("--no-dotnet-watch", Description = "Run the application once instead of restarting it under dotnet watch after C# edits.")] bool noDotNetWatch,
+        [Option("--dry-run", Description = "Print the evaluated project configuration and exit without changing files or starting processes.")] bool dryRun,
+        [Argument(AllowMultipleValues = true, Description = "Arguments after -- are passed to the application.")] IReadOnlyList<string> applicationArguments,
         CancellationToken cancellationToken,
-        [Option("--project", "-p")] string project = "",
-        [Option("--configuration")] string configuration = "Debug")
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Debug")
     {
         return ExecuteAsync(context, "dev", async () =>
         {
@@ -62,41 +68,54 @@ internal static class Program
         }, stream: !dryRun);
     }
 
-    [Command("size", Description = "Measure a published application and write a size report.")]
+    [Command("size", Description = "Measure a published application and write a size report.",
+        Examples = ["dotnet runic size --runtime linux-x64 --report measurements/linux.json"])]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Size(
         CommandExecutionContext context,
-        [Option("--no-aot")] bool noAot,
-        [Option("--verify-argument", AllowMultipleValues = true)] IReadOnlyList<string> verifyArguments,
+        [Option("--no-aot", Description = "Publish without Native AOT.")] bool noAot,
+        [Option("--verify-argument", AllowMultipleValues = true, Description = "An argument for the --verify executable. Repeat it for several arguments.")] IReadOnlyList<string> verifyArguments,
         CancellationToken cancellationToken,
-        [Option("--project", "-p")] string project = "",
-        [Option("--runtime", "-r")] string runtime = "",
-        [Option("--configuration")] string configuration = "Release",
-        [Option("--report")] string report = "runic-size.json",
-        [Option("--verify")] string verify = "") =>
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--runtime", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
+        [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
+        [Option("--report", Description = "The JSON report to write. The file must not exist yet.")] string report = "runic-size.json",
+        [Option("--verify", Description = "A published file, relative to the publish directory, to run as an executable check.")] string verify = "") =>
         ExecuteAsync(context, "size", () => SizeApplication.RunAsync(new SizeOptions(
             string.IsNullOrWhiteSpace(project) ? null : project, runtime,
             configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
 
-    [Command("doctor", Description = "Check the project and development environment.", Examples = ["dotnet runic doctor --project ./MyApp.csproj"])]
-    [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
-    internal static Task<CommandOutcome<ToolCommandResult>> Doctor(
+    [Command("doctor", Description = "Check the project and development environment.",
+        Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --output json"])]
+    [CommandResult(DoctorCommandResult.PayloadType, typeof(DoctorCommandJsonContext))]
+    internal static Task<CommandOutcome<DoctorCommandResult>> Doctor(
         CommandExecutionContext context,
         CancellationToken cancellationToken,
-        [Option("--project", "-p")] string project = "",
-        [Option("--configuration")] string configuration = "Debug")
+        [Option("--project", "-p", Description = ProjectDescription)] string project = "",
+        [Option("--configuration", "-c", Description = "The build configuration to evaluate.")] string configuration = "Debug",
+        [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail for human output and never for JSON output.")] string failOn = "")
     {
-        return ExecuteAsync(context, "doctor", async () => await DoctorApplication.RunAsync(
-            new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration), cancellationToken).ConfigureAwait(false));
+        return ExecuteAsync<DoctorCommandResult>(context, stream: false, async output =>
+        {
+            DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn, context.OutputMode);
+            DoctorRun run = await DoctorApplication.InspectAsync(
+                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, configuration),
+                cancellationToken).ConfigureAwait(false);
+            DoctorApplication.WriteReport(run.Project, run.Report);
+            return DoctorOutcome.Create(
+                run, context.OutputMode, threshold, context.Path,
+                output.ToString().TrimEnd(), BoundedHumanOutput(output));
+        });
     }
 
-    [Command("support")]
+    [Command("support", Description = "Preview, collect or remove a local support envelope built from an Editor diagnostic ZIP.",
+        Examples = ["dotnet runic support --mode preview --editor-diagnostics ./editor-diagnostics.zip"])]
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static async Task<CommandOutcome<ToolCommandResult>> Support(
         CancellationToken cancellationToken,
-        [Option("--mode")] string mode = "preview",
-        [Option("--editor-diagnostics")] string editorDiagnostics = "",
-        [Option("--destination")] string destination = "")
+        [Option("--mode", Description = "preview lists what would be collected, collect writes the envelope, and remove verifies and deletes it.")] string mode = "preview",
+        [Option("--editor-diagnostics", Description = "The Editor diagnostic ZIP to read. Required by preview and collect.")] string editorDiagnostics = "",
+        [Option("--destination", Description = "The support envelope JSON file. Required by collect and remove.")] string destination = "")
     {
         try
         {
@@ -115,7 +134,23 @@ internal static class Program
         }
     }
 
-    private static async Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(CommandExecutionContext context, string command, Func<Task<int>> operation, bool stream = false)
+    private static Task<CommandOutcome<ToolCommandResult>> ExecuteAsync(CommandExecutionContext context, string command, Func<Task<int>> operation, bool stream = false) =>
+        ExecuteAsync<ToolCommandResult>(context, stream, async output =>
+        {
+            int exitCode = await operation().ConfigureAwait(false);
+            return exitCode == Success
+                ? CommandOutcome.Success(new ToolCommandResult(command, exitCode, output.ToString().TrimEnd()))
+                : CommandOutcome.Failure<ToolCommandResult>(
+                    CommandExitCategory.CommandFailure,
+                    new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully."),
+                    diagnostics: [],
+                    humanOutput: BoundedHumanOutput(output));
+        });
+
+    private static async Task<CommandOutcome<T>> ExecuteAsync<T>(
+        CommandExecutionContext context,
+        bool stream,
+        Func<StringWriter, Task<CommandOutcome<T>>> operation)
     {
         TextWriter originalOutput = Console.Out;
         TextWriter originalError = Console.Error;
@@ -126,34 +161,27 @@ internal static class Program
             // JSON invocations reserve stdout for the final command envelope.
             Console.SetOut(stream ? new InvocationTextWriter(context.Console, standardError: false) : output);
             Console.SetError(stream ? new InvocationTextWriter(context.Console, standardError: true) : output);
-            int exitCode = await operation().ConfigureAwait(false);
-            return exitCode == Success
-                ? CommandOutcome.Success(new ToolCommandResult(command, exitCode, output.ToString().TrimEnd()))
-                : CommandOutcome.Failure<ToolCommandResult>(
-                    CommandExitCategory.CommandFailure,
-                    new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully."),
-                    diagnostics: [],
-                    humanOutput: BoundedHumanOutput(output));
+            return await operation(output).ConfigureAwait(false);
         }
         catch (DevUsageException exception)
         {
-            return Failure(CommandExitCategory.Usage, exception.Code, exception.Message, BoundedHumanOutput(output));
+            return Failure<T>(CommandExitCategory.Usage, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
         }
         catch (DevDevelopmentException exception)
         {
-            return Failure(CommandExitCategory.CommandFailure, exception.Code, exception.Message, BoundedHumanOutput(output));
+            return Failure<T>(CommandExitCategory.CommandFailure, exception.Code, exception.Message, WithDetail(BoundedHumanOutput(output), exception.LocalDetail));
         }
         catch (System.Text.Json.JsonException)
         {
-            return CommandOutcome.Failure<ToolCommandResult>(CommandExitCategory.HostFailure, new CommandFault("RAPPCLI1003", "MSBuild returned invalid configuration JSON."));
+            return CommandOutcome.Failure<T>(CommandExitCategory.HostFailure, new CommandFault("RAPPCLI1003", "MSBuild returned invalid configuration JSON."));
         }
         catch (System.IO.IOException)
         {
-            return CommandOutcome.Failure<ToolCommandResult>(CommandExitCategory.CommandFailure, new CommandFault("RAPPCLI1008", "The command could not access a required local file."));
+            return CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, new CommandFault("RAPPCLI1008", "The command could not access a required local file."));
         }
         catch (UnauthorizedAccessException)
         {
-            return CommandOutcome.Failure<ToolCommandResult>(CommandExitCategory.CommandFailure, new CommandFault("RAPPCLI1008", "The command could not access a required local file."));
+            return CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, new CommandFault("RAPPCLI1008", "The command could not access a required local file."));
         }
         finally
         {
@@ -166,18 +194,29 @@ internal static class Program
         CommandExitCategory category,
         string code,
         string message,
+        string? humanOutput = null) => Failure<ToolCommandResult>(category, code, message, humanOutput);
+
+    /// <summary>
+    /// Backstop for fault messages: finds any rooted path token (a Unix path
+    /// after a boundary, a drive letter path, a UNC path, or any backslash).
+    /// </summary>
+    internal static bool ContainsRootedPath(string message) =>
+        message.Contains('\\') || RootedPath().IsMatch(message);
+
+    [System.Text.RegularExpressions.GeneratedRegex("""(?:^|[\s'"(=:,])(?:/[^\s/]|[A-Za-z]:[\\/])""")]
+    private static partial System.Text.RegularExpressions.Regex RootedPath();
+
+    internal static CommandOutcome<T> Failure<T>(
+        CommandExitCategory category,
+        string code,
+        string message,
         string? humanOutput = null)
     {
-        bool containsPrivatePath =
-            message.Contains('\\') ||
-            message.Contains("/home/", StringComparison.Ordinal) ||
-            message.Contains("/Users/", StringComparison.Ordinal) ||
-            message.Contains("/root/", StringComparison.Ordinal) ||
-            message.Contains("/tmp/", StringComparison.Ordinal);
+        bool containsPrivatePath = ContainsRootedPath(message);
         string? detail = containsPrivatePath
             ? string.Concat(humanOutput, message, "\n")
             : humanOutput;
-        return CommandOutcome.Failure<ToolCommandResult>(
+        return CommandOutcome.Failure<T>(
             category,
             new CommandFault(
                 code,
@@ -187,6 +226,9 @@ internal static class Program
             diagnostics: [],
             detail);
     }
+
+    private static string? WithDetail(string? humanOutput, string? localDetail) =>
+        string.IsNullOrEmpty(localDetail) ? humanOutput : string.Concat(humanOutput, localDetail);
 
     private static string? BoundedHumanOutput(StringWriter output)
     {
