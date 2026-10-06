@@ -132,6 +132,7 @@ await ValidationTests.RunAsync();
 await SnapshotDeliveryTests.RunAsync();
 await SnapshotBatchTests.RunAsync();
 await CollectionDeltaTests.RunAsync();
+await CollectionDeltaConformanceTests.RunAsync();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();
 await InteractionFixture.VerifyAsync();

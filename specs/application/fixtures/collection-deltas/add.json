@@ -1,0 +1,27 @@
+{
+  "description": "An add inserts new rows at index. keys are the keys of the new rows; oldIndex is -1.",
+  "cases": [
+    {
+      "name": "append",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "insert", "index": 2, "item": { "id": 3, "label": "three" } }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "add", "index": 2, "oldIndex": -1, "keys": ["3"], "items": [{ "id": 3, "label": "three" }] }
+        ] }
+      ],
+      "expected": { "revision": 1, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }, { "id": 3, "label": "three" }], "title": "rows" }
+    },
+    {
+      "name": "insert at the start",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "insert", "index": 0, "item": { "id": 0, "label": "zero" } }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "add", "index": 0, "oldIndex": -1, "keys": ["0"], "items": [{ "id": 0, "label": "zero" }] }
+        ] }
+      ],
+      "expected": { "revision": 1, "rows": [{ "id": 0, "label": "zero" }, { "id": 1, "label": "one" }], "title": "rows" }
+    }
+  ]
+}

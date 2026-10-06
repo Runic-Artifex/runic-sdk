@@ -1,0 +1,51 @@
+{
+  "description": "Recovery paths. A slow host retains at most 64 pending frames or 1 MiB of encoded characters before a full snapshot supersedes pending work; a client that misses a frame reads one snapshot.",
+  "cases": [
+    {
+      "name": "64 pending frames",
+      "delivery": "held",
+      "initial": { "revision": 0, "rows": [], "title": "rows" },
+      "steps": [{ "each": [{ "op": "appendRows", "start": 0, "count": 67 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{ "$adds": [0, 1] }] },
+        { "revision": 66, "rows": [{ "$rows": [0, 66] }], "title": "rows" },
+        { "__runicDelta": 1, "baseRevision": 66, "revision": 67, "changes": [{ "$adds": [66, 1] }] }
+      ],
+      "expected": { "revision": 67, "rows": [{ "$rows": [0, 67] }], "title": "rows" }
+    },
+    {
+      "name": "1 MiB of pending frames",
+      "delivery": "held",
+      "initial": { "revision": 0, "rows": [], "title": "rows" },
+      "steps": [{ "each": [{ "op": "appendRows", "start": 0, "count": 18, "width": 65536 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{ "$adds": [0, 1, 65536] }] },
+        { "revision": 18, "rows": [{ "$rows": [0, 18, 65536] }], "title": "rows" }
+      ],
+      "expected": { "revision": 18, "rows": [{ "$rows": [0, 18, 65536] }], "title": "rows" }
+    },
+    {
+      "name": "a missed frame triggers one snapshot read",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }], "title": "rows" },
+      "steps": [
+        { "batch": [{ "op": "insert", "index": 1, "item": { "id": 2, "label": "two" } }] },
+        { "batch": [{ "op": "insert", "index": 2, "item": { "id": 3, "label": "three" } }] },
+        { "batch": [{ "op": "removeAt", "index": 0 }] }
+      ],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "add", "index": 1, "oldIndex": -1, "keys": ["2"], "items": [{ "id": 2, "label": "two" }] }
+        ] },
+        { "__runicDelta": 1, "baseRevision": 1, "revision": 2, "changes": [
+          { "field": "rows", "kind": "add", "index": 2, "oldIndex": -1, "keys": ["3"], "items": [{ "id": 3, "label": "three" }] }
+        ] },
+        { "__runicDelta": 1, "baseRevision": 2, "revision": 3, "changes": [
+          { "field": "rows", "kind": "remove", "index": 0, "oldIndex": 0, "keys": ["1"], "items": [] }
+        ] }
+      ],
+      "dropped": [1],
+      "recoveries": 1,
+      "expected": { "revision": 3, "rows": [{ "id": 2, "label": "two" }, { "id": 3, "label": "three" }], "title": "rows" }
+    }
+  ]
+}

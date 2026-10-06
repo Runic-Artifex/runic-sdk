@@ -1,0 +1,30 @@
+{
+  "description": "One batch publishes one frame whose changes apply in order. The next frame's baseRevision is the previous frame's revision.",
+  "cases": [
+    {
+      "name": "ordered changes and baseline continuation",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }, { "id": 3, "label": "three" }], "title": "rows" },
+      "steps": [
+        { "batch": [
+          { "op": "set", "index": 2, "item": { "id": 3, "label": "three b" } },
+          { "op": "move", "oldIndex": 2, "newIndex": 1 },
+          { "op": "removeAt", "index": 0 },
+          { "op": "insert", "index": 2, "item": { "id": 4, "label": "four" } }
+        ] },
+        { "batch": [{ "op": "removeAt", "index": 1 }] }
+      ],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 4, "changes": [
+          { "field": "rows", "kind": "replace", "index": 2, "oldIndex": 2, "keys": ["3"], "items": [{ "id": 3, "label": "three b" }] },
+          { "field": "rows", "kind": "move", "index": 1, "oldIndex": 2, "keys": ["3"], "items": [] },
+          { "field": "rows", "kind": "remove", "index": 0, "oldIndex": 0, "keys": ["1"], "items": [] },
+          { "field": "rows", "kind": "add", "index": 2, "oldIndex": -1, "keys": ["4"], "items": [{ "id": 4, "label": "four" }] }
+        ] },
+        { "__runicDelta": 1, "baseRevision": 4, "revision": 5, "changes": [
+          { "field": "rows", "kind": "remove", "index": 1, "oldIndex": 1, "keys": ["2"], "items": [] }
+        ] }
+      ],
+      "expected": { "revision": 5, "rows": [{ "id": 3, "label": "three b" }, { "id": 4, "label": "four" }], "title": "rows" }
+    }
+  ]
+}
