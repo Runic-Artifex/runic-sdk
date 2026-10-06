@@ -33,7 +33,8 @@ Window and View model. The instructions below are for contributing to the SDK it
 
 ## Start developing
 
-Install the .NET SDK in `global.json`, Node in `.node-version`, and Bun 1.4.2.
+Install the .NET SDK in `global.json`, Node in `.node-version`, and the Bun version
+in `package.json` (`bun eng/toolchain.mjs` prints every toolchain pin).
 On Linux with Nix, `nix develop` provides the SDK, Node, Bun, C++ compiler, and
 webview dependencies from the shared flake. Run these commands from this directory:
 
@@ -96,12 +97,15 @@ bun run affected main    # Changed components plus their dependent components
 Package consumers use a fresh NuGet cache and map Runic identities to the local
 candidate feed. npm consumers install tarballs outside the workspace and reject
 source links or unpublished dependency specifiers. Template acceptance additionally
-requires Bash, npm 12.2.0, and pnpm 12.9.1. Artifacts are written to
+requires Bash and the npm and pnpm versions from `bun eng/toolchain.mjs`. Artifacts are written to
 `artifacts/packages`; these commands never publish packages.
 
 `eng/workspace.json` lists maintained artifacts and component dependencies.
-`eng/Versions.props` defines the .NET release version. npm packages retain explicit
-versions, checked against the inventory. Coordinate version changes in a single PR.
+Its `version` is the release-train version. `eng/Versions.props` and every npm
+manifest carry checked copies; `bun run version:bump <version>` rewrites them and
+the CLI compatibility metadata together. `eng/toolchain.mjs` owns the .NET, Node,
+Bun, npm and pnpm pins and checks the template defaults and the Nix shell against
+them.
 CI uses separate jobs for managed suites, web packages, browser/HMR
 checks, packages and template consumers. Managed desktop, native window/close,
 NativeAOT and footprint checks target Linux x64, Windows x64 and macOS Apple Silicon. Broader native UI certification remains

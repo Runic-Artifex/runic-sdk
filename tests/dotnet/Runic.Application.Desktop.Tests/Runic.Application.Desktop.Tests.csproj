@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <OutputType>Exe</OutputType>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

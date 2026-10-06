@@ -103,11 +103,11 @@ local package; it has no source-tree or desktop-host references.
 From the SDK root:
 
 ~~~powershell
-dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicToolkitBuildMode=Verification
-dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 -p:PublishAot=true -p:RunicToolkitBuildMode=Verification -o artifacts/administration/native-tests
+dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicApplicationBuildMode=Verification
+dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 -p:PublishAot=true -p:RunicApplicationBuildMode=Verification -o artifacts/administration/native-tests
 & ./artifacts/administration/native-tests/Runic.Platform.Administration.Windows.Tests.exe
 
-dotnet pack packages/dotnet/Runic.Platform.Administration.Windows -c Release -p:RunicToolkitBuildMode=Verification -p:PackageVersion=0.2.0-administration.local.2 -o artifacts/administration/packages
+dotnet pack packages/dotnet/Runic.Platform.Administration.Windows -c Release -p:RunicApplicationBuildMode=Verification -p:PackageVersion=0.2.0-administration.local.2 -o artifacts/administration/packages
 dotnet restore examples/dotnet/Runic.Administration.Console --source ./artifacts/administration/packages --source https://api.nuget.org/v3/index.json
 dotnet run --project examples/dotnet/Runic.Administration.Console --no-restore -- system
 ~~~

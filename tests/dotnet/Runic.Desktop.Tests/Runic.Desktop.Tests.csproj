@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>

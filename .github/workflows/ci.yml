@@ -170,7 +170,7 @@ jobs:
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
           node examples/notes-view-first/window-smoke.mjs
-      - name: Exercise Toolkit and ReactiveUI typed clients
+      - name: Exercise CommunityToolkit and ReactiveUI typed clients
         run: |
           node examples/notes-view-first/browser-smoke.mjs
           RUNIC_VERIFY_CALL_BURST=1 node examples/notes-reactive-views/browser-smoke.mjs
@@ -373,11 +373,11 @@ jobs:
       - name: Verify Windows administration native inspection
         if: runner.os == 'Windows'
         timeout-minutes: 5
-        run: dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicToolkitBuildMode=Verification
+        run: dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicApplicationBuildMode=Verification
       - name: Publish Windows administration inspection with NativeAOT
         if: runner.os == 'Windows'
         timeout-minutes: 10
-        run: dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:RunicToolkitBuildMode=Verification -p:IlcTreatWarningsAsErrors=true -o artifacts/administration-aot
+        run: dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:RunicApplicationBuildMode=Verification -p:IlcTreatWarningsAsErrors=true -o artifacts/administration-aot
       - name: Verify NativeAOT Windows administration inspection
         if: runner.os == 'Windows'
         timeout-minutes: 5

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, test } from "vitest";
@@ -18,22 +18,16 @@ afterEach(async () => {
 });
 
 describe("SPA reference application", () => {
-  test("builds the host fallback and native adapter manifest", async () => {
+  test("builds the relocatable host fallback without an adapter manifest", async () => {
     await execute(process.execPath, [vite, "build"], { cwd: fixture });
     const fallback = await readFile(resolve(output, "200.html"), "utf8");
-    const manifest = JSON.parse(await readFile(resolve(output, "runic-toolkit.sveltekit.json"), "utf8"));
+    const emitted = await readdir(output);
 
     expect(fallback).toContain("kit.start(app, element)");
     expect(fallback).toContain('href="./_app/immutable/');
     expect(fallback).toContain('<script src="./runic-desktop.js"></script>');
     expect(fallback).not.toMatch(/(?:href|src)="\/_app\//);
     expect(fallback).not.toContain('import("/_app/');
-    expect(manifest).toEqual({
-      schema: "runic-toolkit.sveltekit/1",
-      mode: "spa",
-      entrypoint: "200.html",
-      fallback: "200.html",
-      routes: ["/"],
-    });
+    expect(emitted.filter((name) => name.endsWith(".json"))).toEqual([]);
   }, 30_000);
 });

@@ -3,10 +3,10 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, posix, relative, resolve, sep } from "node:path";
 import type { Adapter } from "@sveltejs/kit";
 
-export type RunicToolkitSvelteKitMode = "prerendered" | "spa";
+export type RunicSvelteKitMode = "prerendered" | "spa";
 
-export interface RunicToolkitSvelteKitAdapterOptions {
-  readonly mode?: RunicToolkitSvelteKitMode;
+export interface RunicSvelteKitAdapterOptions {
+  readonly mode?: RunicSvelteKitMode;
   /** Emits an entrypoint relocatable under a generated Runic Desktop surface namespace. */
   readonly desktop?: boolean;
   readonly out?: string;
@@ -17,15 +17,7 @@ export interface RunicToolkitSvelteKitAdapterOptions {
   readonly strict?: boolean;
 }
 
-export interface RunicToolkitSvelteKitManifest {
-  readonly schema: "runic-toolkit.sveltekit/1";
-  readonly mode: RunicToolkitSvelteKitMode;
-  readonly entrypoint: string;
-  readonly fallback: string | null;
-  readonly routes: readonly string[];
-}
-
-export function runicToolkitAdapter(options: RunicToolkitSvelteKitAdapterOptions = {}): Adapter {
+export function runicAdapter(options: RunicSvelteKitAdapterOptions = {}): Adapter {
   const mode = options.mode ?? "prerendered";
   const desktop = options.desktop ?? false;
   const out = options.out ?? "build";
@@ -60,18 +52,6 @@ export function runicToolkitAdapter(options: RunicToolkitSvelteKitAdapterOptions
           mode === "spa" ? builder.config.appDir : undefined,
         );
       }
-      const manifest: RunicToolkitSvelteKitManifest = {
-        schema: "runic-toolkit.sveltekit/1",
-        mode,
-        entrypoint,
-        fallback: fallback ?? null,
-        routes: pages.map((page) => page.route),
-      };
-      await writeFile(
-        resolve(out, "runic-toolkit.sveltekit.json"),
-        `${JSON.stringify(manifest, null, 2)}\n`,
-        "utf8",
-      );
     },
   };
 }
@@ -152,6 +132,6 @@ function isOutputRelative(file: string): boolean {
 }
 
 export {
-  runicToolkitPrerenderedPageOptions,
-  runicToolkitSpaPageOptions,
+  runicPrerenderedPageOptions,
+  runicSpaPageOptions,
 } from "./page-options.js";

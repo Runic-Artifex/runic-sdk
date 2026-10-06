@@ -42,6 +42,21 @@ The root Bun lockfile and NuGet configuration own development restores. Independ
 lockfiles in template and isolated consumer fixtures prove installation behavior;
 they are excluded from the active workspace.
 
+## Pull requests
+
+`main` accepts changes only through pull requests. A ruleset requires the
+always-run `verify` check from the CI workflow to pass before merging; no
+approving review is required for commits attributed to a GitHub account. The
+ruleset requires one approval from someone with write access when a pull request
+contains commits whose author email is not linked to a GitHub account, so commit
+with an email linked to your account. You cannot approve your own pull request.
+Branch deletion and force pushes to `main` are
+blocked. Organization administrators can bypass the ruleset, but only for
+emergencies such as a broken release or a CI outage that blocks a fix; follow an
+emergency push with a pull request that records why. Path-filtered workflows,
+such as the DynamicData consumer, are not required checks because a skipped
+workflow never reports.
+
 ## Verify a change
 
 Run the relevant tests and build/type checks for your change. The focused runner
@@ -109,13 +124,38 @@ the solution:
 - Rebuild the DynamicData example with the fork to rewrite its generated client
   (see [its README](examples/dynamicdata/README.md)).
 
+### Versions and toolchain pins
+
+`eng/workspace.json` owns the release-train version. Change it with:
+
+```sh
+bun run version:bump 0.7.0-preview.1
+```
+
+The command rewrites `RunicSdkVersion` in `eng/Versions.props`, every npm
+manifest and the CLI compatibility metadata. It leaves
+`RunicPackageValidationBaselineVersion` at the last published release and the
+independently released `Runic.CommandLine` pin in `Directory.Packages.props`.
+Template locks are stamped from the packed archives. The engineering tests fail
+when a copy differs.
+
+`global.json`, `.node-version`, the `packageManager` in `package.json` and the
+npm/pnpm install in `.github/actions/setup-sdk/action.yml` own the toolchain pins;
+`bun eng/toolchain.mjs` prints them. The engineering tests check the template
+package-manager defaults and the Bun, npm and pnpm archives in `flake.nix` against
+them; update those copies in the same change.
+
+The DynamicData example and fixture fail to build when `DynamicDataForkRoot` is
+not at `dynamicData.forkRevision` from `eng/workspace.json`. Pass
+`-p:RunicCheckDynamicDataForkRevision=false` to try a candidate revision.
+
 Tracked Markdown files must not contain broken relative links; the engineering
 tests (`bun run test engineering`) check them. Link to files in other repositories
 with absolute GitHub URLs.
 
-Repository scripts, build tools and verification use Bun 1.4.2. Use `bun run --bun`
-when invoking package scripts so Node shebangs also run under Bun. Node is retained
-for npm/pnpm package and template compatibility checks, not the default workspace
+Repository scripts, build tools and verification use the Bun version pinned in
+`package.json`. Use `bun run --bun` when invoking package scripts so Node shebangs
+also run under Bun. Node is retained for npm/pnpm package and template compatibility checks, not the default workspace
 runtime. `node:` imports refer to compatible APIs and do not require launching Node.
 Native CI targets Linux x64, Windows x64 and macOS Apple Silicon; Intel macOS is
 not a CI certification target.

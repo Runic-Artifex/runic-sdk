@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
-    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Platform.Linux.Portal</PackageId>

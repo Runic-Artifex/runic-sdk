@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Packs Runic.Assets and its in-repository dependencies from this checkout, or
+# uses the .nupkg files in an existing feed, then restores the consumer from a
+# fresh package cache.
+# Usage: Test-PackageConsumer.sh [package-version] [existing-feed]
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 fixture_root="$repository_root/tests/fixtures/assets/Runic.Assets.PackageConsumer"
-dependency_root="${RUNIC_ASSETS_DEPENDENCY_ROOT:-$repository_root/..}"
-desktop_project="$dependency_root/runic-desktop/src/Runic.Desktop/Runic.Desktop.csproj"
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
-package_version="${1:-0.1.0-preview.local.1}"
-package_feed="${2:-$test_root/feed}"
+package_version="${1:-0.0.0-local.1}"
+package_feed="$test_root/feed"
 consumer_root="$test_root/consumer"
 nuget_config="$test_root/NuGet.config"
+configuration="${CONFIGURATION:-Release}"
 
-if [[ $# -lt 2 ]]; then
-  "$repository_root/eng/pack.sh" "$package_version" "$package_feed"
+mkdir -p "$package_feed"
+if [[ $# -ge 2 ]]; then
+  cp "$2"/*.nupkg "$package_feed"
 else
-  candidate_feed="$test_root/feed"
-  mkdir -p "$candidate_feed"
-  cp "$package_feed"/*.nupkg "$candidate_feed"
-  package_feed="$candidate_feed"
-fi
-
-if [[ "${RUNIC_USE_REGISTRY_DEPENDENCIES:-}" != "1" ]]; then
-  if [[ ! -f "$desktop_project" ]]; then
-    echo "Runic Desktop project '$desktop_project' does not exist." >&2
-    exit 2
-  fi
-  dotnet pack "$desktop_project" \
-    --configuration Release \
-    -p:PackageVersion="$package_version" \
-    -p:RepositoryCommit="$(git -C "$dependency_root/runic-desktop" rev-parse HEAD)" \
-    --output "$package_feed"
+  # Runic.Assets packs the packer's build output; restore it for a clean clone.
+  dotnet restore "$repository_root/tools/Runic.Assets.Packer/Runic.Assets.Packer.csproj"
+  for project in \
+    packages/dotnet/Runic.Desktop/Runic.Desktop.csproj \
+    packages/dotnet/Runic.Assets/Runic.Assets.csproj \
+    packages/dotnet/Runic.Assets.AspNetCore/Runic.Assets.AspNetCore.csproj \
+    packages/dotnet/Runic.Assets.Desktop/Runic.Assets.Desktop.csproj; do
+    dotnet pack "$repository_root/$project" \
+      --configuration "$configuration" \
+      -p:PackageVersion="$package_version" \
+      --output "$package_feed"
+  done
 fi
 
 export NUGET_PACKAGES="$test_root/packages"

@@ -918,7 +918,7 @@ internal static class Program
         Assembly assembly = typeof(AssetManifest).Assembly;
         string[] references = assembly.GetReferencedAssemblies().Select(static reference => reference.Name ?? "").ToArray();
         True(!references.Any(static name =>
-            name.StartsWith("RunicToolkit.", StringComparison.Ordinal)
+            name.StartsWith("Runic.Application", StringComparison.Ordinal)
             || name.Contains("CsWebUi", StringComparison.OrdinalIgnoreCase)
             || name.Contains("AspNetCore", StringComparison.OrdinalIgnoreCase)));
         return Task.CompletedTask;
@@ -1131,7 +1131,7 @@ internal static class Program
     private sealed class TemporaryDirectory : IDisposable
     {
         public TemporaryDirectory() =>
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "webuitoolkit-assets-" + Guid.NewGuid().ToString("N"));
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "runic-assets-" + Guid.NewGuid().ToString("N"));
 
         public string Path { get; }
 

@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
-    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Desktop</PackageId>
     <Description>Runic Window and View host adapter for Runic Desktop.</Description>

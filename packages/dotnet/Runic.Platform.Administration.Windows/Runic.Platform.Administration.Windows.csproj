@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
     <PackageId>Runic.Platform.Administration.Windows</PackageId>
     <Description>Host-independent Windows administration capabilities for Runic.</Description>
-    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <IsPackable>true</IsPackable>
     <IsPublishable>false</IsPublishable>
     <PackageReadmeFile>README.md</PackageReadmeFile>

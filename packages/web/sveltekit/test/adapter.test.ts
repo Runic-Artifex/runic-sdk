@@ -1,15 +1,15 @@
-import { readFile, rm } from "node:fs/promises";
+import { readdir, readFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { runicToolkitAdapter } from "../src/index.js";
+import { runicAdapter } from "../src/index.js";
 
 const out = resolve(".tmp-adapter-test");
 
 afterEach(async () => rm(out, { recursive: true, force: true }));
 
-describe("runicToolkitAdapter", () => {
-  test("delegates static output and writes a deterministic native manifest", async () => {
-    const adapter = runicToolkitAdapter({ mode: "spa", desktop: true, out });
+describe("runicAdapter", () => {
+  test("delegates static output and makes the Desktop entrypoint relocatable", async () => {
+    const adapter = runicAdapter({ mode: "spa", desktop: true, out });
     const log = Object.assign(vi.fn(), {
       minor: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn(),
     });
@@ -19,22 +19,16 @@ describe("runicToolkitAdapter", () => {
     });
     await adapter.adapt(builder as never);
     const entrypoint = await readFile(resolve(out, "200.html"), "utf8");
-    const manifest = JSON.parse(await readFile(resolve(out, "runic-toolkit.sveltekit.json"), "utf8"));
+    const emitted = await readdir(out);
     expect(entrypoint).toContain('href="./_app/client.js"');
     expect(entrypoint).toContain('import("./_app/start.js")');
     expect(entrypoint).toContain('<script src="./runic-desktop.js"></script>');
     expect(entrypoint.indexOf("runic-desktop.js")).toBeLessThan(entrypoint.indexOf("./_app/start.js"));
-    expect(manifest).toEqual({
-      schema: "runic-toolkit.sveltekit/1",
-      mode: "spa",
-      entrypoint: "200.html",
-      fallback: "200.html",
-      routes: ["/"],
-    });
+    expect(emitted.filter((name) => name.endsWith(".json"))).toEqual([]);
   });
 
   test("relocates a nested Desktop fallback and a nested SvelteKit app directory", async () => {
-    const adapter = runicToolkitAdapter({
+    const adapter = runicAdapter({
       mode: "spa",
       desktop: true,
       fallback: "nested/200.html",
@@ -53,7 +47,7 @@ describe("runicToolkitAdapter", () => {
   });
 
   test("rejects a manually inserted Desktop bootstrap with flexible HTML spacing", async () => {
-    const adapter = runicToolkitAdapter({ mode: "spa", desktop: true, out });
+    const adapter = runicAdapter({ mode: "spa", desktop: true, out });
     const builder = desktopSpaBuilder({
       html: '<html><head><script src = "./runic-desktop.js"></script></head></html>',
     });
@@ -62,7 +56,7 @@ describe("runicToolkitAdapter", () => {
   });
 
   test("rejects a pathname-routed SPA that cannot move under a native surface namespace", async () => {
-    const adapter = runicToolkitAdapter({ mode: "spa", desktop: true, out });
+    const adapter = runicAdapter({ mode: "spa", desktop: true, out });
     const builder = {
       config: { router: { type: "pathname" } },
     };
@@ -71,7 +65,7 @@ describe("runicToolkitAdapter", () => {
   });
 
   test("fails closed when a multi-page prerendered app has no deterministic entrypoint", async () => {
-    const adapter = runicToolkitAdapter({ mode: "prerendered", out });
+    const adapter = runicAdapter({ mode: "prerendered", out });
     const log = Object.assign(vi.fn(), {
       minor: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), success: vi.fn(),
     });

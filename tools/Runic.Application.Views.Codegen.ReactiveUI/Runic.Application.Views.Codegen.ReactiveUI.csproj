@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- BridgeCodegen plug-in; it has no public API surface. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

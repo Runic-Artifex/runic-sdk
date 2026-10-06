@@ -5,21 +5,20 @@ SvelteKit adapter for Runic Desktop applications. Application Views use the
 
 ```ts
 // vite.config.ts
-import { runicToolkitAdapter } from "@runic-artifex/sveltekit";
+import { runicAdapter } from "@runic-artifex/sveltekit";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [sveltekit({ adapter: runicToolkitAdapter({ desktop: true }) })],
+  plugins: [sveltekit({ adapter: runicAdapter({ desktop: true }) })],
 });
 ```
 
 The package requires SvelteKit 3 and `@sveltejs/adapter-static` 4, which take
 their configuration through the `sveltekit()` Vite plugin. The adapter emits a
-relocatable page and `runic-toolkit.sveltekit.json` manifest. Use `mode: "spa"`
-with `router: { type: "hash" }` for a Desktop SPA. The
-`@runic-artifex/sveltekit/page-options` entry point provides matching route
-options.
+relocatable page. Use `mode: "spa"` with `router: { type: "hash" }` for a
+Desktop SPA. The `@runic-artifex/sveltekit/page-options` entry point provides
+matching route options (`runicPrerenderedPageOptions`, `runicSpaPageOptions`).
 
 Translation routing helpers moved to
 [`@runic-artifex/translations-sveltekit`](https://github.com/Runic-Artifex/runic-translations-sdk/tree/main/packages/web/translations-sveltekit).

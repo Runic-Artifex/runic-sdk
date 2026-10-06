@@ -22,4 +22,5 @@
     <Compile Remove="Program.cs" />
   </ItemGroup>
   <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../../examples/dynamicdata/DynamicDataFork.targets" />
 </Project>

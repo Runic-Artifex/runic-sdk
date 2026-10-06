@@ -18,6 +18,8 @@ dotnet run --project examples/dynamicdata -c Release \
 ```
 
 On NixOS use `direnv exec <sdk-root> <command>` when the SDK shell is not loaded.
+The build fails when the checkout is not at the pinned revision; pass
+`-p:RunicCheckDynamicDataForkRevision=false` to try another revision.
 The source dependency is explicit; it is not an SDK shipping dependency. To
 copy the example outside this repository, replace the SDK source imports and
 project references with the corresponding Runic packages, and the fork source
@@ -71,8 +73,8 @@ revision:
 1. Choose a released fork commit; prefer the release that follows a completed
    monthly review.
 2. Update `forkRevision` in a pull request. The pin change runs the workflow.
-3. Run the headless consumer and the benchmark above against that checkout. If
-   the benchmark changes noticeably, update [assessment](assessment.md).
+3. Check out that revision and run the headless consumer and the benchmark
+   above. If the benchmark changes noticeably, update [assessment](assessment.md).
 4. Merge only when the workflow passes, and note the fork release in the pull
    request.
 

@@ -148,7 +148,7 @@ a successful NativeAOT build or read-only local run does not validate them.
 ## Build from the SDK checkout
 
 ~~~powershell
-dotnet publish tools/Runic.Administration.Verify -c Release -r win-x64 -p:PublishAot=true -p:RunicToolkitBuildMode=Verification -o artifacts/administration/verifier-win-x64
+dotnet publish tools/Runic.Administration.Verify -c Release -r win-x64 -p:PublishAot=true -p:RunicApplicationBuildMode=Verification -o artifacts/administration/verifier-win-x64
 ~~~
 
 The CLI is a non-shipping repository tool and references the administration
