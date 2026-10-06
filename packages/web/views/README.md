@@ -48,7 +48,8 @@ revision, and `instanceof BridgeError` holds for errors from any copy.
 
 The framework packages `@runic-artifex/react`, `@runic-artifex/vue`,
 `@runic-artifex/svelte` and `@runic-artifex/angular` connect and dispose
-clients with the component lifecycle.
+clients with the component lifecycle. They are thin bindings over the
+controllers in [Framework bindings](#framework-bindings).
 
 ## Incremental collections
 
@@ -109,10 +110,36 @@ function requestViewport(scroll: HTMLElement) {
 }
 ```
 
-Avoid sending a request when `start` and `size` have not changed. The
+Avoid sending a request when `start` and `size` have not changed. The framework
+packages wrap this in `useCollectionViewport` (`injectCollectionViewport` in
+Angular), which follows the container's scroll position and size. The
 [DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata) shows a complete page. The frame
 format, fallbacks and recovery rules are specified in
 [Collection delta frames](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/collection-deltas.md).
+
+## Framework bindings
+
+The framework packages share three framework-neutral controllers, so each
+binding keeps only its own reactivity glue. Applications normally use the
+bindings; a binding for another framework can use the controllers directly.
+Each controller has a `current` value, replaced by a new object on every
+change, and `subscribe(listener)`, which returns an unsubscribe function.
+
+- `createViewController<TClient>({ release? })` follows a `ViewSource`: a
+  connector (`{ connect() }`, such as a generated page reference) that it
+  connects and releases, or a connected client that it only observes.
+  `setSource(source)` ignores a source with the same client or `connect`
+  function and does not notify; read `current` after calling it. `current` has
+  `source`, `client`, `state`, `error` and `pending`. `retry()` connects
+  again and `dispose()` releases the client. `isViewClient` and
+  `viewSourceIdentity` tell clients from connectors and compare sources.
+- `createCommandController(command)` has `run(...args)`, which never rejects
+  and resolves to `undefined` after a failure, and `current` with `pending` and
+  `error`.
+- `createCollectionViewportController({ totalCount, rowHeight, overscan? })`
+  has `attach(element)`, which follows the element's scroll position (once per
+  animation frame) and size, and `update(options)`. `current` is the
+  `collectionViewport` range and changes only when the range or sizes change.
 
 ## Developing without .NET
 

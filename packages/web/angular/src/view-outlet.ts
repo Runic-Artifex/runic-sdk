@@ -1,6 +1,5 @@
-import { Component, computed, effect, input, signal, viewChild, ViewContainerRef, type InputSignal, type Type } from "@angular/core";
-
-export interface ViewReference { readonly kind: string; connect(): Promise<unknown>; }
+import { Component, computed, effect, input, signal, untracked, viewChild, ViewContainerRef, type InputSignal, type Type } from "@angular/core";
+import type { ViewReference } from "@runic-artifex/views";
 
 /** A build-known map checks each generated reference against its component input. */
 export type ViewRegistry<R extends ViewReference> = {
@@ -16,29 +15,36 @@ export type ViewRegistry<R extends ViewReference> = {
     @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
   `,
 })
-export class RunicViewOutlet {
-  readonly content = input<ViewReference | null | undefined>();
-  readonly registry = input.required<Readonly<Record<string, Type<unknown>>>>();
+export class RunicViewOutlet<R extends ViewReference = ViewReference> {
+  readonly content = input<R | null | undefined>();
+  readonly registry = input.required<ViewRegistry<R>>();
   readonly error = signal<string | undefined>(undefined);
   private readonly mount = viewChild.required("mount", { read: ViewContainerRef });
   private readonly selected = computed(() => {
     const reference = this.content();
-    return reference ? { reference, component: this.registry()[reference.kind] } : undefined;
+    if (!reference) return undefined;
+    // A registry built without `satisfies ViewRegistry<R>` may miss a kind at run time.
+    const component: Type<object> | undefined = this.registry()[reference.kind as R["kind"]];
+    return { reference, component };
   });
 
   constructor() {
     effect(() => {
       const container = this.mount();
       const selection = this.selected();
-      container.clear();
-      this.error.set(undefined);
-      if (!selection) return;
-      if (!selection.component) {
-        this.error.set(`No web component is registered for ${selection.reference.kind}.`);
-        return;
-      }
-      const component = container.createComponent(selection.component);
-      component.setInput("page", selection.reference);
+      // Creating the component runs its constructor and inputs; their signal
+      // reads must not become dependencies of this effect.
+      untracked(() => {
+        container.clear();
+        this.error.set(undefined);
+        if (!selection) return;
+        if (!selection.component) {
+          this.error.set(`No web component is registered for ${selection.reference.kind}.`);
+          return;
+        }
+        const component = container.createComponent(selection.component);
+        component.setInput("page", selection.reference);
+      });
     });
   }
 }

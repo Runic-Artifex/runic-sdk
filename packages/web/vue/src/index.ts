@@ -1,22 +1,32 @@
-import { getCurrentScope, onScopeDispose, shallowRef, toValue, watch, type MaybeRefOrGetter, type Ref } from "vue";
+import {
+  defineComponent,
+  getCurrentScope,
+  h,
+  onScopeDispose,
+  shallowReactive,
+  shallowRef,
+  toValue,
+  watch,
+  type Component,
+  type ComponentPublicInstance,
+  type MaybeRefOrGetter,
+  type Ref,
+  type SetupContext,
+  type VNodeChild,
+} from "vue";
+import {
+  createCollectionViewportController,
+  createCommandController,
+  createViewController,
+  viewSourceIdentity,
+  type CollectionViewport,
+  type CollectionViewportOptions,
+  type ViewClient,
+  type ViewReference,
+  type ViewSource,
+} from "@runic-artifex/views";
 
-/** The framework-neutral surface of a generated `<Name>Client`. */
-export interface ViewClient<TState = unknown> {
-  readonly snapshot: TState;
-  subscribe(listener: (state: TState) => void): () => void;
-  dispose(): void;
-}
-
-/** A generated content reference, or `{ connect: connect<Name> }` for a root ViewModel. */
-export interface ViewReference<TClient extends ViewClient = ViewClient> {
-  connect(): Promise<TClient>;
-}
-
-/**
- * A reference is connected and disposed by the composable. An already
- * connected client is only observed; its owner disposes it.
- */
-export type ViewSource<TClient extends ViewClient> = ViewReference<TClient> | TClient | null | undefined;
+export type { CollectionViewport, CollectionViewportOptions, ViewClient, ViewConnector, ViewReference, ViewSource } from "@runic-artifex/views";
 
 export interface ViewHandle<TClient extends ViewClient> {
   /** The latest state, or undefined until the client connects. */
@@ -25,12 +35,10 @@ export interface ViewHandle<TClient extends ViewClient> {
   readonly client: Readonly<Ref<TClient | undefined>>;
   /** The connection failure, if any. */
   readonly error: Readonly<Ref<unknown>>;
+  /** True while a reference is connecting. */
+  readonly pending: Readonly<Ref<boolean>>;
   /** Connects a reference again after a failure. */
   retry(): void;
-}
-
-function isClient<TClient extends ViewClient>(source: ViewReference<TClient> | TClient): source is TClient {
-  return typeof (source as Partial<ViewClient>).subscribe === "function";
 }
 
 /**
@@ -44,43 +52,122 @@ function isClient<TClient extends ViewClient>(source: ViewReference<TClient> | T
  * `{ connect: connectWorkspace }` object does not reconnect.
  */
 export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<ViewSource<TClient>>): ViewHandle<TClient> {
+  const controller = createViewController<TClient>();
   const state = shallowRef<TClient["snapshot"] | undefined>();
   const client = shallowRef<TClient | undefined>();
   const error = shallowRef<unknown>();
-  let release: (() => void) | undefined;
+  const pending = shallowRef(false);
+  const sync = () => {
+    const current = controller.current;
+    state.value = current.state;
+    client.value = current.client;
+    error.value = current.error;
+    pending.value = current.pending;
+  };
+  controller.subscribe(sync);
+  watch(() => viewSourceIdentity(toValue(source)), () => {
+    controller.setSource(toValue(source));
+    sync();
+  }, { immediate: true });
+  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  return { state, client, error, pending, retry: () => controller.retry() };
+}
 
-  function start(): void {
-    release?.();
-    release = undefined;
-    const value = toValue(source);
-    state.value = undefined;
-    client.value = undefined;
-    error.value = undefined;
-    if (!value) return;
-    let active = true;
-    let connected: TClient | undefined;
-    let unsubscribe: (() => void) | undefined;
-    const observe = (next: TClient) => {
-      client.value = next;
-      unsubscribe = next.subscribe(update => { if (active) state.value = update; });
-    };
-    release = () => {
-      active = false;
-      unsubscribe?.();
-      connected?.dispose();
-    };
-    if (isClient(value)) observe(value);
-    else value.connect().then(next => {
-      if (!active) { next.dispose(); return; }
-      connected = next;
-      observe(next);
-    }, cause => { if (active) error.value = cause; });
-  }
+/** A build-known map checks each generated reference kind against its component's `page` prop. */
+export type ViewRegistry<R extends ViewReference> = {
+  readonly [K in R["kind"]]: Component<{ page: Extract<R, { readonly kind: K }> }>;
+};
 
+export interface ViewOutletProps<R extends ViewReference> {
+  /** The presented reference, such as `state.main`. */
+  content: R | null | undefined;
+  registry: ViewRegistry<R>;
+}
+
+const referenceKeys = new WeakMap<object, number>();
+let nextReferenceKey = 0;
+
+function referenceKey(reference: object): number {
+  let key = referenceKeys.get(reference);
+  if (key === undefined) referenceKeys.set(reference, key = ++nextReferenceKey);
+  return key;
+}
+
+/**
+ * Renders the registered component for a generated View reference and passes
+ * the reference as its `page` prop. A different reference remounts the
+ * component. A kind without a component renders an alert; the default slot
+ * renders while there is no content.
+ */
+export const ViewOutlet = defineComponent(<R extends ViewReference>(props: ViewOutletProps<R>, { slots }: SetupContext) => (): VNodeChild => {
+  const content = props.content;
+  if (!content) return slots.default?.();
+  const component = props.registry[content.kind as R["kind"]] as Component<{ page: R }> | undefined;
+  if (!component) return h("p", { role: "alert" }, `No web component is registered for ${content.kind}.`);
+  return h(component, { key: referenceKey(content), page: content });
+}, { name: "ViewOutlet", props: ["content", "registry"] });
+
+export interface CommandHandle<TArgs extends readonly unknown[], TResult> {
+  /** Runs the command. Resolves to its result, or to undefined after a failure, which `error` then holds. Never rejects. */
+  run(...args: TArgs): Promise<TResult | undefined>;
+  /** True while a run is in flight. */
+  readonly pending: boolean;
+  /** Why the latest run failed, until the next run starts. */
+  readonly error: unknown;
+  /** Clears `error`. */
+  reset(): void;
+}
+
+/**
+ * Tracks a command's pending state and failure. The result is a reactive
+ * object, so templates read `increment.pending` directly; do not destructure
+ * `pending` or `error`.
+ *
+ * ```vue
+ * const increment = useCommand(() => client.value?.increment());
+ * <button :disabled="!client || increment.pending" @click="increment.run()">…</button>
+ * ```
+ */
+export function useCommand<TArgs extends readonly unknown[], TResult>(
+  command: (...args: TArgs) => TResult | PromiseLike<TResult>,
+): CommandHandle<TArgs, Awaited<TResult>> {
+  const controller = createCommandController(command);
+  const handle = shallowReactive({ run: controller.run, pending: false, error: undefined as unknown, reset: controller.reset });
+  controller.subscribe(() => {
+    handle.pending = controller.current.pending;
+    handle.error = controller.current.error;
+  });
+  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  return handle;
+}
+
+export interface CollectionViewportHandle {
+  /** The rows to request and the sizes to render. */
+  readonly viewport: Readonly<Ref<CollectionViewport>>;
+  /** A function ref for the scroll container: `<div :ref="attach">`. */
+  attach(element: Element | ComponentPublicInstance | null): void;
+}
+
+/**
+ * Follows a fixed-row-height scroll container and returns the rows to request
+ * from .NET. Pass a getter such as `() => ({ totalCount: state.value?.totalCount ?? 0, rowHeight: 32 })`
+ * and watch `viewport` to send `start` and `size` to the ViewModel.
+ */
+export function useCollectionViewport(options: MaybeRefOrGetter<CollectionViewportOptions>): CollectionViewportHandle {
+  const controller = createCollectionViewportController(toValue(options));
+  const viewport = shallowRef(controller.current);
+  controller.subscribe(() => { viewport.value = controller.current; });
   watch(() => {
-    const value = toValue(source);
-    return value ? isClient(value) ? value : value.connect : undefined;
-  }, start, { immediate: true });
-  if (getCurrentScope()) onScopeDispose(() => { release?.(); release = undefined; });
-  return { state, client, error, retry: start };
+    const { totalCount, rowHeight, overscan } = toValue(options);
+    return [totalCount, rowHeight, overscan] as const;
+  }, ([totalCount, rowHeight, overscan]) => {
+    controller.update({ totalCount, rowHeight, ...(overscan === undefined ? {} : { overscan }) });
+  });
+  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  return {
+    viewport,
+    attach(element) {
+      controller.attach(typeof HTMLElement !== "undefined" && element instanceof HTMLElement ? element : null);
+    },
+  };
 }

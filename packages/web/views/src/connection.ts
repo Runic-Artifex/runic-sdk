@@ -8,7 +8,7 @@ import { bridgeWire } from "./wire.js";
 import { applyCollectionDelta, validateCollections, type BridgeCollectionDefinition } from "./collections.js";
 
 /** The framework-neutral surface every generated client shares. */
-export interface ViewClient<TState> {
+export interface ViewClient<TState = unknown> {
   /**
    * The latest accepted state. After `dispose()` or a Bridge session change it
    * stays the last state the client accepted.

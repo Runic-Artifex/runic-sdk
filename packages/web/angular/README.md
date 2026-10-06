@@ -1,7 +1,8 @@
 # `@runic-artifex/angular`
 
 Angular outlet and signals for generated Runic View clients. The generated
-modules import `@runic-artifex/views`, so install both:
+modules import `@runic-artifex/views`, which this package also builds on, so
+install both:
 
 ```sh
 npm install @runic-artifex/angular@preview @runic-artifex/views@preview
@@ -16,25 +17,27 @@ match your Runic SDK packages.
 
 `injectView(source)` connects a generated page reference, or
 `{ connect: connect<Name> }` for a root ViewModel, for the lifetime of the
-injection context and returns `state`, `client` and `error` signals and
-`retry()`:
+injection context and returns `state`, `client`, `error` and `pending`
+signals and `retry()`:
 
 ```ts
 import { Component, input } from "@angular/core";
-import { injectView } from "@runic-artifex/angular";
+import { injectCommand, injectView } from "@runic-artifex/angular";
 import type { CounterPageReference } from "./generated/counter";
 
 @Component({
   selector: "counter-page",
   template: `
-    <button [disabled]="!counter.client()" (click)="counter.client()?.increment()">
+    <button [disabled]="!counter.client() || increment.pending()" (click)="increment.run()">
       {{ counter.state()?.count ?? "…" }}
     </button>
+    @if (increment.error() ?? counter.error(); as issue) { <p role="alert">{{ issue }}</p> }
   `,
 })
 export class CounterPage {
   readonly page = input.required<CounterPageReference>();
   readonly counter = injectView(this.page);
+  readonly increment = injectCommand(() => this.counter.client()?.increment());
 }
 ```
 
@@ -60,7 +63,57 @@ const registry = { document: DocumentPage } satisfies ViewRegistry<DocumentRefer
 // <runic-view-outlet [content]="current()" [registry]="registry" />
 ```
 
-The outlet remounts the component when the logical View reference changes. A
-component's `page` input receives that reference; `injectView(this.page)` owns
-its connection and cleanup. Missing kinds render an alert. The generated
-TypeScript client can also be used directly without Angular.
+The outlet is generic over the reference union it receives, so the registry
+must have a component for every kind whose `page` input accepts that reference.
+It remounts the component when the logical View reference changes, and creates
+it outside its own signal tracking. A component's `page` input receives that
+reference; `injectView(this.page)` owns its connection and cleanup. Missing
+kinds render an alert. The generated TypeScript client can also be used
+directly without Angular.
+
+## Commands
+
+`injectCommand(command)` returns `run(...args)` and `pending` and `error`
+signals. `run` resolves to the command's result, or to `undefined` after a
+failure, which `error` then holds until the next run. It never rejects, so
+handlers need no `try`/`catch`. One command can serve several buttons:
+
+```ts
+readonly navigate = injectCommand((name: "showWelcome" | "showCounter") => this.workspace.client()?.[name]());
+// <button (click)="navigate.run('showWelcome')">Welcome</button>
+```
+
+Outside an injection context, pass `{ injector }`.
+
+## Collection viewports
+
+`injectCollectionViewport(element, options)` follows a fixed-row-height scroll
+container and returns a signal with its
+[`collectionViewport`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#collectionviewportoptions)
+range. Pass the container as a signal, such as a `viewChild`, and the options as
+a function or signal, then send the range to the ViewModel from an effect:
+
+```ts
+@Component({
+  selector: "rows-page",
+  template: `
+    <div #scroller style="height: 480px; overflow: auto">
+      <div [style.height.px]="viewport().totalSize"><!-- rows.state()?.rows --></div>
+    </div>
+  `,
+})
+export class RowsPage {
+  readonly page = input.required<RowsPageReference>();
+  readonly rows = injectView(this.page);
+  readonly viewport = injectCollectionViewport(viewChild<ElementRef<HTMLElement>>("scroller"),
+    () => ({ totalCount: this.rows.state()?.totalCount ?? 0, rowHeight: 32 }));
+
+  constructor() {
+    effect(() => {
+      const { start, size } = this.viewport();
+      const client = this.rows.client();
+      if (client && size !== 0) void client.setViewport({ start, size });
+    });
+  }
+}
+```

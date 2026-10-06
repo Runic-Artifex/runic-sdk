@@ -37,11 +37,12 @@
     "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
     "build": "bun run --bun clean && svelte-package -i src -o dist",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun run --bun build && vitest run test/use-view.svelte.test.ts",
+    "test": "bun run --bun build && vitest run test/use-view.svelte.test.ts test/glue.svelte.test.ts",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "svelte": ">=5.46.4 <6"
+    "svelte": ">=5.46.4 <6",
+    "@runic-artifex/views": "0.6.0-preview.1"
   },
   "publishConfig": {
     "access": "public",
@@ -57,6 +58,7 @@
     "node": ">=24.18.0 <25"
   },
   "devDependencies": {
+    "@runic-artifex/views": "workspace:*",
     "@sveltejs/adapter-static": "4.0.0",
     "@sveltejs/kit": "3.0.0",
     "@sveltejs/package": "3.0.0",

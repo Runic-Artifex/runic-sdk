@@ -28,9 +28,11 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "react": ">=18.3.0 <20"
+    "react": ">=18.3.0 <20",
+    "@runic-artifex/views": "0.6.0-preview.1"
   },
   "devDependencies": {
+    "@runic-artifex/views": "workspace:*",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "happy-dom": "20.14.5",

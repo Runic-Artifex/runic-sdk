@@ -28,9 +28,12 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "vue": ">=3.5.0 <4"
+    "vue": ">=3.5.0 <4",
+    "@runic-artifex/views": "0.6.0-preview.1"
   },
   "devDependencies": {
+    "@runic-artifex/views": "workspace:*",
+    "happy-dom": "20.14.5",
     "typescript": "6.0.3",
     "vitest": "5.0.3",
     "vue": "3.5.43"
