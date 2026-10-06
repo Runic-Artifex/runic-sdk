@@ -29,6 +29,8 @@ await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOption
 Paths resolve with the same `AssetManifest.TryResolveRequestPath` rules and
 defaults as `Runic.Assets.AspNetCore`: the root serves the entry point, manifest
 paths are exact, and missing paths without a file extension fall back to the
-entry point. Pass `AssetRoutingOptions` to `ToDesktopContentHandler` to disable
-the root or the fallback. Unknown and invalid paths otherwise return `404`, and
-methods other than `GET` and `HEAD` return `405`.
+entry point. A path with a trailing slash, such as `/settings/`, is not served.
+Pass `AssetRoutingOptions` to `ToDesktopContentHandler` to disable the root or
+the fallback. Unknown and invalid paths otherwise return `404`. Runic Desktop
+answers methods other than `GET` and `HEAD` with `405`, and it decodes `%2F` in
+request paths before the handler resolves them.

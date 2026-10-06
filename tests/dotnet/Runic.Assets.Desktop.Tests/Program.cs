@@ -93,7 +93,8 @@ internal static class Program
             ("index.html", "entry", true),
             ("app.js", "script", false),
             ("assets/logo.svg", "logo", false),
-            ("docs/guide", "guide", false));
+            ("docs/guide", "guide", false),
+            ("my file.txt", "spaced", false));
         var exact = new AssetRoutingOptions
         {
             ServeEntryPointAtRoot = false,
@@ -116,6 +117,7 @@ internal static class Program
             ("/Index.html", null, null, null),
             ("/settings/", null, null, null),
             ("/bad:name", null, null, null),
+            ("/my%20file.txt", "spaced", "spaced", "spaced"),
         ];
 
         foreach ((AssetRoutingOptions? routing, int column) in new (AssetRoutingOptions?, int)[]
@@ -137,16 +139,44 @@ internal static class Program
                 foreach (var testCase in cases)
                 {
                     string? expected = column switch { 0 => testCase.Default, 1 => testCase.NoFallback, _ => testCase.Exact };
-                    (HttpStatusCode Status, string Body) desktop = await GetAsync(client, surface.Url, testCase.Path).ConfigureAwait(false);
-                    (HttpStatusCode Status, string Body) aspNet = await GetAsync(client, aspNetBase, testCase.Path).ConfigureAwait(false);
                     string label = $"{testCase.Path} (policy {column}, prefix '{prefix}')";
-                    Equal(expected is null ? HttpStatusCode.NotFound : HttpStatusCode.OK, desktop.Status, $"Desktop {label}");
-                    Equal(desktop.Status, aspNet.Status, $"ASP.NET Core {label}");
+                    var desktop = await SendAsync(client, HttpMethod.Get, surface.Url, testCase.Path).ConfigureAwait(false);
+                    var aspNet = await SendAsync(client, HttpMethod.Get, aspNetBase, testCase.Path).ConfigureAwait(false);
+                    Equal(expected is null ? HttpStatusCode.NotFound : HttpStatusCode.OK, desktop.Status, $"Desktop GET {label}");
+                    Equal(desktop.Status, aspNet.Status, $"ASP.NET Core GET {label}");
                     if (expected is not null)
                     {
-                        Equal(expected, desktop.Body, $"Desktop {label}");
-                        Equal(expected, aspNet.Body, $"ASP.NET Core {label}");
+                        Equal(expected, desktop.Body, $"Desktop GET {label}");
+                        Equal(expected, aspNet.Body, $"ASP.NET Core GET {label}");
                     }
+
+                    var desktopHead = await SendAsync(client, HttpMethod.Head, surface.Url, testCase.Path).ConfigureAwait(false);
+                    var aspNetHead = await SendAsync(client, HttpMethod.Head, aspNetBase, testCase.Path).ConfigureAwait(false);
+                    Equal(desktop.Status, desktopHead.Status, $"Desktop HEAD {label}");
+                    Equal(desktop.Status, aspNetHead.Status, $"ASP.NET Core HEAD {label}");
+                    Equal("", desktopHead.Body + aspNetHead.Body, $"HEAD body {label}");
+
+                    // The Desktop host answers 405 to every other method before the content handler runs.
+                    // ASP.NET Core claims only GET and HEAD, so other methods stay free for app endpoints.
+                    Equal(HttpStatusCode.MethodNotAllowed, (await SendAsync(client, HttpMethod.Post, surface.Url, testCase.Path).ConfigureAwait(false)).Status, $"Desktop POST {label}");
+                    Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Post, aspNetBase, testCase.Path).ConfigureAwait(false)).Status, $"ASP.NET Core POST {label}");
+                }
+
+                // Hosts decode %2F differently: the Desktop host passes a decoded path, while ASP.NET
+                // Core keeps %2F, which is not a valid asset path. Both reject %2F traversal.
+                if (prefix.Length == 0)
+                {
+                    Equal(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Get, surface.Url, "/assets%2Flogo.svg").ConfigureAwait(false)).Status, "Desktop %2F");
+                    Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, aspNetBase, "/assets%2Flogo.svg").ConfigureAwait(false)).Status, "ASP.NET Core %2F");
+                    Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, surface.Url, "/assets/..%2Fapp.js").ConfigureAwait(false)).Status, "Desktop %2F traversal");
+                    Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, aspNetBase, "/assets/..%2Fapp.js").ConfigureAwait(false)).Status, "ASP.NET Core %2F traversal");
+                }
+
+                if (prefix.Length != 0)
+                {
+                    // The bare prefix resolves like its root.
+                    var bare = await SendAsync(client, HttpMethod.Get, new Uri(web.Urls.Single() + "/"), prefix).ConfigureAwait(false);
+                    Equal(column == 2 ? HttpStatusCode.NotFound : HttpStatusCode.OK, bare.Status, $"ASP.NET Core bare /{prefix} (policy {column})");
                 }
             }
         }
@@ -166,10 +196,14 @@ internal static class Program
         return app;
     }
 
-    private static async Task<(HttpStatusCode, string)> GetAsync(HttpClient client, Uri baseUrl, string path)
+    private static async Task<(HttpStatusCode Status, string Body)> SendAsync(
+        HttpClient client,
+        HttpMethod method,
+        Uri baseUrl,
+        string path)
     {
-        var url = new Uri(baseUrl.AbsoluteUri + path.TrimStart('/'));
-        using HttpResponseMessage response = await client.GetAsync(url).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(method, new Uri(baseUrl.AbsoluteUri + path.TrimStart('/')));
+        using HttpResponseMessage response = await client.SendAsync(request).ConfigureAwait(false);
         return (response.StatusCode, await response.Content.ReadAsStringAsync().ConfigureAwait(false));
     }
 

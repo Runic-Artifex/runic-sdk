@@ -8,7 +8,13 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Http;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Assets.AspNetCore;
 
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
@@ -34,6 +40,7 @@ internal static class Program
         new("archive manifest parsing is decompression bounded", ArchiveManifestBound),
         new("ASP.NET Core integration preserves response metadata", AspNetCoreIntegration),
         new("ASP.NET Core delivery binds metadata and bytes from one source snapshot", AspNetCoreSnapshotIntegration),
+        new("ASP.NET Core assets coexist with app endpoints, controllers, static files and fallbacks", AspNetCoreCoexistence),
         new("development directory refresh preserves immutable snapshots", DirectoryRefresh),
         new("development directory snapshots remain digest-verified while files change", DirectorySnapshot),
         new("development directory publishes owned immutable change snapshots", DirectoryChangeNotifications),
@@ -448,6 +455,58 @@ internal static class Program
             .ConfigureAwait(false);
         Equal(StatusCodes.Status200OK, multiRange.Response.StatusCode);
         SequenceEqual(full, ((MemoryStream)multiRange.Response.Body).ToArray());
+    }
+
+    private static async Task AspNetCoreCoexistence()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("wwwroot/site.css", "static");
+        var source = NewEmbeddedSource();
+        var exact = new AssetRoutingOptions { ServeEntryPointAtRoot = false, EnableSinglePageApplicationFallback = false };
+        foreach (AssetRoutingOptions? routing in new[] { null, exact })
+        {
+            WebApplicationBuilder builder = WebApplication.CreateBuilder(new WebApplicationOptions
+            {
+                ContentRootPath = directory.Path,
+                WebRootPath = System.IO.Path.Combine(directory.Path, "wwwroot"),
+            });
+            builder.WebHost.UseUrls("http://127.0.0.1:0");
+            builder.Logging.ClearProviders();
+            builder.Services.AddControllers().AddApplicationPart(typeof(CoexistenceController).Assembly);
+            await using WebApplication app = builder.Build();
+            app.UseRouting();
+            app.UseStaticFiles();
+            app.MapRunicAssetSource(source, routing: routing);
+            app.MapGet("/api/items", () => "api-get");
+            app.MapPost("/api/items", () => "api-post");
+            app.MapControllerRoute("conventional", "{controller}/{action}");
+            app.MapFallback(() => "fallback");
+            await app.StartAsync().ConfigureAwait(false);
+
+            using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+            async Task<string> Send(HttpMethod method, string path)
+            {
+                using HttpResponseMessage response = await client
+                    .SendAsync(new HttpRequestMessage(method, path))
+                    .ConfigureAwait(false);
+                string body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                return $"{(int)response.StatusCode} {(body.StartsWith("<!doctype", StringComparison.Ordinal) ? "entry" : body)}";
+            }
+
+            Equal("200 api-get", await Send(HttpMethod.Get, "/api/items").ConfigureAwait(false));
+            Equal("200 api-post", await Send(HttpMethod.Post, "/api/items").ConfigureAwait(false));
+            Equal("200 controller", await Send(HttpMethod.Get, "/coexistence/hello").ConfigureAwait(false));
+            Equal("200 static", await Send(HttpMethod.Get, "/site.css").ConfigureAwait(false));
+            // MapFallback skips file-like paths, so nothing claims an unknown file.
+            Equal("404 ", await Send(HttpMethod.Get, "/missing.txt").ConfigureAwait(false));
+            Equal("200 fallback", await Send(HttpMethod.Post, "/settings").ConfigureAwait(false));
+            Equal("200 entry", await Send(HttpMethod.Get, "/index.html").ConfigureAwait(false));
+            Equal("200 body { color: rebeccapurple; }", (await Send(HttpMethod.Get, "/assets/app.css").ConfigureAwait(false)).Trim());
+            string spa = routing is null ? "200 entry" : "200 fallback";
+            Equal(spa, await Send(HttpMethod.Get, "/").ConfigureAwait(false));
+            Equal(spa, await Send(HttpMethod.Get, "/settings").ConfigureAwait(false));
+            await app.StopAsync().ConfigureAwait(false);
+        }
     }
 
     private static async Task AspNetCoreSnapshotIntegration()
@@ -1092,4 +1151,11 @@ internal static class Program
             }
         }
     }
+}
+
+/// <summary>A conventional-route controller for the ASP.NET Core coexistence test.</summary>
+public sealed class CoexistenceController : Controller
+{
+    /// <summary>Returns a marker body.</summary>
+    public ContentResult Hello() => Content("controller");
 }
