@@ -101,3 +101,14 @@ test('subprocess failures do not expose argv or underlying process errors',()=>{
  try {runChecked('dotnet',['nuget','push','file','--api-key',secret],{},()=>({status:1,error:new Error(`failed --api-key ${secret}`)}));throw Error('Expected failure');}
  catch(error) {expect(String(error)).not.toContain(secret);expect(error.message).toContain('Release subprocess failed');expect(error.cause).toBeUndefined();}
 });
+
+import { npmLatest } from './registry.mjs';
+test('a dry run treats an npm package that does not exist yet as having no latest', async()=>{
+ const urls=[];
+ const fetchImpl=async url=>{urls.push(url);return url.includes('/dist-tags') ? new Response('',{status:401}) : new Response('',{status:404});};
+ expect(await npmLatest('@runic-artifex/new',{fetchImpl})).toBeUndefined();
+ expect(urls).toEqual(['https://registry.npmjs.org/%40runic-artifex%2Fnew']);
+ const published=async url=>url.includes('/dist-tags') ? Response.json({latest:'0.6.0-preview.1'}) : Response.json({});
+ expect(await npmLatest('@runic-artifex/views',{fetchImpl:published})).toBe('0.6.0-preview.1');
+ await expect(npmLatest('@runic-artifex/new',{fetchImpl:async()=>new Response('',{status:401}),waitForAvailability:true,maxAttempts:1})).rejects.toThrow('401');
+});

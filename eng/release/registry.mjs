@@ -57,9 +57,15 @@ export async function registryMatches(p, options={}) {
 export function needsLatest(current, version) {
   return current === undefined || Bun.semver.order(current, version) < 0;
 }
+// npm answers the dist-tags of an unpublished scoped name with 401. Without waiting
+// for availability (a dry run before publication), a missing package has no latest.
 export async function npmLatest(name, options={}) {
+  if (!options.waitForAvailability) {
+    const document=await fetchRegistry(`https://registry.npmjs.org/${encodeURIComponent(name)}`,options);
+    await document.body?.cancel();
+    if (document.status === 404) return undefined;
+  }
   const response=await fetchRegistry(`https://registry.npmjs.org/-/package/${encodeURIComponent(name)}/dist-tags`,options);
-  if (response.status === 404 && !options.waitForAvailability) return undefined;
   assert(response.ok, `npm dist-tag lookup failed for ${name}: ${response.status}`);
   return (await response.json()).latest;
 }
