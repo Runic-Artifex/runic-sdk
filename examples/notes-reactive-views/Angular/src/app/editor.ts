@@ -2,6 +2,7 @@ import { Component, effect, input, signal } from "@angular/core";
 import type { EditorPageReference, EditorClient } from "../../../Frontend/src/generated/editor.js";
 import { EditorWrites } from "../../../Frontend/src/editor-writes.js";
 import { injectView } from "../../../../../packages/web/angular/src/inject-view";
+import { injectCommand } from "../../../../../packages/web/angular/src/inject-command";
 
 @Component({
   selector: "notes-editor",
@@ -10,20 +11,24 @@ import { injectView } from "../../../../../packages/web/angular/src/inject-view"
       <h2>Full editor</h2>
       <label>Title<input data-title [value]="state.title" (change)="setTitle($event)" /></label>
       <label>Body<textarea data-body [value]="state.body" (change)="setBody($event)"></textarea></label>
-      <button data-save [disabled]="!state.canSave" (click)="save()">Save</button>
-      <button data-discard [disabled]="!state.canDiscard" (click)="discard()">Discard changes</button>
+      <button data-save [disabled]="!state.canSave" (click)="command.run('save')">Save</button>
+      <button data-discard [disabled]="!state.canDiscard" (click)="command.run('discard')">Discard changes</button>
       <p data-message role="status">{{ state.savedMessage }}</p>
       <p data-activation class="muted">Activated {{ state.activationCount }} × · deactivated {{ state.deactivationCount }} ×</p>
     } @else { <p>Connecting…</p> }
-    @if (error() ?? editor.error(); as issue) { <p role="alert">{{ issue }}</p> }
+    @if (command.error() ?? writeError() ?? editor.error(); as issue) { <p role="alert">{{ issue }}</p> }
   `,
 })
 export class EditorComponent {
   readonly page = input.required<EditorPageReference>();
   readonly handleInteractions = input(true);
   readonly editor = injectView(this.page);
-  readonly error = signal<string | undefined>(undefined);
-  private readonly writes = new EditorWrites(cause => this.error.set(cause === undefined ? undefined : String(cause)));
+  readonly writeError = signal<unknown>(undefined);
+  private readonly writes = new EditorWrites(cause => this.writeError.set(cause));
+  readonly command = injectCommand((name: "save" | "discard") => {
+    const view = this.editor.client();
+    return view && this.writes.run(() => view[name]());
+  });
 
   constructor() {
     effect(onCleanup => {
@@ -38,16 +43,9 @@ export class EditorComponent {
 
   setTitle(event: Event): void { const value = (event.target as HTMLInputElement).value; this.write(view => view.setTitle(value)); }
   setBody(event: Event): void { const value = (event.target as HTMLTextAreaElement).value; this.write(view => view.setBody(value)); }
-  save(): void { this.run(view => this.writes.run(() => view.save())); }
-  discard(): void { this.run(view => this.writes.run(() => view.discard())); }
   private write(action: (view: EditorClient) => Promise<unknown>): void {
     const view = this.editor.client();
     if (view) this.writes.enqueue(() => action(view));
-  }
-  private run(action: (view: EditorClient) => Promise<unknown>): void {
-    const view = this.editor.client();
-    if (!view) return;
-    void action(view).then(() => this.error.set(undefined)).catch(cause => this.error.set(String(cause)));
   }
 }
 

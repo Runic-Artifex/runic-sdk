@@ -2,11 +2,12 @@
   import type { EditorPageReference, EditorClient } from "../../Frontend/src/generated/editor.js";
   import { EditorWrites } from "../../Frontend/src/editor-writes.js";
   import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
+  import { useCommand } from "../../../../packages/web/svelte/src/views/use-command.svelte.js";
 
   let { page, handleInteractions = true }: { page: EditorPageReference; handleInteractions?: boolean } = $props();
   const editor = useView(() => page);
-  let error = $state<string | undefined>();
-  const writes = new EditorWrites(cause => { error = cause === undefined ? undefined : String(cause); });
+  let writeError = $state<unknown>();
+  const writes = new EditorWrites(cause => { writeError = cause; });
   const connectedEditor = $derived(editor.client);
 
   $effect(() => {
@@ -17,12 +18,10 @@
     });
   });
 
-  async function run(command: (view: EditorClient) => Promise<unknown>) {
+  const command = useCommand((name: "save" | "discard") => {
     const view = editor.client;
-    if (!view) return;
-    try { await command(view); error = undefined; }
-    catch (cause) { error = String(cause); }
-  }
+    return view && writes.run(() => view[name]());
+  });
   function write(command: (view: EditorClient) => Promise<unknown>) {
     const view = editor.client;
     if (view) writes.enqueue(() => command(view));
@@ -33,11 +32,11 @@
   <h2>Full editor</h2>
   <label>Title<input data-title value={editor.state.title} onchange={event => { const value = event.currentTarget.value; write(view => view.setTitle(value)); }}></label>
   <label>Body<textarea data-body value={editor.state.body} onchange={event => { const value = event.currentTarget.value; write(view => view.setBody(value)); }}></textarea></label>
-  <button data-save disabled={!editor.state.canSave} onclick={() => run(view => writes.run(() => view.save()))}>Save</button>
-  <button data-discard disabled={!editor.state.canDiscard} onclick={() => run(view => writes.run(() => view.discard()))}>Discard changes</button>
+  <button data-save disabled={!editor.state.canSave} onclick={() => command.run("save")}>Save</button>
+  <button data-discard disabled={!editor.state.canDiscard} onclick={() => command.run("discard")}>Discard changes</button>
   <p data-message role="status">{editor.state.savedMessage}</p>
   <p data-activation class="muted">Activated {editor.state.activationCount} × · deactivated {editor.state.deactivationCount} ×</p>
 {:else}
   <p>Connecting…</p>
 {/if}
-{#if error ?? editor.error}<p role="alert">{String(error ?? editor.error)}</p>{/if}
+{#if command.error ?? writeError ?? editor.error}<p role="alert">{String(command.error ?? writeError ?? editor.error)}</p>{/if}

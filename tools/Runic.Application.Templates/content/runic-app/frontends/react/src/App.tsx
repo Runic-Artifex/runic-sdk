@@ -1,30 +1,22 @@
-import { useState } from "react";
-import { useView } from "@runic-artifex/react";
-import { connectWorkspace } from "./generated/workspace.js";
+import { useCommand, useView, ViewOutlet, type ViewRegistry } from "@runic-artifex/react";
+import { connectWorkspace, type WorkspaceState } from "./generated/workspace.js";
 import { CounterPage } from "./pages/CounterPage";
 import { WelcomePage } from "./pages/WelcomePage";
 
 const workspace = { connect: connectWorkspace };
+const pages = { counter: CounterPage, welcome: WelcomePage } satisfies ViewRegistry<WorkspaceState["main"]>;
 
 export default function App() {
   const { state, client, error: connection } = useView(workspace);
-  const [error, setError] = useState<string>();
+  const navigate = useCommand((name: "showWelcome" | "showCounter") => client?.[name]());
 
-  async function run(command: () => Promise<unknown>) {
-    try { await command(); setError(undefined); }
-    catch (cause) { setError(String(cause)); }
-  }
-
-  const page = state?.main;
   return <main>
     <header><h1>Runic Views</h1><p>Window/View starter · React</p></header>
     <nav aria-label="Main navigation">
-      <button disabled={!client} onClick={() => client && run(() => client.showWelcome())}>Welcome</button>
-      <button disabled={!client} onClick={() => client && run(() => client.showCounter())}>Counter</button>
+      <button disabled={!client} onClick={() => void navigate.run("showWelcome")}>Welcome</button>
+      <button disabled={!client} onClick={() => void navigate.run("showCounter")}>Counter</button>
     </nav>
-    {page?.kind === "counter" ? <CounterPage key={page.kind} page={page} />
-      : page?.kind === "welcome" ? <WelcomePage key={page.kind} page={page} />
-      : <p>Connecting to the Window…</p>}
-    <p role="status">{error ?? (connection ? String(connection) : "Connected to the .NET Window.")}</p>
+    <ViewOutlet content={state?.main} registry={pages} fallback={<p>Connecting to the Window…</p>} />
+    <p role="status">{String(navigate.error ?? connection ?? "Connected to the .NET Window.")}</p>
   </main>;
 }

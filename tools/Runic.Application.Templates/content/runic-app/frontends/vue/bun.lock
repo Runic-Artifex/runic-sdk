@@ -63,11 +63,11 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/views": ["@runic-artifex/views@0.6.0-preview.1", "", {}, "sha512-lqJqe/xXbKIe222acduzeJpyuZIGkfXs2DZFw+GMJ7c3DXp+JK8M4SMrp1IuBF8ralhAoNMyfvFtRAk0sq911A=="],
+    "@runic-artifex/views": ["@runic-artifex/views@0.6.0-preview.1", "", {}, "sha512-xOQ9Iy5rmA5TLhCyMeUnTP5ehxfScjnB0VU81uXlYmK7vxOwbXSZ4g6WSMdTCzbPGHLQ4zArF4K9Q+aqzQZEMQ=="],
 
-    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.6.0-preview.1", "", { "peerDependencies": { "@vitejs/devtools": "^0.7.6", "vite": "^8.0.0" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-zEGklvllFUvKAzy+XSTYwjW8JTvAM4V6M33LYDeAAEt3gafy6p0qw2CcOO99agFkvzj5pus+5JmQ24Fom0/XNQ=="],
+    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.6.0-preview.1", "", { "peerDependencies": { "@vitejs/devtools": "^0.7.6", "vite": "^8.0.0" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-umDYqrqZbVu5ucVHFat6oAixiSilW/jio3E2PWei+gpCvRT2x+QIm9r8/sY4nXkiEZJ6jKGD6cwQvqOsMeKYTw=="],
 
-    "@runic-artifex/vue": ["@runic-artifex/vue@0.6.0-preview.1", "", { "peerDependencies": { "vue": ">=3.5.0 <4" } }, "sha512-VowClaEmTNeFzlgtdDgccUp9OEkL80Ju+z8JRZvQgsTvRXLxGrg4ztZmWWxjt6UvX+iSxq3KQJ3vZgYNPVLVVg=="],
+    "@runic-artifex/vue": ["@runic-artifex/vue@0.6.0-preview.1", "", { "peerDependencies": { "@runic-artifex/views": "0.6.0-preview.1", "vue": ">=3.5.0 <4" } }, "sha512-P9C9Tq4bizciD/upqNGG2wtkpjpk395HNODMfzTHamhqxg9FQCyOFg17DeXE/X28XFGJZBB7zTu/dnOixokdUQ=="],
 
     "@vitejs/plugin-vue": ["@vitejs/plugin-vue@6.0.9", "", { "dependencies": { "@rolldown/pluginutils": "^1.0.1" }, "peerDependencies": { "vite": "^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0", "vue": "^3.2.25" } }, "sha512-rD/MORlhaZMlXWW0rEn4FB4wMinWC0z/D7Ye160S5+Rs1mC8ZDAdcDp4SjKfUhG5t8q1ktcPVw4xuTkPRlzrSA=="],
 

@@ -171,7 +171,7 @@ importers:
         version: 0.6.0-preview.1
       '@runic-artifex/vue':
         specifier: 0.6.0-preview.1
-        version: 0.6.0-preview.1(vue@3.5.43(typescript@6.0.3))
+        version: 0.6.0-preview.1(@runic-artifex/views@0.6.0-preview.1)(vue@3.5.43(typescript@6.0.3))
       vue:
         specifier: 3.5.43
         version: 3.5.43(typescript@6.0.3)
@@ -317,11 +317,11 @@ packages:
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@runic-artifex/views@0.6.0-preview.1':
-    resolution: {integrity: sha512-lqJqe/xXbKIe222acduzeJpyuZIGkfXs2DZFw+GMJ7c3DXp+JK8M4SMrp1IuBF8ralhAoNMyfvFtRAk0sq911A==}
+    resolution: {integrity: sha512-xOQ9Iy5rmA5TLhCyMeUnTP5ehxfScjnB0VU81uXlYmK7vxOwbXSZ4g6WSMdTCzbPGHLQ4zArF4K9Q+aqzQZEMQ==}
     engines: {node: '>=24.18.0 <25'}
 
   '@runic-artifex/vite-plugin-runic@0.6.0-preview.1':
-    resolution: {integrity: sha512-zEGklvllFUvKAzy+XSTYwjW8JTvAM4V6M33LYDeAAEt3gafy6p0qw2CcOO99agFkvzj5pus+5JmQ24Fom0/XNQ==}
+    resolution: {integrity: sha512-umDYqrqZbVu5ucVHFat6oAixiSilW/jio3E2PWei+gpCvRT2x+QIm9r8/sY4nXkiEZJ6jKGD6cwQvqOsMeKYTw==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
       '@vitejs/devtools': ^0.7.6
@@ -331,9 +331,10 @@ packages:
         optional: true
 
   '@runic-artifex/vue@0.6.0-preview.1':
-    resolution: {integrity: sha512-VowClaEmTNeFzlgtdDgccUp9OEkL80Ju+z8JRZvQgsTvRXLxGrg4ztZmWWxjt6UvX+iSxq3KQJ3vZgYNPVLVVg==}
+    resolution: {integrity: sha512-P9C9Tq4bizciD/upqNGG2wtkpjpk395HNODMfzTHamhqxg9FQCyOFg17DeXE/X28XFGJZBB7zTu/dnOixokdUQ==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
+      '@runic-artifex/views': 0.6.0-preview.1
       vue: '>=3.5.0 <4'
 
   '@vitejs/plugin-vue@6.0.9':
@@ -667,8 +668,9 @@ snapshots:
     dependencies:
       vite: 8.3.2
 
-  '@runic-artifex/vue@0.6.0-preview.1(vue@3.5.43(typescript@6.0.3))':
+  '@runic-artifex/vue@0.6.0-preview.1(@runic-artifex/views@0.6.0-preview.1)(vue@3.5.43(typescript@6.0.3))':
     dependencies:
+      '@runic-artifex/views': 0.6.0-preview.1
       vue: 3.5.43(typescript@6.0.3)
 
   '@vitejs/plugin-vue@6.0.9(vite@8.3.2)(vue@3.5.43(typescript@6.0.3))':

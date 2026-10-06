@@ -1,5 +1,6 @@
-import { Component, input, signal } from "@angular/core";
-import type { DocumentPageReference, DocumentState, DocumentClient } from "../../../Frontend/src/generated/document.js";
+import { Component, input } from "@angular/core";
+import type { DocumentPageReference, DocumentState } from "../../../Frontend/src/generated/document.js";
+import { injectCommand } from "../../../../../packages/web/angular/src/inject-command";
 import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 import { EditorComponent, MirrorEditorComponent } from "./editor";
 import { CompactComponent } from "./compact";
@@ -20,8 +21,8 @@ const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<
       <div class="document">
         <div>
           <div class="tabs">
-            <button data-pane="editor" [attr.aria-current]="state.activePane === 'Editor' ? 'page' : null" (click)="showEditor()">Editor</button>
-            <button data-pane="preview" [attr.aria-current]="state.activePane === 'Preview' ? 'page' : null" (click)="showPreview()">Preview</button>
+            <button data-pane="editor" [attr.aria-current]="state.activePane === 'Editor' ? 'page' : null" (click)="show.run('showEditor')">Editor</button>
+            <button data-pane="preview" [attr.aria-current]="state.activePane === 'Preview' ? 'page' : null" (click)="show.run('showPreview')">Preview</button>
           </div>
           <section id="document-pane" class="card"><runic-view-outlet [content]="state.currentPane" [registry]="paneViews" /></section>
         </div>
@@ -31,7 +32,7 @@ const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<
         <aside id="compact-pane" class="card"><runic-view-outlet [content]="state.compactNote" [registry]="compactViews" /></aside>
       </div>
     } @else { <p>Connecting…</p> }
-    @if (error() ?? document.error(); as issue) { <p role="alert">{{ issue }}</p> }
+    @if (show.error() ?? document.error(); as issue) { <p role="alert">{{ issue }}</p> }
   `,
 })
 export class DocumentComponent {
@@ -40,13 +41,5 @@ export class DocumentComponent {
   readonly paneViews = paneViews;
   readonly mirrorViews = mirrorViews;
   readonly compactViews = compactViews;
-  readonly error = signal<string | undefined>(undefined);
-
-  showEditor(): void { this.run(view => view.showEditor()); }
-  showPreview(): void { this.run(view => view.showPreview()); }
-  private run(action: (view: DocumentClient) => Promise<unknown>): void {
-    const view = this.document.client();
-    if (!view) return;
-    void action(view).then(() => this.error.set(undefined)).catch(cause => this.error.set(String(cause)));
-  }
+  readonly show = injectCommand((name: "showEditor" | "showPreview") => this.document.client()?.[name]());
 }

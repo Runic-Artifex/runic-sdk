@@ -1,5 +1,6 @@
 import { inject, Injectable, type Signal } from "@angular/core";
-import { injectView, type ViewClient } from "../../../../../packages/web/angular/src/inject-view";
+import type { ViewClient } from "@runic-artifex/views";
+import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 
 interface DisposableView { dispose(): void; }
 

@@ -1,22 +1,18 @@
 <svelte:options runes={true} />
 
 <script lang="ts">
-  import { useView } from "@runic-artifex/svelte/views";
+  import { useCommand, useView } from "@runic-artifex/svelte/views";
   import type { CounterPageReference } from "../generated/counter.js";
 
   let { page }: { page: CounterPageReference } = $props();
   const counter = useView(() => page);
-  let error = $state<string | undefined>(undefined);
-
-  async function increment() {
-    try { await counter.client?.increment(); error = undefined; }
-    catch (cause) { error = String(cause); }
-  }
+  const increment = useCommand(() => counter.client?.increment());
+  const error = $derived(increment.error ?? counter.error);
 </script>
 
 <section>
   <h2>Counter View</h2>
   <p class="count">{counter.state?.count ?? "…"}</p>
-  <button disabled={!counter.client} onclick={increment}>Increment</button>
-  {#if error ?? counter.error}<p role="alert">{error ?? String(counter.error)}</p>{/if}
+  <button disabled={!counter.client || increment.pending} onclick={() => increment.run()}>Increment</button>
+  {#if error !== undefined}<p role="alert">{String(error)}</p>{/if}
 </section>

@@ -55,11 +55,11 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@runic-artifex/react": ["@runic-artifex/react@0.6.0-preview.1", "", { "peerDependencies": { "react": ">=18.3.0 <20" } }, "sha512-CM/GCrqF+zwG1jSdrDFKaoa8BNErbLv0/KzpAFSoZzX9tWNIGBlQsigE0IJwjlGjr6fj3w5ELvycdskBnrWNrA=="],
+    "@runic-artifex/react": ["@runic-artifex/react@0.6.0-preview.1", "", { "peerDependencies": { "@runic-artifex/views": "0.6.0-preview.1", "react": ">=18.3.0 <20" } }, "sha512-2EDo4lSpA/pJPsisdvlN/OYZjvQdkoSjW7x2Tja1ZCOxenrutiuZPXRbmSghYO7j6bF/bk09RGDWyI1v8UiLJg=="],
 
-    "@runic-artifex/views": ["@runic-artifex/views@0.6.0-preview.1", "", {}, "sha512-lqJqe/xXbKIe222acduzeJpyuZIGkfXs2DZFw+GMJ7c3DXp+JK8M4SMrp1IuBF8ralhAoNMyfvFtRAk0sq911A=="],
+    "@runic-artifex/views": ["@runic-artifex/views@0.6.0-preview.1", "", {}, "sha512-xOQ9Iy5rmA5TLhCyMeUnTP5ehxfScjnB0VU81uXlYmK7vxOwbXSZ4g6WSMdTCzbPGHLQ4zArF4K9Q+aqzQZEMQ=="],
 
-    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.6.0-preview.1", "", { "peerDependencies": { "@vitejs/devtools": "^0.7.6", "vite": "^8.0.0" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-zEGklvllFUvKAzy+XSTYwjW8JTvAM4V6M33LYDeAAEt3gafy6p0qw2CcOO99agFkvzj5pus+5JmQ24Fom0/XNQ=="],
+    "@runic-artifex/vite-plugin-runic": ["@runic-artifex/vite-plugin-runic@0.6.0-preview.1", "", { "peerDependencies": { "@vitejs/devtools": "^0.7.6", "vite": "^8.0.0" }, "optionalPeers": ["@vitejs/devtools"] }, "sha512-umDYqrqZbVu5ucVHFat6oAixiSilW/jio3E2PWei+gpCvRT2x+QIm9r8/sY4nXkiEZJ6jKGD6cwQvqOsMeKYTw=="],
 
     "@types/react": ["@types/react@19.3.0", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg=="],
 
