@@ -64,14 +64,23 @@ is not evidence that the other operating systems passed. Intel macOS is excluded
 
 The `plan` job runs `eng/ci/plan.mjs`. On a pull request it diffs GitHub's merge
 commit against its base parent and maps each changed path to its component in
-`eng/workspace.json`, adding every component that depends on it. Pushes, manual runs,
-local `act` runs and an unavailable diff plan every job.
+`eng/workspace.json`, adding every component that depends on it. The base branch's
+planner and component map make that decision (`--affected`), so a pull request cannot
+narrow its own plan; changes to the planner or `eng/workspace.json` are unowned and run
+everything. The pull request's checkout then enumerates the suites (`--plan`). Pushes,
+manual runs, local `act` runs and an unavailable diff or base result plan every job.
+
+A pull request is planned against the base it was opened or last updated on. Every
+push to `main` runs the full workflow, so a change that only breaks in combination
+with newer `main` commits is caught there.
 
 - `plan`, `build` and `engineering` always run. `build` checks generated files;
   `engineering` lints workflows and runs the contract and Markdown link tests.
-- Markdown outside `packages/`, `tools/` and `tests/`, engineering tests and
-  workflows other than `ci.yml` are read only by those jobs.
-- A path that no component owns, such as `Directory.Build.props`, `eng/` tooling or
+- Markdown outside `packages/`, `tools/` and `tests/`, the `*.test.mjs` files the
+  engineering job runs, and workflows other than `ci.yml` are read only by those jobs
+  (`engineeringOnly` in `eng/run.mjs`; `bun run affected` uses the same rule).
+- A path that no component owns, such as `Directory.Build.props`, the shared
+  `eng/build/application.{props,targets}`, other `eng/` tooling or
   `.github/actions/`, runs everything.
 - Managed groups and web packages run when a component owning one of their suites
   is affected. `views` follows `examples`; `framework-consumers` follows `svelte`;
@@ -81,9 +90,10 @@ local `act` runs and an unavailable diff plan every job.
 
 Skipped jobs report `skipped`, so no check stays pending. The required `verify` job
 (`eng/ci/gate.mjs`) accepts `skipped` only for jobs in the plan's skip list; a
-failed plan fails it. The engineering tests check that every ProjectReference and
-workspace npm dependency is covered by the component `dependsOn` graph, so a new
-reference cannot silently escape the plan. Preview the plan for a branch with
+failed plan fails it. The engineering tests check that the component `dependsOn` graph
+covers every ProjectReference, workspace npm dependency, MSBuild import and
+cross-directory item include (with an allow-list for generated output, restored
+packages and external checkouts), so a new reference cannot silently escape the plan. Preview the plan for a branch with
 `bun eng/ci/plan.mjs --files $(git diff --name-only origin/main...)`. To run every
 job for a pull request, start the workflow manually on its branch.
 

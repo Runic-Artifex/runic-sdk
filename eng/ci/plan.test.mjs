@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
-import { root, workspace } from '../run.mjs';
-import { plan, skippableJobs, changedFiles, managedGroups, webTests, outputs } from './plan.mjs';
+import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
+import { plan, skippableJobs, managedGroups, webTests, outputs, affected, parseAffected } from './plan.mjs';
 import { incomplete } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -22,7 +22,7 @@ test('pushes and unknown diffs plan every job', () => {
 
 test('documentation-only pull requests skip every skippable job', () => {
   for (const files of [['docs/README.md'], ['README.md', 'CONTRIBUTING.md'], ['specs/desktop/README.md'],
-    ['eng/release/notes/0.6.0-preview.1.md'], ['examples/first-window/README.md'], ['tests/engineering/markdown-links.test.mjs'],
+    ['eng/release/notes/0.6.0-preview.1.md'], ['examples/first-window/README.md'], ['examples/README.md'], ['tests/engineering/markdown-links.test.mjs'],
     ['eng/ci/plan.test.mjs'], ['.github/workflows/dynamicdata.yml'], []]) {
     const result = plan(files);
     assert.deepEqual(result.components, [], files.join());
@@ -34,7 +34,7 @@ test('documentation-only pull requests skip every skippable job', () => {
 
 test('shared or unowned inputs run everything', () => {
   for (const file of ['Directory.Build.props', 'Directory.Packages.props', 'global.json', 'bun.lock', 'eng/run.mjs', 'eng/ci/plan.mjs',
-    'eng/build/nuget-lock.targets', '.github/workflows/ci.yml', '.github/actions/setup-sdk/action.yml', 'flake.nix', 'LICENSE']) {
+    'eng/build/nuget-lock.targets', 'eng/build/application.props', 'eng/build/application.targets', 'eng/dependencies/audit.test.mjs', 'eng/ci/fixtures/artifact-roundtrip.yml', '.github/workflows/ci.yml', '.github/actions/setup-sdk/action.yml', 'flake.nix', 'LICENSE']) {
     const result = plan([file, 'docs/README.md']);
     assert.deepEqual(result.skip, [], file);
     assert.deepEqual(result.managed, managedGroups, file);
@@ -44,7 +44,7 @@ test('shared or unowned inputs run everything', () => {
 
 test('package READMEs and fixtures are build inputs, not documentation', () => {
   for (const file of ['packages/web/views/README.md', 'packages/dotnet/Runic.Desktop/README.md',
-    'tools/Runic.Application.Templates/content/runic-app/README.md', 'tests/fixtures/application/notes.md'])
+    'tools/Runic.Application.Templates/content/runic-app/README.md', 'tests/fixtures/application/experiments/notes.md'])
     assert.notDeepEqual(plan([file]).skip, skippableJobs, file);
 });
 
@@ -66,12 +66,13 @@ test('a desktop change runs native checks and every dependent component', () => 
 test('template and Svelte changes run their lanes without unrelated suites', () => {
   const templates = plan(['tests/templates/Test-Templates.sh']);
   for (const job of ['packages', 'package-consumers', 'templates']) assert.ok(runs(templates, job), job);
-  for (const job of ['managed', 'web', 'framework-consumers', 'views', 'native']) assert.ok(!runs(templates, job), job);
+  for (const job of ['web', 'framework-consumers', 'views', 'native']) assert.ok(!runs(templates, job), job);
+  assert.deepEqual(templates.managed, ['platform'], 'only the group holding Runic.Create.Tests');
 
   const svelte = plan(['packages/web/svelte/src/index.ts']);
   for (const job of ['web', 'framework-consumers', 'views', 'templates', 'native']) assert.ok(runs(svelte, job), job);
   assert.deepEqual(svelte.web.include.map(item => item.package).sort(), ['svelte', 'sveltekit']);
-  assert.deepEqual(svelte.managed, []);
+  assert.deepEqual(svelte.managed, ['platform'], 'templates holds Runic.Create.Tests');
 });
 
 test('Windows administration changes run native checks', () => {
@@ -81,17 +82,39 @@ test('Windows administration changes run native checks', () => {
   assert.ok(!runs(result, 'views'));
 });
 
-test('pull requests diff the merge commit against its base parent, including both rename sides', () => {
-  const calls = [];
-  const git = args => {
-    calls.push(args);
-    return args[0] === 'diff' ? 'docs/old.md\0packages/web/views/src/new.ts\0' : 'abc\n';
-  };
-  assert.deepEqual(changedFiles('pull_request', git), ['docs/old.md', 'packages/web/views/src/new.ts']);
-  assert.deepEqual(calls.at(-1), ['diff', '--name-only', '--no-renames', '-z', 'HEAD^1', 'HEAD']);
-  assert.equal(changedFiles('push', git), null);
-  assert.equal(changedFiles('workflow_dispatch', git), null);
-  assert.equal(changedFiles('pull_request', () => { throw new Error('no merge parent'); }), null);
+test('the template definition the guided creator embeds runs the creator tests', () => {
+  const result = plan(['tools/Runic.Application.Templates/content/runic-app/.template.config/template.json']);
+  assert.ok(result.components.includes('templates'));
+  assert.ok(result.managed.includes('platform'), 'Runic.Create.Tests runs in the platform managed group');
+  assert.ok(runs(result, 'templates'));
+});
+
+test('the engineering-only rule matches the tests the engineering job runs', () => {
+  const step = workflow.jobs.engineering.steps.find(item => item.name === 'Verify workspace, runtime and CI contracts');
+  assert.equal(step.run, `bun test --timeout 180000 ${engineeringTestDirectories.map(directory => `./${directory}/*.test.mjs`).join(' ')}`);
+  for (const directory of engineeringTestDirectories) assert.ok(engineeringOnly(`${directory}/example.test.mjs`), directory);
+  for (const file of ['eng/dependencies/audit.test.mjs', 'tests/engineering/fixtures/input.json', 'eng/ci/plan.mjs', '.github/workflows/ci.yml'])
+    assert.ok(!engineeringOnly(file), file);
+});
+
+const cli = (args, input = '') => {
+  const result = spawnSync(process.execPath, [resolve(root, 'eng/ci/plan.mjs'), ...args], { cwd: root, input, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout;
+};
+
+test('the base checkout decides what is affected and this checkout enumerates suites', () => {
+  const decided = JSON.parse(cli(['--affected'], 'docs/README.md\0packages/web/svelte/src/index.ts\0'));
+  assert.deepEqual(decided, affected(['docs/README.md', 'packages/web/svelte/src/index.ts']));
+  assert.deepEqual(decided.components.sort(), ['examples', 'svelte', 'templates']);
+  assert.equal(JSON.parse(cli(['--affected'], 'eng/ci/plan.mjs\0')).full, true);
+  const planned = Object.fromEntries(cli(['--plan', JSON.stringify(decided)]).trim().split('\n').map(line => [line.slice(0, line.indexOf('=')), JSON.parse(line.slice(line.indexOf('=') + 1))]));
+  assert.deepEqual(planned.skip, plan(['packages/web/svelte/src/index.ts']).skip);
+  // An older base planner prints GitHub outputs instead; plan everything.
+  for (const text of ['web={"include":[]}', '{"full":false,"components":["renamed"]}', ''])
+    assert.equal(parseAffected(text), null, text);
+  assert.match(cli(['--plan', 'web={"include":[]}']), /^full=true$/m);
+  assert.match(cli([]), /^skip=\[\]$/m);
 });
 
 test('plan outputs are single-line GitHub outputs', () => {
@@ -149,6 +172,37 @@ test('component dependencies cover every project reference and workspace npm dep
     for (const reference of references) {
       const [target] = owners(reference);
       assert.ok(target && reachable.has(target), `${file} (${owner[0]}) references ${reference} (${target}); add it to dependsOn`);
+    }
+  }
+});
+
+// Item transforms and paths built from these properties name restored packages,
+// generated output, pack staging or an external checkout (DynamicData fork,
+// CsWebUi), not another component's source.
+const unresolvable = /^(?:@\(|\$\((?:NuGetPackageRoot|DynamicDataForkRoot|CsWebUiRepository|RunicPolicyIcon|TemplatePackContentRoot|_?RunicBridge\w*|_?RunicAssets\w*)\))/;
+
+test('component dependencies cover MSBuild imports and cross-directory items', () => {
+  for (const file of tracked('*.csproj', '*.props', '*.targets')) {
+    const [owner] = owners(file);
+    // A change to an unowned file already runs everything. Its imports of owned
+    // files reach projects through their own references (eng/desktop-targets.test.mjs).
+    if (!owner) continue;
+    const text = readFileSync(resolve(root, file), 'utf8');
+    const values = [...text.matchAll(/<(?:Import\s+Project|(?:EmbeddedResource|Compile|None|Content|AdditionalFiles)\s+Include)="([^"]+)"/g)]
+      .flatMap(([, value]) => value.split(';')).map(value => value.trim()).filter(Boolean);
+    for (const value of values) {
+      const path = value.replaceAll('\\', '/')
+        .replace(/\$\((?:MSBuildThisFileDirectory|MSBuildProjectDirectory)\)\/?/g, './')
+        .replace(/\$\(RunicSdkRoot\)\/?/g, `${relative(dirname(resolve(root, file)), root) || '.'}/`)
+        .replace(/\$\(Configuration\)/g, 'Release');
+      if (/[$@]\(/.test(path)) {
+        assert.match(path, unresolvable, `${file}: resolve ${value} or allow-list its property`);
+        continue;
+      }
+      const target = relative(root, resolve(root, dirname(file), path.split('*')[0]));
+      const [component] = owners(target);
+      if (target.startsWith('..') || !component) continue;
+      assert.ok(closure(owner).has(component), `${file} (${owner}) reads ${target} (${component}); add it to dependsOn or make it shared`);
     }
   }
 });

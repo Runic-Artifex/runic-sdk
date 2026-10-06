@@ -36,9 +36,20 @@ jobs:
         with:
           dotnet: "false"
           install: "false"
+      # A pull_request checkout is GitHub's merge commit; its first parent is the
+      # base branch, so the diff is exactly what the pull request changes. The base
+      # branch's planner and component map decide what is affected, so a pull request
+      # cannot narrow its own plan; this checkout then enumerates the suites.
       - name: Plan jobs from the changed files
         id: plan
-        run: bun eng/ci/plan.mjs >> "$GITHUB_OUTPUT"
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]] && git rev-parse --verify --quiet HEAD^2 > /dev/null \
+            && git worktree add --detach "$RUNNER_TEMP/base" HEAD^1 \
+            && affected=$(git diff --name-only --no-renames -z HEAD^1 HEAD | bun "$RUNNER_TEMP/base/eng/ci/plan.mjs" --affected); then
+            bun eng/ci/plan.mjs --plan "$affected" >> "$GITHUB_OUTPUT"
+          else
+            bun eng/ci/plan.mjs >> "$GITHUB_OUTPUT"
+          fi
   build:
     name: Build shared SDK inputs
     runs-on: ubuntu-24.04

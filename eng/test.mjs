@@ -2,11 +2,11 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { root, run, configuration, workspace, viewsRuntime } from './run.mjs';
+import { root, run, configuration, workspace, viewsRuntime, engineeringTestDirectories } from './run.mjs';
 import { managedGroups, managedTests } from './ci/plan.mjs';
 export function selection(scope) {
   if (managedGroups.includes(scope)) return {kind: 'managed', paths: managedTests().filter(p => p.group === scope).map(p => p.path)};
-  if (scope === 'engineering') return {kind: 'bun', paths: ['eng', 'eng/ci', 'eng/release', 'eng/reliability', 'tests/engineering'].flatMap(dir =>
+  if (scope === 'engineering') return {kind: 'bun', paths: engineeringTestDirectories.flatMap(dir =>
     readdirSync(resolve(root, dir)).filter(name => name.endsWith('.test.mjs')).map(name => `./${dir}/${name}`))};
   if (scope?.startsWith('web/')) {
     const item = workspace.npm.find(p => p.path === `packages/${scope}`);

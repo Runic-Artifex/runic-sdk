@@ -187,20 +187,20 @@
         "tools/Runic.Application.Views.Dev",
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
-        "tools/Runic.Create",
-        "tests/dotnet/Runic.Create.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Desktop.Tests",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
-        "tests/fixtures/application",
-        "eng/build/application.props",
-        "eng/build/application.targets",
         "eng/branding/application",
         "specs/application",
         "packages/web/angular",
         "packages/web/views",
         "packages/web/react",
-        "packages/web/vue"
+        "packages/web/vue",
+        "tests/fixtures/application/cswebui-window-probes",
+        "tests/fixtures/application/experiments",
+        "tests/fixtures/application/reactiveui25-aot",
+        "tests/fixtures/application/reactiveui-behavioral-conformance",
+        "tests/fixtures/application/reactiveui-reactive-flavor"
       ]
     },
     "vite": {
@@ -231,7 +231,9 @@
       ],
       "paths": [
         "tools/Runic.Application.Templates",
-        "tests/templates"
+        "tests/templates",
+        "tools/Runic.Create",
+        "tests/dotnet/Runic.Create.Tests"
       ]
     },
     "examples": {
@@ -249,11 +251,11 @@
         "examples/notes-reactive-views",
         "examples/dynamicdata",
         "examples/shared",
-        "examples/README.md",
         "examples/Directory.Build.props",
         "examples/Directory.Build.targets",
         "examples/Directory.Packages.props",
-        "examples/NuGet.config"
+        "examples/NuGet.config",
+        "tests/fixtures/application/dynamicdata"
       ]
     },
     "platform": {

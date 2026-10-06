@@ -1,8 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { root, workspace, affectedComponents } from "../run.mjs";
+import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
 
 export const managedGroups = ["platform", "assets", "application"];
 export function managedTests(base = root, platform = process.platform) {
@@ -29,60 +28,58 @@ export function webTests() {
 // skipped job only when it is listed here and the plan skipped it.
 export const skippableJobs = ["managed", "web", "framework-consumers", "views", "packages", "package-consumers", "templates", "native"];
 
-// Files that only the always-run jobs read. Package READMEs and test or template
-// fixtures under packages/, tools/ and tests/ are inputs to builds and packs.
-// Every other workflow and every engineering test is linted or run by `engineering`.
-export function engineeringOnly(file) {
-  return (file.endsWith(".md") && !/^(packages|tools|tests)\//.test(file))
-    || file.startsWith("tests/engineering/")
-    || /^eng\/.*\.test\.mjs$/.test(file)
-    || (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(file) && file !== ".github/workflows/ci.yml");
-}
-
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
 
-// `files` lists every path a pull request adds, changes, deletes or renames
-// (both names). `null` means unknown and plans everything, as on main.
-export function plan(files) {
-  const components = files === null ? Object.keys(workspace.components)
-    : affectedComponents(files.filter(file => !engineeringOnly(file)));
+// Which components a change affects, judged by this checkout's component map.
+// `files` lists every path a pull request adds, changes, deletes or renames (both
+// names); `null` means unknown. Any unowned path that is not engineering-only
+// (see engineeringOnly in eng/run.mjs) affects everything.
+export function affected(files) {
+  const full = files === null || files.some(file => !engineeringOnly(file) && !owner(file));
+  return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files) };
+}
+
+// The jobs and suites to run for the affected components, as defined by this checkout.
+export function planFor({ full, components }) {
   const has = (...names) => names.some(name => components.includes(name));
   const managed = managedGroups.filter(group =>
-    managedTests(root, "linux").some(test => test.group === group && has(owner(test.path))));
-  const web = webTests().filter(test => has(owner(`packages/web/${test.package}`)));
+    managedTests(root, "linux").some(test => test.group === group && (full || has(owner(test.path)))));
+  const web = webTests().filter(test => full || has(owner(`packages/web/${test.package}`)));
   // Package candidates, their consumers and templates cover every shipped component.
-  const packages = components.length > 0;
+  const packages = full || components.length > 0;
   const run = {
     managed: managed.length > 0,
     web: web.length > 0,
-    "framework-consumers": has("svelte"),
-    views: has("examples"),
+    "framework-consumers": full || has("svelte"),
+    views: full || has("examples"),
     packages,
     "package-consumers": packages,
     templates: packages,
     // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration.
-    native: has("desktop", "platform", "application", "examples", "administration-windows"),
+    native: full || has("desktop", "platform", "application", "examples", "administration-windows"),
   };
   return {
-    full: files === null,
-    components,
+    full,
+    components: full ? Object.keys(workspace.components) : components,
     managed,
     web: { include: web },
     skip: skippableJobs.filter(job => !run[job]),
   };
 }
 
-// A pull_request checkout is GitHub's merge of the head into the base branch.
-// Its first parent is the base, so this diff is exactly what the pull request changes.
-export function changedFiles(event, git = args => execFileSync("git", args, { cwd: root, encoding: "utf8" })) {
-  if (event !== "pull_request") return null;
+export const plan = files => planFor(affected(files));
+
+// Accept another checkout's affected() result. Anything else (such as an older base
+// planner that does not support --affected) plans every job.
+export function parseAffected(text) {
   try {
-    git(["rev-parse", "--verify", "--quiet", "HEAD^2"]);
-    return git(["diff", "--name-only", "--no-renames", "-z", "HEAD^1", "HEAD"]).split("\0").filter(Boolean);
-  } catch {
-    return null;
-  }
+    const value = JSON.parse(text);
+    const known = Object.keys(workspace.components);
+    if (typeof value?.full === "boolean" && Array.isArray(value.components) && value.components.every(name => known.includes(name)))
+      return value;
+  } catch {}
+  return null;
 }
 
 export function outputs(result) {
@@ -95,10 +92,19 @@ export function outputs(result) {
   ].join("\n");
 }
 
+// CI runs `--affected` with the base branch's planner on the pull request's
+// NUL-separated changed files (stdin), then `--plan <result>` with this checkout to
+// enumerate suites. Without arguments every job is planned. `--files <paths>` previews
+// a plan locally with this checkout alone.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const files = process.argv[2] === "--files" ? process.argv.slice(3) : changedFiles(process.env.GITHUB_EVENT_NAME);
-  const result = plan(files);
-  console.error(files === null ? "Planning every job (not a pull request merge, or the diff is unavailable)."
-    : `Planning ${files.length} changed files: components ${result.components.join(", ") || "none"}; skipping ${result.skip.join(", ") || "nothing"}.`);
-  console.log(outputs(result));
+  const [mode, ...rest] = process.argv.slice(2);
+  if (mode === "--affected") {
+    console.log(JSON.stringify(affected(readFileSync(0, "utf8").split("\0").filter(Boolean))));
+  } else {
+    const input = mode === "--plan" ? parseAffected(rest[0] ?? "") : mode === "--files" ? affected(rest) : null;
+    const result = input ? planFor(input) : plan(null);
+    console.error(result.full ? `Planning every job${mode === "--plan" && !input ? " (the base planner gave no usable result)" : ""}.`
+      : `Components ${result.components.join(", ") || "none"}; skipping ${result.skip.join(", ") || "nothing"}.`);
+    console.log(outputs(result));
+  }
 }
