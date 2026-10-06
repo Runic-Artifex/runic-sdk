@@ -47,7 +47,7 @@ RUNIC_VERIFY_PENDING_MOUNT=1 node examples/notes-reactive-views/browser-smoke.mj
 RUNIC_VERIFY_CLIENT_DISCONNECT=1 node examples/notes-reactive-views/browser-smoke.mjs
 ```
 
-The default check also reads 300 large non-ASCII Bridge replies and requires
+The default check also reads 300 large (over ~2 KB) Bridge replies and requires
 each one to parse exactly. `RUNIC_VERIFY_CALL_BURST=1` also sends 2,000
 concurrent Bridge calls and requires every reply. It takes about 80 seconds.
 
