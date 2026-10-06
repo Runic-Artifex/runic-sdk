@@ -7,6 +7,22 @@ import { fileURLToPath } from 'node:url';
 import { VERSION, sha256 } from './artifacts.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const source = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
+const ghScript = String.raw`
+import {appendFileSync} from 'node:fs';
+const args=process.argv.slice(2), mode=process.env.TEST_MODE, source=process.env.TEST_SOURCE;
+appendFileSync(process.env.TEST_CALLS,JSON.stringify(args)+'\n');
+if(args[0]==='release'&&args[1]==='view'){
+  if(mode==='release-error'){console.error('HTTP 502: Bad Gateway');process.exit(1);}
+  if(!['existing','wrong-release','draft','annotated'].includes(mode)){console.error('release not found');process.exit(1);}
+  console.log(JSON.stringify({isDraft:mode==='draft',targetCommitish:source}));
+}
+if(args[0]==='api'){
+  if(mode==='new'||mode==='draft'){console.error('gh: Not Found (HTTP 404)');process.exit(1);}
+  if(mode==='tag-error'){console.error('gh: Server Error (HTTP 502)');process.exit(1);}
+  if(mode==='annotated'&&args[1].includes('/git/ref/tags/')){console.log('tag '+'e'.repeat(40));process.exit(0);}
+  console.log('commit '+(mode.startsWith('wrong')?'f'.repeat(40):source));
+}
+`;
 function fixture(mode, check, extra = []) {
   const directory = mkdtempSync(join(tmpdir(), 'runic-release-test-'));
   try {
@@ -15,7 +31,7 @@ function fixture(mode, check, extra = []) {
     writeFileSync(join(packages, 'npm', 'test.tgz'), 'npm fixture');
     writeFileSync(join(packages, 'nuget', 'test.nupkg'), 'nuget fixture');
     const calls = join(directory, 'calls.jsonl');
-    writeFileSync(join(bin, 'gh'), `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';\nconst args=process.argv.slice(2);appendFileSync(process.env.TEST_CALLS,JSON.stringify(args)+'\\n');\nif(args[0]==='release'&&args[1]==='view'){if(!['existing','wrong-release','draft'].includes(process.env.TEST_MODE))process.exit(1);console.log(JSON.stringify({isDraft:process.env.TEST_MODE==='draft',targetCommitish:process.env.TEST_SOURCE}));}\nif(args[0]==='api'){if(process.env.TEST_MODE==='new')process.exit(1);console.log(process.env.TEST_MODE.startsWith('wrong')?'f'.repeat(40):process.env.TEST_SOURCE);}\n`, {mode: 0o755});
+    writeFileSync(join(bin, 'gh'), `#!${process.execPath}\n${ghScript}`, {mode: 0o755});
     const result = spawnSync(process.execPath, [join(root, 'eng/release/github.mjs'), packages, output, ...extra], {
       cwd: root, encoding: 'utf8', env: {...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, TEST_MODE: mode, TEST_SOURCE: source, TEST_CALLS: calls},
     });
@@ -61,3 +77,20 @@ test('a dry run checks tag and release ownership but never creates, uploads or p
     expect(calls.every(args => (args[0] === 'release' && args[1] === 'view') || args[0] === 'api')).toBe(true);
   }, ['--dry-run']);
 });
+
+test('only a missing tag or release (404) counts as absent; other lookup errors stop before writing', () => {
+  for (const mode of ['tag-error', 'release-error']) for (const extra of [[], ['--dry-run']]) fixture(mode, (result, output, calls) => {
+    expect(result.status).not.toBe(0);
+    expect(calls.some(args => ['create', 'upload', 'edit'].includes(args[1]))).toBe(false);
+  }, extra);
+  fixture('new', (result, output, calls) => {
+    const lookup = calls.find(args => args[0] === 'api');
+    expect(lookup[1]).toBe(`repos/Runic-Artifex/runic-sdk/git/ref/tags/v${VERSION}`);
+  }, ['--dry-run']);
+});
+
+test('an annotated tag is followed to its commit', () => fixture('annotated', (result, output, calls) => {
+  expect(result.status).toBe(0);
+  expect(calls.filter(args => args[0] === 'api').map(args => args[1])).toEqual(
+    [`repos/Runic-Artifex/runic-sdk/git/ref/tags/v${VERSION}`, `repos/Runic-Artifex/runic-sdk/git/tags/${'e'.repeat(40)}`]);
+}, ['--dry-run']));
