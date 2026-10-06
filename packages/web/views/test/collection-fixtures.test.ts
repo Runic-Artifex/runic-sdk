@@ -123,8 +123,18 @@ test("a frame above 4096 changes is rejected and recovered with one snapshot rea
   frame.changes.push(...(expand([{ $adds: [4096, 1] }]) as unknown[]));
   const recovery = expand({ revision: 4097, rows: [{ $rows: [0, 4097] }], title: "rows" });
   const { client, push, recoveries } = await connectRows(expand(atCap.initial), recovery);
-  push(frame);
-  await new Promise(resolve => setTimeout(resolve, 0));
+  // The runtime reports why it discarded the frame before it recovers.
+  const target = globalThis as { reportError?: ((error: unknown) => void) | undefined };
+  const previous = target.reportError;
+  const reported: unknown[] = [];
+  target.reportError = error => { reported.push(error); };
+  try {
+    push(frame);
+    await new Promise(resolve => setTimeout(resolve, 0));
+  } finally {
+    target.reportError = previous;
+  }
+  assert.equal(reported.length, 1);
   assert.equal(recoveries(), 1);
   assert.equal(client.snapshot.rows.length, 4097);
   client.dispose();
