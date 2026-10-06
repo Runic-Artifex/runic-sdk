@@ -16,6 +16,7 @@ await using (var host = await DesktopHost.StartAsync())
     await GeneratedCollectionDeliveryPreservesPendingFrames(host);
     await DisposedTransportReleasesRoutesAndDelivery(host);
     await DrainTimeoutClosesRoutesAndKeepsTheScopeUntilWorkEnds(host);
+    await MissingRegistrationsFailBeforeASurfaceExists(host);
 }
 Console.WriteLine("Runic.Application.Desktop host adapter passed.");
 
@@ -148,6 +149,41 @@ static async Task DrainTimeoutClosesRoutesAndKeepsTheScopeUntilWorkEnds(DesktopH
     Require(reply.RootElement.TryGetProperty("ok", out _), "The awaited command did not reply after close.");
 }
 
+static async Task MissingRegistrationsFailBeforeASurfaceExists(DesktopHost host)
+{
+    var empty = new ServiceCollection().BuildServiceProvider();
+    await using (empty)
+    {
+        var validation = empty.ValidateDesktopWindow<OrderedCollectionModel>(host);
+        Require(validation.Errors.Any(static item => item.Code == "viewmodel-not-registered") &&
+            validation.Errors.Any(static item => item.Code == "bridge-not-registered"),
+            "Validation did not name the missing ViewModel and Bridge registrations.");
+        var created = false;
+        try
+        {
+            await empty.OpenDesktopWindowAsync<ProbeWindow, OrderedCollectionModel>(host, new DesktopSurfaceOptions(),
+                owner => { created = true; return new ProbeWindow(owner); });
+            throw new InvalidOperationException("A Window opened without its Bridge registration.");
+        }
+        catch (DesktopConfigurationException error)
+        {
+            Require(!created && error.Diagnostics.Count == 2 && error.Message.Contains("AddRunicViews()", StringComparison.Ordinal),
+                "Opening without registrations did not fail early with an actionable message.");
+        }
+    }
+
+    var services = new ServiceCollection();
+    services.AddScoped<OrderedCollectionModel>();
+    services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+        _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+    await using var provider = services.BuildServiceProvider();
+    var registered = provider.ValidateDesktopWindow<OrderedCollectionModel>(host);
+    Require(!registered.Diagnostics.Any(static item => item.Code is "viewmodel-not-registered" or "bridge-not-registered"),
+        "Validation reported registrations that exist.");
+}
+
+
+
 static void Require(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
@@ -211,4 +247,10 @@ sealed class NoopCommand : ICommand
     public event EventHandler? CanExecuteChanged { add { } remove { } }
     public bool CanExecute(object? parameter) => true;
     public void Execute(object? parameter) { }
+}
+
+sealed class ProbeWindow(DesktopBridgeWindow<OrderedCollectionModel> owner)
+    : RunicWindow<OrderedCollectionModel>(owner.ViewModel), IAsyncDisposable
+{
+    public ValueTask DisposeAsync() => owner.DisposeAsync();
 }

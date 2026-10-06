@@ -353,8 +353,11 @@ output accordingly. The message properties are listed per event.
 | 1032 | `UnhandledTurnHandlerFailed` | Error | An `UnhandledTurnException` handler throws. | `ErrorType` |
 | 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. | `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
+| 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's ViewModel or generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
 | 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |
+| 3002 | `DesktopConfigurationInvalid` | Error | `DesktopHost.Validate` finds a check that fails the window request. | `Code`, `Option`, `DiagnosticMessage`, `Remediation` |
+| 3003 | `DesktopConfigurationLimited` | Warning | `DesktopHost.Validate` finds an option the presentation ignores or narrows, or a browser fallback opens without a permission grant. | `Code`, `Option`, `DiagnosticMessage`, `Remediation` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
@@ -364,7 +367,7 @@ Events 1000-1021 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
 `RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
 `WindowContentSession` with a logger factory created it, and otherwise the
-`Trace` output. Event 2000 uses `Runic.Application.Desktop`. Events 3000-3001
+`Trace` output. Events 2000-2001 use `Runic.Application.Desktop`. Events 3000-3003
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`

@@ -25,12 +25,19 @@ var services = new ServiceCollection();
 services.AddScoped<MainViewModel>();
 services.AddRunicViews();
 await using var provider = services.BuildServiceProvider();
-await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions());
+await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    // Windows uses WebView2 and macOS WKWebView; Linux selects a toolkit explicitly.
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+});
+var windowOptions = new DesktopWindowOptions { Width = 800, Height = 600 };
+// Stops at startup when a registration, WebView runtime or window option is missing.
+provider.ValidateDesktopWindow<MainViewModel>(desktop, windowOptions).ThrowIfInvalid();
 await using var window = await provider.OpenDesktopWindowAsync<MainWindow, MainViewModel>(
     desktop,
     new DesktopSurfaceOptions { RootFolder = Path.Combine(AppContext.BaseDirectory, "www"), Content = "index.html" },
     host => new MainWindow(host),
-    new DesktopWindowOptions { Width = 800, Height = 600 });
+    windowOptions);
 window.Presentation.WaitForClose();
 
 public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
@@ -46,7 +53,18 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
 - `OpenDesktopWindowAsync<TWindow, TViewModel>` creates the Window's DI scope,
   resolves its ViewModel, opens a `DesktopSurface` and its presentation, and
   attaches the generated Bridge.
-- `DesktopBridgeWindow<TViewModel>` owns that scope, surface, and attachment.
+- `ValidateDesktopWindow<TViewModel>` checks, before any window opens, that the
+  ViewModel and its generated Bridge are registered and that
+  `DesktopHost.Validate` accepts the window options. It returns every problem
+  as a `DesktopDiagnostic` with a stable code (`viewmodel-not-registered`,
+  `bridge-not-registered`, and the
+  [Runic Desktop codes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md))
+  and remediation; `ThrowIfInvalid()` throws a `DesktopConfigurationException`.
+  `OpenDesktopWindowAsync` runs the registration checks itself before it creates
+  a surface, so a missing `AddRunicViews()` fails with that exception instead of
+  a dependency-injection error. Missing registrations are logged as event 2001
+  through the provider's `ILoggerFactory`.
+- `DesktopBridgeWindow<TViewModel>` owns the Window's scope, surface, and attachment.
   It exposes `ViewModel`, `Surface`, `Presentation`, and `CloseAsync`, which
   stops new operations and waits for accepted ones before releasing the scope.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI

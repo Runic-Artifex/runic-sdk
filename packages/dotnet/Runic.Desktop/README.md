@@ -25,11 +25,38 @@ credentials from its fetchable bootstrap scripts. The internal
 `webui-compat/52f9e75` implementation is retained only as protocol and
 differential evidence; no public `WebUi*` identity is exported.
 
-Call `DesktopHost.GetPresentationPreflight` before opening a window when the
-application needs to present actionable platform prerequisites. It evaluates the
-requested host and only the explicit fallback policy without creating a browser
-or WebView. Sensitive permissions remain denied unless the window opts into a
-typed grant. Direct legacy capability failures retain a redacted, correlated
+`DesktopWindowOptions.Browser` defaults to `BrowserKind.Embedded`, the platform
+WebView; installed browsers are an explicit choice or an explicit
+`EmbeddedThenBrowser` fallback.
+
+Call `DesktopHost.Validate(windowOptions)` at startup to check a window request
+before anything opens. It evaluates the requested host and only the explicit
+fallback policy without creating a browser or WebView, and returns one
+`DesktopDiagnostic` per problem, each with a stable `Code`, the `Option` it
+concerns, a `Remediation`, and a `Severity`. Errors make the request fail when it
+opens; warnings mean the presentation ignores or narrows an option.
+`ThrowIfInvalid()` throws a `DesktopConfigurationException` listing every error,
+and each diagnostic is logged through `DesktopHostOptions.LoggerFactory`.
+`GetPresentationPreflight` returns the same checks as `Diagnostic` and
+`OptionDiagnostics` for applications that present them themselves.
+
+| Code | Severity | Reported when |
+| --- | --- | --- |
+| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
+| `browser-unsupported` | Error | `Browser` is Safari or Opera, which Runic Desktop cannot launch. |
+| `window-option-invalid` | Error | An option has an undefined value, or `ConfirmCloseAsync` is set for a browser presentation. |
+| `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |
+| `window-option-incomplete` | Warning | Only one of `X`/`Y` or `MinimumWidth`/`MinimumHeight` is set. |
+| `permission-grant-unsupported` | Warning | The presentation does not apply `MediaCapture` and asks the user instead (WKWebView, Firefox). |
+| `permission-grant-withheld` | Warning | An `EmbeddedThenBrowser` fallback opens without the grant. |
+
+Sensitive permissions remain denied unless the window opts into a typed grant.
+WebView2, WebKitGTK and GTK4 windows grant `MediaCapture` only to the presented
+origin. A browser cannot limit a grant to one origin, so a browser fallback opens
+without it and reports `permission-grant-withheld` to the diagnostic sink and the
+logger; an explicitly selected Chromium-based browser accepts capture for every
+origin it opens. A custom `IDesktopWindowHostFactory` reports the options it
+rejects or ignores through `ValidateOptions`. Direct legacy capability failures retain a redacted, correlated
 host diagnostic; the TypeScript transport maps its own frontend failures to
 typed correlation-bearing errors.
 

@@ -205,6 +205,11 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
     public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities;
 
     /// <inheritdoc />
+    /// <remarks>GTK 4 windows reject X, Y, Centered, Transparent, HighContrast, ProfilePath, BrowserArguments and IconFile.</remarks>
+    public IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) =>
+        Gtk4WindowHost.GetUnsupportedOptions(options);
+
+    /// <inheritdoc />
     public IDesktopWindowHost Create()
     {
         if (!OperatingSystem.IsLinux())
@@ -536,31 +541,48 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 
     private static void ValidateOptions(DesktopWindowHostOptions options)
     {
-        if (options.X is not null || options.Y is not null || options.Centered)
+        var rejected = GetUnsupportedOptions(options);
+        if (rejected.Count > 0)
         {
-            throw new NotSupportedException("GTK 4 does not support requested global window placement.");
-        }
-        if (options.Transparent)
-        {
-            throw new NotSupportedException("Transparent GTK 4 WebKit windows are not implemented.");
-        }
-        if (options.HighContrast)
-        {
-            throw new NotSupportedException("GTK 4 high-contrast presentation is not implemented.");
-        }
-        if (!string.IsNullOrWhiteSpace(options.ProfilePath))
-        {
-            throw new NotSupportedException("GTK 4 WebKit profile persistence is not implemented.");
-        }
-        if (!string.IsNullOrWhiteSpace(options.CustomArguments))
-        {
-            throw new NotSupportedException("GTK 4 WebKit custom arguments are not supported.");
-        }
-        if (!string.IsNullOrWhiteSpace(options.IconFile))
-        {
-            throw new NotSupportedException("GTK 4 window icon files are not implemented.");
+            throw new NotSupportedException(rejected[0].Message);
         }
     }
+
+    // Window placement is the compositor's on Wayland, and GTK 4 removed global positioning.
+    internal static IReadOnlyList<DesktopDiagnostic> GetUnsupportedOptions(DesktopWindowHostOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        List<DesktopDiagnostic> diagnostics = [];
+        if (options.X is not null)
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.X), "GTK 4 does not support requested global window placement."));
+        if (options.Y is not null)
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Y), "GTK 4 does not support requested global window placement."));
+        if (options.Centered)
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Centered), "GTK 4 does not support requested global window placement."));
+        if (options.Transparent)
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Transparent), "Transparent GTK 4 WebKit windows are not implemented."));
+        if (options.HighContrast)
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.HighContrast),
+                "GTK 4 high-contrast presentation is not implemented.",
+                "Set HighContrast to false; when it is unset, the system high-contrast setting applies."));
+        if (!string.IsNullOrWhiteSpace(options.ProfilePath))
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.ProfilePath), "GTK 4 WebKit profile persistence is not implemented."));
+        if (!string.IsNullOrWhiteSpace(options.CustomArguments))
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.BrowserArguments), "GTK 4 WebKit custom arguments are not supported."));
+        if (!string.IsNullOrWhiteSpace(options.IconFile))
+            diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.IconFile), "GTK 4 window icon files are not implemented."));
+        return diagnostics;
+    }
+
+    private static DesktopDiagnostic Unsupported(string option, string message, string? remediation = null) => new(
+        DesktopErrorCategory.CapabilityDenied,
+        "window-option-unsupported",
+        message,
+        Retryable: false,
+        Remediation: remediation ?? "Remove the option, or select the Gtk3WebKit41 backend.")
+    {
+        Option = "DesktopWindowOptions." + option,
+    };
 
     private bool OnCloseRequest(Gtk.Window _, EventArgs __)
     {

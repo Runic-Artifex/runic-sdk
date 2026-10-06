@@ -13,6 +13,16 @@ public interface IDesktopWindowHostFactory
 
     /// <summary>Creates a new, initially closed host.</summary>
     IDesktopWindowHost Create();
+
+    /// <summary>Reports the requested window options this provider cannot apply, without creating a window.</summary>
+    /// <remarks>
+    /// <see cref="DesktopHost.GetPresentationPreflight"/> and <see cref="DesktopHost.Validate"/> call this before a
+    /// window opens. Return one diagnostic per option, with <see cref="DesktopDiagnostic.Option"/> naming the
+    /// <see cref="DesktopWindowOptions"/> property: <see cref="DesktopDiagnosticSeverity.Error"/> when
+    /// <see cref="IDesktopWindowHost.OpenAsync"/> rejects the option, or <see cref="DesktopDiagnosticSeverity.Warning"/>
+    /// when the window ignores it. Keep the check cheap: do not load native libraries. The default reports none.
+    /// </remarks>
+    IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) => [];
 }
 
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>

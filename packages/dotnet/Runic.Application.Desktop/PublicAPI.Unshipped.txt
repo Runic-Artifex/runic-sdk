@@ -18,3 +18,4 @@ Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(Syste
 *REMOVED*override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.ToString() -> string!
 *REMOVED*static Runic.Application.Views.Desktop.DesktopBridgeCloseResult.operator !=(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? left, Runic.Application.Views.Desktop.DesktopBridgeCloseResult? right) -> bool
 *REMOVED*static Runic.Application.Views.Desktop.DesktopBridgeCloseResult.operator ==(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? left, Runic.Application.Views.Desktop.DesktopBridgeCloseResult? right) -> bool
+static Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions.ValidateDesktopWindow<TViewModel>(this System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop, Runic.Desktop.DesktopWindowOptions? windowOptions = null) -> Runic.Desktop.DesktopValidationResult!

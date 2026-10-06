@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!

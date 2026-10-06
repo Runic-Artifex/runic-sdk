@@ -18,7 +18,11 @@ services.AddScoped<RowsViewModel>();
 services.AddRunicBridges();
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 var serveOnly = args.Contains("--serve-only", StringComparer.Ordinal);
-await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions { WaitForConnection = !serveOnly });
+await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+{
+    WaitForConnection = !serveOnly,
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+});
 var surfaceOptions = new DesktopSurfaceOptions { RootFolder = Path.Combine(AppContext.BaseDirectory, "www"), Content = "index.html" };
 if (serveOnly)
 {
@@ -33,5 +37,6 @@ if (serveOnly)
     return;
 }
 await using var window = await provider.OpenDesktopWindowAsync<RowsWindow, RowsViewModel>(desktop, surfaceOptions,
-    host => new RowsWindow(host), new DesktopWindowOptions { Width = 900, Height = 760 });
+    host => new RowsWindow(host),
+    new DesktopWindowOptions { PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser, Width = 900, Height = 760 });
 window.Presentation.WaitForClose();

@@ -39,7 +39,8 @@ Each view owns a separate WebKit context.
 
 GTK4 deliberately omits `Move` and rejects global position, centering,
 transparent, high-contrast, profile-path, custom-argument, and icon-file
-options. It supports independent minimum dimensions. Use
+options; `DesktopHost.Validate` reports each one as a `window-option-unsupported`
+error before a window opens. It supports independent minimum dimensions. Use
 `Runic.Platform.Linux.Portal` with `Gtk4PlatformProvider.CreatePortalWindowOwner`
 for portal-first file dialogs, so KDE uses its own picker.
 
