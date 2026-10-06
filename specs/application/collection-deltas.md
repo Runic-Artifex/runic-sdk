@@ -43,12 +43,19 @@ would be skipped ([fixture](fixtures/collection-deltas/keys.json)).
 - **Reporting.** When a capture for delivery finds invalid keys, the producer
   logs event 1012 `BridgeCollectionKeysRejected` (model, field, key and route,
   with the exception) and publishes a failure notice on the state channel, once
-  per distinct failure until a state is captured again. A synchronous recovery
+  per field, problem and key until a state is captured again; rows that shift
+  under the same invalid key do not report it again. A synchronous recovery
   capture inside a change handler that fails, for any reason, becomes a
   request, which the delivery captures and reports.
 - **Explicit reads.** A snapshot read, command reply or checked write reply
   that cannot write the state fails with `ok: false`, `state: null` and
-  `error: { kind: "failed", message }`, and logs event 1012.
+  `error: { kind: "failed", message }`, and logs event 1012. After a setter or
+  command that ran, the message starts with
+  `The call ran, but the updated state could not be sent: `; after one that
+  failed, the call's own error kind and message come first. A checked write
+  reply starts with
+  `The field write was processed, but the updated state and receipt could not be sent: `.
+  Clients must not retry such a call as if it had not run.
 
 The failure notice is `{ "__runicFailure": 1, "revision", "error": { "kind",
 "message", "detail"? } }`. `revision` is the producer's current revision and
@@ -59,7 +66,8 @@ In development (see `BridgeDiagnostics`), `detail` carries the exception, whose
 message names the key (`rows 0 and 1 have the duplicate key '1'`), as do the
 log entries. The client reports the notice as a `failed` `BridgeError` for
 `__{route}Changed` (`onBridgeDiagnostic` and `reportError`) and keeps its last
-state.
+state. A client from before this notice treats it as a full state that fails
+to decode: it reports an invalid pushed state and also keeps its last state.
 
 The client also validates keys in full states as well as frames: a full state
 with an empty or duplicate key fails the initial connection (the snapshot reply

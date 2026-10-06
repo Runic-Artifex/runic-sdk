@@ -53,7 +53,12 @@ public sealed record KeyedRow(string Key, string Label);
 
 public sealed class KeyedCollectionViewModel : INotifyPropertyChanged
 {
-    public KeyedCollectionViewModel() => Rows = new(Items);
+    public KeyedCollectionViewModel()
+    {
+        Rows = new(Items);
+        AddDuplicateCommand = new CommunityToolkit.Mvvm.Input.RelayCommand(() => Items.Add(new(Items[0].Key, "duplicate")));
+    }
+    public CommunityToolkit.Mvvm.Input.IRelayCommand AddDuplicateCommand { get; }
     [RunicIgnore]
     public ObservableCollection<KeyedRow> Items { get; } = [];
     [RunicCollection(nameof(KeyedRow.Key))]

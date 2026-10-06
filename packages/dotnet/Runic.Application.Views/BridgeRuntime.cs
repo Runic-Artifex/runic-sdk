@@ -827,9 +827,15 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
         catch (BridgeCollectionKeyException keys)
         {
-            // An explicit read or reply fails with the reason instead of a state.
+            // An explicit read or reply fails with the reason instead of a
+            // state. A reply after a setter or command says that the call
+            // itself ran, so a client does not blindly retry it.
             LogRejectedKeys(keys);
-            return EncodeWithoutSnapshot(RejectedKeysReply(keys));
+            var failure = RejectedKeysReply(keys);
+            if (protocol) return EncodeWithoutSnapshot(failure);
+            return EncodeWithoutSnapshot(error is null
+                ? failure with { Message = $"The call ran, but the updated state could not be sent: {failure.Message}" }
+                : error with { Message = $"{error.Message} The updated state could not be sent: {failure.Message}", Detail = error.Detail ?? failure.Detail });
         }
     }
 
@@ -914,12 +920,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     // Logs keys a full state could not be captured with and tells the client,
-    // once per distinct failure until a state is captured again. The route
+    // once per field, problem and key (not row positions, which unrelated
+    // edits shift) until a state is captured again. The route
     // keeps requiring a full state, so the next change captures again.
     private void ReportRejectedKeys(BridgeCollectionKeyException keys)
     {
-        if (string.Equals(_rejectedKeys, keys.Message, StringComparison.Ordinal)) return;
-        _rejectedKeys = keys.Message;
+        if (string.Equals(_rejectedKeys, keys.Identity, StringComparison.Ordinal)) return;
+        _rejectedKeys = keys.Identity;
         LogRejectedKeys(keys);
         var failure = RejectedKeysReply(keys);
         _delivery.EnqueueFailure(WriteJson(writer =>
@@ -1010,7 +1017,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         catch (BridgeCollectionKeyException keys)
         {
             LogRejectedKeys(keys);
-            return EncodeWithoutSnapshot(RejectedKeysReply(keys));
+            var failure = RejectedKeysReply(keys);
+            return EncodeWithoutSnapshot(failure with
+            {
+                Message = $"The field write was processed, but the updated state and receipt could not be sent: {failure.Message}",
+            });
         }
     }
 

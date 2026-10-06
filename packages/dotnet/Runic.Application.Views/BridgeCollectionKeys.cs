@@ -9,23 +9,28 @@ internal sealed class BridgeCollectionKeyException : InvalidOperationException
 {
     private const string Rule = ". [RunicCollection] keys must be nonempty and unique within the collection.";
 
-    private BridgeCollectionKeyException(string model, string field, string? key, string problem, string replyProblem)
+    private BridgeCollectionKeyException(string model, string field, string kind, string? key, string problem, string replyProblem)
         : base($"{model}.{field}: {problem}{Rule}")
     {
         Field = field;
+        Kind = kind;
         Key = key;
         ReplyMessage = $"{model}.{field}: {replyProblem}{Rule}";
     }
 
     public string Field { get; }
+    // null-row, null-key, empty-key or duplicate.
+    public string Kind { get; }
     public string? Key { get; }
     public string ReplyMessage { get; }
+    // Identifies the failure without row positions, which shift with unrelated edits.
+    public string Identity => $"{Field}\n{Kind}\n{Key}";
 
-    internal static BridgeCollectionKeyException Invalid(string model, string field, string problem) =>
-        new(model, field, null, problem, problem);
+    internal static BridgeCollectionKeyException Invalid(string model, string field, string kind, string problem) =>
+        new(model, field, kind, null, problem, problem);
 
     internal static BridgeCollectionKeyException Duplicate(string model, string field, string key, int first, int second) =>
-        new(model, field, key, $"rows {first} and {second} have the duplicate key '{key}'", $"rows {first} and {second} have the same key");
+        new(model, field, "duplicate", key, $"rows {first} and {second} have the duplicate key '{key}'", $"rows {first} and {second} have the same key");
 }
 
 // The keys of one collection instance as of the last full state and the
@@ -79,10 +84,10 @@ internal sealed class BridgeCollectionKeyBaseline
     // Returns the row's current key. Throws BridgeCollectionKeyException for a null row or a null or empty key.
     public static string KeyOf(string model, string field, Func<object?, string> keyOf, object? row, int index)
     {
-        if (row is null) throw BridgeCollectionKeyException.Invalid(model, field, $"row {index} is null");
+        if (row is null) throw BridgeCollectionKeyException.Invalid(model, field, "null-row", $"row {index} is null");
         var key = keyOf(row);
-        if (key is null) throw BridgeCollectionKeyException.Invalid(model, field, $"row {index} has a null key");
-        if (key.Length == 0) throw BridgeCollectionKeyException.Invalid(model, field, $"row {index} has an empty key");
+        if (key is null) throw BridgeCollectionKeyException.Invalid(model, field, "null-key", $"row {index} has a null key");
+        if (key.Length == 0) throw BridgeCollectionKeyException.Invalid(model, field, "empty-key", $"row {index} has an empty key");
         return key;
     }
 }

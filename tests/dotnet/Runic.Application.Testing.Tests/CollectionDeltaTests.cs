@@ -124,6 +124,26 @@ internal static class CollectionDeltaTests
             using (var frame = await NextAsync(transport))
                 Require(frame.RootElement.GetProperty("__runicDelta").GetInt32() == 1, "Frames did not resume after the keys were fixed.");
 
+            // Rows shifting under the same duplicate is not a new failure.
+            model.Items.Insert(0, new("a", "again"));
+            using (var failure = await NextAsync(transport))
+                Require(failure.RootElement.TryGetProperty("__runicFailure", out _), "The duplicate key was not reported.");
+            model.Items.Insert(0, new("x", "shift"));
+            model.Items.Insert(0, new("y", "shift"));
+            await Task.Delay(200);
+            Require(transport.DrainPublications().Count == 0, "Shifted rows reported the same duplicate key again.");
+            model.Items.RemoveAt(2);
+            using (var recovered = await NextAsync(transport))
+                Require(recovered.RootElement.GetProperty("rows").GetArrayLength() == 4, "The route did not recover after shifted rows.");
+
+            // A command that ran says so when its state cannot be sent.
+            using (var reply = JsonDocument.Parse(transport.Call("keyedAddDuplicate")))
+                Require(!reply.RootElement.GetProperty("ok").GetBoolean() && reply.RootElement.GetProperty("error").GetProperty("message").GetString()!
+                    .StartsWith("The call ran, but the updated state could not be sent: KeyedCollectionViewModel.rows: ", StringComparison.Ordinal),
+                    $"A command reply did not say that the command ran: {reply.RootElement.GetRawText()}");
+            Require(model.Items.Count == 5, "The command did not run.");
+            transport.DrainPublications();
+
             // A key changed in place: the baseline follows it, so a later valid key is
             // not a false duplicate and a real duplicate is not missed.
             var mutable = new MutableKeyedViewModel();
