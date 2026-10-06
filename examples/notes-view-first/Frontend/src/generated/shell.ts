@@ -14,8 +14,6 @@ export interface ShellState {
 /** A connected Shell ViewModel. Dispose it when its presentation ends. */
 export interface ShellClient extends ViewClient<ShellState> {
 }
-/** @deprecated Use ShellClient. The connected client is not the logical .NET View. */
-export type ShellView = ShellClient;
 
 export interface ShellPageReference {
   readonly kind: "shell";
@@ -39,7 +37,7 @@ function hydrate(wire: WireState): ShellState {
     dialog: wire.dialog === null ? null : wire.dialog.kind === "confirmNavigation" ? pageConfirmNavigation(wire.dialog.id) : (() => { throw new BridgeError("failed", "Unknown dialog kind."); })(),
   };
 }
-const bridgeContract = "NotesWindowViews.ShellViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
+const bridgeContract = "NotesWindowViews.ShellViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
 
 export function connectShell(): Promise<ShellClient> { return connectShellAt("shell", false); }
 async function connectShellAt(route: string, mount = false): Promise<ShellClient> {

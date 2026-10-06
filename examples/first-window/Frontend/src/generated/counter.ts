@@ -18,8 +18,6 @@ export interface CounterClient extends ViewClient<CounterState> {
   fieldBaseline<K extends keyof CounterCheckedFields>(field: K): FieldBaseline<CounterCheckedFields[K]>;
   increment(): Promise<CounterState>;
 }
-/** @deprecated Use CounterClient. The connected client is not the logical .NET View. */
-export type CounterView = CounterClient;
 
 export interface CounterPageReference {
   readonly kind: "counter";

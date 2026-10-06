@@ -10,8 +10,6 @@ export interface PreviewState {
 /** A connected Preview ViewModel. Dispose it when its presentation ends. */
 export interface PreviewClient extends ViewClient<PreviewState> {
 }
-/** @deprecated Use PreviewClient. The connected client is not the logical .NET View. */
-export type PreviewView = PreviewClient;
 
 export interface PreviewPageReference {
   readonly kind: "preview";
@@ -35,7 +33,7 @@ function hydrate(wire: WireState): PreviewState {
     body: bridgeWire.string(wire.body),
   };
 }
-const bridgeContract = "NotesReactiveViews.PreviewViewModel:9DD4712CD2ADDAE90C81157400DA366A04322CAA69E64D7CFFB385CD9C66065E";
+const bridgeContract = "NotesReactiveViews.PreviewViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
 
 export function connectPreview(): Promise<PreviewClient> { return connectPreviewAt("preview", false); }
 async function connectPreviewAt(route: string, mount = false): Promise<PreviewClient> {

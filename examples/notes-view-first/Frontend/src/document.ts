@@ -1,5 +1,5 @@
 import { mountContent, type ViewTemplates } from "./content.js";
-import type { DocumentState, DocumentClient } from "./generated/document.js";
+import type { DocumentClient, DocumentPane, DocumentState } from "./generated/document.js";
 import { mountEditor } from "./editor.js";
 import { mountPreview } from "./preview.js";
 
@@ -13,14 +13,24 @@ export function mountDocument(host: HTMLElement, documentView: DocumentClient): 
   const editor = host.querySelector<HTMLButtonElement>("[data-pane=editor]")!;
   const preview = host.querySelector<HTMLButtonElement>("[data-pane=preview]")!;
   const pane = host.querySelector<HTMLElement>("#document-pane")!;
+  // DocumentPane is a literal union of the C# enum cases, so this switch is
+  // exhaustive: a new case is a compile error here.
+  const paneButton = (active: DocumentPane): HTMLButtonElement => {
+    switch (active) {
+      case "Editor": return editor;
+      case "Preview": return preview;
+      default: { const unknown: never = active; throw new Error(`Unknown document pane ${String(unknown)}.`); }
+    }
+  };
   const unmountPane = mountContent(pane, documentView, "currentPane", paneViews, error => {
     const status = document.querySelector("#status")!;
     status.textContent = String(error);
     status.classList.add("error");
   });
   const unsubscribe = documentView.subscribe(state => {
-    editor.setAttribute("aria-current", state.activePane === "Editor" ? "page" : "false");
-    preview.setAttribute("aria-current", state.activePane === "Preview" ? "page" : "false");
+    const current = paneButton(state.activePane);
+    editor.setAttribute("aria-current", current === editor ? "page" : "false");
+    preview.setAttribute("aria-current", current === preview ? "page" : "false");
     editor.disabled = !state.canShowEditor;
     preview.disabled = !state.canShowPreview;
   });

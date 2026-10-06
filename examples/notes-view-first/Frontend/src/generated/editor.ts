@@ -29,8 +29,6 @@ export interface EditorClient extends ViewClient<EditorState> {
   startSaveWithRequestId(requestId: string): Promise<EditorSaveOperation>;
   recoverSaveWithRequestId(requestId: string): Promise<EditorSaveOperation>;
 }
-/** @deprecated Use EditorClient. The connected client is not the logical .NET View. */
-export type EditorView = EditorClient;
 
 export interface EditorPageReference {
   readonly kind: "editor";
@@ -60,7 +58,7 @@ function hydrate(wire: WireState): EditorState {
     body: bridgeWire.string(wire.body),
   };
 }
-const bridgeContract = "NotesWindowViews.EditorViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
+const bridgeContract = "NotesWindowViews.EditorViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
 const checkedFieldNames = ["title", "body"];
 
 export function connectEditor(): Promise<EditorClient> { return connectEditorAt("editor", false); }

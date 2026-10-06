@@ -49,8 +49,6 @@ export interface ShellClient extends ViewClient<ShellState> {
   startRestorePinnedWithRequestId(requestId: string): Promise<ShellRestorePinnedOperation>;
   recoverRestorePinnedWithRequestId(requestId: string): Promise<ShellRestorePinnedOperation>;
 }
-/** @deprecated Use ShellClient. The connected client is not the logical .NET View. */
-export type ShellView = ShellClient;
 
 export interface ShellPageReference {
   readonly kind: "shell";
@@ -72,7 +70,7 @@ function hydrate(wire: WireState): ShellState {
     pinned: wire.pinned.map(item => item.kind === "pinnedTask" ? pagePinnedTask(item.id) : item.kind === "pinnedNote" ? pagePinnedNote(item.id) : (() => { throw new BridgeError("failed", "Unknown pinned kind."); })()),
   };
 }
-const bridgeContract = "NotesReactiveViews.ShellViewModel:9DD4712CD2ADDAE90C81157400DA366A04322CAA69E64D7CFFB385CD9C66065E";
+const bridgeContract = "NotesReactiveViews.ShellViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
 
 export function connectShell(): Promise<ShellClient> { return connectShellAt("shell", false); }
 async function connectShellAt(route: string, mount = false): Promise<ShellClient> {
