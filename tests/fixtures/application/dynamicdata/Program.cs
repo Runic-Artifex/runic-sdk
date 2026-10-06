@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DynamicData;
 using DynamicDataExample;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Advanced;
@@ -56,4 +57,34 @@ if (delta.RootElement.GetProperty("__runicDelta").GetInt32() != 1 ||
     delta.RootElement.GetProperty("baseRevision").GetInt64() != baseline ||
     delta.RootElement.GetProperty("changes").GetArrayLength() != 10)
     throw new InvalidOperationException("Deferred application did not produce one incremental changeset frame.");
-Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression and generated collection deltas.");
+// An invalid key is withheld and reported without ending the DynamicData binding.
+var keyTransport = new Benchmarks.MeteredTransport();
+using var keyModel = new KeyProofViewModel();
+using var keyBridge = new KeyProofBridge(keyTransport, keyModel, "keys");
+using (JsonDocument.Parse(keyTransport.Call("keysSnapshot"))) { }
+keyModel.Source.Add(new Row(1, "one", 0));
+await NextFrameAsync(frame => !frame.TryGetProperty("__runicFailure", out _), "the first row");
+keyModel.Source.Add(new Row(1, "again", 0));
+await NextFrameAsync(frame => frame.TryGetProperty("__runicFailure", out _), "the duplicate key");
+keyModel.Source.RemoveAt(1);
+await NextFrameAsync(frame => frame.TryGetProperty("rows", out var rows) && rows.GetArrayLength() == 1, "the corrected keys");
+keyModel.Source.Add(new Row(2, "two", 0));
+await NextFrameAsync(frame => frame.TryGetProperty("__runicDelta", out _), "a row after the correction");
+if (keyModel.Rows.Count != 2) throw new InvalidOperationException("The DynamicData binding stopped after an invalid key.");
+Console.WriteLine("DYNAMICDATA_RUNIC_OK: independent viewports, deferred batching, off-screen suppression, generated collection deltas and withheld invalid keys.");
+
+async Task NextFrameAsync(Func<JsonElement, bool> expected, string what)
+{
+    var deadline = DateTime.UtcNow.AddSeconds(10);
+    while (DateTime.UtcNow < deadline)
+    {
+        while (keyTransport.Frames.TryDequeue(out var json))
+        {
+            using var frame = JsonDocument.Parse(json);
+            if (expected(frame.RootElement)) return;
+            throw new InvalidOperationException($"Unexpected frame after {what}: {json}");
+        }
+        await Task.Delay(5);
+    }
+    throw new InvalidOperationException($"No frame after {what}.");
+}

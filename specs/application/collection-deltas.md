@@ -22,18 +22,44 @@ string itself, the lowercase `D` form of a `Guid`, or the invariant decimal form
 of an `Int32`. Keys must be nonempty and unique within the field, and rows must
 not be null.
 
-The producer checks every key it writes and throws an
-`InvalidOperationException` that names the model, the field and the row or key,
-for example `CollectionDeltaViewModel.rows: rows 0 and 1 have the duplicate key '1'.`
-([fixture](fixtures/collection-deltas/keys.json)):
+### Invalid keys
 
-- A full state checks every row, so a snapshot or command reply fails and a
-  pushed state is not published (the delivery logs the failure).
-- A collection notification that would publish a frame checks the changed rows
-  against the keys of the last full state and the frames since, so the
-  `Add`, `Insert` or indexer set that introduced the key throws. The change is
-  not published, and the next change publishes a full state, which is checked
-  again. While a full state is already pending, its capture does the check.
+The producer never writes a full state or frame with a null row or a null,
+empty or duplicate key, and never throws into the code that changed the
+collection or row: a collection is often changed by a binding (ReactiveUI,
+DynamicData `Bind`) that an exception would end, and later change handlers
+would be skipped ([fixture](fixtures/collection-deltas/keys.json)).
+
+- **Tracking.** Each full state checks every row and records each row's key.
+  A collection notification checks the rows it adds against those keys and
+  removes rows by the key they were recorded with. A row property change whose
+  key differs from its recorded key, as when a key changes in place, publishes
+  a full state instead of a frame.
+- **Withholding.** A change that adds an invalid key, a key changed in place,
+  and a `Reset` or other unindexed notification require a full state. Capturing
+  it checks every key. While the keys are invalid the route publishes no state
+  or frame, and each later change tries the capture again. The first state
+  captured with valid keys resumes publication, and frames follow it.
+- **Reporting.** When a capture for delivery finds invalid keys, the producer
+  logs event 1012 `BridgeCollectionKeysRejected` (model, field, key and route,
+  with the exception) and publishes a failure notice on the state channel, once
+  per distinct failure until a state is captured again. A synchronous recovery
+  capture inside a change handler that fails, for any reason, becomes a
+  request, which the delivery captures and reports.
+- **Explicit reads.** A snapshot read, command reply or checked write reply
+  that cannot write the state fails with `ok: false`, `state: null` and
+  `error: { kind: "failed", message }`, and logs event 1012.
+
+The failure notice is `{ "__runicFailure": 1, "revision", "error": { "kind",
+"message", "detail"? } }`. `revision` is the producer's current revision and
+does not change the client's. The message names the model, field and rows but
+no key value, for example
+`CollectionDeltaViewModel.rows: rows 0 and 1 have the same key. [RunicCollection] keys must be nonempty and unique within the collection.`
+In development (see `BridgeDiagnostics`), `detail` carries the exception, whose
+message names the key (`rows 0 and 1 have the duplicate key '1'`), as do the
+log entries. The client reports the notice as a `failed` `BridgeError` for
+`__{route}Changed` (`onBridgeDiagnostic` and `reportError`) and keeps its last
+state.
 
 The client also validates keys in full states as well as frames: a full state
 with an empty or duplicate key fails the initial connection (the snapshot reply
@@ -124,6 +150,8 @@ following applies to the pending work:
 
 - A `Reset` notification, or a notification without a starting index.
 - A non-collection member changed (mixed changes publish one atomic state).
+- A row property change whose key differs from the key the row was recorded
+  with, or a change that adds an invalid key (see [Invalid keys](#invalid-keys)).
 - A row reached through more than one DTO path (for example a collection row
   that is also exposed as `Selected`), or a property change on an object nested
   inside a row.
@@ -167,8 +195,9 @@ fixture's "1 MiB of pending frames" case shows this.
 
 ## Applying frames
 
-The client holds the current state and its revision for each route. For an
-incoming frame it:
+The client holds the current state and its revision for each route. A message
+with `__runicFailure` is a failure notice ([Invalid keys](#invalid-keys)): the
+client reports it and changes nothing. For an incoming frame it:
 
 1. Recovers (below) if `__runicDelta` is not `1` or `revision` is not a safe
    integer.
@@ -243,7 +272,7 @@ collection of `{ id, label }` rows keyed by `id` and a `title` string (`"rows"`)
 | `recovery` | Optional, client only. The state recovery reads answer, default `expected`. An older state shows that the client keeps frames that arrive during the read. |
 | `failedReads` | Optional, client only, default 0. The number of recovery reads that fail before one answers. |
 | `recoveries` | Optional, default 0. The number of snapshot reads the client performs for recovery, including failed reads. |
-| `error` | Optional. The message of the `InvalidOperationException` the producer throws for invalid keys: when it reads `initial` if `steps` is empty, otherwise at the last mutation. Such a case has no `frames` or `expected`, and the producer publishes nothing. |
+| `error` | Optional. The failure message for invalid keys after the steps: a snapshot read fails with it (when `steps` is empty, the initial read already does). Such a case has no `expected`, and the client keeps `initial`. |
 
 Mutations are `{ "op": "insert", "index", "item" }`, `{ "op": "removeAt", "index" }`,
 `{ "op": "set", "index", "item" }`, `{ "op": "move", "oldIndex", "newIndex" }`
@@ -265,5 +294,7 @@ generators and encoding them compactly, or the exact `error`. The views test
 (`packages/web/views/test/collection-fixtures.test.ts`) serves `initial`, pushes
 every frame not in `dropped` twice, requires each frame up to the first dropped
 one to notify subscribers exactly once, and requires the client state to equal
-`expected` after the given number of recoveries. For an `error` case without
-steps it requires the client to reject `initial`.
+`expected` after the given number of recoveries. A failure notice must be
+reported each time and change nothing. For an `error` case without steps it
+requires the client to reject `initial`. Both tests run with failure detail
+off, so failure notices are byte-identical.

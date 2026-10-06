@@ -78,3 +78,27 @@ public sealed class ValidatedCollectionViewModel : INotifyPropertyChanged, INoti
 }
 
 public sealed partial class ValidatedCollectionWindow(ValidatedCollectionViewModel model) : RunicWindow<ValidatedCollectionViewModel>(model);
+
+public sealed class MutableKeyedRow(string key, string label) : INotifyPropertyChanged
+{
+    private string _key = key;
+    public string Key
+    {
+        get => _key;
+        set { _key = value; PropertyChanged?.Invoke(this, new(nameof(Key))); }
+    }
+    public string Label { get; } = label;
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed class MutableKeyedViewModel : INotifyPropertyChanged
+{
+    public MutableKeyedViewModel() => Rows = new(Items);
+    [RunicIgnore]
+    public ObservableCollection<MutableKeyedRow> Items { get; } = [new("a", "one"), new("b", "two")];
+    [RunicCollection(nameof(MutableKeyedRow.Key))]
+    public ReadOnlyObservableCollection<MutableKeyedRow> Rows { get; }
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+public sealed partial class MutableKeyedWindow(MutableKeyedViewModel model) : RunicWindow<MutableKeyedViewModel>(model);

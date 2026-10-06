@@ -346,6 +346,7 @@ output accordingly. The message properties are listed per event.
 | 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes. | `ErrorType` |
 | 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. | `Model`, `Route`, `ErrorType` |
 | 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. | `Model`, `Route`, `ErrorType` |
+| 1012 | `BridgeCollectionKeysRejected` | Error | A `[RunicCollection]` has a null row or a null, empty or duplicate key, so the route withholds its state. | `Model`, `Field`, `Key`, `Route` |
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
 | 1030 | `ModelTurnFailed` | Error | A posted model-context turn throws. | `ErrorType` |
@@ -393,8 +394,8 @@ status `Error` and `error.type`.
 | --- | --- | --- | --- |
 | `runic.bridge.calls` | Counter | `{call}` | kind, model, member, outcome, `error.type` |
 | `runic.bridge.call.duration` | Histogram | `s` | kind, model, member, outcome, `error.type` |
-| `runic.bridge.failures` | Counter | `{failure}` | kind (a call kind, `snapshot.capture`, `snapshot.delivery` or `mount`), model, member, `error.type` |
-| `runic.bridge.snapshot.frames` | Counter | `{frame}` | model, `runic.bridge.frame` (`state` or `delta`) |
+| `runic.bridge.failures` | Counter | `{failure}` | kind (a call kind, `snapshot.capture`, `snapshot.delivery`, `collection.keys` or `mount`), model, member, `error.type` |
+| `runic.bridge.snapshot.frames` | Counter | `{frame}` | model, `runic.bridge.frame` (`state`, `delta` or `failure`) |
 | `runic.bridge.snapshot.size` | Histogram | `By` | model, frame |
 | `runic.bridge.snapshot.delivery.duration` | Histogram | `s` | model, frame |
 | `runic.bridge.snapshot.recoveries` | Counter | `{snapshot}` | model |

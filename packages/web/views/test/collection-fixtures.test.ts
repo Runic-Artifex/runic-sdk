@@ -91,44 +91,59 @@ test("every frame kind, recovery path and key check has a fixture", () => {
 for (const file of fixtures) {
   const fixture = JSON.parse(readFileSync(new URL(file, directory), "utf8")) as { readonly cases: readonly FixtureCase[] };
   for (const testCase of fixture.cases) {
-    if (testCase.error !== undefined) {
-      // The client rejects a full state with the keys the producer refuses.
-      // A refused mutation publishes nothing, so there is nothing to apply.
-      if (testCase.steps.length === 0)
-        test(`${file}: ${testCase.name}`, async () => {
-          await assert.rejects(connectRows(expand(testCase.initial), undefined), /invalid state/);
-        });
+    if (testCase.error !== undefined && testCase.steps.length === 0) {
+      // The client also rejects a full state with the keys the producer refuses.
+      test(`${file}: ${testCase.name}`, async () => {
+        await assert.rejects(connectRows(expand(testCase.initial), undefined), /invalid state/);
+      });
       continue;
     }
     test(`${file}: ${testCase.name}`, async () => {
-      const expected = expand(testCase.expected);
+      // A case with an error keeps its initial state.
+      const expected = expand(testCase.expected ?? testCase.initial);
       let reference = expand(testCase.initial) as Wire;
       const { client, push, recoveries } = await connectRows(reference, expand(testCase.recovery ?? testCase.expected), testCase.failedReads);
       let notifications = 0;
       client.subscribe(() => { notifications++; });
-      const firstDropped = Math.min(...(testCase.dropped ?? [Infinity]));
-      for (const [index, frame] of testCase.frames!.entries()) {
-        if (testCase.dropped?.includes(index)) continue;
-        const wire = expand(frame);
-        const before = notifications;
-        // A repeated frame is a duplicate and must not change the result.
-        push(wire); push(wire);
-        if (index > firstDropped) continue;
-        // Until a frame is missed, every frame applies without recovery and
-        // matches an independent reading of the frame format.
-        reference = applyReference(reference, wire);
-        assert.equal(recoveries(), 0, `frame ${index} needed a recovery`);
-        // A repeated state or frame at the same revision does not notify again.
-        assert.equal(notifications - before, 1, `frame ${index} was not applied exactly once`);
-        assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} produced another state`);
-      }
-      if (testCase.dropped === undefined) assert.deepEqual(reference, expected);
-      // A failed read is retried after a backoff of at least 250 ms.
-      for (let waited = 0; recoveries() < (testCase.recoveries ?? 0) && waited < 3000; waited += 10)
-        await new Promise(resolve => setTimeout(resolve, 10));
-      await new Promise(resolve => setTimeout(resolve, 0));
-      assert.equal(recoveries(), testCase.recoveries ?? 0);
-      assert.deepEqual(client.snapshot, hydrate(expected as Wire));
+      const target = globalThis as { reportError?: ((error: unknown) => void) | undefined };
+      const previousReport = target.reportError;
+      const reported: unknown[] = [];
+      target.reportError = error => { reported.push(error); };
+      try {
+        const firstDropped = Math.min(...(testCase.dropped ?? [Infinity]));
+        for (const [index, frame] of testCase.frames!.entries()) {
+          if (testCase.dropped?.includes(index)) continue;
+          const wire = expand(frame);
+          const before = notifications;
+          if ((wire as { __runicFailure?: number }).__runicFailure !== undefined) {
+            // A failure notice is reported each time and changes nothing.
+            const failures = reported.length;
+            push(wire); push(wire);
+            assert.equal(reported.length - failures, 2, `frame ${index} was not reported`);
+            assert.match(String((reported.at(-1) as Error).message), /\[RunicCollection\] keys/);
+            assert.equal(notifications, before, `frame ${index} notified subscribers`);
+            assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} changed the state`);
+            continue;
+          }
+          // A repeated frame is a duplicate and must not change the result.
+          push(wire); push(wire);
+          if (index > firstDropped) continue;
+          // Until a frame is missed, every frame applies without recovery and
+          // matches an independent reading of the frame format.
+          reference = applyReference(reference, wire);
+          assert.equal(recoveries(), 0, `frame ${index} needed a recovery`);
+          // A repeated state or frame at the same revision does not notify again.
+          assert.equal(notifications - before, 1, `frame ${index} was not applied exactly once`);
+          assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} produced another state`);
+        }
+        if (testCase.dropped === undefined) assert.deepEqual(reference, expected);
+        // A failed read is retried after a backoff of at least 250 ms.
+        for (let waited = 0; recoveries() < (testCase.recoveries ?? 0) && waited < 3000; waited += 10)
+          await new Promise(resolve => setTimeout(resolve, 10));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        assert.equal(recoveries(), testCase.recoveries ?? 0);
+        assert.deepEqual(client.snapshot, hydrate(expected as Wire));
+      } finally { target.reportError = previousReport; }
       client.dispose();
     });
   }

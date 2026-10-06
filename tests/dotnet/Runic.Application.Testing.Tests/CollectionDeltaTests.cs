@@ -64,66 +64,110 @@ internal static class CollectionDeltaTests
         Require(oversized.RootElement.GetProperty("rows").GetArrayLength() == 4100,
             "An oversized changeset did not fall back to a full snapshot.");
 
-        await InvalidKeysFailFastAsync();
+        await InvalidKeysAreWithheldAsync();
     }
 
-    // specs/application/collection-deltas.md: the producer refuses keys the client rejects.
-    private static async Task InvalidKeysFailFastAsync()
+    // specs/application/collection-deltas.md: the producer never publishes keys
+    // the client rejects, and never throws into the code that changed them.
+    private static async Task InvalidKeysAreWithheldAsync()
     {
         const string Rule = ". [RunicCollection] keys must be nonempty and unique within the collection.";
-        foreach (var (row, problem) in new[] { (new KeyedRow("", "empty"), "row 1 has an empty key"), (new KeyedRow(null!, "null"), "row 1 has a null key") })
+        var detail = BridgeDiagnostics.IncludeFailureDetail;
+        BridgeDiagnostics.IncludeFailureDetail = true;
+        try
         {
-            var initial = new KeyedCollectionViewModel();
-            initial.Items.Add(new("a", "one"));
-            initial.Items.Add(row);
-            using var initialTransport = new InMemoryViewTransport();
-            using var initialBridge = new KeyedCollectionBridge(initialTransport, initial, "keyed");
-            RequireFailure(() => initialTransport.Call("keyedSnapshot"), "KeyedCollectionViewModel.rows: " + problem + Rule);
-        }
+            // An explicit read fails with the bounded reason; development detail has the key.
+            foreach (var (row, problem) in new[] { (new KeyedRow("", "empty"), "row 1 has an empty key"), (new KeyedRow(null!, "null"), "row 1 has a null key") })
+            {
+                var initial = new KeyedCollectionViewModel();
+                initial.Items.Add(new("a", "one"));
+                initial.Items.Add(row);
+                using var initialTransport = new InMemoryViewTransport();
+                using var initialBridge = new KeyedCollectionBridge(initialTransport, initial, "keyed");
+                RequireFailedRead(initialTransport, "keyedSnapshot", "KeyedCollectionViewModel.rows: " + problem + Rule);
+            }
 
-        var model = new KeyedCollectionViewModel();
-        model.Items.Add(new("a", "one"));
-        using var transport = new InMemoryViewTransport();
-        using var bridge = new KeyedCollectionBridge(transport, model, "keyed");
-        using (JsonDocument.Parse(transport.Call("keyedSnapshot"))) { }
-        foreach (var (mutate, undo, problem) in new (Action, Action, string)[]
-        {
-            (() => model.Items.Add(new("", "empty")), () => model.Items.RemoveAt(1), "row 1 has an empty key"),
-            (() => model.Items.Add(null!), () => model.Items.RemoveAt(1), "row 1 is null"),
-            (() => model.Items.Insert(0, new("a", "again")), () => model.Items.RemoveAt(0), "rows 0 and 1 have the duplicate key 'a'"),
-        })
-        {
-            RequireFailure(mutate, "KeyedCollectionViewModel.rows: " + problem + Rule);
-            await Task.Delay(50);
-            Require(transport.DrainPublications().Count == 0, $"A rejected key was published: {problem}.");
-            // Once the keys are valid again, the next change publishes a full state.
-            undo();
-            using var recovered = await NextAsync(transport);
-            Require(recovered.RootElement.GetProperty("rows").GetArrayLength() == 1 && !recovered.RootElement.TryGetProperty("__runicDelta", out _),
-                $"The route did not recover with a full state after {problem}.");
-        }
-        model.Items.Add(new("b", "two"));
-        using var frame = await NextAsync(transport);
-        Require(frame.RootElement.GetProperty("__runicDelta").GetInt32() == 1, "Frames did not resume after the keys were fixed.");
+            var model = new KeyedCollectionViewModel();
+            model.Items.Add(new("a", "one"));
+            using var transport = new InMemoryViewTransport();
+            using var bridge = new KeyedCollectionBridge(transport, model, "keyed");
+            using (JsonDocument.Parse(transport.Call("keyedSnapshot"))) { }
+            // Observers after the bridge, such as a ReactiveUI or DynamicData binding, still run.
+            var later = 0;
+            ((System.Collections.Specialized.INotifyCollectionChanged)model.Rows).CollectionChanged += (_, _) => later++;
+            foreach (var (mutate, undo, problem, key) in new (Action, Action, string, string)[]
+            {
+                (() => model.Items.Add(new("", "empty")), () => model.Items.RemoveAt(1), "row 1 has an empty key", "row 1 has an empty key"),
+                (() => model.Items.Add(null!), () => model.Items.RemoveAt(1), "row 1 is null", "row 1 is null"),
+                (() => model.Items.Insert(0, new("a", "again")), () => model.Items.RemoveAt(0), "rows 0 and 1 have the same key", "rows 0 and 1 have the duplicate key 'a'"),
+            })
+            {
+                var before = later;
+                mutate();
+                Require(later == before + 1, $"A later collection observer was skipped after {problem}.");
+                using (var failure = await NextAsync(transport))
+                {
+                    var error = failure.RootElement.GetProperty("error");
+                    Require(failure.RootElement.GetProperty("__runicFailure").GetInt32() == 1 &&
+                        error.GetProperty("message").GetString() == "KeyedCollectionViewModel.rows: " + problem + Rule &&
+                        error.GetProperty("detail").GetProperty("message").GetString() == "KeyedCollectionViewModel.rows: " + key + Rule,
+                        $"The route did not report {problem}: {failure.RootElement.GetRawText()}");
+                }
+                RequireFailedRead(transport, "keyedSnapshot", "KeyedCollectionViewModel.rows: " + key + Rule);
+                // Once the keys are valid again, the next change publishes a full state.
+                undo();
+                using var recovered = await NextAsync(transport);
+                Require(recovered.RootElement.GetProperty("rows").GetArrayLength() == 1 && !recovered.RootElement.TryGetProperty("__runicDelta", out _),
+                    $"The route did not recover with a full state after {problem}.");
+            }
+            model.Items.Add(new("b", "two"));
+            using (var frame = await NextAsync(transport))
+                Require(frame.RootElement.GetProperty("__runicDelta").GetInt32() == 1, "Frames did not resume after the keys were fixed.");
 
-        var validated = new ValidatedCollectionViewModel();
-        using var validatedTransport = new InMemoryViewTransport();
-        using var validatedBridge = new ValidatedCollectionBridge(validatedTransport, validated, "validated");
-        validated.Items.Add(new("a", "one"));
-        validated.Items.Add(new("a", "again"));
-        RequireFailure(() => validatedTransport.Call("validatedSnapshot"),
-            "ValidatedCollectionViewModel.rows: rows 0 and 1 have the duplicate key 'a'" + Rule);
+            // A key changed in place: the baseline follows it, so a later valid key is
+            // not a false duplicate and a real duplicate is not missed.
+            var mutable = new MutableKeyedViewModel();
+            using var mutableTransport = new InMemoryViewTransport();
+            using var mutableBridge = new MutableKeyedBridge(mutableTransport, mutable, "mutableKeyed");
+            using (JsonDocument.Parse(mutableTransport.Call("mutableKeyedSnapshot"))) { }
+            mutable.Items[1].Key = "c";
+            using (var changed = await NextAsync(mutableTransport))
+                Require(!changed.RootElement.TryGetProperty("__runicDelta", out _) && changed.RootElement.GetProperty("rows")[1].GetProperty("key").GetString() == "c",
+                    "A key changed in place did not publish a full state.");
+            mutable.Items.Add(new("b", "three"));
+            using (var added = await NextAsync(mutableTransport))
+                Require(added.RootElement.GetProperty("__runicDelta").GetInt32() == 1, "A key freed in place was reported as a duplicate.");
+            mutable.Items[2].Key = "a";
+            using (var duplicate = await NextAsync(mutableTransport))
+                Require(duplicate.RootElement.TryGetProperty("__runicFailure", out _), "A duplicate key made in place was published.");
+            mutable.Items[2].Key = "d";
+            using (var fixedKey = await NextAsync(mutableTransport))
+                Require(fixedKey.RootElement.GetProperty("rows").GetArrayLength() == 3, "A key fixed in place did not publish a full state.");
+
+            var validated = new ValidatedCollectionViewModel();
+            using var validatedTransport = new InMemoryViewTransport();
+            using var validatedBridge = new ValidatedCollectionBridge(validatedTransport, validated, "validated");
+            validated.Items.Add(new("a", "one"));
+            validated.Items.Add(new("a", "again"));
+            RequireFailedRead(validatedTransport, "validatedSnapshot", "ValidatedCollectionViewModel.rows: rows 0 and 1 have the duplicate key 'a'" + Rule);
+            var notices = 0;
+            for (var waited = 0; waited < 2000 && notices == 0; waited += 10)
+            {
+                notices += validatedTransport.DrainPublications().Count(publication => publication.StateJson.Contains("__runicFailure", StringComparison.Ordinal));
+                await Task.Delay(10);
+            }
+            Require(notices == 1, "A validation model did not report its duplicate key.");
+        }
+        finally { BridgeDiagnostics.IncludeFailureDetail = detail; }
     }
 
-    private static void RequireFailure(Action action, string message)
+    private static void RequireFailedRead(InMemoryViewTransport transport, string route, string detail)
     {
-        try { action(); }
-        catch (InvalidOperationException error)
-        {
-            Require(error.Message == message, $"Expected \"{message}\" but the producer failed with \"{error.Message}\".");
-            return;
-        }
-        throw new InvalidOperationException($"The producer accepted an invalid key: {message}");
+        using var reply = JsonDocument.Parse(transport.Call(route));
+        var root = reply.RootElement;
+        Require(!root.GetProperty("ok").GetBoolean() && root.GetProperty("state").ValueKind == JsonValueKind.Null &&
+            root.GetProperty("error").GetProperty("detail").GetProperty("message").GetString() == detail,
+            $"{route} did not fail with \"{detail}\": {root.GetRawText()}");
     }
 
     private static async Task<JsonDocument> NextAsync(InMemoryViewTransport transport)

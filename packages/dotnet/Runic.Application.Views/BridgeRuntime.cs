@@ -238,7 +238,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly BridgeCollectionDescriptor<T>[] _incrementalCollections;
     // The keys of each frame-publishing collection as of the last full state and
     // the frames since, so a change that adds a duplicate key fails at once.
-    private readonly Dictionary<BridgeCollectionDescriptor<T>, (object Rows, HashSet<string> Keys)> _collectionKeys = [];
+    private readonly Dictionary<BridgeCollectionDescriptor<T>, BridgeCollectionKeyBaseline> _collectionKeys = [];
+    // The keys a full state was last refused for, reported once until a state is captured.
+    private string? _rejectedKeys;
     private readonly HashSet<string> _generatedCollectionNames;
     private readonly List<BridgeCollectionChange<T>> _pendingCollectionChanges = [];
     private readonly Dictionary<BridgeCollectionDescriptor<T>, Dictionary<object, int>> _collectionIndexes = [];
@@ -823,6 +825,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         {
             return EncodeWithoutSnapshot(error);
         }
+        catch (BridgeCollectionKeyException keys)
+        {
+            // An explicit read or reply fails with the reason instead of a state.
+            LogRejectedKeys(keys);
+            return EncodeWithoutSnapshot(RejectedKeysReply(keys));
+        }
     }
 
     // Writes the state straight into the reply or delivery writer: a reply
@@ -839,90 +847,104 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     // Generated clients reject a state whose keyed collection has a null row or
-    // a null, empty or duplicate key, so such a state must never be written.
-    // Each full state checks every key and becomes the baseline for frames.
+    // a null, empty or duplicate key, so such a state is never written: this
+    // throws BridgeCollectionKeyException. Each full state checks every key and
+    // becomes the baseline for frames.
     private void CheckCollectionKeys()
     {
         foreach (var descriptor in _keyedCollections)
         {
             _collectionKeys.Remove(descriptor);
             if (descriptor.Get(_vm) is not System.Collections.IEnumerable rows) continue;
-            var keys = CollectionKeys(descriptor, rows);
-            if (descriptor.PublishesChanges) _collectionKeys[descriptor] = (rows, keys);
+            var baseline = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, rows, descriptor.Key);
+            if (descriptor.PublishesChanges) _collectionKeys[descriptor] = baseline;
         }
     }
 
-    // Updates the key baseline for one indexed collection notification.
-    // Without a baseline for this collection instance, it checks the whole
-    // collection when a frame would follow (scan), and otherwise leaves the
-    // check to the pending full state.
-    private void TrackCollectionKeys(BridgeCollectionDescriptor<T> descriptor, object rows, NotifyCollectionChangedEventArgs args, bool scan)
+    // Updates the key baseline for one indexed collection notification and
+    // returns whether a frame may describe it. Without a baseline for this
+    // collection instance, it checks the whole collection when a frame would
+    // follow (scan), and otherwise leaves the check to the pending full state.
+    // An invalid key drops the baseline; the caller then requires a full
+    // state, whose capture reports the keys. It never throws into the code
+    // that changed the collection.
+    private bool TrackCollectionKeys(BridgeCollectionDescriptor<T> descriptor, object rows, NotifyCollectionChangedEventArgs args, bool scan)
     {
-        if (!_collectionKeys.TryGetValue(descriptor, out var tracked) || !ReferenceEquals(tracked.Rows, rows))
-        {
-            _collectionKeys.Remove(descriptor);
-            if (scan) _collectionKeys[descriptor] = (rows, CollectionKeys(descriptor, (System.Collections.IEnumerable)rows));
-            return;
-        }
+        var enumerable = (System.Collections.IEnumerable)rows;
         try
         {
+            if (!_collectionKeys.TryGetValue(descriptor, out var tracked) || !ReferenceEquals(tracked.Rows, rows))
+            {
+                _collectionKeys.Remove(descriptor);
+                if (scan) _collectionKeys[descriptor] = BridgeCollectionKeyBaseline.Scan(ModelName, descriptor.Name, enumerable, descriptor.Key);
+                return true;
+            }
             if (args.Action is NotifyCollectionChangedAction.Remove or NotifyCollectionChangedAction.Replace && args.OldItems is { } removed)
-                foreach (var row in removed)
-                    if (row is not null && descriptor.Key(row) is { } key) tracked.Keys.Remove(key);
+                foreach (var row in removed) tracked.Remove(row, descriptor.Key);
             if (args.Action is NotifyCollectionChangedAction.Add or NotifyCollectionChangedAction.Replace && args.NewItems is { } added)
             {
                 var index = args.NewStartingIndex;
-                foreach (var row in added)
-                {
-                    var key = CollectionKey(descriptor, row, index);
-                    if (!tracked.Keys.Add(key)) throw DuplicateCollectionKey(descriptor, rows, key, index);
-                    index++;
-                }
+                foreach (var row in added) tracked.Add(ModelName, descriptor.Name, enumerable, descriptor.Key, row, index++);
             }
+            return true;
         }
-        catch
+        catch (BridgeCollectionKeyException)
         {
             _collectionKeys.Remove(descriptor);
-            throw;
+            return false;
         }
     }
 
-    private static HashSet<string> CollectionKeys(BridgeCollectionDescriptor<T> descriptor, System.Collections.IEnumerable rows)
+    // Whether a frame may replace a row after its own property change: its key
+    // must be valid and still the key it was tracked with. A key changed in
+    // place drops the baseline, so a full state checks the collection again.
+    private bool TrackItemKey(BridgeCollectionDescriptor<T> descriptor, object rows, object item, int index, out string key)
     {
-        var keys = new HashSet<string>(StringComparer.Ordinal);
-        var index = 0;
-        foreach (var row in rows)
+        key = "";
+        try { key = BridgeCollectionKeyBaseline.KeyOf(ModelName, descriptor.Name, descriptor.Key, item, index); }
+        catch (BridgeCollectionKeyException)
         {
-            var key = CollectionKey(descriptor, row, index);
-            if (!keys.Add(key)) throw DuplicateCollectionKey(descriptor, rows, key, index);
-            index++;
+            _collectionKeys.Remove(descriptor);
+            return false;
         }
-        return keys;
+        if (!_collectionKeys.TryGetValue(descriptor, out var tracked) || !ReferenceEquals(tracked.Rows, rows)) return true;
+        if (tracked.TrackedKey(item) == key) return true;
+        _collectionKeys.Remove(descriptor);
+        return false;
     }
 
-    private static string CollectionKey(BridgeCollectionDescriptor<T> descriptor, object? row, int index)
+    // Logs keys a full state could not be captured with and tells the client,
+    // once per distinct failure until a state is captured again. The route
+    // keeps requiring a full state, so the next change captures again.
+    private void ReportRejectedKeys(BridgeCollectionKeyException keys)
     {
-        if (row is null) throw CollectionKeyError(descriptor, $"row {index} is null");
-        var key = descriptor.Key(row);
-        if (key is null) throw CollectionKeyError(descriptor, $"row {index} has a null key");
-        if (key.Length == 0) throw CollectionKeyError(descriptor, $"row {index} has an empty key");
-        return key;
-    }
-
-    private static InvalidOperationException DuplicateCollectionKey(BridgeCollectionDescriptor<T> descriptor, object rows, string key, int index)
-    {
-        // Only a failure pays for finding the other row.
-        var other = 0;
-        foreach (var row in (System.Collections.IEnumerable)rows)
+        if (string.Equals(_rejectedKeys, keys.Message, StringComparison.Ordinal)) return;
+        _rejectedKeys = keys.Message;
+        LogRejectedKeys(keys);
+        var failure = RejectedKeysReply(keys);
+        _delivery.EnqueueFailure(WriteJson(writer =>
         {
-            if (other != index && row is not null && descriptor.Key(row) == key) break;
-            other++;
-        }
-        return CollectionKeyError(descriptor, $"rows {Math.Min(index, other)} and {Math.Max(index, other)} have the duplicate key '{key}'");
+            writer.WriteStartObject();
+            writer.WriteNumber("__runicFailure", 1);
+            writer.WriteNumber("revision", _revision);
+            writer.WritePropertyName("error");
+            writer.WriteStartObject();
+            writer.WriteString("kind", failure.Kind);
+            writer.WriteString("message", failure.Message);
+            BridgeDiagnostics.Write(writer, failure.Detail);
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        }));
     }
 
-    private static InvalidOperationException CollectionKeyError(BridgeCollectionDescriptor<T> descriptor, string problem) =>
-        new($"{ModelName}.{descriptor.Name}: {problem}. [RunicCollection] keys must be nonempty and unique within the collection.");
+    private static BridgeFailure RejectedKeysReply(BridgeCollectionKeyException keys) =>
+        new("failed", keys.ReplyMessage, BridgeDiagnostics.Capture(keys));
+
+    private void LogRejectedKeys(BridgeCollectionKeyException keys)
+    {
+        BridgeTelemetry.RecordFailure("collection.keys", ModelName, keys.Field, keys);
+        ViewsLog.CollectionKeysRejected(_logger, keys, ModelName, keys.Field, keys.Key ?? "", _name);
+    }
 
     private string WriteSnapshot() => WriteJson(WriteSnapshot);
 
@@ -984,6 +1006,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         catch (BridgeSnapshotDetachedException)
         {
             return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+        }
+        catch (BridgeCollectionKeyException keys)
+        {
+            LogRejectedKeys(keys);
+            return EncodeWithoutSnapshot(RejectedKeysReply(keys));
         }
     }
 
@@ -1103,7 +1130,15 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             // Do not show the host a half-applied batch. The batch flush
             // requests the state again.
             if (BridgeSnapshotBatch.TryDefer(_vm, this)) return null;
-            var state = CaptureState();
+            string? state;
+            try { state = CaptureState(); }
+            catch (BridgeCollectionKeyException keys)
+            {
+                // The route still requires a full state, so the next change
+                // captures again; until then it publishes nothing.
+                if (!IsInactive) ReportRejectedKeys(keys);
+                return null;
+            }
             return IsInactive ? null : state;
         }
     }
@@ -1117,7 +1152,13 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         if (BridgeTelemetry.RecoverySnapshots.Enabled)
             BridgeTelemetry.RecoverySnapshots.Add(1, new KeyValuePair<string, object?>(BridgeTelemetry.ModelTag, ModelName));
         if (_delivery.StateQueued) { PublishSnapshotCore(); return; }
-        var state = CaptureState();
+        string? state;
+        // This runs in the change handler of whatever collection overflowed.
+        // A state that cannot be captured now (for example because of another
+        // collection's keys) becomes a request, which the delivery captures
+        // and reports, so the failure never reaches that caller.
+        try { state = CaptureState(); }
+        catch (Exception) when (!IsInactive) { PublishSnapshotCore(); return; }
         if (state is not null && !IsInactive) _delivery.Enqueue(state);
     }
 
@@ -1128,6 +1169,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var state = WriteSnapshot();
             _publishedRevision = _revision;
             _requiresSnapshot = false;
+            _rejectedKeys = null;
             _pendingCollectionChanges.Clear();
             return state;
         }
@@ -1166,15 +1208,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 foreach (var descriptor in descriptors)
                 {
                     if (!indexed) { _collectionKeys.Remove(descriptor); continue; }
-                    try { TrackCollectionKeys(descriptor, collection, args, scan: !_requiresSnapshot); }
-                    catch
-                    {
-                        // The rejected change is not published. The next change publishes a
-                        // full state, which fails to capture until the keys are fixed.
-                        _requiresSnapshot = true;
-                        _pendingCollectionChanges.Clear();
-                        throw;
-                    }
+                    // An invalid key is never thrown into the code that changed
+                    // the collection: the route requires a full state instead,
+                    // and its capture reports the keys until they are fixed.
+                    if (!TrackCollectionKeys(descriptor, collection, args, scan: !_requiresSnapshot)) _requiresSnapshot = true;
                 }
                 if (!_requiresSnapshot)
                     foreach (var descriptor in descriptors)
@@ -1248,19 +1285,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     if (!indexes.TryGetValue(item, out var at) || at >= rows.Count || !ReferenceEquals(rows[at], item)) continue;
                     if (!handled) _revision = NextRevision();
                     handled = true;
-                    if (!_requiresSnapshot)
-                    {
-                        string key;
-                        try { key = CollectionKey(descriptor, item, at); }
-                        catch
-                        {
-                            _requiresSnapshot = true;
-                            _pendingCollectionChanges.Clear();
-                            throw;
-                        }
+                    // A key changed in place or made invalid requires a full state;
+                    // its capture checks and, if needed, reports the keys.
+                    if (!TrackItemKey(descriptor, rows, item, at, out var key)) _requiresSnapshot = true;
+                    else if (!_requiresSnapshot)
                         _pendingCollectionChanges.Add(new(descriptor, "replace", at, at,
                             [key], [WriteJson(writer => descriptor.WriteItem(writer, item))]));
-                    }
                     if (_pendingCollectionChanges.Count > 4096) _requiresSnapshot = true;
                 }
                 if (handled && !BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();

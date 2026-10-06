@@ -102,7 +102,11 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
   let recovering = false;
   let buffered: unknown[] = [];
   let missedRevision: number | undefined;
+  let backoff: { readonly timer: ReturnType<typeof setTimeout>; readonly resolve: () => void } | undefined;
   const live = () => entry.active && routeEntry.active;
+  const wait = (milliseconds: number) => new Promise<void>(resolve => {
+    backoff = { timer: setTimeout(() => { backoff = undefined; resolve(); }, milliseconds), resolve };
+  });
 
   // Reads the snapshot, retrying a failed read with backoff. Returns whether a state was accepted.
   async function readRecoveryState(): Promise<boolean> {
@@ -121,7 +125,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
         const disconnected = !bridge.isConnected() || error instanceof BridgeError && error.kind === "disconnected";
         if (disconnected || attempt === recoveryAttempts) { reportBridgeError(error, snapshotRoute); return false; }
         emitErrorDiagnostic(error, snapshotRoute);
-        await new Promise<void>(resolve => setTimeout(resolve, recoveryDelay * 2 ** (attempt - 1)));
+        await wait(recoveryDelay * 2 ** (attempt - 1));
         if (!live()) return false;
       }
     }
@@ -140,7 +144,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
       if (!recovered || !live()) return;
       for (const frame of frames) entry.accept(frame);
       if (missed !== undefined && (entry.revision === undefined || missed > entry.revision)) recover();
-    });
+    }).catch(error => { reportBridgeError(error); });
   }
 
   function notify(current: unknown): void {
@@ -155,13 +159,30 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
   const entry: SharedEntry = {
     contract, route, bridge, routeEntry, leases: new Set(), hydrate, current: undefined, wire: undefined, revision: undefined,
     initializing: undefined, active: true,
+    close() {
+      // Ends a recovery backoff at once; the recovery then sees the route inactive.
+      if (!backoff) return;
+      clearTimeout(backoff.timer);
+      backoff.resolve();
+      backoff = undefined;
+    },
     accept(wire) {
       const revision = (wire as { readonly revision: number }).revision;
       if (!live()) return entry.current ?? entry.hydrate(wire);
+      const failure = (wire as { readonly __runicFailure?: unknown }).__runicFailure;
+      if (failure !== undefined) {
+        // The producer cannot publish a valid state for now and withholds this
+        // route until it can; the client keeps its last state.
+        const error = (wire as { readonly error?: EnvelopeError | null }).error ?? null;
+        reportBridgeError(replyError(error, `__${route}Changed`, `The Bridge cannot publish the state of ${route}.`));
+        return entry.current;
+      }
       const delta = wire as { readonly __runicDelta?: unknown; readonly baseRevision?: unknown; readonly changes?: unknown };
       if (delta.__runicDelta !== undefined) {
         // Keep frames that arrive during a recovery read and apply them against the state it returns.
         if (recovering) {
+          // A repeated frame is kept once.
+          if (buffered.some(frame => (frame as { readonly revision?: unknown }).revision === revision)) return entry.current;
           if (buffered.length < maximumBufferedFrames) buffered.push(wire);
           else if (typeof revision === "number") missedRevision = Math.max(missedRevision ?? revision, revision);
           return entry.current;
@@ -276,6 +297,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     shared.leases.delete(lease);
     if (shared.leases.size !== 0 || routeEntry.entries.get(contractId) !== shared) return;
     shared.active = false;
+    shared.close?.();
     routeEntry.entries.delete(contractId);
     if (routeEntry.entries.size !== 0) return;
     routeEntry.active = false;
