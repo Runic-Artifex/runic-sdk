@@ -71,6 +71,25 @@ Keep generated contracts and locks current. Stop after relevant checks pass unle
 new changes or failures justify more verification. Manual native/UI checks and
 soaks are scoped to the behavior being changed, not every PR or release.
 
+### Regenerate checked files
+
+When CI reports a stale generated file, run:
+
+```sh
+bun run regen
+```
+
+It rewrites the embedded CLI compatibility metadata and the shipping-project
+inventory from `eng/workspace.json`, then runs the full build, which rewrites the
+committed generated clients of the examples in `RunicSdk.Core.slnx`. Commit the
+resulting changes; afterwards every generated-file check in CI passes. The
+DynamicData example is outside the solution; its client is rewritten when you build
+it with the fork (see [its README](examples/dynamicdata/README.md)).
+
+Tracked Markdown files must not contain broken relative links; the engineering
+tests (`bun run test engineering`) check them. Link to files in other repositories
+with absolute GitHub URLs.
+
 Repository scripts, build tools and verification use Bun 1.4.2. Use `bun run --bun`
 when invoking package scripts so Node shebangs also run under Bun. Node is retained
 for npm/pnpm package and template compatibility checks, not the default workspace
