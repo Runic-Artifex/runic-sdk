@@ -118,3 +118,40 @@ test('describe writes the same bundle, SBOM and checksums for the same packages'
   const described = JSON.parse(readFileSync(join(directory, 'first', bom), 'utf8'));
   expect(described.dependencies[0].dependsOn).toHaveLength(4);
 }));
+
+// Hostile or unusual metadata: oversized entries, document type declarations and versionless dependencies.
+const edgeFixtures = String.raw`
+import io, sys, tarfile, zipfile, os
+out, version = sys.argv[1:]
+os.makedirs(f'{out}/nuget', exist_ok=True); os.makedirs(f'{out}/npm', exist_ok=True)
+def nuspec(name, body='', doctype=''):
+    return f'<?xml version="1.0"?>{doctype}<package><metadata><id>{name}</id><version>{version}</version>{body}</metadata></package>'
+def nupkg(name, spec, files={}):
+    with zipfile.ZipFile(f'{out}/nuget/{name}.{version}.nupkg', 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f'{name}.nuspec', spec)
+        for path, content in files.items(): z.writestr(path, content)
+nupkg('Large', nuspec('Large'), {'tools/Large.deps.json': ' ' * (17 * 1024 * 1024)})
+nupkg('Doctype', nuspec('Doctype', doctype='<!DOCTYPE package [<!ENTITY big "x">]>'))
+nupkg('Floating', nuspec('Floating', '<dependencies><group><dependency id="Any.Version" /></group></dependencies>'))
+with tarfile.open(f'{out}/npm/large-{version}.tgz', 'w:gz') as t:
+    data = b' ' * (17 * 1024 * 1024)
+    info = tarfile.TarInfo('package/package.json'); info.size = len(data); t.addfile(info, io.BytesIO(data))
+`;
+test('the SBOM refuses oversized entries and document types and accepts versionless dependencies', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'runic-sbom-edge-'));
+  try {
+    execFileSync(python, ['-c', edgeFixtures, join(directory, 'packages'), VERSION]);
+    for (const [file, message] of [[nuget('Large'), 'Large.deps.json is larger than 16777216 bytes'],
+      [`npm/large-${VERSION}.tgz`, 'package/package.json is larger than 16777216 bytes'],
+      [nuget('Doctype'), 'must not declare a document type or entities']]) {
+      const {result} = sbom(directory, [file]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(message);
+    }
+    const {result, bom} = sbom(directory, [nuget('Floating')]);
+    expect(result.stderr).toBe('');
+    expect(bom.components.find(c => c['bom-ref'] === 'pkg:nuget/Any.Version')).toEqual({type: 'library', 'bom-ref': 'pkg:nuget/Any.Version',
+      name: 'Any.Version', purl: 'pkg:nuget/Any.Version'});
+    expect(bom.dependencies.find(d => d.ref === `pkg:nuget/Floating@${VERSION}`).dependsOn).toEqual(['pkg:nuget/Any.Version']);
+  } finally { rmSync(directory, {recursive: true, force: true}); }
+});
