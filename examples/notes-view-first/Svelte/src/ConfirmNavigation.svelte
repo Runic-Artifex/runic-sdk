@@ -2,22 +2,19 @@
   import { onMount } from "svelte";
   import type { ConfirmNavigationPageReference } from "../../Frontend/src/generated/confirmNavigation.js";
   import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
+  import { useCommand } from "../../../../packages/web/svelte/src/views/use-command.svelte.js";
 
   let { page }: { page: ConfirmNavigationPageReference } = $props();
   const dialog = useView(() => page);
-  let error = $state<string | undefined>();
+  const answer = useCommand((name: "cancel" | "confirm") => dialog.client?.[name]());
   let cancelButton: HTMLButtonElement;
   let confirmButton: HTMLButtonElement;
   let focused = false;
 
-  async function run(command: () => Promise<unknown>) {
-    try { await command(); error = undefined; }
-    catch (cause) { error = String(cause); }
-  }
   function keydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (dialog.client) void run(() => dialog.client!.cancel());
+      void answer.run("cancel");
     }
     if (event.key === "Tab") {
       if (event.shiftKey && document.activeElement === cancelButton) {
@@ -45,10 +42,10 @@
     <p data-message>{dialog.state?.message ?? "Connecting…"}</p>
     <div class="dialog-actions">
       <button data-cancel bind:this={cancelButton} disabled={!dialog.state?.canCancel}
-        onclick={() => dialog.client && run(() => dialog.client!.cancel())}>Keep editing</button>
+        onclick={() => answer.run("cancel")}>Keep editing</button>
       <button data-confirm bind:this={confirmButton} disabled={!dialog.state?.canConfirm}
-        onclick={() => dialog.client && run(() => dialog.client!.confirm())}>Discard changes</button>
+        onclick={() => answer.run("confirm")}>Discard changes</button>
     </div>
-    {#if error ?? dialog.error}<p role="alert">{String(error ?? dialog.error)}</p>{/if}
+    {#if answer.error ?? dialog.error}<p role="alert">{String(answer.error ?? dialog.error)}</p>{/if}
   </div>
 </div>

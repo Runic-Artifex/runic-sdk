@@ -10,7 +10,8 @@
     "./package.json": "./package.json"
   },
   "peerDependencies": {
-    "@angular/core": ">=20.3.26 <23"
+    "@angular/core": ">=20.3.26 <23",
+    "@runic-artifex/views": "0.6.0-preview.1"
   },
   "description": "Angular outlet and signals for Runic Views",
   "license": "MIT",
@@ -42,10 +43,11 @@
   "scripts": {
     "build": "ngc -p tsconfig.json",
     "check": "ngc -p tsconfig.json --noEmit",
-    "test": "bun run --bun build && vitest run",
+    "test": "bun run --bun build && tsc -p tsconfig.test.json && vitest run",
     "pack:check": "bun pm pack --dry-run"
   },
   "devDependencies": {
+    "@runic-artifex/views": "workspace:*",
     "@angular/common": "22.2.1",
     "@angular/compiler": "22.2.1",
     "@angular/compiler-cli": "22.2.1",

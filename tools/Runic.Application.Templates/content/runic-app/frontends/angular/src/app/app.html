@@ -1,13 +1,13 @@
 <main>
   <header><h1>Runic Views</h1><p>Window/View starter · Angular</p></header>
   <nav aria-label="Main navigation">
-    <button [disabled]="!workspace.client()" (click)="showWelcome()">Welcome</button>
-    <button [disabled]="!workspace.client()" (click)="showCounter()">Counter</button>
+    <button [disabled]="!workspace.client()" (click)="navigate.run('showWelcome')">Welcome</button>
+    <button [disabled]="!workspace.client()" (click)="navigate.run('showCounter')">Counter</button>
   </nav>
   @if (state(); as current) {
     <runic-view-outlet [content]="current.main" [registry]="pages"></runic-view-outlet>
   } @else {
     <p>Connecting to the Window…</p>
   }
-  <p role="status">{{ error() ?? "Connected to the .NET Window." }}</p>
+  <p role="status">{{ status() }}</p>
 </main>

@@ -168,7 +168,7 @@ importers:
     dependencies:
       '@runic-artifex/svelte':
         specifier: 0.6.0-preview.1
-        version: 0.6.0-preview.1(svelte@5.57.1)
+        version: 0.6.0-preview.1(@runic-artifex/views@0.6.0-preview.1)(svelte@5.57.1)
       '@runic-artifex/views':
         specifier: 0.6.0-preview.1
         version: 0.6.0-preview.1
@@ -313,17 +313,18 @@ packages:
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
   '@runic-artifex/svelte@0.6.0-preview.1':
-    resolution: {integrity: sha512-jyhOWGYl9VfR1dPjOEqZtbRBJ4p1JWp8VYqM1DjuK4EaMnCoB/sB8plMPEKWkfOn1JDxkBE3DzkMioZSkuOrNQ==}
+    resolution: {integrity: sha512-7t30rW1XAjkwSeSUmyEBdIOKPIWcbqtpDiX2A5KVd+pltIkTxjsK0nSx3pFPLtxjLOKW9oORRDxfIoJNZQOduQ==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
+      '@runic-artifex/views': 0.6.0-preview.1
       svelte: '>=5.46.4 <6'
 
   '@runic-artifex/views@0.6.0-preview.1':
-    resolution: {integrity: sha512-lqJqe/xXbKIe222acduzeJpyuZIGkfXs2DZFw+GMJ7c3DXp+JK8M4SMrp1IuBF8ralhAoNMyfvFtRAk0sq911A==}
+    resolution: {integrity: sha512-xOQ9Iy5rmA5TLhCyMeUnTP5ehxfScjnB0VU81uXlYmK7vxOwbXSZ4g6WSMdTCzbPGHLQ4zArF4K9Q+aqzQZEMQ==}
     engines: {node: '>=24.18.0 <25'}
 
   '@runic-artifex/vite-plugin-runic@0.6.0-preview.1':
-    resolution: {integrity: sha512-zEGklvllFUvKAzy+XSTYwjW8JTvAM4V6M33LYDeAAEt3gafy6p0qw2CcOO99agFkvzj5pus+5JmQ24Fom0/XNQ==}
+    resolution: {integrity: sha512-umDYqrqZbVu5ucVHFat6oAixiSilW/jio3E2PWei+gpCvRT2x+QIm9r8/sY4nXkiEZJ6jKGD6cwQvqOsMeKYTw==}
     engines: {node: '>=24.18.0 <25'}
     peerDependencies:
       '@vitejs/devtools': ^0.7.6
@@ -680,8 +681,9 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@runic-artifex/svelte@0.6.0-preview.1(svelte@5.57.1)':
+  '@runic-artifex/svelte@0.6.0-preview.1(@runic-artifex/views@0.6.0-preview.1)(svelte@5.57.1)':
     dependencies:
+      '@runic-artifex/views': 0.6.0-preview.1
       svelte: 5.57.1
 
   '@runic-artifex/views@0.6.0-preview.1': {}

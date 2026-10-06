@@ -9,7 +9,26 @@ export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticListene
 export { bridgeWire, decodeBridgeValidation, type BridgeValidationMessage, type BridgeValidationState } from "./wire.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export { defineCollection, type BridgeCollectionDefinition } from "./collections.js";
-export { collectionViewport, type CollectionViewport } from "./viewport.js";
+export {
+  collectionViewport,
+  createCollectionViewportController,
+  type CollectionViewport,
+  type CollectionViewportController,
+  type CollectionViewportOptions,
+} from "./viewport.js";
+export {
+  createCommandController,
+  createViewController,
+  isViewClient,
+  viewSourceIdentity,
+  type CommandController,
+  type CommandState,
+  type ViewConnector,
+  type ViewController,
+  type ViewControllerOptions,
+  type ViewControllerState,
+  type ViewSource,
+} from "./controller.js";
 export {
   connectView,
   viewReferences,

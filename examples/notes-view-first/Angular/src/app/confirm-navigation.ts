@@ -1,5 +1,6 @@
-import { Component, DestroyRef, ElementRef, ViewChild, afterRenderEffect, inject, input, signal } from "@angular/core";
-import type { ConfirmNavigationPageReference, ConfirmNavigationClient } from "../../../Frontend/src/generated/confirmNavigation.js";
+import { Component, DestroyRef, ElementRef, ViewChild, afterRenderEffect, inject, input } from "@angular/core";
+import type { ConfirmNavigationPageReference } from "../../../Frontend/src/generated/confirmNavigation.js";
+import { injectCommand } from "../../../../../packages/web/angular/src/inject-command";
 import { injectPage, WindowOperations } from "./window-operations";
 
 @Component({
@@ -10,10 +11,10 @@ import { injectPage, WindowOperations } from "./window-operations";
         <h2 id="dialog-title">Unsaved changes</h2>
         <p data-message>{{ dialog.state()?.message ?? "Connecting…" }}</p>
         <div class="dialog-actions">
-          <button #cancelButton data-cancel [disabled]="!dialog.state()?.canCancel" (click)="cancel()">Keep editing</button>
-          <button #confirmButton data-confirm [disabled]="!dialog.state()?.canConfirm" (click)="confirm()">Discard changes</button>
+          <button #cancelButton data-cancel [disabled]="!dialog.state()?.canCancel" (click)="answer.run('cancel')">Keep editing</button>
+          <button #confirmButton data-confirm [disabled]="!dialog.state()?.canConfirm" (click)="answer.run('confirm')">Discard changes</button>
         </div>
-        @if (error() ?? dialog.error(); as issue) { <p role="alert">{{ issue }}</p> }
+        @if (answer.error() ?? dialog.error(); as issue) { <p role="alert">{{ issue }}</p> }
         @if (dialog.error()) { <button (click)="dialog.retry()">Retry dialog</button> }
       </div>
     </div>
@@ -22,8 +23,9 @@ import { injectPage, WindowOperations } from "./window-operations";
 export class ConfirmNavigationComponent {
   readonly page = input.required<ConfirmNavigationPageReference>();
   readonly dialog = injectPage(this.page);
-  readonly error = signal<string | undefined>(undefined);
   private readonly operations = inject(WindowOperations);
+  readonly answer = injectCommand((name: "cancel" | "confirm") =>
+    this.operations.run(this.dialog.client(), view => view[name]()));
   private readonly destroyRef = inject(DestroyRef);
   private readonly previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   private focused = false;
@@ -47,13 +49,10 @@ export class ConfirmNavigationComponent {
     } });
   }
 
-  cancel(): void { this.run(view => view.cancel()); }
-  confirm(): void { this.run(view => view.confirm()); }
-
   keydown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
       event.preventDefault();
-      this.cancel();
+      void this.answer.run("cancel");
     } else if (event.key === "Tab" && this.cancelElement && this.confirmElement) {
       if (event.shiftKey && document.activeElement === this.cancelElement) {
         event.preventDefault(); this.confirmElement.focus();
@@ -61,11 +60,5 @@ export class ConfirmNavigationComponent {
         event.preventDefault(); this.cancelElement.focus();
       }
     }
-  }
-
-  private run(action: (view: ConfirmNavigationClient) => Promise<unknown>): void {
-    void this.operations.run(this.dialog.client(), action)
-      .then(() => this.error.set(undefined))
-      .catch(cause => this.error.set(String(cause)));
   }
 }

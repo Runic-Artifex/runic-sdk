@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { DocumentPageReference, DocumentState } from "../../Frontend/src/generated/document.js";
   import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
+  import { useCommand } from "../../../../packages/web/svelte/src/views/use-command.svelte.js";
   import Editor from "./Editor.svelte";
   import MirrorEditor from "./MirrorEditor.svelte";
   import Compact from "./Compact.svelte";
@@ -13,12 +14,7 @@
   const compactViews = { editorCompact: Compact } satisfies ViewRegistry<DocumentState["compactNote"]>;
   let { page }: { page: DocumentPageReference } = $props();
   const document = useView(() => page);
-  let error = $state<string | undefined>();
-
-  async function run(command: () => Promise<unknown>) {
-    try { await command(); error = undefined; }
-    catch (cause) { error = String(cause); }
-  }
+  const show = useCommand((name: "showEditor" | "showPreview") => document.client?.[name]());
 </script>
 
 {#if document.state && document.client}
@@ -27,8 +23,8 @@
   <div class="document">
     <div>
       <div class="tabs">
-        <button data-pane="editor" aria-current={document.state.activePane === "Editor" ? "page" : "false"} onclick={() => run(() => document.client!.showEditor())}>Editor</button>
-        <button data-pane="preview" aria-current={document.state.activePane === "Preview" ? "page" : "false"} onclick={() => run(() => document.client!.showPreview())}>Preview</button>
+        <button data-pane="editor" aria-current={document.state.activePane === "Editor" ? "page" : "false"} onclick={() => show.run("showEditor")}>Editor</button>
+        <button data-pane="preview" aria-current={document.state.activePane === "Preview" ? "page" : "false"} onclick={() => show.run("showPreview")}>Preview</button>
       </div>
       <section id="document-pane" class="card"><ViewOutlet content={document.state.currentPane} registry={paneViews} /></section>
     </div>
@@ -40,4 +36,4 @@
 {:else}
   <p>Connecting…</p>
 {/if}
-{#if error ?? document.error}<p role="alert">{String(error ?? document.error)}</p>{/if}
+{#if show.error ?? document.error}<p role="alert">{String(show.error ?? document.error)}</p>{/if}
