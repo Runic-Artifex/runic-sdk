@@ -1,0 +1,27 @@
+{
+  "description": "A move takes rows from oldIndex and inserts them at index, the final position after removal. keys are the moved rows' keys; items is empty.",
+  "cases": [
+    {
+      "name": "move forward",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }, { "id": 3, "label": "three" }], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "move", "oldIndex": 0, "newIndex": 2 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "move", "index": 2, "oldIndex": 0, "keys": ["1"], "items": [] }
+        ] }
+      ],
+      "expected": { "revision": 1, "rows": [{ "id": 2, "label": "two" }, { "id": 3, "label": "three" }, { "id": 1, "label": "one" }], "title": "rows" }
+    },
+    {
+      "name": "move backward",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }, { "id": 3, "label": "three" }], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "move", "oldIndex": 2, "newIndex": 0 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "move", "index": 0, "oldIndex": 2, "keys": ["3"], "items": [] }
+        ] }
+      ],
+      "expected": { "revision": 1, "rows": [{ "id": 3, "label": "three" }, { "id": 1, "label": "one" }, { "id": 2, "label": "two" }], "title": "rows" }
+    }
+  ]
+}

@@ -49,6 +49,70 @@ The framework packages `@runic-artifex/react`, `@runic-artifex/vue`,
 `@runic-artifex/svelte` and `@runic-artifex/angular` connect and dispose
 clients with the component lifecycle.
 
+## Incremental collections
+
+A .NET ViewModel can mark a read-only collection of DTO rows with
+`[RunicCollection(nameof(Row.Id))]`. Its generated client then receives indexed
+add, remove, replace and move frames instead of the whole state, applies them on
+top of its current revision, and reads one fresh snapshot if a frame is missing
+or invalid. Rows that a frame does not touch keep their object identity, so
+frameworks can skip rendering them. Clients still see a complete array in
+`snapshot` and `subscribe`.
+
+### `defineCollection(decode, key)`
+
+```ts
+function defineCollection<T>(decode: (wire: unknown) => T, key: (item: T) => string): BridgeCollectionDefinition;
+```
+
+Describes one collection field for the runtime: `decode` validates and converts a
+wire row (throwing for an invalid one), and `key` returns the row's key, which
+must be a nonempty string unique within the field. Generated modules call it for
+each `[RunicCollection]` field, deriving `key` from the attributed property, and
+pass the result to the runtime. Applications normally do not call it. If you write
+it by hand, the key must match the .NET wire key: the string itself, a lowercase
+GUID, or an `Int32` in decimal.
+
+### `collectionViewport(options)`
+
+```ts
+function collectionViewport(options: {
+  totalCount: number; scrollTop: number; height: number; rowHeight: number; overscan?: number;
+}): { start: number; size: number; offset: number; totalSize: number };
+```
+
+Computes which rows of a fixed-row-height list to request from .NET, for any web
+framework. Pass the total row count published by the ViewModel, the scroll
+container's `scrollTop` and visible `height`, the row height in pixels and an
+optional `overscan` (default 5 rows before and after the visible range). It
+returns the first row to request (`start`) and how many (`size`), the pixel
+`offset` of the first returned row, and the `totalSize` of the scroll spacer.
+Negative `scrollTop` is treated as 0 and the range is clamped to `totalCount`.
+Invalid input (a negative or non-integer count or overscan, a non-finite value, a
+negative height or a row height that is not positive) throws a `RangeError`.
+
+The ViewModel owns the windowed collection; the page sends the requested range
+through a command and renders the rows it receives:
+
+```ts
+import { collectionViewport } from "@runic-artifex/views";
+import { connectRows } from "./generated/rows.js";
+
+const view = await connectRows();
+function requestViewport(scroll: HTMLElement) {
+  const { start, size } = collectionViewport({
+    totalCount: view.snapshot.totalCount, scrollTop: scroll.scrollTop,
+    height: scroll.clientHeight, rowHeight: 32,
+  });
+  if (size !== 0) void view.setViewport({ start, size });
+}
+```
+
+Avoid sending a request when `start` and `size` have not changed. The
+[DynamicData example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/dynamicdata) shows a complete page. The frame
+format, fallbacks and recovery rules are specified in
+[Collection delta frames](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/application/collection-deltas.md).
+
 ## Developing without .NET
 
 `@runic-artifex/views/mock` provides an in-memory Bridge. Install it before the

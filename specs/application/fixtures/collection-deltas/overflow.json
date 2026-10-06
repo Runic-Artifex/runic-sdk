@@ -1,0 +1,23 @@
+{
+  "description": "A frame carries at most 4096 changes. A batch with more publishes a full snapshot at the batch's final revision instead.",
+  "cases": [
+    {
+      "name": "4096 changes stay a delta",
+      "initial": { "revision": 0, "rows": [], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "appendRows", "start": 0, "count": 4096 }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 4096, "changes": [{ "$adds": [0, 4096] }] }
+      ],
+      "expected": { "revision": 4096, "rows": [{ "$rows": [0, 4096] }], "title": "rows" }
+    },
+    {
+      "name": "4097 changes fall back to a snapshot",
+      "initial": { "revision": 0, "rows": [], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "appendRows", "start": 0, "count": 4097 }] }],
+      "frames": [
+        { "revision": 4097, "rows": [{ "$rows": [0, 4097] }], "title": "rows" }
+      ],
+      "expected": { "revision": 4097, "rows": [{ "$rows": [0, 4097] }], "title": "rows" }
+    }
+  ]
+}

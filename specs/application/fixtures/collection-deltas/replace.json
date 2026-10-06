@@ -1,0 +1,27 @@
+{
+  "description": "A replace swaps rows at index (equal to oldIndex). keys are the keys of the old rows; items are the new rows, which may have other keys.",
+  "cases": [
+    {
+      "name": "replace with the same key",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "set", "index": 1, "item": { "id": 2, "label": "updated" } }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "replace", "index": 1, "oldIndex": 1, "keys": ["2"], "items": [{ "id": 2, "label": "updated" }] }
+        ] }
+      ],
+      "expected": { "revision": 1, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "updated" }], "title": "rows" }
+    },
+    {
+      "name": "replace with another key",
+      "initial": { "revision": 0, "rows": [{ "id": 1, "label": "one" }, { "id": 2, "label": "two" }], "title": "rows" },
+      "steps": [{ "batch": [{ "op": "set", "index": 0, "item": { "id": 7, "label": "seven" } }] }],
+      "frames": [
+        { "__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [
+          { "field": "rows", "kind": "replace", "index": 0, "oldIndex": 0, "keys": ["1"], "items": [{ "id": 7, "label": "seven" }] }
+        ] }
+      ],
+      "expected": { "revision": 1, "rows": [{ "id": 7, "label": "seven" }, { "id": 2, "label": "two" }], "title": "rows" }
+    }
+  ]
+}
