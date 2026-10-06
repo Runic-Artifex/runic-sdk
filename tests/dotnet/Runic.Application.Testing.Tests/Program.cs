@@ -124,6 +124,7 @@ DataCodecTests.Run();
 CodegenShapeTests.Run();
 await CodegenShapeTests.RunNullableReactiveAsync();
 CodegenShapeTests.RunTypeScriptSurface();
+await CodegenShapeTests.RunNamingAsync();
 await DataShapeTests.RunAsync();
 await OperationResultTests.RunAsync();
 await ModelContextTests.RunAsync();

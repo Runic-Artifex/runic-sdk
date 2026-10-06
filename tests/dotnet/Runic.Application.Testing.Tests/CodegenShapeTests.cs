@@ -136,6 +136,59 @@ internal static class CodegenShapeTests
         }
     }
 
+    // Names that collide, generic DTOs over arrays, case-less enums, wire
+    // names that are special on JavaScript objects, reserved parameter names
+    // and a comment terminator inside documentation.
+    internal static async Task RunNamingAsync()
+    {
+        var directory = GeneratedTypeScriptDirectory();
+        var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
+        var naming = File.ReadAllText(Path.Combine(directory, "naming.ts")).ReplaceLineEndings("\n");
+        foreach (var (file, text, expected) in new[]
+        {
+            ("types.ts", types, "export interface AlphaTag {\n  readonly name: string;\n}"),
+            ("types.ts", types, "export interface BetaTag {\n  readonly label: string;\n}"),
+            ("types.ts", types, "export interface TestsNamingState {\n  readonly count: number;\n}"),
+            ("types.ts", types, "export interface GenericBoxOfArrayOfInt32 {\n  readonly value: readonly number[] | null;\n}"),
+            ("types.ts", types, "export type EmptyKind = never;"),
+            ("naming.ts", naming, "  readonly first: AlphaTag;\n  readonly second: BetaTag;\n  readonly inner: TestsNamingState;\n  readonly box: GenericBoxOfArrayOfInt32;\n  readonly nothing: EmptyKind | null;"),
+            ("naming.ts", naming, "This comment contains *\\/ and must not end the TSDoc block."),
+            ("naming.ts", naming, "    [\"__proto__\"]: bridgeWire.string(wire[\"__proto__\"]),"),
+            ("naming.ts", naming, "    constructor: bridgeWire.string(wire.constructor),"),
+            ("naming.ts", naming, "    prototype: bridgeWire.string(wire.prototype),"),
+            ("naming.ts", naming, "  rename(defaultValue: string): Promise<NamingState>;"),
+            ("naming.ts", naming, "  show(viewValue: string): Promise<NamingState>;"),
+        })
+            Require(text.Contains(expected, StringComparison.Ordinal),
+                $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
+        Require(!types.Contains("export interface Tag ", StringComparison.Ordinal),
+            "Same-named C# types were not qualified with their namespaces.");
+
+        using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(), "naming",
+            (transport, content, vm) => new NamingBridge(transport, vm, content: content), new TestViewLocator());
+        var reply = host.Transport.Call("namingSnapshot");
+        using var snapshot = JsonDocument.Parse(reply);
+        var state = snapshot.RootElement.GetProperty("state");
+        Require(state.GetProperty("__proto__").GetString() == "proto"
+            && state.GetProperty("constructor").GetString() == "constructor"
+            && state.GetProperty("prototype").GetString() == "prototype"
+            && state.GetProperty("nothing").ValueKind == JsonValueKind.Null,
+            $"Special wire names were not written as state fields: {state}");
+
+        var replyPath = Path.Combine(Path.GetTempPath(), $"runic-naming-snapshot-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(replyPath, reply);
+            var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
+            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+                "GeneratedSpecialNamesHarness.ts"), replyPath, directory], root).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(replyPath);
+        }
+    }
+
     private static string GeneratedTypeScriptDirectory()
     {
         for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)

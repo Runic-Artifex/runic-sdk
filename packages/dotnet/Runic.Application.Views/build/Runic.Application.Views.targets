@@ -111,9 +111,13 @@
              Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
              Condition="Exists('$(RunicBridgeCodegenProject)')" />
     <!-- In a one-project starter, first compile the ordinary C# source so MVVM
-         source generators have finished before Bridge inspection. -->
+         source generators have finished before Bridge inspection. Analyzers
+         are off in this pass: it only feeds the generator, the real build runs
+         them, and the bootstrap's XML documentation file would otherwise
+         surface documentation-dependent analyzer warnings. Source generators
+         still run. -->
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
-             Properties="RunicBridgeBootstrap=true;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
+             Properties="RunicBridgeBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
              Condition="'$(RunicBridgeModelAssembly)' == ''" />
     <PropertyGroup>
       <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' == ''">$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/$(AssemblyName).dll</RunicBridgeInputAssembly>

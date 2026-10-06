@@ -118,18 +118,31 @@ internal static partial class TypeScriptNamedTypes
         for (var outer = type.DeclaringType; outer is not null; outer = outer.DeclaringType) result.Add(BaseName(outer));
         if (type.Namespace is { } ns)
             result.AddRange(ns.Split('.').Reverse().Where(segment => segment.Length > 0)
-                .Select(segment => char.ToUpperInvariant(segment[0]) + segment[1..]));
+                .Select(segment => Identifier(char.ToUpperInvariant(segment[0]) + segment[1..])));
         return result;
     }
 
+    // Page<NoteRow> -> PageOfNoteRow, Box<string[]> -> BoxOfArrayOfString.
+    // The result is always a TypeScript identifier.
     private static string BaseName(Type type)
     {
+        if (type.IsArray) return "ArrayOf" + BaseName(type.GetElementType()!);
+        if (type.IsByRef || type.IsPointer) return BaseName(type.GetElementType()!);
         var name = type.Name;
         var tick = name.IndexOf('`', StringComparison.Ordinal);
         if (tick >= 0) name = name[..tick];
         if (type.IsGenericType && !type.IsGenericTypeDefinition)
             name += "Of" + string.Join("And", type.GenericTypeArguments.Select(BaseName));
-        return name;
+        return Identifier(name);
+    }
+
+    private static string Identifier(string name)
+    {
+        var result = new StringBuilder(name.Length);
+        foreach (var character in name)
+            if (char.IsLetterOrDigit(character) || character is '_' or '$') result.Append(character);
+        if (result.Length == 0 || char.IsDigit(result[0])) result.Insert(0, '_');
+        return result.ToString();
     }
 
     private static IEnumerable<string> DeclaredNames(string module)

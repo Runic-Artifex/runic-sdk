@@ -179,6 +179,12 @@ export type DocumentPane = "Editor" | "Preview";
 - Two C# types with the same name, or a name that collides with a generated
   declaration such as `EditorState`, are qualified with their namespace
   segments, for example `NotesItem` and `TasksItem`.
+  Names are stable while no new collision appears: adding a same-named type,
+  even in another ViewModel, qualifies the existing one too. Import the name
+  your frontend uses and expect a compile error, not a silent change, when
+  that happens. Generic DTOs append their arguments, for example
+  `PageOfNoteRow` or `BoxOfArrayOfInt32`, and an enum without cases is
+  `never`.
 - `<summary>` comments on ViewModels, state properties, commands, interactions,
   DTO types and members, and enum cases become TSDoc. The bootstrap pass writes
   the XML documentation file for this; a project that already writes one keeps
@@ -202,7 +208,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE001` | Invalid generator invocation or build configuration, such as ViewModel content or interactions generated without `RunicBridgeRegisterGlobally=false`; also an internal generator error. | Correct the build property. Report an internal error with the ViewModel that triggers it. |
 | `RUNICBRIDGE002` | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish. | Publish framework-dependent until its validation is verified under AOT. |
 | `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. |
-| `RUNICBRIDGE004` | Two generated names collide: ViewModel names, presentation kinds, wire names, routes, client members, or generated files. | Rename one member, or set a wire name with `[RunicAlias]`. |
+| `RUNICBRIDGE004` | Two generated names collide: ViewModel names, presentation kinds, state wire names, the reserved `revision` and `validation` fields, interactions, routes, client members, or generated files (including a hand-written `types.ts`). | Rename one member, or set a wire name with `[RunicAlias]`. |
 | `RUNICBRIDGE005` | The model assembly or one of its dependencies could not be loaded. | Check the bootstrap output and package versions. |
 | `RUNICBRIDGE006` | The assembly has no Window or View class, one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
 | `RUNICBRIDGE007` | A ViewModel does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction. | Change the ViewModel declaration. |

@@ -957,7 +957,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         foreach (var (property, graph) in valueProperties)
         {
             var field = WireName(property);
-            ts.AppendLine($"    {TsPropertyName(field)}: {graph.EmitTypeScriptDecoder(TsAccess("wire", field))},");
+            ts.AppendLine($"    {TsLiteralKey(field)}: {graph.EmitTypeScriptDecoder(TsAccess("wire", field))},");
         }
         foreach (var (property, pages) in contentProperties)
         {
@@ -967,7 +967,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             expression += $" : (() => {{ throw new BridgeError(\"failed\", \"Unknown {field} kind.\"); }})()";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable)
                 expression = $"{TsAccess("wire", field)} === null ? null : {expression}";
-            ts.AppendLine($"    {TsPropertyName(field)}: {expression},");
+            ts.AppendLine($"    {TsLiteralKey(field)}: {expression},");
         }
         foreach (var (property, pages) in contentCollections)
         {
@@ -978,7 +978,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var hydrated = $"{TsAccess("wire", field)}.map(item => {expression})";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable)
                 hydrated = $"{TsAccess("wire", field)} === null ? null : {hydrated}";
-            ts.AppendLine($"    {TsPropertyName(field)}: {hydrated},");
+            ts.AppendLine($"    {TsLiteralKey(field)}: {hydrated},");
         }
         ts.AppendLine("  };");
         ts.AppendLine("}");
@@ -1000,7 +1000,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var graph = valueProperties[property];
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
-            ts.AppendLine($"  {TsPropertyName(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
         }
         ts.AppendLine("};");
     }
@@ -1160,7 +1160,7 @@ static string CommandParameterName(MethodInfo? source, GeneratedCommandPlan plan
     if (candidate is null && plan.InputGraph?.Root is { Kind: BridgeWireKind.Dto or BridgeWireKind.Union or BridgeWireKind.Enum } root)
         candidate = LowerFirst(root.NonNullableType.Name.Split('`')[0]);
     if (candidate is null || !IsTypeScriptIdentifier(candidate)) return "input";
-    return TypeScriptModules.ReservedParameterNames.Contains(candidate) ? candidate + "Value" : candidate;
+    return TypeScriptModules.IsReservedParameterName(candidate) ? candidate + "Value" : candidate;
 }
 
 static string LowerFirst(string text) => char.ToLowerInvariant(text[0]) + text[1..];
@@ -1184,7 +1184,12 @@ static string TsPropertyName(string name) => IsTypeScriptIdentifier(name)
     ? name
     : JsonSerializer.Serialize(name);
 
-static string TsAccess(string target, string name) => IsTypeScriptIdentifier(name)
+// An object-literal key. "__proto__" stays computed: as a plain or quoted key
+// it would set the literal's prototype instead of an own property.
+static string TsLiteralKey(string name) => name == "__proto__" ? $"[{JsonSerializer.Serialize(name)}]" : TsPropertyName(name);
+
+// Reads an own property; "__proto__" is bracketed like any other non-plain name.
+static string TsAccess(string target, string name) => IsTypeScriptIdentifier(name) && name != "__proto__"
     ? $"{target}.{name}"
     : $"{target}[{JsonSerializer.Serialize(name)}]";
 
@@ -1310,6 +1315,12 @@ static class TypeScriptModules
         "while", "with", "yield",
     };
 
+    // Encoders declare bridgeNullable<N>, bridgeUnion<N> and
+    // bridgeDecodedUnion<N> locals around the argument expression.
+    internal static bool IsReservedParameterName(string name) => ReservedParameterNames.Contains(name)
+        || name.StartsWith("bridgeNullable", StringComparison.Ordinal) || name.StartsWith("bridgeUnion", StringComparison.Ordinal)
+        || name.StartsWith("bridgeDecodedUnion", StringComparison.Ordinal);
+
     private static readonly List<(string Path, string Text)> Pending = [];
 
     internal static void Add(string path, string text) => Pending.Add((path, text));
@@ -1317,6 +1328,10 @@ static class TypeScriptModules
     internal static void WriteAll(string directory)
     {
         TypeScriptNamedTypes.Complete(Pending.Select(module => module.Text));
+        var typesPath = Path.Combine(directory, $"{TypeScriptNamedTypes.ModuleName}.ts");
+        if (TypeScriptNamedTypes.Any && File.Exists(typesPath) && !GeneratedOutput.IsGenerated(typesPath))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                $"{Path.GetFullPath(typesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or generate into a dedicated directory.");
         foreach (var (path, text) in Pending)
         {
             var used = TypeScriptNamedTypes.Used(text);
@@ -1327,7 +1342,6 @@ static class TypeScriptModules
                 .Replace(NamedTypeImports + Environment.NewLine, imports.Length == 0 ? "" : imports + Environment.NewLine, StringComparison.Ordinal);
             WriteFile(path, resolved);
         }
-        var typesPath = Path.Combine(directory, $"{TypeScriptNamedTypes.ModuleName}.ts");
         if (TypeScriptNamedTypes.Any)
             WriteFile(typesPath, $"{GeneratedOutput.Header}{Environment.NewLine}{TypeScriptNamedTypes.Module()}");
         else if (File.Exists(typesPath) && GeneratedOutput.IsGenerated(typesPath))

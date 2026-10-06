@@ -148,7 +148,8 @@ internal sealed class BridgeTypeGraph
                 if (cases.Length > 0)
                     documentation = (documentation is null ? "" : documentation + "\n\n") + string.Join('\n', cases);
                 XmlDocumentation.Append(source, "", documentation);
-                source.AppendLine($"export type {name} = {string.Join(" | ", node.EnumCases.Select(@case => Quote(@case.WireName)))};");
+                // An enum without cases has no valid value.
+                source.AppendLine($"export type {name} = {(node.EnumCases.Count == 0 ? "never" : string.Join(" | ", node.EnumCases.Select(@case => Quote(@case.WireName))))};");
                 break;
             }
             case BridgeWireKind.Dto:

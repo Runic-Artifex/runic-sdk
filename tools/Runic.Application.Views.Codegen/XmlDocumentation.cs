@@ -67,7 +67,7 @@ internal static partial class XmlDocumentation
                     .ToArray();
                 if (candidates.Length <= 1) return candidates.FirstOrDefault().Value;
                 var exact = prefix + (method.GetParameters().Length == 0 ? ""
-                    : "(" + string.Join(",", method.GetParameters().Select(parameter => TypeId(parameter.ParameterType))) + ")");
+                    : "(" + string.Join(",", method.GetParameters().Select(parameter => ParameterId(parameter.ParameterType))) + ")");
                 return members.GetValueOrDefault(exact);
             }
             default:
@@ -79,6 +79,26 @@ internal static partial class XmlDocumentation
     {
         if (type.IsGenericType && !type.IsGenericTypeDefinition) type = type.GetGenericTypeDefinition();
         return (type.FullName ?? type.Name).Replace('+', '.');
+    }
+
+    // A parameter type in a documentation ID: System.Collections.Generic.List{System.String},
+    // System.Int32[], System.String@ (by reference), `0 or ``0 (generic parameters).
+    private static string ParameterId(Type type)
+    {
+        if (type.IsByRef) return ParameterId(type.GetElementType()!) + "@";
+        if (type.IsPointer) return ParameterId(type.GetElementType()!) + "*";
+        if (type.IsArray)
+            return ParameterId(type.GetElementType()!) + (type.GetArrayRank() == 1 ? "[]"
+                : "[" + string.Join(",", Enumerable.Repeat("0:", type.GetArrayRank())) + "]");
+        if (type.IsGenericParameter)
+            return (type.DeclaringMethod is null ? "`" : "``") + type.GenericParameterPosition;
+        if (type.IsGenericType)
+        {
+            var name = TypeId(type);
+            var tick = name.IndexOf('`', StringComparison.Ordinal);
+            return (tick >= 0 ? name[..tick] : name) + "{" + string.Join(",", type.GetGenericArguments().Select(ParameterId)) + "}";
+        }
+        return TypeId(type);
     }
 
     private static Dictionary<string, XElement>? Load(Assembly assembly)
