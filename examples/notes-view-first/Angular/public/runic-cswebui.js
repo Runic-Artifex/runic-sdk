@@ -34,36 +34,57 @@
 
   // Native WebUI claims an event slot for each incoming call on its own thread
   // without holding its lock for the whole claim. Two calls arriving together
-  // can share one slot, and one of them then never receives a reply (#53).
-  // Send the next call only after .NET admitted the previous one, which it
-  // reports through __runicBridgeAdmitted, or that call settled. A call .NET
-  // never admits holds the others back for at most admissionTimeout.
-  const admissionTimeout = 250;
+  // can share one slot: one of them then never receives a reply, and either
+  // can read the other's arguments or response (#53). Send the next call only
+  // after .NET admitted the previous one, which it reports through
+  // __runicBridgeAdmitted, or that call settled. A call that reaches no handler
+  // and never settles holds the others back for at most admissionTimeout.
+  const admissionTimeout = 1500;
   let admission = Promise.resolve();
-  let admitCurrent;
-  window.__runicBridgeAdmitted = () => admitCurrent?.();
+  let current;
+  // Calls the timeout released before .NET admitted them. Their admissions can
+  // still arrive and must not release a later call before it has a slot.
+  const late = [];
+  window.__runicBridgeAdmitted = () => {
+    if (late.length !== 0) late.shift();
+    else current?.admit();
+  };
   function send(name, args) {
-    let admitted;
+    let release;
     const previous = admission;
-    admission = new Promise(resolve => { admitted = resolve; });
+    admission = new Promise(resolve => { release = resolve; });
     return previous.then(() => {
       let timer;
-      const admit = () => {
-        if (admitCurrent === admit) admitCurrent = undefined;
-        clearTimeout(timer);
-        admitted();
+      const call = {
+        admit() {
+          if (current !== call) return;
+          current = undefined;
+          clearTimeout(timer);
+          release();
+        },
+        settle() {
+          if (current === call) call.admit();
+          // An admission precedes its reply, so a late call that settles was
+          // never admitted.
+          const index = late.indexOf(call);
+          if (index !== -1) late.splice(index, 1);
+        },
       };
-      admitCurrent = admit;
-      timer = setTimeout(admit, admissionTimeout);
+      current = call;
+      timer = setTimeout(() => {
+        if (current !== call) return;
+        current = undefined;
+        late.push(call);
+        release();
+      }, admissionTimeout);
       let reply;
       try {
-        window.webui.allowNavigation?.(true);
         reply = window.webui.call(name, ...args);
       } catch (error) {
-        admit();
+        call.settle();
         throw error;
       }
-      Promise.resolve(reply).then(admit, admit);
+      Promise.resolve(reply).then(call.settle, call.settle);
       return reply;
     });
   }

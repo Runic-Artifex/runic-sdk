@@ -117,3 +117,35 @@ test("runic-cswebui.js does not hold calls behind one .NET never admits", async 
   expect(await context.__runicBridge.call("shellSnapshot")).toBe("shellSnapshot");
   expect(sent).toEqual(["unanswered", "shellSnapshot"]);
 });
+
+test("runic-cswebui.js credits a late admission to the call the timeout released", async () => {
+  const sent = [];
+  const context = loadCsWebUiBridge({
+    isConnected: () => true,
+    call: name => { sent.push(name); return new Promise(() => {}); },
+  });
+  const bridge = context.__runicBridge;
+  void bridge.call("first");
+  void bridge.call("second");
+  void bridge.call("third");
+  await new Promise(resolve => setTimeout(resolve, 1_700));
+  expect(sent).toEqual(["first", "second"]);
+
+  // The first call's admission arrives after the timeout released the second.
+  context.__runicBridgeAdmitted();
+  await settle();
+  expect(sent).toEqual(["first", "second"]);
+
+  context.__runicBridgeAdmitted();
+  await settle();
+  expect(sent).toEqual(["first", "second", "third"]);
+});
+
+// Examples serve their own copy; each must match the package's script.
+test("example copies of runic-cswebui.js match the package script", () => {
+  const expected = readFileSync(resolve(root, scripts[0]), "utf8");
+  for (const example of ["notes-reactive-views", "notes-view-first"])
+    for (const frontend of ["Frontend", "Angular"])
+      expect(readFileSync(resolve(root, `examples/${example}/${frontend}/public/runic-cswebui.js`), "utf8"), `${example}/${frontend}`)
+        .toBe(expected);
+});
