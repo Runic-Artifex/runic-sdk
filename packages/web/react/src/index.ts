@@ -20,6 +20,8 @@ import {
   type CollectionViewportOptions,
   type ViewClient,
   type ViewConnector,
+  type ViewController,
+  type ViewControllerState,
   type ViewReference,
   type ViewSource,
 } from "@runic-artifex/views";
@@ -60,22 +62,45 @@ function warnInlineConnect(tracker: InlineConnectTracker, connect: () => unknown
     "`{ connect: connectWorkspace }` or a generated page reference, or memoize the source with useMemo.");
 }
 
-// The controller changes `current` silently when the effect sets its source, so
-// React renders the last notified snapshot instead of re-rendering for it.
-function useNotifiedSnapshot<T>(controller: { readonly current: T; subscribe(listener: () => void): () => void }): T {
-  const [store] = useState(() => {
-    let snapshot = controller.current;
-    return {
-      subscribe(onChange: () => void) {
-        const stop = controller.subscribe(() => { snapshot = controller.current; onChange(); });
-        // Pick up changes made before React subscribed, such as a fast connection.
-        if (snapshot !== controller.current) { snapshot = controller.current; onChange(); }
-        return stop;
-      },
-      read: () => snapshot,
-    };
+type ViewStore<TClient extends ViewClient> = {
+  readonly subscribe: (onChange: () => void) => () => void;
+  readonly read: () => ViewControllerState<TClient>;
+  /** Takes the controller's state after `setSource` when what the hook returns changed. */
+  readonly refresh: () => void;
+};
+
+// The controller changes `current` silently when the effect sets its source.
+// The store copies it and re-renders only when what the hook returns changes,
+// so an inline connect function cannot re-render synchronously forever, and a
+// returned client is never one the controller already released.
+function createViewStore<TClient extends ViewClient>(controller: ViewController<TClient>): ViewStore<TClient> {
+  let snapshot = controller.current;
+  const listeners = new Set<() => void>();
+  const visible = (left: ViewControllerState<TClient>, right: ViewControllerState<TClient>) =>
+    left.client !== right.client || left.state !== right.state || left.error !== right.error || left.pending !== right.pending;
+  // React re-renders whenever the snapshot object changes, so keep the copy
+  // unless what the hook returns changes. A copy with the same client, state,
+  // error and pending is equivalent: a released client is never current again.
+  const refresh = () => {
+    const next = controller.current;
+    if (next === snapshot || !visible(next, snapshot)) return;
+    snapshot = next;
+    for (const listener of [...listeners]) listener();
+  };
+  controller.subscribe(() => {
+    snapshot = controller.current;
+    for (const listener of [...listeners]) listener();
   });
-  return useSyncExternalStore(store.subscribe, store.read, store.read);
+  return {
+    subscribe(onChange) {
+      listeners.add(onChange);
+      // Pick up changes made before React subscribed, such as a fast connection.
+      refresh();
+      return () => { listeners.delete(onChange); };
+    },
+    read: () => snapshot,
+    refresh,
+  };
 }
 
 /**
@@ -90,15 +115,18 @@ function useNotifiedSnapshot<T>(controller: { readonly current: T; subscribe(lis
  */
 export function useView<TClient extends ViewClient>(source: ViewSource<TClient>): ViewHandle<TClient> {
   const [controller] = useState(() => createViewController<TClient>());
+  const [store] = useState(() => createViewStore(controller));
   const tracker = useRef<InlineConnectTracker>({ connect: undefined, text: "", times: [], warned: false });
   const identity = viewSourceIdentity(source);
   useEffect(() => {
     if (process.env.NODE_ENV !== "production" && source && !isViewClient(source)) warnInlineConnect(tracker.current, source.connect);
     controller.setSource(source);
+    store.refresh();
+    // A following run refreshes the store; after unmount nothing renders it.
     return () => { controller.setSource(null); };
     // The source is identified by its client or connect function, not by its wrapper object.
-  }, [controller, identity]);
-  const current = useNotifiedSnapshot(controller);
+  }, [controller, store, identity]);
+  const current = useSyncExternalStore(store.subscribe, store.read, store.read);
   const retry = useCallback(() => controller.retry(), [controller]);
 
   const observed = source && isViewClient(source) ? source : undefined;
@@ -147,9 +175,23 @@ function suspendedConnection(connector: ViewConnector<ViewClient>): SuspendedCon
   }, (error: unknown) => {
     entry.status = "failed";
     entry.error = error;
+    // Keep the failure for the error boundary; forget it later so a later render reconnects.
+    entry.timer = setTimeout(() => { if (suspended.get(key) === entry) suspended.delete(key); }, unclaimedConnectionTimeout);
   });
   suspended.set(key, entry);
   return entry;
+}
+
+/**
+ * Forgets a failed `useSuspenseView` connection, so the next render connects
+ * again. Call it from an error boundary's reset before rendering the
+ * component again. A connection that is pending or connected is unaffected.
+ */
+export function retrySuspenseView(source: ViewConnector<ViewClient>): void {
+  const entry = suspended.get(source.connect);
+  if (entry?.status !== "failed") return;
+  clearTimeout(entry.timer);
+  suspended.delete(source.connect);
 }
 
 export interface SuspenseViewHandle<TClient extends ViewClient> {
@@ -162,7 +204,8 @@ export interface SuspenseViewHandle<TClient extends ViewClient> {
 /**
  * Suspends the component until a generated View reference connects, then
  * renders its state. A failed connection is thrown to the nearest error
- * boundary; resetting the boundary connects again.
+ * boundary; call `retrySuspenseView(reference)` when resetting the boundary to
+ * connect again. An unretried failure is forgotten after ten seconds.
  *
  * Components that pass a reference with the same `connect` function share one
  * client, which is disposed after the last of them unmounts. Pass a stable
@@ -187,12 +230,7 @@ export function useSuspenseView<TClient extends ViewClient>(source: ViewConnecto
     };
   }, [entry]);
   if (entry?.status === "pending") throw entry.promise;
-  if (entry?.status === "failed") {
-    // Keep the failure for React's immediate retry, then let a reset reconnect.
-    const key = connector!.connect;
-    setTimeout(() => { if (suspended.get(key) === entry) suspended.delete(key); }, 0);
-    throw entry.error;
-  }
+  if (entry?.status === "failed") throw entry.error;
   const client = (entry ? entry.client : source) as TClient;
   const subscribe = useCallback((onChange: () => void) => client.subscribe(() => onChange()), [client]);
   const read = useCallback(() => client.snapshot as TClient["snapshot"], [client]);

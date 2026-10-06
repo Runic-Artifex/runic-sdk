@@ -1,4 +1,4 @@
-import { assertInInjectionContext, DestroyRef, effect, ElementRef, inject, Injector, signal, untracked, type Signal } from "@angular/core";
+import { assertInInjectionContext, DestroyRef, effect, ElementRef, inject, Injector, NgZone, signal, untracked, type Signal } from "@angular/core";
 import { createCollectionViewportController, type CollectionViewport, type CollectionViewportOptions } from "@runic-artifex/views";
 
 export interface InjectCollectionViewportOptions {
@@ -26,9 +26,13 @@ export function injectCollectionViewport(
     const { totalCount, rowHeight, overscan } = options();
     untracked(() => controller.update({ totalCount, rowHeight, ...(overscan === undefined ? {} : { overscan }) }));
   }, { injector });
+  // Scroll and resize events only update the viewport signal, which schedules
+  // change detection itself, so they need not run change detection per event.
+  const zone = injector.get(NgZone, null);
   effect(() => {
     const target = element();
-    untracked(() => controller.attach(target instanceof ElementRef ? target.nativeElement : target));
+    const attach = () => controller.attach(target instanceof ElementRef ? target.nativeElement : target);
+    untracked(() => zone ? zone.runOutsideAngular(attach) : attach());
   }, { injector });
   injector.get(DestroyRef).onDestroy(() => controller.dispose());
   return viewport.asReadonly();

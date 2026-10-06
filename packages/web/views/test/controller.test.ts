@@ -251,3 +251,25 @@ test("a viewport controller follows its container and publishes only changed ran
   viewport.update({ totalCount: 20, rowHeight: 32 });
   assert.equal(viewport.current.totalSize, 320);
 });
+
+test("a command controller ignores the failure of a run superseded by a later one", async () => {
+  const outcomes: ((fail: boolean) => void)[] = [];
+  const command = createCommandController(() => new Promise<number>((resolve, reject) => {
+    outcomes.push(fail => fail ? reject(new Error("stale")) : resolve(1));
+  }));
+  const older = command.run();
+  const newer = command.run();
+  outcomes[1]!(false);
+  assert.equal(await newer, 1);
+  assert.equal(command.current.pending, true);
+  outcomes[0]!(true);
+  assert.equal(await older, undefined);
+  assert.equal(command.current.pending, false);
+  assert.equal(command.current.error, undefined);
+
+  // The latest run's own failure is still reported.
+  const failing = command.run();
+  outcomes[2]!(true);
+  await failing;
+  assert.equal((command.current.error as Error).message, "stale");
+});

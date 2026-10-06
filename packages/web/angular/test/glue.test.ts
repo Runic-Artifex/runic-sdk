@@ -1,5 +1,5 @@
 import "@angular/compiler";
-import { Component, effect, signal } from "@angular/core";
+import { Component, effect, Injector, NgZone, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test } from "vitest";
@@ -132,5 +132,15 @@ describe("injectCollectionViewport", () => {
     count.set(5);
     TestBed.tick();
     expect(viewport()).toEqual({ start: 0, size: 5, offset: 0, totalSize: 100 });
+  });
+
+  test("attaches the container outside the Angular zone", () => {
+    let outside = 0;
+    const zone = { runOutsideAngular: <T>(run: () => T): T => { outside++; return run(); } };
+    const injector = Injector.create({ providers: [{ provide: NgZone, useValue: zone }], parent: TestBed.inject(Injector) });
+    const target = signal<HTMLElement | undefined>(document.createElement("div"));
+    injectCollectionViewport(target, () => ({ totalCount: 10, rowHeight: 20 }), { injector });
+    TestBed.tick();
+    expect(outside).toBe(1);
   });
 });

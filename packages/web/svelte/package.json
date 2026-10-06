@@ -37,7 +37,7 @@
     "clean": "bun -e \"import('node:fs').then(({rmSync}) => rmSync('dist', { recursive: true, force: true }))\"",
     "build": "bun run --bun clean && svelte-package -i src -o dist",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun run --bun build && vitest run test/use-view.svelte.test.ts test/glue.svelte.test.ts",
+    "test": "bun run --bun build && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings && vitest run test/use-view.svelte.test.ts test/glue.svelte.test.ts",
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {

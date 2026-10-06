@@ -157,7 +157,7 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
 export interface CommandState {
   /** True while at least one run is in flight. */
   readonly pending: boolean;
-  /** The failure of the latest failed run since the last run started, or undefined. */
+  /** Why the most recently started run failed, or undefined while it runs or after it succeeded. */
   readonly error: unknown;
 }
 
@@ -168,8 +168,8 @@ export interface CommandController<TArgs extends readonly unknown[], TResult> {
   subscribe(listener: () => void): () => void;
   /**
    * Runs the command. Starting a run clears `error`. Resolves to the command's
-   * result, or to `undefined` after a failure, which `error` then holds. It
-   * never rejects, so callers need no try/catch.
+   * result, or to `undefined` after a failure. `error` holds the failure only
+   * if no later run started meanwhile. It never rejects, so callers need no try/catch.
    */
   run(...args: TArgs): Promise<TResult | undefined>;
   /** Clears `error`. */
@@ -189,6 +189,7 @@ export function createCommandController<TArgs extends readonly unknown[], TResul
   const listeners = new Set<() => void>();
   let current: CommandState = { pending: false, error: undefined };
   let running = 0;
+  let latest = 0;
   let disposed = false;
 
   function publish(next: Partial<CommandState>): void {
@@ -205,6 +206,7 @@ export function createCommandController<TArgs extends readonly unknown[], TResul
     },
     async run(...args): Promise<Awaited<TResult> | undefined> {
       running++;
+      const run = ++latest;
       publish({ pending: true, error: undefined });
       let failure: { readonly cause: unknown } | undefined;
       try {
@@ -214,7 +216,9 @@ export function createCommandController<TArgs extends readonly unknown[], TResul
         return undefined;
       } finally {
         running--;
-        if (failure) publish({ pending: running !== 0, error: failure.cause });
+        // A run superseded by a later one does not report its failure, so an
+        // older failure cannot replace the outcome of a newer run.
+        if (failure && run === latest) publish({ pending: running !== 0, error: failure.cause });
         else if (running === 0) publish({ pending: false });
       }
     },

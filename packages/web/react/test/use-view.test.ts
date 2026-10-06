@@ -2,7 +2,7 @@ import { act, Component, createElement, StrictMode, Suspense, useState, type Rea
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
-  useCollectionViewport, useCommand, useSuspenseView, useView, ViewOutlet,
+  retrySuspenseView, useCollectionViewport, useCommand, useSuspenseView, useView, ViewOutlet,
   type CollectionViewportHandle, type CommandHandle, type ViewHandle, type ViewRegistry, type ViewSource,
 } from "../dist/index.js";
 
@@ -233,9 +233,12 @@ describe("ViewOutlet", () => {
   });
 });
 
+let boundary: Boundary | undefined;
 class Boundary extends Component<{ readonly children: ReactNode }, { readonly error?: unknown }> {
   override state: { readonly error?: unknown } = {};
   static getDerivedStateFromError(error: unknown) { return { error }; }
+  override componentDidMount() { boundary = this; }
+  reset() { this.setState({ error: undefined }); }
   override render(): ReactNode {
     return this.state.error ? createElement("output", null, `failed:${(this.state.error as Error).message}`) : this.props.children;
   }
@@ -256,7 +259,7 @@ describe("useSuspenseView", () => {
   }
   const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
-  test("suspends until the reference connects, renders pushes and disposes after unmount", async () => {
+  test("suspends until the reference connects in StrictMode, renders pushes and disposes after unmount", async () => {
     const reference = fakeReference(4);
     await renderSuspense(reference, true);
     expect(text()).toBe("suspended");
@@ -270,15 +273,41 @@ describe("useSuspenseView", () => {
     expect(reference.clients[0]!.disposed).toBe(1);
   });
 
-  test("throws a failed connection to the error boundary", async () => {
-    const reference = fakeReference();
+  test("throws a failed connection to the error boundary and reconnects after a reset", async () => {
+    const reference = fakeReference(6);
     reference.failNext();
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await renderSuspense(reference);
       await act(async () => { reference.resolveAll(); await tick(); });
       expect(text()).toBe("failed:offline");
+      // Without a retry the boundary renders the same failure again.
+      await act(async () => boundary!.reset());
+      expect(text()).toBe("failed:offline");
+      retrySuspenseView(reference);
+      await act(async () => boundary!.reset());
+      expect(text()).toBe("suspended");
+      await act(async () => { reference.resolveAll(); await tick(); });
+      expect(text()).toBe("6");
     } finally { error.mockRestore(); }
+  });
+
+  test("releases a connection whose render never mounted after a delay", async () => {
+    const reference = fakeReference();
+    await renderSuspense(reference);
+    expect(text()).toBe("suspended");
+    await act(async () => root?.unmount());
+    root = undefined;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      reference.resolveAll();
+      for (let turn = 0; turn < 5; turn++) await Promise.resolve();
+      expect(reference.clients).toHaveLength(1);
+      vi.advanceTimersByTime(9_999);
+      expect(reference.clients[0]!.disposed).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(reference.clients[0]!.disposed).toBe(1);
+    } finally { vi.useRealTimers(); }
   });
 
   test("renders a connected client without suspending", async () => {
@@ -341,5 +370,43 @@ describe("useCollectionViewport", () => {
     element.scrollTop = 400;
     await act(async () => { element.dispatchEvent(new Event("scroll")); await new Promise(resolve => setTimeout(resolve, 50)); });
     expect(handle?.viewport).toEqual({ start: 20, size: 10, offset: 400, totalSize: 1000 });
+  });
+});
+
+describe("useView source changes", () => {
+  test("never returns a released client when a reference returns after null", async () => {
+    const reference = fakeReference();
+    await render(reference);
+    await act(async () => reference.resolveAll());
+    const first = reference.clients[0]!;
+    expect(latest?.client).toBe(first);
+    await render(null);
+    expect(first.disposed).toBe(1);
+    expect(latest?.client).toBeUndefined();
+    await render(reference);
+    expect(latest?.client).toBeUndefined();
+    expect(latest?.state).toBeUndefined();
+    expect(latest?.pending).toBe(true);
+    expect(text()).toBe("connecting");
+    await act(async () => reference.resolveAll());
+    expect(latest?.client).toBe(reference.clients[1]);
+    expect(text()).toBe("2");
+  });
+
+  test("never returns a released client after a rapid A, B, A change", async () => {
+    const a = fakeReference(10);
+    const b = fakeReference(20);
+    await render(a);
+    await act(async () => a.resolveAll());
+    const first = a.clients[0]!;
+    await render(b);
+    await render(a);
+    expect(first.disposed).toBe(1);
+    expect(latest?.client).toBeUndefined();
+    expect(latest?.pending).toBe(true);
+    await act(async () => { b.resolveAll(); a.resolveAll(); });
+    expect(b.clients[0]!.disposed).toBe(1);
+    expect(latest?.client).toBe(a.clients[1]);
+    expect(text()).toBe("11");
   });
 });

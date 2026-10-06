@@ -65,10 +65,12 @@ or memoize the source with `useMemo`.
 
 Suspends the component until a reference connects, then returns
 `{ state, client }` without `undefined`. A failed connection is thrown to the
-nearest error boundary, and resetting the boundary connects again:
+nearest error boundary. Call `retrySuspenseView(reference)` when the boundary
+resets, so the next render connects again; an unretried failure is forgotten
+after ten seconds:
 
 ```tsx
-<ErrorBoundary fallback={<p role="alert">Offline</p>}>
+<ErrorBoundary fallback={<p role="alert">Offline</p>} onReset={() => retrySuspenseView(page)}>
   <Suspense fallback={<p>Connecting…</p>}><Counter page={page} /></Suspense>
 </ErrorBoundary>
 

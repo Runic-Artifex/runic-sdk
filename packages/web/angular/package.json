@@ -43,7 +43,7 @@
   "scripts": {
     "build": "ngc -p tsconfig.json",
     "check": "ngc -p tsconfig.json --noEmit",
-    "test": "bun run --bun build && vitest run",
+    "test": "bun run --bun build && tsc -p tsconfig.test.json && vitest run",
     "pack:check": "bun pm pack --dry-run"
   },
   "devDependencies": {
