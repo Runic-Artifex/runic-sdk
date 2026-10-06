@@ -224,6 +224,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
     {
         BridgeOperationStatusKind terminal;
         string? failure = null;
+        BridgeFailureDetail? failureDetail = null;
         BridgeOperationResult result = BridgeOperationResult.None;
         try
         {
@@ -253,10 +254,11 @@ internal sealed class BridgeOperationRegistry : IDisposable
         catch (Exception error)
         {
             terminal = BridgeOperationStatusKind.Failed;
-            // Command exception details are diagnostic data, never operation
-            // wire data. The public envelope stays stable and bounded.
+            // The bounded message is the wire contract. Exception detail joins
+            // it only when BridgeDiagnostics allows local failure detail.
             System.Diagnostics.Trace.TraceError($"Bridge operation {entry.Request?.Member ?? entry.RequestId} failed: {error}");
             failure = "The operation failed.";
+            failureDetail = BridgeDiagnostics.Capture(error);
         }
 
         // A cancelled or failed producer must not keep a live stream writer
@@ -314,6 +316,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
             }
             entry.Status = terminal;
             entry.Failure = failure;
+            entry.FailureDetail = failureDetail;
             entry.Result = result;
             var snapshot = entry.Snapshot();
             entry.Terminal.TrySetResult(snapshot);
@@ -510,6 +513,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public CancellationTokenSource Cancellation { get; }
         public BridgeOperationStatusKind Status { get; set; } = BridgeOperationStatusKind.Running;
         public string? Failure { get; set; }
+        public BridgeFailureDetail? FailureDetail { get; set; }
         public BridgeOperationResult Result { get; set; } = BridgeOperationResult.None;
         public int RetainedResultBytes { get; set; }
         public int RetainedStreamBytes { get; set; }
@@ -517,7 +521,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
         public bool MatchesMember(string? member) => BridgeOperationRegistry.MatchesMember(Request, member);
-        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result);
+        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result, FailureDetail);
         public void DisposeCancellation()
         {
             if (Interlocked.Exchange(ref _cancellationDisposed, 1) == 0)
@@ -548,7 +552,8 @@ internal sealed record BridgeOperationStatus(
     string RequestId,
     BridgeOperationStatusKind Kind,
     string? Failure,
-    BridgeOperationResult? Result = null)
+    BridgeOperationResult? Result = null,
+    BridgeFailureDetail? FailureDetail = null)
 {
     public static BridgeOperationStatus Unknown(string requestId) => new(requestId, BridgeOperationStatusKind.Unknown, null);
     public static BridgeOperationStatus Expired(string requestId) => new(requestId, BridgeOperationStatusKind.Expired, null);

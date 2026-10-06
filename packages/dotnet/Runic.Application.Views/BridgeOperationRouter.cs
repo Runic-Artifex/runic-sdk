@@ -282,6 +282,7 @@ internal sealed class BridgeOperationRouter : IDisposable
             writer.WriteStartObject();
             writer.WriteString("kind", "failed");
             writer.WriteString("message", status.Failure ?? "The operation failed.");
+            BridgeDiagnostics.Write(writer, status.FailureDetail);
             writer.WriteEndObject();
         }
         if (status.Kind is BridgeOperationStatusKind.Succeeded && status.Result is { } result)

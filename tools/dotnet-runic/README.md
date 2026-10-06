@@ -27,6 +27,9 @@ also passes `RunicBridgeInstallFrontend=false`, so the build does not install
 missing frontend packages either. Application arguments after `--` are passed
 to the Window process. When a restore, install or build step fails, the error
 names the program and its working directory and then points to `doctor`.
+The Window runs with `DOTNET_ENVIRONMENT=Development` unless you set
+`DOTNET_ENVIRONMENT` or `ASPNETCORE_ENVIRONMENT` yourself, so failed Bridge
+calls carry the exception type, message and stack to the browser.
 
 `doctor` checks the Views Window opt-in, the .NET SDK, the declared JavaScript
 runtime and package manager, the matching lock file, the configured

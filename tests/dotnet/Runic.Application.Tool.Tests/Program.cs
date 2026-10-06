@@ -160,6 +160,15 @@ internal static class Program
         IReadOnlyDictionary<string, string?> environment = HostProcessController.CreateDevelopmentEnvironment(
             configuration, new Dictionary<string, string?>());
         Equal("1", environment["DOTNET_WATCH_RESTART_ON_RUDE_EDIT"]);
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT")) &&
+            string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")))
+        {
+            Equal("Development", environment["DOTNET_ENVIRONMENT"]);
+        }
+        else
+        {
+            Equal(false, environment.ContainsKey("DOTNET_ENVIRONMENT"));
+        }
     }
 
     private static void DevelopmentServersBindLoopback()
