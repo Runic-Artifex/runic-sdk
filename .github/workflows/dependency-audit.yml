@@ -31,7 +31,10 @@ jobs:
           bun run dependencies:audit > artifacts/dependency-audit/versions.json
       - name: Check npm packages for known vulnerabilities
         if: ${{ !cancelled() }}
-        run: bun audit
+        run: |
+          mkdir -p artifacts/dependency-audit
+          bun audit --json > artifacts/dependency-audit/npm-audit.json || true
+          bun audit
       - name: Check NuGet packages for known vulnerabilities
         if: ${{ !cancelled() }}
         run: |

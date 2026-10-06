@@ -86,6 +86,7 @@ below).
 | `@types/cookie` | Removed. SvelteKit 3 uses cookie 2, which ships its own types, and the locale handle now derives its options from `Cookies.set`. |
 | VS Code extension | Move `vscode-languageclient` to 10.1.2, which requires VS Code `^1.91` and a `LogOutputChannel` and no longer ships `terminateProcess.sh`, and `@vscode/vsce` to 4.0.0. Keep `@types/vscode` 1.100.0 to match `engines.vscode` `^1.100.0`; types newer than the engine floor would require raising it without an API need. |
 | Vue checker under Bun | Rechecked with Vue 3.5.43 and vue-tsc 3.3.12. Under Bun 1.4.2 the checker still omits `.vue` files: `--listFilesOnly` lists none and a deliberate template prop error passes, while Node reports it. Keep the Node compatibility typecheck; the template matrix runs the Vue starter's typecheck with Node in its Bun lane. |
+| Security advisories | `bun audit` reported 7 advisories in two transitive packages. devalue 5.9.2 (via svelte) had GHSA-j22f-vq7h-c4qm, -hx4r-w6wj-j8fg, -mcm9-63f2-9j32, -wf3x-273g-mvxv, -x5rw-q4pp-hg5g and -4q55-j62x-fr9h. source-map-js 1.2.1 (via vue and postcss) had GHSA-68fv-2mgg-jv7q. Both moved within their declared ranges: svelte now shares the root devalue 5.9.4 that `@sveltejs/kit` already used, and source-map-js moved to 1.2.2 in the root lock and the Notes example `Frontend` and `Svelte` locks. No manifest changed. The starter locks already resolved devalue 5.9.4 and source-map-js 1.2.2. |
 
 ## Effect 4 migration
 

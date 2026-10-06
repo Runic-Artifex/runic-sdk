@@ -25,7 +25,13 @@ jobs:
       # eng/workspace.json owns the reviewed fork revision; see examples/dynamicdata/README.md.
       - name: Read the pinned DynamicData fork revision
         id: fork
-        run: bun -e 'const { dynamicData } = JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8")); console.log("repository=" + dynamicData.repository + "\nrevision=" + dynamicData.forkRevision)' >> "$GITHUB_OUTPUT"
+        run: |
+          bun -e '
+            const { dynamicData } = JSON.parse(require("node:fs").readFileSync("eng/workspace.json", "utf8"));
+            if (!/^[\w.-]+\/[\w.-]+$/.test(dynamicData?.repository ?? "")) throw new Error("dynamicData.repository must be owner/repo");
+            if (!/^[0-9a-f]{40}$/.test(dynamicData?.forkRevision ?? "")) throw new Error("dynamicData.forkRevision must be a full commit SHA");
+            console.log("repository=" + dynamicData.repository + "\nrevision=" + dynamicData.forkRevision);
+          ' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ steps.fork.outputs.repository }}
