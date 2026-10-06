@@ -42,6 +42,8 @@ jobs:
       # cannot narrow its own plan; this checkout then enumerates the suites.
       - name: Plan jobs from the changed files
         id: plan
+        # shell: bash adds pipefail, so a failed git diff cannot become an empty change list.
+        shell: bash
         run: |
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]] && git rev-parse --verify --quiet HEAD^2 > /dev/null \
             && git worktree add --detach "$RUNNER_TEMP/base" HEAD^1 \

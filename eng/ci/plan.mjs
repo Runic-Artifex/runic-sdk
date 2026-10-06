@@ -33,10 +33,11 @@ const owner = file => Object.entries(workspace.components)
 
 // Which components a change affects, judged by this checkout's component map.
 // `files` lists every path a pull request adds, changes, deletes or renames (both
-// names); `null` means unknown. Any unowned path that is not engineering-only
+// names); `null` means unknown. An empty list is treated as unknown too, so a
+// failed or empty diff can never skip jobs. Any unowned path that is not engineering-only
 // (see engineeringOnly in eng/run.mjs) affects everything.
 export function affected(files) {
-  const full = files === null || files.some(file => !engineeringOnly(file) && !owner(file));
+  const full = files === null || files.length === 0 || files.some(file => !engineeringOnly(file) && !owner(file));
   return { full, components: full ? Object.keys(workspace.components) : affectedComponents(files) };
 }
 

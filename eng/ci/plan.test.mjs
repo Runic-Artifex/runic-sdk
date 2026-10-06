@@ -11,6 +11,11 @@ const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci
 const tracked = (...patterns) => execFileSync('git', ['ls-files', ...patterns], { cwd: root, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
 const runs = (result, job) => !result.skip.includes(job);
 const everything = plan(null);
+const cli = (args, input = '') => {
+  const result = spawnSync(process.execPath, [resolve(root, 'eng/ci/plan.mjs'), ...args], { cwd: root, input, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout;
+};
 
 test('pushes and unknown diffs plan every job', () => {
   assert.equal(everything.full, true);
@@ -23,13 +28,23 @@ test('pushes and unknown diffs plan every job', () => {
 test('documentation-only pull requests skip every skippable job', () => {
   for (const files of [['docs/README.md'], ['README.md', 'CONTRIBUTING.md'], ['specs/desktop/README.md'],
     ['eng/release/notes/0.6.0-preview.1.md'], ['examples/first-window/README.md'], ['examples/README.md'], ['tests/engineering/markdown-links.test.mjs'],
-    ['eng/ci/plan.test.mjs'], ['.github/workflows/dynamicdata.yml'], []]) {
+    ['eng/ci/plan.test.mjs'], ['.github/workflows/dynamicdata.yml']]) {
     const result = plan(files);
     assert.deepEqual(result.components, [], files.join());
     assert.deepEqual(result.skip, skippableJobs, files.join());
     assert.deepEqual(result.managed, []);
     assert.deepEqual(result.web, { include: [] });
   }
+});
+
+test('an empty or failed diff plans every job', () => {
+  assert.equal(affected([]).full, true);
+  assert.deepEqual(plan([]).skip, []);
+  assert.equal(JSON.parse(cli(['--affected'], '')).full, true);
+  const step = workflow.jobs.plan.steps.find(item => item.id === 'plan');
+  // GitHub runs `shell: bash` as bash -eo pipefail; the default bash shell has no pipefail.
+  assert.equal(step.shell, 'bash');
+  assert.match(step.run, /affected=\$\(git diff [^|]+\| bun /);
 });
 
 test('shared or unowned inputs run everything', () => {
@@ -96,12 +111,6 @@ test('the engineering-only rule matches the tests the engineering job runs', () 
   for (const file of ['eng/dependencies/audit.test.mjs', 'tests/engineering/fixtures/input.json', 'eng/ci/plan.mjs', '.github/workflows/ci.yml'])
     assert.ok(!engineeringOnly(file), file);
 });
-
-const cli = (args, input = '') => {
-  const result = spawnSync(process.execPath, [resolve(root, 'eng/ci/plan.mjs'), ...args], { cwd: root, input, encoding: 'utf8' });
-  assert.equal(result.status, 0, result.stderr);
-  return result.stdout;
-};
 
 test('the base checkout decides what is affected and this checkout enumerates suites', () => {
   const decided = JSON.parse(cli(['--affected'], 'docs/README.md\0packages/web/svelte/src/index.ts\0'));
