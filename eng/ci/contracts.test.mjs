@@ -8,7 +8,7 @@ import { root, workspace } from '../run.mjs';
 import { sourceDigest } from './source-state.mjs';
 import { snapshot } from './snapshot.mjs';
 import { buildPaths, validateBuild } from './build-artifact.mjs';
-import { managedGroups, managedTests, webTests } from './plan.mjs';
+import { managedGroups, managedTests, webTests, plan } from './plan.mjs';
 import { actArguments } from './local.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
@@ -82,7 +82,8 @@ test('archive paths include managed and web outputs and reject escaping paths', 
 }));
 
 test('all managed executable suites are assigned exactly once to workflow groups', () => {
-  assert.deepEqual(workflow.jobs.managed.strategy.matrix.suite, managedGroups);
+  assert.equal(workflow.jobs.managed.strategy.matrix.suite, '${{ fromJSON(needs.plan.outputs.managed) }}');
+  assert.deepEqual(plan(null).managed, managedGroups);
   const suites = managedTests(root, 'win32');
   assert.equal(new Set(suites.map(item => item.path)).size, suites.length);
   for (const group of managedGroups) assert.ok(suites.some(item => item.group === group), group);
@@ -98,7 +99,8 @@ test('all managed executable suites are assigned exactly once to workflow groups
 test('every web package with a test script is included in the dynamic matrix', () => {
   const expected = workspace.npm.filter(item => JSON.parse(readFileSync(resolve(root, item.path, 'package.json'))).scripts?.test).map(item => item.path.split('/').at(-1));
   assert.deepEqual(webTests().map(item => item.package), expected);
-  assert.equal(workflow.jobs.web.strategy.matrix, '${{ fromJSON(needs.build.outputs.web) }}');
+  assert.equal(workflow.jobs.web.strategy.matrix, '${{ fromJSON(needs.plan.outputs.web) }}');
+  assert.deepEqual(plan(null).web.include, webTests());
   assert.equal(webTests().filter(item => item.node).length, 1);
   const browser = workflow.jobs.web.steps.find(step => step.uses === './.github/actions/install-browser');
   assert.equal(browser?.if, "matrix.package == 'vite-plugin-runic'");
@@ -109,8 +111,8 @@ test('every web package with a test script is included in the dynamic matrix', (
 test('verification gate includes all jobs and candidates are independent of test failures', () => {
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
-  assert.equal(workflow.jobs.packages.needs, 'build');
-  for (const id of ['templates', 'package-consumers']) assert.equal(workflow.jobs[id].needs, 'packages');
+  assert.deepEqual(workflow.jobs.packages.needs, ['plan', 'build']);
+  for (const id of ['templates', 'package-consumers']) assert.deepEqual(workflow.jobs[id].needs, ['plan', 'packages']);
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });

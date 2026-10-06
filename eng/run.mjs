@@ -56,9 +56,9 @@ function orderedPackages() {
   }
   return ordered;
 }
-function web(command) {
+function web(command, built = []) {
   for (const p of orderedPackages()) {
-    if (manifest(p.path).scripts?.[command])
+    if (manifest(p.path).scripts?.[command] && !built.includes(p.name))
       run("bun", ["run", "--bun", command], resolve(root, p.path));
   }
   // On a clean checkout Bun cannot link workspace executables until their
@@ -83,12 +83,13 @@ function core() {
 }
 function build() {
   core();
-  web("build");
+  // core() has just built the Views runtime.
+  web("build", ["@runic-artifex/views"]);
 }
 export const packages = resolve(root, "artifacts/packages");
 function pack(built = false) {
   run("bun", ["eng/generate-shipping-projects.mjs", "--check"]);
-  if (!built) { core(); web("build"); }
+  if (!built) build();
   const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   // Build the complete candidate in a sibling directory and replace
   // artifacts/packages only after every package and check succeeds.

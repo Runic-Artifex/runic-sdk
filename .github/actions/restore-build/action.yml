@@ -1,5 +1,9 @@
 name: Restore SDK build outputs
 description: Restore the exact Linux SDK build produced in this workflow run.
+inputs:
+  nuget:
+    description: Restore the locked NuGet packages that managed build outputs run against
+    default: "true"
 runs:
   using: composite
   steps:
@@ -10,6 +14,9 @@ runs:
     - name: Validate and restore build outputs
       shell: bash
       run: bun eng/ci/build-artifact.mjs restore
+    # The archive carries obj/project.assets.json, so this restore is a no-op once the
+    # cached package folder holds every locked package; it downloads only what is missing.
     - name: Restore external NuGet dependencies
+      if: inputs.nuget == 'true'
       shell: bash
-      run: dotnet restore RunicSdk.Core.slnx
+      run: dotnet restore RunicSdk.Core.slnx --locked-mode

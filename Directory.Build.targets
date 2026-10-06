@@ -1,4 +1,5 @@
 <Project>
+  <Import Project="eng/build/nuget-lock.targets" />
   <Import Project="eng/build/package-dependencies.targets" />
   <Import Project="eng/build/public-api.targets" />
   <!-- Package consumers receive these targets through buildTransitive; a
