@@ -7,6 +7,7 @@ declare module "virtual:runic/client" {
     reportRunicState,
     type RunicDiagnosticDetail,
     type RunicDiagnosticDetailValue,
+    type RunicDiagnosticFailure,
     type RunicDiagnosticEntry,
     type RunicDiagnosticReporter,
     type RunicDiagnosticSource,

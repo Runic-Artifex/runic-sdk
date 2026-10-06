@@ -5,6 +5,7 @@ import type { JsonRenderer, JsonRenderSpec } from "@vitejs/devtools-kit";
 import type {
   RunicDiagnosticEntry,
   RunicDiagnosticDetail,
+  RunicDiagnosticFailure,
   RunicDiagnosticSource,
   RunicRuntimeState,
 } from "./client.js";
@@ -13,6 +14,7 @@ import { sanitizeDiagnosticSummary } from "./diagnostics.js";
 export type {
   RunicDiagnosticDetail,
   RunicDiagnosticDetailValue,
+  RunicDiagnosticFailure,
   RunicDiagnosticEntry,
   RunicDiagnosticReporter,
   RunicDiagnosticSource,
@@ -42,6 +44,10 @@ export interface RunicViteOptions {
     version?: string;
     fingerprint?: string;
   }>;
+  /**
+   * `false` disables the DevTools dock and the development client that
+   * forwards `@runic-artifex/views` failures to the timeline.
+   */
   readonly devtools?: boolean | "auto";
   readonly maxTimelineEntries?: number;
   /** Injects the Runic Desktop bootstrap without taking ownership of Vite or HMR. */
@@ -78,6 +84,7 @@ export interface RunicDevelopmentState {
   readonly timeline: readonly Readonly<Required<Pick<RunicDiagnosticEntry, "id" | "timestamp" | "kind" | "label">> & {
     source?: RunicDiagnosticSource;
     detail: RunicDiagnosticDetail;
+    failure?: RunicDiagnosticFailure;
   }>[];
 }
 
@@ -89,6 +96,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
   let state = initialState(options);
   let nextDiagnosticSequence = 1;
   let resolvedRoot = process.cwd();
+  let base = "/";
   const desktopBootstrapUrl = resolveDesktopBootstrapUrl(options.desktop);
 
   const publish = (): void => {
@@ -146,18 +154,26 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       return { base: "./" };
     },
-    ...(desktopBootstrapUrl === undefined ? {} : {
-      transformIndexHtml: {
-        order: "post" as const,
-        handler: () => [{
+    transformIndexHtml: {
+      order: "post" as const,
+      handler: () => [
+        ...(desktopBootstrapUrl === undefined ? [] : [{
           tag: "script",
           attrs: {
             src: state.vite.command === "build" ? "./runic-desktop.js" : desktopBootstrapUrl,
           },
           injectTo: "head-prepend" as const,
-        }],
-      },
-    }),
+        }]),
+        // The development client forwards Views runtime failures to the
+        // timeline. It loads before application modules, so a missing Bridge
+        // at startup is reported too.
+        ...(state.vite.command !== "serve" || options.devtools === false ? [] : [{
+          tag: "script",
+          attrs: { type: "module", src: `${base}@id/${virtualClientId}` },
+          injectTo: "head" as const,
+        }]),
+      ],
+    },
     diagnostics: { report: (entry) => appendDiagnostic(entry) },
     configResolved(resolved) {
       if (resolved.command === "build" && desktopBootstrapUrl !== undefined && resolved.base !== "./") {
@@ -168,6 +184,8 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
         throw new Error('RUNICP007: devtools: true requires DevTools() from @vitejs/devtools in the Vite plugins array.');
       }
       resolvedRoot = resolved.root;
+      const configuredBase = resolved.base || "/";
+      base = configuredBase.endsWith("/") ? configuredBase : `${configuredBase}/`;
       state = {
         ...state,
         vite: { command: resolved.command, mode: resolved.mode, root: resolved.root },
@@ -294,7 +312,7 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
       root: {
         type: "Stack",
         props: { direction: "column", gap: 12 },
-        children: ["heading", "connection", "contract", "operations", "timeline"],
+        children: ["heading", "connection", "contract", "operations", "failure", "timeline"],
       },
       heading: { type: "Text", props: { text: "Runic", variant: "heading" } },
       ...section("connection", "Connection", {
@@ -314,12 +332,25 @@ function createDevtoolsSpec(current: RunicDevelopmentState): JsonRenderSpec {
         : Object.fromEntries(current.operations.map((operation) => [
             operation.id, `${operation.state} ${operation.completed}/${operation.total}`,
           ]))),
+      ...section("failure", "Last failure", lastFailure(current)),
       ...section("timeline", "Recent timeline", current.timeline.length === 0
         ? { Events: "none" }
         : Object.fromEntries(current.timeline.slice(-12).reverse().map((entry) => [
             `${entry.id} · ${entry.source} · ${entry.kind} · ${entry.timestamp}`, entry.label,
           ]))),
     },
+  };
+}
+
+function lastFailure(current: RunicDevelopmentState): Record<string, string> {
+  const entry = [...current.timeline].reverse().find((candidate) => candidate.failure !== undefined);
+  if (!entry?.failure) return { Failure: "none" };
+  return {
+    Event: `${entry.id} · ${entry.source} · ${entry.timestamp}`,
+    Label: entry.label,
+    Type: entry.failure.type,
+    Message: entry.failure.message,
+    ...(entry.failure.stack ? { Stack: entry.failure.stack } : {}),
   };
 }
 
