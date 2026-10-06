@@ -82,19 +82,10 @@ public sealed class DesktopApiTests
     [Fact]
     public void PublicApiContainsNoWebUiCompatibilityIdentity()
     {
-        var exportedTypes = typeof(DesktopHost).Assembly.ExportedTypes
-            .Select(static type => type.FullName!)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+        // The full surface is tracked by PublicAPI.Shipped.txt and PublicApiAnalyzers.
         Assert.DoesNotContain(
-            exportedTypes,
-            static name => name.Contains("WebUi", StringComparison.OrdinalIgnoreCase));
-
-        var baseline = File.ReadAllLines(Path.Combine(AppContext.BaseDirectory, "Runic.Desktop.PublicApi.txt"))
-            .Where(static line => line.Length > 0 && !line.StartsWith('#'))
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-        Assert.Equal(baseline, exportedTypes);
+            typeof(DesktopHost).Assembly.ExportedTypes,
+            static type => type.FullName!.Contains("WebUi", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

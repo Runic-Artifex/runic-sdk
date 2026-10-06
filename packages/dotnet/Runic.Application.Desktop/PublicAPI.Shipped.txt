@@ -1,0 +1,31 @@
+#nullable enable
+override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Equals(object? obj) -> bool
+override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.GetHashCode() -> int
+override Runic.Application.Views.Desktop.DesktopBridgeCloseResult.ToString() -> string!
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.<Clone>$() -> Runic.Application.Views.Desktop.DesktopBridgeCloseResult!
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Completion.get -> System.Threading.Tasks.Task!
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Completion.init -> void
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Deconstruct(out bool Drained, out int RemainingOperations, out System.Threading.Tasks.Task! Completion) -> void
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.DesktopBridgeCloseResult(bool Drained, int RemainingOperations, System.Threading.Tasks.Task! Completion) -> void
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Drained.get -> bool
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Drained.init -> void
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.Equals(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? other) -> bool
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.RemainingOperations.get -> int
+Runic.Application.Views.Desktop.DesktopBridgeCloseResult.RemainingOperations.init -> void
+Runic.Application.Views.Desktop.DesktopBridgeTransport
+Runic.Application.Views.Desktop.DesktopBridgeTransport.Bind(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, string!>! handler) -> System.IDisposable!
+Runic.Application.Views.Desktop.DesktopBridgeTransport.BindAsync(string! name, System.Func<Runic.Application.Views.IBridgeArguments!, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<string!>>! handler) -> System.IDisposable!
+Runic.Application.Views.Desktop.DesktopBridgeTransport.DesktopBridgeTransport(Runic.Desktop.DesktopSurface! surface) -> void
+Runic.Application.Views.Desktop.DesktopBridgeTransport.Dispose() -> void
+Runic.Application.Views.Desktop.DesktopBridgeTransport.Publish(string! name, string! stateJson) -> void
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.Desktop.DesktopBridgeCloseResult!>
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.Presentation.get -> Runic.Desktop.DesktopWindow!
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.Surface.get -> Runic.Desktop.DesktopSurface!
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.ViewModel.get -> TViewModel!
+Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions
+static Runic.Application.Views.Desktop.DesktopBridgeCloseResult.operator !=(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? left, Runic.Application.Views.Desktop.DesktopBridgeCloseResult? right) -> bool
+static Runic.Application.Views.Desktop.DesktopBridgeCloseResult.operator ==(Runic.Application.Views.Desktop.DesktopBridgeCloseResult? left, Runic.Application.Views.Desktop.DesktopBridgeCloseResult? right) -> bool
+static Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions.OpenDesktopWindowAsync<TWindow, TViewModel>(this System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop, Runic.Desktop.DesktopSurfaceOptions! surfaceOptions, System.Func<Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel!>!, TWindow!>! createWindow, Runic.Desktop.DesktopWindowOptions? windowOptions = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>

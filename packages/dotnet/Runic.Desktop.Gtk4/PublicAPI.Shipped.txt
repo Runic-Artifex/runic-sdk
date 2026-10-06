@@ -1,0 +1,10 @@
+#nullable enable
+Runic.Desktop.Gtk4.Gtk4Application
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Backend.get -> Runic.Desktop.LinuxEmbeddedBackend
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Create() -> Runic.Desktop.IDesktopWindowHost!
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Gtk4WindowHostFactory() -> void
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.IsSupported.get -> bool
+static Runic.Desktop.Gtk4.Gtk4Application.Run(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
+static Runic.Desktop.Gtk4.Gtk4Application.Run(System.Func<System.Threading.Tasks.Task<int>!>! application, string! applicationId) -> int

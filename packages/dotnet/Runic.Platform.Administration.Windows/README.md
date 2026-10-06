@@ -103,7 +103,6 @@ local package; it has no source-tree or desktop-host references.
 From the SDK root:
 
 ~~~powershell
-dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.ApiTests -c Release -p:RunicToolkitBuildMode=Verification
 dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicToolkitBuildMode=Verification
 dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 -p:PublishAot=true -p:RunicToolkitBuildMode=Verification -o artifacts/administration/native-tests
 & ./artifacts/administration/native-tests/Runic.Platform.Administration.Windows.Tests.exe

@@ -1,0 +1,3 @@
+#nullable enable
+Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions
+static Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions.BatchBridgeSnapshots<T>(this System.IObservable<T>! source, object! model) -> System.IObservable<T>!

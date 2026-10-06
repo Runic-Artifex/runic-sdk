@@ -1,0 +1,2 @@
+#nullable enable
+Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask

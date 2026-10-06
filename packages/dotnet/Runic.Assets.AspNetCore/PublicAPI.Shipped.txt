@@ -1,0 +1,4 @@
+#nullable enable
+Runic.Assets.AspNetCore.RunicAssetEndpointExtensions
+static Runic.Assets.AspNetCore.RunicAssetEndpointExtensions.MapRunicAssetSource(this Microsoft.AspNetCore.Routing.IEndpointRouteBuilder! endpoints, Runic.Assets.IAssetSource! source, string! routePrefix = "") -> Microsoft.AspNetCore.Builder.IEndpointConventionBuilder!
+static Runic.Assets.AspNetCore.RunicAssetEndpointExtensions.WriteAssetAsync(Microsoft.AspNetCore.Http.HttpContext! context, Runic.Assets.IAssetSource! source, Runic.Assets.AssetDescriptor! descriptor) -> System.Threading.Tasks.Task!

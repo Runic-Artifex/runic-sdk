@@ -1,0 +1,8 @@
+#nullable enable
+Runic.Platform.Windows.WindowsPlatformProvider
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateInhibition() -> Runic.Platform.IDesktopInhibition!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateNotifications(string! applicationId) -> Runic.Platform.IDesktopNotifications!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!

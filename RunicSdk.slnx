@@ -31,7 +31,6 @@
   </Folder>
   <Folder Name="/tests/dotnet/">
     <Project Path="tests/dotnet/Runic.Platform.Administration.Windows.Tests/Runic.Platform.Administration.Windows.Tests.csproj" />
-    <Project Path="tests/dotnet/Runic.Platform.Administration.Windows.ApiTests/Runic.Platform.Administration.Windows.ApiTests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Windows.Tests/Runic.Platform.Windows.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />

@@ -1,0 +1,20 @@
+#nullable enable
+Runic.Platform.Linux.Gtk3PortalWindowOwner
+Runic.Platform.Linux.Gtk3PortalWindowOwner.ExportParentAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.PortalParentLease!>
+Runic.Platform.Linux.Gtk3PortalWindowOwner.Generation.get -> System.Guid
+Runic.Platform.Linux.Gtk3PortalWindowOwner.Gtk3PortalWindowOwner(Runic.Platform.Runtime.INativePickerOwner! owner) -> void
+Runic.Platform.Linux.Gtk3PortalWindowOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Platform.Linux.Gtk3PortalWindowOwner.IsAvailable.get -> bool
+Runic.Platform.Linux.Gtk3PortalWindowOwner.PresentAsync(Runic.Platform.DesktopActivationContext? context = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Platform.Linux.LinuxPlatformProvider
+Runic.Platform.Linux.LinuxTextClipboard
+Runic.Platform.Linux.LinuxTextClipboard.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Platform.Linux.LinuxTextClipboard.LinuxTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> void
+Runic.Platform.Linux.LinuxTextClipboard.ReadTextAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Platform.Linux.LinuxTextClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateFileLauncher(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.IDesktopFileLauncher!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateGtkNativeFileDialogs(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Runtime.IPickerBackend!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateNotifications(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopNotifications!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
+static Runic.Platform.Linux.LinuxPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.Linux.LinuxTextClipboard!

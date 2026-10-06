@@ -71,6 +71,13 @@ Keep generated contracts and locks current. Stop after relevant checks pass unle
 new changes or failures justify more verification. Manual native/UI checks and
 soaks are scoped to the behavior being changed, not every PR or release.
 
+### Public API changes
+
+Shipping .NET libraries record their public API in `PublicAPI.Shipped.txt` and
+`PublicAPI.Unshipped.txt`. Add new or changed members to `PublicAPI.Unshipped.txt`;
+CI fails with RS0016 or RS0017 otherwise. See
+[the build policy](eng/build/README.md#public-api).
+
 ### Regenerate checked files
 
 When CI reports a stale generated file, run:

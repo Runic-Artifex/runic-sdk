@@ -240,6 +240,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private int _detaching;
 
     /// <summary>Creates a bridge whose snapshot writer does not emit field-write metadata.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Generated bridges call these constructors and are regenerated with the package; the optional descriptor arrays grow per feature.")]
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,
@@ -258,6 +260,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     /// <summary>Creates a bridge with acknowledged field writes.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Generated bridges call these constructors and are regenerated with the package; the optional descriptor arrays grow per feature.")]
     protected ViewModelBridge(
         IBridgeTransport transport,
         T vm,

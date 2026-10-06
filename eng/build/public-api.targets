@@ -1,0 +1,18 @@
+<Project>
+  <!--
+    Shipping libraries track their public API with PublicApiAnalyzers and validate each
+    package against the last published release. RunicIsShippingProject comes from the
+    generated shipping-projects.props. Tools and template packages expose no
+    referenceable assemblies, so they are not tracked.
+  -->
+  <PropertyGroup Condition="'$(RunicIsShippingProject)' == 'true' and '$(OutputType)' != 'Exe' and '$(IncludeBuildOutput)' != 'false'">
+    <RunicTrackPublicApi>true</RunicTrackPublicApi>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion Condition="'$(PackageValidationBaselineVersion)' == ''">$(RunicPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RunicTrackPublicApi)' == 'true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="PublicAPI.Shipped.txt;PublicAPI.Unshipped.txt" Pack="false" />
+  </ItemGroup>
+</Project>

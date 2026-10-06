@@ -19,6 +19,7 @@ public static class MacOSPlatformProvider
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }
 
+    /// <summary>Creates AppKit file dialogs bound to a verified presentation owner.</summary>
     public static IPickerBackend CreateFileDialogs(INativePickerOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
@@ -26,6 +27,7 @@ public static class MacOSPlatformProvider
         return new NativePickerBackend(owner, new MacOsFilePicker(owner));
     }
 
+    /// <summary>Creates AppKit text clipboard services for a verified presentation owner.</summary>
     public static ITextClipboard CreateTextClipboard(INativePickerOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);

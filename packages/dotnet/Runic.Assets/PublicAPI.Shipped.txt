@@ -1,0 +1,131 @@
+#nullable enable
+const Runic.Assets.AssetArchive.CurrentVersion = "runic.assets.archive/1" -> string!
+const Runic.Assets.AssetArchive.DefaultResourceName = "Runic.Assets.StaticFiles" -> string!
+const Runic.Assets.AssetManifest.CurrentVersion = "runic.assets/1" -> string!
+override Runic.Assets.AssetDescriptor.Equals(object? obj) -> bool
+override Runic.Assets.AssetDescriptor.GetHashCode() -> int
+override Runic.Assets.AssetDescriptor.ToString() -> string!
+override Runic.Assets.EmbeddedAssetRegistration.Equals(object? obj) -> bool
+override Runic.Assets.EmbeddedAssetRegistration.GetHashCode() -> int
+override Runic.Assets.EmbeddedAssetRegistration.ToString() -> string!
+Runic.Assets.AssetArchive
+Runic.Assets.AssetArchiveInspection
+Runic.Assets.AssetArchiveInspection.ArchiveVersion.get -> string!
+Runic.Assets.AssetArchiveInspection.Manifest.get -> Runic.Assets.AssetManifest!
+Runic.Assets.AssetArchiveInspection.ManifestSha256.get -> string!
+Runic.Assets.AssetArchiveInspection.ToDeterministicReport() -> string!
+Runic.Assets.AssetArchiveReadOptions
+Runic.Assets.AssetArchiveReadOptions.AssetArchiveReadOptions() -> void
+Runic.Assets.AssetArchiveReadOptions.MaxArchiveBytes.get -> long
+Runic.Assets.AssetArchiveReadOptions.MaxArchiveBytes.init -> void
+Runic.Assets.AssetArchiveReadOptions.MaxFileCount.get -> int
+Runic.Assets.AssetArchiveReadOptions.MaxFileCount.init -> void
+Runic.Assets.AssetArchiveReadOptions.MaxManifestBytes.get -> long
+Runic.Assets.AssetArchiveReadOptions.MaxManifestBytes.init -> void
+Runic.Assets.AssetArchiveReadOptions.MaxTotalUncompressedBytes.get -> long
+Runic.Assets.AssetArchiveReadOptions.MaxTotalUncompressedBytes.init -> void
+Runic.Assets.AssetArchiveSource
+Runic.Assets.AssetArchiveSource.Manifest.get -> Runic.Assets.AssetManifest!
+Runic.Assets.AssetArchiveSource.OpenReadAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>
+Runic.Assets.AssetArchiveSource.OpenSnapshotAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
+Runic.Assets.AssetArchiveSource.ValidateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Assets.AssetCacheMode
+Runic.Assets.AssetCacheMode.Immutable = 2 -> Runic.Assets.AssetCacheMode
+Runic.Assets.AssetCacheMode.NoStore = 0 -> Runic.Assets.AssetCacheMode
+Runic.Assets.AssetCacheMode.Revalidate = 1 -> Runic.Assets.AssetCacheMode
+Runic.Assets.AssetDescriptor
+Runic.Assets.AssetDescriptor.<Clone>$() -> Runic.Assets.AssetDescriptor!
+Runic.Assets.AssetDescriptor.AssetDescriptor(string! relativePath, string! mediaType, long length, string! sha256, bool isEntryPoint = false, Runic.Assets.AssetCacheMode cacheMode = Runic.Assets.AssetCacheMode.Revalidate) -> void
+Runic.Assets.AssetDescriptor.CacheControl.get -> string!
+Runic.Assets.AssetDescriptor.CacheMode.get -> Runic.Assets.AssetCacheMode
+Runic.Assets.AssetDescriptor.EntityTag.get -> string!
+Runic.Assets.AssetDescriptor.Equals(Runic.Assets.AssetDescriptor? other) -> bool
+Runic.Assets.AssetDescriptor.IsEntryPoint.get -> bool
+Runic.Assets.AssetDescriptor.Length.get -> long
+Runic.Assets.AssetDescriptor.MediaType.get -> string!
+Runic.Assets.AssetDescriptor.RelativePath.get -> string!
+Runic.Assets.AssetDescriptor.Sha256.get -> string!
+Runic.Assets.AssetDescriptor.SubresourceIntegrity.get -> string!
+Runic.Assets.AssetManifest
+Runic.Assets.AssetManifest.AssetManifest(System.Collections.Generic.IEnumerable<Runic.Assets.AssetDescriptor!>! assets) -> void
+Runic.Assets.AssetManifest.Assets.get -> System.Collections.Generic.IReadOnlyList<Runic.Assets.AssetDescriptor!>!
+Runic.Assets.AssetManifest.EntryPoint.get -> Runic.Assets.AssetDescriptor!
+Runic.Assets.AssetManifest.TryGetAsset(string! relativePath, out Runic.Assets.AssetDescriptor? asset) -> bool
+Runic.Assets.AssetManifest.Version.get -> string!
+Runic.Assets.AssetMediaTypes
+Runic.Assets.AssetPath
+Runic.Assets.AssetReadSnapshot
+Runic.Assets.AssetReadSnapshot.AssetReadSnapshot(Runic.Assets.AssetDescriptor! descriptor, System.IO.Stream! content) -> void
+Runic.Assets.AssetReadSnapshot.Content.get -> System.IO.Stream!
+Runic.Assets.AssetReadSnapshot.Descriptor.get -> Runic.Assets.AssetDescriptor!
+Runic.Assets.AssetReadSnapshot.Dispose() -> void
+Runic.Assets.AssetReadSnapshot.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Assets.AssetSourceChangedEventArgs
+Runic.Assets.AssetSourceChangedEventArgs.AssetSourceChangedEventArgs(Runic.Assets.AssetManifest! previous, Runic.Assets.AssetManifest! current) -> void
+Runic.Assets.AssetSourceChangedEventArgs.Current.get -> Runic.Assets.AssetManifest!
+Runic.Assets.AssetSourceChangedEventArgs.Previous.get -> Runic.Assets.AssetManifest!
+Runic.Assets.AssetWatchOptions
+Runic.Assets.AssetWatchOptions.AssetWatchOptions() -> void
+Runic.Assets.AssetWatchOptions.DebounceDelay.get -> System.TimeSpan
+Runic.Assets.AssetWatchOptions.DebounceDelay.init -> void
+Runic.Assets.AssetWatchOptions.MaxRetryAttempts.get -> int
+Runic.Assets.AssetWatchOptions.MaxRetryAttempts.init -> void
+Runic.Assets.AssetWatchOptions.RetryDelay.get -> System.TimeSpan
+Runic.Assets.AssetWatchOptions.RetryDelay.init -> void
+Runic.Assets.DevelopmentDirectoryAssetSource
+Runic.Assets.DevelopmentDirectoryAssetSource.Changed -> System.EventHandler<Runic.Assets.AssetSourceChangedEventArgs!>?
+Runic.Assets.DevelopmentDirectoryAssetSource.DevelopmentDirectoryAssetSource(string! rootDirectory, string! entryPointRelativePath) -> void
+Runic.Assets.DevelopmentDirectoryAssetSource.Dispose() -> void
+Runic.Assets.DevelopmentDirectoryAssetSource.Manifest.get -> Runic.Assets.AssetManifest!
+Runic.Assets.DevelopmentDirectoryAssetSource.OpenReadAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>
+Runic.Assets.DevelopmentDirectoryAssetSource.OpenSnapshotAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
+Runic.Assets.DevelopmentDirectoryAssetSource.Refresh(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Runic.Assets.AssetManifest!
+Runic.Assets.DevelopmentDirectoryAssetSource.SkippedEntries.get -> System.Collections.Generic.IReadOnlyList<string!>!
+Runic.Assets.DevelopmentDirectoryAssetSource.StartWatching(Runic.Assets.AssetWatchOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Runic.Assets.IAssetWatch!
+Runic.Assets.DevelopmentDirectoryAssetSource.ValidateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Assets.DevelopmentDocumentAssets
+Runic.Assets.EmbeddedAssetRegistration
+Runic.Assets.EmbeddedAssetRegistration.<Clone>$() -> Runic.Assets.EmbeddedAssetRegistration!
+Runic.Assets.EmbeddedAssetRegistration.CacheMode.get -> Runic.Assets.AssetCacheMode
+Runic.Assets.EmbeddedAssetRegistration.CacheMode.init -> void
+Runic.Assets.EmbeddedAssetRegistration.Deconstruct(out string! RelativePath, out string! ResourceName, out bool IsEntryPoint, out string? MediaType, out Runic.Assets.AssetCacheMode CacheMode) -> void
+Runic.Assets.EmbeddedAssetRegistration.EmbeddedAssetRegistration(string! RelativePath, string! ResourceName, bool IsEntryPoint = false, string? MediaType = null, Runic.Assets.AssetCacheMode CacheMode = Runic.Assets.AssetCacheMode.Revalidate) -> void
+Runic.Assets.EmbeddedAssetRegistration.Equals(Runic.Assets.EmbeddedAssetRegistration? other) -> bool
+Runic.Assets.EmbeddedAssetRegistration.IsEntryPoint.get -> bool
+Runic.Assets.EmbeddedAssetRegistration.IsEntryPoint.init -> void
+Runic.Assets.EmbeddedAssetRegistration.MediaType.get -> string?
+Runic.Assets.EmbeddedAssetRegistration.MediaType.init -> void
+Runic.Assets.EmbeddedAssetRegistration.RelativePath.get -> string!
+Runic.Assets.EmbeddedAssetRegistration.RelativePath.init -> void
+Runic.Assets.EmbeddedAssetRegistration.ResourceName.get -> string!
+Runic.Assets.EmbeddedAssetRegistration.ResourceName.init -> void
+Runic.Assets.EmbeddedAssetSource
+Runic.Assets.EmbeddedAssetSource.EmbeddedAssetSource(System.Reflection.Assembly! assembly, System.Collections.Generic.IEnumerable<Runic.Assets.EmbeddedAssetRegistration!>! registrations) -> void
+Runic.Assets.EmbeddedAssetSource.Manifest.get -> Runic.Assets.AssetManifest!
+Runic.Assets.EmbeddedAssetSource.OpenReadAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>
+Runic.Assets.EmbeddedAssetSource.OpenSnapshotAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
+Runic.Assets.EmbeddedAssetSource.ValidateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Assets.IAssetManifestProvider
+Runic.Assets.IAssetManifestProvider.Manifest.get -> Runic.Assets.AssetManifest!
+Runic.Assets.IAssetSnapshotSource
+Runic.Assets.IAssetSnapshotSource.OpenSnapshotAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Assets.AssetReadSnapshot!>
+Runic.Assets.IAssetSource
+Runic.Assets.IAssetSource.OpenReadAsync(string! relativePath, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<System.IO.Stream!>
+Runic.Assets.IAssetSource.ValidateAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Assets.IAssetSourceChangeNotifier
+Runic.Assets.IAssetSourceChangeNotifier.Changed -> System.EventHandler<Runic.Assets.AssetSourceChangedEventArgs!>?
+Runic.Assets.IAssetWatch
+Runic.Assets.IAssetWatch.IsWatching.get -> bool
+static Runic.Assets.AssetArchive.Inspect(System.IO.Stream! source, Runic.Assets.AssetArchiveReadOptions? options = null) -> Runic.Assets.AssetArchiveInspection!
+static Runic.Assets.AssetArchive.Read(System.IO.Stream! source, Runic.Assets.AssetArchiveReadOptions? options = null) -> Runic.Assets.AssetArchiveSource!
+static Runic.Assets.AssetArchive.ReadEmbedded(System.Reflection.Assembly! assembly, string! resourceName = "Runic.Assets.StaticFiles", Runic.Assets.AssetArchiveReadOptions? options = null) -> Runic.Assets.AssetArchiveSource!
+static Runic.Assets.AssetArchive.WriteAsync(Runic.Assets.IAssetSource! source, System.IO.Stream! destination, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Assets.AssetArchive.WriteDirectoryAsync(string! sourceDirectory, System.IO.Stream! destination, string! entryPointRelativePath = "index.html", System.Collections.Generic.IEnumerable<string!>? excludedPaths = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+static Runic.Assets.AssetDescriptor.operator !=(Runic.Assets.AssetDescriptor? left, Runic.Assets.AssetDescriptor? right) -> bool
+static Runic.Assets.AssetDescriptor.operator ==(Runic.Assets.AssetDescriptor? left, Runic.Assets.AssetDescriptor? right) -> bool
+static Runic.Assets.AssetMediaTypes.Resolve(string! relativePath) -> string!
+static Runic.Assets.AssetPath.Normalize(string! value) -> string!
+static Runic.Assets.DevelopmentDocumentAssets.WithDevelopmentDocument(this Runic.Assets.IAssetSnapshotSource! source) -> Runic.Assets.IAssetSnapshotSource!
+static Runic.Assets.DevelopmentDocumentAssets.WithDevelopmentDocument(this Runic.Assets.IAssetSnapshotSource! source, string! path) -> Runic.Assets.IAssetSnapshotSource!
+static Runic.Assets.EmbeddedAssetRegistration.operator !=(Runic.Assets.EmbeddedAssetRegistration? left, Runic.Assets.EmbeddedAssetRegistration? right) -> bool
+static Runic.Assets.EmbeddedAssetRegistration.operator ==(Runic.Assets.EmbeddedAssetRegistration? left, Runic.Assets.EmbeddedAssetRegistration? right) -> bool
