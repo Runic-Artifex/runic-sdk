@@ -28,10 +28,10 @@ public static class PortalPlatformProvider
     public static IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new UnparentedOwner());
 
     /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
-    public static ValueTask<PlatformResult<Unit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
+    public static ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
         OpenUriCoreAsync(owner, uri, null, cancellationToken);
 
-    internal static async ValueTask<PlatformResult<Unit>> OpenUriCoreAsync(IPortalWindowOwner owner, Uri uri, PortalApplication? application, CancellationToken cancellationToken)
+    internal static async ValueTask<PlatformResult<PlatformUnit>> OpenUriCoreAsync(IPortalWindowOwner owner, Uri uri, PortalApplication? application, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(owner);
         ArgumentNullException.ThrowIfNull(uri);
@@ -40,10 +40,10 @@ public static class PortalPlatformProvider
         try
         {
             var response = await PortalRequest.RunAsync(owner, new PortalTransport(application: application), "OpenURI", uri.AbsoluteUri, cancellationToken).ConfigureAwait(false);
-            return response.Code == 0 ? new PlatformResult<Unit>.Success(new Unit()) : new PlatformResult<Unit>.Failed(FailureCode.IoError);
+            return response.Code == 0 ? new PlatformResult<PlatformUnit>.Success(new PlatformUnit()) : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, response.Diagnostic);
         }
-        catch (OwnerClosedException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (NativeBackendUnavailableException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
     }
 
     internal sealed class UnparentedOwner : IExplicitUnparentedOwner

@@ -5,24 +5,26 @@ namespace Runic.Platform.Windows;
 
 internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
 {
-    public async ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+    public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);
-        if (operation == DesktopFileOperation.Open && StartsProgram(path)) return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
-        PlatformResult<Unit> result = new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed);
+        if (operation == DesktopFileOperation.Open && StartsProgram(path)) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied);
+        PlatformResult<PlatformUnit> result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
         try
         {
             await owner.InvokeAsync(window =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 int initialized = CoInitializeEx(0, 2); // Owner must be STA for shell UI.
-                if (initialized < 0) { result = new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); return; }
+                if (initialized < 0) { result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); return; }
                 try
                 {
                     if (operation == DesktopFileOperation.Open)
                     {
                         var status = ShellExecute(window, "open", path, null, null, 1);
-                        result = status > 32 ? Success() : new PlatformResult<Unit>.Failed(status == 5 ? FailureCode.PermissionDenied : FailureCode.IoError);
+                        result = status > 32 ? Success() : new PlatformResult<PlatformUnit>.Failed(
+                            status == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                            new PlatformDiagnostic("ShellExecute", status));
                     }
                     else if (operation == DesktopFileOperation.ChooseApplication)
                     {
@@ -76,14 +78,14 @@ internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : ID
             return extension.Length != 0 && (ProgramExtensions.Contains(extension) || executable.Contains(extension, StringComparer.OrdinalIgnoreCase));
         }
     }
-    private static PlatformResult<Unit> Success() => new PlatformResult<Unit>.Success(new Unit());
-    private static PlatformResult<Unit> FromHResult(int result) => result >= 0 ? Success() :
-        new PlatformResult<Unit>.Failed(result switch
+    private static PlatformResult<PlatformUnit> Success() => new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+    private static PlatformResult<PlatformUnit> FromHResult(int result) => result >= 0 ? Success() :
+        new PlatformResult<PlatformUnit>.Failed(result switch
         {
-            unchecked((int)0x800704C7) => FailureCode.UserDismissed,
-            unchecked((int)0x80070005) => FailureCode.PermissionDenied,
-            _ => FailureCode.IoError
-        });
+            unchecked((int)0x800704C7) => PlatformFailureCode.UserDismissed,
+            unchecked((int)0x80070005) => PlatformFailureCode.PermissionDenied,
+            _ => PlatformFailureCode.IoError
+        }, PlatformDiagnostic.FromHResult(result));
     [StructLayout(LayoutKind.Sequential)]
     private struct OpenWithInfo
     {

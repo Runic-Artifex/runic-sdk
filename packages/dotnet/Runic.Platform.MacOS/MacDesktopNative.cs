@@ -18,6 +18,8 @@ internal static partial class MacDesktopNative
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial double Double(nint target, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)] private static partial nint Utf8(nint target, nint selector, string value);
     internal static string Text(nint value) => value == 0 ? "" : Marshal.PtrToStringUTF8(Send(value, Sel("UTF8String"))) ?? "";
+    // The domain and code identify an NSError. Its localized description can name files, so it is omitted.
+    internal static PlatformDiagnostic ErrorDiagnostic(nint error) => new(Text(Send(error, Sel("domain"))), Send(error, Sel("code")));
     internal static nint String(string value) => Utf8(Class("NSString"), Sel("stringWithUTF8String:"), value);
     internal static nint Array(nint value) => Arg(Class("NSArray"), Sel("arrayWithObject:"), value);
     internal static nint Url(string path) => Arg(Class("NSURL"), Sel("fileURLWithPath:"), String(path));

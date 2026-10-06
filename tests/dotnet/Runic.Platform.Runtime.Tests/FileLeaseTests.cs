@@ -40,7 +40,7 @@ internal static class FileLeaseTests
             {
                 var write = await Begin(save);
                 await File.WriteAllTextAsync(path, "external edit");
-                Check(await write.CommitAsync() is FileCommitResult.NotCommitted { Code: FailureCode.Conflict }, "External edit was overwritten.");
+                Check(await write.CommitAsync() is FileCommitResult.NotCommitted { Code: PlatformFailureCode.Conflict }, "External edit was overwritten.");
             }
             Check(await File.ReadAllTextAsync(path) == "external edit", "Conflict changed the target.");
 
@@ -62,7 +62,7 @@ internal static class FileLeaseTests
             cancelled.Cancel();
             var closed = pendingSave.DisposeAsync().AsTask();
             Check(!closed.IsCompleted && !commit.IsCompleted && grant.Releases == 0, "Cancellation abandoned a submitted replacement.");
-            replacement.Result.SetResult(new FileCommitResult.CommitUnknown(FailureCode.IoError));
+            replacement.Result.SetResult(new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError));
             Check(await commit is FileCommitResult.CommitUnknown, "The actual uncertain outcome was lost.");
             await closed; await pendingSave.DisposeAsync();
             Check(grant.Releases == 1 && Directory.GetFiles(directory).Length == 1, "Access or staging leaked after unknown commit.");
@@ -72,7 +72,7 @@ internal static class FileLeaseTests
             string staged = Path.Combine(directory, ".staged.tmp");
             await File.WriteAllTextAsync(staged, "staged");
             await File.WriteAllTextAsync(appeared, "concurrent");
-            Check(await new LocalAtomicFileReplacement().ReplaceAsync(staged, appeared, existed: false) is FileCommitResult.NotCommitted { Code: FailureCode.Conflict },
+            Check(await new LocalAtomicFileReplacement().ReplaceAsync(staged, appeared, existed: false) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.Conflict },
                 "A newly appeared target must be a conflict.");
             Check(await File.ReadAllTextAsync(appeared) == "concurrent", "A conflicting new target was replaced.");
             File.Delete(staged); File.Delete(appeared);

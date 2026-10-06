@@ -13,18 +13,18 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
             ? new CapabilityStatus.Unavailable(reason) : new CapabilityStatus.Available();
         // A destination that can never be written atomically is not a usable save.
         CapabilityStatus save = files is CapabilityStatus.Available && backend?.SupportsAtomicReplace == false
-            ? new CapabilityStatus.Unavailable(UnavailableReason.AtomicReplaceUnavailable) : files;
+            ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
             .Add("platform.files.open", files).Add("platform.files.save", save)
             .Add("platform.dialogs.owned", files));
     }
 
-    private UnavailableReason? Reason(OwnerPolicy policy)
+    private PlatformUnavailableReason? Reason(OwnerPolicy policy)
     {
-        if (lifetime.IsClosing) return UnavailableReason.OwnerClosed;
-        if (backend is null) return UnavailableReason.ProviderNotConfigured;
-        if (!backend.IsAvailable) return UnavailableReason.BackendUnavailable;
-        if (policy == OwnerPolicy.RequireOwner && !lifetime.HasOwner) return UnavailableReason.OwnerUnavailable;
+        if (lifetime.IsClosing) return PlatformUnavailableReason.OwnerClosed;
+        if (backend is null) return PlatformUnavailableReason.ProviderNotConfigured;
+        if (!backend.IsAvailable) return PlatformUnavailableReason.BackendUnavailable;
+        if (policy == OwnerPolicy.RequireOwner && !lifetime.HasOwner) return PlatformUnavailableReason.OwnerUnavailable;
         return null;
     }
 
@@ -51,11 +51,11 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         caller.ThrowIfCancellationRequested();
         using var operation = lifetime.TryBeginOperation();
-        if (operation is null) return new PickerResult<T>.Unavailable(UnavailableReason.OwnerClosed);
+        if (operation is null) return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed);
         if (Reason(policy) is { } reason) return new PickerResult<T>.Unavailable(reason);
         using var picker = lifetime.TryBeginPicker();
         if (picker is null)
-            return new PickerResult<T>.Failed(FailureCode.ResourceBusy);
+            return new PickerResult<T>.Failed(PlatformFailureCode.ResourceBusy);
         try
         {
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(caller, lifetime.Shutdown);
@@ -69,7 +69,7 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
                     catch (Exception error) { lifetime.RecordCleanupFailure(error); throw; }
                 }
                 caller.ThrowIfCancellationRequested();
-                return new PickerResult<T>.Unavailable(UnavailableReason.OwnerClosed);
+                return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             }
             if (result is PickerResult<T>.Selected selectedResult)
             {
@@ -77,7 +77,7 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
                 if (!lifetime.Own(owned))
                 {
                     await owned.DisposeAsync().ConfigureAwait(false);
-                    return new PickerResult<T>.Unavailable(UnavailableReason.OwnerClosed);
+                    return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed);
                 }
                 return new PickerResult<T>.Selected((T)(IAsyncDisposable)owned);
             }
@@ -85,7 +85,7 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
         }
         catch (OperationCanceledException) when (lifetime.IsClosing && !caller.IsCancellationRequested)
         {
-            return new PickerResult<T>.Unavailable(UnavailableReason.OwnerClosed);
+            return new PickerResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed);
         }
     }
 }

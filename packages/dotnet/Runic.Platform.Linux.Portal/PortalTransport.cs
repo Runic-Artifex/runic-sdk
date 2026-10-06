@@ -5,7 +5,21 @@ using Tmds.DBus.Protocol;
 
 namespace Runic.Platform.Linux.Portal;
 
-internal sealed record PortalResponse(uint Code, string[] Uris);
+internal sealed record PortalResponse(uint Code, string[] Uris)
+{
+    internal PlatformDiagnostic Diagnostic => PortalErrors.Response(Code);
+}
+
+internal static class PortalErrors
+{
+    // org.freedesktop.portal.Request::Response: 1 means the user cancelled, 2 any other end.
+    internal static PlatformDiagnostic Response(uint code) => new("org.freedesktop.portal.Request", code,
+        code switch { 1 => "The user cancelled the interaction.", 2 => "The user interaction ended in another way.", _ => null });
+
+    // The D-Bus error name identifies the error. The service's free-form message is omitted
+    // because it is not guaranteed to be free of paths.
+    internal static PlatformDiagnostic Reply(DBusErrorReplyException error) => new(error.ErrorName, 0);
+}
 internal interface IPortalTransport
 {
     ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken);

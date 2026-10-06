@@ -34,12 +34,12 @@ internal sealed class PresentationSaveLease(PresentationLifetime lifetime, ISave
     : PresentationLease(lifetime, lease), ISaveFileLease, ILaunchableFileLease
 {
     public string DisplayName => lease.DisplayName;
-    public ValueTask<PlatformResult<Unit>> LaunchAsync(IDesktopFileLauncher launcher,
+    public ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(IDesktopFileLauncher launcher,
         DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         RequireOpen();
         return lease is ILaunchableFileLease file ? file.LaunchAsync(launcher, operation, cancellationToken)
-            : ValueTask.FromResult<PlatformResult<Unit>>(new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable));
+            : ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
     }
     public ValueTask<PlatformResult<IFileWriteTransaction>> BeginWriteAsync(FileWritePolicy policy, CancellationToken cancellationToken = default)
     { RequireOpen(); return lease.BeginWriteAsync(policy, cancellationToken); }

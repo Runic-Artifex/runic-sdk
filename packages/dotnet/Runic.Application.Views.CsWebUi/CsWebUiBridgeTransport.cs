@@ -37,6 +37,9 @@ internal sealed class CsWebUiBridgeTransport(WebUiWindow window) : IBridgeTransp
             return WebUiResult.FromString(await handler(new WebUiBridgeArguments(e), token).ConfigureAwait(false));
         });
 
+    // One uncoalesced WebSocket write per call to every connected client, so delta frames
+    // keep their order. WebUI blocks under its process-wide send lock until each socket
+    // write completes: TCP-level back-pressure, not acknowledgement. See IAsyncBridgeTransport.
     public void Publish(string name, string stateJson) =>
         window.RunJavaScript($"window.__{name}Changed?.({stateJson});");
 }

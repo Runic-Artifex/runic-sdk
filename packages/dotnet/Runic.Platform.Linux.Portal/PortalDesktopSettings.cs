@@ -30,7 +30,7 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
         {
             Reset();
-            return new PlatformResult<DesktopAppearance>.Unavailable(UnavailableReason.BackendUnavailable);
+            return new PlatformResult<DesktopAppearance>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         }
         finally { _connect.Release(); }
     }

@@ -4,7 +4,9 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 
 #if SYSTEM_REACTIVE
+using System.Reactive;
 using ReactiveUI.Reactive;
+using Runic.Platform;
 using ReactiveUI.Binding.Reactive;
 using Runic.Application.Views.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
@@ -28,6 +30,7 @@ await DependencyInjectionSemanticsAsync();
 await InteractionSemanticsAsync();
 await SchedulerFailureAndShutdownSemanticsAsync();
 await StreamOverflowStopsExecutionAsync();
+PlatformImportSemantics();
 Console.WriteLine("REACTIVEUI_BEHAVIORAL_CONFORMANCE_OK");
 
 static async Task CommandSemanticsAsync()
@@ -245,6 +248,17 @@ static bool Throws<TException>(Action action) where TException : Exception
 {
     try { action(); return false; }
     catch (TException) { return true; }
+}
+
+static void PlatformImportSemantics()
+{
+#if SYSTEM_REACTIVE
+    // With System.Reactive and Runic.Platform both imported, Unit stays System.Reactive.Unit.
+    Unit reactive = Unit.Default;
+    PlatformResult<PlatformUnit> platform = new PlatformResult<PlatformUnit>.Success(default);
+    Require(reactive == FlavorUnit.Default && platform is PlatformResult<PlatformUnit>.Success,
+        "System.Reactive and Runic.Platform types collided.");
+#endif
 }
 
 static FlavorUnit UnitValue()

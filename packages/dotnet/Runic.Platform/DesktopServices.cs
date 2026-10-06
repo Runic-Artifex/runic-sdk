@@ -73,11 +73,11 @@ public interface IDesktopNotifications : IAsyncDisposable
     /// <summary>Requests or checks OS authorization; Windows and Linux do not show a separate consent prompt.</summary>
     /// <remarks>Windows may not have settings for a newly registered app. Success permits an attempt;
     /// submission still enforces native registration and policy and never guarantees visibility.</remarks>
-    ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<PlatformUnit>> RequestPermissionAsync(CancellationToken cancellationToken = default);
     /// <summary>Submits or replaces a notification; success acknowledges submission, not visibility.</summary>
-    ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<PlatformUnit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default);
     /// <summary>Removes a notification with an application-owned identifier.</summary>
-    ValueTask<PlatformResult<Unit>> RemoveAsync(string id, CancellationToken cancellationToken = default);
+    ValueTask<PlatformResult<PlatformUnit>> RemoveAsync(string id, CancellationToken cancellationToken = default);
 }
 /// <summary>Local-file handoff operations; asking for an application is distinct from opening the default.</summary>
 public enum DesktopFileOperation
@@ -98,7 +98,7 @@ public interface IDesktopFileLauncher
     /// when the native API distinguishes dismissal. Windows and macOS Open returns PermissionDenied
     /// for programs, scripts, installers and shortcuts instead of running them; Linux applies the
     /// desktop portal's policy. Windows rejects UNC, device and alternate-stream paths.</remarks>
-    ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
+    ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open,
         CancellationToken cancellationToken = default);
 }
 
@@ -106,6 +106,6 @@ public interface IDesktopFileLauncher
 public interface ILaunchableFileLease : IAsyncDisposable
 {
     /// <summary>Retains the acquired access grant until native handoff completes, including racing disposal.</summary>
-    ValueTask<PlatformResult<Unit>> LaunchAsync(IDesktopFileLauncher launcher,
+    ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(IDesktopFileLauncher launcher,
         DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default);
 }

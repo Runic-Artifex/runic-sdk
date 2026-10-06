@@ -17,14 +17,14 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
     private const int RecentCapacity = 64;
     private volatile bool _disposed;
     public event EventHandler<DesktopNotificationActivation>? Activated;
-    public ValueTask<PlatformResult<Unit>> RequestPermissionAsync(CancellationToken cancellationToken = default) => RunAsync(notifier =>
+    public ValueTask<PlatformResult<PlatformUnit>> RequestPermissionAsync(CancellationToken cancellationToken = default) => RunAsync(notifier =>
     {
         unsafe
         {
             return ReadSetting(notifier);
         }
     }, cancellationToken);
-    public ValueTask<PlatformResult<Unit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> ShowAsync(DesktopNotification notification, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Notification(notification);
         return RunAsync(notifier =>
@@ -32,7 +32,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
             unsafe
             {
                 var permission = ReadSetting(notifier);
-                if (permission is not PlatformResult<Unit>.Success) return permission;
+                if (permission is not PlatformResult<PlatformUnit>.Success) return permission;
             }
             nint document = 0, io = 0, factory = 0, toast = 0, properties = 0, handler = 0; long token = 0;
             try
@@ -61,7 +61,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
             finally { if (toast != 0 && token != 0) { unsafe { _ = ((delegate* unmanaged[Stdcall]<nint, long, int>)Slot(toast, 12))(toast, token); } } Release(handler); Release(properties); Release(toast); Release(factory); Release(io); Release(document); }
         }, cancellationToken);
     }
-    public ValueTask<PlatformResult<Unit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> RemoveAsync(string id, CancellationToken cancellationToken = default)
     {
         DesktopServiceValidation.Identifier(id);
         return RunAsync(_ =>
@@ -78,7 +78,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
             finally { Release(history); Release(manager); }
         }, cancellationToken);
     }
-    private async ValueTask<PlatformResult<Unit>> RunAsync(Func<nint, PlatformResult<Unit>> action, CancellationToken cancellationToken)
+    private async ValueTask<PlatformResult<PlatformUnit>> RunAsync(Func<nint, PlatformResult<PlatformUnit>> action, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -98,30 +98,38 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
                 finally { Release(notifier); Release(factory); RoUninitialize(); }
             }, cancellationToken).ConfigureAwait(false);
         }
-        catch (UnauthorizedAccessException) { return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied); }
+        catch (UnauthorizedAccessException error) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromHResult(error.HResult)); }
         catch (COMException error)
         {
             return error.HResult == unchecked((int)0x80070005)
-            ? new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied) : new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
+            ? new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromHResult(error.HResult)) : new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         }
         finally { _gate.Release(); }
     }
-    private static unsafe PlatformResult<Unit> ReadSetting(nint notifier)
+    private static unsafe PlatformResult<PlatformUnit> ReadSetting(nint notifier)
     {
         int setting = 0;
         int result = ((delegate* unmanaged[Stdcall]<nint, int*, int>)Slot(notifier, 8))(notifier, &setting);
         return NotificationSettingResult(result, setting);
     }
 
-    internal static PlatformResult<Unit> NotificationSettingResult(int result, int setting)
+    internal static PlatformResult<PlatformUnit> NotificationSettingResult(int result, int setting)
     {
         // Windows has no per-app notification settings entry before the first Show.
         // ERROR_NOT_FOUND means eligibility is unknown, not that the backend is absent.
         // Permit submission; Show still enforces native registration and OS policy.
         if (result == unchecked((int)0x80070490)) return Success();
-        if (result == unchecked((int)0x80070005)) return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
-        if (result < 0) return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
-        return setting == 0 ? Success() : new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied);
+        if (result == unchecked((int)0x80070005)) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromHResult(result));
+        if (result < 0) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        return setting == 0 ? Success() : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied,
+            new PlatformDiagnostic("Windows.UI.Notifications.NotificationSetting", setting, setting switch
+            {
+                1 => "DisabledForApplication",
+                2 => "DisabledForUser",
+                3 => "DisabledByGroupPolicy",
+                4 => "DisabledByManifest",
+                _ => null,
+            }));
     }
 
     internal static string ToastXml(DesktopNotification notification)
@@ -160,7 +168,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
         }
         finally { _gate.Release(); }
     }
-    private static PlatformResult<Unit> Success() => new PlatformResult<Unit>.Success(new Unit());
+    private static PlatformResult<PlatformUnit> Success() => new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     private sealed class Toast(nint instance, long token) : IDisposable
     {
         public unsafe void Dispose()

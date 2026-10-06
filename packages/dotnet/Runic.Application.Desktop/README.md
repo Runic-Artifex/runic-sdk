@@ -49,6 +49,8 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
 - `DesktopBridgeWindow<TViewModel>` owns that scope, surface, and attachment.
   It exposes `ViewModel`, `Surface`, `Presentation`, and `CloseAsync`, which
   stops new operations and waits for accepted ones before releasing the scope.
+  It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
+  host, and returns the same `BridgeWindowCloseResult`.
 - `DesktopBridgeTransport` connects a `DesktopSurface` to a
   `WindowContentSession` directly, for applications that compose a surface
   themselves.

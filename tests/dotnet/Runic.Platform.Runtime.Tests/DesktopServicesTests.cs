@@ -47,14 +47,14 @@ internal static class DesktopServicesTests
             var closed = lease.DisposeAsync().AsTask();
             Check(!closed.IsCompleted && !access.Disposed, "handoff retains security-scoped access while disposing");
             launcher.Release.TrySetResult();
-            Check(await launch is PlatformResult<Unit>.Success, "native outcome returned");
+            Check(await launch is PlatformResult<PlatformUnit>.Success, "native outcome returned");
             await closed;
             Check(access.Disposed && launcher.Path == pathName, "grant released after path-free lease handoff");
         }
         finally { File.Delete(pathName); }
         await using var lifetime = new PresentationLifetime(() => true, Guid.NewGuid());
         var noBackend = new PresentationFileLauncher(lifetime, null);
-        Check(await noBackend.LaunchAsync(Path.GetTempPath()) is PlatformResult<Unit>.Unavailable, "unconfigured launcher is explicitly unavailable");
+        Check(await noBackend.LaunchAsync(Path.GetTempPath()) is PlatformResult<PlatformUnit>.Unavailable, "unconfigured launcher is explicitly unavailable");
     }
     // Policy runs before native dispatch, so a closing owner observes only accepted documents.
     private static async Task LaunchPolicyAsync()
@@ -77,19 +77,19 @@ internal static class DesktopServicesTests
             foreach (var (launcher, programs) in cases)
             {
                 foreach (var name in programs)
-                    Check(await launcher.LaunchAsync(Path.Combine(directory, name)) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied },
+                    Check(await launcher.LaunchAsync(Path.Combine(directory, name)) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
                         $"{launcher.GetType().Name} opened program {name}");
-                Check(await launcher.LaunchAsync(document) is PlatformResult<Unit>.Unavailable { Reason: UnavailableReason.OwnerClosed }, "document handoff reaches the owner");
-                Check(await launcher.LaunchAsync(Path.Combine(directory, "setup.exe"), DesktopFileOperation.Reveal) is PlatformResult<Unit>.Unavailable,
+                Check(await launcher.LaunchAsync(document) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "document handoff reaches the owner");
+                Check(await launcher.LaunchAsync(Path.Combine(directory, "setup.exe"), DesktopFileOperation.Reveal) is PlatformResult<PlatformUnit>.Unavailable,
                     "revealing a program is permitted");
             }
             int dispatched = owner.Dispatches;
             if (!OperatingSystem.IsWindows())
             {
-                Check(await mac.LaunchAsync(tool) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }, "extensionless executable opened");
+                Check(await mac.LaunchAsync(tool) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "extensionless executable opened");
                 string alias = Path.Combine(directory, "notes.txt");
                 File.CreateSymbolicLink(alias, tool);
-                Check(await mac.LaunchAsync(alias) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }, "symlinked executable opened");
+                Check(await mac.LaunchAsync(alias) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "symlinked executable opened");
                 Check(owner.Dispatches == dispatched, "refused handoff reached native dispatch");
             }
         }
@@ -116,7 +116,7 @@ internal static class DesktopServicesTests
     {
         internal bool Available = true;
         protected override ValueTask<PlatformResult<DesktopAppearance>> ReadCoreAsync(CancellationToken cancellationToken) =>
-            ValueTask.FromResult<PlatformResult<DesktopAppearance>>(Available ? new PlatformResult<DesktopAppearance>.Success(new()) : new PlatformResult<DesktopAppearance>.Unavailable(UnavailableReason.BackendUnavailable));
+            ValueTask.FromResult<PlatformResult<DesktopAppearance>>(Available ? new PlatformResult<DesktopAppearance>.Success(new()) : new PlatformResult<DesktopAppearance>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
     }
     private sealed class Access : IAsyncDisposable
     {
@@ -128,7 +128,7 @@ internal static class DesktopServicesTests
         internal readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal readonly TaskCompletionSource Release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal string? Path;
-        public async ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
-        { Path = path; Entered.TrySetResult(); await Release.Task; return new PlatformResult<Unit>.Success(new()); }
+        public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+        { Path = path; Entered.TrySetResult(); await Release.Task; return new PlatformResult<PlatformUnit>.Success(new()); }
     }
 }

@@ -25,9 +25,9 @@ public sealed class PresentationClipboard : ITextClipboard, IPlatformCapabilitie
     private sealed class ClipboardResource(PresentationLifetime lifetime, IAsyncDisposable resource)
         : PresentationLease(lifetime, resource);
 
-    private UnavailableReason? Reason => lifetime.IsClosing ? UnavailableReason.OwnerClosed
-        : backend is null ? UnavailableReason.ProviderNotConfigured
-        : !lifetime.HasOwner ? UnavailableReason.OwnerUnavailable : null;
+    private PlatformUnavailableReason? Reason => lifetime.IsClosing ? PlatformUnavailableReason.OwnerClosed
+        : backend is null ? PlatformUnavailableReason.ProviderNotConfigured
+        : !lifetime.HasOwner ? PlatformUnavailableReason.OwnerUnavailable : null;
 
     /// <inheritdoc />
     public CapabilitySnapshot GetSnapshot()
@@ -44,31 +44,31 @@ public sealed class PresentationClipboard : ITextClipboard, IPlatformCapabilitie
         ArgumentOutOfRangeException.ThrowIfNegative(maximumCharacters);
         cancellationToken.ThrowIfCancellationRequested();
         using var operation = lifetime.TryBeginOperation();
-        if (operation is null) return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed);
+        if (operation is null) return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
         if (Reason is { } reason) return new PlatformResult<string?>.Unavailable(reason);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Shutdown);
         try
         {
             var result = await backend!.ReadTextAsync(maximumCharacters, linked.Token).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            if (lifetime.IsClosing) return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed);
+            if (lifetime.IsClosing) return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             return result is PlatformResult<string?>.Success { Value: { } text } && text.Length > maximumCharacters
-                ? new PlatformResult<string?>.Failed(FailureCode.TooLarge) : result;
+                ? new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge) : result;
         }
         catch (OperationCanceledException) when (lifetime.IsClosing && !cancellationToken.IsCancellationRequested)
         {
-            return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed);
+            return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
         }
     }
 
     /// <inheritdoc />
-    public async ValueTask<PlatformResult<Unit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+    public async ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         cancellationToken.ThrowIfCancellationRequested();
         using var operation = lifetime.TryBeginOperation();
-        if (operation is null) return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed);
-        if (Reason is { } reason) return new PlatformResult<Unit>.Unavailable(reason);
+        if (operation is null) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+        if (Reason is { } reason) return new PlatformResult<PlatformUnit>.Unavailable(reason);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Shutdown);
         try
         {
@@ -78,7 +78,7 @@ public sealed class PresentationClipboard : ITextClipboard, IPlatformCapabilitie
         }
         catch (OperationCanceledException) when (lifetime.IsClosing && !cancellationToken.IsCancellationRequested)
         {
-            return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed);
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
         }
     }
 }

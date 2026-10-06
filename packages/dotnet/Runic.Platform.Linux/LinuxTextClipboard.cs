@@ -18,11 +18,11 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
         ArgumentOutOfRangeException.ThrowIfNegative(maximumCharacters);
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            return new PlatformResult<string?>.Failed(FailureCode.ResourceBusy);
+            return new PlatformResult<string?>.Failed(PlatformFailureCode.ResourceBusy);
         bool dispatched = false;
         try
         {
-            if (_disposed || !owner.IsAvailable) return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed);
+            if (_disposed || !owner.IsAvailable) return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             var request = new ReadRequest(maximumCharacters);
             await owner.InvokeAsync(_ =>
             {
@@ -39,27 +39,27 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
             cancellationToken.ThrowIfCancellationRequested();
             return result;
         }
-        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (UnauthorizedAccessException) { return new PlatformResult<string?>.Failed(FailureCode.PermissionDenied); }
-        catch (DllNotFoundException) { return new PlatformResult<string?>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PlatformResult<string?>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PlatformResult<string?>.Unavailable(UnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (UnauthorizedAccessException) { return new PlatformResult<string?>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (DllNotFoundException) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         finally { _gate.Release(); }
     }
 
     /// <inheritdoc />
-    public async ValueTask<PlatformResult<Unit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+    public async ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            return new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy);
+            return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy);
         bool dispatched = false;
         try
         {
-            if (_disposed || !owner.IsAvailable) return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed);
-            PlatformResult<Unit> result = new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable);
+            if (_disposed || !owner.IsAvailable) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+            PlatformResult<PlatformUnit> result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             await owner.InvokeAsync(_ =>
             {
                 dispatched = true;
@@ -79,12 +79,12 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
                     {
                         ownership.Clipboard = clipboard;
                         _ownership = ownership;
-                        result = new PlatformResult<Unit>.Success(new Unit());
+                        result = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
                     }
                     else
                     {
                         if (ownership.Handle.IsAllocated) ownership.Handle.Free();
-                        result = new PlatformResult<Unit>.Failed(FailureCode.ResourceBusy);
+                        result = new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.ResourceBusy);
                     }
                 }
                 catch { if (ownership.Handle.IsAllocated) ownership.Handle.Free(); throw; }
@@ -92,12 +92,12 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
             }, cancellationToken).ConfigureAwait(false);
             return result;
         }
-        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (UnauthorizedAccessException) { return new PlatformResult<Unit>.Failed(FailureCode.PermissionDenied); }
-        catch (DllNotFoundException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (NativeBackendUnavailableException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) when (!dispatched) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (ObjectDisposedException) when (!dispatched) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (UnauthorizedAccessException) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (DllNotFoundException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         finally { _gate.Release(); }
     }
 
@@ -159,7 +159,7 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
                 }
             request.Result.TrySetResult(new PlatformResult<string?>.Success(null));
         }
-        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.IoError)); }
+        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError)); }
         handle.Free();
     }
 
@@ -171,17 +171,17 @@ public sealed partial class LinuxTextClipboard(INativePickerOwner owner) : IText
         try
         {
             int length = DataLength(selection);
-            if (length < 0) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.IoError)); return; }
+            if (length < 0) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError)); return; }
             if (length > (long)request.MaximumCharacters * 4)
-            { request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.TooLarge)); return; }
+            { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge)); return; }
             var bytes = new ReadOnlySpan<byte>((void*)Data(selection), length);
             var utf8 = new UTF8Encoding(false, true);
             if (utf8.GetCharCount(bytes) > request.MaximumCharacters)
-            { request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.TooLarge)); return; }
+            { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge)); return; }
             request.Result.TrySetResult(new PlatformResult<string?>.Success(utf8.GetString(bytes)));
         }
-        catch (DecoderFallbackException) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.InvalidData)); }
-        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(FailureCode.IoError)); }
+        catch (DecoderFallbackException) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.InvalidData)); }
+        catch (Exception) { request.Result.TrySetResult(new PlatformResult<string?>.Failed(PlatformFailureCode.IoError)); }
         finally { handle.Free(); }
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]

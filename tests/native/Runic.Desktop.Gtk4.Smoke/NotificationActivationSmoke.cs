@@ -26,9 +26,9 @@ internal static partial class NotificationActivationSmoke
         diagnostic => Console.WriteLine(diagnostic));
     private static DesktopNotification Notification() => new("runic-cold-test", "Runic activation test", "Click Open result to present the Runic window.")
     { Actions = [new("open", "Open result")] };
-    private static void Success(PlatformResult<Unit> result)
+    private static void Success(PlatformResult<PlatformUnit> result)
     {
-        if (result is not PlatformResult<Unit>.Success) throw new InvalidOperationException(result.ToString());
+        if (result is not PlatformResult<PlatformUnit>.Success) throw new InvalidOperationException(result.ToString());
     }
     private static async Task<int> SubmitAsync()
     {

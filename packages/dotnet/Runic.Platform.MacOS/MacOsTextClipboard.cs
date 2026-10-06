@@ -11,7 +11,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
         return InvokeAsync(() => Read(maximumCharacters), cancellationToken);
     }
 
-    public ValueTask<PlatformResult<Unit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
+    public ValueTask<PlatformResult<PlatformUnit>> WriteTextAsync(string text, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         return InvokeAsync(() => Write(text), cancellationToken);
@@ -20,9 +20,9 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
     private async ValueTask<PlatformResult<T>> InvokeAsync<T>(Func<PlatformResult<T>> action, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!owner.IsAvailable) return new PlatformResult<T>.Unavailable(UnavailableReason.OwnerUnavailable);
+        if (!owner.IsAvailable) return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         Guid generation = owner.Generation;
-        PlatformResult<T> result = new PlatformResult<T>.Unavailable(UnavailableReason.OwnerUnavailable);
+        PlatformResult<T> result = new PlatformResult<T>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         try
         {
             await owner.InvokeAsync(_ =>
@@ -34,10 +34,10 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
             }, cancellationToken).ConfigureAwait(false);
             return result;
         }
-        catch (OwnerClosedException) { return new PlatformResult<T>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (ObjectDisposedException) { return new PlatformResult<T>.Unavailable(UnavailableReason.OwnerClosed); }
-        catch (DllNotFoundException) { return new PlatformResult<T>.Unavailable(UnavailableReason.BackendUnavailable); }
-        catch (EntryPointNotFoundException) { return new PlatformResult<T>.Unavailable(UnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) { return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (ObjectDisposedException) { return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PlatformResult<T>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
     }
 
     private static unsafe PlatformResult<string?> Read(int maximumCharacters)
@@ -75,7 +75,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
                     if (status != 0) return Failed<string?>(status);
                     nint length = CFDataGetLength(data);
                     if (length < 0 || length > int.MaxValue || length > (long)maximumCharacters * (unicode ? 2 : 4) + (unicode ? 2 : 0))
-                        return new PlatformResult<string?>.Failed(FailureCode.TooLarge);
+                        return new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge);
                     var bytes = new ReadOnlySpan<byte>((void*)CFDataGetBytePtr(data), (int)length);
                     System.Text.Encoding encoding = Utf8;
                     if (unicode)
@@ -84,7 +84,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
                         if (bytes.Length >= 2 && bytes[0] == 0xfe && bytes[1] == 0xff) { encoding = Utf16BigEndian; bytes = bytes[2..]; }
                         else if (bytes.Length >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe) bytes = bytes[2..];
                     }
-                    if (encoding.GetCharCount(bytes) > maximumCharacters) return new PlatformResult<string?>.Failed(FailureCode.TooLarge);
+                    if (encoding.GetCharCount(bytes) > maximumCharacters) return new PlatformResult<string?>.Failed(PlatformFailureCode.TooLarge);
                     string value = encoding.GetString(bytes);
                     return ReadSuccess(board, value);
                 }
@@ -98,7 +98,7 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
             }
             return ReadSuccess(board, null);
         }
-        catch (System.Text.DecoderFallbackException) { return new PlatformResult<string?>.Failed(FailureCode.InvalidData); }
+        catch (System.Text.DecoderFallbackException) { return new PlatformResult<string?>.Failed(PlatformFailureCode.InvalidData); }
         finally
         {
             if (board != 0) CFRelease(board);
@@ -107,10 +107,10 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
     }
 
     private static PlatformResult<string?> ReadSuccess(nint board, string? value) => (PasteboardSynchronize(board) & 1) != 0
-        ? new PlatformResult<string?>.Failed(FailureCode.ResourceBusy)
+        ? new PlatformResult<string?>.Failed(PlatformFailureCode.ResourceBusy)
         : new PlatformResult<string?>.Success(value);
 
-    private static unsafe PlatformResult<Unit> Write(string text)
+    private static unsafe PlatformResult<PlatformUnit> Write(string text)
     {
         nint name = 0, board = 0, flavor = 0, data = 0;
         try
@@ -118,16 +118,16 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
             byte[] bytes = Utf8.GetBytes(text);
             name = CreateString(ClipboardName);
             int status = PasteboardCreate(name, out board);
-            if (status != 0) return Failed<Unit>(status);
+            if (status != 0) return Failed<PlatformUnit>(status);
             flavor = CreateString("public.utf8-plain-text");
             fixed (byte* pointer = bytes) data = CFDataCreate(0, pointer, bytes.Length);
-            if (data == 0) return new PlatformResult<Unit>.Failed(FailureCode.IoError);
+            if (data == 0) return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError);
             status = PasteboardClear(board);
-            if (status != 0) return Failed<Unit>(status);
+            if (status != 0) return Failed<PlatformUnit>(status);
             status = PasteboardPutItemFlavor(board, 1, flavor, data, 0);
-            return status == 0 ? new PlatformResult<Unit>.Success(new()) : Failed<Unit>(status);
+            return status == 0 ? new PlatformResult<PlatformUnit>.Success(new()) : Failed<PlatformUnit>(status);
         }
-        catch (System.Text.EncoderFallbackException) { return new PlatformResult<Unit>.Failed(FailureCode.InvalidData); }
+        catch (System.Text.EncoderFallbackException) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.InvalidData); }
         finally
         {
             if (data != 0) CFRelease(data);
@@ -139,12 +139,12 @@ internal sealed partial class MacOsTextClipboard(INativePickerOwner owner) : ITe
 
     private static PlatformResult<T> Failed<T>(int status) => new PlatformResult<T>.Failed(status switch
     {
-        -54 => FailureCode.PermissionDenied,
-        -25130 => FailureCode.ResourceBusy, // badPasteboardSyncErr
-        -25131 or -25132 or -25133 => FailureCode.ResourceBusy, // item or advertised flavor disappeared
-        -25135 => FailureCode.ResourceBusy, // ownership changed after clear
-        _ => FailureCode.IoError
-    });
+        -54 => PlatformFailureCode.PermissionDenied,
+        -25130 => PlatformFailureCode.ResourceBusy, // badPasteboardSyncErr
+        -25131 or -25132 or -25133 => PlatformFailureCode.ResourceBusy, // item or advertised flavor disappeared
+        -25135 => PlatformFailureCode.ResourceBusy, // ownership changed after clear
+        _ => PlatformFailureCode.IoError
+    }, new PlatformDiagnostic("OSStatus", status));
     private static readonly System.Text.UTF8Encoding Utf8 = new(false, true);
     private static readonly System.Text.UnicodeEncoding Utf16 = new(false, false, true);
     private static readonly System.Text.UnicodeEncoding Utf16BigEndian = new(true, false, true);

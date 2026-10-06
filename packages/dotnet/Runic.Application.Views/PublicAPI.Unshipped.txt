@@ -1,4 +1,28 @@
 #nullable enable
+Runic.Application.Views.BridgeWindowCloseResult
+Runic.Application.Views.BridgeWindowCloseResult.<Clone>$() -> Runic.Application.Views.BridgeWindowCloseResult!
+Runic.Application.Views.BridgeWindowCloseResult.BridgeWindowCloseResult(bool Drained, int RemainingOperations, System.Threading.Tasks.Task! Completion) -> void
+Runic.Application.Views.BridgeWindowCloseResult.Completion.get -> System.Threading.Tasks.Task!
+Runic.Application.Views.BridgeWindowCloseResult.Completion.init -> void
+Runic.Application.Views.BridgeWindowCloseResult.Deconstruct(out bool Drained, out int RemainingOperations, out System.Threading.Tasks.Task! Completion) -> void
+Runic.Application.Views.BridgeWindowCloseResult.Drained.get -> bool
+Runic.Application.Views.BridgeWindowCloseResult.Drained.init -> void
+Runic.Application.Views.BridgeWindowCloseResult.Equals(Runic.Application.Views.BridgeWindowCloseResult? other) -> bool
+Runic.Application.Views.BridgeWindowCloseResult.RemainingOperations.get -> int
+Runic.Application.Views.BridgeWindowCloseResult.RemainingOperations.init -> void
+Runic.Application.Views.IBridgeWindow
+Runic.Application.Views.IBridgeWindow.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Views.WindowContentSession.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+*REMOVED*Runic.Application.Views.WindowContentSession.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.WindowContentSessionCloseResult!>
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.<Clone>$() -> Runic.Application.Views.WindowContentSessionCloseResult!
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.Deconstruct(out bool Drained, out int RemainingOperations) -> void
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.Drained.get -> bool
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.Drained.init -> void
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.Equals(Runic.Application.Views.WindowContentSessionCloseResult? other) -> bool
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.RemainingOperations.get -> int
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.RemainingOperations.init -> void
+*REMOVED*Runic.Application.Views.WindowContentSessionCloseResult.WindowContentSessionCloseResult(bool Drained, int RemainingOperations) -> void
 override Runic.Application.Views.BridgeCollectionDescriptor<T>.Equals(object? obj) -> bool
 override Runic.Application.Views.BridgeCollectionDescriptor<T>.GetHashCode() -> int
 override Runic.Application.Views.BridgeCollectionDescriptor<T>.ToString() -> string!
@@ -24,5 +48,15 @@ Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Vie
 *REMOVED*Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.BridgeSnapshotWriter<T>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null) -> void
 Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, System.Action<System.Text.Json.Utf8JsonWriter!, T, long>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.BridgeCollectionDescriptor<T>![]? collections = null) -> void
 *REMOVED*Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, System.Action<System.Text.Json.Utf8JsonWriter!, T, long>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null) -> void
+override Runic.Application.Views.BridgeWindowCloseResult.Equals(object? obj) -> bool
+override Runic.Application.Views.BridgeWindowCloseResult.GetHashCode() -> int
+override Runic.Application.Views.BridgeWindowCloseResult.ToString() -> string!
+*REMOVED*override Runic.Application.Views.WindowContentSessionCloseResult.Equals(object? obj) -> bool
+*REMOVED*override Runic.Application.Views.WindowContentSessionCloseResult.GetHashCode() -> int
+*REMOVED*override Runic.Application.Views.WindowContentSessionCloseResult.ToString() -> string!
 static Runic.Application.Views.BridgeCollectionDescriptor<T>.operator !=(Runic.Application.Views.BridgeCollectionDescriptor<T>? left, Runic.Application.Views.BridgeCollectionDescriptor<T>? right) -> bool
 static Runic.Application.Views.BridgeCollectionDescriptor<T>.operator ==(Runic.Application.Views.BridgeCollectionDescriptor<T>? left, Runic.Application.Views.BridgeCollectionDescriptor<T>? right) -> bool
+static Runic.Application.Views.BridgeWindowCloseResult.operator !=(Runic.Application.Views.BridgeWindowCloseResult? left, Runic.Application.Views.BridgeWindowCloseResult? right) -> bool
+static Runic.Application.Views.BridgeWindowCloseResult.operator ==(Runic.Application.Views.BridgeWindowCloseResult? left, Runic.Application.Views.BridgeWindowCloseResult? right) -> bool
+*REMOVED*static Runic.Application.Views.WindowContentSessionCloseResult.operator !=(Runic.Application.Views.WindowContentSessionCloseResult? left, Runic.Application.Views.WindowContentSessionCloseResult? right) -> bool
+*REMOVED*static Runic.Application.Views.WindowContentSessionCloseResult.operator ==(Runic.Application.Views.WindowContentSessionCloseResult? left, Runic.Application.Views.WindowContentSessionCloseResult? right) -> bool

@@ -71,9 +71,9 @@ internal static class NotificationTests
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }
     }
 
-    private static void Require(PlatformResult<Unit> result, string operation)
+    private static void Require(PlatformResult<PlatformUnit> result, string operation)
     {
         Console.WriteLine($"{operation}: {result}");
-        if (result is not PlatformResult<Unit>.Success) throw new InvalidOperationException($"Notification {operation} failed: {result}");
+        if (result is not PlatformResult<PlatformUnit>.Success) throw new InvalidOperationException($"Notification {operation} failed: {result}");
     }
 }

@@ -19,7 +19,7 @@ internal static class PortalRecoveryTests
         Check(await first.TryRequestNameAsync(name, RequestNameOptions.AllowReplacement), "original portal name");
         var application = new PortalApplication(appId);
         await using var notifications = new PortalNotifications(destination: name, application: application);
-        Check(await notifications.ShowAsync(new("before", "Before restart", "Body")) is PlatformResult<Unit>.Success, "initial identified submission");
+        Check(await notifications.ShowAsync(new("before", "Before restart", "Body")) is PlatformResult<PlatformUnit>.Success, "initial identified submission");
         Check(original.Calls is ["Register", "AddNotification"], "register before first portal method");
 
         // First replace an idle portal. A read-only capability probe permits the
@@ -29,11 +29,11 @@ internal static class PortalRecoveryTests
         Check(await second.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting | RequestNameOptions.AllowReplacement), "idle portal replacement");
         using (var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
         {
-            while (await notifications.RequestPermissionAsync(deadline.Token) is not PlatformResult<Unit>.Success
+            while (await notifications.RequestPermissionAsync(deadline.Token) is not PlatformResult<PlatformUnit>.Success
                 || !idleReplacement.Calls.Contains("Register"))
                 await Task.Delay(10, deadline.Token);
         }
-        Check(await notifications.ShowAsync(new("idle-after", "After idle restart", "Body")) is PlatformResult<Unit>.Success, "idle service recovers without application restart");
+        Check(await notifications.ShowAsync(new("idle-after", "After idle restart", "Body")) is PlatformResult<PlatformUnit>.Success, "idle service recovers without application restart");
         Check(idleReplacement.Calls.Count(x => x == "Register") == 1 && idleReplacement.Calls.Count(x => x == "AddNotification") == 1, "idle recovery registers once and does not replay the previous notification");
 
         // Keep the old process and session bus alive: only replace the service owner.
@@ -42,15 +42,15 @@ internal static class PortalRecoveryTests
         var pending = notifications.ShowAsync(new("uncertain", "In flight", "Body")).AsTask();
         await idleReplacement.NotificationHeld.Task.WaitAsync(TimeSpan.FromSeconds(3));
         Check(await third.TryRequestNameAsync(name, RequestNameOptions.ReplaceExisting | RequestNameOptions.AllowReplacement), "portal replacement");
-        Check(await pending.WaitAsync(TimeSpan.FromSeconds(3)) is PlatformResult<Unit>.Unavailable, "in-flight owner loss reported without replay");
+        Check(await pending.WaitAsync(TimeSpan.FromSeconds(3)) is PlatformResult<PlatformUnit>.Unavailable, "in-flight owner loss reported without replay");
         Check(replacement.Calls.Count == 0, "uncertain submission was not replayed");
         idleReplacement.ReleaseNotification.TrySetResult();
         var recoveredAction = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         notifications.Activated += (_, activation) => { if (activation.NotificationId == "after") recoveredAction.TrySetResult(activation); };
-        Check(await notifications.ShowAsync(new("after", "After restart", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "same notification service recovers on next operation");
+        Check(await notifications.ShowAsync(new("after", "After restart", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<PlatformUnit>.Success, "same notification service recovers on next operation");
         Check((await recoveredAction.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "replacement action subscription is live");
         Check(replacement.Calls is ["Register", "AddNotification"], "replacement registered before submission");
-        Check(await notifications.RemoveAsync("after") is PlatformResult<Unit>.Success, "withdraw after replacement");
+        Check(await notifications.RemoveAsync("after") is PlatformResult<PlatformUnit>.Success, "withdraw after replacement");
         Check(replacement.Calls.Count(x => x == "Register") == 1, "unchanged owner does not register twice");
 
         // The same immutable identity is also used by fresh settings and FD calls.

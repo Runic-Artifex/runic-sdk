@@ -5,15 +5,15 @@ namespace Runic.Platform.MacOS;
 
 internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
 {
-    public async ValueTask<PlatformResult<Unit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
+    public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
         path = DesktopServiceValidation.FilePath(path, operation);
-        if (operation == DesktopFileOperation.Open && StartsProgram(path)) return Failed(FailureCode.PermissionDenied);
+        if (operation == DesktopFileOperation.Open && StartsProgram(path)) return Failed(PlatformFailureCode.PermissionDenied);
         nint panel = 0, applicationUrl = 0;
         var generation = owner.Generation;
         Task cancellationTask = Task.CompletedTask;
         CancellationTokenRegistration registration = default;
-        var result = new TaskCompletionSource<PlatformResult<Unit>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var result = new TaskCompletionSource<PlatformResult<PlatformUnit>>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             await owner.InvokeAsync(window =>
@@ -25,7 +25,7 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
                     var workspace = Send(Class("NSWorkspace"), Sel("sharedWorkspace"));
                     if (operation == DesktopFileOperation.Reveal)
                     { Arg(workspace, Sel("activateFileViewerSelectingURLs:"), Array(Url(path))); result.TrySetResult(Success()); }
-                    else result.TrySetResult(BoolArg(workspace, Sel("openURL:"), Url(path)) != 0 ? Success() : Failed(FailureCode.IoError));
+                    else result.TrySetResult(BoolArg(workspace, Sel("openURL:"), Url(path)) != 0 ? Success() : Failed(PlatformFailureCode.IoError));
                     return;
                 }
                 panel = Send(Class("NSOpenPanel"), Sel("openPanel")); Send(panel, Sel("retain"));
@@ -41,13 +41,14 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
                         if (response != 1 || cancellationToken.IsCancellationRequested)
                         {
                             if (cancellationToken.IsCancellationRequested) result.TrySetCanceled(cancellationToken);
-                            else result.TrySetResult(Failed(FailureCode.UserDismissed));
+                            else result.TrySetResult(Failed(PlatformFailureCode.UserDismissed));
                             return;
                         }
                         if (!owner.IsAvailable || owner.Generation != generation)
-                        { result.TrySetResult(new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed)); return; }
+                        { result.TrySetResult(new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed)); return; }
                         applicationUrl = Send(panel, Sel("URL")); Send(applicationUrl, Sel("retain"));
-                        var completion = MacDesktopBlock.Create((_, error) => result.TrySetResult(error == 0 ? Success() : Failed(FailureCode.IoError)));
+                        var completion = MacDesktopBlock.Create((_, error) => result.TrySetResult(error == 0 ? Success()
+                            : new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, ErrorDiagnostic(error))));
                         try
                         {
                             var configuration = Send(Class("NSWorkspaceOpenConfiguration"), Sel("configuration"));
@@ -66,7 +67,7 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
             var outcome = await result.Task.ConfigureAwait(false);
             return outcome;
         }
-        catch (OwnerClosedException) { return new PlatformResult<Unit>.Unavailable(UnavailableReason.OwnerClosed); }
+        catch (OwnerClosedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
         finally
         {
             await registration.DisposeAsync().ConfigureAwait(false);
@@ -96,6 +97,6 @@ internal sealed class MacDesktopFileLauncher(INativePickerOwner owner) : IDeskto
             return (File.GetUnixFileMode(path) & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
         }
     }
-    private static PlatformResult<Unit> Success() => new PlatformResult<Unit>.Success(new Unit());
-    private static PlatformResult<Unit> Failed(FailureCode code) => new PlatformResult<Unit>.Failed(code);
+    private static PlatformResult<PlatformUnit> Success() => new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+    private static PlatformResult<PlatformUnit> Failed(PlatformFailureCode code) => new PlatformResult<PlatformUnit>.Failed(code);
 }

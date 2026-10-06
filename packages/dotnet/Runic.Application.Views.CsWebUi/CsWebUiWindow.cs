@@ -9,11 +9,12 @@ namespace Runic.Application.Views.CsWebUi;
 /// public sealed partial class MainWindow(CsWebUiBridgeWindow&lt;MainViewModel&gt; host)
 ///     : CsWebUiWindow&lt;MainViewModel&gt;(host);
 /// </code>
-/// Open it with <c>provider.OpenWindow&lt;MainWindow, MainViewModel&gt;(host =&gt; new MainWindow(host))</c>.
+/// Open it with <c>provider.OpenWindow&lt;MainWindow, MainViewModel&gt;(host =&gt; new MainWindow(host))</c>
+/// and release it with <c>await using</c> or <see cref="DisposeAsync"/>.
 /// The members forward to <see cref="Host"/>, which owns the native window,
 /// its DI scope, and its Bridge attachments.
 /// </summary>
-public abstract class CsWebUiWindow<TViewModel> : RunicWindow<TViewModel>, IDisposable, IAsyncDisposable
+public abstract class CsWebUiWindow<TViewModel> : RunicWindow<TViewModel>, IBridgeWindow
     where TViewModel : class
 {
     /// <summary>Creates a Window that presents <paramref name="host"/>'s ViewModel.</summary>
@@ -39,14 +40,7 @@ public abstract class CsWebUiWindow<TViewModel> : RunicWindow<TViewModel>, IDisp
     public string StartServer(string content) => Host.StartServer(content);
 
     /// <inheritdoc cref="CsWebUiBridgeWindow{TViewModel}.CloseAsync"/>
-    public ValueTask<CsWebUiBridgeCloseResult> CloseAsync(TimeSpan timeout) => Host.CloseAsync(timeout);
-
-    /// <inheritdoc cref="CsWebUiBridgeWindow{TViewModel}.Dispose"/>
-    public void Dispose()
-    {
-        Host.Dispose();
-        GC.SuppressFinalize(this);
-    }
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout) => Host.CloseAsync(timeout);
 
     /// <inheritdoc cref="CsWebUiBridgeWindow{TViewModel}.DisposeAsync"/>
     public async ValueTask DisposeAsync()

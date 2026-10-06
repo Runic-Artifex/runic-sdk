@@ -17,7 +17,7 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
         PortalConnection? session = null;
         try
         {
-            if (!owner.IsAvailable) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(UnavailableReason.OwnerClosed);
+            if (!owner.IsAvailable) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             parent = await owner.ExportParentAsync(cancellationToken).ConfigureAwait(false);
             if (!(parent.Identifier.StartsWith("x11:", StringComparison.Ordinal) && parent.Identifier.Length > 4
                 || parent.Identifier.StartsWith("wayland:", StringComparison.Ordinal) && parent.Identifier.Length > 8))
@@ -55,11 +55,13 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
             {
                 var response = await responses.Reader.ReadAsync(deadline.Token).ConfigureAwait(false);
                 if (response.Path != handle) continue;
-                if (response.Code != 0) return new PlatformResult<IDesktopInhibitionLease>.Failed(response.Code == 1 ? FailureCode.PermissionDenied : FailureCode.IoError);
+                if (response.Code != 0)
+                    return new PlatformResult<IDesktopInhibitionLease>.Failed(response.Code == 1 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                        PortalErrors.Response(response.Code));
                 break;
             }
             deadline.Token.ThrowIfCancellationRequested();
-            if (!owner.IsAvailable || owner.Generation != generation) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(UnavailableReason.OwnerClosed);
+            if (!owner.IsAvailable || owner.Generation != generation) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             // The parent identifies the window only while the portal handles the request.
             // Release it now: GTK3 allows one Wayland export per window at a time.
             var lease = new Lease(session, handle, effects);
@@ -67,12 +69,12 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
             return new PlatformResult<IDesktopInhibitionLease>.Success(lease);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(parent?.OwnerClosed.IsCancellationRequested == true || !owner.IsAvailable || owner.Generation != generation ? UnavailableReason.OwnerClosed : UnavailableReason.BackendUnavailable); }
-        catch (OwnerClosedException) { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(UnavailableReason.OwnerClosed); }
+        { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(parent?.OwnerClosed.IsCancellationRequested == true || !owner.IsAvailable || owner.Generation != generation ? PlatformUnavailableReason.OwnerClosed : PlatformUnavailableReason.BackendUnavailable); }
+        catch (OwnerClosedException) { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
         catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.portal.Error.NotAllowed" or "org.freedesktop.DBus.Error.AccessDenied")
-        { return new PlatformResult<IDesktopInhibitionLease>.Failed(FailureCode.PermissionDenied); }
+        { return new PlatformResult<IDesktopInhibitionLease>.Failed(PlatformFailureCode.PermissionDenied, PortalErrors.Reply(error)); }
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException or IOException or ChannelClosedException)
-        { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(UnavailableReason.BackendUnavailable); }
+        { return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         finally
         {
             // Failed/cancelled calls lose their dedicated bus connection, which

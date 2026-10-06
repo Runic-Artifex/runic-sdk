@@ -83,7 +83,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             ClientKey: clientKey, ConnectionKey: connectionKey));
 
     /// <summary>Stops admission and waits for accepted Window operations.</summary>
-    public ValueTask<WindowContentSessionCloseResult> BeginCloseAsync(TimeSpan timeout) =>
+    public ValueTask<BridgeWindowCloseResult> BeginCloseAsync(TimeSpan timeout) =>
         Content.BeginCloseAsync(timeout);
 
     /// <summary>Detaches the root bridge and disposes the content session and transport.</summary>

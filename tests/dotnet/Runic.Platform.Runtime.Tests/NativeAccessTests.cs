@@ -14,12 +14,12 @@ internal static class NativeAccessTests
             var access = new Access();
             var selected = new Selection(new(directory, access, false));
             var backend = new NativePickerBackend(new TestOwner(), selected);
-            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: FailureCode.PermissionDenied },
+            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.PermissionDenied },
                 "A directory cannot be consumed as a read-file lease.");
             Check(access.Releases == 1, "Failed native acquisition leaked access.");
             access = new Access();
             selected.Result = new(Path.Combine(directory, "missing.txt"), access, false);
-            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: FailureCode.IoError },
+            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IoError },
                 "A file removed after selection must produce a stable failure.");
             Check(access.Releases == 1, "Disappeared selection leaked access.");
             if (!OperatingSystem.IsWindows())
@@ -29,7 +29,7 @@ internal static class NativeAccessTests
                 using (var mkfifo = System.Diagnostics.Process.Start("mkfifo", [fifo])) await mkfifo.WaitForExitAsync();
                 access = new Access();
                 selected.Result = new(fifo, access, false);
-                Check(await backend.OpenFileAsync(new()).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: FailureCode.IoError },
+                Check(await backend.OpenFileAsync(new()).AsTask().WaitAsync(TimeSpan.FromSeconds(3)) is PickerResult<IReadFileLease>.Failed { Code: PlatformFailureCode.IoError },
                     "A special file must be refused without blocking.");
                 Check(access.Releases == 1, "Refused special file leaked access.");
                 File.Delete(fifo);
@@ -42,7 +42,7 @@ internal static class NativeAccessTests
             await save.Value.DisposeAsync();
             Check(access.Releases == 1 && Directory.GetFiles(directory).Length == 0, "Unsupported save changed the directory or leaked access.");
             selected.Unavailable = true;
-            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.BackendUnavailable },
+            Check(await backend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
                 "Missing native backend was reported as dismissal.");
 
             foreach (bool saveOperation in new[] { false, true })
@@ -69,8 +69,8 @@ internal static class NativeAccessTests
                     return new(Path.Combine(directory, "stale.txt"), staleAccess, true);
                 }));
                 bool closed = saveOperation
-                    ? await staleBackend.SaveFileAsync(new("stale.txt")) is PickerResult<ISaveFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed }
-                    : await staleBackend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: UnavailableReason.OwnerClosed };
+                    ? await staleBackend.SaveFileAsync(new("stale.txt")) is PickerResult<ISaveFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }
+                    : await staleBackend.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed };
                 Check(closed && staleAccess.Releases == 1 && Directory.GetFiles(directory).Length == 0,
                     "A stale owner selection must release acquired access without touching files.");
             }

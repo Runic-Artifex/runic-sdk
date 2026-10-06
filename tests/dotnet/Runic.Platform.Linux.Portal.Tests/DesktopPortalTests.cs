@@ -39,18 +39,22 @@ internal static class DesktopPortalTests
         await using var notifications = new PortalNotifications(destination: connection.UniqueName!);
         var activated = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         notifications.Activated += (_, activation) => activated.TrySetResult(activation);
-        Check(await notifications.RequestPermissionAsync() is PlatformResult<Unit>.Success, "notification backend capability");
-        Check(await notifications.ShowAsync(new("saved", "Saved", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "notification submission");
+        Check(await notifications.RequestPermissionAsync() is PlatformResult<PlatformUnit>.Success, "notification backend capability");
+        Check(await notifications.ShowAsync(new("saved", "Saved", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<PlatformUnit>.Success, "notification submission");
         Check((await activated.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "action arriving before method reply is routed");
-        Check(await notifications.RemoveAsync("saved") is PlatformResult<Unit>.Success && service.Removed == "saved", "notification removal");
+        Check(await notifications.RemoveAsync("saved") is PlatformResult<PlatformUnit>.Success && service.Removed == "saved", "notification removal");
         for (int i = 0; i < 80; i++)
-            Check(await notifications.ShowAsync(new($"bulk-{i}", "Bulk", "Body")) is PlatformResult<Unit>.Success, "unremoved notifications evict the oldest routing entry");
+            Check(await notifications.ShowAsync(new($"bulk-{i}", "Bulk", "Body")) is PlatformResult<PlatformUnit>.Success, "unremoved notifications evict the oldest routing entry");
         var latest = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         notifications.Activated += (_, activation) => { if (activation.NotificationId == "latest") latest.TrySetResult(activation); };
-        Check(await notifications.ShowAsync(new("latest", "Latest", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<Unit>.Success, "submission after eviction");
+        Check(await notifications.ShowAsync(new("latest", "Latest", "Body") { Actions = [new("open", "Open result")] }) is PlatformResult<PlatformUnit>.Success, "submission after eviction");
         Check((await latest.Task.WaitAsync(TimeSpan.FromSeconds(3))).ActionId == "open", "recent notification actions still route after eviction");
         service.Deny = true;
-        Check(await notifications.ShowAsync(new("denied", "Title", "Body")) is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }, "portal permission denial remains distinct");
+        Check(await notifications.ShowAsync(new("denied", "Title", "Body")) is PlatformResult<PlatformUnit>.Failed
+        {
+            Code: PlatformFailureCode.PermissionDenied,
+            Diagnostic: { Domain: "org.freedesktop.portal.Error.NotAllowed", Code: 0, Message: null },
+        }, "portal permission denial remains distinct and carries the D-Bus error");
         service.Deny = false;
         var path = System.IO.Path.GetTempFileName();
         try
@@ -78,7 +82,7 @@ internal static class DesktopPortalTests
         var cold = new TaskCompletionSource<DesktopNotificationActivation>(TaskCreationOptions.RunContinuationsAsynchronously);
         installed.Activated += (_, activation) => cold.TrySetResult(activation);
         service.Calls.Clear();
-        Check(await installed.RequestPermissionAsync() is PlatformResult<Unit>.Success, "installed application name acquired");
+        Check(await installed.RequestPermissionAsync() is PlatformResult<PlatformUnit>.Success, "installed application name acquired");
         Check(service.RegisteredId == appId && service.Calls is ["Register", "Get"], "host identity registered before notification capability call");
         await connection.CallMethodAsync(Activation(connection, appId));
         var received = await cold.Task.WaitAsync(TimeSpan.FromSeconds(3));
@@ -92,8 +96,8 @@ internal static class DesktopPortalTests
             await using var invalidIdentity = new PortalNotifications(destination: connection.UniqueName!, applicationId: "org.runic.MissingIdentity",
                 diagnosticSink: diagnostic => { diagnostics.Add(diagnostic.Code); throw new InvalidOperationException("observer failure"); });
             var rejected = await invalidIdentity.ShowAsync(new("rejected", "Title", "Body"));
-            Check(denied ? rejected is PlatformResult<Unit>.Failed { Code: FailureCode.PermissionDenied }
-                : rejected is PlatformResult<Unit>.Unavailable { Reason: UnavailableReason.BackendUnavailable }, "registration failure remains typed despite diagnostic observer failure");
+            Check(denied ? rejected is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }
+                : rejected is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable }, "registration failure remains typed despite diagnostic observer failure");
             Check(service.Calls is ["Register"] && diagnostics.Count == 2 && diagnostics[0] == "portal-identity-registration-failed", "failed identity registration prevents notification submission and emits identity and operation diagnostics");
         }
         service.Calls.Clear();
@@ -101,7 +105,7 @@ internal static class DesktopPortalTests
         await using var invalidSettings = new PortalDesktopSettings(destination: connection.UniqueName!,
             application: new PortalApplication("org.runic.MissingIdentity", diagnostic =>
             { sharedDiagnostics.Add(diagnostic); throw new InvalidOperationException("observer failure"); }));
-        Check(await invalidSettings.ReadAsync() is PlatformResult<DesktopAppearance>.Unavailable { Reason: UnavailableReason.BackendUnavailable },
+        Check(await invalidSettings.ReadAsync() is PlatformResult<DesktopAppearance>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable },
             "shared registration failure remains typed despite diagnostic observer failure");
         Check(service.Calls is ["Register"] && sharedDiagnostics is [{ Code: "portal-identity-registration-failed" }],
             "shared registration failure prevents requests and emits one actionable diagnostic");

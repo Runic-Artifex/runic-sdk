@@ -28,10 +28,10 @@ static void Run()
     foreach (string value in new[] { "", "Runic clipboard é 日本語 🜁", "embedded\0nul" })
     {
         var write = clipboard.WriteTextAsync(value).AsTask().GetAwaiter().GetResult();
-        Check(write is PlatformResult<Unit>.Success, $"Native write failed: {write}.");
+        Check(write is PlatformResult<PlatformUnit>.Success, $"Native write failed: {write}.");
         var read = clipboard.ReadTextAsync(value.Length).AsTask().GetAwaiter().GetResult();
         Check(read is PlatformResult<string?>.Success success && success.Value == value, $"Clipboard round trip failed for expected length {value.Length}; actual {Describe(read)}.");
-        if (value.Length != 0) Check(clipboard.ReadTextAsync(value.Length - 1).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "Read bound ignored.");
+        if (value.Length != 0) Check(clipboard.ReadTextAsync(value.Length - 1).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge }, "Read bound ignored.");
     }
     foreach (bool bigEndian in new[] { false, true })
     {
@@ -39,12 +39,12 @@ static void Run()
         byte[] encoded = [.. encoding.GetPreamble(), .. encoding.GetBytes("日本語 🜁")];
         PasteboardProbe.SetSecondItem("public.utf16-plain-text", encoded);
         Check(clipboard.ReadTextAsync(6).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: "日本語 🜁" }, "Second-item UTF16/BOM read failed.");
-        Check(clipboard.ReadTextAsync(5).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.TooLarge }, "UTF16 bound ignored.");
+        Check(clipboard.ReadTextAsync(5).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge }, "UTF16 bound ignored.");
     }
     PasteboardProbe.SetSecondItem("public.utf16-plain-text", [0x41]);
-    Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: FailureCode.InvalidData }, "Malformed UTF16 accepted.");
+    Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Failed { Code: PlatformFailureCode.InvalidData }, "Malformed UTF16 accepted.");
     const string observation = "Runic independent clipboard observation é 日本語";
-    Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Observer write failed.");
+    Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<PlatformUnit>.Success, "Observer write failed.");
     Check(ProcessText("/usr/bin/pbpaste", null) == observation, "Independent pbpaste did not observe native write.");
     ProcessText("/usr/bin/pbcopy", observation + " external");
     Check(clipboard.ReadTextAsync(1000).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Success { Value: observation + " external" }, "External pbcopy was not observed.");
@@ -52,7 +52,7 @@ static void Run()
     cancelled.Cancel();
     try { clipboard.WriteTextAsync("must not write", cancelled.Token).AsTask().GetAwaiter().GetResult(); throw new InvalidOperationException("Cancellation ignored."); }
     catch (OperationCanceledException) { }
-    Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<Unit>.Success, "Post cancellation retry failed.");
+    Check(clipboard.WriteTextAsync(observation).AsTask().GetAwaiter().GetResult() is PlatformResult<PlatformUnit>.Success, "Post cancellation retry failed.");
     owner.Available = false;
     Check(clipboard.ReadTextAsync(100).AsTask().GetAwaiter().GetResult() is PlatformResult<string?>.Unavailable, "Closed owner accepted.");
     Console.WriteLine("PASS native AppKit clipboard with independent pbcopy/pbpaste observation");

@@ -27,10 +27,28 @@ public interface IBridgeTransport
     /// <returns>A lease that unbinds the route.</returns>
     IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler);
     /// <summary>Delivers an encoded state snapshot to the browser listener for <paramref name="name"/>.</summary>
+    /// <remarks>
+    /// A transport that does not implement <see cref="IAsyncBridgeTransport"/> must send every
+    /// call, in call order and without coalescing, because collection delta frames depend on
+    /// every preceding frame. CS-WebUI does this: each call writes one WebSocket message to
+    /// every connected client and returns once the socket write completes.
+    /// </remarks>
     void Publish(string name, string stateJson);
 }
 
 /// <summary>A host that can acknowledge state delivery before the next dependent frame is sent.</summary>
+/// <remarks>
+/// Desktop implements this because its <see cref="IBridgeTransport.Publish"/> coalesces
+/// snapshots per route, and awaiting script completion lets a slow WebView fall behind into
+/// a bounded recovery snapshot. CS-WebUI does not implement it: WebUI's only acknowledged
+/// script call answers from one client and blocks a native thread. Its
+/// <see cref="IBridgeTransport.Publish"/> instead writes to every client synchronously,
+/// under WebUI's process-wide send lock, and blocks until each socket write completes or
+/// times out. A slow client therefore applies TCP-level back-pressure: the blocked write
+/// holds the bridge's delivery queue, which falls back to a recovery snapshot once it is
+/// full, and it also delays sends to every other CS-WebUI window. This is not application-level
+/// acknowledgement; frames are written in order, not confirmed as applied.
+/// </remarks>
 public interface IAsyncBridgeTransport : IBridgeTransport
 {
     /// <summary>Delivers one frame without coalescing it with other frames.</summary>

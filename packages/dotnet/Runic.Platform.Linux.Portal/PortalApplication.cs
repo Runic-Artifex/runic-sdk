@@ -41,7 +41,7 @@ public sealed class PortalApplication
     /// <summary>Creates explicitly unparented file dialogs for a hostless application.</summary>
     public IPickerBackend CreateUnparentedFileDialogs() => CreateFileDialogs(new PortalPlatformProvider.UnparentedOwner());
     /// <summary>Asks the desktop to open an HTTP, HTTPS or mail URI for this presentation.</summary>
-    public ValueTask<PlatformResult<Unit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
+    public ValueTask<PlatformResult<PlatformUnit>> OpenUriAsync(IPortalWindowOwner owner, Uri uri, CancellationToken cancellationToken = default) =>
         PortalPlatformProvider.OpenUriCoreAsync(owner, uri, this, cancellationToken);
 
     internal void Diagnose(string code, string message, string remedy)
