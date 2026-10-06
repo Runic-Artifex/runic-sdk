@@ -39,3 +39,5 @@ export interface ViewReference<TClient = unknown> {
   readonly kind: string;
   connect(): Promise<TClient>;
 }
+
+// CI measurement: views-only change, do not merge.
