@@ -50,7 +50,7 @@ internal static class Program
         await using var host = await DesktopHost.StartAsync().ConfigureAwait(false);
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            ContentHandler = source.ToDesktopContentHandler(),
+            Content = new DesktopContent.Handler(source.ToDesktopContentHandler()),
         }).ConfigureAwait(false);
         using var client = new HttpClient();
 
@@ -128,7 +128,7 @@ internal static class Program
             await using var desktopHost = await DesktopHost.StartAsync().ConfigureAwait(false);
             await using var surface = await desktopHost.CreateSurfaceAsync(new DesktopSurfaceOptions
             {
-                ContentHandler = source.ToDesktopContentHandler(routing),
+                Content = new DesktopContent.Handler(source.ToDesktopContentHandler(routing)),
             }).ConfigureAwait(false);
 
             foreach (string prefix in new[] { "", "ui" })

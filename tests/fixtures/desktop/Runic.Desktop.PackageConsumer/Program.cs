@@ -3,8 +3,8 @@ using Runic.Desktop;
 await using var host = await DesktopHost.StartAsync();
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    ContentHandler = static (request, _) => ValueTask.FromResult<ContentResponse?>(
-        request.Path == "/probe" ? ContentResponse.Text("package-ok", "text/plain") : null),
+    Content = new DesktopContent.Handler(static (request, _) => ValueTask.FromResult<ContentResponse?>(
+        request.Path == "/probe" ? ContentResponse.Text("package-ok", "text/plain") : null)),
 });
 
 using var client = new HttpClient();

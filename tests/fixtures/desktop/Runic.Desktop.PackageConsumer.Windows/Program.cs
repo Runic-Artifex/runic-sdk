@@ -13,7 +13,7 @@ using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
 await using var host = await DesktopHost.StartAsync();
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    Content = "<title>Windows package consumer</title><script src=\"webui.js\"></script>",
+    Content = new DesktopContent.Html("<title>Windows package consumer</title><script src=\"webui.js\"></script>"),
 });
 
 if (!surface.Url.IsLoopback)

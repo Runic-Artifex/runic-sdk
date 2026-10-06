@@ -22,7 +22,7 @@ AssetArchiveSource assets = AssetArchive.ReadEmbedded(Assembly.GetExecutingAssem
 await using var host = await DesktopHost.StartAsync();
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    ContentHandler = assets.ToDesktopContentHandler(),
+    Content = new DesktopContent.Handler(assets.ToDesktopContentHandler()),
 });
 ```
 

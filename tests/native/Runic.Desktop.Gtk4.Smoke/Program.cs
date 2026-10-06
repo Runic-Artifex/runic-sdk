@@ -234,7 +234,7 @@ static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
     });
     await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
     {
-        Content = "<!doctype html><title>GTK4 bridge</title><script src=\"webui.js\"></script><main>GTK4</main>",
+        Content = new DesktopContent.Html("<!doctype html><title>GTK4 bridge</title><script src=\"webui.js\"></script><main>GTK4</main>"),
     });
 
     var decisions = new Queue<bool>([false, true]);
@@ -260,7 +260,7 @@ static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
 
     await using var restartedSurface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
     {
-        Content = "<!doctype html><title>GTK4 restarted</title><script src=\"webui.js\"></script>",
+        Content = new DesktopContent.Html("<!doctype html><title>GTK4 restarted</title><script src=\"webui.js\"></script>"),
     });
     await using var restartedWindow = await restartedSurface.OpenWindowAsync(new DesktopWindowOptions
     {

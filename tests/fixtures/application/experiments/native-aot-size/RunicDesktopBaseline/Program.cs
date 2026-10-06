@@ -9,7 +9,7 @@ var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsy
 await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } });
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    Content = ComparisonContent.Html,
+    Content = new DesktopContent.Html(ComparisonContent.Html),
 });
 using var ping = surface.RegisterCapability(
     "ping",

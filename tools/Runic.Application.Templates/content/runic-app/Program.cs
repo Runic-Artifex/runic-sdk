@@ -29,7 +29,7 @@ await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
 });
 await using var window = await provider.OpenDesktopWindowAsync<WorkspaceWindow, WorkspaceViewModel>(
     desktop,
-    new DesktopSurfaceOptions { RootFolder = Path.Combine(AppContext.BaseDirectory, "www"), Content = "index.html" },
+    new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") },
     host => new WorkspaceWindow(host),
     new DesktopWindowOptions
     {

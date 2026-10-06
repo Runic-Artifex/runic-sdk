@@ -20,7 +20,7 @@ internal static class UsabilitySmoke
             Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 },
             WindowHostFactory = factory, WaitForConnection = true,
         });
-        await using var surface = await host.CreateSurfaceAsync(new() { Content = Page });
+        await using var surface = await host.CreateSurfaceAsync(new() { Content = new DesktopContent.Html(Page) });
         await using var window = await surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded, Width = 900, Height = 760 });
         var owner = new Gtk4PortalWindowOwner(new HostOwner(factory.Host!));
         var app = new PortalApplication(Environment.GetEnvironmentVariable("RUNIC_TEST_APP_ID") ?? "com.runic.tests.Activation", Console.WriteLine);

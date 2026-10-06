@@ -214,19 +214,19 @@ public sealed class DesktopApiTests
         await using var first = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
             Path = "first",
-            ContentHandler = static (request, _) => ValueTask.FromResult<ContentResponse?>(
-                ContentResponse.Text($"first:{request.Services.GetRequiredService<RequestMarker>().Id}")),
+            Content = new DesktopContent.Handler(static (request, _) => ValueTask.FromResult<ContentResponse?>(
+                ContentResponse.Text($"first:{request.Services.GetRequiredService<RequestMarker>().Id}"))),
         });
         await using var second = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
             Path = "second",
-            ContentHandler = static (request, _) => ValueTask.FromResult<ContentResponse?>(
-                ContentResponse.Text($"second:{request.Services.GetRequiredService<RequestMarker>().Id}")),
+            Content = new DesktopContent.Handler(static (request, _) => ValueTask.FromResult<ContentResponse?>(
+                ContentResponse.Text($"second:{request.Services.GetRequiredService<RequestMarker>().Id}"))),
         });
         await using var isolated = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
             UseIsolatedListener = true,
-            Content = "isolated",
+            Content = new DesktopContent.Html("isolated"),
         });
 
         Assert.Equal(first.Url.Port, second.Url.Port);
@@ -252,11 +252,11 @@ public sealed class DesktopApiTests
         await using var host = await DesktopHost.StartAsync();
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            ContentHandler = (request, _) =>
+            Content = new DesktopContent.Handler((request, _) =>
             {
                 observed = request.Headers;
                 return ValueTask.FromResult<ContentResponse?>(ContentResponse.Text("ok"));
-            },
+            }),
         });
         using var client = new HttpClient();
         client.DefaultRequestHeaders.Add("If-None-Match", "\"asset-v1\"");
@@ -279,7 +279,7 @@ public sealed class DesktopApiTests
         });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            Content = "original",
+            Content = new DesktopContent.Html("original"),
         });
         await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
         {
@@ -452,7 +452,7 @@ public sealed class DesktopApiTests
         });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            Content = "never connects",
+            Content = new DesktopContent.Html("never connects"),
         });
 
         var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
@@ -485,7 +485,7 @@ public sealed class DesktopApiTests
         });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            Content = "no bridge script",
+            Content = new DesktopContent.Html("no bridge script"),
         });
         var opening = surface.OpenWindowAsync(new DesktopWindowOptions
         {
@@ -520,7 +520,7 @@ public sealed class DesktopApiTests
         await using var host = await DesktopHost.StartAsync();
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            ContentHandler = (request, _) => ValueTask.FromResult<ContentResponse?>(
+            Content = new DesktopContent.Handler((request, _) => ValueTask.FromResult<ContentResponse?>(
                 request.Path == "/stream"
                     ? ContentResponse.Stream(
                         _ =>
@@ -529,7 +529,7 @@ public sealed class DesktopApiTests
                             return ValueTask.FromResult<Stream>(new MemoryStream("stream"u8.ToArray()));
                         },
                         contentLength: 6)
-                    : null),
+                    : null)),
         });
         using var client = new HttpClient();
 
@@ -558,12 +558,130 @@ public sealed class DesktopApiTests
     public async Task LocalContentDeniesMediaCaptureByDefault()
     {
         await using var host = await DesktopHost.StartAsync();
-        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = "safe" });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("safe") });
         using var client = new HttpClient();
 
         using var response = await client.GetAsync(surface.Url);
 
         Assert.Equal("camera=(), microphone=()", response.Headers.GetValues("Permissions-Policy").Single());
+    }
+
+    [Fact]
+    public async Task DirectoryContentOpensItsEntryAndServesItsFiles()
+    {
+        var root = Directory.CreateTempSubdirectory("runic-desktop-typed-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "main.html"), "main");
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "index.html"), "index");
+            Directory.CreateDirectory(Path.Combine(root.FullName, "nested"));
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "nested", "app.js"), "script");
+            var factory = new RecordingWindowHostFactory();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = factory,
+                WaitForConnection = false,
+            });
+            using var client = new HttpClient();
+
+            await using (var entry = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(root.FullName, "main.html"),
+            }))
+            {
+                Assert.Equal("main", await client.GetStringAsync(entry.Url));
+                Assert.Equal("script", await client.GetStringAsync(new Uri(entry.Url, "nested/app.js")));
+                await using var window = await entry.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+                Assert.Equal(new Uri(entry.Url, "main.html"), factory.Host?.Url);
+            }
+
+            await using var discovered = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(root.FullName),
+            });
+            Assert.Equal("index", await client.GetStringAsync(discovered.Url));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task OnlyDirectoryContentServesLocalFiles()
+    {
+        // Before 0.7, every surface also served the current directory.
+        var name = $"runic-typed-{Guid.NewGuid():N}.txt";
+        var file = Path.Combine(Environment.CurrentDirectory, name);
+        try
+        {
+            await File.WriteAllTextAsync(file, "local file");
+            await using var host = await DesktopHost.StartAsync();
+            using var client = new HttpClient();
+            foreach (DesktopContent content in new DesktopContent[]
+            {
+                new DesktopContent.Html("<p>inline</p>"),
+                new DesktopContent.Handler(static (_, _) => ValueTask.FromResult<ContentResponse?>(null)),
+                new DesktopContent.ExternalUrl(new Uri("https://example.test/")),
+            })
+            {
+                await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = content });
+                using var response = await client.GetAsync(new Uri(surface.Url, name));
+                Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            }
+
+            await using var directory = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(Environment.CurrentDirectory),
+            });
+            Assert.Equal("local file", await client.GetStringAsync(new Uri(directory.Url, name)));
+            await using var html = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("<p>inline</p>"),
+            });
+            Assert.Equal("<p>inline</p>", await client.GetStringAsync(html.Url));
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task ExternalUrlContentOpensTheUrl()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+        });
+        var external = new Uri("https://example.test/path?a=1");
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.ExternalUrl(external),
+        });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+
+        Assert.Equal(external, factory.Host?.Url);
+    }
+
+    [Fact]
+    public async Task TypedContentRejectsInvalidValuesWhenConstructed()
+    {
+        Assert.Throws<ArgumentException>(() => new DesktopContent.ExternalUrl(new Uri("file:///tmp/index.html")));
+        Assert.Throws<ArgumentException>(() => new DesktopContent.ExternalUrl(new Uri("index.html", UriKind.Relative)));
+        Assert.Throws<ArgumentException>(() => new DesktopContent.Directory("www", "../index.html"));
+        Assert.Throws<ArgumentException>(() => new DesktopContent.Directory("www", Path.GetFullPath("index.html")));
+        Assert.Throws<ArgumentException>(() => new DesktopContent.Directory(" "));
+        Assert.Throws<ArgumentNullException>(() => new DesktopContent.Html(null!));
+        Assert.Throws<ArgumentNullException>(() => new DesktopContent.Handler(null!));
+
+        await using var host = await DesktopHost.StartAsync();
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(async () => await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Directory(Path.Combine(Path.GetTempPath(), $"runic-missing-{Guid.NewGuid():N}")),
+        }));
     }
 
     [Fact]
@@ -574,14 +692,14 @@ public sealed class DesktopApiTests
         await using var host = await DesktopHost.StartAsync();
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
-            ContentHandler = (request, _) =>
+            Content = new DesktopContent.Handler((request, _) =>
             {
                 observedRequest = request;
                 return ValueTask.FromResult<ContentResponse?>(
                     request.Path == "/stream"
                         ? ContentResponse.Stream(_ => ValueTask.FromResult<Stream>(stream))
                         : null);
-            },
+            }),
         });
         using var client = new HttpClient();
         using var response = await client.GetAsync(

@@ -55,7 +55,7 @@ internal sealed record PresentationSecurityPolicy(
 }
 
 internal sealed record PresentationSurfaceRuntimeOptions(
-    string RootFolder,
+    string? RootFolder,
     string? BrowserFolder,
     IWebUiEmbeddedHostFactory EmbeddedHostFactory,
     bool WaitForConnection,
