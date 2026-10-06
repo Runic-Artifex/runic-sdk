@@ -59,6 +59,22 @@ async function connectRows(initial: unknown, recovery: unknown) {
   return { client, push, recoveries: () => reads - 1 };
 }
 
+/** A minimal reading of collection-deltas.md, independent of the runtime's validation. */
+function applyReference(state: Wire, wire: unknown): Wire {
+  const frame = wire as { readonly __runicDelta?: number; readonly revision: number; readonly changes?: readonly Change[] };
+  if (frame.__runicDelta === undefined) return wire as Wire;
+  const rows = [...(state.rows as unknown[])];
+  for (const change of frame.changes!) {
+    const count = change.keys.length;
+    if (change.kind === "add") rows.splice(change.index, 0, ...change.items);
+    else if (change.kind === "remove") rows.splice(change.index, count);
+    else if (change.kind === "replace") rows.splice(change.index, count, ...change.items);
+    else rows.splice(change.index, 0, ...rows.splice(change.oldIndex, count));
+  }
+  return { ...state, revision: frame.revision, rows };
+}
+type Change = { readonly kind: string; readonly index: number; readonly oldIndex: number; readonly keys: readonly string[]; readonly items: readonly unknown[] };
+
 const fixtures = readdirSync(directory).filter(name => name.endsWith(".json")).sort();
 
 test("every frame kind and recovery path has a fixture", () => {
@@ -70,13 +86,28 @@ for (const file of fixtures) {
   for (const testCase of fixture.cases) {
     test(`${file}: ${testCase.name}`, async () => {
       const expected = expand(testCase.expected);
-      const { client, push, recoveries } = await connectRows(expand(testCase.initial), expected);
+      let reference = expand(testCase.initial) as Wire;
+      const { client, push, recoveries } = await connectRows(reference, expected);
+      let notifications = 0;
+      client.subscribe(() => { notifications++; });
+      const firstDropped = Math.min(...(testCase.dropped ?? [Infinity]));
       for (const [index, frame] of testCase.frames.entries()) {
         if (testCase.dropped?.includes(index)) continue;
         const wire = expand(frame);
+        const before = notifications;
         // A repeated frame is a duplicate and must not change the result.
         push(wire); push(wire);
+        if (index > firstDropped) continue;
+        // Until a frame is missed, every frame applies without recovery and
+        // matches an independent reading of the frame format.
+        reference = applyReference(reference, wire);
+        assert.equal(recoveries(), 0, `frame ${index} needed a recovery`);
+        // A repeated full state at the same revision is accepted again; a repeated delta is not.
+        if ((wire as { __runicDelta?: number }).__runicDelta === undefined) assert.ok(notifications > before, `frame ${index} was not applied`);
+        else assert.equal(notifications - before, 1, `frame ${index} was not applied exactly once`);
+        assert.deepEqual(client.snapshot, hydrate(reference), `frame ${index} produced another state`);
       }
+      if (testCase.dropped === undefined) assert.deepEqual(reference, expected);
       await new Promise(resolve => setTimeout(resolve, 0));
       assert.equal(recoveries(), testCase.recoveries ?? 0);
       assert.deepEqual(client.snapshot, hydrate(expected as Wire));
@@ -90,7 +121,7 @@ test("a frame above 4096 changes is rejected and recovered with one snapshot rea
   const atCap = fixture.cases[0]!;
   const frame = expand(atCap.frames[0]) as { changes: unknown[] };
   frame.changes.push(...(expand([{ $adds: [4096, 1] }]) as unknown[]));
-  const recovery = expand({ revision: 4096, rows: [{ $rows: [0, 4097] }], title: "rows" });
+  const recovery = expand({ revision: 4097, rows: [{ $rows: [0, 4097] }], title: "rows" });
   const { client, push, recoveries } = await connectRows(expand(atCap.initial), recovery);
   push(frame);
   await new Promise(resolve => setTimeout(resolve, 0));

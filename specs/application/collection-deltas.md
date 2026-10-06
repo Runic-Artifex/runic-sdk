@@ -19,8 +19,18 @@ generated client registers a codec and key function for the field with
 `defineCollection` (see the [views package guide](../../packages/web/views/README.md#incremental-collections)).
 The key property is a nonnullable `string`, `Guid` or `Int32`. Its wire key is the
 string itself, the lowercase `D` form of a `Guid`, or the invariant decimal form
-of an `Int32`. Keys must be nonempty and unique within the field; the client
-rejects a state or frame that breaks this.
+of an `Int32`. Keys must be nonempty and unique within the field. The client
+validates keys in full states as well as frames: a full state with an empty or
+duplicate key fails the initial connection (the snapshot reply is an invalid
+state) or, when pushed later, is rejected and reported, so the client stays at
+its last state.
+The producer does not check keys, so such rows leave the route stuck.
+
+A ViewModel that implements `INotifyDataErrorInfo`, or whose state graph
+contains a type that does, never publishes frames: the generated bridge omits
+every collection descriptor so validation stays atomic with full states. Its
+generated client still registers `defineCollection` codecs, which then only
+validate full states.
 
 The opt-in changes the contract fingerprint. Generated clients and runtime
 packages must come from the same build.
@@ -66,7 +76,7 @@ previous change in the same frame.
 | --- | --- | --- | --- | --- | --- |
 | `add` | insertion point | `-1` | keys of the new rows | the new rows | Inserts `items` at `index`. |
 | `remove` | first removed row | equal to `index` | keys of the removed rows | `[]` | Removes `keys.length` rows at `index`. |
-| `replace` | first replaced row | equal to `index` | keys of the old rows | the new rows | Replaces `keys.length` rows at `index` with `items`. New rows may have other keys. |
+| `replace` | first replaced row | equal to `index` | keys of the old rows | the new rows, as many as `keys` | Replaces `keys.length` rows at `index` with `items`. New rows may have other keys. |
 | `move` | final position after removal | first moved row | keys of the moved rows | `[]` | Removes `keys.length` rows at `oldIndex`, then inserts them at `index`. |
 
 Fixtures: [add](fixtures/collection-deltas/add.json),
@@ -75,9 +85,15 @@ Fixtures: [add](fixtures/collection-deltas/add.json),
 [move](fixtures/collection-deltas/move.json) and an
 [ordered batch](fixtures/collection-deltas/batch.json).
 
+The producer serialises each notification as raised. A custom
+`INotifyCollectionChanged` whose `Replace` has different old and new item counts
+produces a `replace` with `items.length` different from `keys.length`; the client
+rejects that frame and recovers with a snapshot.
+
 A property change on a row that implements `INotifyPropertyChanged` publishes a
 `replace` of that row with `index` equal to `oldIndex`. Such rows need a stable
-key.
+key. Only direct rows are matched: a property change on an object nested inside
+a row publishes a full state.
 
 ## Producing frames
 
@@ -93,8 +109,12 @@ following applies to the pending work:
 
 - A `Reset` notification, or a notification without a starting index.
 - A non-collection member changed (mixed changes publish one atomic state).
-- Validation state, or a row reached through more than one DTO path (for example
-  a collection row that is also exposed as `Selected`).
+- A row reached through more than one DTO path (for example a collection row
+  that is also exposed as `Selected`), or a property change on an object nested
+  inside a row.
+
+(ViewModels with validation never publish frames at all; see
+[Opting in](#opting-in).)
 - More than 4,096 pending changes. The full state carries the final revision of
   the batch ([fixture](fixtures/collection-deltas/overflow.json)).
 - Delivery cannot retain the frame (see [Delivery](#delivery-and-recovery-snapshots)).
@@ -132,18 +152,23 @@ incoming frame it:
 3. Recovers if it has no state yet, `baseRevision` is not the current revision,
    or `revision` is not greater than `baseRevision`.
 4. Applies all changes to a copy of the state. It recovers, keeping the previous
-   state, if `changes` is empty or longer than 4,096, a field is not a registered
-   collection, an index is out of range, `keys` or `items` is not an array, the
-   rows at the target position do not have the given `keys`, a row fails the
-   field's codec, added rows do not have the given keys, a `replace` has
-   `oldIndex` different from `index`, `remove`/`move` has items, or the result
-   has duplicate or empty keys.
+   state, if any change is invalid, including when: `changes` is not an array, is
+   empty or is longer than 4,096; a change is not an object; `field` is not a
+   registered collection; `kind` is unknown; `index` (or `oldIndex` for
+   `replace` and `move`) is not a nonnegative safe integer or is out of range;
+   `keys` or `items` is not an array; `keys` is empty or has an entry that is not
+   a nonempty string; the rows at the target position do not have the given
+   `keys`; a row fails the field's codec; `add` or `replace` has a different
+   number of `items` than `keys`; added rows do not have the given keys; a
+   `replace` has `oldIndex` different from `index`; `remove`/`move` has items;
+   or the result has duplicate or empty keys.
 5. Commits the new state and revision, and notifies subscribers once. Rows that
    no change touched keep their object identity, as do non-collection members.
    Checked-field versions are unchanged.
 
 A full state is accepted when its revision is at least the current revision,
-whether it is pushed, returned by a route, or read by recovery.
+whether it is pushed, returned by a route, or read by recovery, so a repeated
+full state notifies subscribers again.
 
 ### `recover()`
 
