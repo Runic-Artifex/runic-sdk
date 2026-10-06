@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/assets.props" />
   <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicAssetsDefaultTargetFramework)</TargetFramework>
     <AssemblyName>Runic.Assets.Desktop.Tests</AssemblyName>

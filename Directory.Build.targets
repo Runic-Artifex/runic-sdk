@@ -1,5 +1,8 @@
 <Project>
   <Import Project="eng/build/package-dependencies.targets" />
   <Import Project="eng/build/public-api.targets" />
-  <Import Project="packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets" />
+  <!-- Package consumers receive these targets through buildTransitive; a
+       ProjectReference does not. Projects that reference Runic.Desktop set
+       RunicImportDesktopTargets (checked by eng/desktop-targets.test.mjs). -->
+  <Import Project="packages/dotnet/Runic.Desktop/buildTransitive/Runic.Desktop.targets" Condition="'$(RunicImportDesktopTargets)' == 'true'" />
 </Project>

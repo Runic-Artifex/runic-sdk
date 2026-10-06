@@ -12,14 +12,17 @@ project does not silently change its language, analyzer or package settings.
 
 `application` and `assets` are thin wrappers over
 `common.props`/`common.targets`. They differ only in package tags, icon and the name
-of their build-mode switch (`RunicToolkitBuildMode`, `RunicAssetsBuildMode`,
-`). `Development` is the
-default; CI selects `Verification`, which treats warnings as errors and enables
+of their build-mode switch (`RunicApplicationBuildMode`, `RunicAssetsBuildMode`).
+`Development` is the default; CI selects `Verification`, which treats warnings as errors and enables
 NuGet audit and trim/AOT analyzers for shipping projects. A shipping project sets
 `Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible;
 build-time tools such as BridgeCodegen leave it unset. Package versions come
 from `eng/Versions.props`. Desktop keeps its separate policy and sets
-`IsAotCompatible` and `IsTrimmable` itself. `bun eng/generate-shipping-projects.mjs --check`
+`IsAotCompatible` and `IsTrimmable` itself. Package consumers receive
+`Runic.Desktop.targets` through `buildTransitive`; repository projects that
+reference `Runic.Desktop` directly or transitively set
+`RunicImportDesktopTargets=true` instead, and `eng/desktop-targets.test.mjs`
+keeps that list exact. `bun eng/generate-shipping-projects.mjs --check`
 fails when a listed shipping project lacks its policy's flag; template packages,
 which contain no assemblies, are exempt.
 

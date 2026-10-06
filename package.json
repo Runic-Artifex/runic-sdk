@@ -27,6 +27,7 @@
     "example:first-window": "bun eng/run.mjs example:first-window",
     "example:notes": "bun eng/run.mjs example:notes",
     "verify:templates": "bun eng/verify-templates.mjs",
+    "version:bump": "bun eng/version.mjs bump",
     "regen": "bun tools/dotnet-runic/metadata/generate.mjs --write && bun eng/generate-shipping-projects.mjs && bun eng/run.mjs build",
     "ci": "bun eng/ci/local.mjs",
     "dependencies:audit": "bun eng/dependencies/audit.mjs"

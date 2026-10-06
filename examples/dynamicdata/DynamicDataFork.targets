@@ -1,0 +1,26 @@
+<Project>
+  <!--
+    The DynamicData example and its headless consumer reference the fork from source.
+    eng/workspace.json pins the reviewed fork commit; building against another
+    checkout fails unless RunicCheckDynamicDataForkRevision is false, for example
+    while trying a candidate revision before updating the pin.
+  -->
+  <PropertyGroup>
+    <RunicCheckDynamicDataForkRevision Condition="'$(RunicCheckDynamicDataForkRevision)' == ''">true</RunicCheckDynamicDataForkRevision>
+    <_RunicWorkspaceJson>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../eng/workspace.json'))</_RunicWorkspaceJson>
+    <RunicDynamicDataForkRevision>$([System.Text.RegularExpressions.Regex]::Replace($(_RunicWorkspaceJson), '(?s)^.*"forkRevision"\s*:\s*"([0-9a-f]{40})".*$', '$1'))</RunicDynamicDataForkRevision>
+  </PropertyGroup>
+  <Target Name="RequireDynamicDataFork" BeforeTargets="Restore;PrepareForBuild">
+    <Error Condition="!Exists('$(DynamicDataForkRoot)/src/DynamicData/DynamicData.csproj')"
+           Text="Set DynamicDataForkRoot to a checkout of https://github.com/Runic-Artifex/DynamicData at $(RunicDynamicDataForkRevision) (see examples/dynamicdata/README.md)." />
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(RunicDynamicDataForkRevision)', '^[0-9a-f]{40}$'))"
+           Text="eng/workspace.json has no dynamicData.forkRevision commit SHA." />
+    <Exec Condition="'$(RunicCheckDynamicDataForkRevision)' == 'true'"
+          Command="git -C &quot;$(DynamicDataForkRoot)&quot; rev-parse HEAD"
+          ConsoleToMSBuild="true" StandardOutputImportance="low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_RunicDynamicDataForkHead" />
+    </Exec>
+    <Error Condition="'$(RunicCheckDynamicDataForkRevision)' == 'true' and '$(_RunicDynamicDataForkHead.Trim())' != '$(RunicDynamicDataForkRevision)'"
+           Text="DynamicDataForkRoot is at $(_RunicDynamicDataForkHead.Trim()), but eng/workspace.json pins dynamicData.forkRevision $(RunicDynamicDataForkRevision). Run git -C &quot;$(DynamicDataForkRoot)&quot; checkout --detach $(RunicDynamicDataForkRevision), or set RunicCheckDynamicDataForkRevision=false to try another revision." />
+  </Target>
+</Project>

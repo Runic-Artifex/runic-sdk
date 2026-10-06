@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
@@ -23,7 +24,5 @@
   </ItemGroup>
   <Import Project="../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../packages/dotnet/Runic.Application.Desktop/build/Runic.Application.Desktop.targets" />
-  <Target Name="RequireDynamicDataFork" BeforeTargets="Restore;PrepareForBuild" Condition="!Exists('$(DynamicDataForkRoot)/src/DynamicData/DynamicData.csproj')">
-    <Error Text="Set DynamicDataForkRoot to a checkout of https://github.com/Runic-Artifex/DynamicData (see README.md)." />
-  </Target>
+  <Import Project="DynamicDataFork.targets" />
 </Project>
