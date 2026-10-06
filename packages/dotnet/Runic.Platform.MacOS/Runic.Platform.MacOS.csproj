@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
-    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <PackageId>Runic.Platform.MacOS</PackageId>
     <Description>AppKit owned file dialogs, scoped file access and text clipboard for Runic.</Description>
     <ImplicitUsings>enable</ImplicitUsings>

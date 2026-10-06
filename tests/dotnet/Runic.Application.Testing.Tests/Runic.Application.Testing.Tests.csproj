@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>

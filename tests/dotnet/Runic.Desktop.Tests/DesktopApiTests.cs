@@ -25,7 +25,7 @@ public sealed class DesktopApiTests
         var diagnostic = DesktopPlatform.GetMacOsEmbeddedDiagnostic(frameworkAvailable, isMainThread, eventLoopRunning);
         Assert.Equal(diagnosticCode, diagnostic?.Code);
         if (diagnosticCode == "macos-main-thread-required")
-            Assert.Contains("ApplicationHost.Run()", diagnostic!.Remediation, StringComparison.Ordinal);
+            Assert.Contains("DesktopEventLoop.Run()", diagnostic!.Remediation, StringComparison.Ordinal);
     }
 
     [Fact]

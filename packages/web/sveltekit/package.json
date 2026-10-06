@@ -1,14 +1,13 @@
 {
   "name": "@runic-artifex/sveltekit",
   "version": "0.6.0-preview.1",
-  "description": "SvelteKit adapter for Runic Toolkit applications",
+  "description": "SvelteKit adapter for Runic Desktop applications",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/sveltekit#readme",
   "bugs": {
     "url": "https://github.com/Runic-Artifex/runic-sdk/issues"
   },
   "keywords": [
     "runic-artifex",
-    "runic-toolkit",
     "svelte",
     "sveltekit",
     "vite",
@@ -65,7 +64,6 @@
     "@sveltejs/package": "3.0.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "24.19.1",
-    "effect": "4.0.0",
     "happy-dom": "^20.14.5",
     "svelte": "5.57.1",
     "svelte-check": "4.7.6",

@@ -170,7 +170,7 @@ public static class DesktopPlatform
             return Missing(
                 "macos-main-thread-required",
                 "Opening a macOS embedded window requires the process main thread or an active Desktop event loop.",
-                "Call ApplicationHost.Run() or DesktopEventLoop.Run() from the process main thread, or open the first Desktop window before awaiting other work.");
+                "Call DesktopEventLoop.Run() from the process main thread, or open the first Desktop window before awaiting other work.");
         return null;
     }
 

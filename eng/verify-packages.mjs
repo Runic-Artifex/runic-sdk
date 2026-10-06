@@ -283,12 +283,12 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
     `
 import assert from 'node:assert/strict';
 import * as vite from '@runic-artifex/vite-plugin-runic';
-import { runicToolkitSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
+import { runicSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
 import { BridgeError, bridgeWire, connectView } from '@runic-artifex/views';
 import { installMockBridge } from '@runic-artifex/views/mock';
 import { useView as useReactView } from '@runic-artifex/react';
 import { useView as useVueView } from '@runic-artifex/vue';
-assert.equal(runicToolkitSpaPageOptions.ssr, false);
+assert.equal(runicSpaPageOptions.ssr, false);
 assert.ok(Object.keys(vite).length);
 installMockBridge().view('consumer', { state: { value: 1 } });
 const client = await connectView({ contract: 'Consumer:fingerprint', route: 'consumer', mount: false,

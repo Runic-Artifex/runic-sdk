@@ -40,11 +40,11 @@ try {
     ...archives,
   ], { cwd: root });
   await writeFile(join(root, "consumer.mjs"), [
-    'import { runicToolkitSpaPageOptions } from "@runic-artifex/sveltekit/page-options";',
+    'import { runicSpaPageOptions } from "@runic-artifex/sveltekit/page-options";',
     'import { preserveRunicHmrResource, disposeRunicHmrResource } from "@runic-artifex/vite-plugin-runic/client";',
     'const resource = preserveRunicHmrResource("consumer", () => ({ disposed: false }));',
     'await disposeRunicHmrResource("consumer", (value) => { value.disposed = true; });',
-    'if (!resource.disposed || runicToolkitSpaPageOptions.ssr !== false) throw new Error("package boundary failed");',
+    'if (!resource.disposed || runicSpaPageOptions.ssr !== false) throw new Error("package boundary failed");',
   ].join("\n"), "utf8");
   await execFile(process.execPath, ["consumer.mjs"], { cwd: root });
 } finally {

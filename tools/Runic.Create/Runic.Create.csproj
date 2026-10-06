@@ -2,7 +2,7 @@
   <Import Project="../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <AssemblyName>runic-create</AssemblyName>
     <RootNamespace>Runic.Create</RootNamespace>
     <PackageId>Runic.Create</PackageId>
@@ -10,7 +10,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>runic-create</ToolCommandName>
-    <RunicToolkitShippingProject>true</RunicToolkitShippingProject>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 

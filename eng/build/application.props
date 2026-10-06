@@ -1,13 +1,13 @@
 <Project>
   <PropertyGroup>
-    <RunicBuildModeProperty>RunicToolkitBuildMode</RunicBuildModeProperty>
-    <RunicBuildMode>$(RunicToolkitBuildMode)</RunicBuildMode>
+    <RunicBuildModeProperty>RunicApplicationBuildMode</RunicBuildModeProperty>
+    <RunicBuildMode>$(RunicApplicationBuildMode)</RunicBuildMode>
     <RunicPolicyIcon>$(MSBuildThisFileDirectory)../branding/application/icon.png</RunicPolicyIcon>
-    <PackageTags Condition="'$(PackageTags)' == ''">runic-artifex;toolkit;webui;desktop;dotnet;nativeaot</PackageTags>
+    <PackageTags Condition="'$(PackageTags)' == ''">runic-artifex;application;webui;desktop;dotnet;nativeaot</PackageTags>
   </PropertyGroup>
   <Import Project="common.props" />
   <PropertyGroup>
-    <RunicToolkitBuildMode>$(RunicBuildMode)</RunicToolkitBuildMode>
-    <RunicToolkitDefaultTargetFramework>$(RunicTargetFramework)</RunicToolkitDefaultTargetFramework>
+    <RunicApplicationBuildMode>$(RunicBuildMode)</RunicApplicationBuildMode>
+    <RunicApplicationDefaultTargetFramework>$(RunicTargetFramework)</RunicApplicationDefaultTargetFramework>
   </PropertyGroup>
 </Project>

@@ -1,8 +1,8 @@
-export const runicToolkitPrerenderedPageOptions = Object.freeze({
+export const runicPrerenderedPageOptions = Object.freeze({
   prerender: true as const,
 });
 
-export const runicToolkitSpaPageOptions = Object.freeze({
+export const runicSpaPageOptions = Object.freeze({
   ssr: false as const,
   prerender: false as const,
 });

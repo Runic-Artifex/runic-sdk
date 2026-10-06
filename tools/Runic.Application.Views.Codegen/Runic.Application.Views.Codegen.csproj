@@ -5,7 +5,7 @@
     <!-- This executable is a build tool, never part of the app's runtime closure. -->
     <ShouldBeValidatedAsExecutableReference>false</ShouldBeValidatedAsExecutableReference>
     <AssemblyName>BridgeCodegen</AssemblyName>
-    <TargetFramework>$(RunicToolkitDefaultTargetFramework)</TargetFramework>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Internal build tool shipped inside Runic.Application; it has no public API surface. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
