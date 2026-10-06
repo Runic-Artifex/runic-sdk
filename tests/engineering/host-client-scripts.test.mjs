@@ -37,3 +37,83 @@ for (const script of scripts) {
     expect(events).toEqual([["replaceState", true, { route: 1 }], ["pushState", true, { route: 2 }]]);
   });
 }
+
+function loadCsWebUiBridge(webui) {
+  const context = { history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console };
+  context.window = context;
+  context.globalThis = context;
+  runInNewContext(readFileSync(resolve(root, scripts[0]), "utf8"), context);
+  context.webui = webui;
+  return context;
+}
+
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+
+// Native WebUI claims an event slot for each incoming call without holding its
+// lock, so two calls arriving together can share one and a reply is lost (#53).
+// The CS-WebUI client sends the next call once .NET has admitted the previous one.
+test("runic-cswebui.js sends a call only after .NET admitted the previous one", async () => {
+  const sent = [];
+  const replies = new Map();
+  const context = loadCsWebUiBridge({
+    isConnected: () => true,
+    call: name => new Promise(resolve => { sent.push(name); replies.set(name, resolve); }),
+  });
+  const bridge = context.__runicBridge;
+
+  const wait = bridge.call("__runicOperationWait");
+  const snapshot = bridge.call("shellSnapshot");
+  const mount = bridge.call("shellMount");
+  await settle();
+  expect(sent).toEqual(["__runicOperationWait"]);
+
+  // A long-running call stops holding back others once .NET received it.
+  context.__runicBridgeAdmitted();
+  await settle();
+  expect(sent).toEqual(["__runicOperationWait", "shellSnapshot"]);
+
+  // A reply also admits a call, for example one no route received.
+  replies.get("shellSnapshot")("snapshot");
+  expect(await snapshot).toBe("snapshot");
+  await settle();
+  expect(sent).toEqual(["__runicOperationWait", "shellSnapshot", "shellMount"]);
+
+  const unmount = bridge.call("shellUnmount");
+  await settle();
+  expect(sent).toEqual(["__runicOperationWait", "shellSnapshot", "shellMount"]);
+  context.__runicBridgeAdmitted();
+  await settle();
+  expect(sent).toEqual(["__runicOperationWait", "shellSnapshot", "shellMount", "shellUnmount"]);
+
+  replies.get("shellMount")("mounted");
+  replies.get("shellUnmount")("unmounted");
+  replies.get("__runicOperationWait")("done");
+  expect(await Promise.all([wait, mount, unmount])).toEqual(["done", "mounted", "unmounted"]);
+});
+
+test("runic-cswebui.js releases the next call when a call fails to start", async () => {
+  const sent = [];
+  const context = loadCsWebUiBridge({
+    isConnected: () => true,
+    call: name => {
+      sent.push(name);
+      return name === "missing" ? Promise.reject(new ReferenceError("No binding")) : Promise.resolve(name);
+    },
+  });
+  const failed = context.__runicBridge.call("missing");
+  const next = context.__runicBridge.call("shellSnapshot");
+  await expect(failed).rejects.toThrow("No binding");
+  expect(await next).toBe("shellSnapshot");
+  expect(sent).toEqual(["missing", "shellSnapshot"]);
+});
+
+test("runic-cswebui.js does not hold calls behind one .NET never admits", async () => {
+  const sent = [];
+  const context = loadCsWebUiBridge({
+    isConnected: () => true,
+    call: name => { sent.push(name); return name === "unanswered" ? new Promise(() => {}) : Promise.resolve(name); },
+  });
+  void context.__runicBridge.call("unanswered");
+  expect(await context.__runicBridge.call("shellSnapshot")).toBe("shellSnapshot");
+  expect(sent).toEqual(["unanswered", "shellSnapshot"]);
+});

@@ -173,7 +173,7 @@ jobs:
       - name: Exercise Toolkit and ReactiveUI typed clients
         run: |
           node examples/notes-view-first/browser-smoke.mjs
-          node examples/notes-reactive-views/browser-smoke.mjs
+          RUNIC_VERIFY_CALL_BURST=1 node examples/notes-reactive-views/browser-smoke.mjs
           RUNIC_VERIFY_PENDING_MOUNT=1 node examples/notes-reactive-views/browser-smoke.mjs
           RUNIC_VERIFY_CLIENT_DISCONNECT=1 node examples/notes-reactive-views/browser-smoke.mjs
       - name: Exercise Svelte and Angular View outlets

@@ -32,6 +32,42 @@
     };
   }
 
+  // Native WebUI claims an event slot for each incoming call on its own thread
+  // without holding its lock for the whole claim. Two calls arriving together
+  // can share one slot, and one of them then never receives a reply (#53).
+  // Send the next call only after .NET admitted the previous one, which it
+  // reports through __runicBridgeAdmitted, or that call settled. A call .NET
+  // never admits holds the others back for at most admissionTimeout.
+  const admissionTimeout = 250;
+  let admission = Promise.resolve();
+  let admitCurrent;
+  window.__runicBridgeAdmitted = () => admitCurrent?.();
+  function send(name, args) {
+    let admitted;
+    const previous = admission;
+    admission = new Promise(resolve => { admitted = resolve; });
+    return previous.then(() => {
+      let timer;
+      const admit = () => {
+        if (admitCurrent === admit) admitCurrent = undefined;
+        clearTimeout(timer);
+        admitted();
+      };
+      admitCurrent = admit;
+      timer = setTimeout(admit, admissionTimeout);
+      let reply;
+      try {
+        window.webui.allowNavigation?.(true);
+        reply = window.webui.call(name, ...args);
+      } catch (error) {
+        admit();
+        throw error;
+      }
+      Promise.resolve(reply).then(admit, admit);
+      return reply;
+    });
+  }
+
   window.__runicBridge = {
     isConnected: () => {
       const isConnected = connected();
@@ -41,7 +77,7 @@
     call: (name, ...args) => {
       if (!window.webui) return Promise.reject(new Error("CS-WebUI is unavailable."));
       window.webui.allowNavigation?.(true);
-      return window.webui.call(name, ...args);
+      return send(name, args);
     },
     onReconnect: (listener) => {
       reconnectListeners.add(listener);
