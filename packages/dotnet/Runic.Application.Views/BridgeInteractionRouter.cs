@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -610,6 +611,9 @@ public sealed class BridgeInteractionRouter : IDisposable
             root.GetProperty("name").GetString() ?? "",
             root.GetProperty("contract").GetString() ?? "",
             kind == "answered" ? root.GetProperty("output").Clone() : null);
+        // Canonicalizing here rejects an ambiguous output (duplicate member
+        // names) as an invalid request before it can settle the interaction.
+        if (reply.Output is { } output) reply = reply with { OutputSignature = BridgeCanonicalJson.ToString(JsonMarshal.GetRawUtf8Value(output)) };
         if (reply.RequestId.Length is 0 or > 128 || reply.Route.Length is 0 or > MaximumRouteLength
             || reply.PresentationId.Length is 0 or > MaximumPresentationLength || reply.Name.Length is 0 or > MaximumNameLength
             || reply.Contract.Length is 0 or > MaximumContractLength) throw new ArgumentException("Invalid reply identity.");
@@ -742,38 +746,17 @@ public sealed class BridgeInteractionRouter : IDisposable
             && string.Equals(ConnectionKey, args.ConnectionKey, StringComparison.Ordinal)
             && string.Equals(ClientKey, args.ClientKey, StringComparison.Ordinal);
 
-        private static string Signature(InteractionReply reply) => reply.Kind + ":" +
-            (reply.Output is { } output ? CanonicalJson(output) : string.Empty);
+        private static string Signature(InteractionReply reply) => reply.Kind + ":" + reply.OutputSignature;
     }
 
-    private static string CanonicalJson(JsonElement value) => WriteJson(writer => WriteCanonical(value, writer));
-
-    private static void WriteCanonical(JsonElement value, Utf8JsonWriter writer)
-    {
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.Object:
-                writer.WriteStartObject();
-                foreach (var property in value.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(property.Name);
-                    WriteCanonical(property.Value, writer);
-                }
-                writer.WriteEndObject();
-                break;
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var item in value.EnumerateArray()) WriteCanonical(item, writer);
-                writer.WriteEndArray();
-                break;
-            default: value.WriteTo(writer); break;
-        }
-    }
     private readonly record struct DefinitionKey(string Route, string Name, string Contract);
     private sealed record HandlerIdentity(string Name, string Contract);
     private sealed record WaitRequest(string Route, string PresentationId, HandlerIdentity[] Handlers, long Generation);
     private sealed record ControlRequest(string Route, string PresentationId, long Generation, HandlerIdentity[] Handlers);
     private sealed record ControlWaitRequest(string Route, string PresentationId);
     private sealed record ControlEvent(string Kind, string RequestId, string Route, string PresentationId, long OwnerEpoch, string Reason);
-    private sealed record InteractionReply(string Kind, string RequestId, string Route, string PresentationId, long OwnerEpoch, string Name, string Contract, JsonElement? Output);
+    private sealed record InteractionReply(string Kind, string RequestId, string Route, string PresentationId, long OwnerEpoch, string Name, string Contract, JsonElement? Output)
+    {
+        public string OutputSignature { get; init; } = "";
+    }
 }

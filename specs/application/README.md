@@ -28,7 +28,8 @@ publication:
   `clientId:connectionId`; Desktop uses its connection id for both, so a
   reconnect has new keys.
 - `Publish(route, state)` makes the browser call `__{route}Changed(state)`.
-  Full snapshots coalesce: a newer state may replace one not yet sent.
+  Full snapshots coalesce: a newer state may replace one not yet sent, and a
+  state is serialized when the host can take it rather than on every change.
   Dependent collection deltas remain ordered. An `IAsyncBridgeTransport`
   acknowledges each delivery outside the model context before the next frame
   is sent; Desktop implements this path.

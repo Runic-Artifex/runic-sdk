@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 
@@ -38,15 +39,14 @@ public sealed class BridgeValueCodec<T>(Func<JsonElement, T> read, Action<Utf8Js
     }
 
     /// <summary>Writes a complete, canonical JSON value.</summary>
-    public string Encode(T value) => BridgeWire.EncodeCanonical(writer => Encode(writer, value));
+    public string Encode(T value) => BridgeCanonicalJson.Encode(_write, value);
 
     /// <summary>
     /// Compares values by their canonical wire representation. It deliberately
     /// does not rely on CLR equality, which may have different semantics from
     /// the generated frontend contract.
     /// </summary>
-    public bool StructuralEquals(T left, T right) =>
-        BridgeWire.StructuralEquals(Encode(left), Encode(right));
+    public bool StructuralEquals(T left, T right) => BridgeCanonicalJson.Equal(_write, left, right);
 }
 
 /// <summary>
@@ -336,16 +336,14 @@ public static class BridgeWire
     }
 
     /// <summary>Writes a complete canonical JSON value.</summary>
+    /// <remarks>
+    /// Object members are sorted by ordinal name, duplicate names are rejected,
+    /// and numbers are written by exact value (<c>1.0</c> and <c>1e0</c> are both <c>1</c>).
+    /// </remarks>
     public static string EncodeCanonical(Action<Utf8JsonWriter> write)
     {
         ArgumentNullException.ThrowIfNull(write);
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            write(writer);
-            writer.Flush();
-        }
-        return Encoding.UTF8.GetString(Canonicalize(buffer.WrittenSpan));
+        return BridgeCanonicalJson.Encode(static (writer, write) => write(writer), write);
     }
 
     /// <summary>Compares two complete JSON documents after canonicalization.</summary>
@@ -353,76 +351,28 @@ public static class BridgeWire
     {
         ArgumentNullException.ThrowIfNull(left);
         ArgumentNullException.ThrowIfNull(right);
-        return Canonicalize(Encoding.UTF8.GetBytes(left)).AsSpan()
-            .SequenceEqual(Canonicalize(Encoding.UTF8.GetBytes(right)));
+        using var first = BridgeCanonicalJson.Canonical(Encoding.UTF8.GetBytes(left));
+        using var second = BridgeCanonicalJson.Canonical(Encoding.UTF8.GetBytes(right));
+        return first.Written.SequenceEqual(second.Written);
     }
 
     /// <summary>Compares two JSON values after canonicalization.</summary>
-    public static bool StructuralEquals(JsonElement left, JsonElement right) =>
-        Canonicalize(left).AsSpan().SequenceEqual(Canonicalize(right));
+    public static bool StructuralEquals(JsonElement left, JsonElement right)
+    {
+        using var first = BridgeCanonicalJson.Canonical(JsonMarshal.GetRawUtf8Value(left));
+        using var second = BridgeCanonicalJson.Canonical(JsonMarshal.GetRawUtf8Value(right));
+        return first.Written.SequenceEqual(second.Written);
+    }
 
     /// <summary>Returns a canonical UTF-8 encoding for a complete JSON document.</summary>
     public static byte[] Canonicalize(ReadOnlySpan<byte> json)
     {
-        using var document = JsonDocument.Parse(json.ToArray());
-        return Canonicalize(document.RootElement);
+        using var canonical = BridgeCanonicalJson.Canonical(json);
+        return canonical.Written.ToArray();
     }
 
     /// <summary>Returns a canonical UTF-8 encoding for one JSON value.</summary>
-    public static byte[] Canonicalize(JsonElement value)
-    {
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            WriteCanonical(writer, value);
-            writer.Flush();
-        }
-        return buffer.WrittenSpan.ToArray();
-    }
-
-    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
-    {
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.Object:
-            {
-                var properties = value.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal).ToArray();
-                for (var index = 1; index < properties.Length; index++)
-                    if (string.Equals(properties[index - 1].Name, properties[index].Name, StringComparison.Ordinal))
-                        throw new FormatException("A bridge JSON object cannot contain duplicate property names.");
-                writer.WriteStartObject();
-                foreach (var property in properties)
-                {
-                    writer.WritePropertyName(property.Name);
-                    WriteCanonical(writer, property.Value);
-                }
-                writer.WriteEndObject();
-                break;
-            }
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var item in value.EnumerateArray()) WriteCanonical(writer, item);
-                writer.WriteEndArray();
-                break;
-            case JsonValueKind.String:
-                writer.WriteStringValue(value.GetString());
-                break;
-            case JsonValueKind.Number:
-                writer.WriteRawValue(value.GetRawText(), skipInputValidation: true);
-                break;
-            case JsonValueKind.True:
-                writer.WriteBooleanValue(true);
-                break;
-            case JsonValueKind.False:
-                writer.WriteBooleanValue(false);
-                break;
-            case JsonValueKind.Null:
-                writer.WriteNullValue();
-                break;
-            default:
-                throw new FormatException("A bridge value must be a JSON value.");
-        }
-    }
+    public static byte[] Canonicalize(JsonElement value) => Canonicalize(JsonMarshal.GetRawUtf8Value(value));
 }
 
 /// <summary>Marks a public data member as deliberately included in a generated bridge contract.</summary>

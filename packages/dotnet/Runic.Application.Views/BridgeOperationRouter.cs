@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -409,68 +409,16 @@ internal readonly record struct BridgeOperationRequest(
     internal static string CanonicalDigest(string encodedJson)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(encodedJson);
-        using var document = JsonDocument.Parse(encodedJson);
-        return CanonicalDigest(document.RootElement);
+        return CanonicalDigest(Encoding.UTF8.GetBytes(encodedJson));
     }
 
-    internal static string CanonicalDigest(JsonElement element)
-    {
-        using var buffer = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(buffer)) WriteCanonical(writer, element);
-        return Convert.ToHexString(SHA256.HashData(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)))).ToLowerInvariant();
-    }
+    internal static string CanonicalDigest(JsonElement element) => CanonicalDigest(JsonMarshal.GetRawUtf8Value(element));
 
-    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
+    // BridgeCanonicalJson is the single canonical form; see its comment.
+    private static string CanonicalDigest(ReadOnlySpan<byte> json)
     {
-        switch (value.ValueKind)
-        {
-            case JsonValueKind.Object:
-                writer.WriteStartObject();
-                foreach (var property in value.EnumerateObject().OrderBy(property => property.Name, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(property.Name);
-                    WriteCanonical(writer, property.Value);
-                }
-                writer.WriteEndObject();
-                break;
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var item in value.EnumerateArray()) WriteCanonical(writer, item);
-                writer.WriteEndArray();
-                break;
-            case JsonValueKind.String:
-                writer.WriteStringValue(value.GetString());
-                break;
-            case JsonValueKind.Number:
-                WriteCanonicalNumber(writer, value.GetRawText());
-                break;
-            case JsonValueKind.True:
-                writer.WriteBooleanValue(true);
-                break;
-            case JsonValueKind.False:
-                writer.WriteBooleanValue(false);
-                break;
-            case JsonValueKind.Null:
-                writer.WriteNullValue();
-                break;
-            default:
-                throw new JsonException("The operation input contains an unsupported JSON value.");
-        }
-    }
-
-    private static void WriteCanonicalNumber(Utf8JsonWriter writer, string raw)
-    {
-        if (decimal.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue))
-        {
-            writer.WriteRawValue(decimalValue.ToString("G29", CultureInfo.InvariantCulture));
-            return;
-        }
-        if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var doubleValue) && double.IsFinite(doubleValue))
-        {
-            writer.WriteRawValue(doubleValue.ToString("G17", CultureInfo.InvariantCulture));
-            return;
-        }
-        throw new JsonException("The operation input contains an invalid JSON number.");
+        using var canonical = BridgeCanonicalJson.Canonical(json);
+        return Convert.ToHexStringLower(SHA256.HashData(canonical.Written));
     }
 }
 

@@ -129,16 +129,24 @@ Full states coalesce: a newer state replaces any frames and states not yet
 delivered. Frames do not coalesce, because each depends on its predecessor. An
 `IAsyncBridgeTransport` acknowledges each delivery before the next one starts.
 
+A full state is captured when the host takes it, not when it is requested, so
+a burst of changes behind a busy host serializes the state once. The captured
+state carries the revision current at that time. A frame produced while a
+requested state waits is not queued: its change is part of that state, and the
+next frame's `baseRevision` is the captured state's revision. A route reply
+always captures its state at once.
+
 A route retains at most 64 undelivered entries, or 1,048,576 characters
 (UTF-16 code units of the encoded JSON), in its delivery queue. The entry being
-delivered does not count; a queued full state counts like a frame. When a new
-frame would exceed either bound, the producer publishes a full state instead.
-That state supersedes everything queued and becomes the next frame's baseline
-([fixture](fixtures/collection-deltas/recovery.json)).
-
-Because a queued full state counts toward the character bound, a state of 1 MiB
-or more is followed by further full states, each superseding the last, until the
-host takes it. The fixture's "1 MiB of pending frames" case shows this.
+delivered does not count. When a new frame would exceed either bound, the
+producer publishes a recovery state instead. That state supersedes everything
+queued and becomes the next frame's baseline
+([fixture](fixtures/collection-deltas/recovery.json)). It is captured at once,
+so later frames can queue behind it, and it counts toward the bounds like a
+frame. When a later frame does not fit behind it, as after a recovery state of
+1 MiB or more, the queued state reverts to a requested state, captured when
+the host takes it, instead of serializing another full state per change. The
+fixture's "1 MiB of pending frames" case shows this.
 
 ## Applying frames
 

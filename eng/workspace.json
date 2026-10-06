@@ -191,6 +191,7 @@
         "tests/dotnet/Runic.Create.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
         "tests/dotnet/Runic.Application.Desktop.Tests",
+        "tests/benchmarks/Runic.Application.Views.Benchmarks",
         "tests/fixtures/application",
         "eng/build/application.props",
         "eng/build/application.targets",

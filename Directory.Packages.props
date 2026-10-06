@@ -34,6 +34,8 @@
     <PackageVersion Include="Splat" Version="21.0.0" />
     <!-- Used only by compiler contract tests to validate emitted instances against draft 2020-12 schemas. -->
     <PackageVersion Include="JsonSchema.Net" Version="9.4.0" />
+    <!-- Used only by tests/benchmarks, which CI builds but never runs. -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="Runic.Platform" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Runtime" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Administration.Windows" Version="$(RunicSdkVersion)" />
