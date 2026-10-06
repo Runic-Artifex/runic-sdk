@@ -99,14 +99,14 @@ internal static class DoctorChecks
         string? executable = runtime.FindExecutable(dotnetHost);
         if (executable is null)
         {
-            checks.Add(Fail("dotnet-sdk", $".NET SDK host '{dotnetHost}' is unavailable.", "Install the SDK targeted by this project and put dotnet on PATH."));
+            checks.Add(Fail("dotnet-sdk", $".NET SDK host '{Path.GetFileName(dotnetHost)}' is unavailable.", "Install the SDK targeted by this project and put dotnet on PATH."));
             return;
         }
         CommandResult result = await runtime.RunAsync(executable, project.ProjectDirectory, ["--version"], cancellationToken).ConfigureAwait(false);
         string version = result.StandardOutput.Trim();
         if (result.ExitCode != 0 || !Version.TryParse(NormalizeVersion(version), out Version? sdk))
         {
-            checks.Add(Fail("dotnet-sdk", $"Could not read a usable .NET SDK version from '{executable}'.", "Run dotnet --info and install the SDK selected by global.json."));
+            checks.Add(Fail("dotnet-sdk", $"Could not read a usable .NET SDK version from '{Path.GetFileName(executable)}'.", "Run dotnet --info and install the SDK selected by global.json."));
             return;
         }
         int? targetMajor = ParseTargetFrameworkMajor(project.TargetFramework);

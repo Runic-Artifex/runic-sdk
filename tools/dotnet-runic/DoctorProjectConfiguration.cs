@@ -109,7 +109,10 @@ internal sealed record DoctorProjectConfiguration(
             cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
-            throw new DevUsageException("RAPPDEV1003", $"Could not evaluate '{project}'. {result.CombinedOutput.Trim()}");
+            throw new DevUsageException(
+                "RAPPDEV1003",
+                "MSBuild could not evaluate the project.",
+                $"Project: {project}\n{result.CombinedOutput.Trim()}\n");
         }
         return result.StandardOutput;
     }

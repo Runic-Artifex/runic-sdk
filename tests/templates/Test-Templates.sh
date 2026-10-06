@@ -307,6 +307,13 @@ verify_template() {
   fi
   grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
   grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
+  if [[ "$host" == desktop ]]; then
+    grep -Fq 'PASS browser: Not required' "$output/doctor.txt"
+    if grep -Fq 'CS-WebUI' "$output/doctor.txt"; then
+      cat "$output/doctor.txt" >&2
+      exit 1
+    fi
+  fi
 
   # A plain build installs the frontend packages with the selected manager.
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore

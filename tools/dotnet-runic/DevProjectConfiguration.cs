@@ -95,7 +95,8 @@ internal sealed record DevProjectConfiguration(
         {
             throw new DevUsageException(
                 "RAPPDEV1003",
-                $"Could not evaluate '{project}'.{Environment.NewLine}{Compact(result.CombinedOutput)}");
+                "MSBuild could not evaluate the project.",
+                $"Project: {project}\n{Compact(result.CombinedOutput)}\n");
         }
 
         using JsonDocument document = JsonDocument.Parse(result.StandardOutput);

@@ -23,14 +23,16 @@ internal static class ProjectDiscovery
             {
                 throw new DevUsageException(
                     "RAPPDEV1002",
-                    $"Project '{selected}' does not exist.");
+                    "The selected project does not exist.",
+                    $"Project: {selected}\n");
             }
 
             if (!StringComparer.OrdinalIgnoreCase.Equals(Path.GetExtension(selected), ".csproj"))
             {
                 throw new DevUsageException(
                     "RAPPDEV1002",
-                    $"Project '{selected}' must be a .csproj file.");
+                    "The selected project must be a .csproj file.",
+                    $"Project: {selected}\n");
             }
 
             return selected;
@@ -50,10 +52,12 @@ internal static class ProjectDiscovery
             1 => projects[0],
             0 => throw new DevUsageException(
                 "RAPPDEV1002",
-                $"No .csproj was found in '{directory}'. Use --project."),
+                "No .csproj was found in the directory. Use --project.",
+                $"Directory: {directory}\n"),
             _ => throw new DevUsageException(
                 "RAPPDEV1002",
-                $"Multiple .csproj files were found in '{directory}'. Use --project."),
+                "Multiple .csproj files were found in the directory. Use --project.",
+                $"Directory: {directory}\n"),
         };
     }
 }

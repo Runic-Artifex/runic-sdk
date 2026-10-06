@@ -41,6 +41,8 @@ internal static class Program
             ("doctor JSON reports unhealthy projects through the CLI", DoctorJsonThroughCli),
             ("doctor --fail-on decides the exit in both modes", DoctorFailOnDecidesExit),
             ("--no-restore requires installed frontend packages", NoRestoreRequiresInstalledPackages),
+            ("JSON faults never contain absolute project paths", JsonFaultsOmitProjectPaths),
+            ("the fault backstop detects any rooted path", FaultBackstopDetectsRootedPaths),
             ("development servers are inferred from the frontend", DevelopmentServersAreInferred),
             ("a development server owns the frontend build", DevelopmentServerOwnsFrontendBuild),
             ("compatibility authority includes the public Views packages", CompatibilityAuthorityIncludesViews),
@@ -581,6 +583,63 @@ internal static class Program
         }
         Directory.CreateDirectory(Path.Combine(configuration.FrontendPackageDirectory, "node_modules"));
         DevApplication.RequireInstalledFrontendPackages(configuration);
+    }
+
+    private static void JsonFaultsOmitProjectPaths()
+    {
+        foreach (string project in new[] { "/run/user/1000/runic-missing/App.csproj", @"C:\Users\someone\App\App.csproj" })
+        {
+            (int exitCode, string output) = RunCli("doctor", "--output", "json", "--project", project);
+            Equal(2, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output);
+            JsonElement fault = document.RootElement.GetProperty("fault");
+            Equal("RAPPDEV1002", fault.GetProperty("code").GetString());
+            string text = fault.GetRawText();
+            DoesNotContain(text, "/run/");
+            DoesNotContain(text, "C:");
+            DoesNotContain(text, "Users");
+            DoesNotContain(text, Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar));
+            Equal("The selected project does not exist.", fault.GetProperty("message").GetString());
+        }
+
+        using var workspace = new TestWorkspace();
+        string broken = workspace.Write("Broken.csproj", "<Project>not xml");
+        (int brokenExit, string brokenOutput) = RunCli("doctor", "--output", "json", "--project", broken);
+        Equal(2, brokenExit);
+        using JsonDocument brokenDocument = JsonDocument.Parse(brokenOutput);
+        JsonElement brokenFault = brokenDocument.RootElement.GetProperty("fault");
+        Equal("RAPPDEV1003", brokenFault.GetProperty("code").GetString());
+        DoesNotContain(brokenFault.GetRawText(), workspace.Root);
+    }
+
+    private static void FaultBackstopDetectsRootedPaths()
+    {
+        foreach (string message in new[]
+        {
+            "Project '/run/user/1000/x/App.csproj' does not exist.",
+            "/opt/app failed",
+            @"Project 'C:\work\App.csproj' does not exist.",
+            "Project 'D:/work/App.csproj' does not exist.",
+            @"Share \\server\share failed.",
+            "Could not evaluate (/var/lib/x).",
+        })
+        {
+            True(Runic.Application.Tool.Program.ContainsRootedPath(message), $"'{message}' contains a rooted path.");
+            var outcome = Runic.Application.Tool.Program.Failure<ToolCommandResult>(
+                Runic.CommandLine.CommandExitCategory.Usage, "RAPPDEV1002", message);
+            Equal("The command could not be completed. See the local detail above.", outcome.Fault!.Message);
+            Contains(outcome.HumanOutput ?? string.Empty, message);
+        }
+        foreach (string message in new[]
+        {
+            "'dotnet build' exited with code 1.",
+            "Use npm/pnpm or Bun.",
+            "Timed out waiting for the Vite development server (Vite client: no response).",
+            "See https://example.com/docs for details.",
+        })
+        {
+            False(Runic.Application.Tool.Program.ContainsRootedPath(message), $"'{message}' contains no rooted path.");
+        }
     }
 
     private sealed class CapturingConsole : Runic.CommandLine.ICommandConsole

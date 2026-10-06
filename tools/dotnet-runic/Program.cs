@@ -12,7 +12,7 @@ using Runic.CommandLine.Spectre;
 using Runic.CommandLine.Generated;
 namespace Runic.Application.Tool;
 
-internal static class Program
+internal static partial class Program
 {
 
     internal const int Success = 0;
@@ -196,18 +196,23 @@ internal static class Program
         string message,
         string? humanOutput = null) => Failure<ToolCommandResult>(category, code, message, humanOutput);
 
-    private static CommandOutcome<T> Failure<T>(
+    /// <summary>
+    /// Backstop for fault messages: finds any rooted path token (a Unix path
+    /// after a boundary, a drive letter path, a UNC path, or any backslash).
+    /// </summary>
+    internal static bool ContainsRootedPath(string message) =>
+        message.Contains('\\') || RootedPath().IsMatch(message);
+
+    [System.Text.RegularExpressions.GeneratedRegex("""(?:^|[\s'"(=:,])(?:/[^\s/]|[A-Za-z]:[\\/])""")]
+    private static partial System.Text.RegularExpressions.Regex RootedPath();
+
+    internal static CommandOutcome<T> Failure<T>(
         CommandExitCategory category,
         string code,
         string message,
         string? humanOutput = null)
     {
-        bool containsPrivatePath =
-            message.Contains('\\') ||
-            message.Contains("/home/", StringComparison.Ordinal) ||
-            message.Contains("/Users/", StringComparison.Ordinal) ||
-            message.Contains("/root/", StringComparison.Ordinal) ||
-            message.Contains("/tmp/", StringComparison.Ordinal);
+        bool containsPrivatePath = ContainsRootedPath(message);
         string? detail = containsPrivatePath
             ? string.Concat(humanOutput, message, "\n")
             : humanOutput;
