@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
@@ -63,21 +64,49 @@ public sealed class WindowContentSession : IDisposable
     /// session creates and owns one.
     /// </param>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
+        Justification = "Published constructor; reordering its parameters would break callers.")]
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator,
+        CancellationToken operationShutdown, object? rootModel, IRunicModelContext? modelContext)
+        : this(transport, viewLocator, operationShutdown, rootModel, modelContext, loggerFactory: null)
+    {
+    }
+
+    /// <summary>Creates the content session for one window.</summary>
+    /// <param name="transport">The window's host transport.</param>
+    /// <param name="viewLocator">Resolves .NET Views for presented content.</param>
+    /// <param name="operationShutdown">Cancels window-owned operations when signalled.</param>
+    /// <param name="rootModel">The window's root ViewModel, if any.</param>
+    /// <param name="modelContext">
+    /// An application-owned context, such as the scoped DI context, that the window graph
+    /// must share. The root model is bound to it; a root already owned by a different
+    /// context is rejected. When omitted, the root's existing context is reused or the
+    /// session creates and owns one.
+    /// </param>
+    /// <param name="loggerFactory">
+    /// Creates the loggers of this window's Bridges, operations and mounts, and of a model
+    /// context the session creates. When omitted, failures are written to
+    /// <see cref="System.Diagnostics.Trace"/>.
+    /// </param>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
         Justification = "Published constructor; reordering its optional parameters would break callers.")]
     public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator = null,
         CancellationToken operationShutdown = default, object? rootModel = null,
-        IRunicModelContext? modelContext = null)
+        IRunicModelContext? modelContext = null, ILoggerFactory? loggerFactory = null)
     {
+        Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+        HasLogger = loggerFactory is not null;
+        var contextLogger = loggerFactory?.CreateLogger<RunicModelContext>();
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _viewLocator = viewLocator;
         _modelContexts = RunicModelContextRegistry.Shared;
         if (rootModel is not null)
             _rootModelLease = modelContext is null
-                ? _modelContexts.Acquire(static () => new RunicModelContext(), rootModel)
+                ? _modelContexts.Acquire(() => new RunicModelContext(contextLogger), rootModel)
                 : _modelContexts.Bind(modelContext, rootModel);
         else
         {
-            _sessionModelContext = modelContext ?? new RunicModelContext();
+            _sessionModelContext = modelContext ?? new RunicModelContext(contextLogger);
             _ownsSessionModelContext = modelContext is null;
         }
         BridgeOperationRouter? operations = null;
@@ -85,7 +114,7 @@ public sealed class WindowContentSession : IDisposable
         BridgeFieldWriteRegistryProvider? fieldWrites = null;
         try
         {
-            operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), ownerShutdown: operationShutdown);
+            operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), ownerShutdown: operationShutdown, logger: Logger);
             interactions = new BridgeInteractionRouter(this, _transport);
             fieldWrites = new BridgeFieldWriteRegistryProvider(Guid.NewGuid().ToString("N"));
             _operations = operations;
@@ -122,6 +151,12 @@ public sealed class WindowContentSession : IDisposable
     /// attaches to it.
     /// </summary>
     public IRunicModelContext? ModelContext => _rootModelLease?.Context ?? _sessionModelContext;
+
+    // Failures of this window's Bridges, operations and mounts. Without a
+    // logger factory this is the Trace fallback.
+    internal ILogger Logger { get; }
+
+    internal bool HasLogger { get; }
 
     // Generated Bridges remain in this assembly through their host-neutral
     // base class. The router is intentionally internal: applications do not
@@ -1014,7 +1049,10 @@ public sealed class WindowContentSession : IDisposable
                 MountRelease? release;
                 lock (_gate) release = ReleaseMountCore(token, "The browser presentation could not be mounted.");
                 if (release is { } value) CompleteRelease(value);
-                Console.Error.WriteLine($"Runic View mount failed: {exception}");
+                BridgeTelemetry.RecordFailure("mount", null, null, exception);
+                if (_session.HasLogger)
+                    ViewsLog.MountFailed(_session.Logger, BridgeTelemetry.LoggedException(exception), _route, BridgeTelemetry.ErrorType(exception));
+                else Console.Error.WriteLine($"Runic View mount failed: {exception}");
                 throw;
             }
         }
@@ -1116,7 +1154,8 @@ public sealed class WindowContentSession : IDisposable
                             MountRelease? release;
                             lock (_gate) release = ReleaseMountCore(token, "The browser presentation could not be mounted.");
                             if (release is { } value) CompleteRelease(value);
-                            System.Diagnostics.Trace.TraceError($"Runic View remount failed: {exception}");
+                            BridgeTelemetry.RecordFailure("mount", null, null, exception);
+                            ViewsLog.RemountFailed(_session.Logger, BridgeTelemetry.LoggedException(exception), _route, BridgeTelemetry.ErrorType(exception));
                         }
                     }
                 });

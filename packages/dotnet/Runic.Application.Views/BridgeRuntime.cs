@@ -222,6 +222,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly IBridgeTransport _transport;
     private readonly T _vm;
     private readonly string _name;
+    private static readonly string ModelName = typeof(T).Name;
+    private readonly Microsoft.Extensions.Logging.ILogger _logger;
     private readonly Action<Utf8JsonWriter, T, long> _writeSnapshot;
     private readonly BridgeSnapshotWriter<T>? _writeSnapshotWithFields;
     private readonly PropertyDescriptor<T>[] _properties;
@@ -311,7 +313,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _incrementalCollections = collections ?? [];
         _generatedCollectionNames = dataSubscriptions?.Where(member => member.EnumerateChildren is not null)
             .Select(member => member.PropertyName).ToHashSet(StringComparer.Ordinal) ?? [];
-        _delivery = new(transport, name, _modelTurn, CaptureRequestedState);
+        _logger = content?.Logger ?? TraceFallbackLogger.Instance;
+        _delivery = new(transport, name, _modelTurn, CaptureRequestedState, ModelName, _logger);
         _name = name;
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
         _writeSnapshotWithFields = writeSnapshotWithFields;
@@ -437,18 +440,23 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            var call = BridgeCall.Start(BridgeCallKind.Set, ModelName, _name, property.Name);
             try
             {
                 property.Set(_vm, e);
-                return EncodeTerminal();
+                var reply = EncodeTerminal();
+                call.Complete(BridgeCallOutcome.Ok);
+                return reply;
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
+                call.Complete(BridgeCallOutcome.Rejected);
                 return EncodeTerminal(new("rejected", $"{property.Name} has an invalid value.", BridgeDiagnostics.Capture(error)));
             }
             catch (Exception error)
             {
-                Trace.TraceError($"Bridge setter {property.Name} failed: {error}");
+                call.Complete(BridgeCallOutcome.Failed, error);
+                ViewsLog.SetterFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, property.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeTerminal(new("failed", $"Could not update {property.Name}.", BridgeDiagnostics.Capture(error)));
             }
         }
@@ -459,6 +467,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            var call = BridgeCall.Start(BridgeCallKind.Write, ModelName, _name, property.Descriptor.Name);
             BridgeFieldWriteRequest<object?> request;
             try
             {
@@ -481,17 +490,21 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException or KeyNotFoundException or OverflowException)
             {
+                call.Complete(BridgeCallOutcome.Rejected);
                 return EncodeTerminal(new("rejected", $"{property.Descriptor.Name} has an invalid checked write.", BridgeDiagnostics.Capture(error)));
             }
 
             try
             {
                 var receipt = property.Registry.Apply(request);
-                return EncodeFieldWrite(receipt, property);
+                var reply = EncodeFieldWrite(receipt, property);
+                call.Complete(BridgeCallOutcome.Ok);
+                return reply;
             }
             catch (Exception error)
             {
-                Trace.TraceError($"Bridge checked setter {property.Descriptor.Name} failed: {error}");
+                call.Complete(BridgeCallOutcome.Failed, error);
+                ViewsLog.FieldWriteFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, property.Descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeTerminal(new("failed", $"Could not update {property.Descriptor.Name}.", BridgeDiagnostics.Capture(error)));
             }
         }
@@ -545,26 +558,36 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
             try
             {
                 var argument = descriptor.ReadArgument?.Invoke(arguments);
                 var command = descriptor.Get(_vm);
-                if (!IsAvailable(descriptor, argument)) return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
+                if (!IsAvailable(descriptor, argument))
+                {
+                    call.Complete(BridgeCallOutcome.Rejected);
+                    return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
+                }
                 using var invocation = EnterInvocation(descriptor, arguments, CancellationToken.None);
                 ((ICommand)command).Execute(argument);
-                return EncodeTerminal();
+                var reply = EncodeTerminal();
+                call.Complete(BridgeCallOutcome.Ok);
+                return reply;
             }
             catch (OperationCanceledException)
             {
+                call.Complete(BridgeCallOutcome.Cancelled);
                 return EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."));
             }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
             {
+                call.Complete(BridgeCallOutcome.Rejected);
                 return EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error)));
             }
             catch (Exception error)
             {
-                Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
+                call.Complete(BridgeCallOutcome.Failed, error);
+                ViewsLog.CommandFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeTerminal(new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(error)));
             }
         }
@@ -580,32 +603,45 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             return EncodeWithoutSnapshot(new("disconnected", "The window is closing."));
         var cancellation = admission?.Token ?? token;
         Task<BridgeOperationResult>? execution = null;
+        var call = BridgeCall.Start(BridgeCallKind.Command, ModelName, _name, descriptor.Name);
         try
         {
+            var rejected = BridgeCallOutcome.Disconnected;
             var rejection = _modelTurn.Run(() =>
             {
                 if (IsInactive) return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
                 var argument = descriptor.ReadArgument?.Invoke(arguments);
+                rejected = BridgeCallOutcome.Rejected;
                 if (!IsAvailable(descriptor, argument))
                     return EncodeTerminal(new("rejected", $"{descriptor.Name} is unavailable."));
                 using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                 execution = InvokeCommandAsync(descriptor, argument, cancellation);
                 return null;
             });
-            if (rejection is not null) return rejection;
+            if (rejection is not null)
+            {
+                call.Complete(rejected);
+                return rejection;
+            }
             await execution!.ConfigureAwait(false);
+            call.Complete(BridgeCallOutcome.Ok);
             return ReplyAfterCommand(() => EncodeTerminal());
         }
         catch (OperationCanceledException)
-        { return ReplyAfterCommand(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled."))); }
+        {
+            call.Complete(BridgeCallOutcome.Cancelled);
+            return ReplyAfterCommand(() => EncodeTerminal(new("cancelled", $"{descriptor.Name} was cancelled.")));
+        }
         catch (Exception error) when (error is ArgumentException or FormatException or JsonException)
         {
+            call.Complete(BridgeCallOutcome.Rejected);
             var detail = BridgeDiagnostics.Capture(error);
             return ReplyAfterCommand(() => EncodeTerminal(new("rejected", $"{descriptor.Name} has an invalid argument.", detail)));
         }
         catch (Exception error)
         {
-            Trace.TraceError($"Bridge command {descriptor.Name} failed: {error}");
+            call.Complete(BridgeCallOutcome.Failed, error);
+            ViewsLog.CommandFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
             var detail = BridgeDiagnostics.Capture(error);
             return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
         }
@@ -653,6 +689,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return EncodeOperationStartFailure("disconnected", "The Bridge is closed.");
+            var call = BridgeCall.Start(BridgeCallKind.OperationStart, ModelName, _name, descriptor.Name);
             try
             {
                 string requestId;
@@ -681,29 +718,62 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 var request = new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
                 var admission = descriptor.ExecuteStreamAsync is { } executeStream
                     ? content.Operations.Accept(request, () => IsAvailable(descriptor, argument), descriptor.CreateStream!(),
-                        (execution, cancellation) =>
+                        (execution, cancellation) => ObserveOperationAsync(descriptor.Name, _name, () =>
                         {
                             using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                             return executeStream(_vm, execution, cancellation, argument);
-                        })
+                        }))
                     : content.Operations.Accept(request,
                     () => IsAvailable(descriptor, argument),
-                    cancellation =>
+                    cancellation => ObserveOperationAsync(descriptor.Name, _name, () =>
                     {
                         using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                         return InvokeCommandAsync(descriptor, argument, cancellation);
-                    });
-                return BridgeOperationRouter.EncodeAdmission(admission);
+                    }));
+                var reply = BridgeOperationRouter.EncodeAdmission(admission);
+                call.Complete(BridgeCallOutcome.Ok);
+                return reply;
             }
             catch (OperationCanceledException)
-            { return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled."); }
+            {
+                call.Complete(BridgeCallOutcome.Cancelled);
+                return EncodeOperationStartFailure("cancelled", $"{descriptor.Name} was cancelled.");
+            }
             catch (Exception error) when (error is ArgumentException or FormatException or JsonException or InvalidOperationException)
-            { return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error)); }
+            {
+                call.Complete(BridgeCallOutcome.Rejected);
+                return EncodeOperationStartFailure("rejected", $"{descriptor.Name} has an invalid argument.", BridgeDiagnostics.Capture(error));
+            }
             catch (Exception error)
             {
-                Trace.TraceError($"Bridge operation admission {descriptor.Name} failed: {error}");
+                call.Complete(BridgeCallOutcome.Failed, error);
+                ViewsLog.OperationAdmissionFailed(_logger, BridgeTelemetry.LoggedException(error), ModelName, descriptor.Name, _name, BridgeTelemetry.ErrorType(error));
                 return EncodeOperationStartFailure("failed", $"{descriptor.Name} could not start.", BridgeDiagnostics.Capture(error));
             }
+        }
+    }
+
+    // Runs the admitted work of an operation inside its span. The registry
+    // owns the terminal state and logs a failure.
+    private static async Task<BridgeOperationResult> ObserveOperationAsync(string member, string route,
+        Func<Task<BridgeOperationResult>> run)
+    {
+        var call = BridgeCall.Start(BridgeCallKind.Operation, ModelName, route, member);
+        try
+        {
+            var result = await run().ConfigureAwait(false);
+            call.Complete(BridgeCallOutcome.Ok);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            call.Complete(BridgeCallOutcome.Cancelled);
+            throw;
+        }
+        catch (Exception error)
+        {
+            call.Complete(BridgeCallOutcome.Failed, error);
+            throw;
         }
     }
 
@@ -948,6 +1018,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     // into a request instead of serializing another full state per change.
     private void PublishRecoverySnapshotCore()
     {
+        if (BridgeTelemetry.RecoverySnapshots.Enabled)
+            BridgeTelemetry.RecoverySnapshots.Add(1, new KeyValuePair<string, object?>(BridgeTelemetry.ModelTag, ModelName));
         if (_delivery.StateQueued) { PublishSnapshotCore(); return; }
         var state = CaptureState();
         if (state is not null && !IsInactive) _delivery.Enqueue(state);

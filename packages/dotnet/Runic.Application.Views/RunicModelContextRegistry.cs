@@ -243,7 +243,8 @@ public sealed class RunicModelContextRegistry
         private static async Task ObserveReleaseAsync(ValueTask release)
         {
             try { await release.ConfigureAwait(false); }
-            catch (Exception error) { System.Diagnostics.Trace.TraceError(error.ToString()); }
+            catch (Exception error)
+        { ViewsLog.ModelContextReleaseFailed(TraceFallbackLogger.Instance, BridgeTelemetry.LoggedException(error), BridgeTelemetry.ErrorType(error)); }
         }
     }
 }

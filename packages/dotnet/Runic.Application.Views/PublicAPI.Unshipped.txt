@@ -63,3 +63,11 @@ static Runic.Application.Views.BridgeWindowCloseResult.operator !=(Runic.Applica
 static Runic.Application.Views.BridgeWindowCloseResult.operator ==(Runic.Application.Views.BridgeWindowCloseResult? left, Runic.Application.Views.BridgeWindowCloseResult? right) -> bool
 *REMOVED*static Runic.Application.Views.WindowContentSessionCloseResult.operator !=(Runic.Application.Views.WindowContentSessionCloseResult? left, Runic.Application.Views.WindowContentSessionCloseResult? right) -> bool
 *REMOVED*static Runic.Application.Views.WindowContentSessionCloseResult.operator ==(Runic.Application.Views.WindowContentSessionCloseResult? left, Runic.Application.Views.WindowContentSessionCloseResult? right) -> bool
+*REMOVED*Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), object? rootModel = null, Runic.Application.Views.IRunicModelContext? modelContext = null) -> void
+Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.IRunicViewLocator? viewLocator, System.Threading.CancellationToken operationShutdown, object? rootModel, Runic.Application.Views.IRunicModelContext? modelContext) -> void
+Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), object? rootModel = null, Runic.Application.Views.IRunicModelContext? modelContext = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> void
+Runic.Application.Views.RunicModelContext.RunicModelContext(Microsoft.Extensions.Logging.ILogger<Runic.Application.Views.RunicModelContext!>? logger) -> void
+Runic.Application.Views.RunicViewsTelemetry
+const Runic.Application.Views.RunicViewsTelemetry.ActivitySourceName = "Runic.Application.Views" -> string!
+const Runic.Application.Views.RunicViewsTelemetry.MeterName = "Runic.Application.Views" -> string!
+const Runic.Application.Views.RunicViewsTelemetry.LogCategory = "Runic.Application.Views" -> string!

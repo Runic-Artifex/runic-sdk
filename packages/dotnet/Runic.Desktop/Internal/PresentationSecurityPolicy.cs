@@ -60,4 +60,5 @@ internal sealed record PresentationSurfaceRuntimeOptions(
     IWebUiEmbeddedHostFactory EmbeddedHostFactory,
     bool WaitForConnection,
     TimeSpan ConnectionTimeout,
-    Action<DesktopDiagnostic>? DiagnosticSink);
+    Action<DesktopDiagnostic>? DiagnosticSink,
+    Microsoft.Extensions.Logging.ILogger? Logger = null);

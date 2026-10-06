@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
@@ -14,12 +14,14 @@ namespace Runic.Application.Views;
 // A recovery state is captured at once (Enqueue) so frames can queue behind it;
 // if one cannot, the queued state reverts to a request.
 internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string route, IBridgeModelTurn modelTurn,
-    Func<string?> captureState) : IDisposable
+    Func<string?> captureState, string? model = null, ILogger? logger = null) : IDisposable
 {
     private const int MaximumPendingFrames = 64;
     private const int MaximumPendingLength = 1024 * 1024;
     private readonly object _gate = new();
-    private readonly Queue<string> _pending = new();
+    private readonly Queue<(string Frame, bool State)> _pending = new();
+    private string Model => model ?? route;
+    private readonly ILogger _logger = logger ?? TraceFallbackLogger.Instance;
     private int _pendingLength;
     private bool _stateRequested;
     private bool _stateQueued;
@@ -54,7 +56,8 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
         {
             if (_disposed) return;
             ClearPending();
-            _pending.Enqueue(snapshot);
+            _pending.Enqueue((snapshot, true));
+            BridgeTelemetry.DeliveryQueueDepth.Add(1);
             _pendingLength = snapshot.Length;
             _stateQueued = true;
             Start();
@@ -70,7 +73,8 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
             if (_disposed) return true;
             if (_stateRequested || _pending.Count >= MaximumPendingFrames
                 || _pendingLength + delta.Length > MaximumPendingLength) return false;
-            _pending.Enqueue(delta);
+            _pending.Enqueue((delta, false));
+            BridgeTelemetry.DeliveryQueueDepth.Add(1);
             _pendingLength += delta.Length;
             Start();
             return true;
@@ -91,6 +95,7 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
 
     private void ClearPending()
     {
+        if (_pending.Count != 0) BridgeTelemetry.DeliveryQueueDepth.Add(-_pending.Count);
         _pending.Clear();
         _pendingLength = 0;
         _stateRequested = false;
@@ -140,24 +145,33 @@ internal sealed class BridgeSnapshotDelivery(IBridgeTransport transport, string 
                 // There is no PropertyChanged raiser to report to here. The
                 // producer still requires a full state, so its next change
                 // requests another capture.
-                Trace.TraceError($"Bridge snapshot capture for {route} failed: {error}");
+                BridgeTelemetry.RecordFailure("snapshot.capture", Model, null, error);
+                ViewsLog.SnapshotCaptureFailed(_logger, BridgeTelemetry.LoggedException(error), Model, route, BridgeTelemetry.ErrorType(error));
             }
+            var state = capture;
             if (!capture)
                 lock (_gate)
                 {
                     if (_disposed || _pending.Count == 0) continue;
-                    snapshot = _pending.Dequeue();
+                    (snapshot, state) = _pending.Dequeue();
+                    BridgeTelemetry.DeliveryQueueDepth.Add(-1);
                     _pendingLength -= snapshot.Length;
                     _stateQueued = false;
                 }
             if (snapshot is null) continue;
+            var timestamp = BridgeTelemetry.Timestamp();
             try
             {
                 if (transport is IAsyncBridgeTransport asynchronous)
                     await asynchronous.PublishAsync(route, snapshot).ConfigureAwait(false);
                 else transport.Publish(route, snapshot);
+                BridgeTelemetry.RecordFrame(Model, state ? "state" : "delta", snapshot, timestamp);
             }
-            catch (Exception error) { Trace.TraceError($"Bridge snapshot delivery for {route} failed: {error}"); }
+            catch (Exception error)
+            {
+                BridgeTelemetry.RecordFailure("snapshot.delivery", Model, null, error);
+                ViewsLog.SnapshotDeliveryFailed(_logger, BridgeTelemetry.LoggedException(error), Model, route, BridgeTelemetry.ErrorType(error));
+            }
         }
     }
 

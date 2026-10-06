@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop;
 
@@ -86,6 +87,12 @@ public sealed record DesktopHostOptions
 
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
+
+    /// <summary>
+    /// Gets an optional logger factory for window failures, such as a failed close confirmation.
+    /// When omitted, they are written to <see cref="System.Diagnostics.Trace"/>.
+    /// </summary>
+    public ILoggerFactory? LoggerFactory { get; init; }
 }
 
 /// <summary>Configures one isolated presentation surface.</summary>

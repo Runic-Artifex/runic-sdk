@@ -1286,7 +1286,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         {
             throw new NotSupportedException("The embedded host does not support close confirmation.");
         }
-        _closeController = new WindowCloseController(_confirmClose, () => host.CloseAsync());
+        _closeController = new WindowCloseController(_confirmClose, () => host.CloseAsync(), _runtimeOptions?.Logger);
     }
 
     private void StopCloseConfirmation() => Interlocked.Exchange(ref _closeController, null)?.Dispose();

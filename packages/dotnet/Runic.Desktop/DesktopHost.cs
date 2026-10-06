@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop;
@@ -116,7 +117,8 @@ public sealed class DesktopHost : IAsyncDisposable
             embeddedFactory,
             _options.WaitForConnection,
             _options.ConnectionTimeout,
-            _options.DiagnosticSink);
+            _options.DiagnosticSink,
+            _options.LoggerFactory?.CreateLogger(DesktopLog.Category));
         var engine = new WebUiWindow(core, path, security, runtime);
         var surface = new DesktopSurface(this, id, engine, isolatedCore);
         if (!_surfaces.TryAdd(id, surface))

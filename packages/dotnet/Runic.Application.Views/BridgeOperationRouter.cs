@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -25,11 +26,12 @@ internal sealed class BridgeOperationRouter : IDisposable
         int maximumOperations = 64,
         int maximumRetainedTerminals = 32,
         int maximumRetainedExpiredIds = 128,
+        ILogger? logger = null,
         CancellationToken ownerShutdown = default)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _operations = new BridgeOperationRegistry(
-            ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown);
+            ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown, logger: logger);
         var bindings = new List<IDisposable>();
         try
         {
