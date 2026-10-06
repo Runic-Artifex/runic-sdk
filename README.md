@@ -87,6 +87,7 @@ retains the historical Linux measurement and links to current size guidance.
 ## Verify packages and releases
 
 ```sh
+bun run verify:candidate # Pack, then run the package and template checks below once
 bun run pack             # Materialize the current workspace NuGet and npm inventory
 bun run verify-packages  # Install archives into isolated consumers outside this checkout
 bun run verify:templates # Packed React/Vue/Svelte/Angular apps with npm, pnpm, and Bun
@@ -98,7 +99,11 @@ Package consumers use a fresh NuGet cache and map Runic identities to the local
 candidate feed. npm consumers install tarballs outside the workspace and reject
 source links or unpublished dependency specifiers. Template acceptance additionally
 requires Bash and the npm and pnpm versions from `bun eng/toolchain.mjs`. Artifacts are written to
-`artifacts/packages`; these commands never publish packages.
+`artifacts/packages`; these commands never publish packages. Packing builds the
+whole set in a staging directory and replaces `artifacts/packages` only when every
+package succeeded, so a failed or interrupted pack keeps the previous set. It does
+not modify tracked files. Consumer trees are deleted afterwards; pass `--keep`
+(`bun run verify-packages --keep`) to retain them for diagnosis.
 
 `eng/workspace.json` lists maintained artifacts and component dependencies.
 Its `version` is the release-train version. `eng/Versions.props` and every npm
