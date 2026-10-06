@@ -4,10 +4,11 @@ import {createHash} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 
 // Every template frontend installs the shared Views runtime and its framework binding.
+// The Vite frontends also install the Runic Vite plugin; Angular builds with the Angular CLI.
 export const templateRunicPackages = Object.freeze({
-  react: ['@runic-artifex/react', '@runic-artifex/views'],
-  vue: ['@runic-artifex/vue', '@runic-artifex/views'],
-  svelte: ['@runic-artifex/svelte', '@runic-artifex/views'],
+  react: ['@runic-artifex/react', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
+  vue: ['@runic-artifex/vue', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
+  svelte: ['@runic-artifex/svelte', '@runic-artifex/views', '@runic-artifex/vite-plugin-runic'],
   angular: ['@runic-artifex/angular', '@runic-artifex/views'],
 });
 

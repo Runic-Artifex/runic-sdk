@@ -67,6 +67,11 @@ the Runic Desktop host (`--host desktop` when creating a project); see the
 <!--#else -->
 | `Frontend/src/App.tsx`, `Frontend/src/pages` | Connect generated clients with `useView` from `@runic-artifex/react` and render the page that `WorkspaceViewModel.Main` selects. |
 <!--#endif -->
+<!--#if (frontend != "angular" && host == "desktop") -->
+| `Frontend/vite.config.ts` | Adds `runic({ desktop: true })` from `@runic-artifex/vite-plugin-runic`, which loads the Runic Desktop bootstrap and builds with relative asset URLs. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
+<!--#elif (frontend != "angular") -->
+| `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
+<!--#endif -->
 | `Frontend/src/generated` | Typed clients generated from the ViewModels. They import the shared `@runic-artifex/views` runtime. |
 
 The generated clients are not committed: `.gitignore` excludes

@@ -33,10 +33,11 @@ internal static partial class FrontendDevelopmentDocument
             string normalized = path.StartsWith("./", StringComparison.Ordinal)
                 ? path[1..]
                 : path.StartsWith('/') ? path : "/" + path;
-            // The native host serves webui.js, and the Runic host packages copy
+            // The native host serves webui.js and the Runic Desktop bootstrap that
+            // runic({ desktop: true }) inserts, and the Runic host packages copy
             // their client scripts into the runtime web root. Runic Desktop serves
             // each Window below its own path, so keep them relative to the base.
-            if (normalized is "/webui.js" or "/runic-cswebui.js" or "/runic-desktop-views.js")
+            if (normalized is "/webui.js" or "/runic-desktop.js" or "/runic-cswebui.js" or "/runic-desktop-views.js")
             {
                 return match.Groups["prefix"].Value + normalized[1..] + match.Groups["suffix"].Value;
             }

@@ -230,6 +230,7 @@ verify_template() {
     [[ "$other_lock" == "$selected_lock" ]] || test ! -f "$output/Frontend/$other_lock"
   done
   grep -Fq "\"packageManager\": \"$manager@$expected_manager_version\"" "$output/Frontend/package.json"
+  # The frontend package is named after the project, not the template.
   local package_name
   package_name="$(sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
   grep -Fq "\"name\": \"$package_name\"" "$output/Frontend/package.json"
@@ -240,10 +241,12 @@ verify_template() {
     cswebui)
       grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
       grep -Fq 'runic-cswebui.js' "$index_html"
+      [[ "$framework" == angular ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
       ;;
     desktop)
       grep -Fq 'Runic.Application.Desktop' "$output/$project_name.csproj"
       grep -Fq 'runic-desktop-views.js' "$index_html"
+      [[ "$framework" == angular ]] || grep -Fq 'runic({ desktop: true })' "$output/Frontend/vite.config.ts"
       ;;
   esac
   case "$view_models" in
@@ -307,6 +310,26 @@ verify_template() {
     exit 1
   fi
   test -f "$output/Frontend/src/generated/workspace.ts"
+  # runic({ desktop: true }) loads the Runic Desktop bootstrap; CS-WebUI does not serve it.
+  if [[ "$framework" != angular ]]; then
+    if [[ "$host" == desktop ]]; then
+      grep -Fq '<script src="./runic-desktop.js"></script>' "$output/Frontend/dist/index.html"
+    elif grep -Fq 'runic-desktop.js' "$output/Frontend/dist/index.html"; then
+      echo "The CS-WebUI frontend loads the Runic Desktop bootstrap." >&2
+      exit 1
+    fi
+  fi
+  # Every path in the README's project layout exists once the project is built.
+  local layout_paths
+  layout_paths="$(awk '/^## /{layout = ($0 == "## Project layout"); next} layout && /^\| `/' "$output/README.md" \
+    | cut -d'|' -f2 | grep -o '`[^`]*`' | tr -d '`')"
+  [[ -n "$layout_paths" ]]
+  while IFS= read -r layout_path; do
+    if [[ ! -e "$output/$layout_path" ]]; then
+      echo "The generated README lists a missing project path: $layout_path" >&2
+      exit 1
+    fi
+  done <<< "$layout_paths"
   if [[ "$framework" == vue && "$manager" == bun ]]; then
     # vue-tsc finds no .vue files under the Bun runtime and passes, so check
     # with Node as a plain `bun run` does.
@@ -349,6 +372,29 @@ verify_creator() {
   fi
   grep -Fq 'react, vue, svelte, angular' "$creator_directory/invalid.txt"
   echo 'CREATOR_OK'
+}
+
+# Project names that are not npm names still produce a valid frontend package name.
+verify_package_names() {
+  local names_directory="$template_tmp/package-names"
+  local case_entry project_name expected generated index=0
+  local long_name
+  long_name="$(printf 'a%.0s' {1..220})"
+  mkdir -p "$names_directory"
+  # Names without npm characters fall back to "app"; npm names have at most 214 characters.
+  for case_entry in "Contoso.Notes App|contoso-notes-app" "_My__API.|my-api" "Café Notes|caf-notes" \
+    "日本語|app" "___|app" "$long_name|${long_name:0:214}"; do
+    project_name="${case_entry%%|*}"
+    expected="${case_entry#*|}"
+    index=$((index + 1))
+    (cd "$names_directory" && dotnet new runic-app --name "$project_name" --output "case-$index" --frontend svelte)
+    generated="$(bun -e 'process.stdout.write(require(process.argv[1]).name)' "$names_directory/case-$index/Frontend/package.json")"
+    if [[ "$generated" != "$expected" ]]; then
+      echo "Project '$project_name' produced frontend package name '$generated', expected '$expected'." >&2
+      exit 1
+    fi
+  done
+  echo 'PACKAGE_NAMES_OK'
 }
 
 frameworks=(react vue svelte angular)
@@ -396,9 +442,9 @@ for manager in "${managers[@]}"; do
   esac
 done
 
-# CI runs the creator check in one framework lane only.
+# CI runs the creator and package name checks in one framework lane only.
 case "${RUNIC_TEMPLATE_CREATOR:-1}" in
-  1) verify_creator ;;
+  1) verify_creator; verify_package_names ;;
   0) ;;
   *) echo "RUNIC_TEMPLATE_CREATOR must be 0 or 1." >&2; exit 2 ;;
 esac
