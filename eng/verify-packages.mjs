@@ -6,6 +6,7 @@ import {
   readdirSync,
   writeFileSync,
   realpathSync,
+  rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -112,9 +113,20 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
   }
 }
 
-export async function verifyPackages(packageName) {
+// The consumer tree includes its own NuGet cache and package restores.
+// It is removed after the run unless --keep asks to retain it for diagnosis.
+export async function verifyPackages(packageName, { keep = false } = {}) {
   const directory = mkdtempSync(join(tmpdir(), "runic-sdk-consumers-"));
   console.log(`Package-only consumers: ${directory}`);
+  try {
+    await verifyConsumers(directory, packageName);
+  } finally {
+    if (keep) console.log(`Kept package-only consumers: ${directory}`);
+    else rmSync(directory, { recursive: true, force: true, maxRetries: 5 });
+  }
+}
+
+async function verifyConsumers(directory, packageName) {
   const nuget = resolve(root, "artifacts/packages/nuget");
   const npm = resolve(root, "artifacts/packages/npm");
   // Separate minimal consumers prevent dependencies from concealing missing
