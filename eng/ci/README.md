@@ -113,9 +113,11 @@ executable suites are discovered from `RunicSdk.Core.slnx`; web test suites are
 discovered from `eng/workspace.json`. Add new managed groups to the workflow matrix
 and the discovery module together; contract tests check that assignment. Keep
 focused package/test commands available for quick development without a container.
+The engineering job runs actionlint over every workflow; pin remote actions as
+described in [dependency review](../dependencies/README.md).
 
 ```sh
-nix develop --command actionlint .github/workflows/ci.yml
+nix develop --command actionlint
 nix develop --command bun test ./eng/ci/contracts.test.mjs
 bun run ci --workflows eng/ci/fixtures/artifact-roundtrip.yml
 ```
