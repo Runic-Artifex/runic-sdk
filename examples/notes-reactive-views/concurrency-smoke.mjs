@@ -1,95 +1,25 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-async function retry(action, timeout = 15_000) {
-  const deadline = Date.now() + timeout;
-  let lastError;
-  while (Date.now() < deadline) {
-    try { if (await action()) return; }
-    catch (cause) { lastError = cause; }
-    await pause(50);
-  }
-  throw new Error(`Timed out waiting for concurrent Reactive Notes clients: ${lastError ?? "no detail"}`);
-}
-
-async function removeProfile(profile) {
-  for (let attempt = 0; ; attempt++) {
-    try { await rm(profile, { recursive: true, force: true }); return; }
-    catch (cause) {
-      if (cause?.code !== "ENOTEMPTY" || attempt === 9) throw cause;
-      await pause(100);
-    }
-  }
-}
+const clients = [];
+const detail = async () => [
+  ...await Promise.all(clients.map(async (client, index) => `client ${index + 1}: ${await client.diagnostics()}`)),
+  `host stdout:\n${tail(output)}\nhost stderr:\n${tail(errors)}`,
+].join("\n");
+const retry = (condition, timeout = 15_000) => waitFor(condition, { timeout, label: "concurrent Reactive Notes clients", detail });
 
 async function openClient(url) {
-  const profile = await mkdtemp(join(tmpdir(), "runic-reactive-client-"));
-  const chrome = spawn(process.env.WEBUI_BROWSER_PATH ?? "chromium", [
-    "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-    "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`, url,
-  ], { stdio: "ignore" });
-  let socket;
-  async function stopChrome() {
-    if (chrome.exitCode === null && chrome.signalCode === null)
-      await new Promise(resolve => { chrome.once("exit", resolve); chrome.kill("SIGTERM"); });
-  }
-  try {
-    let port;
-    await retry(async () => {
-      if (chrome.exitCode !== null) throw new Error(`Chromium exited: ${chrome.exitCode}`);
-      port = Number((await readFile(join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]);
-      return port;
-    });
-    let target;
-    await retry(async () => {
-      const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      target = targets.find(entry => entry.type === "page" && entry.url.startsWith(url));
-      return target;
-    });
-    socket = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => {
-      socket.addEventListener("open", resolve, { once: true });
-      socket.addEventListener("error", reject, { once: true });
-    });
-    let nextId = 0;
-    const pending = new Map();
-    socket.addEventListener("message", ({ data }) => {
-      const message = JSON.parse(data);
-      const resolve = pending.get(message.id);
-      if (resolve) { pending.delete(message.id); resolve(message); }
-    });
-    async function evaluate(expression) {
-      const id = ++nextId;
-      const result = new Promise(resolve => pending.set(id, resolve));
-      socket.send(JSON.stringify({ id, method: "Runtime.evaluate", params: {
-        expression, awaitPromise: true, returnByValue: true,
-      } }));
-      const response = await result;
-      if (response.error || response.result?.exceptionDetails) throw new Error(JSON.stringify(response));
-      return response.result.result.value;
-    }
-    return {
-      evaluate,
-      snapshot: route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`),
-      call: route => evaluate(`window.__runicBridge.call(${JSON.stringify(route)})`),
-      kill: () => chrome.kill("SIGKILL"),
-      async dispose() {
-        socket?.close();
-        await stopChrome();
-        await removeProfile(profile);
-      },
-    };
-  } catch (cause) {
-    socket?.close();
-    await stopChrome();
-    await removeProfile(profile);
-    throw cause;
-  }
+  const browser = await launchChromium(url, { profilePrefix: "runic-reactive-client-", timeout: 15_000 });
+  clients.push(browser);
+  const { evaluate } = browser;
+  return {
+    evaluate,
+    snapshot: route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`),
+    call: route => evaluate(`window.__runicBridge.call(${JSON.stringify(route)})`),
+    kill: () => browser.kill(),
+    dispose: () => browser.close(),
+  };
 }
 
 const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesReactiveViews.dll", import.meta.url));
@@ -167,8 +97,7 @@ try {
     throw new Error(`The final browser exit did not release the View: ${output}\n${errors}`);
   console.log("REACTIVE_NOTES_CONCURRENCY_OK|two-clients|collection-reorder-prune-restore|overlapping-routes|survivor|final-disconnect");
 } finally {
-  await first?.dispose();
-  await second?.dispose();
+  await Promise.allSettled([first?.dispose(), second?.dispose()]);
   if (!host.stdin.writableEnded) host.stdin.end("\n");
   await pause(300);
   if (host.exitCode === null) host.kill("SIGTERM");

@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 
 const frontend = process.env.RUNIC_HMR_FRONTEND;
 if (frontend !== "angular" && frontend !== "svelte")
@@ -19,17 +19,10 @@ const hostDll = fileURLToPath(new URL(`./bin/${viaIde ? "Debug" : "Release"}/net
 const project = fileURLToPath(new URL("./NotesReactiveViews.csproj", import.meta.url));
 const devTool = fileURLToPath(new URL("../../tools/Runic.Application.Views.Dev/runic-dev.mjs", import.meta.url));
 
-const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-async function retry(action, timeout = 15_000) {
-  const deadline = Date.now() + timeout;
-  let lastError;
-  while (Date.now() < deadline) {
-    try { if (await action()) return; }
-    catch (cause) { lastError = cause; }
-    await pause(50);
-  }
-  throw new Error(`Timed out waiting for ${frontend} Reactive Notes HMR: ${lastError ?? "no detail"}`);
-}
+let browser;
+const detail = async () => `${browser ? await browser.diagnostics() : "browser: not started"}\n` +
+  `host stdout:\n${tail(hostOutput)}\nhost stderr:\n${tail(hostErrors)}\ndev server:\n${tail(serverOutput)}`;
+const retry = (condition, timeout = 15_000) => waitFor(condition, { timeout, label: `${frontend} Reactive Notes HMR`, detail });
 async function availablePort() {
   const server = createServer();
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -48,7 +41,7 @@ const host = viaRunicDev
 let hostOutput = "", hostErrors = "", serverOutput = "";
 host.stdout.on("data", chunk => { hostOutput += chunk.toString(); });
 host.stderr.on("data", chunk => { hostErrors += chunk.toString(); });
-let devServer, chrome, socket, profile, originalShell, probeFile, devPorts;
+let devServer, originalShell, probeFile, devPorts;
 try {
   let url;
   if (viaRunicDev) {
@@ -90,45 +83,8 @@ try {
     }, 30_000);
   }
 
-  profile = await mkdtemp(join(tmpdir(), `runic-${frontend}-reactive-hmr-`));
-  chrome = spawn(process.env.WEBUI_BROWSER_PATH ?? "chromium", [
-    "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-    "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`, url,
-  ], { stdio: "ignore" });
-  let port;
-  await retry(async () => {
-    port = Number((await readFile(join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]);
-    return port;
-  });
-  let target;
-  await retry(async () => {
-    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-    target = targets.find(entry => entry.type === "page" && entry.url.startsWith(url));
-    return target;
-  });
-  socket = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener("error", reject, { once: true });
-  });
-  let nextId = 0;
-  const pending = new Map();
-  socket.addEventListener("message", ({ data }) => {
-    const message = JSON.parse(data);
-    const resolve = pending.get(message.id);
-    if (resolve) { pending.delete(message.id); resolve(message); }
-  });
-  async function evaluate(expression) {
-    const id = ++nextId;
-    const result = new Promise(resolve => pending.set(id, resolve));
-    socket.send(JSON.stringify({ id, method: "Runtime.evaluate", params: {
-      expression, awaitPromise: true, returnByValue: true,
-    } }));
-    const response = await result;
-    if (response.error || response.result?.exceptionDetails) throw new Error(JSON.stringify(response));
-    return response.result.result.value;
-  }
+  browser = await launchChromium(url, { profilePrefix: `runic-${frontend}-reactive-hmr-` });
+  const { evaluate } = browser;
   const query = expression => evaluate(expression);
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
@@ -213,13 +169,11 @@ try {
   }
 } finally {
   if (originalShell !== undefined) await writeFile(shellFile, originalShell);
-  socket?.close();
-  chrome?.kill("SIGTERM");
+  await browser?.close().catch(error => console.error(error));
   devServer?.kill("SIGTERM");
   if (viaRunicDev) host.kill("SIGTERM");
   else if (!host.stdin.writableEnded) host.stdin.end("\n");
   await pause(300);
   if (host.exitCode === null) host.kill("SIGTERM");
   if (probeFile) await rm(probeFile, { force: true });
-  if (profile) await rm(profile, { recursive: true, force: true });
 }

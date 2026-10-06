@@ -1,19 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-async function retry(action, timeoutMilliseconds = 12_000) {
-  const deadline = Date.now() + timeoutMilliseconds;
-  let lastError;
-  while (true) {
-    try { if (await action()) return; } catch (error) { lastError = error; }
-    if (Date.now() >= deadline) throw new Error(`Timed out waiting for the Reactive Notes journey: ${lastError ?? "no detail"}`);
-    await pause(50);
-  }
-}
+import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 
 const dll = fileURLToPath(new URL("./bin/Release/net10.0/NotesReactiveViews.dll", import.meta.url));
 const webRoot = process.env.RUNIC_WEB_ROOT;
@@ -24,7 +11,10 @@ const host = spawn("dotnet", [dll, "--serve-only", ...(webRoot ? ["--web-root", 
 let output = "", errors = "";
 host.stdout.on("data", chunk => { output += chunk.toString(); });
 host.stderr.on("data", chunk => { errors += chunk.toString(); });
-let chrome, socket, profile;
+let browser;
+const detail = async () => `${browser ? await browser.diagnostics() : "browser: not started"}\n` +
+  `host stdout:\n${tail(output)}\nhost stderr:\n${tail(errors)}`;
+const retry = (condition, timeout) => waitFor(condition, { timeout, label: "the Reactive Notes journey", detail });
 try {
   let url;
   await retry(() => {
@@ -32,48 +22,8 @@ try {
     url = output.match(/https?:\/\/[^\s]+/)?.[0];
     return url;
   });
-  profile = await mkdtemp(join(tmpdir(), "runic-notes-reactive-"));
-  chrome = spawn(process.env.WEBUI_BROWSER_PATH ?? "chromium", [
-    "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-    "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
-    `--user-data-dir=${profile}`, url
-  ], { stdio: "ignore" });
-  let port;
-  await retry(async () => {
-    const active = await readFile(join(profile, "DevToolsActivePort"), "utf8");
-    port = Number(active.split("\n")[0]);
-    return port;
-  });
-  let target;
-  await retry(async () => {
-    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-    target = targets.find(entry => entry.type === "page" && entry.url.startsWith(url));
-    return target;
-  });
-  socket = new WebSocket(target.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => {
-    socket.addEventListener("open", resolve, { once: true });
-    socket.addEventListener("error", reject, { once: true });
-  });
-  let nextId = 0;
-  const pending = new Map();
-  socket.addEventListener("message", ({ data }) => {
-    const message = JSON.parse(data);
-    const resolve = pending.get(message.id);
-    if (resolve) { pending.delete(message.id); resolve(message); }
-  });
-  async function command(method, params = {}) {
-    const id = ++nextId;
-    const result = new Promise(resolve => pending.set(id, resolve));
-    socket.send(JSON.stringify({ id, method, params }));
-    const response = await result;
-    if (response.error || response.result?.exceptionDetails) throw new Error(JSON.stringify(response));
-    return response.result;
-  }
-  async function evaluate(expression) {
-    const result = await command("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
-    return result.result.value;
-  }
+  browser = await launchChromium(url, { profilePrefix: "runic-notes-reactive-" });
+  const { command, evaluate } = browser;
   const query = expression => evaluate(expression);
   const click = async selector => {
     try {
@@ -84,7 +34,7 @@ try {
         return true;
       })()`));
     } catch (cause) {
-      throw new Error(`The Reactive Notes control did not become clickable: ${selector}`, { cause });
+      throw new Error(`The Reactive Notes control did not become clickable: ${selector}\n${cause.message}`, { cause });
     }
   };
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
@@ -106,7 +56,7 @@ try {
     const documentId = (await snapshot("shell")).state.main.id;
     const editorId = (await snapshot(`content${documentId}`)).state.currentPane.id;
     await retry(async () => (await snapshot(`content${editorId}`)).state?.activationCount === 1);
-    chrome.kill("SIGKILL");
+    browser.kill();
     await retry(() => output.includes("CLIENT_DISCONNECT_OBSERVED"));
     host.stdin.end("\n");
     try { await retry(() => host.exitCode !== null || host.signalCode !== null); }
@@ -296,10 +246,10 @@ try {
   console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation");
   }
 } finally {
-  socket?.close();
-  chrome?.kill("SIGTERM");
-  if (!host.stdin.writableEnded) host.stdin.end("\n");
-  await pause(300);
-  if (host.exitCode === null) host.kill("SIGTERM");
-  if (profile) await rm(profile, { recursive: true, force: true });
+  try { await browser?.close(); }
+  finally {
+    if (!host.stdin.writableEnded) host.stdin.end("\n");
+    await pause(300);
+    if (host.exitCode === null) host.kill("SIGTERM");
+  }
 }
