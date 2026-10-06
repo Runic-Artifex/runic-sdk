@@ -79,6 +79,10 @@ test('registry polling retries availability and transient status with Retry-Afte
   fetchImpl:async()=>new Response('',{status:statuses.shift(),headers:{'retry-after':'2'}})
  });
  expect(response.status).toBe(200);expect(delays).toEqual([2000,2000,2000]);
+ const waiting=[401,404,200];
+ expect((await fetchRegistry('https://registry.npmjs.org/-/package/new/dist-tags',{waitForAvailability:true,now:()=>0,sleep:async()=>{},
+  fetchImpl:async()=>new Response('',{status:waiting.shift()})})).status).toBe(200);
+ expect((await fetchRegistry('https://registry.npmjs.org/test',{fetchImpl:async()=>new Response('',{status:401})})).status).toBe(401);
  let attempts=0;
  expect((await fetchRegistry('https://registry.npmjs.org/test',{fetchImpl:async()=>{attempts++;return new Response('',{status:404});}})).status).toBe(404);
  expect(attempts).toBe(1);
@@ -100,4 +104,15 @@ test('subprocess failures do not expose argv or underlying process errors',()=>{
  const secret='test-secret-never-log';
  try {runChecked('dotnet',['nuget','push','file','--api-key',secret],{},()=>({status:1,error:new Error(`failed --api-key ${secret}`)}));throw Error('Expected failure');}
  catch(error) {expect(String(error)).not.toContain(secret);expect(error.message).toContain('Release subprocess failed');expect(error.cause).toBeUndefined();}
+});
+
+import { npmLatest } from './registry.mjs';
+test('a dry run treats an npm package that does not exist yet as having no latest', async()=>{
+ const urls=[];
+ const fetchImpl=async url=>{urls.push(url);return url.includes('/dist-tags') ? new Response('',{status:401}) : new Response('',{status:404});};
+ expect(await npmLatest('@runic-artifex/new',{fetchImpl})).toBeUndefined();
+ expect(urls).toEqual(['https://registry.npmjs.org/%40runic-artifex%2Fnew']);
+ const published=async url=>url.includes('/dist-tags') ? Response.json({latest:'0.6.0-preview.1'}) : Response.json({});
+ expect(await npmLatest('@runic-artifex/views',{fetchImpl:published})).toBe('0.6.0-preview.1');
+ await expect(npmLatest('@runic-artifex/new',{fetchImpl:async()=>new Response('',{status:401}),waitForAvailability:true,maxAttempts:1})).rejects.toThrow('401');
 });

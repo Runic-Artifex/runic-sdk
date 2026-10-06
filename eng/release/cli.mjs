@@ -7,15 +7,17 @@ import { authority, scan, json, sha256, validateCandidate, VERSION, REPOSITORY }
 import { registryMatches, needsLatest, npmLatest } from './registry.mjs';
 import { runChecked } from './process.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
-const [command, ...args] = process.argv.slice(2);
+const [command, ...rest] = process.argv.slice(2);
+// --dry-run performs every read-only check of publish and tag-latest but never writes to a registry.
+const dryRun = rest.includes('--dry-run'), args = rest.filter(arg => arg !== '--dry-run');
 function verify(directory, candidate) {
   validateCandidate(candidate);
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim(), candidate.source);
   assert.deepEqual(scan(directory, authority(json(join(root, 'eng/workspace.json'))), candidate.source), candidate.packages);
 }
 if (command === 'prepare') {
-  // CI's needs dependency supplies test completion. This inventory records the
-  // downloaded packages, without a second acceptance policy or receipt system.
+  // The successful CI push run for this commit (ci-run.mjs) supplies test completion.
+  // This inventory records its downloaded packages, without a second acceptance policy.
   const [directory, source, ciRunId, output] = args;
   assert.match(source, /^[a-f0-9]{40}$/); assert.match(ciRunId, /^[1-9][0-9]*$/);
   const body = {schema: 'runic.preview/1', version: VERSION, repository: REPOSITORY,
@@ -33,12 +35,15 @@ else if (command === 'registry') {
   verify(directory, candidate);
   assert.equal(process.env.GITHUB_REPOSITORY, REPOSITORY, 'Publish from the release repository');
   assert.equal(process.env.GITHUB_SHA, candidate.source, 'Publish the tested workflow source');
-  assert.equal(process.env.GITHUB_RUN_ID, candidate.ciRunId, 'Publish artifacts from this workflow run');
+  assert.equal(process.env.CI_RUN_ID, candidate.ciRunId, 'Publish the artifacts of the selected CI run');
   assert.equal(process.env.GITHUB_REF, 'refs/heads/main', 'Publish from main');
-  assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
-  // Partial publication may be resumed, but an existing version is never replaced.
+  if (!dryRun) assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
+  // Partial publication may be resumed, but an existing version is never replaced:
+  // registryMatches throws when a published version has different contents.
   const pending = [];
   for (const p of candidate.packages) if (!await registryMatches(p)) pending.push(p);
+  console.log(`${dryRun ? 'Would publish' : 'Publishing'} ${pending.length} of ${candidate.packages.length} packages: ${pending.map(p => p.name).join(', ') || 'none (all already published with matching contents)'}`);
+  if (dryRun) process.exit(0);
   for (const p of pending) {
     const path = resolve(directory, p.file);
     if (p.registry === 'npm') runChecked('npm', ['publish', path, '--tag', 'preview', '--access', 'public', '--provenance', '--registry', 'https://registry.npmjs.org']);
@@ -49,8 +54,12 @@ else if (command === 'registry') {
   }
 } else if (command === 'tag-latest') {
   const candidate = json(args[0]); validateCandidate(candidate);
-  assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
-  for (const p of candidate.packages.filter(p => p.registry === 'npm'))
-    if (needsLatest(await npmLatest(p.name, {waitForAvailability: true}), VERSION))
-      runChecked('npm', ['dist-tag', 'add', `${p.name}@${VERSION}`, 'latest', '--registry', 'https://registry.npmjs.org']);
-} else throw new Error('Use prepare <packages> <source> <run> <manifest>, verify <packages> <manifest>, registry <manifest>, publish <packages> <manifest>, or tag-latest <manifest>');
+  if (!dryRun) assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
+  for (const p of candidate.packages.filter(p => p.registry === 'npm')) {
+    // A dry run precedes publication, so a package without dist-tags is simply not published yet.
+    const current = await npmLatest(p.name, {waitForAvailability: !dryRun});
+    if (!needsLatest(current, VERSION)) console.log(`Keeping ${p.name} latest at ${current}`);
+    else if (dryRun) console.log(`Would move ${p.name} latest from ${current ?? '(unpublished)'} to ${VERSION}`);
+    else runChecked('npm', ['dist-tag', 'add', `${p.name}@${VERSION}`, 'latest', '--registry', 'https://registry.npmjs.org']);
+  }
+} else throw new Error('Use prepare <packages> <source> <run> <manifest>, verify <packages> <manifest>, registry <manifest>, publish <packages> <manifest> [--dry-run], or tag-latest <manifest> [--dry-run]');
