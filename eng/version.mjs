@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-// eng/workspace.json owns the SDK release-train version. eng/Versions.props and
-// every npm manifest carry copies that `check` compares and `bump` rewrites.
+// eng/workspace.json owns the SDK release-train version. eng/Versions.props,
+// every npm manifest and the manifests' bun.lock workspace entries carry copies
+// that `check` compares and `bump` rewrites.
 // Directory.Packages.props and the template package read RunicSdkVersion, the
 // CLI compatibility metadata is regenerated, and template locks are stamped
 // from the packed archives. Runic.CommandLine is released independently.
@@ -15,6 +16,10 @@ const versionPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$/;
 const workspaceVersion = /^(  "version": ")([^"]*)(",?)$/m;
 const manifestVersion = /^(  "version": ")([^"]*)(",?)$/m;
 const sdkVersion = /(<RunicSdkVersion>)([^<]*)(<\/RunicSdkVersion>)/;
+const escapeRegExp = text => text.replace(/[.*+?^${}()|[\]\\/]/g, match => `\\${match}`);
+// bun.lock records each workspace package's name and version under its path.
+const lockVersion = entry => new RegExp(
+  `^(    "${escapeRegExp(entry.path)}": \\{\\n      "name": "${escapeRegExp(entry.name)}",\\n      "version": ")([^"]*)(",?)$`, "m");
 
 function single(text, pattern, label) {
   const global = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
@@ -22,6 +27,7 @@ function single(text, pattern, label) {
   assert.equal(matches.length, 1, `Expected one ${label}`);
   return matches[0][2];
 }
+const replaceVersion = (text, pattern, version) => text.replace(pattern, (_, prefix, _old, suffix) => `${prefix}${version}${suffix}`);
 
 export function readVersionFiles(base = root) {
   const read = path => readFileSync(resolve(base, path), "utf8");
@@ -29,17 +35,21 @@ export function readVersionFiles(base = root) {
   return {
     "eng/workspace.json": workspace,
     "eng/Versions.props": read("eng/Versions.props"),
+    "bun.lock": read("bun.lock"),
     ...Object.fromEntries(JSON.parse(workspace).npm.map(p => [`${p.path}/package.json`, read(`${p.path}/package.json`)])),
   };
 }
 
 // Returns each copy of the release-train version, keyed by file.
 export function versionCopies(files) {
-  const npmNames = new Set(JSON.parse(files["eng/workspace.json"]).npm.map(p => p.name));
+  const npm = JSON.parse(files["eng/workspace.json"]).npm;
+  const npmNames = new Set(npm.map(p => p.name));
   const copies = {
     "eng/workspace.json": single(files["eng/workspace.json"], workspaceVersion, "workspace version"),
     "eng/Versions.props": single(files["eng/Versions.props"], sdkVersion, "RunicSdkVersion"),
   };
+  for (const entry of npm)
+    copies[`bun.lock ${entry.path}`] = single(files["bun.lock"], lockVersion(entry), `bun.lock workspace entry for ${entry.path}`);
   for (const [path, text] of Object.entries(files)) {
     if (!path.endsWith("package.json")) continue;
     copies[path] = single(text, manifestVersion, `${path} version`);
@@ -63,15 +73,18 @@ export function checkVersions(files) {
 export function bumpVersionFiles(files, version) {
   assert.match(version ?? "", versionPattern, "Usage: bun run version:bump <major.minor.patch[-prerelease]>");
   const previous = checkVersions(files);
-  const npmNames = JSON.parse(files["eng/workspace.json"]).npm.map(p => p.name);
+  const npm = JSON.parse(files["eng/workspace.json"]).npm;
   const next = {};
   for (const [path, text] of Object.entries(files)) {
-    let updated = path === "eng/Versions.props"
-      ? text.replace(sdkVersion, `$1${version}$3`)
-      : text.replace(path === "eng/workspace.json" ? workspaceVersion : manifestVersion, `$1${version}$3`);
-    if (path.endsWith("package.json"))
-      for (const name of npmNames)
+    let updated;
+    if (path === "eng/workspace.json") updated = replaceVersion(text, workspaceVersion, version);
+    else if (path === "eng/Versions.props") updated = replaceVersion(text, sdkVersion, version);
+    else if (path === "bun.lock") updated = npm.reduce((lock, entry) => replaceVersion(lock, lockVersion(entry), version), text);
+    else {
+      updated = replaceVersion(text, manifestVersion, version);
+      for (const { name } of npm)
         updated = updated.replaceAll(`"${name}": "${previous}"`, `"${name}": "${version}"`);
+    }
     next[path] = updated;
   }
   assert.equal(checkVersions(next), version);
@@ -86,6 +99,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const files = readVersionFiles();
     for (const [path, text] of Object.entries(bumpVersionFiles(files, version)))
       if (text !== files[path]) writeFileSync(resolve(root, path), text);
+    // Let Bun normalize the lockfile, then confirm it still agrees.
+    execFileSync(process.execPath, ["install", "--lockfile-only"], { cwd: root, stdio: "inherit" });
+    assert.equal(checkVersions(readVersionFiles()), version, "bun install --lockfile-only changed a version copy");
     execFileSync(process.execPath, [resolve(root, "tools/dotnet-runic/metadata/generate.mjs"), "--write"], { stdio: "inherit" });
     console.log(`Set the release-train version to ${version}. Record user-facing changes in eng/release/notes/${version}.md; RunicPackageValidationBaselineVersion stays at the last published release.`);
   } else {

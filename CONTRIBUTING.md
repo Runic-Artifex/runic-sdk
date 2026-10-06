@@ -46,7 +46,11 @@ they are excluded from the active workspace.
 
 `main` accepts changes only through pull requests. A ruleset requires the
 always-run `verify` check from the CI workflow to pass before merging; no
-approving review is required. Branch deletion and force pushes to `main` are
+approving review is required for commits attributed to a GitHub account. The
+ruleset requires one approval from someone with write access when a pull request
+contains commits whose author email is not linked to a GitHub account, so commit
+with an email linked to your account. You cannot approve your own pull request.
+Branch deletion and force pushes to `main` are
 blocked. Organization administrators can bypass the ruleset, but only for
 emergencies such as a broken release or a CI outage that blocks a fix; follow an
 emergency push with a pull request that records why. Path-filtered workflows,

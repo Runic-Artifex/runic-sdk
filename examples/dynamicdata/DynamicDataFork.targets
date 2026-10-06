@@ -17,10 +17,14 @@
            Text="eng/workspace.json has no dynamicData.forkRevision commit SHA." />
     <Exec Condition="'$(RunicCheckDynamicDataForkRevision)' == 'true'"
           Command="git -C &quot;$(DynamicDataForkRoot)&quot; rev-parse HEAD"
-          ConsoleToMSBuild="true" StandardOutputImportance="low" EchoOff="true">
+          ConsoleToMSBuild="true" StandardOutputImportance="low" StandardErrorImportance="low"
+          IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" EchoOff="true">
       <Output TaskParameter="ConsoleOutput" PropertyName="_RunicDynamicDataForkHead" />
+      <Output TaskParameter="ExitCode" PropertyName="_RunicDynamicDataForkGitExitCode" />
     </Exec>
-    <Error Condition="'$(RunicCheckDynamicDataForkRevision)' == 'true' and '$(_RunicDynamicDataForkHead.Trim())' != '$(RunicDynamicDataForkRevision)'"
+    <Error Condition="'$(RunicCheckDynamicDataForkRevision)' == 'true' and '$(_RunicDynamicDataForkGitExitCode)' != '0'"
+           Text="Could not read the DynamicDataForkRoot revision with git (exit code $(_RunicDynamicDataForkGitExitCode)): $(_RunicDynamicDataForkHead.Trim()). Make DynamicDataForkRoot a git checkout of dynamicData.forkRevision $(RunicDynamicDataForkRevision) with git on PATH, or set RunicCheckDynamicDataForkRevision=false to skip the revision check." />
+    <Error Condition="'$(RunicCheckDynamicDataForkRevision)' == 'true' and '$(_RunicDynamicDataForkGitExitCode)' == '0' and '$(_RunicDynamicDataForkHead.Trim())' != '$(RunicDynamicDataForkRevision)'"
            Text="DynamicDataForkRoot is at $(_RunicDynamicDataForkHead.Trim()), but eng/workspace.json pins dynamicData.forkRevision $(RunicDynamicDataForkRevision). Run git -C &quot;$(DynamicDataForkRoot)&quot; checkout --detach $(RunicDynamicDataForkRevision), or set RunicCheckDynamicDataForkRevision=false to try another revision." />
   </Target>
 </Project>

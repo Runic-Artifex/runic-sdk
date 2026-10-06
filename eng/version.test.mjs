@@ -8,6 +8,7 @@ import { bumpVersionFiles, checkVersions, readVersionFiles } from "./version.mjs
 const files = () => ({
   "eng/workspace.json": '{\n  "schemaVersion": 2,\n  "version": "0.6.0-preview.1",\n  "npm": [\n    { "name": "@runic-artifex/views", "path": "packages/web/views" },\n    { "name": "@runic-artifex/react", "path": "packages/web/react" }\n  ]\n}\n',
   "eng/Versions.props": "<Project>\n  <PropertyGroup>\n    <RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>\n    <RunicPackageValidationBaselineVersion>0.6.0-preview.1</RunicPackageValidationBaselineVersion>\n  </PropertyGroup>\n</Project>\n",
+  "bun.lock": '{\n  "lockfileVersion": 1,\n  "workspaces": {\n    "packages/web/views": {\n      "name": "@runic-artifex/views",\n      "version": "0.6.0-preview.1",\n    },\n    "packages/web/react": {\n      "name": "@runic-artifex/react",\n      "version": "0.6.0-preview.1",\n    },\n  },\n}\n',
   "packages/web/views/package.json": '{\n  "name": "@runic-artifex/views",\n  "version": "0.6.0-preview.1",\n  "devDependencies": { "typescript": "6.0.3" }\n}\n',
   "packages/web/react/package.json": '{\n  "name": "@runic-artifex/react",\n  "version": "0.6.0-preview.1",\n  "peerDependencies": { "@runic-artifex/views": "0.6.0-preview.1", "react": "0.6.0-preview.1" }\n}\n',
 });
@@ -22,6 +23,7 @@ test("a mismatched version copy fails", () => {
     ["packages/web/views/package.json", '"version": "0.6.0-preview.1"', '"version": "0.6.0"'],
     ["packages/web/react/package.json", '"@runic-artifex/views": "0.6.0-preview.1"', '"@runic-artifex/views": "^0.6.0-preview.1"'],
     ["eng/Versions.props", "<RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>", ""],
+    ["bun.lock", '"name": "@runic-artifex/react",\n      "version": "0.6.0-preview.1"', '"name": "@runic-artifex/react",\n      "version": "0.5.0"'],
   ]) {
     const value = files();
     value[path] = value[path].replace(from, to);
