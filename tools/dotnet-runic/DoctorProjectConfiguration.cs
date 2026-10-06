@@ -1,9 +1,18 @@
 using System;
 using System.IO;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
+
+/// <summary>The Runic Views host a project references.</summary>
+internal enum RunicViewsHost
+{
+    Unknown,
+    CsWebUi,
+    Desktop,
+}
 
 internal sealed record DoctorProjectConfiguration(
     string ProjectPath,
@@ -15,8 +24,12 @@ internal sealed record DoctorProjectConfiguration(
     string RuntimeIdentifier,
     string ViteDevServerEntry,
     string ViteConfigurationPath,
-    bool ViteDevServerEnabled)
+    bool ViteDevServerEnabled,
+    RunicViewsHost Host = RunicViewsHost.Unknown)
 {
+    internal const string CsWebUiPackage = "Runic.Application.CsWebUi";
+    internal const string DesktopPackage = "Runic.Application.Desktop";
+
     internal static async Task<DoctorProjectConfiguration> EvaluateAsync(
         string dotnetHost,
         string project,
@@ -28,8 +41,8 @@ internal sealed record DoctorProjectConfiguration(
         string properties = await ReadProjectPropertiesAsync(
             dotnetHost, development.ProjectPath, development.ProjectDirectory,
             configuration, cancellationToken).ConfigureAwait(false);
-        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(properties);
-        System.Text.Json.JsonElement values = document.RootElement.GetProperty("Properties");
+        using JsonDocument document = JsonDocument.Parse(properties);
+        JsonElement values = document.RootElement.GetProperty("Properties");
         string Value(string name) => values.TryGetProperty(name, out var value)
             ? value.GetString() ?? string.Empty
             : string.Empty;
@@ -45,7 +58,39 @@ internal sealed record DoctorProjectConfiguration(
                 : Value("RuntimeIdentifier"),
             development.ViteDevServerEntry,
             development.ViteConfigurationPath,
-            development.ViteDevServerEnabled);
+            development.ViteDevServerEnabled,
+            DetectHost(document.RootElement));
+    }
+
+    /// <summary>
+    /// Finds the Views host from the evaluated package and project references,
+    /// so an unrestored project still gets host-specific checks. CS-WebUI wins
+    /// when a project references both hosts because it may open a browser.
+    /// </summary>
+    internal static RunicViewsHost DetectHost(JsonElement evaluation)
+    {
+        bool csWebUi = false;
+        bool desktop = false;
+        if (evaluation.TryGetProperty("Items", out JsonElement items) && items.ValueKind == JsonValueKind.Object)
+        {
+            foreach (string itemType in new[] { "PackageReference", "ProjectReference" })
+            {
+                if (!items.TryGetProperty(itemType, out JsonElement references) || references.ValueKind != JsonValueKind.Array) continue;
+                foreach (JsonElement reference in references.EnumerateArray())
+                {
+                    if (!reference.TryGetProperty("Identity", out JsonElement identityNode)) continue;
+                    string identity = identityNode.GetString() ?? string.Empty;
+                    if (itemType == "ProjectReference")
+                    {
+                        identity = Path.GetFileNameWithoutExtension(identity.Replace('\\', '/').Split('/')[^1]);
+                    }
+                    csWebUi |= identity.Equals(CsWebUiPackage, StringComparison.OrdinalIgnoreCase) ||
+                        identity.Equals("Runic.Application.Views.CsWebUi", StringComparison.OrdinalIgnoreCase);
+                    desktop |= identity.Equals(DesktopPackage, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+        }
+        return csWebUi ? RunicViewsHost.CsWebUi : desktop ? RunicViewsHost.Desktop : RunicViewsHost.Unknown;
     }
 
     private static async Task<string> ReadProjectPropertiesAsync(
@@ -59,7 +104,8 @@ internal sealed record DoctorProjectConfiguration(
             dotnetHost,
             projectDirectory,
             ["msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-             "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,NETCoreSdkRuntimeIdentifier"],
+             "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,NETCoreSdkRuntimeIdentifier",
+             "-getItem:PackageReference,ProjectReference"],
             cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {

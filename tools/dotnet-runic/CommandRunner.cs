@@ -38,7 +38,7 @@ internal static class CommandRunner
         {
             throw new DevUsageException(
                 "RAPPDEV1004",
-                $"Could not start '{executable}'. Ensure it is installed and available on PATH.");
+                $"Could not start '{executable}' in '{workingDirectory}'. Ensure it is installed and available on PATH.");
         }
 
         // Captured commands are non-interactive: a prompt (npx install, git credentials) must see
@@ -74,6 +74,29 @@ internal static class CommandRunner
             await standardOutput.ConfigureAwait(false),
             await standardError.ConfigureAwait(false));
     }
+
+    /// <summary>Names a program by executable and verb, for example <c>dotnet build</c>.</summary>
+    internal static string DescribeProgram(string executable, IReadOnlyList<string> arguments)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        string program = Path.GetFileNameWithoutExtension(executable);
+        if (program.Length == 0) program = executable;
+        return arguments.Count > 0 && arguments[0].Length > 0 && arguments[0][0] != '-'
+            ? $"{program} {arguments[0]}"
+            : program;
+    }
+
+    /// <summary>Describes a failed child process with its program and working directory.</summary>
+    internal static string DescribeFailure(
+        string executable,
+        IReadOnlyList<string> arguments,
+        string workingDirectory,
+        int exitCode) =>
+        $"'{DescribeProgram(executable, arguments)}' exited with code {exitCode} in '{workingDirectory}'.";
+
+    /// <summary>Points to doctor for the selected project.</summary>
+    internal static string DoctorHint(string projectPath) =>
+        $"Run 'dotnet runic doctor --project \"{projectPath}\"' to check prerequisites.";
 
     internal static ProcessStartInfo CreateStartInfo(
         string executable,

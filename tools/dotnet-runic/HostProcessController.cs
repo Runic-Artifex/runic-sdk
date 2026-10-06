@@ -79,7 +79,10 @@ internal sealed class HostProcessController : IAsyncDisposable
             {
                 Console.Error.Write(build.StandardError);
                 Console.Error.Write(build.StandardOutput);
-                throw new DevUsageException("RAPPDEV1006", "Window rebuild failed; the running application has been retained.");
+                throw new DevUsageException("RAPPDEV1006",
+                    "The Window rebuild failed: " +
+                    CommandRunner.DescribeFailure(_dotnetHost, CreateRestartBuildArguments(_configuration, _options), _configuration.ProjectDirectory, build.ExitCode) +
+                    " The running application has been retained.");
             }
             if (_host is not null)
             {
@@ -141,7 +144,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             "--property:DebugSymbols=true",
             "--property:Optimize=false",
         ]);
-        arguments.AddRange(DevApplication.CreateDevelopmentServerProperties(configuration, options, "--property:"));
+        arguments.AddRange(DevApplication.CreateBuildProperties(configuration, options, "--property:"));
         arguments.AddRange([
             "--no-restore",
             "--non-interactive",
@@ -185,7 +188,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             options.Configuration,
             "--no-restore",
         };
-        arguments.AddRange(DevApplication.CreateDevelopmentServerProperties(configuration, options, "-property:"));
+        arguments.AddRange(DevApplication.CreateBuildProperties(configuration, options, "-property:"));
         return arguments;
     }
 

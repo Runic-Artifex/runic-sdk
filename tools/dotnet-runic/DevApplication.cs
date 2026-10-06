@@ -45,7 +45,7 @@ internal static class DevApplication
                 using var phase = PhaseTimer.Start("Restoring Views Window dependencies");
                 await RequireSuccessAsync(dotnetHost, configuration.ProjectDirectory,
                     CreateRestoreArguments(configuration, options.Configuration),
-                    "RAPPDEV1006", "Selected host restore failed.", stop.Token).ConfigureAwait(false);
+                    "RAPPDEV1006", "The .NET restore failed:", CommandRunner.DoctorHint(configuration.ProjectPath), stop.Token).ConfigureAwait(false);
                 phase.Complete();
             }
             if (configuration.NodeEnabled)
@@ -188,7 +188,7 @@ internal static class DevApplication
             throw new DevDevelopmentException(
                 "RAPPDEV1007",
                 completed == host.Completion
-                    ? $"The Runic Desktop host watcher exited unexpectedly with code {exitCode}."
+                    ? $"The native host process ('{(options.WatchHost ? "dotnet watch" : "dotnet run")}') exited unexpectedly with code {exitCode} in '{configuration.ProjectDirectory}'. {CommandRunner.DoctorHint(configuration.ProjectPath)}"
                     : completed == developmentServer?.Completion
                         ? $"The {configuration.DevelopmentServerKind} development server " +
                           $"exited unexpectedly with code {exitCode}."
@@ -232,7 +232,8 @@ internal static class DevApplication
                 configuration.FrontendPackageDirectory,
                 packageManager.InstallArguments(),
                 "RAPPDEV1006",
-                $"The Runic Assets frontend dependency restore with {packageManager.Name} failed. Run 'dotnet runic doctor' to verify the committed lock file and package train.",
+                $"The frontend dependency install with {packageManager.Name} failed:",
+                $"Run 'dotnet runic doctor --project \"{configuration.ProjectPath}\"' to verify the committed lock file and package train.",
                 cancellationToken).ConfigureAwait(false);
         }
         phase.Complete();
@@ -267,7 +268,8 @@ internal static class DevApplication
             configuration.ProjectDirectory,
             CreateFrontendCompilerArguments(configuration, buildConfiguration),
             "RAPPDEV1006",
-            "Frontend compiler integration failed.",
+            "Frontend compiler integration failed:",
+            CommandRunner.DoctorHint(configuration.ProjectPath),
             cancellationToken).ConfigureAwait(false);
     }
 
@@ -349,7 +351,8 @@ internal static class DevApplication
             configuration.ProjectDirectory,
             arguments,
             "RAPPDEV1006",
-            $"Initial build failed. Run 'dotnet runic doctor \"{configuration.ProjectPath}\"' to inspect prerequisites.",
+            "The initial build failed:",
+            CommandRunner.DoctorHint(configuration.ProjectPath),
             cancellationToken).ConfigureAwait(false);
         phase.Complete();
     }
@@ -372,7 +375,7 @@ internal static class DevApplication
             "-property:DebugSymbols=true",
             "-property:Optimize=false",
         };
-        arguments.AddRange(CreateDevelopmentServerProperties(configuration, options, "-property:"));
+        arguments.AddRange(CreateBuildProperties(configuration, options, "-property:"));
         if (!options.Restore)
         {
             arguments.Add("--no-restore");
@@ -394,6 +397,24 @@ internal static class DevApplication
             ? [$"{prefix}RunicBridgeBuildFrontend=false", $"{prefix}RunicBridgeCopyFrontend=false"]
             : [];
 
+    /// <summary>
+    /// Development server properties plus, with <c>--no-restore</c>,
+    /// <c>RunicBridgeInstallFrontend=false</c> so MSBuild does not install
+    /// missing frontend packages behind the caller's back.
+    /// </summary>
+    internal static IReadOnlyList<string> CreateBuildProperties(
+        DevProjectConfiguration configuration,
+        DevOptions options,
+        string prefix)
+    {
+        var properties = new List<string>(CreateDevelopmentServerProperties(configuration, options, prefix));
+        if (!options.Restore)
+        {
+            properties.Add($"{prefix}RunicBridgeInstallFrontend=false");
+        }
+        return properties;
+    }
+
     internal static IReadOnlyList<string> CreateRestoreArguments(
         DevProjectConfiguration configuration,
         string buildConfiguration)
@@ -414,6 +435,7 @@ internal static class DevApplication
         IReadOnlyList<string> arguments,
         string code,
         string message,
+        string remediation,
         CancellationToken cancellationToken)
     {
         CommandResult result = await CommandRunner
@@ -433,7 +455,7 @@ internal static class DevApplication
         {
             throw new DevDevelopmentException(
                 code,
-                $"{message} Child process exited with code {result.ExitCode}.");
+                $"{message} {CommandRunner.DescribeFailure(executable, arguments, workingDirectory, result.ExitCode)} {remediation}");
         }
     }
 

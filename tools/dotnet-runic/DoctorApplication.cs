@@ -4,9 +4,11 @@ using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
 
+internal sealed record DoctorRun(DoctorProjectConfiguration Project, DoctorReport Report);
+
 internal static class DoctorApplication
 {
-    internal static async Task<int> RunAsync(
+    internal static async Task<DoctorRun> InspectAsync(
         DoctorOptions options,
         CancellationToken cancellationToken)
     {
@@ -27,8 +29,7 @@ internal static class DoctorApplication
                 SystemDoctorRuntime.Instance,
                 cancellationToken)
             .ConfigureAwait(false);
-        WriteReport(configuration, report);
-        return report.IsHealthy ? Program.Success : Program.DevelopmentFailure;
+        return new DoctorRun(configuration, report);
     }
 
     internal static void WriteReport(
