@@ -79,12 +79,28 @@ When CI reports a stale generated file, run:
 bun run regen
 ```
 
-It rewrites the embedded CLI compatibility metadata and the shipping-project
-inventory from `eng/workspace.json`, then runs the full build, which rewrites the
-committed generated clients of the examples in `RunicSdk.Core.slnx`. Commit the
-resulting changes; afterwards every generated-file check in CI passes. The
-DynamicData example is outside the solution; its client is rewritten when you build
-it with the fork (see [its README](examples/dynamicdata/README.md)).
+It runs these steps in order:
+
+1. `bun tools/dotnet-runic/metadata/generate.mjs --write` rewrites
+   `tools/dotnet-runic/metadata/runic.compatibility-set.json` from
+   `eng/workspace.json` and the toolchain pins. CI checks it with `--check`.
+2. `bun eng/generate-shipping-projects.mjs` rewrites
+   `eng/build/shipping-projects.props` from `eng/workspace.json`. CI checks it
+   with `--check`.
+3. `bun eng/run.mjs build` (the same as `bun run build`) builds the Views runtime,
+   `RunicSdk.Core.slnx` and the web packages. The build rewrites the committed
+   generated clients in `examples/{first-window,first-window-desktop,notes-view-first,notes-reactive-views}/Frontend/src/generated`.
+   CI's build job runs the same build and then fails on any changed tracked file.
+
+Commit the resulting changes. `regen` does not change lockfiles or anything outside
+the solution:
+
+- Run `bun install` for `bun.lock`.
+- Run `bun eng/dependencies/update-template-locks.mjs` for the starter locks
+  (see [dependency review](eng/dependencies/README.md)).
+- Run `bun install` in the example's frontend directory for an example lockfile.
+- Rebuild the DynamicData example with the fork to rewrite its generated client
+  (see [its README](examples/dynamicdata/README.md)).
 
 Tracked Markdown files must not contain broken relative links; the engineering
 tests (`bun run test engineering`) check them. Link to files in other repositories
