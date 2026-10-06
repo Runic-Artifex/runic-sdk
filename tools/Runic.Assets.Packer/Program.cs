@@ -31,12 +31,12 @@ internal static class PackerApplication
     [DefaultCommand]
     [CommandResult("runic.assets.pack-result/1", typeof(PackerJsonContext))]
     internal static async Task<CommandOutcome<PackerResult>> PackAsync(
-        [Argument("source-directory")] string sourceDirectory,
-        [Argument("destination-archive")] string destination,
-        [Option("--exclude")] IReadOnlyList<string> exclusions,
-        [Option("--trusted-generated-output")] bool trustedGeneratedOutput,
+        [Argument("source-directory", Description = "Directory to package, usually a frontend build output such as dist.")] string sourceDirectory,
+        [Argument("destination-archive", Description = "Archive file to write; it is replaced atomically.")] string destination,
+        [Option("--exclude", ValueName = "paths", Description = "Asset paths to omit, separated by semicolons. Repeatable.")] IReadOnlyList<string> exclusions,
+        [Option("--trusted-generated-output", Description = "Snapshot trusted build output; works on any OS.")] bool trustedGeneratedOutput,
         CancellationToken cancellationToken,
-        [Option("--entry-point")] string entryPoint = "index.html")
+        [Option("--entry-point", ValueName = "path", Description = "Entry document relative to the source directory.")] string entryPoint = "index.html")
     {
         string fullSourceDirectory = Path.GetFullPath(sourceDirectory);
         string fullDestination = Path.GetFullPath(destination);
