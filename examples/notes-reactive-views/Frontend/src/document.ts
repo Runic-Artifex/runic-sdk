@@ -1,5 +1,5 @@
 import { mountContent, type ViewTemplates } from "./content.js";
-import type { DocumentState, DocumentClient } from "./generated/document.js";
+import type { DocumentClient, DocumentPane, DocumentState } from "./generated/document.js";
 import { mountEditor } from "./editor.js";
 import { mountCompact } from "./compact.js";
 import { mountPreview } from "./preview.js";
@@ -13,12 +13,22 @@ export function mountDocument(host: HTMLElement, view: DocumentClient): () => vo
   const previewButton = host.querySelector<HTMLButtonElement>("[data-pane=preview]")!;
   const pane = host.querySelector<HTMLElement>("#document-pane")!;
   const compact = host.querySelector<HTMLElement>("#compact-pane")!;
+  // DocumentPane is a literal union of the C# enum cases, so this switch is
+  // exhaustive: a new case is a compile error here.
+  const paneButton = (active: DocumentPane): HTMLButtonElement => {
+    switch (active) {
+      case "Editor": return editorButton;
+      case "Preview": return previewButton;
+      default: { const unknown: never = active; throw new Error(`Unknown document pane ${String(unknown)}.`); }
+    }
+  };
   const report = (error: unknown) => { const status = document.querySelector<HTMLElement>("#status")!; status.textContent = String(error); status.classList.add("error"); };
   const unmountPane = mountContent(pane, view, "currentPane", paneViews, report);
   const unmountCompact = mountContent(compact, view, "compactNote", compactViews, report);
   const unsubscribe = view.subscribe(state => {
-    editorButton.setAttribute("aria-current", state.activePane === "Editor" ? "page" : "false");
-    previewButton.setAttribute("aria-current", state.activePane === "Preview" ? "page" : "false");
+    const current = paneButton(state.activePane);
+    editorButton.setAttribute("aria-current", current === editorButton ? "page" : "false");
+    previewButton.setAttribute("aria-current", current === previewButton ? "page" : "false");
   });
   const showEditor = () => { void view.showEditor().catch(report); };
   const showPreview = () => { void view.showPreview().catch(report); };

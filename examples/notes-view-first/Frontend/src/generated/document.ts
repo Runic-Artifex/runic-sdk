@@ -2,10 +2,13 @@
 import { connectView, viewReferences, bridgeWire, BridgeError, type ViewClient } from "@runic-artifex/views";
 import { pageEditor, type EditorPageReference } from "./editor.js";
 import { pagePreview, type PreviewPageReference } from "./preview.js";
+import type { DocumentPane } from "./types.js";
+export type { DocumentPane } from "./types.js";
 
 export interface DocumentState {
   readonly currentPane: EditorPageReference | PreviewPageReference;
-  readonly activePane: string;
+  /** The pane the document currently shows. */
+  readonly activePane: DocumentPane;
   readonly canShowEditor: boolean;
   readonly canShowPreview: boolean;
 }
@@ -15,8 +18,6 @@ export interface DocumentClient extends ViewClient<DocumentState> {
   showEditor(): Promise<DocumentState>;
   showPreview(): Promise<DocumentState>;
 }
-/** @deprecated Use DocumentClient. The connected client is not the logical .NET View. */
-export type DocumentView = DocumentClient;
 
 export interface DocumentPageReference {
   readonly kind: "document";
@@ -34,11 +35,11 @@ function hydrate(wire: WireState): DocumentState {
   const { revision: _revision, ...state } = wire;
   return {
     ...state,
-    activePane: bridgeWire.string(wire.activePane),
+    activePane: bridgeWire.enumName<DocumentPane>(wire.activePane, ["Editor", "Preview"]),
     currentPane: wire.currentPane.kind === "editor" ? pageEditor(wire.currentPane.id) : wire.currentPane.kind === "preview" ? pagePreview(wire.currentPane.id) : (() => { throw new BridgeError("failed", "Unknown currentPane kind."); })(),
   };
 }
-const bridgeContract = "NotesWindowViews.DocumentViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
+const bridgeContract = "NotesWindowViews.DocumentViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
 
 export function connectDocument(): Promise<DocumentClient> { return connectDocumentAt("document", false); }
 async function connectDocumentAt(route: string, mount = false): Promise<DocumentClient> {

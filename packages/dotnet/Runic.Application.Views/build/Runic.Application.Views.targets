@@ -87,6 +87,23 @@
     </ItemGroup>
   </Target>
 
+  <!-- The generator copies XML documentation comments into the generated
+       TypeScript. When the project does not already write a documentation
+       file, the bootstrap pass writes one beside the inspected assembly with
+       the documentation warnings suppressed, so the real build is unchanged.
+       Set RunicBridgeDocumentation=false to skip it. -->
+  <Target Name="RunicViewsBootstrapDocumentation" BeforeTargets="CoreCompile"
+          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeDocumentation)' != 'false' and '@(DocFileItem)' == ''">
+    <PropertyGroup>
+      <NoWarn>$(NoWarn);CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1581;CS1584;CS1587;CS1589;CS1590;CS1591;CS1592;CS1658;CS1710;CS1711;CS1712;CS1723;CS1734;CS1735</NoWarn>
+    </PropertyGroup>
+    <MakeDir Directories="$(OutDir)" />
+    <ItemGroup>
+      <DocFileItem Include="$(OutDir)$(AssemblyName).xml" />
+      <FileWrites Include="$(OutDir)$(AssemblyName).xml" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="RunicViewsGenerateBridge" BeforeTargets="CoreCompile"
           DependsOnTargets="RunicViewsDetectBridgeUse;ResolveProjectReferences"
           Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true'">
@@ -94,9 +111,13 @@
              Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
              Condition="Exists('$(RunicBridgeCodegenProject)')" />
     <!-- In a one-project starter, first compile the ordinary C# source so MVVM
-         source generators have finished before Bridge inspection. -->
+         source generators have finished before Bridge inspection. Analyzers
+         are off in this pass: it only feeds the generator, the real build runs
+         them, and the bootstrap's XML documentation file would otherwise
+         surface documentation-dependent analyzer warnings. Source generators
+         still run. -->
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
-             Properties="RunicBridgeBootstrap=true;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
+             Properties="RunicBridgeBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
              Condition="'$(RunicBridgeModelAssembly)' == ''" />
     <PropertyGroup>
       <RunicBridgeInputAssembly Condition="'$(RunicBridgeModelAssembly)' == ''">$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/$(AssemblyName).dll</RunicBridgeInputAssembly>

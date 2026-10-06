@@ -8,8 +8,6 @@ export interface HomeState {
 /** A connected Home ViewModel. Dispose it when its presentation ends. */
 export interface HomeClient extends ViewClient<HomeState> {
 }
-/** @deprecated Use HomeClient. The connected client is not the logical .NET View. */
-export type HomeView = HomeClient;
 
 export interface HomePageReference {
   readonly kind: "home";
@@ -29,7 +27,7 @@ function hydrate(wire: WireState): HomeState {
     greeting: bridgeWire.string(wire.greeting),
   };
 }
-const bridgeContract = "NotesWindowViews.HomeViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
+const bridgeContract = "NotesWindowViews.HomeViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
 
 export function connectHome(): Promise<HomeClient> { return connectHomeAt("home", false); }
 async function connectHomeAt(route: string, mount = false): Promise<HomeClient> {

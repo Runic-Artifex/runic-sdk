@@ -12,7 +12,8 @@ internal sealed record OperationTypeScriptPlan(
     string DecodeResultExpression,
     string EncodeInputExpression,
     bool HasInput,
-    bool IsStream = false);
+    bool IsStream = false,
+    string InputName = "input");
 
 internal static class OperationTypeScriptEmitter
 {
@@ -33,7 +34,7 @@ internal static class OperationTypeScriptEmitter
     {
         foreach (var operation in plans)
         {
-            var parameter = operation.HasInput ? $", input: {operation.InputType}" : string.Empty;
+            var parameter = operation.HasInput ? $", {operation.InputName}: {operation.InputType}" : string.Empty;
             var payload = operation.HasInput ? $"JSON.stringify({{ requestId, input: {operation.EncodeInputExpression} }})" : "requestId";
             ts.AppendLine($"  const start{operation.Name}Operation = (requestId: string{parameter}) => view.startOperation<{operation.ResultType}>({JsonSerializer.Serialize(operation.Name)}, requestId, () => {payload}, value => {operation.DecodeResultExpression}{(operation.IsStream ? ", true" : string.Empty)});");
         }
@@ -43,8 +44,8 @@ internal static class OperationTypeScriptEmitter
     {
         foreach (var operation in plans)
         {
-            var parameter = operation.HasInput ? $"input: {operation.InputType}" : string.Empty;
-            var argument = operation.HasInput ? ", input" : string.Empty;
+            var parameter = operation.HasInput ? $"{operation.InputName}: {operation.InputType}" : string.Empty;
+            var argument = operation.HasInput ? $", {operation.InputName}" : string.Empty;
             ts.AppendLine($"    start{operation.Name}({parameter}) {{ return start{operation.Name}Operation(globalThis.crypto.randomUUID(){argument}); }},");
             ts.AppendLine($"    start{operation.Name}WithRequestId(requestId: string{(operation.HasInput ? $", {parameter}" : string.Empty)}) {{ return start{operation.Name}Operation(requestId{argument}); }},");
             ts.AppendLine($"    recover{operation.Name}WithRequestId(requestId: string) {{ return view.recoverOperation<{operation.ResultType}>({JsonSerializer.Serialize(operation.Name)}, requestId, value => {operation.DecodeResultExpression}{(operation.IsStream ? ", true" : string.Empty)}); }},");

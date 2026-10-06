@@ -10,6 +10,16 @@ public interface IMainViewModel { }
 public interface IDocumentPaneViewModel { }
 public interface IDialogViewModel { }
 
+/// <summary>A pane of the document page.</summary>
+public enum DocumentPane
+{
+    /// <summary>The note editor.</summary>
+    Editor,
+
+    /// <summary>The rendered note.</summary>
+    Preview,
+}
+
 public sealed class WorkspaceNavigation(HomeViewModel home, DocumentViewModel document)
     : ObservableObject
 {
@@ -124,7 +134,8 @@ public partial class DocumentViewModel : ObservableObject, IMainViewModel
         }
     }
 
-    public string ActivePane => ReferenceEquals(CurrentPane, Editor) ? "Editor" : "Preview";
+    /// <summary>The pane the document currently shows.</summary>
+    public DocumentPane ActivePane => ReferenceEquals(CurrentPane, Editor) ? DocumentPane.Editor : DocumentPane.Preview;
 
     [RelayCommand]
     private void ShowEditor() => CurrentPane = Editor;

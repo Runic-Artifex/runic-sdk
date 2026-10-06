@@ -10,6 +10,16 @@ namespace NotesReactiveViews;
 
 public interface IMainPage : IRoutableViewModel;
 public interface IDocumentPane : IRoutableViewModel;
+
+/// <summary>A pane of the document page.</summary>
+public enum DocumentPane
+{
+    /// <summary>The note editor.</summary>
+    Editor,
+
+    /// <summary>The rendered note.</summary>
+    Preview,
+}
 public interface IPinnedItem;
 
 public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
@@ -122,7 +132,8 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
     internal PreviewViewModel Preview => _preview;
     [RunicViewContract("compact")]
     public EditorViewModel CompactNote => _editor;
-    public string ActivePane => ReferenceEquals(CurrentPane, _editor) ? "Editor" : "Preview";
+    /// <summary>The pane the nested router currently shows.</summary>
+    public DocumentPane ActivePane => ReferenceEquals(CurrentPane, _editor) ? DocumentPane.Editor : DocumentPane.Preview;
     public ReactiveCommand<RxVoid, RxVoid> ShowEditorCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ShowPreviewCommand { get; }
 

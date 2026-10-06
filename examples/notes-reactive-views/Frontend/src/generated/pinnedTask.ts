@@ -8,8 +8,6 @@ export interface PinnedTaskState {
 /** A connected PinnedTask ViewModel. Dispose it when its presentation ends. */
 export interface PinnedTaskClient extends ViewClient<PinnedTaskState> {
 }
-/** @deprecated Use PinnedTaskClient. The connected client is not the logical .NET View. */
-export type PinnedTaskView = PinnedTaskClient;
 
 export interface PinnedTaskPageReference {
   readonly kind: "pinnedTask";
@@ -29,7 +27,7 @@ function hydrate(wire: WireState): PinnedTaskState {
     priority: bridgeWire.string(wire.priority),
   };
 }
-const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:9DD4712CD2ADDAE90C81157400DA366A04322CAA69E64D7CFFB385CD9C66065E";
+const bridgeContract = "NotesReactiveViews.PinnedTaskViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
 
 export function connectPinnedTask(): Promise<PinnedTaskClient> { return connectPinnedTaskAt("pinnedTask", false); }
 async function connectPinnedTaskAt(route: string, mount = false): Promise<PinnedTaskClient> {

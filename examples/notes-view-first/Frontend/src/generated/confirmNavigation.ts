@@ -12,8 +12,6 @@ export interface ConfirmNavigationClient extends ViewClient<ConfirmNavigationSta
   confirm(): Promise<ConfirmNavigationState>;
   cancel(): Promise<ConfirmNavigationState>;
 }
-/** @deprecated Use ConfirmNavigationClient. The connected client is not the logical .NET View. */
-export type ConfirmNavigationView = ConfirmNavigationClient;
 
 export interface ConfirmNavigationPageReference {
   readonly kind: "confirmNavigation";
@@ -33,7 +31,7 @@ function hydrate(wire: WireState): ConfirmNavigationState {
     message: bridgeWire.string(wire.message),
   };
 }
-const bridgeContract = "NotesWindowViews.ConfirmNavigationViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
+const bridgeContract = "NotesWindowViews.ConfirmNavigationViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
 
 export function connectConfirmNavigation(): Promise<ConfirmNavigationClient> { return connectConfirmNavigationAt("confirmNavigation", false); }
 async function connectConfirmNavigationAt(route: string, mount = false): Promise<ConfirmNavigationClient> {

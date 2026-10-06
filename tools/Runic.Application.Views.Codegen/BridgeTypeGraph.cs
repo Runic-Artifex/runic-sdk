@@ -23,15 +23,23 @@ internal sealed class BridgeTypeGraph
     internal BridgeTypeNode Root { get; }
     internal IReadOnlyList<BridgeTypeNode> Nodes => _nodes;
 
-    internal static BridgeTypeGraph Discover(Type type, NullabilityInfo? nullability = null, string? rootPath = null)
+    /// <param name="type">The declared contract type.</param>
+    /// <param name="nullability">The declaration's nullable annotations.</param>
+    /// <param name="rootPath">The member path named in diagnostics.</param>
+    /// <param name="origin">The declaration a diagnostic points at, normally the ViewModel property.</param>
+    internal static BridgeTypeGraph Discover(Type type, NullabilityInfo? nullability = null, string? rootPath = null,
+        MemberInfo? origin = null)
     {
         ArgumentNullException.ThrowIfNull(type);
         var builder = new Builder();
-        var root = builder.Build(type, nullability, rootPath ?? type.Name, [], null);
+        var root = builder.Build(type, nullability, rootPath ?? type.Name, [], null, origin: origin);
         return new(root, builder.Nodes);
     }
 
     internal string TypeScriptType() => TypeScriptType(Root);
+
+    /// <summary>The TypeScript type of a collection root's item.</summary>
+    internal string ItemTypeScriptType() => TypeScriptType(Root.Element!);
 
     /// <summary>The root's declared C# type, including nullable annotations.</summary>
     internal string RootCSharpType() => CSharpNodeType(Root);
@@ -104,18 +112,83 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Int64 or BridgeWireKind.UInt64 or BridgeWireKind.BigInteger => "bigint",
             BridgeWireKind.Decimal => "string",
             BridgeWireKind.String or BridgeWireKind.Guid or BridgeWireKind.DateOnly or BridgeWireKind.TimeOnly or
-            BridgeWireKind.DateTime or BridgeWireKind.DateTimeOffset or BridgeWireKind.TimeSpan or BridgeWireKind.Enum => "string",
-            BridgeWireKind.Array or BridgeWireKind.List => $"readonly ({TypeScriptType(node.Element!)})[]",
+            BridgeWireKind.DateTime or BridgeWireKind.DateTimeOffset or BridgeWireKind.TimeSpan => "string",
+            BridgeWireKind.Enum or BridgeWireKind.Dto or BridgeWireKind.Union => TypeScriptNamedTypes.Reference(node),
+            BridgeWireKind.Array or BridgeWireKind.List => $"readonly {ArrayElement(TypeScriptType(node.Element!))}[]",
             BridgeWireKind.StringDictionary => $"Readonly<Record<string, {TypeScriptType(node.Value!)}>>",
-            BridgeWireKind.Dto => "{ " + string.Join("; ", node.Members.Select(member =>
-                $"readonly [{Quote(member.WireName)}]: {TypeScriptType(member.Type)}")) + " }",
-            BridgeWireKind.Union => string.Join(" | ", node.Cases.Select(@case =>
-                $"({{ readonly $case: {Quote(@case.Discriminator)} }} & {TypeScriptType(@case.Type)})")),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptType,
             _ => throw new InvalidOperationException($"No TypeScript form exists for {node.Kind}.")
         };
         return node.IsNullable ? $"{type} | null" : type;
     }
+
+    private static string ArrayElement(string type) =>
+        type.Any(character => character is ' ' or '|' or '&' or '{' or '(' or '<') ? $"({type})" : type;
+
+    /// <summary>
+    /// The exported declaration of a named enum, DTO or union node, with the
+    /// C# XML documentation of the type and its members.
+    /// </summary>
+    internal static string TypeScriptDeclaration(BridgeTypeNode node, string name)
+    {
+        var source = new StringBuilder();
+        var type = node.NonNullableType;
+        switch (node.Kind)
+        {
+            case BridgeWireKind.Enum:
+            {
+                // A literal union cannot document its members, so the type
+                // comment lists the documented cases.
+                var documentation = XmlDocumentation.Summary(type);
+                var cases = node.EnumCases
+                    .Select(@case => (@case.WireName, Documentation: XmlDocumentation.Summary(@case.Field)))
+                    .Where(@case => @case.Documentation is not null)
+                    .Select(@case => $"- `{@case.WireName}`: {@case.Documentation!.Replace('\n', ' ')}")
+                    .ToArray();
+                if (cases.Length > 0)
+                    documentation = (documentation is null ? "" : documentation + "\n\n") + string.Join('\n', cases);
+                XmlDocumentation.Append(source, "", documentation);
+                // An enum without cases has no valid value.
+                source.AppendLine($"export type {name} = {(node.EnumCases.Count == 0 ? "never" : string.Join(" | ", node.EnumCases.Select(@case => Quote(@case.WireName))))};");
+                break;
+            }
+            case BridgeWireKind.Dto:
+                XmlDocumentation.Append(source, "", XmlDocumentation.Summary(type));
+                source.AppendLine($"export interface {name} {{");
+                foreach (var member in node.Members)
+                {
+                    XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(member.Property));
+                    source.AppendLine($"  readonly {PropertyKey(member.WireName)}: {TypeScriptType(member.Type)};");
+                }
+                source.AppendLine("}");
+                break;
+            case BridgeWireKind.Union:
+                XmlDocumentation.Append(source, "", XmlDocumentation.Summary(type));
+                source.AppendLine($"export type {name} =");
+                for (var index = 0; index < node.Cases.Count; index++)
+                {
+                    var @case = node.Cases[index];
+                    var tag = $"{{ readonly $case: {Quote(@case.Discriminator)} }}";
+                    source.Append("  | ").Append(@case.Type.Members.Count == 0 ? tag
+                        : $"({tag} & {TypeScriptNamedTypes.Reference(@case.Type)})");
+                    source.AppendLine(index == node.Cases.Count - 1 ? ";" : "");
+                }
+                break;
+            default:
+                throw new InvalidOperationException($"{node.Kind} has no named TypeScript declaration.");
+        }
+        return source.ToString();
+    }
+
+    // An object-literal key. "__proto__" stays computed: written as a plain or
+    // quoted key it would set the prototype instead of an own property.
+    private static string LiteralKey(string name) => name == "__proto__" ? "[" + Quote(name) + "]" : PropertyKey(name);
+
+    // A TypeScript object key: an identifier as is, otherwise a string literal.
+    private static string PropertyKey(string name) => name.Length > 0
+        && (char.IsLetter(name[0]) || name[0] is '_' or '$')
+        && name.Skip(1).All(character => char.IsLetterOrDigit(character) || character is '_' or '$')
+            ? name : Quote(name);
 
     // The decoder validates every scalar rather than trusting a cast. It is an
     // expression so Program can place it in generated route decoding directly.
@@ -142,10 +215,10 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.DateTime => $"bridgeWire.dateTime({expression})",
             BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({expression})",
             BridgeWireKind.TimeSpan => $"bridgeWire.duration({expression})",
-            BridgeWireKind.Enum => $"bridgeWire.enumName({expression}, [{string.Join(", ", node.EnumCases.Select(@case => Quote(@case.WireName)))}])",
+            BridgeWireKind.Enum => $"bridgeWire.enumName<{TypeScriptNamedTypes.Reference(node)}>({expression}, [{string.Join(", ", node.EnumCases.Select(@case => Quote(@case.WireName)))}])",
             BridgeWireKind.Array or BridgeWireKind.List => $"bridgeWire.array({expression}, item => {EmitTypeScriptDecoder(node.Element!, "item")})",
             BridgeWireKind.StringDictionary => $"bridgeWire.stringRecord({expression}, item => {EmitTypeScriptDecoder(node.Value!, "item")})",
-            BridgeWireKind.Dto => $"bridgeWire.object({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
+            BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => LiteralKey(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
             _ => throw new InvalidOperationException($"No TypeScript decoder exists for {node.Kind}.")
@@ -159,10 +232,12 @@ internal sealed class BridgeTypeGraph
         var cases = string.Join(" ", node.Cases.Select(@case =>
         {
             var fields = string.Join(", ", @case.Type.Members.Select(member =>
-                "[" + Quote(member.WireName) + "]: " + EmitTypeScriptDecoder(member.Type, value + "[" + Quote(member.WireName) + "]")));
-            return $"case {Quote(@case.Discriminator)}: return {{ \"$case\": {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
+                LiteralKey(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, value + "[" + Quote(member.WireName) + "]")));
+            return $"case {Quote(@case.Discriminator)}: return {{ $case: {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
         }));
-        return $"(() => {{ const {value}: any = bridgeWire.union({expression}); switch ({value}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
+        // The declared return type keeps each $case a literal, so the value
+        // is the named union rather than a widened object.
+        return $"((): {TypeScriptNamedTypes.Reference(node)} => {{ const {value}: any = bridgeWire.union({expression}); switch ({value}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
     }
 
     private static string EncodeTypeScript(BridgeTypeNode node, string expression)
@@ -446,8 +521,23 @@ internal sealed class BridgeTypeGraph
         private int _nextId;
         internal List<BridgeTypeNode> Nodes { get; } = [];
 
+        // A failure is reported at the innermost declaration that led to it:
+        // the DTO property, union case or ViewModel member.
         internal BridgeTypeNode Build(Type declared, NullabilityInfo? nullability, string path, HashSet<Type> stack,
-            RunicBridgeCodecAttribute? memberCodec, bool unionCase = false)
+            RunicBridgeCodecAttribute? memberCodec, bool unionCase = false, MemberInfo? origin = null)
+        {
+            try
+            {
+                return BuildNode(declared, nullability, path, stack, memberCodec, unionCase);
+            }
+            catch (BridgeTypeGraphException error) when (error.Member is null && origin is not null)
+            {
+                throw new BridgeTypeGraphException(error.Path, error.Detail, origin);
+            }
+        }
+
+        private BridgeTypeNode BuildNode(Type declared, NullabilityInfo? nullability, string path, HashSet<Type> stack,
+            RunicBridgeCodecAttribute? memberCodec, bool unionCase)
         {
             var nullable = !declared.IsValueType
                 ? nullability?.ReadState == NullabilityState.Nullable
@@ -521,7 +611,7 @@ internal sealed class BridgeTypeGraph
                 var info = _nullability.Create(property);
                 node.Members.Add(new BridgeTypeMember(node.Members.Count, property, WireName(property),
                     Build(property.PropertyType, info, path + "." + WireName(property), stack,
-                        property.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true))));
+                        property.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true), origin: property)));
             }
             node.Constructor = SelectConstructor(type, node.Members, path);
             stack.Remove(type);
@@ -546,7 +636,7 @@ internal sealed class BridgeTypeGraph
                 if (string.IsNullOrWhiteSpace(tag) || tag.Length > 128 || tag.Any(char.IsControl) || !seenTags.Add(tag))
                     throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} needs a unique RunicUnionCase discriminator of at most 128 printable characters.");
                 // A case can contain a member whose declared type references the union root; this is a real cycle.
-                var caseNode = Build(type, null, path + "." + tag, stack, null, unionCase: true);
+                var caseNode = Build(type, null, path + "." + tag, stack, null, unionCase: true, origin: type);
                 if (caseNode.Members.Any(member => member.WireName == "$case"))
                     throw new BridgeTypeGraphException(path + "." + tag, "A union case cannot export the reserved $case field.");
                 node.Cases.Add(new(tag, caseNode));
@@ -723,9 +813,13 @@ internal sealed record CustomCodecDescription(Type CodecType, string TypeScriptT
     }
 }
 
-internal sealed class BridgeTypeGraphException(string path, string message) : NotSupportedException($"{path}: {message}")
+internal sealed class BridgeTypeGraphException(string path, string message, MemberInfo? member = null)
+    : NotSupportedException($"{path}: {message}")
 {
     internal string Path { get; } = path;
+    internal string Detail { get; } = message;
+    /// <summary>The declaration the diagnostic points at, when known.</summary>
+    internal MemberInfo? Member { get; } = member;
 }
 
 internal static class ContractNullability

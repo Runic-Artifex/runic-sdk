@@ -8,8 +8,6 @@ export interface PinnedNoteState {
 /** A connected PinnedNote ViewModel. Dispose it when its presentation ends. */
 export interface PinnedNoteClient extends ViewClient<PinnedNoteState> {
 }
-/** @deprecated Use PinnedNoteClient. The connected client is not the logical .NET View. */
-export type PinnedNoteView = PinnedNoteClient;
 
 export interface PinnedNotePageReference {
   readonly kind: "pinnedNote";
@@ -29,7 +27,7 @@ function hydrate(wire: WireState): PinnedNoteState {
     label: bridgeWire.string(wire.label),
   };
 }
-const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:9DD4712CD2ADDAE90C81157400DA366A04322CAA69E64D7CFFB385CD9C66065E";
+const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
 
 export function connectPinnedNote(): Promise<PinnedNoteClient> { return connectPinnedNoteAt("pinnedNote", false); }
 async function connectPinnedNoteAt(route: string, mount = false): Promise<PinnedNoteClient> {

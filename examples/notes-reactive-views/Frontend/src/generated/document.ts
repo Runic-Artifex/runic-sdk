@@ -2,12 +2,15 @@
 import { connectView, viewReferences, bridgeWire, BridgeError, type ViewClient, type BridgeOperation } from "@runic-artifex/views";
 import { pageEditor, type EditorPageReference, pageEditorCompact, type EditorCompactPageReference } from "./editor.js";
 import { pagePreview, type PreviewPageReference } from "./preview.js";
+import type { DocumentPane } from "./types.js";
+export type { DocumentPane } from "./types.js";
 
 export interface DocumentState {
   readonly urlPathSegment: string;
   readonly currentPane: EditorPageReference | PreviewPageReference;
   readonly compactNote: EditorCompactPageReference;
-  readonly activePane: string;
+  /** The pane the nested router currently shows. */
+  readonly activePane: DocumentPane;
   readonly canShowEditor: boolean;
   readonly isShowEditorExecuting: boolean;
   readonly canShowPreview: boolean;
@@ -28,8 +31,6 @@ export interface DocumentClient extends ViewClient<DocumentState> {
   startShowPreviewWithRequestId(requestId: string): Promise<DocumentShowPreviewOperation>;
   recoverShowPreviewWithRequestId(requestId: string): Promise<DocumentShowPreviewOperation>;
 }
-/** @deprecated Use DocumentClient. The connected client is not the logical .NET View. */
-export type DocumentView = DocumentClient;
 
 export interface DocumentPageReference {
   readonly kind: "document";
@@ -50,12 +51,12 @@ function hydrate(wire: WireState): DocumentState {
   return {
     ...state,
     urlPathSegment: bridgeWire.string(wire.urlPathSegment),
-    activePane: bridgeWire.string(wire.activePane),
+    activePane: bridgeWire.enumName<DocumentPane>(wire.activePane, ["Editor", "Preview"]),
     currentPane: wire.currentPane.kind === "editor" ? pageEditor(wire.currentPane.id) : wire.currentPane.kind === "preview" ? pagePreview(wire.currentPane.id) : (() => { throw new BridgeError("failed", "Unknown currentPane kind."); })(),
     compactNote: wire.compactNote.kind === "editorCompact" ? pageEditorCompact(wire.compactNote.id) : (() => { throw new BridgeError("failed", "Unknown compactNote kind."); })(),
   };
 }
-const bridgeContract = "NotesReactiveViews.DocumentViewModel:9DD4712CD2ADDAE90C81157400DA366A04322CAA69E64D7CFFB385CD9C66065E";
+const bridgeContract = "NotesReactiveViews.DocumentViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
 
 export function connectDocument(): Promise<DocumentClient> { return connectDocumentAt("document", false); }
 async function connectDocumentAt(route: string, mount = false): Promise<DocumentClient> {

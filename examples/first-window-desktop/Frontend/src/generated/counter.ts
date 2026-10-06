@@ -16,8 +16,6 @@ export interface CounterClient extends ViewClient<CounterState> {
   startIncrementWithRequestId(requestId: string): Promise<CounterIncrementOperation>;
   recoverIncrementWithRequestId(requestId: string): Promise<CounterIncrementOperation>;
 }
-/** @deprecated Use CounterClient. The connected client is not the logical .NET View. */
-export type CounterView = CounterClient;
 
 export interface CounterPageReference {
   readonly kind: "counter";

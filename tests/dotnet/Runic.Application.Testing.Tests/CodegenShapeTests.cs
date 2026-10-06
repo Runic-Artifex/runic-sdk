@@ -64,7 +64,7 @@ internal static class CodegenShapeTests
         var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "nullableReactive.ts"));
         foreach (var expected in new[]
         {
-            "echo(argument: string | null): Promise<NullableReactiveState>;",
+            "echo(input: string | null): Promise<NullableReactiveState>;",
             "export interface NullableReactiveEchoOperation extends BridgeOperation<string | null> {}",
             "view.recoverOperation<string | null>(\"Echo\", requestId,",
             "handle(handler: (input: string, context: NullableReactiveInteractionContext) => string | null | Promise<string | null>): () => void;",
@@ -89,6 +89,104 @@ internal static class CodegenShapeTests
         Require(completion.RootElement.GetProperty("kind").GetString() == "succeeded"
             && completion.RootElement.GetProperty("result").ValueKind == JsonValueKind.Null,
             $"A null ReactiveUI command result was not encoded: {completion.RootElement}");
+    }
+
+    // Generated TypeScript reads like hand-written code: named types after the
+    // C# types, literal unions for enums, XML comments, and real parameter names.
+    internal static void RunTypeScriptSurface()
+    {
+        var directory = GeneratedTypeScriptDirectory();
+        var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
+        var documented = File.ReadAllText(Path.Combine(directory, "documented.ts")).ReplaceLineEndings("\n");
+        var collection = File.ReadAllText(Path.Combine(directory, "collectionDelta.ts")).ReplaceLineEndings("\n");
+        foreach (var (file, text, expected) in new[]
+        {
+            ("types.ts", types, "export type CodegenShapeMode = \"None\" | \"Default\" | \"Active\";"),
+            ("types.ts", types, "/**\n * How the documented item is shown.\n *\n * - `List`: One item per row.\n * - `Grid`: Items in a grid.\n */\nexport type DocumentedLayout = \"List\" | \"Grid\";"),
+            ("types.ts", types, "/** A documented item. */\nexport interface DocumentedItem {\n  /** The item's `title`. */\n  readonly title: string;\n}"),
+            ("types.ts", types, "export interface CodegenPoint {\n  readonly x: number;\n  readonly y: number;\n}"),
+            ("types.ts", types, "export type DataShapePayload =\n  | ({ readonly $case: \"count\" } & DataShapeCount)\n  | ({ readonly $case: \"text\" } & DataShapeText);"),
+            ("documented.ts", documented, "import type { CodegenPoint, DocumentedItem, DocumentedLayout } from \"./types.js\";\nexport type { CodegenPoint, DocumentedItem, DocumentedLayout } from \"./types.js\";"),
+            ("documented.ts", documented, "  /** The current layout. */\n  readonly layout: DocumentedLayout;"),
+            ("documented.ts", documented, "  /** The note being edited. */\n  readonly note: string;"),
+            ("documented.ts", documented, "  /** Switches to `layout`. */\n  changeLayout(layout: DocumentedLayout): Promise<DocumentedState>;"),
+            ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
+            ("documented.ts", documented, "layout: bridgeWire.enumName<DocumentedLayout>(wire.layout, [\"List\", \"Grid\"]),"),
+            ("collectionDelta.ts", collection, "rows: defineCollection<CollectionRow>(wire => bridgeWire.object<CollectionRow>(wire,"),
+        })
+            Require(text.Contains(expected, StringComparison.Ordinal),
+                $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
+        Require(!documented.Contains("instance wrapping", StringComparison.Ordinal),
+            "A Toolkit command copied its generated property comment instead of its method documentation.");
+        Require(Count(types, "export interface CodegenPoint ") == 1,
+            "A C# type used by several ViewModels was declared more than once.");
+        foreach (var path in Directory.GetFiles(directory, "*.ts"))
+        {
+            var text = File.ReadAllText(path);
+            Require(!text.Contains("@deprecated", StringComparison.Ordinal) && !text.Contains("argument:", StringComparison.Ordinal),
+                $"{Path.GetFileName(path)} still has a deprecated alias or an anonymous 'argument' parameter.");
+        }
+
+        static int Count(string text, string value)
+        {
+            var count = 0;
+            for (var index = text.IndexOf(value, StringComparison.Ordinal); index >= 0;
+                 index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal)) count++;
+            return count;
+        }
+    }
+
+    // Names that collide, generic DTOs over arrays, case-less enums, wire
+    // names that are special on JavaScript objects, reserved parameter names
+    // and a comment terminator inside documentation.
+    internal static async Task RunNamingAsync()
+    {
+        var directory = GeneratedTypeScriptDirectory();
+        var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
+        var naming = File.ReadAllText(Path.Combine(directory, "naming.ts")).ReplaceLineEndings("\n");
+        foreach (var (file, text, expected) in new[]
+        {
+            ("types.ts", types, "export interface AlphaTag {\n  readonly name: string;\n}"),
+            ("types.ts", types, "export interface BetaTag {\n  readonly label: string;\n}"),
+            ("types.ts", types, "export interface TestsNamingState {\n  readonly count: number;\n}"),
+            ("types.ts", types, "export interface GenericBoxOfArrayOfInt32 {\n  readonly value: readonly number[] | null;\n}"),
+            ("types.ts", types, "export type EmptyKind = never;"),
+            ("naming.ts", naming, "  readonly first: AlphaTag;\n  readonly second: BetaTag;\n  readonly inner: TestsNamingState;\n  readonly box: GenericBoxOfArrayOfInt32;\n  readonly nothing: EmptyKind | null;"),
+            ("naming.ts", naming, "This comment contains *\\/ and must not end the TSDoc block."),
+            ("naming.ts", naming, "    [\"__proto__\"]: bridgeWire.string(wire[\"__proto__\"]),"),
+            ("naming.ts", naming, "    constructor: bridgeWire.string(wire.constructor),"),
+            ("naming.ts", naming, "    prototype: bridgeWire.string(wire.prototype),"),
+            ("naming.ts", naming, "  rename(defaultValue: string): Promise<NamingState>;"),
+            ("naming.ts", naming, "  show(viewValue: string): Promise<NamingState>;"),
+        })
+            Require(text.Contains(expected, StringComparison.Ordinal),
+                $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
+        Require(!types.Contains("export interface Tag ", StringComparison.Ordinal),
+            "Same-named C# types were not qualified with their namespaces.");
+
+        using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(), "naming",
+            (transport, content, vm) => new NamingBridge(transport, vm, content: content), new TestViewLocator());
+        var reply = host.Transport.Call("namingSnapshot");
+        using var snapshot = JsonDocument.Parse(reply);
+        var state = snapshot.RootElement.GetProperty("state");
+        Require(state.GetProperty("__proto__").GetString() == "proto"
+            && state.GetProperty("constructor").GetString() == "constructor"
+            && state.GetProperty("prototype").GetString() == "prototype"
+            && state.GetProperty("nothing").ValueKind == JsonValueKind.Null,
+            $"Special wire names were not written as state fields: {state}");
+
+        var replyPath = Path.Combine(Path.GetTempPath(), $"runic-naming-snapshot-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(replyPath, reply);
+            var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
+            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+                "GeneratedSpecialNamesHarness.ts"), replyPath, directory], root).ConfigureAwait(false);
+        }
+        finally
+        {
+            File.Delete(replyPath);
+        }
     }
 
     private static string GeneratedTypeScriptDirectory()

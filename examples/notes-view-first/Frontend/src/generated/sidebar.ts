@@ -12,8 +12,6 @@ export interface SidebarClient extends ViewClient<SidebarState> {
   openHome(): Promise<SidebarState>;
   openNotes(): Promise<SidebarState>;
 }
-/** @deprecated Use SidebarClient. The connected client is not the logical .NET View. */
-export type SidebarView = SidebarClient;
 
 export interface SidebarPageReference {
   readonly kind: "sidebar";
@@ -33,7 +31,7 @@ function hydrate(wire: WireState): SidebarState {
     selected: bridgeWire.string(wire.selected),
   };
 }
-const bridgeContract = "NotesWindowViews.SidebarViewModel:EA9D00205EEEDEAD6B25CCE8015194BA35045AFC44F88EE1113DE50A68D503DF";
+const bridgeContract = "NotesWindowViews.SidebarViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
 
 export function connectSidebar(): Promise<SidebarClient> { return connectSidebarAt("sidebar", false); }
 async function connectSidebarAt(route: string, mount = false): Promise<SidebarClient> {

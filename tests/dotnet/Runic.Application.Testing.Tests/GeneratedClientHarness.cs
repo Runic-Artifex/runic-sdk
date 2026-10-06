@@ -16,7 +16,8 @@ internal static class GeneratedClientHarness
             await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "node_modules", "typescript", "bin", "tsc"),
                 "--noEmit", "--strict", "--noPropertyAccessFromIndexSignature", "--noImplicitReturns",
                 "--noFallthroughCasesInSwitch", "--target", "ES2022", "--module", "ESNext",
-                "--moduleResolution", "bundler", "--skipLibCheck", .. Directory.GetFiles(generated, "*.ts")], root)
+                "--moduleResolution", "bundler", "--skipLibCheck", .. Directory.GetFiles(generated, "*.ts"),
+                Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests", "GeneratedTypesCheck.ts")], root)
                 .ConfigureAwait(false);
             await GeneratedHarnessProcess.RunAsync("dotnet", [typeof(GeneratedClientHarness).Assembly.Location,
                 "--export-generated-client-fixture", fixture], root).ConfigureAwait(false);
