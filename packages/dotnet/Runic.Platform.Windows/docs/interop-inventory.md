@@ -60,8 +60,34 @@ clipboard. The test project does not reference CsWin32, and these imports do not
   including CA1416 platform compatibility, trimming and AOT analyzers.
 - Portable: `dotnet run --project tests/dotnet/Runic.Platform.Windows.Tests` and
   `tests/dotnet/Runic.Platform.Runtime.Tests` (launcher program-extension refusal).
-- Windows CI (`Native / win-x64`) runs the native clipboard (`--native`) and
-  system-sleep inhibition (`--native-inhibition --system-only`) with JIT and the
-  NativeAOT publish (`-p:IlcTreatWarningsAsErrors=true`).
+- Windows CI (`Native / win-x64`) runs the native clipboard (`--native`),
+  system-sleep inhibition (`--native-inhibition --system-only`) and settings reads
+  (`--native-settings`) with JIT and the NativeAOT publish
+  (`-p:IlcTreatWarningsAsErrors=true`).
 - Interactive: owned file launch (`Open`, `ChooseApplication`, `Reveal`), clipboard
-  transfer and settings reads on an interactive Windows desktop (see the PR).
+  transfer, settings reads and notification activation on an interactive Windows
+  desktop (see [Interactive evidence](#interactive-evidence)).
+
+## Interactive evidence
+
+On 2026-10-07 the Windows 11 VM (build 26200, .NET SDK 10.0.401) ran the
+NativeAOT publishes of `Runic.Platform.Windows.Tests` and
+`Runic.Platform.Runtime.Tests`, built from `b1c5d5af`. Neither publish produced a
+warning. Each check ran in the signed-in user's session and exited with 0:
+
+- `--native-settings`, `--native` (clipboard) and `--native-inhibition`.
+- `--native-services` with `Open` (a Notepad window for the owned file) and
+  `Reveal` (Explorer with the file selected).
+- `ChooseApplication`: Notepad was selected in the picker and confirmed with
+  "Just once", which opened the owned file in a new Notepad process. The
+  picker offers no "Always" button for this call.
+- `Notifications`, using a per-user test AppUserModelID from
+  `tests/native/windows-notifications/Configure-TestIdentity.ps1`: the toast
+  appeared, and clicking its "Open result" action raised the activation event
+  (`NotificationId = native-services, ActionId = open`). This run covers
+  `RoGetActivationFactory` and `WindowsGetStringRawBuffer`.
+
+UI Automation could not reach the Windows 11 Open With picker or the toast
+from the test session; neither appeared in the UI Automation tree. Both were
+operated with absolute pointer input, and UI Automation then confirmed the
+resulting Notepad window.
