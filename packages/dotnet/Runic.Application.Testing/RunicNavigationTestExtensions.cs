@@ -4,7 +4,7 @@ using Runic.Application.Views;
 namespace Runic.Application.Testing;
 
 /// <summary>Lifecycle counts for tests of the experimental navigator.</summary>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental("RUNICNAV001")]
 public static class RunicNavigationTestExtensions
 {
     /// <summary>
