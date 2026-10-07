@@ -355,12 +355,16 @@ jobs:
             rid: win-x64
             provider: Windows
             extension: .exe
+            # Cold Chromium and Node timers stall on Windows runners (#70).
+            smoke-timeout-scale: "2"
           - os: macos-26
             rid: osx-arm64
             provider: MacOS
             extension: ""
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
+    env:
+      RUNIC_SMOKE_TIMEOUT_SCALE: ${{ matrix.smoke-timeout-scale || '1' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
