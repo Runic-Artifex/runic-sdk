@@ -40,6 +40,13 @@ try {
   };
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
+  // WebUI sends a click event for each element with an id it has not marked,
+  // and those collide with Bridge calls (#53); runic-cswebui.js marks them first.
+  const expectClickEventsSuppressed = async moment => {
+    const unmarked = await query('Array.from(document.querySelectorAll("[id]:not([data-webui_click_is_set])"), element => element.id)');
+    if (unmarked.length !== 0)
+      throw new Error(`WebUI can send click events ${moment} for: ${JSON.stringify(unmarked)}`);
+  };
 
   await retry(async () => {
     if (await query('document.querySelector("#main h1")?.textContent') === "Reactive Notes") return true;
@@ -50,6 +57,7 @@ try {
     }
     return false;
   });
+  await expectClickEventsSuppressed("after connecting");
   if (verifyCallBurst) {
     // Native WebUI can give two calls that arrive together one event slot, and
     // one of them then never receives a reply (#53). Unless the client sends
@@ -161,6 +169,7 @@ try {
   await click("[data-go=document]");
   await retry(async () => await query('document.querySelector("#document-pane h2")?.textContent') === "Full editor");
   await retry(async () => await query('document.querySelector("#compact-pane h2")?.textContent') === "Compact View");
+  await expectClickEventsSuppressed("after navigating");
   const documentId = (await snapshot("shell")).state.main.id;
   const documentRoute = `content${documentId}`;
   const documentState = (await snapshot(documentRoute)).state;
@@ -294,7 +303,42 @@ try {
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Discarded Operation roundtrip");
   if (await query("window.__runicDiscardPromptCount") !== 2)
     throw new Error("The approved discard did not reach the mounted browser interaction handler exactly once.");
-  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation");
+
+  // WebUI never settles calls in flight when its WebSocket closes. A call the
+  // admission timeout released is late; a reconnect must forget it, or its
+  // missing admission swallows the admission of a call sent afterwards.
+  const admissions = () => query("window.__runicBridgeAdmissionState()");
+  await evaluate(`(() => {
+    const webui = window.webui;
+    const call = webui.call;
+    webui.call = function (name, ...args) {
+      if (name === "__runicLostProbe") return new Promise(() => {});
+      return call.call(this, name, ...args);
+    };
+    void window.__runicBridge.call("__runicLostProbe");
+    return true;
+  })()`);
+  await retry(async () => (await admissions()).late === 1);
+  const { result: prototype } = await command("Runtime.evaluate", { expression: "WebSocket.prototype" });
+  const { objects } = await command("Runtime.queryObjects", { prototypeObjectId: prototype.objectId });
+  const closed = await command("Runtime.callFunctionOn", {
+    objectId: objects.objectId, returnByValue: true,
+    functionDeclaration: "function () { let count = 0; for (const socket of this) if (socket.readyState === WebSocket.OPEN) { socket.close(); count++; } return count; }",
+  });
+  if (closed.result.value !== 1) throw new Error(`Expected one open WebUI WebSocket, closed ${closed.result.value}.`);
+  await retry(async () => await query("window.webui.isConnected()") === false);
+  await retry(async () => await query("window.webui.isConnected()") === true);
+  // Generated clients resume with their own calls; wait until .NET admitted them.
+  await retry(async () => !(await admissions()).waiting);
+  // A regression check only, and timing-dependent: it relies on the 250 ms
+  // connection poll seeing the closed socket before WebUI reconnects (after
+  // 500 ms). The host-client-scripts unit tests are the real guard.
+  const afterLoss = await admissions();
+  if (afterLoss.late !== 0)
+    throw new Error(`A reconnect kept admissions from the lost connection: ${JSON.stringify(afterLoss)}`);
+  await retry(async () => (await snapshot("shell")).state?.main.kind === "document");
+  await expectClickEventsSuppressed("after reconnecting");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation|reconnect-admissions|click-events-suppressed");
   }
 } finally {
   try { await browser?.close(); }

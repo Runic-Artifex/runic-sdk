@@ -141,6 +141,101 @@ test("runic-cswebui.js credits a late admission to the call the timeout released
   expect(sent).toEqual(["first", "second", "third"]);
 });
 
+// WebUI never settles calls in flight when its WebSocket closes, and their
+// admissions cannot arrive over the new connection. A reconnect must not start
+// with late entries that would swallow the admissions of new calls.
+test("runic-cswebui.js forgets pending admissions when the connection is lost", async () => {
+  const sent = [];
+  let online = true;
+  const context = loadCsWebUiBridge({
+    isConnected: () => online,
+    call: name => {
+      if (!online) return Promise.reject(new Error("WebSocket is not connected"));
+      sent.push(name);
+      return new Promise(() => {});
+    },
+  });
+  const bridge = context.__runicBridge;
+  let reconnects = 0;
+  bridge.onReconnect(() => reconnects++);
+  void bridge.call("first");
+  void bridge.call("second");
+  const offline = bridge.call("offline").catch(error => error.message);
+  await new Promise(resolve => setTimeout(resolve, 1_700));
+  expect(sent).toEqual(["first", "second"]);
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 1, waiting: true });
+
+  // The lost transition releases the waiting call and drops the late one.
+  online = false;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(await offline).toBe("WebSocket is not connected");
+
+  online = true;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(reconnects).toBe(1);
+  void bridge.call("afterReconnect");
+  void bridge.call("next");
+  await settle();
+  expect(sent).toEqual(["first", "second", "afterReconnect"]);
+
+  // The first admission after the reconnect belongs to the first call sent on it.
+  context.__runicBridgeAdmitted();
+  await settle();
+  expect(sent).toEqual(["first", "second", "afterReconnect", "next"]);
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: true });
+});
+
+test("runic-cswebui.js watches the connection while a call awaits admission", async () => {
+  let online = true;
+  const context = loadCsWebUiBridge({
+    isConnected: () => online,
+    call: name => name === "lost" ? new Promise(() => {}) : Promise.resolve(name),
+  });
+  const bridge = context.__runicBridge;
+  void bridge.call("lost");
+  await settle();
+  online = false;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  // Without a reconnect listener, the loss still releases the waiting call
+  // instead of letting its timeout make it late.
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  online = true;
+  await new Promise(resolve => setTimeout(resolve, 1_500));
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(await bridge.call("snapshot")).toBe("snapshot");
+});
+
+test("runic-cswebui.js does not resume a listener registered after an unobserved loss", async () => {
+  let online = true;
+  const context = loadCsWebUiBridge({
+    isConnected: () => online,
+    call: name => name === "lost" ? new Promise(() => {}) : Promise.resolve(name),
+  });
+  const bridge = context.__runicBridge;
+  // The waiting call keeps the poll running; no reconnect listener exists.
+  void bridge.call("lost");
+  await settle();
+  online = false;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  // The poll stops once idle, so it does not see the reconnect either.
+  await new Promise(resolve => setTimeout(resolve, 300));
+  online = true;
+
+  let resumes = 0;
+  bridge.onReconnect(() => resumes++);
+  await new Promise(resolve => setTimeout(resolve, 600));
+  expect(resumes).toBe(0);
+
+  // A loss observed while the listener exists still resumes it once.
+  online = false;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  online = true;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  expect(resumes).toBe(1);
+});
+
 // Examples serve their own copy; each must match the package's script.
 test("example copies of runic-cswebui.js match the package script", () => {
   const expected = readFileSync(resolve(root, scripts[0]), "utf8");
