@@ -8,6 +8,7 @@ if (args.Length > 0 && args[0] == "--native-inhibition")
     return await InhibitionTests.RunAsync(args.Contains("--inspect-power-requests", StringComparer.Ordinal), args.Contains("--system-only", StringComparer.Ordinal));
 if (args.Length > 0 && args[0] is "--native-notifications" or "--notification-activation")
     return await NotificationTests.RunAsync(args);
+if (args.Length > 0 && args[0] == "--native-settings") return await SettingsTests.RunAsync();
 if (args.Length > 0) return NativeTests.Run(args);
 #pragma warning disable CA1416 // Portable checks of pure classification and XML helpers; nothing here calls native code.
 Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070490), 0) is PlatformResult<PlatformUnit>.Success);
