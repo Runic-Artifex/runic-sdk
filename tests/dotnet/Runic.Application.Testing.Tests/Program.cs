@@ -9,6 +9,14 @@ if (args is ["--export-generated-client-fixture", var fixturePath])
     return;
 }
 
+// A focused run of the navigator suite while iterating.
+if (args is ["--navigation"])
+{
+    await NavigationTests.RunAsync();
+    Console.WriteLine("Navigation tests passed.");
+    return;
+}
+
 var model = new RootViewModel();
 using (var host = new RunicWindowTestHost<RootViewModel>(model, "root",
     (transport, content, vm) => new RootBridge(transport, vm, content: content),
@@ -141,6 +149,7 @@ await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();
 await HostDriverTests.RunAsync();
 TrackerConformanceTests.Run();
+await NavigationTests.RunAsync();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();
 await InteractionFixture.VerifyAsync();

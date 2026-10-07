@@ -369,6 +369,36 @@ the generated mock encodes the failure. A ReactiveUI command also reports the
 failure on `ThrownExceptions`, so give every bridged `ReactiveCommand` a
 subscriber.
 
+## Navigation (experimental)
+
+`RunicNavigator` owns typed navigation regions with stable entry ids, awaited
+departure guards, initialize-once and resume-on-return hooks, and owned or
+borrowed content. The API is experimental: every type is marked
+`[Experimental("RUNICNAV001")]`, so suppress `RUNICNAV001` to use it, and expect
+changes before it is supported.
+
+```csharp
+services.AddRunicNavigation(); // one model context and navigator per window scope
+
+var main = navigator.CreateRegion<IMainViewModel>(this, NavigationTarget.Borrow<IMainViewModel>(home));
+var result = await main.PushAsync(NavigationTarget.Create<IMainViewModel>(services => new DocumentViewModel(
+    services.GetRequiredService<EditorViewModel>())));
+if (result is NavigationResult<IMainViewModel>.Committed) { /* main.Current is the document */ }
+await main.BackAsync(); // the document retires and is disposed; home resumes
+```
+
+- Operations return a `NavigationResult`: `Committed`, `Rejected` (guard,
+  cancelled, closed, reentrant, no history, not current, entry not found),
+  `Failed` or `Superseded`. They throw only for argument and ownership errors.
+- `Borrow` content is never disposed. `Own` and `Create` content is constructed
+  with `new`, owned once, and on retirement its child regions close, then it is
+  disposed outside model turns and its model-context lease is released.
+- Guards, initialize and resume run outside model turns. A commit re-checks the
+  region and applies the new state in one model turn, which raises
+  `PropertyChanged`. A later request of a region supersedes an earlier one that
+  has not started committing.
+- A region's presentation through a generated Bridge slot is not available yet.
+
 ## Logging and telemetry
 
 `OpenWindow` (CS-WebUI) and `OpenDesktopWindowAsync` (Desktop) pass the scope's
@@ -407,6 +437,14 @@ output accordingly. The message properties are listed per event.
 | 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
 | 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` or a cancellation on `ThrownExceptions`. | `Source` (the command expression or `sourceName`), `ErrorType` |
+| 1060 | `NavigationGuardFailed` | Error | A navigation departure guard throws; the transition fails. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
+| 1061 | `NavigationPreparationFailed` | Error | A navigation factory, the ownership check, binding, initialize or resume throws. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
+| 1062 | `NavigationCommitFailed` | Error | A navigation commit turn cannot run. | `Region`, `RegionId`, `Operation`, `ErrorType` |
+| 1063 | `NavigationNotificationFailed` | Error | A navigation region `PropertyChanged` handler throws; the commit stands. | `Region`, `RegionId`, `Property`, `ErrorType` |
+| 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (cancellation, children, forget, dispose, lease) fails; later steps still run. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
+| 1065 | `NavigationTransitionRejected` | Debug | A navigation request is rejected. | `Region`, `RegionId`, `Operation`, `Reason` |
+| 1066 | `NavigationTransitionSuperseded` | Debug | A later request supersedes a navigation request. | `Region`, `RegionId`, `Operation` |
+| 1067 | `NavigationSupersededTransitionOverrun` | Warning | A superseded navigation request is still running 5 seconds after supersession. | `Region`, `RegionId`, `Operation` |
 | 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -422,7 +460,7 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1021 and 1050 use the category `Runic.Application.Views`
+Events 1000-1021, 1050 and 1060-1067 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
 `RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
 `WindowContentSession` with a logger factory created it, and otherwise the
