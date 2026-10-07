@@ -84,7 +84,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
     }
 
     [Fact]
-    public async Task ARejectedTokenIsReportedAndNotRetried()
+    public async Task AWrongTokenIsReportedAndItsSocketClosed()
     {
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromMilliseconds(200));
         using var socket = await ConnectAsync(fixture.Url, fixture.Timeout);
@@ -95,8 +95,48 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
 
         Assert.Contains("WebSocket 1: first message, 9 bytes (command 0xF5)", timeout.Message);
         Assert.Contains("WebSocket 1: token check, token did not match", timeout.Message);
-        // The deadline only closes sockets that never checked a token.
-        Assert.DoesNotContain("closed by the server", timeout.Message);
+        Assert.Contains("WebSocket 1: closed by the server: the token did not match", timeout.Message);
+        Assert.DoesNotContain("closed by the server: no token check", timeout.Message);
+
+        // The server answers the check with a false result, then closes the socket.
+        var reply = await socket.ReceiveAsync(new byte[16], fixture.Timeout);
+        Assert.Equal(WebSocketMessageType.Binary, reply.MessageType);
+        await ReadUntilCloseAsync(socket, fixture.Timeout);
+        Assert.Equal(WebSocketCloseStatus.PolicyViolation, socket.CloseStatus);
+    }
+
+    [Fact]
+    public async Task AWrongTokenSocketGivesTheConnectionToAValidOne()
+    {
+        // The handshake timeout is long, so only the rejection can free the connection.
+        await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 10, handshakeTimeout: TimeSpan.FromMinutes(1));
+        using var wrong = await ConnectAsync(fixture.Url, fixture.Timeout);
+        await SendCheckTokenAsync(wrong, unchecked(fixture.Token + 1), fixture.Timeout);
+
+        // The page's bridge retries every 500 ms. A valid retry must get the connection
+        // within about 2 s of the rejection, well inside the 3 s budget here.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(fixture.Timeout);
+        budget.CancelAfter(TimeSpan.FromSeconds(3));
+        using var retried = await ConnectWithRetriesAsync(fixture.Url, budget.Token, fixture.Showing);
+        await SendCheckTokenAsync(retried, fixture.Token, budget.Token);
+
+        await fixture.Showing.WaitAsync(budget.Token);
+        await ReadUntilCloseAsync(wrong, fixture.Timeout);
+        Assert.Equal(WebSocketCloseStatus.PolicyViolation, wrong.CloseStatus);
+        Assert.Equal(WebSocketState.Open, retried.State);
+    }
+
+    private static async Task ReadUntilCloseAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[64];
+        while (true)
+        {
+            var result = await socket.ReceiveAsync(buffer, cancellationToken);
+            if (result.MessageType == WebSocketMessageType.Close)
+            {
+                return;
+            }
+        }
     }
 
     private static async Task<ClientWebSocket> ConnectWithRetriesAsync(
@@ -141,9 +181,12 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
     private sealed class HandshakeFixture : IAsyncDisposable
     {
         private readonly CancellationTokenSource _timeout = new(TimeSpan.FromSeconds(30));
-        private readonly TimeSpan _previousHandshakeTimeout;
+        private readonly TimeSpan _previousConnectionTimeout = WebUiApplication.ConnectionTimeout;
+        private readonly TimeSpan _previousHandshakeTimeout = WebUiApplication.BridgeHandshakeTimeout;
 
-        private HandshakeFixture(TimeSpan previousHandshakeTimeout) => _previousHandshakeTimeout = previousHandshakeTimeout;
+        private HandshakeFixture()
+        {
+        }
 
         public WebUiWindow Window { get; } = new();
         public Uri Url { get; private set; } = null!;
@@ -153,21 +196,29 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
 
         public static async Task<HandshakeFixture> StartAsync(nuint connectionTimeoutSeconds, TimeSpan handshakeTimeout)
         {
-            var fixture = new HandshakeFixture(WebUiApplication.BridgeHandshakeTimeout);
-            var factory = new EmbeddedHostTests.RecordingHostFactory();
-            WebUiApplication.SetEmbeddedHostFactory(factory);
-            WebUiApplication.SetConnectionTimeout(connectionTimeoutSeconds);
-            WebUiApplication.BridgeHandshakeTimeout = handshakeTimeout;
-            fixture.Url = await fixture.Window.StartServerAsync("<script src=\"webui.js\"></script>", fixture.Timeout);
-            using var client = new HttpClient { BaseAddress = fixture.Url };
-            fixture.Token = ExtractToken(await client.GetStringAsync("/webui.js", fixture.Timeout));
-            fixture.Showing = fixture.Window.ShowWebViewAsync("<script src=\"webui.js\"></script>", fixture.Timeout);
-            // Connect only after the presentation began waiting, so every socket counts.
-            while (factory.Host is not { IsOpen: true } && !fixture.Showing.IsCompleted)
+            var fixture = new HandshakeFixture();
+            try
             {
-                await Task.Delay(10, fixture.Timeout);
+                var factory = new EmbeddedHostTests.RecordingHostFactory();
+                WebUiApplication.SetEmbeddedHostFactory(factory);
+                WebUiApplication.SetConnectionTimeout(connectionTimeoutSeconds);
+                WebUiApplication.BridgeHandshakeTimeout = handshakeTimeout;
+                fixture.Url = await fixture.Window.StartServerAsync("<script src=\"webui.js\"></script>", fixture.Timeout);
+                using var client = new HttpClient { BaseAddress = fixture.Url };
+                fixture.Token = ExtractToken(await client.GetStringAsync("/webui.js", fixture.Timeout));
+                fixture.Showing = fixture.Window.ShowWebViewAsync("<script src=\"webui.js\"></script>", fixture.Timeout);
+                // Connect only after the presentation began waiting, so every socket counts.
+                while (factory.Host is not { IsOpen: true } && !fixture.Showing.IsCompleted)
+                {
+                    await Task.Delay(10, fixture.Timeout);
+                }
+                return fixture;
             }
-            return fixture;
+            catch
+            {
+                await fixture.DisposeAsync();
+                throw;
+            }
         }
 
         public async ValueTask DisposeAsync()
@@ -179,7 +230,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
             finally
             {
                 WebUiApplication.BridgeHandshakeTimeout = _previousHandshakeTimeout;
-                WebUiApplication.SetConnectionTimeout(15);
+                WebUiApplication.SetConnectionTimeout((nuint)_previousConnectionTimeout.TotalSeconds);
                 WebUiApplication.SetEmbeddedHostFactory(null);
                 _timeout.Dispose();
             }

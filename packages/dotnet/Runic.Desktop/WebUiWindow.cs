@@ -2137,17 +2137,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
+        bool admitted;
         lock (_connectionGate)
         {
-            if (!AllowMultipleClients && _activeConnections > 0 && !YieldSilentConnections())
+            admitted = AllowMultipleClients || _activeConnections == 0 || YieldSilentConnections();
+            if (admitted)
             {
-                ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
-                HandshakeLog.RecordRejection("another WebSocket holds the only connection");
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return;
+                _activeConnections++;
             }
+        }
 
-            _activeConnections++;
+        if (!admitted)
+        {
+            ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            HandshakeLog.RecordRejection("another WebSocket holds the only connection");
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
         }
 
         try
@@ -2202,14 +2207,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     // Called under the connection gate when a new WebSocket finds the only
     // connection taken. A socket that never checked its token, such as one from a
-    // replaced page, gives the connection up; an authenticated one keeps it, and so
-    // does one still being accepted. Returns whether the connection is now free.
+    // replaced page, gives the connection up, and so does one whose token check
+    // failed. An authenticated socket keeps it, and so does one still being accepted.
+    // Returns whether the connection is now free.
     private bool YieldSilentConnections()
     {
         var holding = _activeConnections;
         foreach (var session in _sessions.Values)
         {
-            if (session.IsHandshakeExpired || session.TryYieldSilentHandshake())
+            if (session.IsHandshakeClosing || session.TryYieldSilentHandshake())
             {
                 holding--;
             }

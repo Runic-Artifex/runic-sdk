@@ -111,8 +111,10 @@ are not relaunched.
 The page's Bridge sends its token check as soon as its WebSocket opens. A WebSocket
 that sends none is closed after 10 seconds, or after 2 seconds when a newer WebSocket
 needs the only connection, and the page's Bridge reconnects. Each close logs event
-3005. A token that does not match still fails the connection. The timeout message
-lists what the server saw of the handshake, with times since launch.
+3005. A WebSocket whose token does not match gets `false` and is closed at once, so
+it does not hold the connection, and it is never authenticated. A WebSocket whose
+token matched is never closed by the handshake deadline. The timeout message lists
+what the server saw of the handshake, with times since launch.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the
@@ -120,3 +122,11 @@ same owner/lifetime checks with custom hosts. Window capabilities are forwarded 
 the provider, including operations unavailable under GTK4/Wayland. For native file
 pickers and clipboard, register the matching GTK platform provider and the
 [portal service](../Runic.Platform.Linux.Portal/README.md).
+
+## Security notes
+
+- A local client that holds the session credential can take the only Bridge
+  connection from the page after the page's own WebSocket has been silent for 2
+  seconds. The page's Bridge then reconnects and is refused until that client's
+  connection ends. This is a residual risk of the handshake deadline (#35). The
+  credential is still required, and a wrong credential is closed at once.

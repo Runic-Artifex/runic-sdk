@@ -12,9 +12,6 @@ internal sealed class WebUiSession : IAsyncDisposable
     private const int ReceiveBufferSize = 16 * 1024;
     private const int MaximumMessageSize = 64_000_000;
     private const int MaximumArgumentCount = 17;
-    private const int HandshakePending = 0;
-    private const int HandshakeTokenChecked = 1;
-    private const int HandshakeExpired = 2;
     private static readonly TimeSpan MaximumYieldGrace = TimeSpan.FromSeconds(2);
 
     private readonly WebUiWindow _window;
@@ -30,7 +27,7 @@ internal sealed class WebUiSession : IAsyncDisposable
     private int _disposed;
     private int _nextScriptId;
     private readonly TimeSpan _handshakeTimeout;
-    private int _handshakeState;
+    private readonly WebUiHandshake _handshake = new();
     private int _framesReceived;
     private readonly long _openedAt = Stopwatch.GetTimestamp();
 
@@ -134,7 +131,8 @@ internal sealed class WebUiSession : IAsyncDisposable
         finally
         {
             await handshakeDeadline.CancelAsync().ConfigureAwait(false);
-            if (!_everAuthenticated && Volatile.Read(ref _handshakeState) != HandshakeExpired)
+            // Ending first means a deadline that fires later cannot log a close for this socket.
+            if (_handshake.TryEnd() && !_everAuthenticated)
             {
                 RecordHandshake($"ended before authentication: {ending}");
             }
@@ -147,13 +145,14 @@ internal sealed class WebUiSession : IAsyncDisposable
         }
     }
 
-    // A page sends its token check as soon as its socket opens. A socket that sends
-    // none is closed after the handshake timeout, or sooner when a newer socket
-    // needs the only connection, and the page's Bridge reconnects (#35). Without
-    // this, a silent socket held the only connection until the window timed out.
-    // A socket that checked its token is never closed here, so a rejected token
-    // still fails the connection.
-    public bool IsHandshakeExpired => Volatile.Read(ref _handshakeState) == HandshakeExpired;
+    // A page sends its token check as soon as its socket opens (#35). A socket that
+    // sends none is closed after the handshake timeout, or sooner when a newer socket
+    // needs the only connection; the page's Bridge then reconnects. A socket whose
+    // token check fails is closed at once. A socket whose token matched is never closed
+    // here, so only a socket that failed or never checked its token gives up the slot.
+    // A local client that holds a valid token can still evict a page that stays silent
+    // for the grace period (see the README security notes).
+    public bool IsHandshakeClosing => _handshake.IsClosing;
 
     // Closes this socket for a newer one if it is still silent after the grace
     // period (the shorter of two seconds and the handshake timeout).
@@ -189,30 +188,36 @@ internal sealed class WebUiSession : IAsyncDisposable
             $"no token check within {_handshakeTimeout.TotalSeconds:0.###} seconds"));
     }
 
+    // Callers may hold the connection gate, so this only changes the state. The
+    // logging, revocation and close run on the thread pool.
     private bool TryExpireHandshake(string reason)
     {
-        if (Interlocked.CompareExchange(ref _handshakeState, HandshakeExpired, HandshakePending) != HandshakePending)
+        if (!_handshake.TryExpire())
         {
             return false;
         }
 
+        _ = Task.Run(() => ExpireHandshakeAsync(reason));
+        return true;
+    }
+
+    private async Task ExpireHandshakeAsync(string reason)
+    {
         var frames = Volatile.Read(ref _framesReceived);
         RecordHandshake(string.Create(
             CultureInfo.InvariantCulture,
             $"closed by the server: {reason} ({frames} {(frames == 1 ? "message" : "messages")} received)"));
         RevokeAdmission();
         _window.ReportHandshakeExpired(ConnectionId, Stopwatch.GetElapsedTime(_openedAt), reason);
-        // Callers may hold the connection gate; close outside it.
-        _ = Task.Run(CloseExpiredHandshakeAsync);
-        return true;
+        await CloseHandshakeAsync("No WebUI token check arrived in time.").ConfigureAwait(false);
     }
 
-    private async Task CloseExpiredHandshakeAsync()
+    private async Task CloseHandshakeAsync(string message)
     {
         try
         {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await CloseAsync(WebSocketCloseStatus.PolicyViolation, "No WebUI token check arrived in time.", deadline.Token)
+            await CloseAsync(WebSocketCloseStatus.PolicyViolation, message, deadline.Token)
                 .ConfigureAwait(false);
             if (deadline.IsCancellationRequested) _socket.Abort();
             // Let a cooperative peer acknowledge the close; never wait on it for long.
@@ -403,15 +408,26 @@ internal sealed class WebUiSession : IAsyncDisposable
         var tokenIsValid = WebUiProtocol.ReadToken(payload.Span) == _window.Token;
         if (command == WebUiProtocol.CheckToken)
         {
-            // A socket whose handshake deadline already closed it stays closed.
-            var handshake = Interlocked.CompareExchange(ref _handshakeState, HandshakeTokenChecked, HandshakePending);
-            if (handshake == HandshakeExpired) return;
-            if (handshake == HandshakePending || !tokenIsValid)
+            // A socket that is closing (expired or rejected) or has ended gets no reply.
+            var before = _handshake.CheckToken(tokenIsValid);
+            if (before is WebUiHandshake.Expired or WebUiHandshake.Rejected or WebUiHandshake.Ended) return;
+            if (before == WebUiHandshake.Pending || !tokenIsValid)
             {
                 RecordHandshake(tokenIsValid ? "token check, token matched" : "token check, token did not match");
             }
             await SendTokenResultAsync(id, tokenIsValid, cancellationToken).ConfigureAwait(false);
-            if (tokenIsValid && IsAuthenticated)
+            if (!tokenIsValid)
+            {
+                // A rejected socket is never authenticated again. Revoke it and close it, so
+                // the connection slot is released for the next socket.
+                RevokeAdmission();
+                RecordHandshake("closed by the server: the token did not match");
+                // The close outlives this request, so it is not tied to its cancellation token.
+                _ = Task.Run(() => CloseHandshakeAsync("The WebUI token did not match."), CancellationToken.None);
+                return;
+            }
+
+            if (IsAuthenticated)
             {
                 _ = DispatchEventIgnoringFailureAsync(WebUiEventType.Connected, string.Empty, [], cancellationToken);
             }
