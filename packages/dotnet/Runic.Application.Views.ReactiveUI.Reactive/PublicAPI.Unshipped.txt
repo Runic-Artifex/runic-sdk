@@ -1,3 +1,4 @@
 #nullable enable
 Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions
 static Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions.BatchBridgeSnapshots<T>(this System.IObservable<T>! source, object! model) -> System.IObservable<T>!
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.Reactive.RoutingState! router, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void

@@ -353,6 +353,8 @@ output accordingly. The message properties are listed per event.
 | 1031 | `ModelTurnDropped` | Warning | Disposal drops a posted turn. | `ErrorType` |
 | 1032 | `UnhandledTurnHandlerFailed` | Error | An `UnhandledTurnException` handler throws. | `ErrorType` |
 | 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. | `ErrorType` |
+| 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
+| 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
@@ -370,6 +372,13 @@ Events 1000-1021 use the category `Runic.Application.Views`
 `WindowContentSession` with a logger factory created it, and otherwise the
 `Trace` output. Events 2000-2001 use `Runic.Application.Desktop`. Events 3000-3003
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
+
+Events 1040-1041 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
+flavor) and also use `Runic.Application.Views`. They need the
+`ReactiveRoutedRegion<T>(router, loggerFactory)` constructor, which a
+ViewModel can call with an `ILoggerFactory` injected from DI; without a
+factory, the region writes to `Trace`. `Region` is the region's ViewModel type
+name `T`.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`
 named `Runic.Application.Views` (`RunicViewsTelemetry.ActivitySourceName` and

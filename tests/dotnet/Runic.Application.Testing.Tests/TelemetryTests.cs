@@ -5,8 +5,11 @@ using System.Diagnostics.Metrics;
 using System.Text.Json;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using ReactiveUI;
+using ReactiveUI.Primitives;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -27,6 +30,7 @@ internal static class TelemetryTests
             await FailingOperationIsLoggedAndTracedAsync();
             await SnapshotFramesAreMeasuredAsync();
             ModelContextLogsUnhandledTurns();
+            ReactiveRoutedRegionLogsFailures();
         }
         finally
         {
@@ -148,6 +152,67 @@ internal static class TelemetryTests
             ?? throw new InvalidOperationException("No ModelTurnFailed entry was logged.");
         Require(entry.Category == typeof(RunicModelContext).FullName && entry.Exception is InvalidOperationException,
             $"The model context entry was wrong: {entry.Category}");
+    }
+
+    // W130-047: a ReactiveUI routed region logs an incompatible route and a
+    // failed router as Views events, with the router's exception attached.
+    private static void ReactiveRoutedRegionLogsFailures()
+    {
+        var logs = new LogCapture();
+        var router = new RoutingState();
+        using (var region = new ReactiveRoutedRegion<PageViewModel>(router, logs))
+        {
+            router.Navigate.Execute(new OtherViewModel()).Subscribe(_ => { });
+            Require(region.Current is null, "An incompatible route was presented.");
+        }
+        var incompatible = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1040)
+            ?? throw new InvalidOperationException($"No RoutedRegionRouteIncompatible entry was logged: {string.Join(", ", logs.Entries.Select(e => e.EventId))}");
+        Require(incompatible.Category == RunicViewsTelemetry.LogCategory && incompatible.Level == LogLevel.Error
+            && incompatible.EventId.Name == "RoutedRegionRouteIncompatible"
+            && incompatible.State["Region"] as string == nameof(PageViewModel)
+            && incompatible.State["Model"] as string == nameof(OtherViewModel),
+            $"The incompatible route entry was wrong: {incompatible.Category} {string.Join(", ", incompatible.State)}");
+
+        var routes = new FailingRoutes();
+        using (new ReactiveRoutedRegion<PageViewModel>(routes, logs))
+            routes.Fail(new InvalidOperationException("Router failed for customer-secret."));
+        var failed = logs.Entries.SingleOrDefault(entry => entry.EventId.Id == 1041)
+            ?? throw new InvalidOperationException("No RoutedRegionRouterFailed entry was logged.");
+        Require(failed.Category == RunicViewsTelemetry.LogCategory && failed.Level == LogLevel.Error
+            && failed.EventId.Name == "RoutedRegionRouterFailed"
+            && failed.State["Region"] as string == nameof(PageViewModel)
+            && failed.State["ErrorType"] as string == typeof(InvalidOperationException).FullName,
+            $"The router failure entry was not structured: {string.Join(", ", failed.State)}");
+        // D-12: the exception is attached in every environment.
+        Require(failed.Exception is InvalidOperationException { Message: "Router failed for customer-secret." },
+            "The router failure entry did not carry the exception.");
+    }
+
+    private sealed class PageViewModel : ReactiveObject, IRoutableViewModel
+    {
+        public string UrlPathSegment => "page";
+        public IScreen HostScreen => throw new NotSupportedException();
+    }
+
+    private sealed class OtherViewModel : ReactiveObject, IRoutableViewModel
+    {
+        public string UrlPathSegment => "other";
+        public IScreen HostScreen => throw new NotSupportedException();
+    }
+
+    private sealed class FailingRoutes : IObservable<IRoutableViewModel?>
+    {
+        private IObserver<IRoutableViewModel?>? _observer;
+        public IDisposable Subscribe(IObserver<IRoutableViewModel?> observer)
+        {
+            _observer = observer;
+            return new Unsubscriber(this);
+        }
+        public void Fail(Exception error) => _observer?.OnError(error);
+        private sealed class Unsubscriber(FailingRoutes owner) : IDisposable
+        {
+            public void Dispose() => owner._observer = null;
+        }
     }
 
     private sealed class Model : INotifyPropertyChanged

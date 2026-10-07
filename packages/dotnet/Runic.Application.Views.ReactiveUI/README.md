@@ -9,7 +9,8 @@ CommunityToolkit dependency. It provides:
 - `ReactiveRunicViewLocator`, adapting explicit ReactiveUI view mappings and
   contracts;
 - `ReactiveRoutedRegion<T>`, projecting `RoutingState.CurrentViewModel` into
-  a generated content property;
+  a generated content property, logging an incompatible route or failed
+  router through an optional `ILoggerFactory` (Views events 1040-1041);
 - mount-owned `IActivatableViewModel` leases; and
 - typed command, interaction, and model-context scheduler adapters used by
   the compiled-model generator.
