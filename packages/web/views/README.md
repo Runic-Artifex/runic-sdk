@@ -343,6 +343,14 @@ way; `wait()` and `completion` still return the status, a union discriminated by
 create and recognize outcomes, for example in tests and mocks. An outcome is
 recognized by a non-enumerable brand, so a spread or JSON copy is plain data.
 
+The framework command helpers (`useCommand`, `injectCommand` and
+`createCommandController`) keep the declared failure of the latest run as
+`failure`, apart from `error`. In `@runic-artifex/views-effect`, a declared
+failure is the `ViewDomainFailure` error, and `catchCase` handles its cases. In
+tests, a mock handler throws `mockFailure(failure)`, and a generated mock's
+`failNext(method, { kind: "domain-failed", failure })` and `failWith(failure)`
+take the method's typed failure.
+
 ## Errors and diagnostics
 
 A `BridgeError` names what failed and why:
