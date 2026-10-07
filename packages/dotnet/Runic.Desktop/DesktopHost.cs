@@ -193,7 +193,8 @@ public sealed class DesktopHost : IAsyncDisposable
             _options.WaitForConnection,
             _options.ConnectionTimeout,
             _options.DiagnosticSink,
-            _logger);
+            _logger,
+            _options.BrowserLaunchAttempts);
         var engine = new WebUiWindow(core, path, security, runtime);
         var surface = new DesktopSurface(this, id, engine, isolatedCore);
         if (!_surfaces.TryAdd(id, surface))
@@ -351,6 +352,12 @@ public sealed class DesktopHost : IAsyncDisposable
         if (options.ConnectionTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "ConnectionTimeout must be positive.");
+        }
+        if (options.BrowserLaunchAttempts is < 1 or > DesktopHostOptions.MaximumBrowserLaunchAttempts)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                $"BrowserLaunchAttempts must be between 1 and {DesktopHostOptions.MaximumBrowserLaunchAttempts}.");
         }
         // The application must choose a policy; which instance it chose is irrelevant.
         if (options.NetworkExposure == DesktopNetworkExposure.AllInterfaces && !options.HasExplicitSecurity)

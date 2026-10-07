@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Desktop.DesktopHostOptions.BrowserLaunchAttempts.get -> int
+Runic.Desktop.DesktopHostOptions.BrowserLaunchAttempts.init -> void

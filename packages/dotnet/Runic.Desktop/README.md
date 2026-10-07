@@ -99,6 +99,15 @@ configured provider. A process cannot change GTK versions after claiming a backe
 It falls back when the embedded presentation cannot start, not when it opens but its
 page never connects: that fails with `presentation-connection-timeout`, and the inner
 `TimeoutException` says how far the page got.
+A browser that is still running but has requested nothing after `ConnectionTimeout`
+is stopped and launched again, with a fresh profile unless the window sets one.
+Each relaunch reports `browser-launch-stalled` as a warning and logs event 3004.
+`DesktopHostOptions.BrowserLaunchAttempts` (default 2, at most 5; 1 disables it)
+bounds the launches, and each one waits the whole `ConnectionTimeout`. Stopping a stalled
+browser can take up to about 16 seconds more (close, kill, output and profile cleanup),
+so with the defaults a window that never connects fails after at most about 46 seconds
+instead of 15. A page that was requested, a browser that exited and embedded WebViews
+are not relaunched.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the

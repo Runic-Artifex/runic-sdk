@@ -26,6 +26,10 @@ internal static partial class DesktopLog
     internal static partial void ConfigurationLimited(
         ILogger logger, string code, string option, string diagnosticMessage, string remediation);
 
+    [LoggerMessage(EventId = 3004, EventName = "BrowserLaunchStalled", Level = LogLevel.Warning,
+        Message = "The browser was still running but had requested nothing after {TimeoutSeconds} seconds on launch attempt {Attempt} of {Attempts}; relaunching it.")]
+    internal static partial void BrowserLaunchStalled(ILogger logger, int attempt, int attempts, double timeoutSeconds);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";
