@@ -16,11 +16,18 @@ runs:
     - shell: bash
       run: |
         # Only Linux needs system packages; they are not part of the cached directory.
+        # A stalled apt or browser download has hung jobs for over 30 minutes, while
+        # a normal install takes under three (slow mirrors up to about six), so each
+        # attempt is time-limited.
+        deps=()
         if [[ "$RUNNER_OS" == Linux ]]; then
-          bunx --bun playwright-core install --with-deps chromium
-        else
-          bunx --bun playwright-core install chromium
+          deps=(--with-deps)
+          # A stalled mirror connection should fail fast rather than hold apt.
+          printf "Acquire::http::Timeout \"30\";\nAcquire::https::Timeout \"30\";\nAcquire::Retries \"3\";\n" | sudo tee /etc/apt/apt.conf.d/99runic-timeouts >/dev/null
+          # A killed attempt can leave root-owned apt running and holding its locks.
+          export RETRY_CLEANUP="sudo pkill -KILL -x apt-get; sudo pkill -KILL -x dpkg; sleep 2; sudo DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
         fi
+        eng/ci/retry.sh 3 600 bunx --bun playwright-core install ${deps[@]+"${deps[@]}"} chromium
         bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path); console.log("WEBUI_BROWSER_PATH=" + path)' >> "$GITHUB_ENV"
     - name: Check the installed browser can start
       shell: bash

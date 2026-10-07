@@ -1246,7 +1246,7 @@ internal static class Program
         using var workspace = new TestWorkspace();
         workspace.Write("App.csproj", "<Project />");
         string started = Path.Combine(workspace.Root, "started");
-        string fakeHost = workspace.Write("fake-dotnet", $"#!/bin/sh\necho $ > '{started}'\nexec sleep 60\n");
+        string fakeHost = workspace.Write("fake-dotnet", $"#!/bin/sh\necho $$ > '{started}'\nexec sleep 60\n");
         File.SetUnixFileMode(fakeHost, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } dotnet ? dotnet : "dotnet")
         {
