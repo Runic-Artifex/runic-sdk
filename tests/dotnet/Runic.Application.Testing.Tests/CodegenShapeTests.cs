@@ -57,6 +57,43 @@ internal static class CodegenShapeTests
         Set(host, "Editable", "[\"one\"]");
         model.Editable.Add("two");
         Require(model.Editable.Count == 2, "An IList<T> codec produced a fixed-size collection.");
+
+        // A closed generic DTO reads T with the nullability of its use site,
+        // in every position: a member, a list, an array, a dictionary value
+        // and a nested generic DTO.
+        Set(host, "Required", Slot("\"v\"", "\"i\"", "\"a\"", "\"m\""));
+        Require(model.Required is { Value: "v", Fallback: null, Items: ["i"], Values: ["a"], Inner.Value: "v" }
+            && model.Required.Map["key"] == "m", "CodegenSlot<string> did not round-trip.");
+        foreach (var json in new[]
+        {
+            Slot("null", "\"i\"", "\"a\"", "\"m\""), Slot("\"v\"", "null", "\"a\"", "\"m\""),
+            Slot("\"v\"", "\"i\"", "null", "\"m\""), Slot("\"v\"", "\"i\"", "\"a\"", "null"),
+            Slot("\"v\"", "\"i\"", "\"a\"", "\"m\"").Replace("\"inner\":{\"value\":\"v\"}", "\"inner\":{\"value\":null}", StringComparison.Ordinal),
+        })
+            Rejected(host, "Required", json);
+        Require(model.Required is { Value: "v", Items: ["i"], Values: ["a"], Inner.Value: "v" } && model.Required.Map["key"] == "m",
+            "A rejected CodegenSlot<string> write changed the model.");
+        Set(host, "Optional", Slot("null", "null", "null", "null"));
+        Require(model.Optional is { Value: null, Fallback: null, Items: [null], Values: [null], Inner.Value: null }
+            && model.Optional.Map["key"] is null, "CodegenSlot<string?> did not accept null.");
+
+        // A member inherited from a generic base class follows the derived
+        // type's argument.
+        Set(host, "Derived", "{\"inherited\":\"b\",\"own\":\"o\"}");
+        Require(model.Derived is { Inherited: "b", Own: "o" }, "CodegenDerived<string> did not round-trip.");
+        Rejected(host, "Derived", "{\"inherited\":null,\"own\":\"o\"}");
+        Require(model.Derived.Inherited == "b", "A rejected CodegenDerived<string> write changed the model.");
+
+        // A plain command input from typeof() is non-nullable throughout.
+        using (var applied = JsonDocument.Parse(host.Transport.Call("codegenShapeApply", new(StringValue: Slot("\"c\"", "\"i\"", "\"a\"", "\"m\"")))))
+            Require(applied.RootElement.GetProperty("ok").GetBoolean() && model.Required.Value == "c",
+                $"The CodegenSlot<string> command input was rejected: {applied.RootElement}");
+        using (var rejected = JsonDocument.Parse(host.Transport.Call("codegenShapeApply", new(StringValue: Slot("null", "\"i\"", "\"a\"", "\"m\"")))))
+            Require(!rejected.RootElement.GetProperty("ok").GetBoolean() && model.Required.Value == "c",
+                $"The CodegenSlot<string> command input accepted null: {rejected.RootElement}");
+
+        static string Slot(string value, string item, string element, string entry) =>
+            $"{{\"value\":{value},\"fallback\":null,\"items\":[{item}],\"values\":[{element}],\"map\":{{\"key\":{entry}}},\"inner\":{{\"value\":{value}}}}}";
     }
 
     internal static async Task RunNullableReactiveAsync()
@@ -99,12 +136,24 @@ internal static class CodegenShapeTests
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
         var documented = File.ReadAllText(Path.Combine(directory, "documented.ts")).ReplaceLineEndings("\n");
         var collection = File.ReadAllText(Path.Combine(directory, "collectionDelta.ts")).ReplaceLineEndings("\n");
+        var shape = File.ReadAllText(Path.Combine(directory, "codegenShape.ts")).ReplaceLineEndings("\n");
         foreach (var (file, text, expected) in new[]
         {
             ("types.ts", types, "export type CodegenShapeMode = \"None\" | \"Default\" | \"Active\";"),
             ("types.ts", types, "/**\n * How the documented item is shown.\n *\n * - `List`: One item per row.\n * - `Grid`: Items in a grid.\n */\nexport type DocumentedLayout = \"List\" | \"Grid\";"),
             ("types.ts", types, "/** A documented item. */\nexport interface DocumentedItem {\n  /** The item's `title`. */\n  readonly title: string;\n}"),
             ("types.ts", types, "export interface CodegenPoint {\n  readonly x: number;\n  readonly y: number;\n}"),
+            // Uses of one generic DTO with different member nullability get
+            // their own declarations.
+            ("types.ts", types, "export interface CodegenSlotOfString {\n  readonly value: string;\n  readonly fallback: string | null;\n  readonly items: readonly string[];\n  readonly values: readonly string[];\n  readonly map: Readonly<Record<string, string>>;\n  readonly inner: CodegenInnerOfString;\n}"),
+            ("types.ts", types, "export interface CodegenSlotOfNullableOfString {\n  readonly value: string | null;\n  readonly fallback: string | null;\n  readonly items: readonly (string | null)[];\n  readonly values: readonly (string | null)[];\n  readonly map: Readonly<Record<string, string | null>>;\n  readonly inner: CodegenInnerOfNullableOfString;\n}"),
+            ("types.ts", types, "export interface CodegenInnerOfString {\n  readonly value: string;\n}"),
+            ("types.ts", types, "export interface CodegenInnerOfNullableOfString {\n  readonly value: string | null;\n}"),
+            ("types.ts", types, "export interface CodegenDerivedOfString {\n  readonly inherited: string;\n  readonly own: string;\n}"),
+            ("codegenShape.ts", shape, "  readonly required: CodegenSlotOfString;\n  readonly optional: CodegenSlotOfNullableOfString;\n  readonly derived: CodegenDerivedOfString;"),
+            // The typeof() command input shares the state property's declaration.
+            ("codegenShape.ts", shape, "  apply(codegenSlot: CodegenSlotOfString): Promise<CodegenShapeState>;"),
+            ("codegenShape.ts", shape, "bridgeWire.object<CodegenSlotOfString>(wire.required, value => ({ value: bridgeWire.string(value[\"value\"]), "),
             ("types.ts", types, "export type DataShapePayload =\n  | ({ readonly $case: \"count\" } & DataShapeCount)\n  | ({ readonly $case: \"text\" } & DataShapeText);"),
             ("documented.ts", documented, "import type { CodegenPoint, DocumentedItem, DocumentedLayout } from \"./types.js\";\nexport type { CodegenPoint, DocumentedItem, DocumentedLayout } from \"./types.js\";"),
             ("documented.ts", documented, "  /** The current layout. */\n  readonly layout: DocumentedLayout;"),
@@ -120,6 +169,8 @@ internal static class CodegenShapeTests
             "A Toolkit command copied its generated property comment instead of its method documentation.");
         Require(Count(types, "export interface CodegenPoint ") == 1,
             "A C# type used by several ViewModels was declared more than once.");
+        Require(Count(types, "export interface CodegenSlotOf") == 2 && !types.Contains("CodegenSlotOfString2", StringComparison.Ordinal),
+            "A typeof() command input and a state property using CodegenSlot<string> did not share one declaration.");
         foreach (var path in Directory.GetFiles(directory, "*.ts"))
         {
             var text = File.ReadAllText(path);
@@ -151,6 +202,8 @@ internal static class CodegenShapeTests
             ("types.ts", types, "export interface TestsNamingState {\n  readonly count: number;\n}"),
             ("types.ts", types, "export interface GenericBoxOfArrayOfInt32 {\n  readonly value: readonly number[] | null;\n}"),
             ("types.ts", types, "export type EmptyKind = never;"),
+            ("types.ts", types, "export interface Testsdelete {\n  readonly id: number;\n}"),
+            ("naming.ts", naming, "  readonly removed: Testsdelete;"),
             ("naming.ts", naming, "  readonly first: AlphaTag;\n  readonly second: BetaTag;\n  readonly inner: TestsNamingState;\n  readonly box: GenericBoxOfArrayOfInt32;\n  readonly nothing: EmptyKind | null;"),
             ("naming.ts", naming, "This comment contains *\\/ and must not end the TSDoc block."),
             ("naming.ts", naming, "    [\"__proto__\"]: bridgeWire.string(wire[\"__proto__\"]),"),
@@ -163,6 +216,8 @@ internal static class CodegenShapeTests
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
         Require(!types.Contains("export interface Tag ", StringComparison.Ordinal),
             "Same-named C# types were not qualified with their namespaces.");
+        Require(!types.Contains("export interface delete ", StringComparison.Ordinal),
+            "A C# type named like a TypeScript reserved word was not renamed.");
 
         using var host = new RunicWindowTestHost<NamingViewModel>(new NamingViewModel(), "naming",
             (transport, content, vm) => new NamingBridge(transport, vm, content: content), new TestViewLocator());
@@ -201,6 +256,12 @@ internal static class CodegenShapeTests
     {
         using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));
         Require(reply.RootElement.GetProperty("ok").GetBoolean(), $"Setting {property} to {json} was rejected: {reply.RootElement}");
+    }
+
+    private static void Rejected(RunicWindowTestHost<CodegenShapeViewModel> host, string property, string json)
+    {
+        using var reply = JsonDocument.Parse(host.Transport.Call($"codegenShapeSet{property}", new(StringValue: json)));
+        Require(!reply.RootElement.GetProperty("ok").GetBoolean(), $"Setting {property} to {json} was accepted: {reply.RootElement}");
     }
 
     private static void Require(bool condition, string message)

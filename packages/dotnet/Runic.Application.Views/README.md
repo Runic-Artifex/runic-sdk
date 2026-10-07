@@ -184,7 +184,17 @@ export type DocumentPane = "Editor" | "Preview";
   your frontend uses and expect a compile error, not a silent change, when
   that happens. Generic DTOs append their arguments, for example
   `PageOfNoteRow` or `BoxOfArrayOfInt32`, and an enum without cases is
-  `never`.
+  `never`. A C# type named like a TypeScript reserved word is qualified the
+  same way.
+- A generic DTO member declared `T` is nullable where the type argument is:
+  `value: string` in `Box<string>` and `value: string | null` in
+  `Box<string?>`, and the generated .NET reader rejects `null` for the
+  former. A member declared `T?` is always nullable. Members inherited from a
+  generic base class follow the derived type's arguments, and a type without
+  annotations, such as `[RunicCommandInput(typeof(Box<string>))]` or a union
+  case, is non-nullable throughout. Uses whose members differ get separate
+  declarations, for example `BoxOfString` and `BoxOfNullableOfString`; a type
+  used only as `Box<string?>` keeps the plain name `BoxOfString`.
 - `<summary>` comments on ViewModels, state properties, commands, interactions,
   DTO types and members, and enum cases become TSDoc. The bootstrap pass writes
   the XML documentation file for this; a project that already writes one keeps
