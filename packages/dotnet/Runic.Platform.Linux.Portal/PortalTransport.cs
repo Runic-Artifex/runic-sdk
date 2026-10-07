@@ -25,8 +25,10 @@ internal interface IPortalTransport
     ValueTask<PortalResponse> RequestAsync(string parent, string method, string argument, CancellationToken cancellationToken);
 }
 
-// The small fixed protocol is encoded explicitly: no reflection, dynamic proxy or
-// runtime code generation enters the NativeAOT path.
+// Wire calls use proxies generated at build time from the pinned portal XML: no
+// reflection, dynamic proxy or runtime code generation enters the NativeAOT path.
+// Subscription order, returned-handle validation, Close, FD borrowing and the
+// version guard stay explicit here.
 internal sealed class PortalTransport(string? address = null, string destination = "org.freedesktop.portal.Desktop", SafeHandle? file = null, bool ask = false, PortalApplication? application = null) : IPortalTransport
 {
     private const string Root = "/org/freedesktop/portal/desktop";
@@ -39,8 +41,8 @@ internal sealed class PortalTransport(string? address = null, string destination
         var connection = session.Connection;
         if (file is not null)
         {
-            uint version = await connection.CallMethodAsync(VersionRequest(connection, session.Destination),
-                static (message, _) => message.GetBodyReader().ReadVariantValue().GetUInt32()).WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+            uint version = await new Protocol.OpenURI(connection, session.Destination, Root).GetVersionAsync()
+                .WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
             if (version < (ask || method == "OpenDirectory" ? 3u : 2u))
                 throw new Runic.Platform.Runtime.NativeBackendUnavailableException();
         }
@@ -79,8 +81,8 @@ internal sealed class PortalTransport(string? address = null, string destination
             // Subscribe before invoking: portals may signal before the method reply.
             // Let the bounded method reply finish even on cancellation so an older
             // portal's returned handle can also be closed.
-            handle = await connection.CallMethodAsync(CreateRequest(connection, session.Destination, parent, method, argument, token),
-                static (message, _) => message.GetBodyReader().ReadObjectPath().ToString()).WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false);
+            handle = (await Call(connection, session.Destination, parent, method, argument, token)
+                .WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false)).ToString();
             if (!handle.StartsWith(prefix, StringComparison.Ordinal))
                 throw new IOException("The portal returned an invalid request handle.");
             while (true)
@@ -95,46 +97,29 @@ internal sealed class PortalTransport(string? address = null, string destination
         {
             if (!completed && handle.StartsWith(prefix, StringComparison.Ordinal))
             {
-                try { await connection.CallMethodAsync(CreateClose(connection, session.Destination, handle)).WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false); }
+                try { await new Protocol.Request(connection, session.Destination, handle).CloseAsync().WaitAsync(CallTimeout, CancellationToken.None).ConfigureAwait(false); }
                 catch (Exception error) when (error is DBusExceptionBase or TimeoutException or IOException) { /* Connection disposal also releases request ownership. */ }
             }
         }
     }
 
-    private static MessageBuffer VersionRequest(DBusConnection connection, string peer)
+    private Task<ObjectPath> Call(DBusConnection connection, string peer, string parent, string method, string argument, string token)
     {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: peer, path: Root, @interface: "org.freedesktop.DBus.Properties", member: "Get", signature: "ss");
-        writer.WriteString("org.freedesktop.portal.OpenURI"); writer.WriteString("version");
-        return writer.CreateMessage();
-    }
-
-    private MessageBuffer CreateRequest(DBusConnection connection, string peer, string parent, string method, string argument, string token)
-    {
-        using var writer = connection.GetMessageWriter();
-        bool openUri = method == "OpenURI" || file is not null;
-        writer.WriteMethodCallHeader(destination: peer, path: Root,
-            @interface: openUri ? "org.freedesktop.portal.OpenURI" : "org.freedesktop.portal.FileChooser", member: method, signature: file is null ? "ssa{sv}" : "sha{sv}");
-        writer.WriteString(parent);
-        if (file is not null) writer.WriteHandle(new BorrowedHandle(file));
-        else writer.WriteString(openUri ? argument : method == "SaveFile" ? "Save file" : "Open file");
-        var dictionary = writer.WriteDictionaryStart();
-        writer.WriteDictionaryEntryStart(); writer.WriteString("handle_token"); writer.WriteVariant(VariantValue.String(token));
-        if (file is not null && ask)
-        { writer.WriteDictionaryEntryStart(); writer.WriteString("ask"); writer.WriteVariant(VariantValue.Bool(true)); }
-        if (!openUri)
-        { writer.WriteDictionaryEntryStart(); writer.WriteString("modal"); writer.WriteVariant(VariantValue.Bool(true)); }
-        if (method == "SaveFile")
-        { writer.WriteDictionaryEntryStart(); writer.WriteString("current_name"); writer.WriteVariant(VariantValue.String(argument)); }
-        writer.WriteDictionaryEnd(dictionary);
-        return writer.CreateMessage();
-    }
-
-    private static MessageBuffer CreateClose(DBusConnection connection, string peer, string path)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: peer, path: path, @interface: RequestInterface, member: "Close");
-        return writer.CreateMessage();
+        var options = new Dictionary<string, VariantValue> { ["handle_token"] = VariantValue.String(token) };
+        if (file is not null)
+        {
+            if (ask) options["ask"] = VariantValue.Bool(true);
+            var openUri = new Protocol.OpenURI(connection, peer, Root);
+            // The generated writer takes ownership of the wrapper, never of the caller's handle.
+            return method == "OpenDirectory" ? openUri.OpenDirectoryAsync(parent, new BorrowedHandle(file), options)
+                : openUri.OpenFileAsync(parent, new BorrowedHandle(file), options);
+        }
+        if (method == "OpenURI") return new Protocol.OpenURI(connection, peer, Root).OpenURIAsync(parent, argument, options);
+        options["modal"] = VariantValue.Bool(true);
+        var chooser = new Protocol.FileChooser(connection, peer, Root);
+        if (method != "SaveFile") return chooser.OpenFileAsync(parent, "Open file", options);
+        options["current_name"] = VariantValue.String(argument);
+        return chooser.SaveFileAsync(parent, "Save file", options);
     }
 
     // A malformed response fails only its own request; a reader exception would

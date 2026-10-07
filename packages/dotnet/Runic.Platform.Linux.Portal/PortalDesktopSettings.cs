@@ -23,9 +23,9 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
         try
         {
             var session = Current() ?? await ConnectAsync(cancellationToken).ConfigureAwait(false);
-            var connection = session.Connection;
-            return new PlatformResult<DesktopAppearance>.Success(await connection.CallMethodAsync(Request(connection, session.Destination),
-                static (message, _) => Read(message)).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false));
+            var values = await new Protocol.Settings(session.Connection, session.Destination, Root).ReadAllAsync(Namespaces)
+                .WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            return new PlatformResult<DesktopAppearance>.Success(Read(values));
         }
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
         {
@@ -102,45 +102,29 @@ internal sealed class PortalDesktopSettings(string? address = null, string desti
         session?.Dispose();
         woken?.TrySetResult();
     }
-    private static MessageBuffer Request(DBusConnection connection, string peer)
-    {
-        using var writer = connection.GetMessageWriter();
-        writer.WriteMethodCallHeader(destination: peer, path: "/org/freedesktop/portal/desktop",
-            @interface: "org.freedesktop.portal.Settings", member: "ReadAll", signature: "as");
-        writer.WriteArray(Namespaces);
-        return writer.CreateMessage();
-    }
-    internal static DesktopAppearance Read(Message message)
+    // Values stay variants: unknown or wrongly typed optional preferences are ignored, not errors.
+    internal static DesktopAppearance Read(Dictionary<string, Dictionary<string, VariantValue>> namespaces)
     {
         var result = new DesktopAppearance();
-        var reader = message.GetBodyReader();
-        var namespaces = reader.ReadDictionaryStart();
-        while (reader.HasNext(namespaces))
+        if (!namespaces.TryGetValue("org.freedesktop.appearance", out var values)) return result;
+        foreach (var (key, value) in values)
         {
-            var ns = reader.ReadString();
-            var values = reader.ReadDictionaryStart();
-            while (reader.HasNext(values))
+            if (key == "color-scheme" && value.Type == VariantValueType.UInt32)
+                result = result with { ColorScheme = value.GetUInt32() switch { 1 => DesktopColorScheme.Dark, 2 => DesktopColorScheme.Light, _ => DesktopColorScheme.NoPreference } };
+            if (key == "contrast" && value.Type == VariantValueType.UInt32)
+                result = result with { HighContrast = value.GetUInt32() switch { 0 => false, 1 => true, _ => null } };
+            if (key == "reduced-motion" && value.Type == VariantValueType.UInt32)
+                result = result with { ReducedMotion = value.GetUInt32() switch { 0 => false, 1 => true, _ => null } };
+            if (key == "accent-color" && value.Type == VariantValueType.Struct)
             {
-                var key = reader.ReadString();
-                var value = reader.ReadVariantValue();
-                if (ns != "org.freedesktop.appearance") continue;
-                if (key == "color-scheme" && value.Type == VariantValueType.UInt32)
-                    result = result with { ColorScheme = value.GetUInt32() switch { 1 => DesktopColorScheme.Dark, 2 => DesktopColorScheme.Light, _ => DesktopColorScheme.NoPreference } };
-                if (key == "contrast" && value.Type == VariantValueType.UInt32)
-                    result = result with { HighContrast = value.GetUInt32() switch { 0 => false, 1 => true, _ => null } };
-                if (key == "reduced-motion" && value.Type == VariantValueType.UInt32)
-                    result = result with { ReducedMotion = value.GetUInt32() switch { 0 => false, 1 => true, _ => null } };
-                if (key == "accent-color" && value.Type == VariantValueType.Struct)
+                try
                 {
-                    try
-                    {
-                        if (value.Count != 3) continue;
-                        var color = (value.GetItem(0).GetDouble(), value.GetItem(1).GetDouble(), value.GetItem(2).GetDouble());
-                        if (color.Item1 is >= 0 and <= 1 && color.Item2 is >= 0 and <= 1 && color.Item3 is >= 0 and <= 1)
-                            result = result with { AccentColor = new(color.Item1, color.Item2, color.Item3) };
-                    }
-                    catch (InvalidOperationException) { /* Unknown/malformed optional preference. */ }
+                    if (value.Count != 3) continue;
+                    var color = (value.GetItem(0).GetDouble(), value.GetItem(1).GetDouble(), value.GetItem(2).GetDouble());
+                    if (color.Item1 is >= 0 and <= 1 && color.Item2 is >= 0 and <= 1 && color.Item3 is >= 0 and <= 1)
+                        result = result with { AccentColor = new(color.Item1, color.Item2, color.Item3) };
                 }
+                catch (InvalidOperationException) { /* Unknown/malformed optional preference. */ }
             }
         }
         return result;

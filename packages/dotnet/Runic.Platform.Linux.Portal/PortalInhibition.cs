@@ -90,19 +90,13 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
         private Task? _dispose;
         public DesktopInhibitionEffects Effects => effects;
         public ValueTask DisposeAsync() { lock (_gate) return new(_dispose ??= CloseAsync()); }
-        private MessageBuffer CloseMessage()
-        {
-            using var writer = session.Connection.GetMessageWriter();
-            writer.WriteMethodCallHeader(destination: session.Destination, path: handle, @interface: "org.freedesktop.portal.Request", member: "Close");
-            return writer.CreateMessage();
-        }
         private async Task CloseAsync()
         {
             try
             {
                 if (!session.OwnerChanged.IsCancellationRequested)
                 {
-                    await session.Connection.CallMethodAsync(CloseMessage()).WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                    await new Protocol.Request(session.Connection, session.Destination, handle).CloseAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                 }
             }
             catch (Exception error) when (error is DBusExceptionBase or TimeoutException) { /* Disconnect also releases the request. */ }
