@@ -36,7 +36,7 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "NotesReactiveViews.ShellViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1",
+  contract: "NotesReactiveViews.ShellViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C",
   fields: {},
   defaults: { canOpenHome: true, isOpenHomeExecuting: false, canOpenDocument: true, isOpenDocumentExecuting: false, canSwapPinned: true, isSwapPinnedExecuting: false, canRemovePinned: true, isRemovePinnedExecuting: false, canRestorePinned: true, isRestorePinnedExecuting: false },
   commands: {

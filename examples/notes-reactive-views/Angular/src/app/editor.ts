@@ -1,6 +1,7 @@
 import { Component, effect, input, signal } from "@angular/core";
 import type { EditorPageReference, EditorClient } from "../../../Frontend/src/generated/editor.js";
 import { EditorWrites } from "../../../Frontend/src/editor-writes.js";
+import { describeSaveFailure } from "../../../Frontend/src/save-failure.js";
 import { injectView } from "../../../../../packages/web/angular/src/inject-view";
 import { injectCommand } from "../../../../../packages/web/angular/src/inject-command";
 
@@ -16,7 +17,8 @@ import { injectCommand } from "../../../../../packages/web/angular/src/inject-co
       <p data-message role="status">{{ state.savedMessage }}</p>
       <p data-activation class="muted">Activated {{ state.activationCount }} × · deactivated {{ state.deactivationCount }} ×</p>
     } @else { <p>Connecting…</p> }
-    @if (command.error() ?? writeError() ?? editor.error(); as issue) { <p role="alert">{{ issue }}</p> }
+    @if (command.failure(); as failure) { <p role="alert">{{ describeSaveFailure(failure) }}</p> }
+    @else if (command.error() ?? writeError() ?? editor.error(); as issue) { <p role="alert">{{ issue }}</p> }
   `,
 })
 export class EditorComponent {
@@ -24,10 +26,12 @@ export class EditorComponent {
   readonly handleInteractions = input(true);
   readonly editor = injectView(this.page);
   readonly writeError = signal<unknown>(undefined);
+  readonly describeSaveFailure = describeSaveFailure;
   private readonly writes = new EditorWrites(cause => this.writeError.set(cause));
-  readonly command = injectCommand((name: "save" | "discard") => {
+  readonly command = injectCommand(async (name: "save" | "discard") => {
     const view = this.editor.client();
-    return view && this.writes.run(() => view[name]());
+    if (!view) return undefined;
+    return name === "save" ? this.writes.run(() => view.save()) : this.writes.run(() => view.discard());
   });
 
   constructor() {

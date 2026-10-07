@@ -65,7 +65,7 @@ function hydrate(wire: WireState): FailureToolkitState {
     title: bridgeWire.string(wire.title),
   };
 }
-const bridgeContract = "Runic.Application.Testing.Tests.FailureToolkitViewModel:4B4818B43B88BF625C464BBC55D0D4339538BEA77A4C4D85823A9D2D633B13E6";
+const bridgeContract = "Runic.Application.Testing.Tests.FailureToolkitViewModel:<fingerprint>";
 const checkedFieldNames = ["title"];
 
 export function connectFailureToolkit(): Promise<FailureToolkitClient> { return connectFailureToolkitAt("failureToolkit", false); }

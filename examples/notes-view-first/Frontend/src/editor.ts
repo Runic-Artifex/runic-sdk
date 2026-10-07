@@ -1,5 +1,6 @@
 import type { EditorClient } from "./generated/editor.js";
 import { EditorWrites } from "./editor-writes.js";
+import { describeSaveFailure } from "./save-failure.js";
 
 export function mountEditor(host: HTMLElement, editor: EditorClient): () => void {
   host.innerHTML = `<h2>Editor</h2><label>Title <input></label><label>Body <textarea></textarea></label><button data-save>Save</button><p data-message role="status"></p><p data-error role="alert" hidden></p>`;
@@ -9,10 +10,11 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
   const message = host.querySelector<HTMLElement>("[data-message]")!;
   const error = host.querySelector<HTMLElement>("[data-error]")!;
   let active = true;
-  const run = async (action: () => Promise<unknown>) => {
+  // An action resolves to the text of a declared failure, or undefined.
+  const run = async (action: () => Promise<string | undefined>) => {
     try {
-      await action();
-      if (active) { error.textContent = ""; error.hidden = true; }
+      const failure = await action();
+      if (active) { error.textContent = failure ?? ""; error.hidden = failure === undefined; }
     } catch (cause) {
       if (active) { error.textContent = String(cause); error.hidden = false; }
     }
@@ -30,7 +32,12 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
   });
   const titleChanged = () => { const value = title.value; writes.enqueue(() => editor.setTitle(value)); };
   const bodyChanged = () => { const value = body.value; writes.enqueue(() => editor.setBody(value)); };
-  const saveClicked = () => { void run(() => writes.run(() => editor.save())); };
+  const saveClicked = () => {
+    void run(async () => {
+      const outcome = await writes.run(() => editor.save());
+      return outcome.ok ? undefined : describeSaveFailure(outcome.failure);
+    });
+  };
   title.addEventListener("change", titleChanged);
   body.addEventListener("change", bodyChanged);
   save.addEventListener("click", saveClicked);

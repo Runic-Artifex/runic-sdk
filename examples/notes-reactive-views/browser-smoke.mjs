@@ -175,6 +175,17 @@ try {
   if ((await snapshot(compactRoute)).state?.activationCount !== 1)
     throw new Error("Two mounted Views activated one ViewModel more than once.");
 
+  // Save declares SaveFailure: a missing title shows the frontend's typed text,
+  // and ObserveBridgeExceptions keeps it away from ReactiveUI's default handler.
+  await change("#document-pane [data-title]", " ");
+  await retry(async () => (await snapshot(editorRoute)).state?.title === " ");
+  await click("[data-save]");
+  const alerts = 'Array.from(document.querySelectorAll("#document-pane [role=alert]")).filter(alert => !alert.hidden).map(alert => alert.textContent.trim())';
+  try {
+    await retry(async () => (await query(alerts)).includes("A note needs a title."));
+  } catch (error) {
+    throw new Error(`The declared failure was not shown: ${JSON.stringify(await query(alerts))}; ${error}`);
+  }
   await change("#document-pane [data-title]", "Shared note");
   await change("#document-pane [data-body]", "Both Views see this text.");
   await click("[data-save]");

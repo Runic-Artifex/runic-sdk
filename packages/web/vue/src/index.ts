@@ -19,6 +19,7 @@ import {
   createCommandController,
   createViewController,
   viewSourceIdentity,
+  type BridgeOutcomeFailure,
   type CollectionViewport,
   type CollectionViewportOptions,
   type ViewClient,
@@ -107,21 +108,30 @@ export const ViewOutlet = defineComponent(<R extends ViewReference>(props: ViewO
   return h(component, { key: referenceKey(content), page: content });
 }, { name: "ViewOutlet", props: ["content", "registry"] });
 
-export interface CommandHandle<TArgs extends readonly unknown[], TResult> {
-  /** Runs the command. Resolves to its result, or to undefined after a failure, which `error` then holds. Never rejects. */
+export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
+  /**
+   * Runs the command. Resolves to its result, including a `BridgeOutcome` with a
+   * declared failure, which `failure` then holds, or to undefined after an
+   * unexpected failure, which `error` then holds. Never rejects.
+   */
   run(...args: TArgs): Promise<TResult | undefined>;
   /** True while a run is in flight. */
   readonly pending: boolean;
-  /** Why the latest run failed, until the next run starts. */
+  /** Why the latest run failed unexpectedly, until the next run starts. */
   readonly error: unknown;
-  /** Clears `error`. */
+  /**
+   * The declared failure of the latest run, for a command that resolves a
+   * `BridgeOutcome`, until the next run starts. A superseded run sets neither.
+   */
+  readonly failure: TFailure | undefined;
+  /** Clears `error` and `failure`. */
   reset(): void;
 }
 
 /**
  * Tracks a command's pending state and failure. The result is a reactive
  * object, so templates read `increment.pending` directly; do not destructure
- * `pending` or `error`.
+ * `pending`, `error` or `failure`.
  *
  * ```vue
  * const increment = useCommand(() => client.value?.increment());
@@ -132,10 +142,14 @@ export function useCommand<TArgs extends readonly unknown[], TResult>(
   command: (...args: TArgs) => TResult | PromiseLike<TResult>,
 ): CommandHandle<TArgs, Awaited<TResult>> {
   const controller = createCommandController(command);
-  const handle = shallowReactive({ run: controller.run, pending: false, error: undefined as unknown, reset: controller.reset });
+  const handle = shallowReactive<CommandHandle<TArgs, Awaited<TResult>>>({
+    run: controller.run, pending: false, error: undefined, failure: undefined, reset: controller.reset,
+  });
   controller.subscribe(() => {
-    handle.pending = controller.current.pending;
-    handle.error = controller.current.error;
+    const writable = handle as { pending: boolean; error: unknown; failure: unknown };
+    writable.pending = controller.current.pending;
+    writable.error = controller.current.error;
+    writable.failure = controller.current.failure;
   });
   if (getCurrentScope()) onScopeDispose(() => controller.dispose());
   return handle;

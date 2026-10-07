@@ -84,9 +84,27 @@ public sealed class NotesWindowTests : IDisposable
         var reply = await editor.ExecuteAsync(vm => vm.SaveCommand);
 
         Assert.False(reply.Ok);
-        // The ViewModel throws ArgumentException, which the Bridge reports as a rejected call.
-        Assert.Equal("rejected", reply.ErrorKind);
+        // Save declares SaveFailure, so the client receives the typed failure.
+        Assert.Equal("domain-failed", reply.ErrorKind);
+        Assert.Equal("""{"$case":"titleRequired"}""", reply.Failure?.GetRawText());
         Assert.Empty(_scope.ServiceProvider.GetRequiredService<NotesLibrary>().Notes);
+    }
+
+    [Fact]
+    public async Task A_note_cannot_take_the_title_of_another_note()
+    {
+        var editor = await OpenEditorAsync();
+        _scope.ServiceProvider.GetRequiredService<NotesLibrary>().Record("Groceries", "Milk");
+        editor.Set(vm => vm.Title, "Groceries").EnsureOk();
+
+        var reply = await editor.ExecuteAsync(vm => vm.SaveCommand);
+        Assert.Equal("domain-failed", reply.ErrorKind);
+        Assert.Equal("""{"$case":"titleTaken","existingTitle":"Groceries"}""", reply.Failure?.GetRawText());
+
+        // The operation path reports the same failure.
+        var status = await editor.Start(vm => vm.SaveCommand).WaitAsync();
+        Assert.Equal("domain-failed", status.Kind);
+        Assert.Equal("titleTaken", status.Failure?.GetProperty("$case").GetString());
     }
 
     [Fact]

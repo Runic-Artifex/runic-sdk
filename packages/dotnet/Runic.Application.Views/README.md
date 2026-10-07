@@ -229,7 +229,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
-| `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or a nullable type. | Declare one DTO, enum or `[RunicUnion]` failure type per command. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
+| `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or `Nullable<T>`. | Declare one failure type per command: any Bridge value type, typically a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
 
 ## Build properties
 
@@ -407,6 +407,7 @@ output accordingly. The message properties are listed per event.
 | 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. | `ErrorType` |
 | 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
+| 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` on `ThrownExceptions`. | `Source`, `ErrorType` |
 | 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -427,13 +428,14 @@ Events 1000-1021 and 1050 use the category `Runic.Application.Views`
 `Trace` output. Events 2000-2001 use `Runic.Application.Desktop`. Events 3000-3003
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 
-Events 1040-1041 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
+Events 1040-1042 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
 flavor) and also use `Runic.Application.Views`. They need the
 `ReactiveRoutedRegion<T>(router, loggerFactory)` constructor, which a
 ViewModel can call with an `ILoggerFactory` injected from DI, as
 `examples/notes-reactive-views` does. Without a factory, the region writes the
 same messages to `Trace` as described above. `Region` is the region's ViewModel
-type name `T`.
+type name `T`. Event 1042 uses the logger passed to `ObserveBridgeExceptions`;
+`Source` is the observed object's type name.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`
 named `Runic.Application.Views` (`RunicViewsTelemetry.ActivitySourceName` and

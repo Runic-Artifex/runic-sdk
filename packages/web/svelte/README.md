@@ -69,12 +69,18 @@ optional `fallback` snippet renders while `content` is empty.
 
 ## `useCommand(command)`
 
-Returns `{ run, pending, error, reset }` with reactive `pending` and `error`.
+Returns `{ run, pending, error, failure, reset }` with reactive `pending`, `error`
+and `failure`.
 `run(...args)` resolves to the command's result, or to `undefined` after a
 failure, which `error` then holds until the next run. It never rejects, so
 handlers need no `try`/`catch`. One command can serve several buttons:
 `useCommand((name: "showWelcome" | "showCounter") => workspace.client?.[name]())`
 and `navigate.run("showWelcome")`.
+
+For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
+`BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed
+from the outcome, while `error` keeps unexpected failures. Starting a run and
+`reset()` clear both, and a run that a later one superseded sets neither.
 
 ## `useCollectionViewport(options)`
 

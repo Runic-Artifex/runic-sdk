@@ -29,7 +29,7 @@ function hydrate(wire: WireState): PinnedNoteState {
     label: bridgeWire.string(wire.label),
   };
 }
-const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
+const bridgeContract = "NotesReactiveViews.PinnedNoteViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C";
 
 export function connectPinnedNote(): Promise<PinnedNoteClient> { return connectPinnedNoteAt("pinnedNote", false); }
 async function connectPinnedNoteAt(route: string, mount = false): Promise<PinnedNoteClient> {

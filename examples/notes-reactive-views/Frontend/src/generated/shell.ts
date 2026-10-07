@@ -71,7 +71,7 @@ function hydrate(wire: WireState): ShellState {
     pinned: wire.pinned.map(item => item.kind === "pinnedTask" ? pagePinnedTask(item.id) : item.kind === "pinnedNote" ? pagePinnedNote(item.id) : (() => { throw new BridgeError("failed", "Unknown pinned kind."); })()),
   };
 }
-const bridgeContract = "NotesReactiveViews.ShellViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
+const bridgeContract = "NotesReactiveViews.ShellViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C";
 
 export function connectShell(): Promise<ShellClient> { return connectShellAt("shell", false); }
 async function connectShellAt(route: string, mount = false): Promise<ShellClient> {

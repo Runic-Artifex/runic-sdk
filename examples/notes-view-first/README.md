@@ -55,6 +55,29 @@ so the plain bundle does not change:
 dotnet run --project examples/notes-view-first/NotesViewFirst.csproj -- --web-root "$PWD/examples/notes-view-first/Effect/dist"
 ```
 
+The `React` and `Vue` folders swap in an Editor written with
+[`@runic-artifex/react`](../../packages/web/react/README.md) or
+[`@runic-artifex/vue`](../../packages/web/vue/README.md) the same way. They use
+the bindings' source and the React or Vue install of those packages, so they
+need no install of their own:
+
+```sh
+(cd examples/notes-view-first/React && bun run --bun build)
+(cd examples/notes-view-first/Vue && bun run --bun build)
+```
+
+## Declared failures
+
+`EditorViewModel.Save` declares `[RunicFailure(typeof(SaveFailure))]`, a
+`[RunicUnion]` of `TitleRequired` and `TitleTaken`, and throws
+`RunicFailureException` instead of an exception the Bridge would report as
+`rejected`. The generated `save()` resolves a `BridgeOutcome`, so every variant
+checks `outcome.ok` and shows the failure with
+[`describeSaveFailure`](Frontend/src/save-failure.ts), which handles each case
+with `matchCase`. The Angular, React and Vue editors read it from their command
+helper's `failure`. The Effect editor reads it from `ViewOperationFailed` until
+`@runic-artifex/views-effect` has its own tag for declared failures.
+
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesViewFirst.csproj` with a
 `Runic.Application.CsWebUi` package reference, as described in the
@@ -82,7 +105,8 @@ dotnet test examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj
 
 [ViewLifetimeCheck.cs](ViewLifetimeCheck.cs) checks repeated pane changes, web
 mounts, and native route reuse. The [browser check](browser-smoke.mjs) covers
-editing, preview, a modal, navigation, asynchronous detach, and reload;
+editing, Save's declared failure, preview, a modal, navigation, asynchronous
+detach, and reload;
 [window-smoke.mjs](window-smoke.mjs) checks that two windows get distinct
 scopes. CS-WebUI keeps a native route registration until its window closes, so
 retained page references reuse routes while new page identities add routes.
@@ -95,6 +119,8 @@ node examples/notes-view-first/browser-smoke.mjs
 node examples/notes-view-first/window-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
+RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
+RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
 ```
 
 On Linux with Nix, prefix the commands with `direnv exec .`.

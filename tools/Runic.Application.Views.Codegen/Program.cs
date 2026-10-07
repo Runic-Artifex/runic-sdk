@@ -478,13 +478,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     // A failure declaration must belong to a bridged command; anything else
     // would silently not reach the client.
+    // Base classes are included: only the model's own command properties are
+    // bridged, so a declaration on an inherited member never reaches a client.
     var failureOwners = commands.Select(command => (MemberInfo)command)
         .Concat(commandSources.Values.OfType<MethodInfo>()).ToHashSet();
-    foreach (var member in model.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
-        | BindingFlags.Public | BindingFlags.NonPublic).Where(member => member is PropertyInfo or MethodInfo).OrderBy(member => member.MetadataToken))
-        if (member.GetCustomAttribute<RunicFailureAttribute>(true) is not null && !failureOwners.Contains(member))
-            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
-                $"{model.Name}.{member.Name}: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method.", member);
+    for (var owner = model; owner is not null && owner != typeof(object); owner = owner.BaseType)
+        foreach (var member in owner.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+            | BindingFlags.Public | BindingFlags.NonPublic).Where(member => member is PropertyInfo or MethodInfo).OrderBy(member => member.MetadataToken))
+            if (member.GetCustomAttribute<RunicFailureAttribute>(false) is not null && !failureOwners.Contains(member))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
+                    $"{model.Name}.{member.Name}: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method"
+                    + (owner == model ? "." : $"; {owner.Name} declares it on a member the Bridge does not expose."), member);
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
     {
         var plan = commandPlans[command];
@@ -1219,7 +1223,7 @@ static BridgeTypeGraph? FailureGraph(Type model, PropertyInfo command, MemberInf
     MemberInfo location = declaredOn == "method" ? source : command;
     if (failure == typeof(object) || typeof(Exception).IsAssignableFrom(failure) || Nullable.GetUnderlyingType(failure) is not null)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
-            $"{model.Name}.{command.Name}: the failure type {failure.Name} must be a DTO, enum or [RunicUnion] value, not object, an exception or a nullable type.", location);
+            $"{model.Name}.{command.Name}: the failure type {BridgeTypeGraph.CSharpType(failure).Replace("global::", "", StringComparison.Ordinal)} must be a Bridge value type other than object, an exception or Nullable<T>.", location);
     return BridgeTypeGraph.Discover(failure, rootPath: $"{model.Name}.{command.Name}.failure", origin: location);
 }
 

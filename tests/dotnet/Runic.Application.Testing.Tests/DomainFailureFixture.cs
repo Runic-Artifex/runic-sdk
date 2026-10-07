@@ -75,6 +75,7 @@ public sealed partial class FailureToolkitViewModel : ObservableObject
 public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
 {
     private readonly IDisposable _exceptions;
+    private readonly IDisposable _importExceptions;
     private string _title = "";
 
     public FailureReactiveViewModel(IRunicModelContext modelContext)
@@ -87,8 +88,11 @@ public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
             if (Title.Length == 0) throw new RunicFailureException(new NoteTitleRequired());
             return Title.Length;
         }, scheduler);
+        // A stream that publishes two values, then fails as declared.
+        ImportCommand = ReactiveCommand.CreateFromObservable<RxVoid, int>(_ => new FailingSequence(), scheduler);
         // M1: bridged ReactiveUI commands need a ThrownExceptions subscriber.
         _exceptions = SaveCommand.ThrownExceptions.Subscribe(new IgnoredExceptions());
+        _importExceptions = ImportCommand.ThrownExceptions.Subscribe(new IgnoredExceptions());
     }
 
     public string Title
@@ -100,7 +104,30 @@ public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
     [RunicFailure(typeof(NoteSaveFailure))]
     public ReactiveCommand<RxVoid, int> SaveCommand { get; }
 
-    public void Dispose() => _exceptions.Dispose();
+    [RunicFailure(typeof(NoteSaveFailure)), RunicCommandResult(BridgeCommandResultCardinality.Stream)]
+    public ReactiveCommand<RxVoid, int> ImportCommand { get; }
+
+    public void Dispose()
+    {
+        _exceptions.Dispose();
+        _importExceptions.Dispose();
+    }
+
+    private sealed class FailingSequence : IObservable<int>
+    {
+        public IDisposable Subscribe(IObserver<int> observer)
+        {
+            observer.OnNext(1);
+            observer.OnNext(2);
+            observer.OnError(new RunicFailureException(new NoteTitleTaken("Todo")));
+            return new Unsubscribed();
+        }
+
+        private sealed class Unsubscribed : IDisposable
+        {
+            public void Dispose() { }
+        }
+    }
 
     private sealed class IgnoredExceptions : IObserver<Exception>
     {

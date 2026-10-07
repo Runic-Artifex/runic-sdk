@@ -18,9 +18,9 @@ export class EditorWrites {
     });
   }
 
-  async run(command: () => Promise<unknown>): Promise<void> {
+  async run<T>(command: () => Promise<T>): Promise<T> {
     await this.tail;
     if (this.failure !== undefined) throw this.failure;
-    await command();
+    return command();
   }
 }

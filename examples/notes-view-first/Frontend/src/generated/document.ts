@@ -41,7 +41,7 @@ function hydrate(wire: WireState): DocumentState {
     currentPane: wire.currentPane.kind === "editor" ? pageEditor(wire.currentPane.id) : wire.currentPane.kind === "preview" ? pagePreview(wire.currentPane.id) : (() => { throw new BridgeError("failed", "Unknown currentPane kind."); })(),
   };
 }
-const bridgeContract = "NotesWindowViews.DocumentViewModel:F4390477D2A9E5A3E3E93242829B29158C025D90D325F6A36BAC1E6731F9AB9C";
+const bridgeContract = "NotesWindowViews.DocumentViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05";
 
 export function connectDocument(): Promise<DocumentClient> { return connectDocumentAt("document", false); }
 async function connectDocumentAt(route: string, mount = false): Promise<DocumentClient> {

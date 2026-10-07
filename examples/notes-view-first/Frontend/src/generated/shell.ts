@@ -38,7 +38,7 @@ function hydrate(wire: WireState): ShellState {
     dialog: wire.dialog === null ? null : wire.dialog.kind === "confirmNavigation" ? pageConfirmNavigation(wire.dialog.id) : (() => { throw new BridgeError("failed", "Unknown dialog kind."); })(),
   };
 }
-const bridgeContract = "NotesWindowViews.ShellViewModel:F4390477D2A9E5A3E3E93242829B29158C025D90D325F6A36BAC1E6731F9AB9C";
+const bridgeContract = "NotesWindowViews.ShellViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05";
 
 export function connectShell(): Promise<ShellClient> { return connectShellAt("shell", false); }
 async function connectShellAt(route: string, mount = false): Promise<ShellClient> {

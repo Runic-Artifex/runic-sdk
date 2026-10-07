@@ -1,14 +1,23 @@
 import { assertInInjectionContext, DestroyRef, inject, Injector, signal, type Signal } from "@angular/core";
-import { createCommandController } from "@runic-artifex/views";
+import { createCommandController, type BridgeOutcomeFailure } from "@runic-artifex/views";
 
-export interface CommandHandle<TArgs extends readonly unknown[], TResult> {
-  /** Runs the command. Resolves to its result, or to undefined after a failure, which `error` then holds. Never rejects. */
+export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
+  /**
+   * Runs the command. Resolves to its result, including a `BridgeOutcome` with a
+   * declared failure, which `failure` then holds, or to undefined after an
+   * unexpected failure, which `error` then holds. Never rejects.
+   */
   run(...args: TArgs): Promise<TResult | undefined>;
   /** True while a run is in flight. */
   readonly pending: Signal<boolean>;
-  /** Why the latest run failed, until the next run starts. */
+  /** Why the latest run failed unexpectedly, until the next run starts. */
   readonly error: Signal<unknown>;
-  /** Clears `error`. */
+  /**
+   * The declared failure of the latest run, for a command that resolves a
+   * `BridgeOutcome`, until the next run starts. A superseded run sets neither.
+   */
+  readonly failure: Signal<TFailure | undefined>;
+  /** Clears `error` and `failure`. */
   reset(): void;
 }
 
@@ -35,10 +44,14 @@ export function injectCommand<TArgs extends readonly unknown[], TResult>(
   const controller = createCommandController(command);
   const pending = signal(false);
   const error = signal<unknown>(undefined);
+  const failure = signal<BridgeOutcomeFailure<Awaited<TResult>> | undefined>(undefined);
   controller.subscribe(() => {
     pending.set(controller.current.pending);
     error.set(controller.current.error);
+    failure.set(controller.current.failure);
   });
   injector.get(DestroyRef).onDestroy(() => controller.dispose());
-  return { run: controller.run, pending: pending.asReadonly(), error: error.asReadonly(), reset: controller.reset };
+  return {
+    run: controller.run, pending: pending.asReadonly(), error: error.asReadonly(), failure: failure.asReadonly(), reset: controller.reset,
+  };
 }

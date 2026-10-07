@@ -95,7 +95,7 @@ remounts the component; a kind without a component renders an alert, and
 
 ## `useCommand(command)`
 
-Returns `{ run, pending, error, reset }`. `run(...args)` calls the latest
+Returns `{ run, pending, error, failure, reset }`. `run(...args)` calls the latest
 `command`, so it may close over the current client, and resolves to its result
 or to `undefined` after a failure, which `error` then holds until the next run.
 It never rejects, so handlers need no `try`/`catch`. One command can serve
@@ -105,6 +105,11 @@ several buttons:
 const navigate = useCommand((name: "showWelcome" | "showCounter") => client?.[name]());
 <button onClick={() => void navigate.run("showWelcome")}>Welcome</button>
 ```
+
+For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
+`BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed
+from the outcome, while `error` keeps unexpected failures. Starting a run and
+`reset()` clear both, and a run that a later one superseded sets neither.
 
 ## `useCollectionViewport(options)`
 

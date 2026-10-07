@@ -1,6 +1,7 @@
 import { act, Component, createElement, StrictMode, Suspense, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
+import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
 import {
   retrySuspenseView, useCollectionViewport, useCommand, useSuspenseView, useView, ViewOutlet,
   type CollectionViewportHandle, type CommandHandle, type ViewHandle, type ViewRegistry, type ViewSource,
@@ -347,6 +348,48 @@ describe("useCommand", () => {
     await act(async () => outcomes.shift()!());
     expect(await result).toBe(5);
     expect(text()).toBe("false:");
+  });
+
+  test("keeps a declared failure apart from error; the latest run wins", async () => {
+    type Fail = { readonly $case: "titleRequired" } | { readonly $case: "titleTaken"; readonly existingTitle: string };
+    const outcomes: ((value: BridgeOutcome<number, Fail> | Error) => void)[] = [];
+    let handle: CommandHandle<[], BridgeOutcome<number, Fail>> | undefined;
+    let plain: CommandHandle<[], number> | undefined;
+    function Runner(): ReactNode {
+      handle = useCommand(() => new Promise<BridgeOutcome<number, Fail>>((resolve, reject) => {
+        outcomes.push(value => value instanceof Error ? reject(value) : resolve(value));
+      }));
+      plain = useCommand(() => Promise.resolve(1));
+      return createElement("output", null, handle.failure?.$case ?? (handle.error ? "error" : "none"));
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(Runner));
+    });
+    expectTypeOf(handle!.failure).toEqualTypeOf<Fail | undefined>();
+    expectTypeOf(plain!.failure).toEqualTypeOf<undefined>();
+    const settle = async (index: number, value: BridgeOutcome<number, Fail> | Error) => act(async () => outcomes[index]!(value));
+    let run: Promise<unknown> | undefined;
+    await act(async () => { run = handle!.run(); });
+    await settle(0, bridgeFailure({ $case: "titleRequired" }));
+    await run;
+    expect(text()).toBe("titleRequired");
+    let stale: Promise<unknown> | undefined;
+    await act(async () => { stale = handle!.run(); run = handle!.run(); });
+    expect(text()).toBe("none");
+    await settle(2, bridgeSuccess(2));
+    await settle(1, bridgeFailure({ $case: "titleTaken", existingTitle: "Todo" }));
+    await Promise.all([stale, run]);
+    expect(text()).toBe("none");
+    await act(async () => { run = handle!.run(); });
+    await settle(3, new Error("broken"));
+    await run;
+    expect(text()).toBe("error");
+    expect(handle!.failure).toBeUndefined();
+    await act(async () => { run = handle!.run(); });
+    await settle(4, bridgeFailure({ $case: "titleRequired" }));
+    await act(async () => { handle!.reset(); });
+    expect(text()).toBe("none");
   });
 });
 

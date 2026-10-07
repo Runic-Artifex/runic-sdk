@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, type PropType } from "vue";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, expectTypeOf } from "vitest";
 import { useCollectionViewport, useCommand, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
+import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
 
 type State = { readonly count: number };
 
@@ -92,6 +93,41 @@ describe("useCommand", () => {
     outcomes.shift()!();
     expect(await succeeded).toBe(1);
     scope.stop();
+  });
+
+  test("keeps a declared failure apart from error; the latest run wins", async () => {
+    type Fail = { readonly $case: "titleRequired" } | { readonly $case: "titleTaken"; readonly existingTitle: string };
+    const outcomes: ((value: BridgeOutcome<number, Fail> | Error) => void)[] = [];
+    const command = effectScope().run(() => useCommand(() => new Promise<BridgeOutcome<number, Fail>>((resolve, reject) => {
+      outcomes.push(value => value instanceof Error ? reject(value) : resolve(value));
+    })))!;
+    expectTypeOf(command.failure).toEqualTypeOf<Fail | undefined>();
+    const failed = command.run();
+    outcomes[0]!(bridgeFailure({ $case: "titleRequired" }));
+    await failed;
+    expect(command.failure).toEqual({ $case: "titleRequired" });
+    expect(command.error).toBeUndefined();
+    const stale = command.run();
+    const latest = command.run();
+    expect(command.failure).toBeUndefined();
+    outcomes[2]!(bridgeSuccess(2));
+    await latest;
+    outcomes[1]!(bridgeFailure({ $case: "titleTaken", existingTitle: "Todo" }));
+    await stale;
+    expect(command.failure).toBeUndefined();
+    const broken = command.run();
+    outcomes[3]!(new Error("broken"));
+    await broken;
+    expect((command.error as Error).message).toBe("broken");
+    expect(command.failure).toBeUndefined();
+    const again = command.run();
+    outcomes[4]!(bridgeFailure({ $case: "titleRequired" }));
+    await again;
+    command.reset();
+    expect(command.failure).toBeUndefined();
+    expect(command.error).toBeUndefined();
+    const plain = effectScope().run(() => useCommand(() => Promise.resolve(1)))!;
+    expectTypeOf(plain.failure).toEqualTypeOf<undefined>();
   });
 });
 

@@ -11,6 +11,12 @@ lane around asynchronous work. Its **Discard changes** command is a typed
 `Interaction<DiscardNoteRequest, bool>`: a mounted browser confirms or
 declines it, while the regular .NET fallback declines when no browser endpoint
 is available. The browser smoke check covers both answers.
+**Save** declares `[RunicFailure(typeof(SaveFailure))]` on `SaveCommand`: a
+missing or overlong title is a `SaveFailure` that every frontend shows with
+`matchCase` ([save-failure.ts](Frontend/src/save-failure.ts)) instead of a
+rejected call. A `ReactiveCommand` also reports that exception on
+`ThrownExceptions`, so the editor attaches `ObserveBridgeExceptions(logger)` to
+both commands and disposes the subscriptions with the ViewModel.
 The Svelte and Angular variants also mount a second full editor for the same
 page. The main editor owns the confirmation handler; the mirrored editor keeps
 its own mount and subscription without advertising a competing handler. This
