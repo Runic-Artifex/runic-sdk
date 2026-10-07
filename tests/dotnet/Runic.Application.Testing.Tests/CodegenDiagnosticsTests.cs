@@ -133,7 +133,8 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class BothFailureWindow(BothFailureViewModel model) : RunicWindow<BothFailureViewModel>(model);
                 """, "RUNICBRIDGE012", "[RelayCommand, RunicFailure(typeof(Missing))] private void Save()",
                 "BothFailureViewModel.SaveCommand: declare RunicFailure once, on the command property or on its [RelayCommand] method, not on both.").ConfigureAwait(false);
-            foreach (var (name, type) in new[] { ("FailureException", "InvalidOperationException"), ("FailureObject", "object"), ("FailureNullable", "int?") })
+            foreach (var (name, type, shown) in new[] { ("FailureException", "InvalidOperationException", "System.InvalidOperationException"),
+                ("FailureObject", "object", "System.Object"), ("FailureNullable", "int?", "System.Nullable<System.Int32>") })
                 await RejectAt(name, $$"""
                     public sealed class {{name}}ViewModel : FixtureModel
                     {
@@ -141,7 +142,17 @@ internal static class CodegenDiagnosticsTests
                     }
                     public sealed partial class {{name}}Window({{name}}ViewModel model) : RunicWindow<{{name}}ViewModel>(model);
                     """, "RUNICBRIDGE012", "public IRelayCommand SaveCommand",
-                    $"{name}ViewModel.SaveCommand: the failure type ", " must be a DTO, enum or [RunicUnion] value, not object, an exception or a nullable type.").ConfigureAwait(false);
+                    $"{name}ViewModel.SaveCommand: the failure type {shown} must be a Bridge value type other than object, an exception or Nullable<T>.").ConfigureAwait(false);
+            // A declaration on an inherited member is reported too: only the model's own commands are bridged.
+            await RejectAt("FailureInherited", """
+                public abstract class EditorBase : FixtureModel
+                {
+                    [RunicFailure(typeof(string))] public IRelayCommand ResetCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed class InheritedFailureViewModel : EditorBase { public string Title { get; set; } = ""; }
+                public sealed partial class InheritedFailureWindow(InheritedFailureViewModel model) : RunicWindow<InheritedFailureViewModel>(model);
+                """, "RUNICBRIDGE012", "public IRelayCommand ResetCommand",
+                "InheritedFailureViewModel.ResetCommand: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method; EditorBase declares it on a member the Bridge does not expose.").ConfigureAwait(false);
             // A failure type the Bridge cannot encode is RUNICBRIDGE003 at {Model}.{Command}.failure.
             await RejectAt("FailurePayload", """
                 public sealed class Opaque { public object Value { get; init; } = new(); }

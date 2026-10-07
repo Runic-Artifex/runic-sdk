@@ -40,7 +40,7 @@ export interface FailureToolkitMock extends MockTypedView<FailureToolkitMockStat
 const spec: MockTypedViewSpec = {
   kind: "failureToolkit",
   route: "failureToolkit",
-  contract: "Runic.Application.Testing.Tests.FailureToolkitViewModel:4B4818B43B88BF625C464BBC55D0D4339538BEA77A4C4D85823A9D2D633B13E6",
+  contract: "Runic.Application.Testing.Tests.FailureToolkitViewModel:<fingerprint>",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },

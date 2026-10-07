@@ -69,6 +69,20 @@ internal static class DomainFailureCodegenTests
         model.Title = "four";
         var saved = await host.Root.Start(vm => vm.SaveCommand, requestId: "save-2").WaitAsync();
         Require(saved.Kind == "succeeded" && saved.Result?.GetInt32() == 4, $"The ReactiveUI operation did not succeed: {saved.Json}");
+
+        // A stream command keeps the values it published before its declared failure.
+        var import = host.Root.Start(vm => vm.ImportCommand, requestId: "import-1");
+        var imported = await import.WaitAsync();
+        using (var status = JsonDocument.Parse(imported.Json))
+            Require(imported.Kind == "domain-failed" && status.RootElement.GetProperty("stream").GetBoolean()
+                && imported.Failure?.GetRawText() == """{"$case":"titleTaken","existingTitle":"Todo"}""",
+                $"The ReactiveUI stream did not end with its declared failure: {imported.Json}");
+        using var page = JsonDocument.Parse(host.Transport.Call("__runicOperationStream", new(StringValue: JsonSerializer.Serialize(new
+        {
+            contract = import.Contract, member = "Import", requestId = "import-1", cursor = 0,
+        }))));
+        Require(page.RootElement.GetProperty("kind").GetString() == "domain-failed" && page.RootElement.GetProperty("items").GetArrayLength() == 2,
+            $"The stream values were not kept: {page.RootElement}");
     }
 
     // The generated modules and bridge for the failure fixtures, checked in under
@@ -86,6 +100,8 @@ internal static class DomainFailureCodegenTests
             ("failureToolkit.ts", Path.Combine(generated, "failureToolkit.ts")),
             ("failureToolkit.mock.ts", Path.Combine(generated, "failureToolkit.mock.ts")),
             ("failureReactive.ts", Path.Combine(generated, "failureReactive.ts")),
+            ("failureReactive.mock.ts", Path.Combine(generated, "failureReactive.mock.ts")),
+            ("types.ts", Path.Combine(generated, "types.ts")),
             ("FailureToolkitViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.FailureToolkitViewModel.Bridge.g.cs")),
             ("FailureReactiveViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.FailureReactiveViewModel.Bridge.g.cs")),
         };
@@ -94,7 +110,10 @@ internal static class DomainFailureCodegenTests
         {
             // A .golden suffix keeps the files out of the C# and TypeScript builds.
             var goldenPath = Path.Combine(project, "golden", "domain-failures", golden + ".golden");
-            var actual = File.ReadAllText(actualPath).ReplaceLineEndings("\n");
+            // The contract fingerprint covers every View model of the test assembly, so
+            // an unrelated fixture would change it; the fingerprint tests cover it.
+            var actual = System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(actualPath).ReplaceLineEndings("\n"),
+                "[0-9A-F]{64}", "<fingerprint>");
             if (update)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(goldenPath)!);

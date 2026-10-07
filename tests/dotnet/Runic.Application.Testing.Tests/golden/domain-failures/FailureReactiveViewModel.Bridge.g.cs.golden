@@ -15,7 +15,8 @@ internal sealed class FailureReactiveBridge : ViewModelBridge<global::Runic.Appl
         ],
         [
             new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Save", vm => (object)vm.SaveCommand, ExecuteResultAsync: async (vm, token, argument) => { var result = await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Execute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => SaveCommandResultCodec.Write(writer, result))); }, CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, changed), EncodeFailure: failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => SaveCommandFailureCodec.Write(writer, declared)) : null),
-        ], "4B4818B43B88BF625C464BBC55D0D4339538BEA77A4C4D85823A9D2D633B13E6", content,
+            new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureReactiveViewModel>("Import", vm => (object)vm.ImportCommand, CreateStream: () => new global::Runic.Application.Views.BridgeOperationStream(), ExecuteStreamAsync: async (vm, execution, token, argument) => await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteStream((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default, execution.Stream!, result => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ImportCommandResultCodec.Write(writer, result)), token).ConfigureAwait(false), CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, changed), EncodeFailure: failure => failure is global::Runic.Application.Testing.Tests.NoteSaveFailure declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ImportCommandFailureCodec.Write(writer, declared)) : null),
+        ], "<fingerprint>", content,
         null,
         dataSubscriptions: DataMetadata,
         collections: [
@@ -134,6 +135,94 @@ private static class SaveCommandFailureCodec
 
 }
 
+private static class ImportCommandResultCodec
+{
+    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value) => Write0(writer, value);
+    internal static global::System.Int32 Read(global::System.Text.Json.JsonElement element) => Read0(element);
+
+    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
+    {
+        writer.WriteNumberValue(value);
+    }
+
+    private static global::System.Int32 Read0(global::System.Text.Json.JsonElement element)
+    {
+        return global::Runic.Application.Views.BridgeWire.ReadInt32(element);
+    }
+
+}
+
+private static class ImportCommandFailureCodec
+{
+    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value) => Write0(writer, value);
+    internal static global::Runic.Application.Testing.Tests.NoteSaveFailure Read(global::System.Text.Json.JsonElement element) => Read0(element);
+
+    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteSaveFailure value)
+    {
+        writer.WriteStartObject();
+        switch (value)
+        {
+            case global::Runic.Application.Testing.Tests.NoteTitleRequired item1:
+                writer.WriteString("$case", "titleRequired");
+                break;
+            case global::Runic.Application.Testing.Tests.NoteTitleTaken item2:
+                writer.WriteString("$case", "titleTaken");
+                writer.WritePropertyName("existingTitle"); Write3(writer, item2.ExistingTitle);
+                break;
+            default: throw new global::System.NotSupportedException("The value is not a declared bridge-union case.");
+        }
+        writer.WriteEndObject();
+    }
+
+    private static global::Runic.Application.Testing.Tests.NoteSaveFailure Read0(global::System.Text.Json.JsonElement element)
+    {
+        var discriminator = global::Runic.Application.Views.BridgeWire.ReadString(global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "$case"));
+        return discriminator switch
+        {
+            "titleRequired" => Read1(element),
+            "titleTaken" => Read2(element),
+            _ => throw global::Runic.Application.Views.BridgeWire.Invalid("Unknown bridge-union case."),
+        };
+    }
+
+    private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleRequired value)
+    {
+        writer.WriteStartObject();
+        writer.WriteEndObject();
+    }
+
+    private static global::Runic.Application.Testing.Tests.NoteTitleRequired Read1(global::System.Text.Json.JsonElement element)
+    {
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
+        return new global::Runic.Application.Testing.Tests.NoteTitleRequired();
+    }
+
+    private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleTaken value)
+    {
+        writer.WriteStartObject();
+        writer.WritePropertyName("existingTitle"); Write3(writer, value.ExistingTitle);
+        writer.WriteEndObject();
+    }
+
+    private static global::Runic.Application.Testing.Tests.NoteTitleTaken Read2(global::System.Text.Json.JsonElement element)
+    {
+        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
+        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "existingTitle");
+        return new global::Runic.Application.Testing.Tests.NoteTitleTaken(Read3(value_0));
+    }
+
+    private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)
+    {
+        writer.WriteStringValue(value);
+    }
+
+    private static global::System.String Read3(global::System.Text.Json.JsonElement element)
+    {
+        return global::Runic.Application.Views.BridgeWire.ReadString(element);
+    }
+
+}
+
     private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.FailureReactiveViewModel> CreateWriter(WindowContentSession? content)
     {
         return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);
@@ -147,6 +236,8 @@ private static class SaveCommandFailureCodec
         TitleValueCodec.Write(writer, vm.Title);
         writer.WriteBoolean("canSave", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand, global::ReactiveUI.Primitives.RxVoid.Default));
         writer.WriteBoolean("isSaveExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.SaveCommand));
+        writer.WriteBoolean("canImport", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand, global::ReactiveUI.Primitives.RxVoid.Default));
+        writer.WriteBoolean("isImportExecuting", global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.IsExecuting((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::System.Int32>)vm.ImportCommand));
         writeFieldMetadata(writer);
         writer.WriteEndObject();
     }

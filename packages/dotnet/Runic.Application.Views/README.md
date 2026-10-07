@@ -229,7 +229,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
-| `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or a nullable type. | Declare one DTO, enum or `[RunicUnion]` failure type per command. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
+| `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or `Nullable<T>`. | Declare one failure type per command: any Bridge value type, typically a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
 
 ## Build properties
 
