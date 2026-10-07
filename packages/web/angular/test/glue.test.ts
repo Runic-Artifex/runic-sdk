@@ -2,8 +2,9 @@ import "@angular/compiler";
 import { Component, effect, Injector, NgZone, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
-import { afterEach, beforeAll, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
 import { injectCollectionViewport, injectCommand, injectView, RunicViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
+import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
 
 type Page =
   | { readonly kind: "counter"; connect(): Promise<unknown> }
@@ -109,6 +110,41 @@ describe("injectCommand", () => {
     expect(command.error()).toBeUndefined();
     outcomes.shift()!();
     expect(await succeeded).toBe(1);
+  });
+
+  test("keeps a declared failure apart from error; the latest run wins", async () => {
+    type Fail = { readonly $case: "titleRequired" } | { readonly $case: "titleTaken"; readonly existingTitle: string };
+    const outcomes: ((value: BridgeOutcome<number, Fail> | Error) => void)[] = [];
+    const command = TestBed.runInInjectionContext(() => injectCommand(() => new Promise<BridgeOutcome<number, Fail>>((resolve, reject) => {
+      outcomes.push(value => value instanceof Error ? reject(value) : resolve(value));
+    })));
+    expectTypeOf(command.failure()).toEqualTypeOf<Fail | undefined>();
+    const failed = command.run();
+    outcomes[0]!(bridgeFailure({ $case: "titleRequired" }));
+    await failed;
+    expect(command.failure()).toEqual({ $case: "titleRequired" });
+    expect(command.error()).toBeUndefined();
+    const stale = command.run();
+    const latest = command.run();
+    expect(command.failure()).toBeUndefined();
+    outcomes[2]!(bridgeSuccess(2));
+    await latest;
+    outcomes[1]!(bridgeFailure({ $case: "titleTaken", existingTitle: "Todo" }));
+    await stale;
+    expect(command.failure()).toBeUndefined();
+    const broken = command.run();
+    outcomes[3]!(new Error("broken"));
+    await broken;
+    expect((command.error() as Error).message).toBe("broken");
+    expect(command.failure()).toBeUndefined();
+    const again = command.run();
+    outcomes[4]!(bridgeFailure({ $case: "titleRequired" }));
+    await again;
+    command.reset();
+    expect(command.failure()).toBeUndefined();
+    expect(command.error()).toBeUndefined();
+    const plain = TestBed.runInInjectionContext(() => injectCommand(() => Promise.resolve(1)));
+    expectTypeOf(plain.failure()).toEqualTypeOf<undefined>();
   });
 
   test("requires an injection context or an injector", () => {

@@ -16,6 +16,7 @@ import {
   createViewController,
   isViewClient,
   viewSourceIdentity,
+  type BridgeOutcomeFailure,
   type CollectionViewport,
   type CollectionViewportOptions,
   type ViewClient,
@@ -272,14 +273,23 @@ export function ViewOutlet<R extends ViewReference>({ content, registry, fallbac
   return createElement(component, { key: referenceKey(content), page: content });
 }
 
-export interface CommandHandle<TArgs extends readonly unknown[], TResult> {
-  /** Runs the command. Resolves to its result, or to undefined after a failure, which `error` then holds. Never rejects. */
+export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
+  /**
+   * Runs the command. Resolves to its result, including a `BridgeOutcome` with a
+   * declared failure, which `failure` then holds, or to undefined after an
+   * unexpected failure, which `error` then holds. Never rejects.
+   */
   run(...args: TArgs): Promise<TResult | undefined>;
   /** True while a run is in flight. */
   readonly pending: boolean;
-  /** Why the latest run failed, until the next run starts. */
+  /** Why the latest run failed unexpectedly, until the next run starts. */
   readonly error: unknown;
-  /** Clears `error`. */
+  /**
+   * The declared failure of the latest run, for a command that resolves a
+   * `BridgeOutcome`, until the next run starts. A superseded run sets neither.
+   */
+  readonly failure: TFailure | undefined;
+  /** Clears `error` and `failure`. */
   reset(): void;
 }
 
@@ -299,8 +309,8 @@ export function useCommand<TArgs extends readonly unknown[], TResult>(
   useInsertionEffect(() => { latest.current = command; });
   const [controller] = useState(() => createCommandController((...args: TArgs) => latest.current(...args)));
   const read = useCallback(() => controller.current, [controller]);
-  const { pending, error } = useSyncExternalStore(controller.subscribe, read, read);
-  return { run: controller.run, pending, error, reset: controller.reset };
+  const { pending, error, failure } = useSyncExternalStore(controller.subscribe, read, read);
+  return { run: controller.run, pending, error, failure, reset: controller.reset };
 }
 
 export interface CollectionViewportHandle {

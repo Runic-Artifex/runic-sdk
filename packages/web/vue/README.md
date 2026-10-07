@@ -71,8 +71,8 @@ prop accepts that reference.
 
 ## `useCommand(command)`
 
-Returns a reactive `{ run, pending, error, reset }`. Read `increment.pending`
-and `increment.error` from the object rather than destructuring them.
+Returns a reactive `{ run, pending, error, failure, reset }`. Read `increment.pending`,
+`increment.error` and `increment.failure` from the object rather than destructuring them.
 `run(...args)` resolves to the command's result, or to `undefined` after a
 failure, which `error` then holds until the next run. It never rejects, so
 handlers need no `try`/`catch`. One command can serve several buttons:
@@ -81,6 +81,11 @@ handlers need no `try`/`catch`. One command can serve several buttons:
 const navigate = useCommand((name: "showWelcome" | "showCounter") => client.value?.[name]());
 // <button @click="navigate.run('showWelcome')">Welcome</button>
 ```
+
+For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
+`BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed
+from the outcome, while `error` keeps unexpected failures. Starting a run and
+`reset()` clear both, and a run that a later one superseded sets neither.
 
 ## `useCollectionViewport(options)`
 
