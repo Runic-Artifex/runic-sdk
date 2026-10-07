@@ -202,8 +202,9 @@ function fromStatus<T>(observed: unknown): Effect.Effect<OperationResult<T>, Vie
       return Effect.fail(new ViewOperationFailed({
         message: status.error?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: status.error?.detail,
       }));
-    // Operations started through this adapter declare no failure type, so the
-    // runtime reports domain-failed as failed; keep the case exhaustive.
+    // An operation that declares a failure type ends domain-failed. Until this
+    // adapter has its own tagged error for it, it fails as ViewOperationFailed,
+    // whose status carries the declared failure.
     case "domain-failed":
       return Effect.fail(new ViewOperationFailed({
         message: status.delivery?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: undefined,

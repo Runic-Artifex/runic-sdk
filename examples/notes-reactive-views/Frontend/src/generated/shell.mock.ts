@@ -21,16 +21,16 @@ export interface ShellMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly openHome?: MockTypedOperationHandler<ShellMockState, void, never> | "manual";
-    readonly openDocument?: MockTypedOperationHandler<ShellMockState, void, never> | "manual";
-    readonly swapPinned?: MockTypedOperationHandler<ShellMockState, void, never> | "manual";
-    readonly removePinned?: MockTypedOperationHandler<ShellMockState, void, never> | "manual";
-    readonly restorePinned?: MockTypedOperationHandler<ShellMockState, void, never> | "manual";
+    readonly openHome?: MockTypedOperationHandler<ShellMockState, void, void> | "manual";
+    readonly openDocument?: MockTypedOperationHandler<ShellMockState, void, void> | "manual";
+    readonly swapPinned?: MockTypedOperationHandler<ShellMockState, void, void> | "manual";
+    readonly removePinned?: MockTypedOperationHandler<ShellMockState, void, void> | "manual";
+    readonly restorePinned?: MockTypedOperationHandler<ShellMockState, void, void> | "manual";
   };
 }
 
 export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "shell"> {
-  readonly operations: { readonly openHome: readonly MockTypedOperation<void, never>[]; readonly openDocument: readonly MockTypedOperation<void, never>[]; readonly swapPinned: readonly MockTypedOperation<void, never>[]; readonly removePinned: readonly MockTypedOperation<void, never>[]; readonly restorePinned: readonly MockTypedOperation<void, never>[]; };
+  readonly operations: { readonly openHome: readonly MockTypedOperation<void, void>[]; readonly openDocument: readonly MockTypedOperation<void, void>[]; readonly swapPinned: readonly MockTypedOperation<void, void>[]; readonly removePinned: readonly MockTypedOperation<void, void>[]; readonly restorePinned: readonly MockTypedOperation<void, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {

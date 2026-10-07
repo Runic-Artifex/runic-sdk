@@ -117,6 +117,40 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class PromptWindow(PromptViewModel model) : RunicWindow<PromptViewModel>(model);
                 """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
                 "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
+            // RUNICBRIDGE012: a misplaced, repeated or unsupported failure declaration.
+            await RejectAt("FailureOnState", """
+                public sealed class StateFailureViewModel : FixtureModel { [RunicFailure(typeof(string))] public string Title { get; set; } = ""; }
+                public sealed partial class StateFailureWindow(StateFailureViewModel model) : RunicWindow<StateFailureViewModel>(model);
+                """, "RUNICBRIDGE012", "public string Title",
+                "StateFailureViewModel.Title: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method.").ConfigureAwait(false);
+            await RejectAt("FailureOnBoth", """
+                public sealed record Missing;
+                public sealed class BothFailureViewModel : FixtureModel
+                {
+                    [RunicFailure(typeof(Missing))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                    [RelayCommand, RunicFailure(typeof(Missing))] private void Save() { }
+                }
+                public sealed partial class BothFailureWindow(BothFailureViewModel model) : RunicWindow<BothFailureViewModel>(model);
+                """, "RUNICBRIDGE012", "[RelayCommand, RunicFailure(typeof(Missing))] private void Save()",
+                "BothFailureViewModel.SaveCommand: declare RunicFailure once, on the command property or on its [RelayCommand] method, not on both.").ConfigureAwait(false);
+            foreach (var (name, type) in new[] { ("FailureException", "InvalidOperationException"), ("FailureObject", "object"), ("FailureNullable", "int?") })
+                await RejectAt(name, $$"""
+                    public sealed class {{name}}ViewModel : FixtureModel
+                    {
+                        [RunicFailure(typeof({{type}}))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                    }
+                    public sealed partial class {{name}}Window({{name}}ViewModel model) : RunicWindow<{{name}}ViewModel>(model);
+                    """, "RUNICBRIDGE012", "public IRelayCommand SaveCommand",
+                    $"{name}ViewModel.SaveCommand: the failure type ", " must be a DTO, enum or [RunicUnion] value, not object, an exception or a nullable type.").ConfigureAwait(false);
+            // A failure type the Bridge cannot encode is RUNICBRIDGE003 at {Model}.{Command}.failure.
+            await RejectAt("FailurePayload", """
+                public sealed class Opaque { public object Value { get; init; } = new(); }
+                public sealed class PayloadFailureViewModel : FixtureModel
+                {
+                    [RunicFailure(typeof(Opaque))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class PayloadFailureWindow(PayloadFailureViewModel model) : RunicWindow<PayloadFailureViewModel>(model);
+                """, "RUNICBRIDGE003", "public object Value", "PayloadFailureViewModel.SaveCommand.failure.value").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
                 public sealed partial class ObjectWindow(ObjectViewModel model) : RunicWindow<ObjectViewModel>(model);

@@ -470,19 +470,34 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.ReactiveContract is null && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
                 $"{model.Name}.{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; CommunityToolkit and plain commands have no result value.", source);
-        commandPlans.Add(command, plan with { ParameterName = CommandParameterName(commandSources[command], plan) });
+        commandPlans.Add(command, plan with
+        {
+            ParameterName = CommandParameterName(commandSources[command], plan),
+            FailureGraph = FailureGraph(model, command, source),
+        });
     }
+    // A failure declaration must belong to a bridged command; anything else
+    // would silently not reach the client.
+    var failureOwners = commands.Select(command => (MemberInfo)command)
+        .Concat(commandSources.Values.OfType<MethodInfo>()).ToHashSet();
+    foreach (var member in model.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+        | BindingFlags.Public | BindingFlags.NonPublic).Where(member => member is PropertyInfo or MethodInfo).OrderBy(member => member.MetadataToken))
+        if (member.GetCustomAttribute<RunicFailureAttribute>(true) is not null && !failureOwners.Contains(member))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
+                $"{model.Name}.{member.Name}: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method.", member);
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
     {
         var plan = commandPlans[command];
         return new OperationTypeScriptPlan(command.Name[..^"Command".Length],
             plan.InputGraph?.TypeScriptType() ?? "never",
-            plan.ResultGraph?.TypeScriptType() ?? "never",
-            plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined as never",
+            plan.ResultGraph?.TypeScriptType() ?? "void",
+            plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined",
             plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
             plan.HasArgument,
             plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream,
-            plan.ParameterName);
+            plan.ParameterName,
+            plan.FailureGraph?.TypeScriptType(),
+            plan.FailureGraph?.EmitTypeScriptDecoder("value"));
     }).ToArray();
 
     if (shortName.Length == 0 || !shortName.All(char.IsLetterOrDigit) || !char.IsLetter(shortName[0]))
@@ -603,6 +618,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         if (plan.InputGraph is { } input) { input.AppendCSharpCodec(cs, command.Name + "InputCodec"); cs.AppendLine(); }
         if (plan.ResultGraph is { } result) { result.AppendCSharpCodec(cs, command.Name + "ResultCodec"); cs.AppendLine(); }
+        if (plan.FailureGraph is { } failure) { failure.AppendCSharpCodec(cs, command.Name + "FailureCodec"); cs.AppendLine(); }
     }
     InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
     if (commandPlans.Values.Any(plan => plan.ToolkitContract is { IsAsync: true }))
@@ -879,7 +895,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var plan = commandPlans[command];
         var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
         XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command]));
-        ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{shortName}State>;");
+        var reply = plan.FailureGraph is { } declaredFailure
+            ? $"BridgeOutcome<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
+        ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;");
         if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
     }
     foreach (var command in commands.Where(command => commandPlans[command].IsAsync))
@@ -1065,7 +1083,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var argument = plan.InputGraph is { } inputGraph
             ? $", JSON.stringify({inputGraph.EncodeTypeScript(parameter)})"
             : plan.HasStringArgument ? $", JSON.stringify({parameter})" : "";
-        ts.AppendLine($"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.command(`${{route}}{name}`{argument}); }},");
+        ts.AppendLine(plan.FailureGraph is { } failureGraph
+            ? $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.commandOutcome(`${{route}}{name}`, value => {BridgeTypeGraph.ArrowBody(failureGraph.EmitTypeScriptDecoder("value"))}{argument}); }},"
+            : $"    async {LowerFirst(name)}({(plan.HasArgument ? parameter : "")}) {{ return view.command(`${{route}}{name}`{argument}); }},");
         if (plan.HasArgument)
             ts.AppendLine($"    async can{name}({parameter}) {{ return view.query(`${{route}}Can{name}`{argument}); }},");
     }
@@ -1082,6 +1102,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasValidation) publicImports.Add("type BridgeValidationState");
     publicImports.Add("type ViewClient");
     if (needsCheckedWriter) publicImports.AddRange(["type FieldBaseline", "type FieldWriteOptions", "type FieldWriteReceipt"]);
+    if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type BridgeOutcome");
     if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type BridgeOperation");
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type BridgeStreamOperation");
     if (interactions.Length > 0) publicImports.Add("type BridgeInteractionContext");
@@ -1128,15 +1149,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var name = command.Name[..^"Command".Length];
             return new MockCommand(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : null,
                 plan.HasArgument ? plan.InputGraph?.EmitTypeScriptDecoder("wire") ?? "bridgeWire.string(wire)" : null,
-                plan.HasArgument ? null : $"can{name}");
+                plan.HasArgument ? null : $"can{name}", plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
         }).ToArray(),
         commands.Where(command => commandPlans[command].IsAsync).Select(command =>
         {
             var plan = commandPlans[command];
             var name = command.Name[..^"Command".Length];
             return new MockOperation(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : "void",
-                plan.ResultGraph?.TypeScriptType() ?? "never", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
-                plan.ResultGraph?.EncodeTypeScript("typed"), plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream);
+                plan.ResultGraph?.TypeScriptType() ?? "void", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
+                plan.ResultGraph?.EncodeTypeScript("typed"), plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream,
+                plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
         }).ToArray(),
         interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
             plan.Output.TypeScriptType(), plan.Input.EncodeTypeScript("typed"), plan.Output.EmitTypeScriptDecoder("wire"))).ToArray(),
@@ -1181,6 +1203,25 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
 
 static string MockModulePath(string typescriptPath) =>
     Path.Combine(Path.GetDirectoryName(Path.GetFullPath(typescriptPath))!, $"{Path.GetFileNameWithoutExtension(typescriptPath)}.mock.ts");
+
+// A command's declared failure type (W130-029): at most one [RunicFailure], on
+// the command property or its [RelayCommand] method, naming a value type the
+// Bridge can encode. Errors in the type's shape are RUNICBRIDGE003 at
+// {Model}.{Command}.failure.
+static BridgeTypeGraph? FailureGraph(Type model, PropertyInfo command, MemberInfo source)
+{
+    var declarations = BridgeCommandSources.FailureDeclarations(model, command);
+    if (declarations.Count == 0) return null;
+    if (declarations.Count > 1)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
+            $"{model.Name}.{command.Name}: declare RunicFailure once, on the command property or on its [RelayCommand] method, not on both.", source);
+    var (declaredOn, failure) = declarations[0];
+    MemberInfo location = declaredOn == "method" ? source : command;
+    if (failure == typeof(object) || typeof(Exception).IsAssignableFrom(failure) || Nullable.GetUnderlyingType(failure) is not null)
+        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
+            $"{model.Name}.{command.Name}: the failure type {failure.Name} must be a DTO, enum or [RunicUnion] value, not object, an exception or a nullable type.", location);
+    return BridgeTypeGraph.Discover(failure, rootPath: $"{model.Name}.{command.Name}.failure", origin: location);
+}
 
 // The command inspectors live in adapter assemblies and report shape errors
 // as NotSupportedException; attach the command diagnostic code and location.
@@ -1298,6 +1339,8 @@ static class BridgeDiagnosticCodes
     internal const string Collection = "RUNICBRIDGE010";
     /// <summary>A ReactiveUI interaction has an unsupported shape.</summary>
     internal const string Interaction = "RUNICBRIDGE011";
+    /// <summary>A RunicFailure declaration is misplaced, repeated or names an unsupported type.</summary>
+    internal const string Failure = "RUNICBRIDGE012";
 }
 
 /// <summary>A generator diagnostic with its ID and the declaration it concerns.</summary>
@@ -1453,7 +1496,8 @@ sealed record GeneratedCommandPlan(
     BridgeTypeGraph? InputGraph = null,
     BridgeTypeGraph? ResultGraph = null,
     bool IsPlainICommand = false,
-    ToolkitCommandContract? ToolkitContract = null)
+    ToolkitCommandContract? ToolkitContract = null,
+    BridgeTypeGraph? FailureGraph = null)
 {
     internal bool HasArgument => InputGraph is not null || HasStringArgument;
     /// <summary>The generated TypeScript parameter name of the command argument.</summary>
@@ -1468,7 +1512,17 @@ sealed record GeneratedCommandPlan(
     internal static GeneratedCommandPlan Plain(BridgeTypeGraph input) =>
         new(HasStringArgument: false, IsAsync: false, InputGraph: input, IsPlainICommand: true);
 
+    // A declared failure adds the generated encoder: the declared type's
+    // canonical JSON, or null so the runtime reports any other value as failed.
     internal string DescriptorFor(PropertyInfo property, string modelType)
+    {
+        var descriptor = DescriptorCore(property, modelType);
+        if (FailureGraph is null) return descriptor;
+        if (!descriptor.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
+        return descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
+    }
+
+    private string DescriptorCore(PropertyInfo property, string modelType)
     {
         if (LegacyDescriptor is not null) return LegacyDescriptor;
         if (ToolkitContract is { } toolkit)

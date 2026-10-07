@@ -22,14 +22,14 @@ export interface RowsMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly setViewport?: MockTypedOperationHandler<RowsMockState, ViewportRequest, never> | "manual";
-    readonly update?: MockTypedOperationHandler<RowsMockState, void, never> | "manual";
+    readonly setViewport?: MockTypedOperationHandler<RowsMockState, ViewportRequest, void> | "manual";
+    readonly update?: MockTypedOperationHandler<RowsMockState, void, void> | "manual";
   };
 }
 
 export interface RowsMock extends MockTypedView<RowsMockState, RowsClient, "rows"> {
   readonly collections: { readonly rows: MockTypedCollection<Row>; };
-  readonly operations: { readonly setViewport: readonly MockTypedOperation<ViewportRequest, never>[]; readonly update: readonly MockTypedOperation<void, never>[]; };
+  readonly operations: { readonly setViewport: readonly MockTypedOperation<ViewportRequest, void>[]; readonly update: readonly MockTypedOperation<void, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {

@@ -265,7 +265,8 @@ internal static partial class DomainFailureTests
     // existing models do not change.
     private static void FingerprintCoversOnlyDeclarations()
     {
-        var plain = BridgeContractShape.Parts(typeof(EditorModel));
+        // The parts also cover every View model of the assembly; check the undeclared model's own lines.
+        var plain = BridgeContractShape.Parts(typeof(EditorModel)).Where(part => part.Contains(nameof(EditorModel), StringComparison.Ordinal)).ToList();
         Require(!plain.Any(part => part.StartsWith("command-failure:", StringComparison.Ordinal) || part.Contains(".failure:", StringComparison.Ordinal)),
             "An undeclared model gained failure lines.");
         var property = BridgeContractShape.Parts(typeof(PropertyDeclaredModel));
@@ -276,7 +277,8 @@ internal static partial class DomainFailureTests
         Require(method.Contains($"command-failure:{typeof(MethodDeclaredModel).FullName}:SaveCommand:method")
             && method.Any(part => part.StartsWith($"wire:{nameof(MethodDeclaredModel)}.SaveCommand.failure:type:{typeof(TitleTaken).FullName}", StringComparison.Ordinal)),
             $"A private [RelayCommand] method declaration was not fingerprinted: {string.Join("\n", method)}");
-        var undeclaredMethod = BridgeContractShape.Parts(typeof(MethodUndeclaredModel));
+        var undeclaredMethod = BridgeContractShape.Parts(typeof(MethodUndeclaredModel))
+            .Where(part => part.Contains(nameof(MethodUndeclaredModel), StringComparison.Ordinal)).ToList();
         Require(!undeclaredMethod.Any(part => part.StartsWith("command-failure:", StringComparison.Ordinal)),
             "An undeclared [RelayCommand] method gained failure lines.");
     }

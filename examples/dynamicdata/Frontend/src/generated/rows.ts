@@ -14,8 +14,8 @@ export interface RowsState {
   readonly isUpdateExecuting: boolean;
 }
 
-export interface RowsSetViewportOperation extends BridgeOperation<never> {}
-export interface RowsUpdateOperation extends BridgeOperation<never> {}
+export interface RowsSetViewportOperation extends BridgeOperation<void> {}
+export interface RowsUpdateOperation extends BridgeOperation<void> {}
 
 /** A connected Rows ViewModel. Dispose it when its presentation ends. */
 export interface RowsClient extends ViewClient<RowsState> {
@@ -60,8 +60,8 @@ const collectionDefinitions = defineCollections({
 export function connectRows(): Promise<RowsClient> { return connectRowsAt("rows", false); }
 async function connectRowsAt(route: string, mount = false): Promise<RowsClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, collections: collectionDefinitions, operations: bridgeOperations });
-  const startSetViewportOperation = (requestId: string, viewportRequest: ViewportRequest) => view.startOperation<never>("SetViewport", requestId, () => JSON.stringify({ requestId, input: { ["start"]: viewportRequest["start"], ["size"]: viewportRequest["size"] } }), value => undefined as never);
-  const startUpdateOperation = (requestId: string) => view.startOperation<never>("Update", requestId, () => requestId, value => undefined as never);
+  const startSetViewportOperation = (requestId: string, viewportRequest: ViewportRequest) => view.startOperation<void>("SetViewport", requestId, () => JSON.stringify({ requestId, input: { ["start"]: viewportRequest["start"], ["size"]: viewportRequest["size"] } }), value => undefined);
+  const startUpdateOperation = (requestId: string) => view.startOperation<void>("Update", requestId, () => requestId, value => undefined);
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -71,9 +71,9 @@ async function connectRowsAt(route: string, mount = false): Promise<RowsClient> 
     async update() { return view.command(`${route}Update`); },
     startSetViewport(viewportRequest: ViewportRequest) { return startSetViewportOperation(globalThis.crypto.randomUUID(), viewportRequest); },
     startSetViewportWithRequestId(requestId: string, viewportRequest: ViewportRequest) { return startSetViewportOperation(requestId, viewportRequest); },
-    recoverSetViewportWithRequestId(requestId: string) { return view.recoverOperation<never>("SetViewport", requestId, value => undefined as never); },
+    recoverSetViewportWithRequestId(requestId: string) { return view.recoverOperation<void>("SetViewport", requestId, value => undefined); },
     startUpdate() { return startUpdateOperation(globalThis.crypto.randomUUID()); },
     startUpdateWithRequestId(requestId: string) { return startUpdateOperation(requestId); },
-    recoverUpdateWithRequestId(requestId: string) { return view.recoverOperation<never>("Update", requestId, value => undefined as never); },
+    recoverUpdateWithRequestId(requestId: string) { return view.recoverOperation<void>("Update", requestId, value => undefined); },
   };
 }

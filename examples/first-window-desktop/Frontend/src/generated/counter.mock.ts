@@ -15,12 +15,12 @@ export interface CounterMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly increment?: MockTypedOperationHandler<CounterMockState, void, never> | "manual";
+    readonly increment?: MockTypedOperationHandler<CounterMockState, void, void> | "manual";
   };
 }
 
 export interface CounterMock extends MockTypedView<CounterMockState, CounterClient, "counter"> {
-  readonly operations: { readonly increment: readonly MockTypedOperation<void, never>[]; };
+  readonly operations: { readonly increment: readonly MockTypedOperation<void, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {

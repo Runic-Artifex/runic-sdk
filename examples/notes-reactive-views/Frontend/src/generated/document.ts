@@ -19,8 +19,8 @@ export interface DocumentState {
   readonly isShowPreviewExecuting: boolean;
 }
 
-export interface DocumentShowEditorOperation extends BridgeOperation<never> {}
-export interface DocumentShowPreviewOperation extends BridgeOperation<never> {}
+export interface DocumentShowEditorOperation extends BridgeOperation<void> {}
+export interface DocumentShowPreviewOperation extends BridgeOperation<void> {}
 
 /** A connected Document ViewModel. Dispose it when its presentation ends. */
 export interface DocumentClient extends ViewClient<DocumentState> {
@@ -63,8 +63,8 @@ const bridgeContract = "NotesReactiveViews.DocumentViewModel:07C6D370C2A798E254B
 export function connectDocument(): Promise<DocumentClient> { return connectDocumentAt("document", false); }
 async function connectDocumentAt(route: string, mount = false): Promise<DocumentClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, operations: bridgeOperations });
-  const startShowEditorOperation = (requestId: string) => view.startOperation<never>("ShowEditor", requestId, () => requestId, value => undefined as never);
-  const startShowPreviewOperation = (requestId: string) => view.startOperation<never>("ShowPreview", requestId, () => requestId, value => undefined as never);
+  const startShowEditorOperation = (requestId: string) => view.startOperation<void>("ShowEditor", requestId, () => requestId, value => undefined);
+  const startShowPreviewOperation = (requestId: string) => view.startOperation<void>("ShowPreview", requestId, () => requestId, value => undefined);
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -73,9 +73,9 @@ async function connectDocumentAt(route: string, mount = false): Promise<Document
     async showPreview() { return view.command(`${route}ShowPreview`); },
     startShowEditor() { return startShowEditorOperation(globalThis.crypto.randomUUID()); },
     startShowEditorWithRequestId(requestId: string) { return startShowEditorOperation(requestId); },
-    recoverShowEditorWithRequestId(requestId: string) { return view.recoverOperation<never>("ShowEditor", requestId, value => undefined as never); },
+    recoverShowEditorWithRequestId(requestId: string) { return view.recoverOperation<void>("ShowEditor", requestId, value => undefined); },
     startShowPreview() { return startShowPreviewOperation(globalThis.crypto.randomUUID()); },
     startShowPreviewWithRequestId(requestId: string) { return startShowPreviewOperation(requestId); },
-    recoverShowPreviewWithRequestId(requestId: string) { return view.recoverOperation<never>("ShowPreview", requestId, value => undefined as never); },
+    recoverShowPreviewWithRequestId(requestId: string) { return view.recoverOperation<void>("ShowPreview", requestId, value => undefined); },
   };
 }

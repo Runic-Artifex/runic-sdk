@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { createMockBridge, installMockBridge, type MockView } from "../dist/mock.js";
+import { createMockBridge, installMockBridge, mockFailure, type MockView } from "../dist/mock.js";
 
 type Row = { readonly id: number; readonly label: string };
 type Mutation =
@@ -86,3 +86,27 @@ for (const file of readdirSync(directory).filter(name => name.endsWith(".json"))
     });
   }
 }
+
+// specs/application/fixtures/domain-failures: the mock writes the declared-failure
+// wire the .NET producer writes, for a command reply, an operation and a stream.
+test("the mock answers declared failures with the .NET wire", async () => {
+  const fixtures = new URL("../../../../specs/application/fixtures/domain-failures/", import.meta.url);
+  const wire = (name: string) => (JSON.parse(readFileSync(new URL(`${name}.json`, fixtures), "utf8")) as { wire: Record<string, unknown> }).wire;
+  const failure = { $case: "titleTaken", existingTitle: "Todo" };
+  delete (globalThis as unknown as Record<symbol, unknown>)[Symbol.for("runic.views.generated-client-runtime")];
+  const bridge = installMockBridge(createMockBridge());
+  bridge.view("editor", {
+    state: {},
+    routes: { Submit: () => { throw mockFailure(failure); } },
+    operations: { Save: () => { throw mockFailure(failure); }, Publish: () => { throw mockFailure(failure); } },
+    streams: ["Publish"],
+  });
+  const reply = JSON.parse(await bridge.call("editorSubmit")) as Record<string, unknown>;
+  assert.deepEqual({ ...reply, state: {} }, wire("command-reply"));
+  for (const [member, fixture] of [["Save", "operation-status"], ["Publish", "stream-status"]] as const) {
+    await bridge.call(`editorStart${member}`, "save-1-" + member);
+    const identity = JSON.stringify({ contract: "Tests.Editor:fixture:editor", member, requestId: "save-1-" + member });
+    const status = JSON.parse(await bridge.call("__runicOperationWait", identity)) as Record<string, unknown>;
+    assert.deepEqual({ ...status, requestId: "save-1" }, wire(fixture), fixture);
+  }
+});

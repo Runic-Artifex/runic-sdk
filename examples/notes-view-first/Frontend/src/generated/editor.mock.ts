@@ -20,12 +20,12 @@ export interface EditorMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly save?: MockTypedOperationHandler<EditorMockState, void, never> | "manual";
+    readonly save?: MockTypedOperationHandler<EditorMockState, void, void> | "manual";
   };
 }
 
 export interface EditorMock extends MockTypedView<EditorMockState, EditorClient, "editor"> {
-  readonly operations: { readonly save: readonly MockTypedOperation<void, never>[]; };
+  readonly operations: { readonly save: readonly MockTypedOperation<void, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {

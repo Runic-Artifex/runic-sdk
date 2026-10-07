@@ -21,13 +21,13 @@ export interface DocumentMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly showEditor?: MockTypedOperationHandler<DocumentMockState, void, never> | "manual";
-    readonly showPreview?: MockTypedOperationHandler<DocumentMockState, void, never> | "manual";
+    readonly showEditor?: MockTypedOperationHandler<DocumentMockState, void, void> | "manual";
+    readonly showPreview?: MockTypedOperationHandler<DocumentMockState, void, void> | "manual";
   };
 }
 
 export interface DocumentMock extends MockTypedView<DocumentMockState, DocumentClient, "document"> {
-  readonly operations: { readonly showEditor: readonly MockTypedOperation<void, never>[]; readonly showPreview: readonly MockTypedOperation<void, never>[]; };
+  readonly operations: { readonly showEditor: readonly MockTypedOperation<void, void>[]; readonly showPreview: readonly MockTypedOperation<void, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {
