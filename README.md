@@ -59,7 +59,7 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 | Windows | Runic Desktop, CS-WebUI | Windows 11, or a Windows 10 release that .NET 10 supports | The .NET 10 supported-OS policy. |
 | Windows | Runic Desktop, CS-WebUI | Microsoft Edge WebView2 Runtime | Evergreen runtime; Windows 11 includes it. CS-WebUI uses it only when no Chromium-family browser is installed. |
 | macOS | Runic Desktop | macOS 15 or newer | The oldest macOS in the .NET 10 supported-OS policy. WKWebView is part of macOS. |
-| macOS | CS-WebUI | macOS 26 or newer | The bundled CS-WebUI native library is built for macOS 26. |
+| macOS | CS-WebUI | macOS 15 or newer | The bundled native library loads on macOS 15 (cs-webui package smoke on macos-15). |
 | Linux | CS-WebUI | glibc 2.34 or newer | The CsWebUi.Native Linux library; musl distributions are unsupported. |
 | Linux | Runic Desktop, CS-WebUI | GTK 3 and WebKitGTK 4.1 | Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed. |
 | Linux | Runic Desktop | GTK 4.12 or newer | With Runic.Desktop.Gtk4. |

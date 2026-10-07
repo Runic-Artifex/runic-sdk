@@ -42,7 +42,7 @@
     { "id": "windows", "os": "win", "hosts": ["desktop", "cswebui"], "component": "Windows 11, or a Windows 10 release that .NET 10 supports", "minimum": null, "note": "The .NET 10 supported-OS policy." },
     { "id": "webview2", "os": "win", "hosts": ["desktop", "cswebui"], "component": "Microsoft Edge WebView2 Runtime", "minimum": null, "note": "Evergreen runtime; Windows 11 includes it. CS-WebUI uses it only when no Chromium-family browser is installed." },
     { "id": "macos-desktop", "os": "osx", "hosts": ["desktop"], "component": "macOS", "minimum": "15", "note": "The oldest macOS in the .NET 10 supported-OS policy. WKWebView is part of macOS." },
-    { "id": "macos-cswebui", "os": "osx", "hosts": ["cswebui"], "component": "macOS", "minimum": "26", "note": "The bundled CS-WebUI native library is built for macOS 26." },
+    { "id": "macos-cswebui", "os": "osx", "hosts": ["cswebui"], "component": "macOS", "minimum": "15", "note": "The bundled native library loads on macOS 15 (cs-webui package smoke on macos-15)." },
     { "id": "glibc", "os": "linux", "hosts": ["cswebui"], "component": "glibc", "minimum": "2.34", "note": "The CsWebUi.Native Linux library; musl distributions are unsupported." },
     { "id": "gtk3", "os": "linux", "hosts": ["desktop", "cswebui"], "component": "GTK 3 and WebKitGTK 4.1", "minimum": null, "note": "Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed." },
     { "id": "gtk4", "os": "linux", "hosts": ["desktop"], "component": "GTK", "minimum": "4.12", "note": "With Runic.Desktop.Gtk4." },

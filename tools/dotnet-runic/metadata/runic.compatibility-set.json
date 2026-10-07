@@ -306,8 +306,8 @@
           "cswebui"
         ],
         "component": "macOS",
-        "minimum": "26",
-        "note": "The bundled CS-WebUI native library is built for macOS 26."
+        "minimum": "15",
+        "note": "The bundled native library loads on macOS 15 (cs-webui package smoke on macos-15)."
       },
       {
         "id": "glibc",
