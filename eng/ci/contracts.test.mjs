@@ -191,6 +191,13 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
     assert.deepEqual(workflow.jobs[id].strategy.matrix.include.map(item => item.rid), ['linux-x64', 'win-x64', 'osx-arm64']);
 });
 
+test('the Windows native job scales the example smoke timeouts (#70)', () => {
+  const { env, strategy } = workflow.jobs.native;
+  assert.equal(env.RUNIC_SMOKE_TIMEOUT_SCALE, "${{ matrix.smoke-timeout-scale || '1' }}");
+  const scales = Object.fromEntries(strategy.matrix.include.map(item => [item.rid, item['smoke-timeout-scale']]));
+  assert.deepEqual(scales, { 'linux-x64': undefined, 'win-x64': '2', 'osx-arm64': undefined });
+});
+
 test('template lanes cover every framework once and run the creator check in one lane', () => {
   const { strategy, steps } = workflow.jobs.templates;
   assert.deepEqual(strategy.matrix.framework, ['react', 'vue', 'svelte', 'angular']);
