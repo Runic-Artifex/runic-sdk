@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -51,21 +50,20 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     }
 
     /// <summary>
-    /// Calls the generated setter of a string, Boolean or integer property, as the client's
-    /// <c>set{Property}(value)</c> does. Use <see cref="SetJson{TValue}"/> for other values.
+    /// Calls the generated setter as the client's <c>set{Property}(value)</c> does: an <c>int</c>,
+    /// <c>bool</c> or non-nullable <c>string</c> property passes its value, and any other scalar
+    /// property passes wire JSON (an <c>Int64</c> or <c>decimal</c> as a string, an enum by name,
+    /// <c>null</c> for a nullable value). Use <see cref="SetJson{TValue}"/> for DTOs, lists and unions.
     /// </summary>
     public RunicCallReply<TModel> Set<TValue>(Expression<Func<TModel, TValue>> property, TValue value)
     {
         var member = RunicMembers.Property(property);
-        var type = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
-        ViewTestArguments arguments = value switch
-        {
-            int or long or short or byte or sbyte or ushort or uint => new(Int64Value: System.Convert.ToInt64(value, CultureInfo.InvariantCulture)),
-            bool flag => new(BooleanValue: flag),
-            string text when !IsNullable(member) => new(StringValue: text),
-            null or string when type == typeof(string) => new(StringValue: RunicJson.Write(writer => writer.WriteStringValue((string?)(object?)value))),
-            _ => throw new NotSupportedException($"Set supports string, Boolean and integer properties; call SetJson with the wire JSON of {typeof(TValue).Name}."),
-        };
+        var type = member.PropertyType;
+        ViewTestArguments arguments =
+            type == typeof(int) ? new(Int64Value: (int)(object)value!)
+            : type == typeof(bool) ? new(BooleanValue: (bool)(object)value!)
+            : type == typeof(string) && !IsNullable(member) ? new(StringValue: (string)(object)value!)
+            : new(StringValue: RunicWireValue.Encode(value, type));
         var route = $"{Route}Set{member.Name}";
         return new(route, _transport.Call(route, arguments));
     }
@@ -82,6 +80,11 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     /// Executes a command, as the client's <c>{command}(input)</c> does, and waits for an
     /// asynchronous command to finish.
     /// </summary>
+    /// <remarks>
+    /// A command that waits on the host's fake clock finishes only after the test advances
+    /// it: start the call, advance <see cref="RunicWindowTestHost{TViewModel}.Time"/>, then
+    /// await the call.
+    /// </remarks>
     /// <param name="command">The command property, such as <c>vm => vm.SaveCommand</c>.</param>
     /// <param name="argumentJson">The command input as wire JSON, for a command with an argument.</param>
     /// <param name="cancellationToken">Cancels an awaited command, as a closed client connection does.</param>
@@ -133,8 +136,8 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     }
 
     /// <summary>
-    /// Writes a string, Boolean or integer checked field, as the client's
-    /// <c>write{Property}(value, {{ requestId, baseline }})</c> does. The baseline is the
+    /// Writes a scalar checked field, encoded as <see cref="Set{TValue}"/> encodes JSON values, as the client's
+    /// <c>write{Property}(value, { requestId, baseline })</c> does. The baseline is the
     /// current value and, unless given, its current version.
     /// </summary>
     public RunicFieldWriteReceipt<TModel> Write<TValue>(Expression<Func<TModel, TValue>> property, TValue value, long? expectedVersion = null)
@@ -151,14 +154,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
             writer.WritePropertyName("expectedValue");
             snapshot[field].WriteTo(writer);
             writer.WritePropertyName("value");
-            switch (value)
-            {
-                case null: writer.WriteNullValue(); break;
-                case string text: writer.WriteStringValue(text); break;
-                case bool flag: writer.WriteBooleanValue(flag); break;
-                case int or long or short or byte: writer.WriteNumberValue(System.Convert.ToInt64(value, CultureInfo.InvariantCulture)); break;
-                default: throw new NotSupportedException($"Write supports string, Boolean and integer fields, not {typeof(TValue).Name}.");
-            }
+            RunicWireValue.Write(writer, value, member.PropertyType);
             writer.WriteEndObject();
         });
         var route = $"{Route}Write{member.Name}";
@@ -230,11 +226,7 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     private static class Fingerprint
     {
         // The generated operation contract includes the ViewModel's contract fingerprint.
-        internal static readonly string Value = Compute();
-
-        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
-        [UnconditionalSuppressMessage("Trimming", "IL2087", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
-        private static string Compute() => BridgeContractShape.Compute(typeof(TModel));
+        internal static readonly string Value = BridgeContractShape.Compute(typeof(TModel));
     }
 }
 

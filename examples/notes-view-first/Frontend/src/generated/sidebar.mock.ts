@@ -21,6 +21,7 @@ export interface SidebarMock extends MockTypedView<SidebarMockState, SidebarClie
 const spec: MockTypedViewSpec = {
   kind: "sidebar",
   route: "sidebar",
+  contract: "NotesWindowViews.SidebarViewModel:F4390477D2A9E5A3E3E93242829B29158C025D90D325F6A36BAC1E6731F9AB9C",
   fields: {
     selected: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },

@@ -25,7 +25,7 @@ public sealed class WindowContentSessionOptions
 
     /// <summary>
     /// The clock of interaction deadlines and close timeouts. Defaults to
-    /// <see cref="TimeProvider.System"/>; tests pass a manual clock.
+    /// <see cref="TimeProvider.System"/>; tests pass a fake clock.
     /// </summary>
     public TimeProvider? TimeProvider { get; init; }
 

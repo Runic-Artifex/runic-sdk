@@ -12,7 +12,7 @@ Resolve the window's ViewModel and the generated attachment from the application
 own services, with a test clock in place of the system clock:
 
 ```csharp
-var clock = new ManualTimeProvider();
+var clock = new FakeTimeProvider();   // Microsoft.Extensions.Time.Testing
 using var services = new ServiceCollection()
     .AddSingleton<TimeProvider>(clock)
     .AddNotes()          // the application's registrations
@@ -50,12 +50,33 @@ is a complete xUnit project.
 
 ### Deterministic time and ids
 
-With `RunicWindowTestHostOptions`, the window uses a `ManualTimeProvider` unless the
-options supply another `TimeProvider`. Its time passes only through `Advance` or
+With `RunicWindowTestHostOptions`, the window uses a
+[`FakeTimeProvider`](https://learn.microsoft.com/dotnet/api/microsoft.extensions.time.testing.faketimeprovider)
+from `Microsoft.Extensions.TimeProvider.Testing`, which this package depends on, unless
+the options supply another `TimeProvider`. Its time passes only through `Advance` or
 `SetUtcNow`, which fire due timers, `CancellationTokenSource` timeouts and
-`Task.Delay(TimeSpan, TimeProvider)` in order. The window uses it for interaction
-deadlines and `BeginCloseAsync` timeouts; register the same instance in the
-application's services for its own time. `host.Time` returns it.
+`Task.Delay(TimeSpan, TimeProvider)` in order; a timer due now fires at once. The
+window uses it for interaction deadlines and `BeginCloseAsync` timeouts; register
+the same instance in the application's services for its own time. `host.Time`
+returns it.
+
+Work that waits on the clock does not finish by itself:
+
+- `ExecuteAsync` of an awaited command that waits on the clock completes only after
+  the test advances it. Start the call, advance the clock, then await the call:
+
+  ```csharp
+  var save = editor.ExecuteAsync(vm => vm.SaveCommand);
+  clock.Advance(TimeSpan.FromMilliseconds(250));
+  (await save).EnsureOk();
+  ```
+
+  `Start` returns at admission, so an operation can be inspected while it runs.
+- Only code that takes the `TimeProvider` follows it. `Task.Delay(TimeSpan)`,
+  `DateTime.UtcNow` and ReactiveUI's schedulers (`Throttle`, `Timer`,
+  `RxApp.MainThreadScheduler`) keep using real time. Give such code the clock, for
+  example through a scheduler built on it, or test it with ReactiveUI's
+  `TestScheduler`.
 
 Content ids are `1`, `2`, ... in presentation order, so routes are `content1`,
 `content2`, ... and snapshots are stable. Set `CreateId` for another sequence. The
@@ -74,8 +95,10 @@ already have. A `RunicViewDriver<T>` has:
 - `Snapshot()`: a `RunicViewState<T>` with `Read(vm => vm.Title)` for scalars,
   `Get` for the raw JSON, `Reference`, `References`, `Keys` of a
   `[RunicCollection]`, `CanExecute`, `IsExecuting` and `FieldVersion`.
-- `Set(vm => vm.Title, value)` for string, Boolean and integer properties, and
-  `SetJson` with the wire JSON for other values.
+- `Set(vm => vm.Title, value)`, encoded as the generated client encodes it: an `int`,
+  `bool` or non-nullable `string` as is, and other scalars as wire JSON (`Int64` and
+  `decimal` as strings, enums by wire name, `null` for nullable values). Use
+  `SetJson` with the wire JSON of a DTO, list or union.
 - `ExecuteAsync(vm => vm.SaveCommand, argumentJson)`, which waits for an
   asynchronous command, and `CanExecute(command, argumentJson)` for commands with
   an argument. A reply has `Ok`, `ErrorKind`, `ErrorMessage` and `State`;
@@ -95,7 +118,9 @@ already have. A `RunicViewDriver<T>` has:
 `Track()` follows a route from a snapshot through its frames, as the generated
 client does: newer full states replace the state, deltas must continue the tracked
 revision and name the row keys they change, and failure notices are collected.
-A frame the client could not apply throws.
+A frame the client could not apply throws, naming the problem: a lost or reordered
+frame, an index outside the rows, a row key that does not match, an item count that
+does not match the keys, or an empty or duplicate key.
 
 ```csharp
 var tracker = host.Root.View<HomeViewModel>(vm => vm.Main).Track();
@@ -117,7 +142,7 @@ any route with `ViewTestArguments`, and `DrainPublications()` returns raw
 publications (drivers then miss them). `Mount`, `Unmount` and
 `Content.ReleaseConnection` test View lifetimes and client disconnects. Await
 `BeginCloseAsync` before disposing a host that has accepted background operations;
-with a manual clock, its timeout passes only when the clock advances.
+with a fake clock, its timeout passes only when the clock advances.
 
 The host does not instantiate the application's native Window wrapper or run the
 generated TypeScript client or a rendering framework. Test the frontend with the

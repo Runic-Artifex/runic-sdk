@@ -1,34 +1,59 @@
+using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
 
-// The typed drivers, manual clock, sequential ids and state tracker of RunicWindowTestHost.
+// The typed drivers, fake clock, sequential ids and state tracker of RunicWindowTestHost.
 internal static class HostDriverTests
 {
     internal static async Task RunAsync()
     {
-        ManualClockFiresTimersInOrder();
+        SettersAndWritesEncodeLikeTheClient();
         await DriversUseMembersAndStableIdsAsync();
         await OperationsAndCommandsAsync();
         await TrackerFollowsCollectionDeltasAsync();
         await ClockDrivesCloseTimeoutsAsync();
     }
 
-    private static void ManualClockFiresTimersInOrder()
+    private static void SettersAndWritesEncodeLikeTheClient()
     {
-        var clock = new ManualTimeProvider();
-        var start = clock.GetUtcNow();
-        var fired = new List<string>();
-        using var late = clock.CreateTimer(_ => fired.Add("late"), null, TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
-        using var early = clock.CreateTimer(_ => fired.Add("early"), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(3), clock);
-        clock.Advance(TimeSpan.FromMilliseconds(999));
-        Require(fired.Count == 0 && !cancellation.IsCancellationRequested, "A manual timer fired early.");
-        clock.Advance(TimeSpan.FromSeconds(2.001));
-        Require(fired.SequenceEqual(["early", "late", "early", "early"]), $"Manual timers fired as {string.Join(", ", fired)}.");
-        Require(cancellation.IsCancellationRequested, "A CancellationTokenSource timeout did not use the manual clock.");
-        Require(clock.GetUtcNow() - start == TimeSpan.FromSeconds(3), "The manual clock did not land on its target.");
-        Require(Throws<ArgumentOutOfRangeException>(() => clock.SetUtcNow(start)), "The manual clock moved backwards.");
+        var model = new ScalarSetterViewModel();
+        using var host = new RunicWindowTestHost<ScalarSetterViewModel>(model,
+            (transport, content, vm) => new ScalarSetterBridge(transport, vm, content: content));
+        var driver = host.Root;
+        var id = Guid.Parse("0f8fad5b-d9cb-469f-a165-70867728950e");
+        driver.Set(vm => vm.Count, 3).EnsureOk();
+        driver.Set(vm => vm.Enabled, true).EnsureOk();
+        driver.Set(vm => vm.Name, "name").EnsureOk();
+        driver.Set(vm => vm.Note, null).EnsureOk();
+        Require(model.Note is null, "A nullable string setter did not clear the value.");
+        driver.Set(vm => vm.Note, "\"quoted\"").EnsureOk();
+        driver.Set(vm => vm.Big, 9007199254740993L).EnsureOk();
+        driver.Set(vm => vm.Maybe, null).EnsureOk();
+        Require(model.Maybe is null, "A nullable integer setter did not clear the value.");
+        driver.Set(vm => vm.Maybe, 5).EnsureOk();
+        driver.Set(vm => vm.Flag, null).EnsureOk();
+        driver.Set(vm => vm.Ratio, 0.5).EnsureOk();
+        driver.Set(vm => vm.Price, 12.50m).EnsureOk();
+        driver.Set(vm => vm.Id, id).EnsureOk();
+        var reply = driver.Set(vm => vm.Mode, ScalarMode.Fancy).EnsureOk();
+        Require(model is { Count: 3, Enabled: true, Name: "name", Note: "\"quoted\"", Big: 9007199254740993L, Maybe: 5, Flag: null,
+            Ratio: 0.5, Price: 12.50m, Mode: ScalarMode.Fancy } && model.Id == id, "A typed setter did not set its value.");
+        var state = reply.State!;
+        Require(state.Read(vm => vm.Big) == 9007199254740993L && state.Get(vm => vm.Big).GetString() == "9007199254740993"
+            && state.Read(vm => vm.Mode) == ScalarMode.Fancy && state.Get(vm => vm.Mode).GetString() == "fancy"
+            && state.Read(vm => vm.Maybe) == 5 && state.Read(vm => vm.Flag) is null && state.Read(vm => vm.Price) == 12.50m,
+            $"The typed state did not read wire values: {state}");
+
+        foreach (var receipt in new[]
+        {
+            driver.Write(vm => vm.Count, 4), driver.Write(vm => vm.Name, "written"), driver.Write(vm => vm.Note, null),
+            driver.Write(vm => vm.Big, -2L), driver.Write(vm => vm.Maybe, null), driver.Write(vm => vm.Flag, false),
+            driver.Write(vm => vm.Price, 1m), driver.Write(vm => vm.Mode, ScalarMode.Plain),
+        })
+            Require(receipt.Kind == "applied", $"A typed checked write was not applied: {receipt}");
+        Require(model is { Count: 4, Name: "written", Note: null, Big: -2L, Maybe: null, Flag: false, Price: 1m, Mode: ScalarMode.Plain },
+            "A typed checked write did not set its value.");
     }
 
     private static async Task DriversUseMembersAndStableIdsAsync()
@@ -37,7 +62,7 @@ internal static class HostDriverTests
         using var host = new RunicWindowTestHost<RootViewModel>(model,
             (transport, content, vm) => new RootBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { ViewLocator = new TestViewLocator() });
-        Require(host.RootRoute == "root" && host.Time is ManualTimeProvider, "The options host did not derive its route or clock.");
+        Require(host.RootRoute == "root" && host.Time is FakeTimeProvider, "The options host did not derive its route or clock.");
         var root = host.Root.Snapshot();
         Require(root.Read(vm => vm.Count) == 0, "The typed snapshot did not read the count.");
         Require(root.Reference(vm => vm.Child) == new PageReference("child", "1"), $"Content ids are not sequential: {root}");
@@ -125,17 +150,16 @@ internal static class HostDriverTests
     private static async Task ClockDrivesCloseTimeoutsAsync()
     {
         var model = new ToolkitTypedViewModel();
-        var clock = new ManualTimeProvider();
+        var clock = new FakeTimeProvider();
         using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model,
             (transport, content, vm) => new ToolkitTypedBridge(transport, vm, content: content),
             new RunicWindowTestHostOptions { TimeProvider = clock, CreateId = Sequence("page") });
         var waiting = host.Root.Start(vm => vm.CancelCommand, "\"wait\"");
         var close = host.BeginCloseAsync(TimeSpan.FromSeconds(10)).AsTask();
-        await Task.Delay(50);
-        Require(!close.IsCompleted, "The close timeout ran on the system clock.");
+        Require(!close.IsCompleted, "The close finished before its timeout.");
         clock.Advance(TimeSpan.FromSeconds(10));
         var result = await close.WaitAsync(TimeSpan.FromSeconds(5));
-        Require(!result.Drained && result.RemainingOperations == 1, "The close did not time out on the manual clock.");
+        Require(!result.Drained && result.RemainingOperations == 1, "The close did not time out on the fake clock.");
         await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         Require((await waiting.WaitAsync()).Kind == "cancelled", "The timed-out operation was not cancelled.");
     }

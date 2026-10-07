@@ -226,7 +226,11 @@ A definition takes:
   runs and the operation succeeds. `"manual"` keeps each operation running
   until the test calls `succeed(result)`, `fail(message)`, `cancel()` or, for
   a stream, `emit(...items)` on `mock.operations.<command>[n]`. Started
-  operations set `is<Command>Executing`.
+  operations set `is<Command>Executing`. Cancellation is cooperative, as in
+  .NET: the client's `cancel()` aborts the operation's `signal`, and the
+  operation ends when its handler stops (a throw after the request ends it
+  `cancelled`) or the test settles it. A request id names one operation: a
+  repeated start returns it, and reuse for another command or input is rejected.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
 .NET publication), `calls`, `failNext(method, { kind, message, detail })`,
@@ -242,6 +246,24 @@ so the test decides when the client observes each one. `sleep(ms)` resolves in
 virtual time, which only `advance` moves, in both scheduling modes.
 `failNext(route, { kind: "transport" })` rejects the call itself, like a
 dropped connection, and `disconnect()`/`reconnect()` exercise the reconnect
+path.
+
+The mock follows the .NET protocol where a client can observe it:
+
+- Collection frames match the .NET producer for the same edits (checked against
+  the shared collection delta fixtures). Each change advances the revision, and a
+  frame of more than 4,096 changes is sent as a full state.
+- With manual scheduling, a full state or failure notice replaces the frames of its
+  route that the client has not received yet, as .NET delivery does.
+- A checked write retried with the same request id returns its first receipt, and
+  reusing the id for another write is a `conflict`. A setter handler that throws an
+  error with `kind: "committed-with-error"` keeps the value and returns that receipt.
+
+It does not model the .NET delivery queue (its 64-frame and 1 MiB bounds and the
+recovery they trigger) or the producer's key checks: an edit that would leave an
+empty or duplicate key throws a `RangeError` in the test instead of sending a
+failure notice. Use `pushFailure` and `push(frame)` for those client paths.
+
 path.
 
 The [CommunityToolkit Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Frontend/test)

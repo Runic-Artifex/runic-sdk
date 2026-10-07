@@ -6,7 +6,7 @@ import { createMockBridge, installMockBridge, mockTypedView, type MockBridge, ty
 
 type Row = { readonly id: number; readonly label: string };
 type State = { readonly title: string; readonly count: bigint; readonly rows: readonly Row[]; readonly canSave: boolean; readonly isSaveExecuting: boolean };
-const decodeRow = (wire: unknown): Row => bridgeWire.object(wire, value => ({ id: bridgeWire.integer(value["id"], 0, 1000), label: bridgeWire.string(value["label"]) }));
+const decodeRow = (wire: unknown): Row => bridgeWire.object(wire, value => ({ id: bridgeWire.integer(value["id"], 0, 100000), label: bridgeWire.string(value["label"]) }));
 const collections = { rows: defineCollection(decodeRow, row => String(row.id)) };
 const hydrate = (wire: Record<string, unknown>): State => ({
   title: bridgeWire.string(wire["title"]), count: bridgeWire.bigint(wire["count"]), rows: bridgeWire.array(wire["rows"], decodeRow),
@@ -27,7 +27,7 @@ interface NotesMock extends MockTypedView<Omit<State, "canSave" | "isSaveExecuti
 }
 function mockNotes(bridge: MockBridge, definition: Parameters<typeof mockTypedView>[2]): NotesMock {
   return mockTypedView(bridge, {
-    kind: "notes", route: "notes",
+    kind: "notes", route: "notes", contract,
     fields: {
       title: { encode: value => value, decode: wire => bridgeWire.string(wire) },
       count: { encode: value => (value as bigint).toString(), decode: wire => bridgeWire.bigint(wire) },
@@ -148,9 +148,19 @@ test("operations stay running until the test settles them and report executing s
   assert.equal(client.snapshot.isSaveExecuting, false);
 
   const cancelled = await client.startOperation<string>("Save", "request-2", () => "request-2", value => bridgeWire.string(value));
+  // Cancellation is cooperative: the request aborts the signal and the operation decides.
   assert.equal((await cancelled.cancel()).kind, "cancellation-requested");
-  assert.equal((await cancelled.wait()).kind, "cancelled");
   assert.equal(notes.operations.save[1]!.signal.aborted, true);
+  assert.equal(notes.operations.save[1]!.kind, "running");
+  notes.operations.save[1]!.cancel();
+  assert.equal((await cancelled.wait()).kind, "cancelled");
+
+  // A repeated request id observes the finished operation; reusing it for other input is rejected.
+  const repeated = await client.startOperation<string>("Save", "request-1", () => "request-1", value => bridgeWire.string(value));
+  assert.equal((await repeated.status()).result, "saved");
+  assert.equal(notes.operations.save.length, 2);
+  await assert.rejects(client.startOperation<string>("Save", "request-1", () => JSON.stringify({ requestId: "request-1", input: 1 }),
+    value => bridgeWire.string(value)), (error: unknown) => error instanceof BridgeError && error.kind === "rejected");
   client.dispose();
 });
 
@@ -183,5 +193,58 @@ test("interactions reach the mounted client's handler and report its answer", as
   assert.deepEqual(await notes.interactions.confirm.request("no"), { kind: "answered", output: false });
   assert.deepEqual(inputs, ["yes", "no"]);
   stop();
+  client.dispose();
+});
+
+test("checked writes are idempotent by request id and can commit with an error", async () => {
+  const bridge = fresh();
+  mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] },
+    setters: { setTitle: ((_state: unknown, value: string) => {
+      if (value === "invalid") throw Object.assign(new Error("Saved, but the title failed validation."), { kind: "committed-with-error" });
+    }) as never } });
+  const client = await connectView({ contract, route: "notes", mount: false, hydrate, collections, checkedFields: ["title"] });
+  const write = (requestId: string, value: string, baseline = client.fieldBaseline("title")) => client.writeField("notesWriteTitle",
+    JSON.stringify({ requestId, expectedVersion: baseline.version, expectedValue: baseline.value, value }), value => bridgeWire.string(value));
+  const baseline = client.fieldBaseline("title");
+  const first = await write("r1", "b", baseline);
+  assert.deepEqual(await write("r1", "b", baseline), first);
+  const reused = await write("r1", "c", baseline);
+  assert.equal(reused.kind, "conflict");
+  assert.match(reused.kind === "conflict" ? reused.message : "", /already used/);
+  const committed = await write("r2", "invalid");
+  assert.equal(committed.kind, "committed-with-error");
+  assert.equal(client.snapshot.title, "invalid");
+  client.dispose();
+});
+
+test("manual scheduling coalesces full states like .NET delivery", async () => {
+  const bridge = fresh("manual");
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const client = await bridge.flushUntil(connect());
+  const seen: string[] = [];
+  client.subscribe(state => seen.push(state.title));
+  notes.collections.rows.add({ id: 1, label: "one" });
+  notes.update({ title: "b" });
+  notes.update({ title: "c" });
+  await bridge.flush();
+  // The queued delta and the first state were superseded by the last full state.
+  assert.deepEqual(seen, ["a", "c"]);
+  assert.deepEqual(client.snapshot.rows, [{ id: 1, label: "one" }]);
+  client.dispose();
+});
+
+test("more than 4096 collection changes are sent as a full state", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const client = await connect();
+  const frames: unknown[] = [];
+  const host = globalThis as unknown as Record<string, (frame: unknown) => void>;
+  const push = host["__notesChanged"]!;
+  host["__notesChanged"] = frame => { frames.push(frame); push(frame); };
+  notes.batch(() => { for (let id = 0; id < 4097; id++) notes.collections.rows.add({ id, label: "row" }); });
+  assert.equal(frames.length, 1);
+  assert.equal((frames[0] as { __runicDelta?: number }).__runicDelta, undefined);
+  assert.equal(client.snapshot.rows.length, 4097);
+  host["__notesChanged"] = push;
   client.dispose();
 });

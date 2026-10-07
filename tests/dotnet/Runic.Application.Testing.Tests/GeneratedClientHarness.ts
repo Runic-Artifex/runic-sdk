@@ -4,6 +4,12 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type Transcript = {
+  readonly dtoList: {
+    readonly snapshot: string;
+    readonly setRequest: string; readonly setReply: string;
+    readonly writeRequest: string; readonly writeReply: string;
+    readonly replaceRequest: string; readonly replaceReply: string;
+  };
   readonly toolkitTyped: ToolkitGeneratedClientTranscript;
   readonly validationSnapshot: string;
   readonly dataShape: {
@@ -204,6 +210,27 @@ expect(validation.errors.some((error: {path: unknown[]}) => JSON.stringify(error
   && validation.errors.some((error: {path: unknown[]}) => JSON.stringify(error.path) === '["items",0,"label"]'),
   "Nested validation paths did not retain aliases and list indexes.");
 validationView.dispose();
+
+// Lists of DTOs as a setter, a checked write and a command argument encode as
+// arrays of objects, exactly as the C# routes accepted them.
+host.window!.__runicBridge = { isConnected: () => true, async call(route: string, ...args: unknown[]) {
+  switch (route) {
+    case "dtoListSnapshot": return fixture.dtoList.snapshot;
+    case "dtoListSetEntries": expectArgs(route, args, fixture.dtoList.setRequest); return fixture.dtoList.setReply;
+    case "dtoListWriteEntries": expectArgs(route, args, fixture.dtoList.writeRequest); return fixture.dtoList.writeReply;
+    case "dtoListReplace": expectArgs(route, args, fixture.dtoList.replaceRequest); return fixture.dtoList.replaceReply;
+    default: throw new Error(`Unexpected DTO list route ${route}`);
+  }
+} };
+const dtoListModule = await import(pathToFileURL(resolve(generatedDirectory, "dtoList.ts")).href);
+const dtoList = await dtoListModule.connectDtoList();
+await dtoList.setEntries([{ name: "set", count: 2 }]);
+const entriesReceipt = await dtoList.writeEntries([{ name: "written", count: 3 }, { name: "second", count: 4 }],
+  { requestId: "generated-client-entries", baseline: dtoList.fieldBaseline("entries") });
+expect(entriesReceipt.kind === "applied" && entriesReceipt.snapshot.value.length === 2, "A checked DTO list write was not applied.");
+await dtoList.replace([{ name: "replaced", count: 5 }]);
+expect(JSON.stringify(dtoList.snapshot.entries) === '[{"name":"replaced","count":5}]', "A DTO list command reply did not decode.");
+dtoList.dispose();
 
 function expectArgs(route: string, actual: readonly unknown[], expected: string): void {
   expect(actual.length === 1 && actual[0] === expected,

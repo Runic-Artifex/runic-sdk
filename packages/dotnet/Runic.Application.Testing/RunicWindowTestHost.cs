@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
 using System.Text.Json;
 using Runic.Application.Views;
@@ -22,7 +23,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     /// <param name="modelContext">The model context the window graph must share, if any.</param>
     /// <remarks>
     /// This host uses the system clock and random content ids. The constructor that takes
-    /// <see cref="RunicWindowTestHostOptions"/> uses a manual clock and sequential ids.
+    /// <see cref="RunicWindowTestHostOptions"/> uses a fake clock and sequential ids.
     /// </remarks>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1068:CancellationToken parameters must come last",
         Justification = "Published constructor that mirrors WindowContentSession; reordering would break callers.")]
@@ -40,7 +41,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
 
     /// <summary>
     /// Creates a content session for <paramref name="viewModel"/> and attaches its generated root
-    /// bridge. By default the window uses a <see cref="ManualTimeProvider"/> and sequential ids.
+    /// bridge. By default the window uses a <see cref="FakeTimeProvider"/> and sequential ids.
     /// </summary>
     /// <param name="viewModel">The root ViewModel; the caller keeps ownership.</param>
     /// <param name="attach">
@@ -58,7 +59,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     }
 
     /// <summary>
-    /// Creates a content session for <paramref name="viewModel"/> with a <see cref="ManualTimeProvider"/>
+    /// Creates a content session for <paramref name="viewModel"/> with a <see cref="FakeTimeProvider"/>
     /// and sequential ids, and attaches its generated root bridge.
     /// </summary>
     /// <param name="viewModel">The root ViewModel; the caller keeps ownership.</param>
@@ -114,7 +115,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
     public WindowContentSession Content { get; }
 
     /// <summary>
-    /// The window's clock. With the options constructor it is a <see cref="ManualTimeProvider"/>
+    /// The window's clock. With the options constructor it is a <see cref="FakeTimeProvider"/>
     /// unless the options supply another clock.
     /// </summary>
     public TimeProvider Time { get; }
@@ -182,7 +183,7 @@ public sealed class RunicWindowTestHost<TViewModel> : IDisposable where TViewMod
             RootModel = viewModel,
             ModelContext = options?.ModelContext,
             LoggerFactory = options?.LoggerFactory,
-            TimeProvider = options?.TimeProvider ?? new ManualTimeProvider(),
+            TimeProvider = options?.TimeProvider ?? new FakeTimeProvider(),
             CreateId = options?.CreateId ?? (() => Interlocked.Increment(ref next).ToString(CultureInfo.InvariantCulture)),
         };
     }

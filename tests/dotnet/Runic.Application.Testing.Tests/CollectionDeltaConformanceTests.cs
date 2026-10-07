@@ -133,7 +133,7 @@ internal static class CollectionDeltaConformanceTests
     private static CollectionRow GeneratedRow(int id, int width) => new(id, $"row {id}".PadRight(width, '.'));
 
     // Expands the fixture generators documented in specs/application/collection-deltas.md.
-    private static JsonNode Expand(JsonNode node)
+    internal static JsonNode Expand(JsonNode node)
     {
         switch (node)
         {

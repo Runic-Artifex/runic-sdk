@@ -65,7 +65,7 @@ This example builds the Runic packages from source. To copy it out, replace the
 [Tests](Tests/NotesWindowTests.cs) is an xUnit project that drives the real
 ViewModels and generated Bridges with `RunicWindowTestHost` from
 [Runic.Application.Testing](../../packages/dotnet/Runic.Application.Testing/README.md).
-Storage waits on the injected `TimeProvider`, so a test advances a manual clock
+Storage waits on the injected `TimeProvider`, so a test advances a fake clock
 to finish a save. Home lists saved notes in a `[RunicCollection]`; a test checks
 that saving a note again arrives as keyed collection changes.
 

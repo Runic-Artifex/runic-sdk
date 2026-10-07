@@ -26,7 +26,8 @@ internal static class GeneratedClientFixtureExporter
         validationModel.Items[0].SetErrors(nameof(ValidationItem.Name), "Missing label");
         using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel, "validation",
             (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());
-        var fixture = new GeneratedClientFixture(dataShape, typedReactive, toolkitTyped, validationHost.Transport.Call("validationSnapshot"));
+        var fixture = new GeneratedClientFixture(dataShape, typedReactive, toolkitTyped, validationHost.Transport.Call("validationSnapshot"),
+            CreateDtoListTranscript());
 
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixture, Json)).ConfigureAwait(false);
     }
@@ -88,6 +89,37 @@ internal static class GeneratedClientFixtureExporter
             unionRequest, unionReply);
     }
 
+    private static DtoListTranscript CreateDtoListTranscript()
+    {
+        var model = new DtoListViewModel();
+        using var host = new RunicWindowTestHost<DtoListViewModel>(model, "dtoList",
+            (transport, content, vm) => new DtoListBridge(transport, vm, content: content), new TestViewLocator());
+        var snapshot = host.Transport.Call("dtoListSnapshot");
+        var setRequest = JsonSerializer.Serialize(new[] { new DtoListEntry("set", 2) }, Json);
+        var setReply = Ok(host.Transport.Call("dtoListSetEntries", new(StringValue: setRequest)));
+        using var state = JsonDocument.Parse(setReply);
+        var writeRequest = JsonSerializer.Serialize(new
+        {
+            requestId = "generated-client-entries",
+            expectedVersion = state.RootElement.GetProperty("state").GetProperty("__runicFields").GetProperty("entries").GetProperty("version").GetInt64(),
+            expectedValue = new[] { new DtoListEntry("set", 2) },
+            value = new[] { new DtoListEntry("written", 3), new DtoListEntry("second", 4) },
+        }, Json);
+        var writeReply = Ok(host.Transport.Call("dtoListWriteEntries", new(StringValue: writeRequest)));
+        var replaceRequest = JsonSerializer.Serialize(new[] { new DtoListEntry("replaced", 5) }, Json);
+        var replaceReply = Ok(host.Transport.Call("dtoListReplace", new(StringValue: replaceRequest)));
+        if (model.Entries is not [{ Name: "replaced", Count: 5 }])
+            throw new InvalidOperationException("The DTO list command did not reach the ViewModel.");
+        return new(snapshot, setRequest, setReply, writeRequest, writeReply, replaceRequest, replaceReply);
+
+        static string Ok(string reply)
+        {
+            using var document = JsonDocument.Parse(reply);
+            return document.RootElement.GetProperty("ok").GetBoolean() ? reply
+                : throw new InvalidOperationException($"A DTO list route failed: {reply}");
+        }
+    }
+
     private static async Task<TypedReactiveTranscript> CreateTypedReactiveTranscriptAsync()
     {
         await using var context = new RunicModelContext();
@@ -118,7 +150,10 @@ internal static class GeneratedClientFixtureExporter
     }
 
     private sealed record GeneratedClientFixture(DataShapeTranscript DataShape, TypedReactiveTranscript TypedReactive,
-        ToolkitGeneratedClientTranscript ToolkitTyped, string ValidationSnapshot);
+        ToolkitGeneratedClientTranscript ToolkitTyped, string ValidationSnapshot, DtoListTranscript DtoList);
+
+    private sealed record DtoListTranscript(string Snapshot, string SetRequest, string SetReply, string WriteRequest, string WriteReply,
+        string ReplaceRequest, string ReplaceReply);
 
     private sealed record DataShapeTranscript(
         string Snapshot,

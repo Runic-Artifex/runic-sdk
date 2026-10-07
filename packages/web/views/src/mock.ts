@@ -92,8 +92,11 @@ export interface MockOperationOutcome {
 
 /**
  * Runs a started operation. When the returned promise resolves, a still running
- * operation succeeds with its outcome; a throw fails it. `"manual"` leaves every
- * operation running until the test settles it through `MockView.operations()`.
+ * operation succeeds with its outcome; a throw fails it, or cancels it after the client
+ * asked to cancel. Cancellation is cooperative, as in .NET: a cancel request aborts
+ * `operation.signal`, and the operation keeps running until its handler stops.
+ * `"manual"` leaves every operation running until the test settles it through
+ * `MockView.operations()`.
  */
 export type MockOperationHandler = (state: MockState, input: unknown, operation: MockOperation) =>
   MockOperationOutcome | void | Promise<MockOperationOutcome | void>;
@@ -113,6 +116,11 @@ export interface MockViewDefinition {
   readonly operations?: Readonly<Record<string, MockOperationHandler | "manual">>;
   /** Command members whose operations yield a stream. */
   readonly streams?: readonly string[];
+  /**
+   * The generated contract, `{ViewModel full name}:{fingerprint}`. With it, repeating
+   * `Start{Command}` for a finished operation returns its terminal status, as .NET does.
+   */
+  readonly contract?: string;
 }
 
 /** How the browser answered an interaction request. */
@@ -230,6 +238,8 @@ interface OperationRecord {
   readonly member: string;
   readonly requestId: string;
   readonly input: unknown;
+  readonly inputJson: string;
+  readonly view: MockRegisteredView;
   readonly stream: boolean;
   readonly controller: AbortController;
   readonly settled: Deferred<void>;
@@ -266,6 +276,10 @@ export interface MockRegisteredView {
   readonly operations: OperationRecord[];
   readonly presentations: Map<string, Presentation>;
   readonly requests: Map<string, InteractionRequestRecord>;
+  /** Checked-write receipts by request id, for idempotent retries. */
+  readonly writes: Map<string, { readonly payload: string; readonly receipt: Record<string, unknown> }>;
+  /** Pushed frames the client has not received yet (manual scheduling). */
+  readonly queued: Set<object>;
   pendingChanges: MockCollectionChange[] | undefined;
   baseRevision: number;
   state: MockState;
@@ -305,7 +319,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   let sequence = 0;
   let interactionSequence = 0;
 
-  const schedule = (due: number, run: () => void) => { tasks.push({ due, sequence: sequence++, run }); };
+  // Operations by request id. Like a .NET window, the ids are shared by every View.
+  const operations = new Map<string, OperationRecord>();
+  const schedule = (due: number, run: () => void) => {
+    const task = { due, sequence: sequence++, run };
+    tasks.push(task);
+    return task;
+  };
   function takeDue() {
     let best = -1;
     for (let index = 0; index < tasks.length; index++) {
@@ -320,7 +340,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   const deliver = (run: () => void) => { if (manual) schedule(now, run); else run(); };
 
   const wireState = (view: MockRegisteredView) => {
-    const state: MockState = { ...view.state, revision: view.revision };
+    // .NET writes the revision first.
+    const state: MockState = { revision: view.revision, ...view.state };
     if (view.definition.checkedFields?.length)
       state["__runicFields"] = Object.fromEntries(view.definition.checkedFields.map(field => [field, { version: view.fieldVersions.get(field) ?? 0 }]));
     return state;
@@ -335,13 +356,22 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     view.revision = ++revision;
     view.baseRevision = view.revision;
   }
-  function pushFrame(view: MockRegisteredView, frame: Record<string, unknown>): void {
-    deliver(() => {
+  // Like .NET delivery, a full state or failure notice supersedes the frames of its
+  // route that the client has not received yet (only manual scheduling queues them).
+  function pushFrame(view: MockRegisteredView, frame: Record<string, unknown>, supersedes = false): void {
+    const send = () => {
       const callback = (globalThis as unknown as Record<string, unknown>)[`__${view.route}Changed`];
       if (typeof callback === "function") callback(frame);
-    });
+    };
+    if (!manual) { send(); return; }
+    if (supersedes) {
+      for (let index = tasks.length - 1; index >= 0; index--) if (view.queued.has(tasks[index]!)) tasks.splice(index, 1);
+      view.queued.clear();
+    }
+    const task: object = schedule(now, () => { view.queued.delete(task); send(); });
+    view.queued.add(task);
   }
-  const publish = (view: MockRegisteredView) => pushFrame(view, wireState(view));
+  const publish = (view: MockRegisteredView) => pushFrame(view, wireState(view), true);
 
   function emitChange(view: MockRegisteredView, change: MockCollectionChange): void {
     if (view.pendingChanges) { view.pendingChanges.push(change); return; }
@@ -349,9 +379,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   }
   function flushChanges(view: MockRegisteredView, changes: MockCollectionChange[]): void {
     if (changes.length === 0) return;
+    // Like .NET, each change advances the revision, and more than 4,096 changes
+    // are sent as a full state instead.
     const base = view.baseRevision;
-    view.revision = ++revision;
-    view.baseRevision = view.revision;
+    revision += changes.length;
+    view.revision = view.baseRevision = revision;
+    if (changes.length > 4096) { publish(view); return; }
     pushFrame(view, { __runicDelta: 1, baseRevision: base, revision: view.revision, changes });
   }
 
@@ -447,11 +480,22 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const requestId = parsed ? parsed["requestId"] : payload;
     if (typeof requestId !== "string" || requestId.length === 0)
       return JSON.stringify({ kind: "rejected", reason: `${member} has an invalid argument.`, terminal: null });
-    if (view.operations.some(operation => operation.member === member && operation.requestId === requestId))
-      return JSON.stringify({ requestId, kind: "duplicate", status: "running", reason: null, terminal: null });
+    const input = parsed ? parsed["input"] : undefined;
+    const inputJson = JSON.stringify(input ?? null);
+    const contract = view.definition.contract === undefined ? undefined : `${view.definition.contract}:${view.route}`;
+    const existing = operations.get(requestId);
+    if (existing) {
+      // A request id names one operation: repeating it observes that operation,
+      // and reusing it for other work is rejected.
+      if (existing.view !== view || existing.member !== member || existing.inputJson !== inputJson)
+        return JSON.stringify({ ...(contract ? { contract } : {}), requestId, kind: "rejected", status: "unknown",
+          reason: "identity-conflict", terminal: null });
+      return JSON.stringify({ ...(contract ? { contract } : {}), requestId, kind: "duplicate", status: existing.kind, reason: null,
+        terminal: contract && existing.kind !== "running" ? statusOf(contract, existing, requestId) : null });
+    }
     const handler = view.definition.operations?.[member];
     const operation: OperationRecord = {
-      member, requestId, input: parsed ? parsed["input"] : undefined, stream: view.definition.streams?.includes(member) ?? false,
+      member, requestId, input, inputJson, view, stream: view.definition.streams?.includes(member) ?? false,
       controller: new AbortController(), settled: deferred<void>(), items: [], kind: "running",
       handle: undefined as unknown as MockOperation,
     };
@@ -472,6 +516,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       },
     };
     view.operations.push(operation);
+    operations.set(requestId, operation);
     const executing = `is${member}Executing`;
     if (Object.hasOwn(view.state, executing) && view.state[executing] !== true) { commit(view, { ...view.state, [executing]: true }); publish(view); }
     if (handler !== "manual") {
@@ -489,7 +534,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           settle(view, operation, "succeeded", outcome?.result);
         } catch (error) {
           const failure = failureFromError(error);
-          settle(view, operation, failure.kind === "cancelled" ? "cancelled" : "failed", undefined,
+          // Cancellation is cooperative: a handler that stops by throwing after
+          // the request ends cancelled, as a .NET command observing its token does.
+          const cancelled = failure.kind === "cancelled" || operation.controller.signal.aborted;
+          settle(view, operation, cancelled ? "cancelled" : "failed", undefined,
             { message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) });
         }
       })();
@@ -503,7 +551,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const requestId = typeof identity?.["requestId"] === "string" ? identity["requestId"] : "";
     const member = typeof identity?.["member"] === "string" ? identity["member"] : undefined;
     const view = views.get(contract.slice(contract.lastIndexOf(":") + 1));
-    const operation = view?.operations.find(item => item.requestId === requestId && (member === undefined || item.member === member));
+    const found = operations.get(requestId);
+    const operation = found && found.view === view && (member === undefined || found.member === member) ? found : undefined;
     return { contract, requestId, view, operation };
   }
 
@@ -523,7 +572,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         const { contract, requestId, view, operation } = findOperation(identity);
         if (!view || !operation) return JSON.stringify({ contract, requestId, kind: "unknown" });
         if (operation.kind !== "running") return JSON.stringify({ contract, requestId, kind: "not-running" });
-        settle(view, operation, "cancelled");
+        // The operation sees the request through its signal and decides how it ends.
+        operation.controller.abort();
         return JSON.stringify({ contract, requestId, kind: "cancellation-requested" });
       }
       case "__runicOperationStream": {
@@ -648,17 +698,31 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     const request = parseObject(payload);
     if (!request || typeof request["requestId"] !== "string" || typeof request["expectedVersion"] !== "number")
       return envelope(view, { kind: "rejected", message: `${field} has an invalid checked write.` });
-    const version = view.fieldVersions.get(field) ?? 0;
     const reply = (receipt: Record<string, unknown>) => JSON.stringify({ ok: true, state: wireState(view), error: null, receipt });
-    if (request["expectedVersion"] !== version || !sameJson(request["expectedValue"], view.state[field]))
-      return reply({ kind: "conflict", incoming: { value: view.state[field], version }, message: "The field baseline no longer matches." });
+    // Like .NET, a retried request id returns its first receipt, and reusing it
+    // for another write is a conflict.
+    const key = `${field}\u0000${request["requestId"]}`;
+    const canonical = JSON.stringify({ ...request, requestId: undefined });
+    const previous = view.writes.get(key);
+    const version = () => view.fieldVersions.get(field) ?? 0;
+    if (previous) return reply(previous.payload === canonical ? previous.receipt
+      : { kind: "conflict", incoming: { value: view.state[field], version: version() },
+        message: "The request identity was already used with a different checked-write payload." });
+    const retain = (receipt: Record<string, unknown>) => { view.writes.set(key, { payload: canonical, receipt }); return reply(receipt); };
+    if (request["expectedVersion"] !== version() || !sameJson(request["expectedValue"], view.state[field]))
+      return retain({ kind: "conflict", incoming: { value: view.state[field], version: version() }, message: "The field baseline no longer matches." });
     try {
       const patch = await apply(view.state, request["value"]);
       commit(view, { ...view.state, [field]: request["value"], ...(patch ?? {}) });
     } catch (error) {
-      return reply({ kind: "rejected", message: failureFromError(error).message });
+      const failure = failureFromError(error);
+      // A handler error with kind "committed-with-error" keeps the value, as a .NET
+      // setter that ran before its validation failed does.
+      if (failure.kind !== "committed-with-error") return retain({ kind: "rejected", message: failure.message });
+      commit(view, { ...view.state, [field]: request["value"] });
+      return retain({ kind: "committed-with-error", snapshot: { value: view.state[field], version: version() }, message: failure.message });
     }
-    return reply({ kind: "applied", snapshot: { value: view.state[field], version: view.fieldVersions.get(field) ?? 0 } });
+    return retain({ kind: "applied", snapshot: { value: view.state[field], version: version() } });
   }
 
   async function answer(view: MockRegisteredView, suffix: string, args: unknown[]): Promise<string | undefined> {
@@ -766,7 +830,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     view(route, definition) {
       const view: MockRegisteredView = {
         route, routes: definition.routes ?? {}, definition, fieldVersions: new Map(), operations: [], presentations: new Map(),
-        requests: new Map(), pendingChanges: undefined, baseRevision: 0, state: { ...definition.state }, revision: 0,
+        requests: new Map(), writes: new Map(), queued: new Set(), pendingChanges: undefined, baseRevision: 0, state: { ...definition.state }, revision: 0,
         handle: undefined as unknown as MockView,
       };
       view.revision = view.baseRevision = ++revision;
@@ -781,7 +845,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         push(frame) { pushFrame(view, frame); },
         pushFailure(failure) {
           pushFrame(view, { __runicFailure: 1, revision: view.revision,
-            error: { kind: failure.kind ?? "failed", message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) } });
+            error: { kind: failure.kind ?? "failed", message: failure.message, ...(failure.detail ? { detail: failure.detail } : {}) } }, true);
         },
         collection: field => collectionOf(view, field),
         batch(edit) {

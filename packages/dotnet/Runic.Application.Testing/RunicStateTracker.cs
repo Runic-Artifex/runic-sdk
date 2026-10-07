@@ -120,71 +120,124 @@ public sealed class RunicStateTracker<TModel> where TModel : class
                 _failures.Add(frame);
                 return;
             case RunicPublicationKind.State:
-                if (frame.Revision <= Revision) return;
-                _state = JsonNode.Parse(frame.Json)!.AsObject();
+            {
+                // Like the client: older states are stale, and a repeated state is ignored.
+                if (frame.Revision < Revision) return;
+                var state = JsonNode.Parse(frame.Json)!.AsObject();
+                if (frame.Revision == Revision && JsonNode.DeepEquals(state, _state)) return;
+                foreach (var field in _keys.Keys) RequireUniqueKeys(state, field, frame);
+                _state = state;
                 FullStates++;
                 break;
+            }
             case RunicPublicationKind.Delta:
+            {
                 if (frame.Revision <= Revision) return;
                 if (frame.BaseRevision != Revision)
-                    throw new InvalidOperationException(
-                        $"A delta for '{_driver.Route}' applies to revision {frame.BaseRevision}, but the tracked state is at {Revision}: {frame.Json}");
+                    throw Invalid(frame, $"it applies to revision {frame.BaseRevision}, but the tracked state is at {Revision}; a frame was lost or reordered");
+                if (frame.Changes.Count is 0 or > 4096)
+                    throw Invalid(frame, $"it has {frame.Changes.Count} changes; a frame has 1 to 4096");
                 var next = _state.DeepClone().AsObject();
                 foreach (var change in frame.Changes) ApplyChange(next, change, frame);
+                foreach (var field in frame.Changes.Select(change => change.Field).Distinct()) RequireUniqueKeys(next, field, frame);
                 next["revision"] = frame.Revision;
                 _state = next;
                 _changes.AddRange(frame.Changes);
                 Deltas++;
                 break;
+            }
         }
         State = new(Element(_state));
     }
 
+    // The checks of the generated client's applyCollectionDelta, with messages that name the problem.
     private void ApplyChange(JsonObject state, RunicCollectionChange change, RunicViewPublication frame)
     {
         if (!_keys.TryGetValue(change.Field, out var key))
-            throw new InvalidOperationException($"{typeof(TModel).Name}.{change.Field} is not a [RunicCollection], but a delta changed it: {frame.Json}");
+            throw Invalid(frame, $"it changes '{change.Field}', which is not a [RunicCollection] of {typeof(TModel).Name}");
         if (state[change.Field] is not JsonArray rows)
-            throw new InvalidOperationException($"The tracked state has no collection '{change.Field}'.");
+            throw Invalid(frame, $"the tracked state has no collection '{change.Field}'");
+        var count = change.Keys.Count;
+        if (count == 0 || change.Keys.Any(string.IsNullOrEmpty))
+            throw Invalid(frame, $"a {change.Kind} of {change.Field} names no keys or an empty key");
+        void RequireIndex(int index, int limit, string what)
+        {
+            if (index < 0 || index > limit)
+                throw Invalid(frame, $"a {change.Kind} of {change.Field} has {what} {index}, outside 0 to {limit} for {rows.Count} rows");
+        }
+        void RequireItems(int expected)
+        {
+            if (change.Items.Count != expected)
+                throw Invalid(frame, $"a {change.Kind} of {change.Field} has {change.Items.Count} items for {count} keys; it needs {expected}");
+        }
         void RequireKeys(int start)
         {
-            for (var offset = 0; offset < change.Keys.Count; offset++)
+            RequireIndex(start, rows.Count - count, "index");
+            for (var offset = 0; offset < count; offset++)
             {
-                var at = start + offset;
-                var actual = at < rows.Count && rows[at] is JsonObject row && row[key] is { } value
-                    ? value.GetValueKind() == JsonValueKind.String ? value.GetValue<string>() : value.ToJsonString()
-                    : null;
+                var actual = KeyOf(rows[start + offset], key);
                 if (actual != change.Keys[offset])
-                    throw new InvalidOperationException(
-                        $"A {change.Kind} of {change.Field} expects key '{change.Keys[offset]}' at row {at}, but the tracked row has '{actual}': {frame.Json}");
+                    throw Invalid(frame, $"a {change.Kind} of {change.Field} expects key '{change.Keys[offset]}' at row {start + offset}, but the tracked row has '{actual}'");
             }
         }
         var items = change.Items.Select(item => JsonNode.Parse(item.GetRawText())).ToArray();
         switch (change.Kind)
         {
             case "add":
-                for (var offset = 0; offset < items.Length; offset++) rows.Insert(change.Index + offset, items[offset]);
+                RequireIndex(change.Index, rows.Count, "index");
+                RequireItems(count);
+                for (var offset = 0; offset < count; offset++)
+                    if (KeyOf(items[offset], key) != change.Keys[offset])
+                        throw Invalid(frame, $"an added {change.Field} row has key '{KeyOf(items[offset], key)}', but the change names '{change.Keys[offset]}'");
+                for (var offset = 0; offset < count; offset++) rows.Insert(change.Index + offset, items[offset]);
                 break;
             case "remove":
+                RequireItems(0);
                 RequireKeys(change.Index);
-                for (var count = 0; count < change.Keys.Count; count++) rows.RemoveAt(change.Index);
+                for (var removed = 0; removed < count; removed++) rows.RemoveAt(change.Index);
                 break;
             case "replace":
+                RequireItems(count);
+                if (change.OldIndex != change.Index)
+                    throw Invalid(frame, $"a replace of {change.Field} has index {change.Index} but oldIndex {change.OldIndex}");
                 RequireKeys(change.Index);
-                for (var offset = 0; offset < items.Length; offset++) rows[change.Index + offset] = items[offset];
+                for (var offset = 0; offset < count; offset++) rows[change.Index + offset] = items[offset];
                 break;
             case "move":
+                RequireItems(0);
                 RequireKeys(change.OldIndex);
-                var moved = Enumerable.Range(0, change.Keys.Count).Select(_ =>
+                var moved = Enumerable.Range(0, count).Select(_ =>
                 {
                     var row = rows[change.OldIndex];
                     rows.RemoveAt(change.OldIndex);
                     return row;
                 }).ToArray();
-                for (var offset = 0; offset < moved.Length; offset++) rows.Insert(change.Index + offset, moved[offset]);
+                RequireIndex(change.Index, rows.Count, "destination");
+                for (var offset = 0; offset < count; offset++) rows.Insert(change.Index + offset, moved[offset]);
                 break;
             default:
-                throw new InvalidOperationException($"Unknown collection change '{change.Kind}': {frame.Json}");
+                throw Invalid(frame, $"'{change.Kind}' is not a collection change");
         }
     }
+
+    private void RequireUniqueKeys(JsonObject state, string field, RunicViewPublication frame)
+    {
+        if (state[field] is not JsonArray rows) throw Invalid(frame, $"'{field}' is not an array");
+        var key = _keys[field];
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < rows.Count; index++)
+        {
+            var value = KeyOf(rows[index], key);
+            if (string.IsNullOrEmpty(value)) throw Invalid(frame, $"{field} row {index} has no key");
+            if (!seen.Add(value)) throw Invalid(frame, $"{field} rows have the duplicate key '{value}'");
+        }
+    }
+
+    private static string? KeyOf(JsonNode? row, string key) =>
+        row is JsonObject value && value[key] is { } field
+            ? field.GetValueKind() == JsonValueKind.String ? field.GetValue<string>() : field.ToJsonString()
+            : null;
+
+    private InvalidOperationException Invalid(RunicViewPublication frame, string problem) =>
+        new($"The client cannot apply a frame of '{_driver.Route}': {problem}. Frame: {(frame.Json.Length <= 2048 ? frame.Json : frame.Json[..2048] + "...")}");
 }

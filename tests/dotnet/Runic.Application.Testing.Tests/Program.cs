@@ -138,6 +138,7 @@ await TelemetryTests.RunAsync();
 await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();
 await HostDriverTests.RunAsync();
+TrackerConformanceTests.Run();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();
 await InteractionFixture.VerifyAsync();

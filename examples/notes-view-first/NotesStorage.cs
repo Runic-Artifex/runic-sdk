@@ -6,7 +6,7 @@ public interface INotesStorage
 }
 
 // Simulates a slow store. The delay uses the injected clock, so a test with a
-// manual clock decides when a save completes.
+// fake clock decides when a save completes.
 public sealed class MemoryNotesStorage(TimeProvider time) : INotesStorage
 {
     public string? LastTitle { get; private set; }

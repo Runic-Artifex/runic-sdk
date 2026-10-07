@@ -8,9 +8,13 @@
     <Description>Headless Window and View test host for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
+    <!-- A test-only package: it reflects over the application's ViewModels in an
+         untrimmed test process. -->
+    <RunicTrimmable>false</RunicTrimmable>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

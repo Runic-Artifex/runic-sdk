@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using NotesWindowViews;
 using Runic.Application.Testing;
@@ -10,7 +11,7 @@ namespace NotesViewFirst.Tests;
 // browser would, without a browser or native window.
 public sealed class NotesWindowTests : IDisposable
 {
-    private readonly ManualTimeProvider _clock = new();
+    private readonly FakeTimeProvider _clock = new();
     private readonly ServiceProvider _services;
     private readonly IServiceScope _scope;
     private readonly RunicWindowTestHost<ShellViewModel> _host;

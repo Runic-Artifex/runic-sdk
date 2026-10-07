@@ -129,6 +129,8 @@ export interface MockTypedViewSpec {
   /** Operations by client command method. */
   readonly operations?: Readonly<Record<string, { readonly member: string; readonly decodeInput?: (wire: unknown) => unknown;
     readonly encodeResult?: (value: unknown) => unknown; readonly stream?: boolean }>>;
+  /** The generated contract, `{ViewModel full name}:{fingerprint}`. */
+  readonly contract?: string;
   readonly interactions?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly decodeOutput: (wire: unknown) => unknown }>>;
 }
 
@@ -240,6 +242,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     ...(spec.collections ? { collections: Object.fromEntries(Object.entries(spec.collections)
       .map(([field, codec]) => [field, (item: unknown) => codec.key(codec.decode(item) as never)])) } : {}),
     operations,
+    ...(spec.contract ? { contract: spec.contract } : {}),
     streams: Object.values(spec.operations ?? {}).filter(plan => plan.stream).map(plan => plan.member),
   });
 

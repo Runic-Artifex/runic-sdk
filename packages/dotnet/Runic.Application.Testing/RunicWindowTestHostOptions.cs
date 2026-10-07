@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Views;
 
 namespace Runic.Application.Testing;
@@ -26,7 +27,7 @@ public sealed class RunicWindowTestHostOptions
 
     /// <summary>
     /// The window's clock, which interaction deadlines and close timeouts use. Defaults to a
-    /// new <see cref="ManualTimeProvider"/>, so time passes only when the test advances it.
+    /// new <see cref="FakeTimeProvider"/>, so time passes only when the test advances it.
     /// Register the same instance in the application's services to control its time too.
     /// </summary>
     public TimeProvider? TimeProvider { get; init; }

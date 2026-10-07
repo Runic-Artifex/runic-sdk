@@ -1,9 +1,4 @@
 #nullable enable
-override Runic.Application.Testing.ManualTimeProvider.CreateTimer(System.Threading.TimerCallback! callback, object? state, System.TimeSpan dueTime, System.TimeSpan period) -> System.Threading.ITimer!
-override Runic.Application.Testing.ManualTimeProvider.GetTimestamp() -> long
-override Runic.Application.Testing.ManualTimeProvider.GetUtcNow() -> System.DateTimeOffset
-override Runic.Application.Testing.ManualTimeProvider.LocalTimeZone.get -> System.TimeZoneInfo!
-override Runic.Application.Testing.ManualTimeProvider.TimestampFrequency.get -> long
 override Runic.Application.Testing.RunicCallReply<TModel>.ToString() -> string!
 override Runic.Application.Testing.RunicCollectionChange.Equals(object? obj) -> bool
 override Runic.Application.Testing.RunicCollectionChange.GetHashCode() -> int
@@ -15,11 +10,6 @@ override Runic.Application.Testing.RunicOperationStatus.ToString() -> string!
 override Runic.Application.Testing.RunicViewPublication.ToString() -> string!
 override Runic.Application.Testing.RunicViewState<TModel>.ToString() -> string!
 *REMOVED*Runic.Application.Testing.RunicWindowTestHost<TViewModel>.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.WindowContentSessionCloseResult!>
-Runic.Application.Testing.ManualTimeProvider
-Runic.Application.Testing.ManualTimeProvider.Advance(System.TimeSpan delta) -> void
-Runic.Application.Testing.ManualTimeProvider.ManualTimeProvider(System.DateTimeOffset start) -> void
-Runic.Application.Testing.ManualTimeProvider.ManualTimeProvider() -> void
-Runic.Application.Testing.ManualTimeProvider.SetUtcNow(System.DateTimeOffset value) -> void
 Runic.Application.Testing.RunicCallReply<TModel>
 Runic.Application.Testing.RunicCallReply<TModel>.EnsureOk() -> Runic.Application.Testing.RunicCallReply<TModel!>!
 Runic.Application.Testing.RunicCallReply<TModel>.ErrorKind.get -> string?

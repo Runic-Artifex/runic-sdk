@@ -15,7 +15,8 @@ project does not silently change its language, analyzer or package settings.
 of their build-mode switch (`RunicApplicationBuildMode`, `RunicAssetsBuildMode`).
 `Development` is the default; CI selects `Verification`, which treats warnings as errors and enables
 NuGet audit and trim/AOT analyzers for shipping projects. A shipping project sets
-`Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible;
+`Runic<Component>ShippingProject`, which also marks it trimmable and AOT-compatible
+unless it sets `RunicTrimmable=false` (the test-only `Runic.Application.Testing` does);
 build-time tools such as BridgeCodegen leave it unset. Package versions come
 from `eng/Versions.props`. Desktop keeps its separate policy and sets
 `IsAotCompatible` and `IsTrimmable` itself. Package consumers receive

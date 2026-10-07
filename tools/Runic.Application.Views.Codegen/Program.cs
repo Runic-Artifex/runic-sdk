@@ -1133,7 +1133,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == entry.Value);
             return new MockCollection(WireName(entry.Key), graph.ItemTypeScriptType(), graph.EncodeItemTypeScript("typed"),
                 graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
-        }).ToArray()), Path.GetFileNameWithoutExtension(typescriptPath)));
+        }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)));
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
     return hasContent || interactions.Length > 0;
 

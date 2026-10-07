@@ -27,7 +27,8 @@ internal sealed record MockTypeScriptPlan(
     IReadOnlyList<MockCommand> Commands,
     IReadOnlyList<MockOperation> Operations,
     IReadOnlyList<MockInteraction> Interactions,
-    IReadOnlyList<MockCollection> Collections);
+    IReadOnlyList<MockCollection> Collections,
+    string Contract);
 
 internal static class MockTypeScriptEmitter
 {
@@ -115,6 +116,7 @@ internal static class MockTypeScriptEmitter
         body.AppendLine("const spec: MockTypedViewSpec = {");
         body.AppendLine($"  kind: {Quote(plan.Kinds[0])},");
         body.AppendLine($"  route: {Quote(plan.Prefix)},");
+        body.AppendLine($"  contract: {Quote(plan.Contract)},");
         if (plan.ValueFields.Count == 0) body.AppendLine("  fields: {},");
         else
         {
