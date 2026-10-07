@@ -21,8 +21,8 @@ public sealed class RunicNavigatorOptions
     public TimeProvider? TimeProvider { get; init; }
 
     /// <summary>
-    /// How long <see cref="RunicNavigator.DisposeAsync"/> waits for cancelled transitions, and for each
-    /// region to be cleared in a model turn. Defaults to 10 seconds.
+    /// How long <see cref="RunicNavigator.DisposeAsync"/> waits for cancelled transitions, and then for the
+    /// regions to be cleared in model turns (one deadline shared by all regions). Defaults to 10 seconds.
     /// </summary>
     public TimeSpan CloseTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
@@ -55,6 +55,9 @@ public sealed class RunicNavigator : IAsyncDisposable
 
     private readonly TimeProvider _time;
     private readonly TimeSpan _closeTimeout;
+    // The shared deadline of the clearing turns of one disposal (guarded by Gate).
+    private long? _closeTurnsStart;
+    private bool _closeTurnsTimedOut;
     private readonly List<NavigationRegionCore> _regions = [];
     private readonly Dictionary<object, List<NavigationRegionCore>> _regionsByOwner = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<object, NavigationEntryCore> _ownedEntries = new(ReferenceEqualityComparer.Instance);
@@ -126,7 +129,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             try { RejectInitializable(content, nameof(initial)); }
             catch
             {
-                DisposeUnclaimed(content);
+                DisposeUnclaimed(content, null);
                 throw;
             }
         }
@@ -149,8 +152,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
         catch
         {
-            lease?.Dispose();
-            if (created && (claimed || !owned)) DisposeUnclaimed(content!);
+            DisposeUnclaimed(created && (claimed || !owned) ? content : null, lease);
             throw;
         }
         NavigationEntryCore? retireAtOnce = null;
@@ -189,34 +191,51 @@ public sealed class RunicNavigator : IAsyncDisposable
         catch (ObjectDisposedException)
         {
             // The navigator started closing; user disposal runs outside the gate.
-            lease?.Dispose();
-            if (created) DisposeUnclaimed(content!);
+            DisposeUnclaimed(created ? content : null, lease);
             throw;
         }
         if (retireAtOnce is not null) _ = RetireAsync(retireAtOnce, null);
         return new NavigationRegion<TContent>(region);
     }
 
-    // Best-effort disposal of an instance the factory created and no region took. User
-    // disposal code never runs under the gate or inside a model turn: inside a turn, and
-    // for asynchronous-only disposal, it runs on the thread pool.
-    private void DisposeUnclaimed(object content)
+    // Best-effort disposal of an instance the factory created and no region took, then
+    // release of its lease (content first, like retirement). User disposal code never runs
+    // under the gate or inside a model turn: inside a turn, and for asynchronous-only
+    // disposal, it runs on the thread pool. That work is tracked like a retirement, so
+    // WhenIdleAsync and DisposeAsync wait for it.
+    private void DisposeUnclaimed(object? content, IRunicModelContextLease? lease)
     {
-        if (ModelContext.IsExecuting || content is not IDisposable)
+        if (content is null)
         {
-            _ = Task.Run(() => DisposeUnclaimedCore(content));
+            ReleaseUnclaimedLease(lease);
             return;
         }
-        DisposeUnclaimedCore(content);
+        if (!ModelContext.IsExecuting && content is IDisposable disposable)
+        {
+            try { disposable.Dispose(); }
+            catch { }
+            ReleaseUnclaimedLease(lease);
+            return;
+        }
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        lock (Gate) _retirements.Add(done.Task);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (content is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                else (content as IDisposable)?.Dispose();
+            }
+            catch { }
+            ReleaseUnclaimedLease(lease);
+            lock (Gate) _retirements.Remove(done.Task);
+            done.TrySetResult();
+        });
     }
 
-    private static void DisposeUnclaimedCore(object content)
+    private static void ReleaseUnclaimedLease(IRunicModelContextLease? lease)
     {
-        try
-        {
-            if (content is IDisposable disposable) disposable.Dispose();
-            else if (content is IAsyncDisposable asyncDisposable) asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        }
+        try { lease?.Dispose(); }
         catch { }
     }
 
@@ -238,10 +257,10 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// timeout, then closes and retires every entry region by region in creation order. Does not run guards.
     /// </summary>
     /// <remarks>
-    /// Each region is cleared in a model turn so the change is serialized with its commit. That wait is
-    /// bounded by <see cref="RunicNavigatorOptions.CloseTimeout"/> too: when a turn stays blocked, the
-    /// region is cleared outside a turn after the timeout and a warning (1068) is logged, so disposal
-    /// always completes. Content disposal itself is not bounded.
+    /// Each region is cleared in a model turn so the change is serialized with its commit. The wait for those
+    /// turns is bounded by <see cref="RunicNavigatorOptions.CloseTimeout"/> for the whole disposal: when a turn stays blocked,
+    /// that region is cleared outside a turn after the timeout and a warning (1068) is logged, the notifications it owes
+    /// are posted, and the remaining regions are cleared without waiting. Disposal always completes; content disposal itself is not bounded.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
@@ -995,54 +1014,82 @@ public sealed class RunicNavigator : IAsyncDisposable
     {
         List<NavigationTransition> cancel = [];
         List<NavigationEntryCore> entries;
+        (NavigationEntryCore? Current, NavigationEntryCore[] Stack, bool CanGoBack) before;
         lock (Gate)
         {
             MarkClosedLocked(region, cancel);
             entries = TopDown(region.Stack, 0);
+            before = Snapshot(region);
             _regions.Remove(region);
         }
         Cancel(cancel);
+
+        // Whoever clears first, the clearing turn or the fallback, owes the notifications.
+        var cleared = false;
+        NavigationRegionChanges? ClearOnce()
+        {
+            lock (Gate)
+            {
+                if (cleared) return null;
+                cleared = true;
+                RemoveClosedEntries(region, entries);
+                return Changes(before, region);
+            }
+        }
+
         // An entry's state is observable too, so the entries leave Active/Retained in the
-        // same turn that clears the stack. The wait is bounded by the close timeout.
+        // same turn that clears the stack. While the navigator is closing, the wait for
+        // those turns shares one deadline across the whole disposal.
         var fallback = false;
-        try
+        var wait = TurnWait();
+        if (wait is null) fallback = true;
+        else
         {
-            await ModelContext.InvokeAsync(() => ClearClosedRegion(region, entries)).AsTask()
-                .WaitAsync(_closeTimeout, _time).ConfigureAwait(false);
+            var turn = ModelContext.InvokeAsync(() =>
+            {
+                if (ClearOnce() is { } changes) region.RaiseChanges(changes);
+            }).AsTask();
+            // A turn abandoned after a timeout can still fault later; observe it.
+            _ = turn.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try { await turn.WaitAsync(wait.Value, _time).ConfigureAwait(false); }
+            catch (TimeoutException)
+            {
+                // A blocked turn: clear outside a turn rather than hang disposal. A turn that
+                // runs later finds the region already cleared. The disposal waits for no more turns.
+                lock (Gate) _closeTurnsTimedOut |= _closing;
+                NavigationLog.NavigationCloseTimedOut(Logger, null, region.ContentTypeName, region.Id);
+                fallback = true;
+            }
+            catch (ObjectDisposedException)
+            {
+                // The model context is gone, so no turn can observe the region any more.
+                fallback = true;
+            }
+            catch (Exception error)
+            {
+                NavigationLog.NavigationEntryCleanupFailed(Logger, error, region.ContentTypeName, region.Id,
+                    "None", "Close", BridgeTelemetry.ErrorType(error));
+                fallback = true;
+            }
         }
-        catch (TimeoutException)
-        {
-            // A blocked turn: clear outside a turn rather than hang disposal. A turn that
-            // runs later finds the region already cleared.
-            NavigationLog.NavigationCloseTimedOut(Logger, null, region.ContentTypeName, region.Id);
-            fallback = true;
-        }
-        catch (ObjectDisposedException)
-        {
-            // The model context is gone, so no turn can observe the region any more.
-            fallback = true;
-        }
-        catch (Exception error)
-        {
-            NavigationLog.NavigationEntryCleanupFailed(Logger, error, region.ContentTypeName, region.Id,
-                region.ContentTypeName, "Close", BridgeTelemetry.ErrorType(error));
-            fallback = true;
-        }
-        if (fallback) lock (Gate) RemoveClosedEntries(region, entries);
+        if (fallback && ClearOnce() is { } owed && owed != NavigationRegionChanges.None) Notify(region, owed);
         return entries;
     }
 
-    // Runs inside a model turn.
-    private static void ClearClosedRegion(NavigationRegionCore region, List<NavigationEntryCore> entries)
+    // How long a close may wait for its clearing turn, or null to skip the wait. A region
+    // closed by a retirement waits up to the close timeout. During disposal the clearing
+    // turns of all regions share one deadline, and once a turn timed out none is awaited.
+    private TimeSpan? TurnWait()
     {
-        NavigationRegionChanges changes;
-        lock (region.Navigator.Gate)
+        lock (Gate)
         {
-            var before = Snapshot(region);
-            RemoveClosedEntries(region, entries);
-            changes = Changes(before, region);
+            if (!_closing) return _closeTimeout;
+            if (_closeTurnsTimedOut) return null;
+            _closeTurnsStart ??= _time.GetTimestamp();
+            var remaining = _closeTimeout - _time.GetElapsedTime(_closeTurnsStart.Value);
+            return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
         }
-        region.RaiseChanges(changes);
     }
 
     private static void RemoveClosedEntries(NavigationRegionCore region, List<NavigationEntryCore> entries)
@@ -1100,13 +1147,23 @@ public sealed class RunicNavigator : IAsyncDisposable
         if (transitions.Count == 0) return;
         if (ModelContext.IsExecuting)
         {
-            ThreadPool.UnsafeQueueUserWorkItem(static items =>
-            {
-                foreach (var item in items) item.Cancel();
-            }, transitions, preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem(static state => state.Navigator.CancelAll(state.Transitions),
+                (Navigator: this, Transitions: transitions), preferLocal: false);
             return;
         }
-        foreach (var transition in transitions) transition.Cancel();
+        CancelAll(transitions);
+    }
+
+    // A throwing cancellation callback is the user's: log it and keep cancelling, so
+    // disposal and retirement continue.
+    private void CancelAll(List<NavigationTransition> transitions)
+    {
+        foreach (var transition in transitions)
+        {
+            if (transition.Cancel() is not { } error) continue;
+            NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
+                "None", "Cancel", BridgeTelemetry.ErrorType(error));
+        }
     }
 
     private void StartOverrunTimer(NavigationTransition transition)
@@ -1280,10 +1337,16 @@ internal sealed class NavigationTransition : IDisposable
     public bool TrySetCancelReason(NavigationCancelReason reason) =>
         !Released && Interlocked.CompareExchange(ref _cancelReason, (int)reason, (int)NavigationCancelReason.None) == 0;
 
-    public void Cancel()
+    // Returns the exception a cancellation callback threw, if any.
+    public Exception? Cancel()
     {
-        try { _cancellation.Cancel(); }
-        catch (ObjectDisposedException) { }
+        try
+        {
+            _cancellation.Cancel();
+            return null;
+        }
+        catch (ObjectDisposedException) { return null; }
+        catch (Exception error) { return error; }
     }
 
     public void StartOverrunTimer(TimeProvider time, TimeSpan delay, Action warn)
