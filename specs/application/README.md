@@ -93,10 +93,23 @@ adds `detail: {type, message, stack}`; production replies never carry it.
 `RunicFailureException`): `error` adds `failure`, the encoded value of the
 declared type, and never has `detail`. The reply carries the state after the
 call. A thrown value that is not the declared type, cannot be encoded or
-encodes to more than 4 KiB of UTF-8 is `failed`. When the state after a call
-cannot be sent because of invalid collection keys, the reply keeps its kind
-(including `domain-failed` with `failure`), has `state: null` and appends the
-reason to `message`; a `domain-failed` reply still has no `detail`.
+encodes to more than 4 KiB of UTF-8 is `failed`.
+
+When a setter or command ran but the state after it cannot be sent because of
+invalid collection keys, the reply has `state: null` and a normative message,
+which clients may match:
+
+- a call that succeeded replies `failed` with
+  `"The call ran, but the updated state could not be sent: <reason>"`;
+- a call that failed keeps its kind (including `domain-failed` with `failure`)
+  and its message followed by `" The updated state could not be sent: <reason>"`;
+  a `domain-failed` reply still has no `detail`;
+- a checked write replies `failed` with
+  `"The field write was processed, but the updated state and receipt could not be sent: <reason>"`.
+
+Clients report a `domain-failed` reply without state as an error only when its
+message contains `" The updated state could not be sent: "`; otherwise the
+Bridge was detached.
 
 ```json
 { "ok": false, "state": { "revision": 13 }, "error": { "kind": "domain-failed", "message": "Save failed.", "failure": { "$case": "titleRequired" } } }

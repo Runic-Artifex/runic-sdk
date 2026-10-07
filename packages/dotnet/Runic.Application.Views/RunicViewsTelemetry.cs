@@ -247,7 +247,7 @@ internal static partial class ViewsLog
     internal static partial void OperationDomainFailed(ILogger logger, Exception? exception, string member, string failureType);
 
     [LoggerMessage(EventId = 1008, EventName = "BridgeDomainFailureNotEncoded", Level = LogLevel.Error,
-        Message = "Bridge command {Model}.{Member} on route {Route} threw a RunicFailureException with {FailureType} that was reported as failed: {Reason}.")]
+        Message = "Bridge member {Model}.{Member} on route {Route} threw a RunicFailureException with {FailureType} that was reported as failed: {Reason}.")]
     internal static partial void DomainFailureNotEncoded(ILogger logger, Exception? exception, string model, string member, string route,
         string failureType, string reason);
 
