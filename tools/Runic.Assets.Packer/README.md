@@ -36,7 +36,8 @@ Use the folder from `dotnet nuget locals global-packages --list` if
 `tools/Runic.Assets.Packer/bin/<Configuration>/net10.0/Runic.Assets.Packer.dll`.
 MSBuild finds the packaged copy itself; set `RunicAssetsPackerPath` to use
 another build. The build passes `--entry-point $(RunicAssetsEntryPoint)`,
-`--exclude $(RunicAssetsDistExclude)` (by default `runic-assets.zip`) and
+`--exclude $(RunicAssetsDistExclude)` (by default `runic-assets.zip`; setting
+the property replaces that default, so list it again to keep it excluded) and
 `--trusted-generated-output`.
 
 ```text
@@ -61,7 +62,11 @@ With `--output json` a successful run writes one line such as:
 {"protocol":"runic.commandline/1","requestId":"35dfb3b13110479eb58ca54afd4a51fd","command":"pack","success":true,"exitCode":0,"payloadType":"runic.assets.pack-result/1","payload":{"ArchiveLength":437},"fault":null,"diagnostics":[]}
 ```
 
-A failure sets `success` to `false` and `exitCode` to one of the exit codes below.
+A failure sets `success` to `false`, `exitCode` to one of the exit codes below
+and `fault.code` to the `RAS` code. `fault.details` carries the source
+directory, entry point or underlying reason; a value that contains a home or
+temporary path or exception text is shown as `[redacted]`. Human output prints
+the full message.
 
 The archive is deterministic: the same files produce the same bytes, so it can
 be cached or compared with `cmp`.
