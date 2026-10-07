@@ -18,8 +18,6 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- Runic.Desktop still has undocumented public members (issue #55). -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
 
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <RepositoryType Condition="'$(RepositoryType)' == ''">git</RepositoryType>

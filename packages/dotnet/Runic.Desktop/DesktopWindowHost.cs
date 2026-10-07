@@ -28,12 +28,26 @@ public interface IDesktopWindowHostFactory
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
 public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
 {
+    /// <summary>Gets whether <see cref="DispatchNativeAsync"/> can currently run work on the window's owning thread.</summary>
     bool SupportsNativeDispatch { get; }
+
+    /// <summary>Gets whether the caller is executing on the thread that owns the native window.</summary>
+    /// <returns><see langword="true"/> on the owning thread; otherwise <see langword="false"/>.</returns>
     bool CheckNativeAccess();
+
+    /// <summary>Runs <paramref name="action"/> on the thread that owns the native window.</summary>
+    /// <param name="action">The native work to run.</param>
+    /// <param name="cancellationToken">Prevents the work from running if it has not started.</param>
+    /// <returns>A task that completes after <paramref name="action"/> has run, with any exception it threw.</returns>
+    /// <remarks>Cancellation must not interrupt a running callback; the returned task completes when it finishes.</remarks>
     ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken);
 }
 
 /// <summary>Hosts one Desktop surface in a platform-native window.</summary>
+/// <remarks>
+/// Runic Desktop creates one host per opened window, calls its members from arbitrary threads, and disposes it
+/// after it closes. Implementations marshal native work to the thread that owns the window.
+/// </remarks>
 public interface IDesktopWindowHost : IAsyncDisposable
 {
     /// <summary>Whether user close requests invoke the configured CloseRequested callback instead of closing.</summary>
@@ -50,43 +64,133 @@ public interface IDesktopWindowHost : IAsyncDisposable
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move;
 
+    /// <summary>Occurs once after the native window has closed, whether the user or <see cref="CloseAsync"/> closed it.</summary>
+    /// <remarks>It may be raised on the window's owning thread; Runic Desktop then disposes the host.</remarks>
     event EventHandler? Closed;
+
+    /// <summary>Gets whether the native window is open.</summary>
     bool IsOpen { get; }
+
+    /// <summary>Gets the platform-native top-level window handle, or zero when the window is not open.</summary>
     nint NativeHandle { get; }
+
+    /// <summary>Creates and shows the native window and navigates its WebView to <paramref name="url"/>.</summary>
+    /// <param name="url">The surface URL to present.</param>
+    /// <param name="options">The initial window state.</param>
+    /// <param name="cancellationToken">Cancels opening.</param>
+    /// <returns>A task that completes when the window exists and navigation has started.</returns>
+    /// <remarks>A failed or cancelled open must release any native resources it created; Runic Desktop then disposes the host.</remarks>
     ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default);
+
+    /// <summary>Navigates the open window's WebView to <paramref name="url"/>.</summary>
+    /// <param name="url">The URL to load.</param>
+    /// <param name="cancellationToken">Cancels the navigation request.</param>
+    /// <returns>A task that completes when navigation has started.</returns>
     ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default);
+
+    /// <summary>Closes the native window without invoking <see cref="DesktopWindowHostOptions.CloseRequested"/>.</summary>
+    /// <param name="cancellationToken">Cancels waiting for the window to close.</param>
+    /// <returns>A task that completes when the window has closed.</returns>
     ValueTask CloseAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Activates the window and gives it keyboard focus.</summary>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the window has been focused.</returns>
     ValueTask FocusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Minimizes the window.</summary>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the window has been minimized.</returns>
     ValueTask MinimizeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Maximizes the window, or restores it when it is already maximized.</summary>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the window state has changed.</returns>
     ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Resizes the window.</summary>
+    /// <param name="width">The new width in pixels.</param>
+    /// <param name="height">The new height in pixels.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the window has been resized.</returns>
     ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default);
+
+    /// <summary>Moves the window to a screen position.</summary>
+    /// <param name="x">The new horizontal position in pixels.</param>
+    /// <param name="y">The new vertical position in pixels.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the window has been moved.</returns>
     ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default);
+
+    /// <summary>Shows or hides the window without closing it.</summary>
+    /// <param name="visible"><see langword="true"/> to show the window; <see langword="false"/> to hide it.</param>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the visibility has changed.</returns>
     ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default);
+
+    /// <summary>Starts a user-driven native move of the window, as when the page drags a frameless window.</summary>
+    /// <param name="cancellationToken">Cancels the operation.</param>
+    /// <returns>A task that completes when the move has started.</returns>
+    /// <remarks>Runic Desktop ignores failures, so a host that cannot move the window may throw <see cref="NotSupportedException"/>.</remarks>
     ValueTask BeginMoveAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Describes the immutable initial state of an embedded window host.</summary>
+/// <remarks>Runic Desktop derives these values from <see cref="DesktopWindowOptions"/>.</remarks>
 public sealed record DesktopWindowHostOptions
 {
     /// <summary>When set, suppress user close requests and invoke this callback. CloseAsync must bypass it.</summary>
     public Action? CloseRequested { get; init; }
 
+    /// <summary>Gets the initial window width in pixels. Defaults to 800.</summary>
     public uint Width { get; init; } = 800;
+
+    /// <summary>Gets the initial window height in pixels. Defaults to 600.</summary>
     public uint Height { get; init; } = 600;
+
+    /// <summary>Gets the minimum window width in pixels, or <see langword="null"/> for no minimum.</summary>
     public uint? MinimumWidth { get; init; }
+
+    /// <summary>Gets the minimum window height in pixels, or <see langword="null"/> for no minimum.</summary>
     public uint? MinimumHeight { get; init; }
+
+    /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
     public uint? X { get; init; }
+
+    /// <summary>Gets the initial vertical screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
     public uint? Y { get; init; }
+
+    /// <summary>Gets whether the window opens centered on the screen.</summary>
     public bool Centered { get; init; }
+
+    /// <summary>Gets whether the user can resize the window. Defaults to <see langword="true"/>.</summary>
     public bool Resizable { get; init; } = true;
+
+    /// <summary>Gets whether the window opens without a title bar and border.</summary>
     public bool Frameless { get; init; }
+
+    /// <summary>Gets whether the window has a transparent background where the page does not paint.</summary>
     public bool Transparent { get; init; }
+
+    /// <summary>Gets whether the window is created without being shown.</summary>
     public bool Hidden { get; init; }
+
+    /// <summary>Gets whether the window opens full-screen without decorations.</summary>
     public bool Kiosk { get; init; }
+
+    /// <summary>Gets whether the presentation uses a high-contrast theme, already resolved from the system setting when unset.</summary>
     public bool HighContrast { get; init; }
+
+    /// <summary>Gets the path of the window icon file, or <see langword="null"/> for the default icon.</summary>
     public string? IconFile { get; init; }
+
+    /// <summary>Gets the WebView profile or user-data directory, or <see langword="null"/> for the host's default.</summary>
     public string? ProfilePath { get; init; }
+
+    /// <summary>Gets additional WebView command-line arguments as one unsplit string, from <see cref="DesktopWindowOptions.BrowserArguments"/>.</summary>
     public string? CustomArguments { get; init; }
+
+    /// <summary>Gets the sensitive permissions the host may grant, only to the origin of the presented URL.</summary>
     public DesktopPermissionGrant AllowedPermissions { get; init; }
 
     /// <summary>

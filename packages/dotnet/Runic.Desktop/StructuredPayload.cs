@@ -12,8 +12,10 @@ public sealed class StructuredPayload
         Utf8Json = utf8Json;
     }
 
+    /// <summary>Gets the profile-owned schema identity of the payload.</summary>
     public string SchemaId { get; }
 
+    /// <summary>Gets the validated UTF-8 JSON bytes, copied from the input to <see cref="Parse"/>.</summary>
     public ReadOnlyMemory<byte> Utf8Json { get; }
 
     /// <summary>Validates and copies a structured JSON payload.</summary>

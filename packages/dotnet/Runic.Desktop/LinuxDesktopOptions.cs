@@ -4,17 +4,31 @@ using System.Runtime.InteropServices;
 namespace Runic.Desktop;
 
 /// <summary>The explicitly selected Linux embedded toolkit and WebKit ABI.</summary>
-public enum LinuxEmbeddedBackend { Gtk3WebKit41, Gtk4WebKit6 }
+public enum LinuxEmbeddedBackend
+{
+    /// <summary>GTK 3 with WebKitGTK 4.1 (<c>libgtk-3.so.0</c> and <c>libwebkit2gtk-4.1.so.0</c>), hosted by Runic.Desktop itself.</summary>
+    Gtk3WebKit41,
+
+    /// <summary>GTK 4 with WebKitGTK 6.0 (<c>libgtk-4.so.1</c> and <c>libwebkitgtk-6.0.so.4</c>), hosted by the optional Runic.Desktop.Gtk4 provider.</summary>
+    Gtk4WebKit6,
+}
 
 /// <summary>Linux presentation configuration; no toolkit is selected by default.</summary>
 public sealed record LinuxDesktopOptions
 {
+    /// <summary>Gets the embedded toolkit to use on Linux, or <see langword="null"/> to select none.</summary>
+    /// <remarks>
+    /// Without a backend, Linux has no built-in embedded presentation; installed browsers remain available.
+    /// <see cref="LinuxEmbeddedBackend.Gtk4WebKit6"/> also requires a matching <see cref="ILinuxDesktopWindowHostFactory"/>
+    /// as the window host factory, and a configured Linux factory must report this backend.
+    /// </remarks>
     public LinuxEmbeddedBackend? EmbeddedBackend { get; init; }
 }
 
 /// <summary>An optional Linux provider identifying its native toolkit.</summary>
 public interface ILinuxDesktopWindowHostFactory : IDesktopWindowHostFactory
 {
+    /// <summary>Gets the toolkit and WebKit ABI that this factory's window hosts load.</summary>
     LinuxEmbeddedBackend Backend { get; }
 }
 
