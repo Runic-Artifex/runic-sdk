@@ -8,13 +8,13 @@
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.7.0-preview.2, )"
+          "Runic.Platform": "[0.7.0-preview.3, )"
         }
       },
       "runic.platform.windows": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.7.0-preview.2, )"
+          "Runic.Platform.Runtime": "[0.7.0-preview.3, )"
         }
       }
     }
