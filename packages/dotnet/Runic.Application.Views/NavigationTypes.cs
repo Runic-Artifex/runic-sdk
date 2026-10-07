@@ -126,7 +126,11 @@ public enum NavigationRejection
     /// <summary>The navigator or the region is closed.</summary>
     Closed,
 
-    /// <summary>The request came from a hook of an in-flight transition of the same region.</summary>
+    /// <summary>
+    /// The request came from a hook of an in-flight transition of the same region, or of a region
+    /// that holds it or is held by it (an ancestor or a descendant region). The rejection is
+    /// conservative: such a request could wait on the transition that is running the hook.
+    /// </summary>
     Reentrant,
 
     /// <summary>A back request found no retained entry.</summary>
@@ -239,7 +243,11 @@ public interface INavigationResume
 [Experimental(RunicNavigator.DiagnosticId)]
 public interface INavigationDepartureGuard
 {
-    /// <summary>Returns whether the entry may depart. Runs outside model turns.</summary>
+    /// <summary>
+    /// Returns whether the entry may depart. Runs outside model turns. A guard may run again for the
+    /// same entry: a parent transition that retires an entry's child regions asks the child's guards
+    /// even when a transition of the child already asked them, so a guard must be repeatable.
+    /// </summary>
     /// <param name="departure">The departing entry, whether it is retained or retired, and the operation.</param>
     /// <param name="cancellationToken">Cancelled when the transition is superseded, cancelled or closed.</param>
     ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken);

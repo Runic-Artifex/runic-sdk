@@ -11,8 +11,6 @@
     <!-- A test-only package: it reflects over the application's ViewModels in an
          untrimmed test process. -->
     <RunicTrimmable>false</RunicTrimmable>
-    <!-- Test support for the experimental navigation API. -->
-    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />

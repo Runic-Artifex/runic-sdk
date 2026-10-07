@@ -130,13 +130,26 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
 
         var owned = target?.Ownership == NavigationOwnership.Owned;
+        // The instance the factory created is ours to dispose when no region takes it.
+        var created = target is not null && target.Instance is null;
+        var claimed = false;
         IRunicModelContextLease? lease = null;
-        if (owned)
+        try
         {
-            // A claimed instance stays in the owned table even if binding
-            // fails, like any retired instance.
-            Claim(content!);
-            lease = RunicModelContextRegistry.Shared.Bind(ModelContext, content!);
+            if (owned)
+            {
+                // A claimed instance stays in the owned table even if binding
+                // fails, like any retired instance.
+                Claim(content!);
+                claimed = true;
+                lease = RunicModelContextRegistry.Shared.Bind(ModelContext, content!);
+            }
+        }
+        catch
+        {
+            lease?.Dispose();
+            if (created && (claimed || !owned)) DisposeUnclaimed(content!);
+            throw;
         }
         NavigationEntryCore? retireAtOnce = null;
         NavigationRegionCore region;
@@ -145,6 +158,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (_closing)
             {
                 lease?.Dispose();
+                if (created) DisposeUnclaimed(content!);
                 throw new ObjectDisposedException(nameof(RunicNavigator));
             }
             region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
@@ -174,6 +188,24 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
         if (retireAtOnce is not null) _ = RetireAsync(retireAtOnce, null);
         return new NavigationRegion<TContent>(region);
+    }
+
+    // Best-effort disposal of an instance the factory created and no region took. The
+    // caller is already failing, and CreateRegion can run in a model turn, so an
+    // asynchronous-only disposal runs on the thread pool.
+    private static void DisposeUnclaimed(object content)
+    {
+        try
+        {
+            if (content is IDisposable disposable) disposable.Dispose();
+            else if (content is IAsyncDisposable asyncDisposable)
+                _ = Task.Run(async () =>
+                {
+                    try { await asyncDisposable.DisposeAsync().ConfigureAwait(false); }
+                    catch { }
+                });
+        }
+        catch { }
     }
 
     /// <summary>Completes when no transition is in flight and no retirement is running.</summary>
@@ -227,7 +259,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             NavigationRegionCore[] regions;
             lock (Gate) regions = [.. _regions];
             foreach (var region in regions)
-                foreach (var entry in CloseRegion(region))
+                foreach (var entry in await CloseRegionAsync(region).ConfigureAwait(false))
                     await RetireAsync(entry, null).ConfigureAwait(false);
             NavigationEntryCore[] remaining;
             lock (Gate) remaining = [.. _tracked];
@@ -259,7 +291,8 @@ public sealed class RunicNavigator : IAsyncDisposable
                 rejected = NavigationOutcome.Reject(NavigationRejection.Cancelled);
             else if (HookTransition.Value is { } hook && !hook.Released
                 && (ReferenceEquals(hook.Region, region) || related.Contains(hook)))
-                // A hook never waits on a transition that waits on it.
+                // A hook never waits on a transition that waits on it. This also rejects requests to
+                // ancestor and descendant regions of the hook's region (deviation 15): conservative.
                 rejected = NavigationOutcome.Reject(NavigationRejection.Reentrant);
             else if (expected is { } expectedId && region.CurrentEntry?.Id != expectedId)
                 rejected = NavigationOutcome.Reject(NavigationRejection.NotCurrent);
@@ -414,8 +447,11 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (!BasisMatches(plan)) return (NavigationOutcome.Superseded, null);
             bool allowed;
             // Guard hooks of one region never overlap across transitions (see EnterGuardHookAsync).
-            if (!await EnterGuardHookAsync(transition, entry, token).ConfigureAwait(false))
-                return (CancelledOutcome(transition), null);
+            switch (await EnterGuardHookAsync(transition, entry, plan, token).ConfigureAwait(false))
+            {
+                case GuardSlot.Cancelled: return (CancelledOutcome(transition), null);
+                case GuardSlot.Stale: return (NavigationOutcome.Superseded, null);
+            }
             try
             {
                 var departure = new NavigationDeparture(entry.Id, kind, transition.Operation);
@@ -438,6 +474,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         // Preparing.
         transition.Phase = NavigationPhase.Preparing;
         if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
+        if (IsClosing(region)) return (NavigationOutcome.Reject(NavigationRejection.Closed), null);
         if (!BasisMatches(plan)) return (NavigationOutcome.Superseded, null);
         var failure = await PrepareAsync(transition, plan).ConfigureAwait(false);
         if (failure is not null) return (failure, null);
@@ -532,6 +569,9 @@ public sealed class RunicNavigator : IAsyncDisposable
             }
             catch (Exception error)
             {
+                // A factory that touches a navigator that is closing (for example
+                // CreateRegion) fails because of the close, not on its own.
+                if (IsClosing(region)) return NavigationOutcome.Reject(NavigationRejection.Closed);
                 NavigationLog.NavigationPreparationFailed(Logger, error, region.ContentTypeName, region.Id,
                     OperationName(transition.Operation), entry.ContentTypeName, BridgeTelemetry.ErrorType(error));
                 return NavigationOutcome.Fail(error, NavigationPhase.Preparing);
@@ -550,6 +590,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             }
             catch (Exception error)
             {
+                if (IsClosing(region)) return NavigationOutcome.Reject(NavigationRejection.Closed);
                 NavigationLog.NavigationPreparationFailed(Logger, error, region.ContentTypeName, region.Id,
                     OperationName(transition.Operation), resumed.ContentTypeName, BridgeTelemetry.ErrorType(error));
                 return NavigationOutcome.Fail(error, NavigationPhase.Preparing);
@@ -608,6 +649,11 @@ public sealed class RunicNavigator : IAsyncDisposable
         return new NavigationCommitResult(stopped ?? NavigationOutcome.Commit(commit!.Current, []), commit);
     }
 
+    private bool IsClosing(NavigationRegionCore region)
+    {
+        lock (Gate) return _closing || region.Closed;
+    }
+
     private bool BasisMatches(NavigationPlan plan)
     {
         lock (Gate) return plan.BasisMatches();
@@ -655,15 +701,25 @@ public sealed class RunicNavigator : IAsyncDisposable
     // transitions: a hook waits for a running hook whose entry belongs to the same
     // region. The check is per hook, not per plan, because a later guard of a plan
     // may not have started yet. Hooks in different regions (a parent's guard and its
-    // child's guard) may overlap. Returns false when cancelled while waiting.
-    private async Task<bool> EnterGuardHookAsync(NavigationTransition transition, NavigationEntryCore entry,
-        CancellationToken token)
+    // child's guard) may overlap. The wait can be long, so the plan's basis and the entry's
+    // state are checked again under the gate when the slot is taken: a guard never runs
+    // on an entry that retired, or on a plan that was superseded, while this hook waited.
+    // Under that rule a parent transition can re-run a guard the child already ran for
+    // the same entry (deviation 14).
+    private enum GuardSlot { Entered, Cancelled, Stale }
+
+    private async Task<GuardSlot> EnterGuardHookAsync(NavigationTransition transition, NavigationEntryCore entry,
+        NavigationPlan plan, CancellationToken token)
     {
         while (true)
         {
             Task? blocker = null;
             lock (Gate)
             {
+                if (_closing || entry.Region.Closed || transition.Region.Closed
+                    || transition.CancelReason != NavigationCancelReason.None)
+                    return GuardSlot.Cancelled;
+                if (!plan.BasisMatches() || entry.Retiring is not null) return GuardSlot.Stale;
                 foreach (var other in _running)
                 {
                     if (ReferenceEquals(other, transition) || other.GuardHook is not { } hook) continue;
@@ -675,11 +731,11 @@ public sealed class RunicNavigator : IAsyncDisposable
                 {
                     transition.GuardingEntry = entry;
                     transition.GuardHook = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                    return true;
+                    return GuardSlot.Entered;
                 }
             }
             try { await blocker.WaitAsync(token).ConfigureAwait(false); }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { return false; }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { return GuardSlot.Cancelled; }
         }
     }
 
@@ -846,7 +902,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 lock (Gate) _regionsByOwner.Remove(content, out children);
                 foreach (var child in children ?? [])
                 {
-                    foreach (var descendant in CloseRegion(child))
+                    foreach (var descendant in await CloseRegionAsync(child).ConfigureAwait(false))
                     {
                         try { await RetireAsync(descendant, retired).ConfigureAwait(false); }
                         catch (Exception error) { LogCleanup(entry, "Children", error); }
@@ -910,27 +966,52 @@ public sealed class RunicNavigator : IAsyncDisposable
             entry.ContentTypeName, step, BridgeTelemetry.ErrorType(error));
 
     // Marks a region closed, cancels its in-flight transitions and takes its
-    // committed entries (current first, then history from top to bottom).
-    private List<NavigationEntryCore> CloseRegion(NavigationRegionCore region)
+    // committed entries (current first, then history from top to bottom). The
+    // region's stack is cleared in a model turn, so the change is serialized
+    // with a commit turn of the region that is still raising its notifications.
+    // A commit applies its stack under the gate and only while the region is
+    // open, so marking the region closed first leaves nothing to race with.
+    private async Task<List<NavigationEntryCore>> CloseRegionAsync(NavigationRegionCore region)
     {
         List<NavigationTransition> cancel = [];
         List<NavigationEntryCore> entries;
-        var changes = NavigationRegionChanges.None;
         lock (Gate)
         {
             MarkClosedLocked(region, cancel);
-            var before = Snapshot(region);
             entries = TopDown(region.Stack, 0);
-            foreach (var entry in entries)
-                if (entry.Phase is NavigationEntryPhase.Active or NavigationEntryPhase.Retained)
-                    entry.Phase = NavigationEntryPhase.Removed;
-            region.Stack = [];
-            changes = Changes(before, region);
             _regions.Remove(region);
         }
         Cancel(cancel);
-        if (changes != NavigationRegionChanges.None) Notify(region, changes);
+        // An entry's state is observable too, so the entries leave Active/Retained in the
+        // same turn that clears the stack.
+        try { await ModelContext.InvokeAsync(() => ClearClosedRegion(region, entries)).ConfigureAwait(false); }
+        catch (ObjectDisposedException)
+        {
+            // The model context is gone, so no turn can observe the region any more.
+            lock (Gate) RemoveClosedEntries(region, entries);
+        }
         return entries;
+    }
+
+    // Runs inside a model turn.
+    private static void ClearClosedRegion(NavigationRegionCore region, List<NavigationEntryCore> entries)
+    {
+        NavigationRegionChanges changes;
+        lock (region.Navigator.Gate)
+        {
+            var before = Snapshot(region);
+            RemoveClosedEntries(region, entries);
+            changes = Changes(before, region);
+        }
+        region.RaiseChanges(changes);
+    }
+
+    private static void RemoveClosedEntries(NavigationRegionCore region, List<NavigationEntryCore> entries)
+    {
+        foreach (var entry in entries)
+            if (entry.Phase is NavigationEntryPhase.Active or NavigationEntryPhase.Retained)
+                entry.Phase = NavigationEntryPhase.Removed;
+        region.Stack = [];
     }
 
     private static void MarkClosedLocked(NavigationRegionCore region, List<NavigationTransition> cancel)

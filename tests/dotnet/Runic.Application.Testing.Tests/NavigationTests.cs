@@ -24,6 +24,9 @@ internal static class NavigationTests
         await CancellationWhilePreparingAsync();
         await CancellationBeforeCommitTurnAsync();
         await PreCancelledRequestDoesNotSupersedeAsync();
+        await CloseDuringPreparationIsRejectedAsync();
+        await CloseChangesStateInsideTurnsAsync();
+        await CreateRegionDisposesFactoryInstanceAsync();
         await SupersessionBeforeCommitAsync();
         await NoSupersessionAfterCommitStartsAsync();
         await HookFailuresAsync();
@@ -313,6 +316,85 @@ internal static class NavigationTests
         var committed = await Wait(first);
         Require(committed is NavigationResult<Page>.Committed && Names(region) == "home,older" && older.Disposed == 0,
             $"A cancelled request superseded its predecessor: {committed}, {Names(region)}.");
+    }
+
+    private static async Task CloseDuringPreparationIsRejectedAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        // The factory runs on the caller's thread until its first await, so the push starts on the pool.
+        var push = Task.Run(() => region.PushAsync(NavigationTarget.Create<Page>(_ =>
+        {
+            entered.TrySetResult();
+            release.Wait(Timeout);
+            // Once the navigator is closing, this throws ObjectDisposedException from the factory.
+            fixture.Navigator.CreateRegion<Page>(new object());
+            return new Page("created");
+        })).AsTask());
+        await Wait(entered.Task);
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        await Until(() => Throws<ObjectDisposedException>(() => fixture.Navigator.CreateRegion<Page>(new object())),
+            "The navigator did not start closing.");
+        release.Set();
+        var result = await Wait(push);
+        await Wait(disposal);
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && fixture.Logs.Count(1061) == 0,
+            $"A close during preparation gave {result} and logged {fixture.Logs.Count(1061)} preparation failures.");
+    }
+
+    private static async Task CloseChangesStateInsideTurnsAsync()
+    {
+        await using var fixture = new Fixture(closeTimeout: TimeSpan.FromMilliseconds(100));
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var inTurn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        region.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(region.Current)) return;
+            inTurn.TrySetResult();
+            release.Wait(Timeout);
+        };
+        var pushed = new Page("pushed");
+        var push = region.PushAsync(NavigationTarget.Own(pushed)).AsTask();
+        await Wait(inTurn.Task);
+        // The commit turn is still raising notifications. Closing times out waiting for it
+        // and must wait for the turn before it changes the region.
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        await Task.Delay(500);
+        var during = (region.Current, region.History.Count);
+        release.Set();
+        await Wait(disposal);
+        await Wait(push);
+        Require(during.Current == pushed && during.Count == 1,
+            "Closing changed the region while its commit turn was still raising notifications.");
+        Require(region.Current is null && !region.CanGoBack && pushed.Disposed == 1, "Closing did not clear and retire the region.");
+    }
+
+    private static async Task CreateRegionDisposesFactoryInstanceAsync()
+    {
+        await using var fixture = new Fixture();
+        // Closing starts while the factory runs.
+        var closing = new Page("closing");
+        Require(Throws<ObjectDisposedException>(() => fixture.Navigator.CreateRegion<Page>(new object(),
+                NavigationTarget.Create<Page>(services =>
+                {
+                    _ = fixture.Navigator.DisposeAsync().AsTask();
+                    return closing;
+                }))),
+            "A region was created while the navigator was closing.");
+        await Until(() => closing.Disposed == 1, "The factory instance was not disposed when closing started.");
+
+        // Binding the instance fails: it is already bound to another model context.
+        await using var navigating = new Fixture();
+        await using var holding = new Fixture();
+        var bound = new Page("bound");
+        using var lease = RunicModelContextRegistry.Shared.Bind(holding.Context, bound);
+        Require(Throws<InvalidOperationException>(() => navigating.Navigator.CreateRegion<Page>(new object(),
+                NavigationTarget.Create<Page>(_ => bound))),
+            "A model context conflict did not fail the region.");
+        await Until(() => bound.Disposed == 1, "The factory instance was not disposed when binding failed.");
     }
 
     private static async Task SupersessionBeforeCommitAsync()
