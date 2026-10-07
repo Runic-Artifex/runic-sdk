@@ -4,20 +4,36 @@
   const connected = () => window.webui?.isConnected() ?? false;
   // A WebSocket reconnect keeps the page. Generated clients then re-read their
   // routes and re-acknowledge mounted Views. Observe the transition by polling
-  // so an application's own webui.setEventCallback stays in place.
+  // so an application's own webui.setEventCallback stays in place. The poll
+  // also runs while a call awaits admission, so a lost connection releases it.
   const reconnectListeners = new Set();
   let reconnectTimer;
   let wasConnected = false;
   let lost = false;
   function watchConnection() {
     const now = connected();
-    if (!now && wasConnected) lost = true;
-    wasConnected = now;
-    if (!now || !lost) return;
-    lost = false;
-    for (const listener of [...reconnectListeners]) {
-      try { listener(); } catch (error) { console.error("Runic reconnect listener failed", error); }
+    if (!now && wasConnected) {
+      lost = true;
+      forgetAdmissions();
     }
+    wasConnected = now;
+    if (now && lost) {
+      lost = false;
+      for (const listener of [...reconnectListeners]) {
+        try { listener(); } catch (error) { console.error("Runic reconnect listener failed", error); }
+      }
+    }
+    if (reconnectListeners.size === 0 && current === undefined && late.length === 0) stopWatching();
+  }
+  function startWatching() {
+    if (reconnectTimer !== undefined) return;
+    wasConnected = connected();
+    reconnectTimer = setInterval(watchConnection, 250);
+  }
+  function stopWatching() {
+    if (reconnectTimer === undefined) return;
+    clearInterval(reconnectTimer);
+    reconnectTimer = undefined;
   }
 
   // Views frontends own their navigation. Once the bridge connects it cancels
@@ -70,6 +86,16 @@
     if (late.length !== 0) late.shift();
     else current?.admit();
   };
+  // WebUI never settles calls that were in flight when its WebSocket closed,
+  // and .NET cannot admit them over the new connection. Release the waiting
+  // call and drop the late ones, so their missing admissions cannot hold back
+  // or release calls sent after the reconnect.
+  function forgetAdmissions() {
+    late.length = 0;
+    current?.admit();
+  }
+  // Smoke diagnostics; not part of the Bridge client contract.
+  window.__runicBridgeAdmissions = () => ({ late: late.length, waiting: current !== undefined });
   function send(name, args) {
     let release;
     const previous = admission;
@@ -92,6 +118,7 @@
         },
       };
       current = call;
+      startWatching();
       timer = setTimeout(() => {
         if (current !== call) return;
         current = undefined;
@@ -123,15 +150,10 @@
     },
     onReconnect: (listener) => {
       reconnectListeners.add(listener);
-      if (reconnectTimer === undefined) {
-        wasConnected = connected();
-        reconnectTimer = setInterval(watchConnection, 250);
-      }
+      startWatching();
       return () => {
         reconnectListeners.delete(listener);
-        if (reconnectListeners.size !== 0 || reconnectTimer === undefined) return;
-        clearInterval(reconnectTimer);
-        reconnectTimer = undefined;
+        if (reconnectListeners.size === 0 && current === undefined && late.length === 0) stopWatching();
       };
     }
   };
