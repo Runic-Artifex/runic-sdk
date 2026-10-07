@@ -107,7 +107,9 @@ It runs these steps in order:
 
 1. `bun tools/dotnet-runic/metadata/generate.mjs --write` rewrites
    `tools/dotnet-runic/metadata/runic.compatibility-set.json` from
-   `eng/workspace.json` and the toolchain pins. CI checks it with `--check`.
+   `eng/workspace.json`, `eng/support.json` and the toolchain pins, and the
+   support table in `README.md` from `eng/support.json`. CI checks both with
+   `--check`.
 2. `bun eng/generate-shipping-projects.mjs` rewrites
    `eng/build/shipping-projects.props` from `eng/workspace.json`. CI checks it
    with `--check`.

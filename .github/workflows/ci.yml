@@ -143,7 +143,7 @@ jobs:
       - uses: ./.github/actions/restore-build
       - name: Verify workspace, runtime and CI contracts
         run: bun test --timeout 180000 ./eng/*.test.mjs ./eng/ci/*.test.mjs ./eng/release/*.test.mjs ./eng/reliability/*.test.mjs ./tests/engineering/*.test.mjs
-      - name: Check embedded CLI compatibility metadata
+      - name: Check embedded CLI compatibility metadata and README support table
         run: bun tools/dotnet-runic/metadata/generate.mjs --check
       - name: Check generated packing project inventory
         run: bun eng/generate-shipping-projects.mjs --check

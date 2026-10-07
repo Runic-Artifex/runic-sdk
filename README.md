@@ -31,6 +31,53 @@ Explore the [first Window](examples/first-window/README.md),
 [Reactive Notes](examples/notes-reactive-views/README.md) for the current
 Window and View model. The instructions below are for contributing to the SDK itself.
 
+## Supported platforms
+
+Support per Window host and runtime identifier (RID). Runtime identifiers that
+are not listed are unsupported. `dotnet runic doctor --rid <rid>` reports the
+same status for your project. The table is generated from `eng/support.json`;
+edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
+
+<!-- support-matrix:begin (generated from eng/support.json) -->
+| RID | Runic Desktop | CS-WebUI |
+| --- | --- | --- |
+| `linux-x64` | CI-verified | CI-verified |
+| `win-x64` | CI-verified | CI-verified |
+| `osx-arm64` | CI-verified | CI-verified |
+| `linux-arm64` | Packaged, not CI-verified | Packaged, not CI-verified |
+| `linux-musl-x64` | Packaged, not CI-verified | Unsupported |
+| `linux-musl-arm64` | Packaged, not CI-verified | Unsupported |
+| `win-arm64` | Packaged, not CI-verified | Unsupported |
+| `osx-x64` | Packaged, not CI-verified | Packaged, not CI-verified |
+
+- CI-verified: Runic CI builds, tests and publishes it with Native AOT for every change.
+- Packaged, not CI-verified: The packages ship native assets for it, but Runic CI does not run it. Test the published application on a real target machine.
+- Unsupported: Runic does not ship the native assets the host needs.
+
+| OS | Host | Requirement | Notes |
+| --- | --- | --- | --- |
+| Windows | Runic Desktop, CS-WebUI | Windows 10 or newer | The .NET 10 baseline. |
+| Windows | Runic Desktop, CS-WebUI | Microsoft Edge WebView2 Runtime | Evergreen runtime; Windows 11 includes it. CS-WebUI uses it only when no Chromium-family browser is installed. |
+| macOS | Runic Desktop, CS-WebUI | macOS 12.0 or newer | The .NET 10 Native AOT deployment target. WKWebView is part of macOS. |
+| Linux | CS-WebUI | glibc 2.34 or newer | The CsWebUi.Native Linux library; musl distributions are unsupported. |
+| Linux | Runic Desktop, CS-WebUI | GTK 3 and WebKitGTK 4.1 | Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed. |
+| Linux | Runic Desktop | GTK 4.12 or newer | With Runic.Desktop.Gtk4. |
+| Linux | Runic Desktop | WebKitGTK 6.0 or newer | With Runic.Desktop.Gtk4. |
+
+Notes on targets that CI does not verify:
+
+- Runic Desktop, `linux-arm64`: Uses the system GTK and WebKitGTK libraries; no arm64 Linux CI runner.
+- Runic Desktop, `linux-musl-x64`: Uses the system GTK and WebKitGTK libraries; no musl CI runner.
+- Runic Desktop, `linux-musl-arm64`: Uses the system GTK and WebKitGTK libraries; no musl CI runner.
+- Runic Desktop, `win-arm64`: Ships the arm64 WebView2 loader; no Windows on Arm CI runner.
+- Runic Desktop, `osx-x64`: Uses the system WKWebView; no Intel macOS CI runner.
+- CS-WebUI, `linux-arm64`: CsWebUi.Native ships a glibc linux-arm64 library; no arm64 Linux CI runner.
+- CS-WebUI, `linux-musl-x64`: CS-WebUI ships no native library for linux-musl-x64; its Linux library needs glibc 2.34 or newer.
+- CS-WebUI, `linux-musl-arm64`: CS-WebUI ships no native library for linux-musl-arm64; its Linux library needs glibc 2.34 or newer.
+- CS-WebUI, `win-arm64`: CS-WebUI ships no native library for win-arm64.
+- CS-WebUI, `osx-x64`: CsWebUi.Native ships an osx-x64 library; no Intel macOS CI runner.
+<!-- support-matrix:end -->
+
 ## Start developing
 
 Install the .NET SDK in `global.json`, Node in `.node-version`, and the Bun version

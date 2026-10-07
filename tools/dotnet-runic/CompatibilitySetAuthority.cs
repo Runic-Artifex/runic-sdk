@@ -2,6 +2,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 
@@ -16,6 +17,75 @@ internal sealed record CompatibilityToolchain(
     string Npm,
     string Pnpm);
 
+/// <summary>How well Runic supports a Window host on a runtime identifier (eng/support.json).</summary>
+internal enum SupportStatus
+{
+    Unsupported,
+    PackagedUnverified,
+    CiVerified,
+}
+
+internal sealed record SupportTarget(string Rid, SupportStatus Status, string Reason, string? Remediation);
+
+internal sealed record SupportHost(string Id, string Name, string Package, IReadOnlyList<SupportTarget> Targets);
+
+internal sealed record SupportRequirement(string Id, string Os, IReadOnlyList<string> Hosts, string Component, string? Minimum, string Note);
+
+/// <summary>The support matrix embedded in the compatibility set since schema 3.</summary>
+internal sealed class SupportMatrix(IReadOnlyList<SupportHost> hosts, IReadOnlyList<SupportRequirement> requirements)
+{
+    internal IReadOnlyList<SupportHost> Hosts { get; } = hosts;
+
+    internal IReadOnlyList<SupportRequirement> Requirements { get; } = requirements;
+
+    internal SupportRequirement? Requirement(string id) =>
+        Requirements.FirstOrDefault(requirement => requirement.Id == id);
+
+    internal static SupportMatrix Parse(JsonElement support)
+    {
+        var hosts = new List<SupportHost>();
+        foreach (JsonElement host in support.GetProperty("hosts").EnumerateArray())
+        {
+            var targets = new List<SupportTarget>();
+            foreach (JsonElement target in host.GetProperty("targets").EnumerateArray())
+            {
+                targets.Add(new SupportTarget(
+                    target.GetProperty("rid").GetString() ?? string.Empty,
+                    ParseStatus(target.GetProperty("status").GetString()),
+                    target.GetProperty("reason").GetString() ?? string.Empty,
+                    target.TryGetProperty("remediation", out JsonElement remediation) ? remediation.GetString() : null));
+            }
+            hosts.Add(new SupportHost(
+                host.GetProperty("id").GetString() ?? string.Empty,
+                host.GetProperty("name").GetString() ?? string.Empty,
+                host.GetProperty("package").GetString() ?? string.Empty,
+                targets));
+        }
+
+        var requirements = new List<SupportRequirement>();
+        foreach (JsonElement requirement in support.GetProperty("requirements").EnumerateArray())
+        {
+            requirements.Add(new SupportRequirement(
+                requirement.GetProperty("id").GetString() ?? string.Empty,
+                requirement.GetProperty("os").GetString() ?? string.Empty,
+                [.. requirement.GetProperty("hosts").EnumerateArray().Select(host => host.GetString() ?? string.Empty)],
+                requirement.GetProperty("component").GetString() ?? string.Empty,
+                requirement.GetProperty("minimum").GetString(),
+                requirement.GetProperty("note").GetString() ?? string.Empty));
+        }
+        return new SupportMatrix(hosts, requirements);
+    }
+
+    // A status from a newer generator counts as unsupported instead of failing the tool.
+    private static SupportStatus ParseStatus(string? value) =>
+        value switch
+        {
+            "ci-verified" => SupportStatus.CiVerified,
+            "packaged-unverified" => SupportStatus.PackagedUnverified,
+            _ => SupportStatus.Unsupported,
+        };
+}
+
 internal sealed class CompatibilitySetAuthority
 {
     // Generated from the current SDK inventory and maintained toolchain pins.
@@ -27,13 +97,15 @@ internal sealed class CompatibilitySetAuthority
         string releaseTrainVersion,
         CompatibilityToolchain toolchain,
         FrozenDictionary<string, CompatibilityPackage> nugetPackages,
-        FrozenDictionary<string, CompatibilityPackage> npmPackages)
+        FrozenDictionary<string, CompatibilityPackage> npmPackages,
+        SupportMatrix support)
     {
         Id = id;
         ReleaseTrainVersion = releaseTrainVersion;
         Toolchain = toolchain;
         NuGetPackages = nugetPackages;
         NpmPackages = npmPackages;
+        Support = support;
     }
 
     internal static CompatibilitySetAuthority Current { get; } = Load();
@@ -47,6 +119,8 @@ internal sealed class CompatibilitySetAuthority
     internal IReadOnlyDictionary<string, CompatibilityPackage> NuGetPackages { get; }
 
     internal IReadOnlyDictionary<string, CompatibilityPackage> NpmPackages { get; }
+
+    internal SupportMatrix Support { get; }
 
     private static CompatibilitySetAuthority Load()
     {
@@ -76,6 +150,8 @@ internal sealed class CompatibilitySetAuthority
                 toolchain.GetProperty("npm").GetString() ?? string.Empty,
                 toolchain.GetProperty("pnpm").GetString() ?? string.Empty),
             nuget.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
-            npm.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase));
+            npm.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
+            // Schema 1 sets have no support matrix; every RID then counts as unsupported.
+            root.TryGetProperty("support", out JsonElement support) ? SupportMatrix.Parse(support) : new SupportMatrix([], []));
     }
 }

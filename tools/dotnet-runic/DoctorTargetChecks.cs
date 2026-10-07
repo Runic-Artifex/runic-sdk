@@ -57,29 +57,15 @@ internal sealed partial record DoctorTargetRid(string Value, string Os, string A
 /// </summary>
 internal static class DoctorTargetChecks
 {
-    // These RID sets are hard-coded until W130-031's support metadata becomes
-    // their source of truth.
-    // Runtime identifiers that Runic CI builds and runs for every change.
-    private static readonly HashSet<string> CiVerified = new(StringComparer.Ordinal) { "linux-x64", "win-x64", "osx-arm64" };
-
-    // RIDs with packaged native assets but without CI coverage. CS-WebUI uses the
-    // CsWebUi.Native runtimes (glibc builds only, no win-arm64); Runic Desktop uses
-    // the WebView2 loader on Windows and system WebKit libraries elsewhere.
-    private static readonly HashSet<string> DesktopUnverified = new(StringComparer.Ordinal)
-    {
-        "win-arm64", "linux-arm64", "linux-musl-x64", "linux-musl-arm64", "osx-x64",
-    };
-
-    private static readonly HashSet<string> CsWebUiUnverified = new(StringComparer.Ordinal)
-    {
-        "linux-arm64", "osx-x64",
-    };
+    // Host and RID support comes from eng/support.json through the embedded compatibility set.
+    private static SupportMatrix Support => CompatibilitySetAuthority.Current.Support;
 
     private const string Gtk3Library = "libgtk-3.so.0";
     private const string WebKit41Library = "libwebkit2gtk-4.1.so.0";
     private const string Gtk4Library = "libgtk-4.so.1";
     private const string WebKit6Library = "libwebkitgtk-6.0.so.4";
-    private static readonly Version MinimumGtk4 = new(4, 12);
+    private static readonly Version MinimumGtk4 =
+        Version.TryParse(Support.Requirement("gtk4")?.Minimum, out Version? minimum) ? minimum : new(4, 12);
 
     internal static async Task InspectAsync(
         List<DoctorCheck> checks,
@@ -108,41 +94,47 @@ internal static class DoctorTargetChecks
                 "Use a portable RID such as linux-x64, linux-musl-x64, win-x64 or osx-arm64."));
             return false;
         }
-        if (target.Family is not ("win" or "linux" or "osx") || target.Architecture is not ("x64" or "arm64"))
+        SupportTarget? support = FindSupport(project.Host, target.Value);
+        switch (support?.Status)
         {
-            checks.Add(Fail(id, $"Runic Views Window hosts do not support {target.Value}.",
-                "Publish for win, linux, linux-musl or osx on x64 or arm64."));
-            return false;
+            case SupportStatus.CiVerified:
+                checks.Add(Pass(id, $"{target.Value} is a supported target that Runic CI builds and runs."));
+                return true;
+            case SupportStatus.PackagedUnverified:
+                checks.Add(Warn(id, $"{target.Value} has native support but is not verified by Runic CI. {support.Reason}",
+                    "Run the published application on a real target machine before you ship it."));
+                return true;
+            case SupportStatus.Unsupported:
+                checks.Add(Fail(id, support.Reason, support.Remediation ?? SupportedRidsRemediation(project.Host)));
+                return false;
+            default:
+                checks.Add(Fail(id, $"Runic Views Window hosts do not support {target.Value}.", SupportedRidsRemediation(project.Host)));
+                return false;
         }
-        if (project.Host == RunicViewsHost.CsWebUi && target.Value == "win-arm64")
+    }
+
+    // The support entries of the project's host; a project without a known host may use any host.
+    private static IEnumerable<SupportTarget> HostTargets(RunicViewsHost host)
+    {
+        string? id = host switch
         {
-            checks.Add(Fail(id, "CS-WebUI ships no native library for win-arm64.",
-                "Publish for win-x64, which runs under emulation on Windows on Arm, or use the Runic Desktop host."));
-            return false;
-        }
-        if (project.Host == RunicViewsHost.CsWebUi && target.Musl)
-        {
-            checks.Add(Fail(id, $"CS-WebUI ships no native library for {target.Value}; its Linux library needs glibc 2.34 or newer.",
-                "Publish for a glibc distribution (linux-x64 or linux-arm64), or use the Runic Desktop host."));
-            return false;
-        }
-        if (CiVerified.Contains(target.Value))
-        {
-            checks.Add(Pass(id, $"{target.Value} is a supported target that Runic CI builds and runs."));
-            return true;
-        }
-        bool packaged = project.Host switch
-        {
-            RunicViewsHost.CsWebUi => CsWebUiUnverified.Contains(target.Value),
-            RunicViewsHost.Desktop => DesktopUnverified.Contains(target.Value),
-            _ => DesktopUnverified.Contains(target.Value) || CsWebUiUnverified.Contains(target.Value),
+            RunicViewsHost.Desktop => "desktop",
+            RunicViewsHost.CsWebUi => "cswebui",
+            _ => null,
         };
-        checks.Add(packaged
-            ? Warn(id, $"{target.Value} has native support but is not verified by Runic CI.",
-                "Run the published application on a real target machine before you ship it.")
-            : Fail(id, $"Runic Views Window hosts do not support {target.Value}.",
-                "Publish for linux-x64, win-x64 or osx-arm64."));
-        return packaged;
+        return Support.Hosts.Where(candidate => id is null || candidate.Id == id).SelectMany(candidate => candidate.Targets);
+    }
+
+    private static SupportTarget? FindSupport(RunicViewsHost host, string rid) =>
+        HostTargets(host).Where(entry => entry.Rid == rid).OrderByDescending(entry => entry.Status).FirstOrDefault();
+
+    private static string SupportedRidsRemediation(RunicViewsHost host)
+    {
+        string[] verified = [.. HostTargets(host)
+            .Where(entry => entry.Status == SupportStatus.CiVerified).Select(entry => entry.Rid).Distinct()];
+        return verified.Length == 0
+            ? "See the supported platforms in the Runic SDK README."
+            : $"Publish for {string.Join(", ", verified)}, which Runic CI verifies.";
     }
 
     private static void CheckRuntimeIdentifiers(List<DoctorCheck> checks, DoctorProjectConfiguration project, DoctorTargetRid target)
@@ -318,7 +310,7 @@ internal static class DoctorTargetChecks
                 {
                     return new(DoctorStatus.Warning, $"This machine is missing {string.Join(" and ", missing)}.",
                         project.UsesGtk4
-                            ? "Install GTK 4.12 or newer and WebKitGTK 6.0 (for example libgtk-4-1 and libwebkitgtk-6.0-4) on this machine and on target machines."
+                            ? $"Install GTK {MinimumGtk4} or newer and WebKitGTK 6.0 (for example libgtk-4-1 and libwebkitgtk-6.0-4) on this machine and on target machines."
                             : "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0) on this machine and on target machines.");
                 }
                 if (project.UsesGtk4)
@@ -352,7 +344,7 @@ internal static class DoctorTargetChecks
         {
             "win" => "the Microsoft Edge WebView2 Runtime",
             "osx" => "WKWebView, which macOS includes",
-            _ => gtk4 ? "GTK 4.12 or newer with WebKitGTK 6.0" : "GTK 3 with WebKitGTK 4.1",
+            _ => gtk4 ? $"GTK {MinimumGtk4} or newer with WebKitGTK 6.0" : "GTK 3 with WebKitGTK 4.1",
         };
 
     private static string TargetFrameworkMajor(string targetFramework)
