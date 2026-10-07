@@ -56,11 +56,12 @@ export class ViewOperationCancelled extends Data.TaggedError("ViewOperationCance
   readonly requestId: string;
   readonly status: BridgeOperationStatus<unknown>;
 }> {}
-/** The `timeout` option passed and the operation was cancelled. */
+/** The `timeout` option passed and the operation was cancelled, or .NET reported a client-side `timedOut` status. */
 export class ViewOperationTimedOut extends Data.TaggedError("ViewOperationTimedOut")<{
   readonly message: string;
   readonly requestId: string;
-  readonly timeout: Duration.Duration;
+  /** The `timeout` option that passed, when this adapter applied it. */
+  readonly timeout: Duration.Duration | undefined;
   /** How .NET answered the cancellation request, or `unobserved` when the request failed. */
   readonly cancellation: BridgeOperationCancelKind | "unobserved";
 }> {}
@@ -78,7 +79,12 @@ export function fromBridgeError(error: BridgeError): ViewError {
     case "timeout": return new ViewBridgeTimeout(fields);
     case "rejected": return new ViewRejected(fields);
     case "cancelled": return new ViewCancelled(fields);
-    default: return new ViewCommandFailed({ ...fields, detail: error.detail });
+    case "failed": return new ViewCommandFailed({ ...fields, detail: error.detail });
+    default: {
+      // A kind added by a newer `@runic-artifex/views` is a failure until this adapter maps it.
+      const _unmapped: never = error.kind;
+      return new ViewCommandFailed({ ...fields, detail: error.detail });
+    }
   }
 }
 

@@ -76,7 +76,11 @@ export function command<A>(run: () => PromiseLike<A>): Effect.Effect<A, ViewErro
 export type OperationResult<T> = [T] extends [never] ? void : T;
 
 export interface OperationOptions {
-  /** Cancels the operation and fails with `ViewOperationTimedOut` when it does not finish in time. */
+  /**
+   * Bounds the wait for the terminal status, which starts once .NET answered the
+   * start request. When it passes, the operation is cancelled and the Effect
+   * fails with `ViewOperationTimedOut`.
+   */
   readonly timeout?: Duration.Input;
 }
 
@@ -89,18 +93,32 @@ export interface RetryOperationOptions extends OperationOptions {
    * operation that reached a terminal status, are not retried.
    */
   readonly retry?: Schedule.Schedule<unknown, ViewOperationError>;
+  /** Further limits which of those failures are retried, for example to stop once a page is gone. */
+  readonly while?: (error: ViewOperationError) => boolean;
 }
 
 const transient = (error: ViewOperationError) =>
   error._tag === "ViewDisconnected" || error._tag === "ViewBridgeTimeout" || error._tag === "ViewOperationUncertain";
 
+// The operation the latest attempt started, shared by every attempt.
+interface Started {
+  handle: BridgeOperation<unknown> | undefined;
+  settled: boolean;
+}
+
 /**
- * Starts a .NET operation and waits for its terminal status. Interrupting the
- * Effect, including through `Effect.timeout`, sends the cancellation request
- * before the interruption completes.
+ * Starts a .NET operation and waits for its terminal status.
+ *
+ * When the Effect ends without a terminal status, because it was interrupted
+ * (including by `Effect.timeout` or between retries), timed out, or failed to
+ * observe the operation after its last attempt, it sends the cancellation
+ * request for the operation it started before it completes. The start request
+ * itself is not interruptible: an interruption waits for .NET to answer it, so
+ * an admitted operation is never left running unobserved.
  *
  * Retrying is only offered with an explicit request ID, which makes a repeated
- * start return the operation already running instead of starting another:
+ * start return the operation already running instead of starting another.
+ * Between attempts the operation keeps running:
  *
  * ```ts
  * yield* operation(() => editor.startSave(), { timeout: "10 seconds" });
@@ -116,43 +134,51 @@ export function operation<T>(start: () => PromiseLike<BridgeOperation<T>>, optio
   Effect.Effect<OperationResult<T>, ViewOperationError>;
 export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T>>,
   options: OperationOptions & Partial<RetryOperationOptions> = {}): Effect.Effect<OperationResult<T>, ViewOperationError> {
-  const once = runOperation(() => start(options.requestId ?? ""), options.timeout);
-  return options.requestId === undefined || options.retry === undefined
-    ? once
-    : Effect.retry(once, { schedule: options.retry, while: transient });
+  return Effect.suspend(() => {
+    const started: Started = { handle: undefined, settled: true };
+    const once = runOperation(() => start(options.requestId ?? ""), options.timeout, started);
+    const limit = options.while;
+    const attempts = options.requestId === undefined || options.retry === undefined ? once
+      : Effect.retry(once, { schedule: options.retry, while: error => transient(error) && (limit === undefined || limit(error)) });
+    return attempts.pipe(Effect.onExit(exit =>
+      Exit.isSuccess(exit) || started.handle === undefined || started.settled ? Effect.void : Effect.asVoid(cancel(started.handle))));
+  });
 }
 
-function runOperation<T>(start: () => PromiseLike<BridgeOperation<T>>, timeout: Duration.Input | undefined):
+function runOperation<T>(start: () => PromiseLike<BridgeOperation<T>>, timeout: Duration.Input | undefined, started: Started):
   Effect.Effect<OperationResult<T>, ViewOperationError> {
-  return Effect.acquireUseRelease(
-    attempt(start, bridgeFailure).pipe(Effect.map(handle => ({ handle, settled: false }))),
-    started => {
-      const { handle } = started;
-      const completed = attempt(() => handle.completion, bridgeFailure).pipe(
-        Effect.tap(() => Effect.sync(() => { started.settled = true; })),
-        Effect.flatMap(status => fromStatus(status)),
-      );
-      if (timeout === undefined) return completed;
-      const duration = Duration.fromInputUnsafe(timeout);
-      return completed.pipe(Effect.timeoutOrElse({
-        duration,
-        orElse: () => cancel(handle).pipe(Effect.flatMap(cancellation => {
-          started.settled = true;
-          const timedOut = Effect.fail(new ViewOperationTimedOut({
-            message: `The operation ${handle.requestId} did not complete within ${Duration.format(duration)}; cancellation: ${cancellation}.`,
-            requestId: handle.requestId, timeout: duration, cancellation,
-          }));
-          // `not-running`: it finished just before the deadline, so report how.
-          if (cancellation !== "not-running") return timedOut;
-          return Effect.tryPromise({ try: () => handle.status(), catch: cause => cause }).pipe(
-            Effect.matchEffect({ onFailure: () => timedOut, onSuccess: status => status.kind === "running" ? timedOut : fromStatus(status) }));
-        })),
-      }));
-    },
-    // A failed observation leaves the operation running, so a retry with the
-    // same request ID can still observe it. Only giving up cancels it.
-    (started, exit) => Exit.hasInterrupts(exit) && !started.settled ? Effect.asVoid(cancel(started.handle)) : Effect.void,
+  // The start is uninterruptible so its handle is always recorded for cancellation.
+  return Effect.uninterruptibleMask(restore => attempt(start, bridgeFailure).pipe(
+    Effect.tap(handle => Effect.sync(() => { started.handle = handle; started.settled = false; })),
+    Effect.flatMap(handle => restore(waitFor(handle, timeout, started))),
+  ));
+}
+
+function waitFor<T>(handle: BridgeOperation<T>, timeout: Duration.Input | undefined, started: Started):
+  Effect.Effect<OperationResult<T>, ViewOperationError> {
+  const completed = attempt(() => handle.completion, bridgeFailure).pipe(
+    Effect.tap(() => Effect.sync(() => { started.settled = true; })),
+    Effect.flatMap(status => fromStatus(status)),
   );
+  if (timeout === undefined) return completed;
+  const duration = Duration.fromInputUnsafe(timeout);
+  return completed.pipe(Effect.timeoutOrElse({
+    duration,
+    orElse: () => Effect.suspend(() => {
+      // Cancelled here, so the caller's exit does not cancel it again.
+      started.settled = true;
+      return cancel(handle);
+    }).pipe(Effect.flatMap(cancellation => {
+      const timedOut = Effect.fail(new ViewOperationTimedOut({
+        message: `The operation ${handle.requestId} did not complete within ${Duration.format(duration)}; cancellation: ${cancellation}.`,
+        requestId: handle.requestId, timeout: duration, cancellation,
+      }));
+      // `not-running`: it finished just before the deadline, so report how.
+      if (cancellation !== "not-running") return timedOut;
+      return Effect.tryPromise({ try: () => handle.status(), catch: cause => cause }).pipe(
+        Effect.matchEffect({ onFailure: () => timedOut, onSuccess: status => status.kind === "running" ? timedOut : fromStatus(status) }));
+    })),
+  }));
 }
 
 function cancel(handle: BridgeOperation<unknown>) {
@@ -175,10 +201,22 @@ function fromStatus<T>(status: BridgeOperationStatus<T>): Effect.Effect<Operatio
       }));
     case "cancelled":
       return Effect.fail(new ViewOperationCancelled({ message: `The operation ${requestId} was cancelled.`, requestId, status }));
-    default:
+    case "timedOut":
+      return Effect.fail(new ViewOperationTimedOut({
+        message: `The operation ${requestId} timed out.`, requestId, timeout: undefined, cancellation: status.cancellation ?? "unobserved",
+      }));
+    case "running":
+    case "expired":
+    case "unknown":
       return Effect.fail(new ViewOperationUncertain({
         message: `The outcome of operation ${requestId} is ${status.kind}.`, requestId, cause: status,
       }));
+    default: {
+      const unknown: never = status.kind;
+      return Effect.fail(new ViewOperationUncertain({
+        message: `The outcome of operation ${requestId} is ${String(unknown)}.`, requestId, cause: status,
+      }));
+    }
   }
 }
 

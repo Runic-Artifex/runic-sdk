@@ -23,7 +23,9 @@ to `compilerOptions.lib`.
 
 ```ts
 import { command, connect, operation, states } from "@runic-artifex/views-effect";
-import { Effect, Schedule, Stream } from "effect";
+import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 import { connectEditor } from "./generated/editor.js";
 
 const program = Effect.gen(function* () {
@@ -87,19 +89,25 @@ select them. Each keeps the original `BridgeError` as `cause` and its `route`.
 
 ### Operations, interruption and retries
 
-- Interrupting `operation(...)`, including through `Effect.timeout`,
-  `Effect.race` or a closing scope, sends the cancellation request and waits for
-  its reply before the interruption completes.
-- The `timeout` option does the same and fails with `ViewOperationTimedOut`,
-  which carries the request ID, unless .NET answers that the operation already
-  finished; then it reports that outcome. `Effect.timeout` fails with `TimeoutError`
-  instead. Both use the Effect `Clock`, so `TestClock` controls them.
+- When `operation(...)` ends without a terminal status, it sends the
+  cancellation request for the operation it started and waits for the reply
+  before it completes. That covers interruption (including `Effect.timeout`,
+  `Effect.race`, a closing scope, and an interruption between retries), the
+  `timeout` option, and a failure to observe the operation after the last
+  attempt. Each operation is cancelled at most once.
+- The `timeout` option bounds the wait for the result, which starts once .NET
+  answered the start request. It fails with `ViewOperationTimedOut`, which
+  carries the request ID, unless .NET answers that the operation already
+  finished; then it reports that outcome. `Effect.timeout` around the whole
+  Effect fails with `TimeoutError` instead, and if it passes while the start
+  request is in flight, it waits for that reply so the admitted operation can
+  be cancelled. Both use the Effect `Clock`, so `TestClock` controls them.
 - `retry` is accepted only together with `requestId`. Every attempt starts the
   operation with that ID, and .NET answers a repeated start with the operation
   it already runs, so the command runs at most once. Only `ViewDisconnected`,
-  `ViewBridgeTimeout` and `ViewOperationUncertain` are retried; a failed or
-  cancelled operation is not. A failed observation does not cancel the
-  operation, so the next attempt can still observe it.
+  `ViewBridgeTimeout` and `ViewOperationUncertain` are retried, and `while`
+  can narrow that further; a failed or cancelled operation is not retried. The
+  operation keeps running between attempts, so the next attempt observes it.
 - Interrupting a `command` abandons its reply only; .NET keeps running a
   command it received. Use an operation when a call must be cancellable.
 
@@ -166,14 +174,18 @@ const exit = await Effect.runPromise(Effect.gen(function* () {
 Measured on 2026-10-07 with esbuild 0.28.2
 (`--bundle --minify --format=esm --target=es2023`) and `gzip -9`, against the
 generated Notes Editor client of
-[the Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first) and Effect 4.0.1:
+[the Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first) and Effect 4.0.1. The
+adapter and these bundles import Effect modules by subpath (`effect/Effect`,
+`effect/Stream`); importing from the `effect` barrel, as in the last row, more
+than doubles the cost, so prefer subpath imports in browser code:
 
 | Bundle | gzip bytes |
 | --- | --- |
 | Plain client: connect, subscribe, command, operation with wait timeout and cancel | 9,358 |
-| Adapter: `command` and `operation`, plain subscribe | 23,994 |
-| Adapter: scoped `connect`, `states` Stream, `command`, `operation` with timeout | 28,999 |
+| Adapter: `command` and `operation`, plain subscribe | 24,091 |
+| Adapter: scoped `connect`, `states` Stream, `command`, `operation` with timeout | 29,068 |
 | Notes frontend, plain | 11,823 |
-| Notes frontend with the Effect editor | 30,335 |
+| Notes frontend with the Effect editor | 30,438 |
+| Same adapter bundle, importing `{ Effect, Stream } from "effect"` | 64,407 |
 
 Applications that do not import this package do not pay for it.

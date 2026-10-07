@@ -29,18 +29,21 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
     message.textContent = `${state.isDirty ? "Unsaved changes. " : ""}${state.savedMessage}`;
   };
 
-  // One permit keeps field writes ahead of a Save that was clicked after them.
+  // One permit keeps field writes in order. A Save takes its turn only to wait
+  // for the writes queued before it, so edits made while it runs are not held up.
   const writes = Semaphore.makeUnsafe(1);
   const write = (run: () => Promise<EditorState>) => Effect.runFork(writes.withPermit(command(run)).pipe(
     Effect.match({ onFailure: showError, onSuccess: () => showError(undefined) })));
 
   // An explicit request ID makes the retry safe: a repeated start returns the
-  // operation .NET is already running. The timeout cancels it in .NET.
-  const saving = createEffectAction(() => writes.withPermit(operation(id => editor.startSaveWithRequestId(id), {
+  // operation .NET is already running. The timeout cancels it in .NET; after
+  // the editor is gone, a failed observation is no longer retried.
+  const saving = createEffectAction(() => writes.withPermit(Effect.void).pipe(Effect.andThen(operation(id => editor.startSaveWithRequestId(id), {
     requestId: globalThis.crypto.randomUUID(),
     retry: Schedule.recurs(2),
+    while: () => active,
     timeout: "10 seconds",
-  })).pipe(Effect.tapError(failure => Effect.sync(() => showError(failure)))));
+  }))).pipe(Effect.tapError(failure => Effect.sync(() => showError(failure)))));
   const stopSaving = saving.subscribe(() => {
     save.disabled = !canSave || saving.current.pending;
     if (saving.current.status === "success") showError(undefined);
@@ -58,7 +61,8 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
     title.removeEventListener("change", titleChanged);
     body.removeEventListener("change", bodyChanged);
     save.removeEventListener("click", saveClicked);
-    // Leaving the editor does not cancel a save in progress; only its timeout does.
+    // Leaving the editor keeps a save running in .NET, as the plain editor does,
+    // so this does not interrupt it; setting `active` stops its retries.
     stopSaving();
     following.interruptUnsafe();
     editor.dispose();

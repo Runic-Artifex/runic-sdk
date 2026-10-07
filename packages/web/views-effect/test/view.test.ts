@@ -44,6 +44,7 @@ let bridge: MockBridge;
 let waits: { requestId: string; resolve: (json: string) => void; reject: (cause: unknown) => void }[];
 const status = (requestId: string, kind: string, extra: object = {}) => JSON.stringify({ contract: contractId, requestId, kind, ...extra });
 const names = () => bridge.calls.map(call => call.name);
+const cancels = () => bridge.calls.filter(call => call.name === "__runicOperationCancel").map(call => JSON.parse(call.args[0] as string).requestId as string);
 const until = async (condition: () => boolean) => {
   for (let attempt = 0; attempt < 200 && !condition(); attempt++) await new Promise(resolve => setTimeout(resolve, 1));
   expect(condition()).toBe(true);
@@ -184,7 +185,7 @@ describe("operation", () => {
       return yield* Fiber.await(fiber);
     }).pipe(Effect.provide(TestClock.layer())));
     expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toSatisfy(Cause.isTimeoutError);
-    expect(names()).toContain("__runicOperationCancel");
+    expect(cancels()).toHaveLength(1);
   });
 
   test("the timeout option fails with ViewOperationTimedOut after cancelling", async () => {
@@ -196,6 +197,59 @@ describe("operation", () => {
       return yield* Fiber.join(fiber);
     }).pipe(Effect.provide(TestClock.layer())));
     expect(error).toMatchObject({ _tag: "ViewOperationTimedOut", requestId: waits[0]!.requestId, cancellation: "cancellation-requested" });
+    expect(cancels()).toEqual([waits[0]!.requestId]);
+  });
+
+  test("an outer timeout waits for the start reply, then cancels the admitted operation", async () => {
+    const client = await connectCounter();
+    let admit!: () => void;
+    bridge.view("counter", { state: { count: 1, title: "One" }, routes: {
+      StartRun: () => new Promise<string>(resolve => { admit = () => resolve(JSON.stringify({ kind: "accepted" })); }),
+    } });
+    const exit = await Effect.runPromise(Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(operation(() => client.startRun()).pipe(Effect.timeout("1 second")));
+      yield* Effect.promise(() => until(() => admit !== undefined));
+      yield* TestClock.adjust("1 second");
+      expect(fiber.pollUnsafe()).toBeUndefined();
+      admit();
+      return yield* Fiber.await(fiber);
+    }).pipe(Effect.provide(TestClock.layer())));
+    expect(Exit.isFailure(exit) && Cause.squash(exit.cause)).toSatisfy(Cause.isTimeoutError);
+    expect(cancels()).toHaveLength(1);
+  });
+
+  test("interrupting between retries cancels the started operation once", async () => {
+    const client = await connectCounter();
+    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    await Effect.runPromise(Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(operation(id => client.startRunWithRequestId(id),
+        { requestId: "request-3", retry: Schedule.spaced("1 second") }));
+      yield* Effect.promise(() => until(() => names().filter(name => name === "__runicOperationWait").length === 1));
+      yield* TestClock.adjust("1 second");
+      yield* Effect.promise(() => until(() => names().filter(name => name === "__runicOperationWait").length === 2));
+      // Now waiting for the next attempt.
+      expect(cancels()).toEqual([]);
+      yield* Fiber.interrupt(fiber);
+    }).pipe(Effect.provide(TestClock.layer())));
+    expect(cancels()).toEqual(["request-3"]);
+  });
+
+  test("exhausted retries cancel the last unobserved operation once", async () => {
+    const client = await connectCounter();
+    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    const error = await Effect.runPromise(Effect.flip(operation(id => client.startRunWithRequestId(id),
+      { requestId: "request-4", retry: Schedule.recurs(2) })));
+    expect(error._tag).toBe("ViewOperationUncertain");
+    expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(3);
+    expect(cancels()).toEqual(["request-4"]);
+  });
+
+  test("`while` stops retrying", async () => {
+    const client = await connectCounter();
+    bridge.route("__runicOperationWait", () => Promise.reject(new Error("Socket closed")));
+    await Effect.runPromise(Effect.flip(operation(id => client.startRunWithRequestId(id),
+      { requestId: "request-5", retry: Schedule.recurs(5), while: () => false })));
+    expect(bridge.calls.filter(call => call.name === "counterStartRun")).toHaveLength(1);
   });
 
   test("a timeout that races completion reports the real outcome", async () => {
