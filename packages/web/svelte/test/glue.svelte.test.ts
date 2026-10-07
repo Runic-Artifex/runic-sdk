@@ -78,9 +78,16 @@ describe("useCommand", () => {
       outcomes.push(value => value instanceof Error ? reject(value) : resolve(value));
     }));
     expectTypeOf(command.failure).toEqualTypeOf<Fail | undefined>();
+    // An effect observes failure like any other rune.
+    const observed: (Fail | undefined)[] = [];
+    const stopObserving = $effect.root(() => { $effect(() => { observed.push(command.failure); }); });
+    flushSync();
     const failed = command.run();
     outcomes[0]!(bridgeFailure({ $case: "titleRequired" }));
     await failed;
+    flushSync();
+    expect([observed[0], observed.at(-1)]).toEqual([undefined, { $case: "titleRequired" }]);
+    stopObserving();
     expect(command.failure).toEqual({ $case: "titleRequired" });
     expect(command.error).toBeUndefined();
     const stale = command.run();

@@ -150,9 +150,15 @@ _saveExceptions = SaveCommand.ObserveBridgeExceptions(logger);
 _discardExceptions = DiscardCommand.ObserveBridgeExceptions(error => status.Report(error));
 ```
 
-`ObserveBridgeExceptions` ignores `RunicFailureException` and reports every other
+`ObserveBridgeExceptions` ignores `RunicFailureException` and
+`OperationCanceledException` (ReactiveUI also reports a cancelled operation on
+`ThrownExceptions`; the client already received both) and reports every other
 exception: the `ILogger` overload logs it at Error as `ReactiveCommandFailed`
-(event 1042), the callback overload passes it on. Dispose the returned
+(event 1042) with the command's expression, such as `SaveCommand`, as `Source`
+(pass `sourceName` to choose another), and the callback overload passes it on.
+While it is attached, no exception of that command reaches
+`RxState.DefaultExceptionHandler`. An exception thrown by the callback surfaces
+from `ThrownExceptions.OnNext`, inside ReactiveUI. Dispose the returned
 subscription with the ViewModel. An unexpected exception from a Bridge call is
 also logged by the Views runtime (event 1000 or 1004). The helper works on any
 `IHandleObservableErrors`, such as a `ReactiveObject`.

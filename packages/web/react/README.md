@@ -109,7 +109,8 @@ const navigate = useCommand((name: "showWelcome" | "showCounter") => client?.[na
 For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves the
 `BridgeOutcome`, and `failure` holds the declared failure of the latest run, typed
 from the outcome, while `error` keeps unexpected failures. Starting a run and
-`reset()` clear both, and a run that a later one superseded sets neither.
+`reset()` clear both, and a run superseded by a later run or by `reset()` sets
+neither.
 
 ## `useCollectionViewport(options)`
 

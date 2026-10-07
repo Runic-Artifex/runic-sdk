@@ -161,8 +161,8 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   and resolves to `undefined` after a failure, and `current` with `pending`,
   `error` and `failure`. For a command that resolves a `BridgeOutcome`,
   `failure` is the declared failure of the latest run; `error` stays the
-  unexpected failure. Starting a run and `reset()` clear both, and a run that a
-  later one superseded sets neither.
+  unexpected failure. Starting a run and `reset()` clear both, and a run
+  superseded by a later run or by `reset()` sets neither.
 - `createCollectionViewportController({ totalCount, rowHeight, overscan? })`
   has `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the

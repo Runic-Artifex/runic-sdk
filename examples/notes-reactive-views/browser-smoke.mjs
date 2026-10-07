@@ -186,6 +186,12 @@ try {
   } catch (error) {
     throw new Error(`The declared failure was not shown: ${JSON.stringify(await query(alerts))}; ${error}`);
   }
+  // The other case of the union: a title over 120 characters.
+  const longTitle = "x".repeat(121);
+  await change("#document-pane [data-title]", longTitle);
+  await retry(async () => (await snapshot(editorRoute)).state?.title === longTitle);
+  await click("[data-save]");
+  await retry(async () => (await query(alerts)).includes("A title can have at most 120 characters."));
   await change("#document-pane [data-title]", "Shared note");
   await change("#document-pane [data-body]", "Both Views see this text.");
   await click("[data-save]");

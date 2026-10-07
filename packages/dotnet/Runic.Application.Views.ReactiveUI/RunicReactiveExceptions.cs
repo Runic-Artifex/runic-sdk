@@ -1,6 +1,7 @@
 // Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
 // Runic.Application.ReactiveUI.Reactive. Both flavors' commands and reactive
 // objects implement ReactiveUI.IHandleObservableErrors from ReactiveUI.Core.
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using Runic.Application.Views;
@@ -25,9 +26,14 @@ public static class RunicReactiveExceptions
 {
     /// <summary>
     /// Subscribes to <paramref name="source"/>'s <c>ThrownExceptions</c>. A declared failure
-    /// (<see cref="RunicFailureException"/>) is ignored; any other exception goes to
+    /// (<see cref="RunicFailureException"/>) and a cancellation (<see cref="OperationCanceledException"/>),
+    /// which the Bridge already reported to the client, are ignored; any other exception goes to
     /// <paramref name="onUnexpected"/>. Dispose the result to stop observing.
     /// </summary>
+    /// <remarks>
+    /// While subscribed, no exception of <paramref name="source"/> reaches ReactiveUI's default handler.
+    /// An exception thrown by <paramref name="onUnexpected"/> surfaces from <c>ThrownExceptions.OnNext</c>.
+    /// </remarks>
     public static IDisposable ObserveBridgeExceptions(this IHandleObservableErrors source, Action<Exception> onUnexpected)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -37,25 +43,31 @@ public static class RunicReactiveExceptions
 
     /// <summary>
     /// Subscribes to <paramref name="source"/>'s <c>ThrownExceptions</c>. A declared failure
-    /// (<see cref="RunicFailureException"/>) is ignored; any other exception is logged at Error
-    /// as <c>ReactiveCommandFailed</c> (event 1042). Dispose the result to stop observing.
+    /// (<see cref="RunicFailureException"/>) and a cancellation are ignored; any other exception is
+    /// logged at Error as <c>ReactiveCommandFailed</c> (event 1042) with <paramref name="sourceName"/>
+    /// as <c>Source</c>. Dispose the result to stop observing.
     /// </summary>
-    public static IDisposable ObserveBridgeExceptions(this IHandleObservableErrors source, ILogger logger)
+    /// <param name="source">The command or reactive object.</param>
+    /// <param name="logger">The logger that receives unexpected exceptions.</param>
+    /// <param name="sourceName">The name logged as <c>Source</c>; defaults to the <paramref name="source"/> expression, such as <c>SaveCommand</c>.</param>
+    public static IDisposable ObserveBridgeExceptions(this IHandleObservableErrors source, ILogger logger,
+        [CallerArgumentExpression(nameof(source))] string? sourceName = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(logger);
-        var name = source.GetType().Name;
+        var name = string.IsNullOrWhiteSpace(sourceName) ? source.GetType().Name : sourceName;
         return source.ObserveBridgeExceptions(error =>
             ReactiveLog.CommandFailed(logger, error, name, error.GetType().FullName ?? error.GetType().Name));
     }
 
-    // A declared failure, also inside a single-inner AggregateException as the
-    // Bridge unwraps it.
-    private static bool IsDeclaredFailure(Exception error)
+    // A declared failure or a cancellation, also inside a single-inner
+    // AggregateException as the Bridge unwraps it. ReactiveUI reports a
+    // cancelled operation on ThrownExceptions; the client already saw it.
+    private static bool IsReported(Exception error)
     {
         while (error is AggregateException { InnerExceptions.Count: 1 } aggregate)
             error = aggregate.InnerExceptions[0];
-        return error is RunicFailureException;
+        return error is RunicFailureException or OperationCanceledException;
     }
 
     private sealed class UnexpectedExceptions(Action<Exception> onUnexpected) : IObserver<Exception>
@@ -70,7 +82,7 @@ public static class RunicReactiveExceptions
 
         public void OnNext(Exception value)
         {
-            if (!IsDeclaredFailure(value)) onUnexpected(value);
+            if (!IsReported(value)) onUnexpected(value);
         }
     }
 }
