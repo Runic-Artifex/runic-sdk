@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, type PropType } from "vue";
+import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { describe, expect, test, expectTypeOf } from "vitest";
 import { useCollectionViewport, useCommand, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
@@ -102,9 +102,15 @@ describe("useCommand", () => {
       outcomes.push(value => value instanceof Error ? reject(value) : resolve(value));
     })))!;
     expectTypeOf(command.failure).toEqualTypeOf<Fail | undefined>();
+    // A watcher observes failure like any other reactive property.
+    const observed: (Fail | undefined)[] = [];
+    const watching = effectScope();
+    watching.run(() => watchEffect(() => { observed.push(command.failure); }, { flush: "sync" }));
     const failed = command.run();
     outcomes[0]!(bridgeFailure({ $case: "titleRequired" }));
     await failed;
+    expect(observed).toEqual([undefined, { $case: "titleRequired" }]);
+    watching.stop();
     expect(command.failure).toEqual({ $case: "titleRequired" });
     expect(command.error).toBeUndefined();
     const stale = command.run();

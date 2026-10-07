@@ -296,6 +296,8 @@ static async Task BridgeExceptionSemanticsAsync()
             await RequireThrowsAsync<InvalidOperationException>(
                 () => ReactiveCommandExecution.Execute(command, true, CancellationToken.None), "The unexpected failure was not thrown.");
             await WaitUntilAsync(() => !reported.IsEmpty, "An unexpected exception did not reach the callback.");
+            // Let any late default-handler delivery arrive before checking that none did.
+            await Task.Delay(100);
         }
         Require(reported.Single() is InvalidOperationException && handled.IsEmpty,
             "ObserveBridgeExceptions reported a declared failure or let one reach the default handler.");
@@ -308,9 +310,37 @@ static async Task BridgeExceptionSemanticsAsync()
             await RequireThrowsAsync<InvalidOperationException>(
                 () => ReactiveCommandExecution.Execute(command, true, CancellationToken.None), "The unexpected failure was not thrown.");
             await WaitUntilAsync(() => !logger.Entries.IsEmpty, "An unexpected exception was not logged.");
+            await Task.Delay(100);
         }
+        Require(logger.Entries.Single().Source == "command", $"Event 1042 did not name the observed command: {logger.Entries.Single().Source}");
         Require(logger.Entries.Single() is { Id: 1042, Level: Microsoft.Extensions.Logging.LogLevel.Error, Exception: InvalidOperationException }
             && handled.IsEmpty, "The logger overload did not log only the unexpected exception as ReactiveCommandFailed.");
+
+        // Cancelling a bridged operation: does ReactiveUI report it on ThrownExceptions?
+        var cancellable = ReactiveCommand.CreateFromTask<FlavorUnit, int>(async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return 0;
+        }, scheduler);
+        var raw = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        var cancelledReports = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        var cancelledLog = new RecordingLogger();
+        using (cancellable.ThrownExceptions.Subscribe(new ExceptionRecorder(raw.Enqueue)))
+        using (cancellable.ObserveBridgeExceptions(cancelledReports.Enqueue))
+        using (cancellable.ObserveBridgeExceptions(cancelledLog))
+        using (var cancellation = new CancellationTokenSource())
+        {
+            var running = ReactiveCommandExecution.Execute(cancellable, UnitValue(), cancellation.Token);
+            await Task.Delay(50);
+            cancellation.Cancel();
+            await RequireThrowsAsync<OperationCanceledException>(() => running, "The cancelled operation did not end cancelled.");
+            await WaitUntilAsync(() => !raw.IsEmpty, "ReactiveUI did not report the cancellation on ThrownExceptions.");
+            await Task.Delay(50);
+        }
+        // ReactiveUI reports a cancelled operation on ThrownExceptions; the
+        // helper treats it as an outcome the Bridge reported, not an error.
+        Require(raw.Single() is OperationCanceledException && cancelledReports.IsEmpty && cancelledLog.Entries.IsEmpty && handled.IsEmpty,
+            "ObserveBridgeExceptions reported a cancelled operation as an unexpected exception.");
     }
 }
 
@@ -441,11 +471,12 @@ sealed class ExceptionRecorder(Action<Exception> record) : IObserver<Exception>
 
 sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger
 {
-    public System.Collections.Concurrent.ConcurrentQueue<(int Id, Microsoft.Extensions.Logging.LogLevel Level, Exception? Exception)> Entries { get; } = new();
+    public System.Collections.Concurrent.ConcurrentQueue<(int Id, Microsoft.Extensions.Logging.LogLevel Level, Exception? Exception, string? Source)> Entries { get; } = new();
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
     public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
     public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
-        Exception? exception, Func<TState, Exception?, string> formatter) => Entries.Enqueue((eventId.Id, logLevel, exception));
+        Exception? exception, Func<TState, Exception?, string> formatter) => Entries.Enqueue((eventId.Id, logLevel, exception,
+            (state as IEnumerable<KeyValuePair<string, object?>>)?.FirstOrDefault(pair => pair.Key == "Source").Value as string));
 }
 
 sealed class EmptyDisposable : IDisposable

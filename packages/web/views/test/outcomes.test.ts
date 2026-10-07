@@ -297,6 +297,14 @@ test("a command controller keeps declared failures apart from errors", async () 
   settle[4]!(new Error("stale"));
   await staleFailure;
   assert.deepEqual(current(), { pending: false, error: undefined, failure: { $case: "titleTaken", existingTitle: "Todo" } });
+
+  // reset() supersedes a run in flight, so its late failure does not reappear.
+  const inFlight = command.run();
+  command.reset();
+  assert.equal(current().pending, true, "the run is still in flight");
+  settle[6]!(bridgeFailure({ $case: "titleRequired" }));
+  await inFlight;
+  assert.deepEqual(current(), { pending: false, error: undefined, failure: undefined });
 });
 
 test("the mock Bridge answers declared failures for commands, operations and streams", async () => {

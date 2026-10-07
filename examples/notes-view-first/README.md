@@ -75,8 +75,8 @@ need no install of their own:
 checks `outcome.ok` and shows the failure with
 [`describeSaveFailure`](Frontend/src/save-failure.ts), which handles each case
 with `matchCase`. The Angular, React and Vue editors read it from their command
-helper's `failure`. The Effect editor reads it from `ViewOperationFailed` until
-`@runic-artifex/views-effect` has its own tag for declared failures.
+helper's `failure`, Svelte from `useCommand` too, and the Effect editor from the
+`ViewDomainFailure` error of `@runic-artifex/views-effect`.
 
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesViewFirst.csproj` with a

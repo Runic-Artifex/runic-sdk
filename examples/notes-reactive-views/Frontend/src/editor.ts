@@ -29,9 +29,14 @@ export function mountEditor(host: HTMLElement, view: EditorClient): () => void {
   const bodyChanged = () => { const value = body.value; writes.enqueue(() => view.setBody(value)); };
   // Save declares SaveFailure, so a missing title resolves the outcome instead
   // of rejecting; only unexpected failures reach the catch.
+  // The latest save wins: an earlier one that settles later shows nothing.
+  let saves = 0;
   const saveClicked = () => {
+    const save = ++saves;
     showFailure(undefined);
-    void writes.run(() => view.save()).then(outcome => showFailure(outcome.ok ? undefined : describeSaveFailure(outcome.failure)), report);
+    void writes.run(() => view.save()).then(outcome => {
+      if (save === saves) showFailure(outcome.ok ? undefined : describeSaveFailure(outcome.failure));
+    }, error => { if (save === saves) report(error); });
   };
   const discardClicked = () => { void writes.run(() => view.discard()).catch(report); };
   title.addEventListener("change", titleChanged);

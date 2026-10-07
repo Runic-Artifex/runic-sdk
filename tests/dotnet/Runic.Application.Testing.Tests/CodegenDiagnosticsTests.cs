@@ -153,6 +153,21 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class InheritedFailureWindow(InheritedFailureViewModel model) : RunicWindow<InheritedFailureViewModel>(model);
                 """, "RUNICBRIDGE012", "public IRelayCommand ResetCommand",
                 "InheritedFailureViewModel.ResetCommand: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method; EditorBase declares it on a member the Bridge does not expose.").ConfigureAwait(false);
+            // An override of a declared abstract command keeps the declaration and is valid.
+            var overridden = await GenerateValidAsync(generator, temporaryRoot, "FailureOverride", Preamble + """
+                public abstract class ResettableBase : FixtureModel
+                {
+                    [RunicFailure(typeof(string))] public abstract IRelayCommand ResetCommand { get; }
+                }
+                public sealed class OverrideFailureViewModel : ResettableBase
+                {
+                    public override IRelayCommand ResetCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class OverrideFailureWindow(OverrideFailureViewModel model) : RunicWindow<OverrideFailureViewModel>(model);
+                """).ConfigureAwait(false);
+            Require(Directory.GetFiles(overridden, "*OverrideFailureViewModel.Bridge.g.cs").Select(File.ReadAllText)
+                    .Any(text => text.Contains("EncodeFailure: failure => failure is global::System.String declared", StringComparison.Ordinal)),
+                "An override of a declared abstract command lost its failure codec.");
             // A failure type the Bridge cannot encode is RUNICBRIDGE003 at {Model}.{Command}.failure.
             await RejectAt("FailurePayload", """
                 public sealed class Opaque { public object Value { get; init; } = new(); }

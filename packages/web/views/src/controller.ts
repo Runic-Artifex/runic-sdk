@@ -188,7 +188,10 @@ export interface CommandController<TArgs extends readonly unknown[], TResult, TF
    * need no try/catch.
    */
   run(...args: TArgs): Promise<TResult | undefined>;
-  /** Clears `error` and `failure`. */
+  /**
+   * Clears `error` and `failure`. Runs still in flight count as superseded:
+   * they settle without setting either, as when a later run starts.
+   */
   reset(): void;
   /** Stops publishing; runs still in flight settle without updating state. */
   dispose(): void;
@@ -244,6 +247,7 @@ export function createCommandController<TArgs extends readonly unknown[], TResul
       }
     },
     reset() {
+      latest++;
       if (current.error !== undefined || current.failure !== undefined) publish({ error: undefined, failure: undefined });
     },
     dispose() {

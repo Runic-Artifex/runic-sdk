@@ -6,9 +6,9 @@ or runtime, so Effect applications get typed failures, timeouts, safe retries,
 interruptible operations and scoped connections. The plain TypeScript API stays
 the default; no other Runic package depends on this one.
 
-**Preview.** The API may change. .NET does not report typed domain failures
-yet, so a failing handler arrives as `ViewCommandFailed` with its message; the
-adapter will add tagged domain failures when the runtime reports them.
+The adapter is supported and follows the SDK's versioning: it ships with the
+`@runic-artifex/views` version of your generated clients. A .NET command's
+declared failure (`[RunicFailure]`) arrives as the tagged `ViewDomainFailure`.
 
 ```sh
 npm install @runic-artifex/views-effect@preview @runic-artifex/views@preview effect
@@ -51,8 +51,9 @@ const program = Effect.gen(function* () {
 | --- | --- | --- |
 | `connect(source)` | `Effect<Client, ViewError, Scope>` | Connects a generated `connect<Name>` function or a page reference and disposes the client when the scope closes. |
 | `states(client, { bufferSize? })` | `Stream<State>` | The current state, then each accepted state. A slow consumer skips to the latest state (`bufferSize` defaults to 1). |
-| `command(() => client.method(...))` | `Effect<A, ViewError>` | Runs a command, setter, `can…` query or checked write. |
-| `operation(start, options?)` | `Effect<Result, ViewOperationError>` | Starts a `start<Command>` operation and waits for its terminal status. |
+| `command(() => client.method(...))` | `Effect<A, ViewError>` | Runs a command, setter, `can…` query or checked write. A command that declares a failure succeeds with its value and adds `ViewDomainFailure<F>`. |
+| `operation(start, options?)` | `Effect<Result, ViewOperationError>` | Starts a `start<Command>` operation and waits for its terminal status; `Result` is `void` for a command without one. A declared failure adds `ViewDomainFailure<F>`. |
+| `catchCase(effect, handlers)` | `Effect<A \| …, E \| …, R \| …>` | Handles every `$case` of a declared `[RunicUnion]` failure in the error channel; a missing case is a type error. |
 | `viewportChanges(controller)` | `Stream<CollectionViewport>` | The rows a `createCollectionViewportController` requests, as a stream. |
 | `followViewport(controller, request)` | `Effect<void, E, R>` | Sends each new row range to .NET and interrupts the request for a range the user scrolled past. |
 | `createEffectAction(program, { runFork? })` | `EffectAction` | A latest-wins runner with `status`, `pending`, `value`, `error` and `cause`, for any UI framework. |
@@ -86,6 +87,26 @@ select them. Each keeps the original `BridgeError` as `cause` and its `route`.
 | `ViewOperationCancelled` | The operation ended as `cancelled`. |
 | `ViewOperationTimedOut` | The `timeout` option passed; `cancellation` says how .NET answered the cancellation request. |
 | `ViewOperationUncertain` | The client could not observe whether .NET admitted or finished the operation, or .NET no longer knows its outcome. |
+
+### Declared failures
+
+A .NET command that declares its failure type (`[RunicFailure(typeof(SaveFailure))]`)
+makes the generated client resolve a `BridgeOutcome`. `command` and `operation`
+move a declared failure into the error channel as `ViewDomainFailure<F>`, with the
+decoded value as `failure` and, for an operation, its `requestId`; the success
+value is the outcome's value. Commands without a declaration keep their types, and
+a failure the window could not retain is `ViewOperationFailed` with the delivery
+message.
+
+```ts
+const saved = catchCase(command(() => editor.save()), {
+  titleRequired: () => Effect.succeed("A note needs a title."),
+  titleTaken: taken => Effect.succeed(`"${taken.existingTitle}" already exists.`),
+});
+// Or one tag for every case: Effect.catchTag("ViewDomainFailure", error => ...)
+```
+
+A declared failure is a terminal outcome, so `operation`'s `retry` never retries it.
 
 ### Operations, interruption and retries
 
@@ -171,21 +192,28 @@ const exit = await Effect.runPromise(Effect.gen(function* () {
 
 ## Bundle cost
 
-Measured on 2026-10-07 with esbuild 0.28.2
-(`--bundle --minify --format=esm --target=es2023`) and `gzip -9`, against the
+Measured on 2026-10-07 for 0.7.0-preview.1 with esbuild 0.28.2
+(`--bundle --minify --format=esm --target=es2023`) and Node.js `zlib` gzip level 9, against the
 generated Notes Editor client of
-[the Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first) and Effect 4.0.1. The
+[the Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first),
+whose Save declares a failure, and Effect 4.0.1. The
 adapter and these bundles import Effect modules by subpath (`effect/Effect`,
 `effect/Stream`); importing from the `effect` barrel, as in the last row, more
 than doubles the cost, so prefer subpath imports in browser code:
 
 | Bundle | gzip bytes |
 | --- | --- |
-| Plain client: connect, subscribe, command, operation with wait timeout and cancel | 9,358 |
-| Adapter: `command` and `operation`, plain subscribe | 24,091 |
-| Adapter: scoped `connect`, `states` Stream, `command`, `operation` with timeout | 29,068 |
-| Notes frontend, plain | 11,823 |
-| Notes frontend with the Effect editor | 30,438 |
-| Same adapter bundle, importing `{ Effect, Stream } from "effect"` | 64,407 |
+| Plain client: connect, subscribe, command, operation with wait timeout and cancel | 7,795 |
+| Adapter: `command` and `operation`, plain subscribe | 22,292 |
+| Adapter: scoped `connect`, `states` Stream, `command`, `operation` with timeout | 27,387 |
+| Notes frontend, plain | 11,371 |
+| Notes frontend with the Effect editor | 30,024 |
+| Same adapter bundle, importing `{ Effect, Stream } from "effect"` | 62,566 |
+
+The plain client row was 9,358 bytes before the 0.7 entry split, which brought
+it to 6,833; declared failures (`BridgeOutcome`, the
+operation status union and Save's failure decoder) add 962, and 1,116 to the plain
+Notes frontend. `bun run size` in `packages/web/views` reproduces the plain
+client row.
 
 Applications that do not import this package do not pay for it.

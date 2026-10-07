@@ -485,10 +485,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     for (var owner = model; owner is not null && owner != typeof(object); owner = owner.BaseType)
         foreach (var member in owner.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
             | BindingFlags.Public | BindingFlags.NonPublic).Where(member => member is PropertyInfo or MethodInfo).OrderBy(member => member.MetadataToken))
-            if (member.GetCustomAttribute<RunicFailureAttribute>(false) is not null && !failureOwners.Contains(member))
+            if (member.GetCustomAttribute<RunicFailureAttribute>(false) is not null && !failureOwners.Contains(member)
+                && !OverriddenByCommand(member))
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
                     $"{model.Name}.{member.Name}: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method"
                     + (owner == model ? "." : $"; {owner.Name} declares it on a member the Bridge does not expose."), member);
+    // A base property that a bridged command overrides passes its declaration
+    // to the override (attributes on properties are inherited), so it is valid.
+    bool OverriddenByCommand(MemberInfo member) => member is PropertyInfo baseProperty && commands.Any(command =>
+        command.Name == baseProperty.Name && command.GetMethod is { } getter && baseProperty.GetMethod is { } baseGetter
+        && getter.GetBaseDefinition() == baseGetter.GetBaseDefinition() && getter != baseGetter);
     var operationPlans = commands.Where(command => commandPlans[command].IsAsync).Select(command =>
     {
         var plan = commandPlans[command];

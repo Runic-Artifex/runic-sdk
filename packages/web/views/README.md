@@ -161,8 +161,8 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   and resolves to `undefined` after a failure, and `current` with `pending`,
   `error` and `failure`. For a command that resolves a `BridgeOutcome`,
   `failure` is the declared failure of the latest run; `error` stays the
-  unexpected failure. Starting a run and `reset()` clear both, and a run that a
-  later one superseded sets neither.
+  unexpected failure. Starting a run and `reset()` clear both, and a run
+  superseded by a later run or by `reset()` sets neither.
 - `createCollectionViewportController({ totalCount, rowHeight, overscan? })`
   has `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the
@@ -342,6 +342,14 @@ way; `wait()` and `completion` still return the status, a union discriminated by
 `bridgeSuccess(value)`, `bridgeFailure(failure)` and `isBridgeOutcome(value)`
 create and recognize outcomes, for example in tests and mocks. An outcome is
 recognized by a non-enumerable brand, so a spread or JSON copy is plain data.
+
+The framework command helpers (`useCommand`, `injectCommand` and
+`createCommandController`) keep the declared failure of the latest run as
+`failure`, apart from `error`. In `@runic-artifex/views-effect`, a declared
+failure is the `ViewDomainFailure` error, and `catchCase` handles its cases. In
+tests, a mock handler throws `mockFailure(failure)`, and a generated mock's
+`failNext(method, { kind: "domain-failed", failure })` and `failWith(failure)`
+take the method's typed failure.
 
 ## Errors and diagnostics
 
