@@ -5,7 +5,7 @@
   // A WebSocket reconnect keeps the page. Generated clients then re-read their
   // routes and re-acknowledge mounted Views. Observe the transition by polling
   // so an application's own webui.setEventCallback stays in place. The poll
-  // also runs while a call awaits admission, so a lost connection releases it.
+  // also runs while a call is unsettled, so a lost connection settles it.
   const reconnectListeners = new Set();
   let reconnectTimer;
   let wasConnected = false;
@@ -15,6 +15,9 @@
     if (!now && wasConnected) {
       lost = true;
       forgetAdmissions();
+      const previous = connection;
+      connection = nextConnection();
+      previous.fail(new Error("The CS-WebUI connection was lost before the call completed."));
     }
     wasConnected = now;
     if (now && lost) {
@@ -23,8 +26,9 @@
         try { listener(); } catch (error) { console.error("Runic reconnect listener failed", error); }
       }
     }
-    if (reconnectListeners.size === 0 && current === undefined && late.length === 0) stopWatching();
+    if (idle()) stopWatching();
   }
+  const idle = () => reconnectListeners.size === 0 && current === undefined && late.length === 0 && unsettled === 0;
   function startWatching() {
     if (reconnectTimer !== undefined) return;
     wasConnected = connected();
@@ -96,6 +100,19 @@
     late.length = 0;
     current?.admit();
   }
+  // WebUI also never settles a call that was in flight when its WebSocket
+  // closed, so an awaited reply or long poll would wait forever. Each call
+  // races the promise of the connection it was sent on, which the lost
+  // transition rejects. A call sent while WebUI reconnects belongs to the next
+  // connection.
+  function nextConnection() {
+    let fail;
+    const lost = new Promise((_, reject) => { fail = reject; });
+    lost.catch(() => {});
+    return { lost, fail };
+  }
+  let connection = nextConnection();
+  let unsettled = 0;
   // Smoke diagnostics; not part of the Bridge client contract.
   window.__runicBridgeAdmissionState = () => ({ late: late.length, waiting: current !== undefined });
   function send(name, args) {
@@ -104,6 +121,7 @@
     admission = new Promise(resolve => { release = resolve; });
     return previous.then(() => {
       let timer;
+      let done = false;
       const call = {
         admit() {
           if (current !== call) return;
@@ -112,6 +130,9 @@
           release();
         },
         settle() {
+          if (done) return;
+          done = true;
+          unsettled--;
           if (current === call) call.admit();
           // An admission precedes its reply, so a late call that settles was
           // never admitted.
@@ -120,6 +141,7 @@
         },
       };
       current = call;
+      unsettled++;
       startWatching();
       timer = setTimeout(() => {
         if (current !== call) return;
@@ -134,8 +156,9 @@
         call.settle();
         throw error;
       }
-      Promise.resolve(reply).then(call.settle, call.settle);
-      return reply;
+      const settled = Promise.race([Promise.resolve(reply), connection.lost]);
+      settled.then(call.settle, call.settle);
+      return settled;
     });
   }
 
@@ -155,7 +178,7 @@
       startWatching();
       return () => {
         reconnectListeners.delete(listener);
-        if (reconnectListeners.size === 0 && current === undefined && late.length === 0) stopWatching();
+        if (idle()) stopWatching();
       };
     }
   };

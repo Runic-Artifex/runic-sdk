@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeError, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
+import { BridgeError, BridgeOperationUncertainError, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
 import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions } from "../dist/generated.js";
 import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge, mockTypedView, type MockBridge, type MockTypedCollection,
@@ -252,4 +252,83 @@ test("more than 4096 collection changes are sent as a full state", async () => {
   assert.equal(client.snapshot.rows.length, 4097);
   host["__notesChanged"] = push;
   client.dispose();
+});
+
+// What runic-cswebui.js does when its WebUI connection drops: every call still
+// in flight on that connection rejects (W130-056).
+function loseCallsInFlight(bridge: MockBridge, held: (name: string) => boolean) {
+  const inFlight: Array<(error: Error) => void> = [];
+  const calls: string[] = [];
+  (globalThis as unknown as { __runicBridge: unknown }).__runicBridge = {
+    isConnected: () => bridge.isConnected(),
+    call: (name: string, ...args: unknown[]) => {
+      calls.push(name);
+      return held(name) ? new Promise<string>((_, reject) => inFlight.push(reject)) : bridge.call(name, ...args);
+    },
+    onReconnect: (listener: () => void) => bridge.onReconnect!(listener),
+  };
+  const waitFor = async (condition: () => boolean) => {
+    const deadline = Date.now() + 5_000;
+    while (!condition()) {
+      if (Date.now() > deadline) throw new Error(`Timed out; calls: ${calls.join(", ")}`);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+  };
+  return {
+    calls, waitFor,
+    held: () => inFlight.length,
+    lose() {
+      bridge.disconnect();
+      for (const reject of inFlight.splice(0)) reject(new Error("The CS-WebUI connection was lost before the call completed."));
+    },
+  };
+}
+
+test("a command in flight when the connection is lost fails as disconnected", async () => {
+  const bridge = fresh();
+  mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const transport = loseCallsInFlight(bridge, name => name === "notesSave");
+  const client = await connect();
+  const save = client.command("notesSave");
+  await transport.waitFor(() => transport.held() === 1);
+  transport.lose();
+  await assert.rejects(save, (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
+  client.dispose();
+});
+
+test("an operation start in flight when the connection is lost has an uncertain outcome", async () => {
+  const bridge = fresh();
+  mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const transport = loseCallsInFlight(bridge, name => name === "notesStartSave");
+  const client = await connect();
+  // .NET may have admitted the operation before the reply was lost.
+  const start = client.startOperation("Save", "request-1", () => JSON.stringify({ requestId: "request-1" }), value => value);
+  await transport.waitFor(() => transport.held() === 1);
+  transport.lose();
+  await assert.rejects(start, (error: unknown) => error instanceof BridgeOperationUncertainError && error.requestId === "request-1");
+  client.dispose();
+});
+
+test("interaction long polls in flight when the connection is lost stop without retrying", async () => {
+  const bridge = fresh();
+  mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  const longPoll = (name: string) => name === "__runicInteractionWait" || name === "__runicInteractionControlWait";
+  const transport = loseCallsInFlight(bridge, longPoll);
+  const target = globalThis as { reportError?: ((error: unknown) => void) | undefined };
+  const previous = target.reportError;
+  const reported: unknown[] = [];
+  target.reportError = error => { reported.push(error); };
+  try {
+    const client = await connect();
+    const stop = client.interactions["confirm"]!.handle((() => true) as never);
+    await transport.waitFor(() => transport.held() === 2);
+    transport.lose();
+    await new Promise(resolve => setTimeout(resolve, 200));
+    assert.equal(transport.calls.filter(longPoll).length, 2, "a stopped loop does not poll again");
+    assert.deepEqual(reported, []);
+    stop();
+    client.dispose();
+  } finally {
+    target.reportError = previous;
+  }
 });
