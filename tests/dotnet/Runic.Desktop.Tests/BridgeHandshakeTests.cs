@@ -90,6 +90,10 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         using var socket = await ConnectAsync(fixture.Url, fixture.Timeout);
         await SendCheckTokenAsync(socket, unchecked(fixture.Token + 1), fixture.Timeout);
 
+        // Read at once: the server aborts the socket if the close isn't answered within
+        // 2 s, and on Windows that reset discards frames the test hasn't read yet.
+        var closed = ReceiveReplyThenCloseAsync(socket, fixture.Timeout);
+
         var timeout = await Assert.ThrowsAsync<TimeoutException>(() => fixture.Showing);
         output.WriteLine(timeout.Message);
 
@@ -99,9 +103,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.DoesNotContain("closed by the server: no token check", timeout.Message);
 
         // The server answers the check with a false result, then closes the socket.
-        var reply = await socket.ReceiveAsync(new byte[16], fixture.Timeout);
-        Assert.Equal(WebSocketMessageType.Binary, reply.MessageType);
-        await ReadUntilCloseAsync(socket, fixture.Timeout);
+        Assert.Equal(WebSocketMessageType.Binary, await closed);
         Assert.Equal(WebSocketCloseStatus.PolicyViolation, socket.CloseStatus);
     }
 
@@ -112,6 +114,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 10, handshakeTimeout: TimeSpan.FromMinutes(1));
         using var wrong = await ConnectAsync(fixture.Url, fixture.Timeout);
         await SendCheckTokenAsync(wrong, unchecked(fixture.Token + 1), fixture.Timeout);
+        var wrongClosed = ReadUntilCloseAsync(wrong, fixture.Timeout);
 
         // The page's bridge retries every 500 ms. A valid retry must get the connection
         // within about 2 s of the rejection, well inside the 3 s budget here.
@@ -121,9 +124,16 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         await SendCheckTokenAsync(retried, fixture.Token, budget.Token);
 
         await fixture.Showing.WaitAsync(budget.Token);
-        await ReadUntilCloseAsync(wrong, fixture.Timeout);
+        await wrongClosed;
         Assert.Equal(WebSocketCloseStatus.PolicyViolation, wrong.CloseStatus);
         Assert.Equal(WebSocketState.Open, retried.State);
+    }
+
+    private static async Task<WebSocketMessageType> ReceiveReplyThenCloseAsync(ClientWebSocket socket, CancellationToken cancellationToken)
+    {
+        var reply = await socket.ReceiveAsync(new byte[16], cancellationToken);
+        await ReadUntilCloseAsync(socket, cancellationToken);
+        return reply.MessageType;
     }
 
     private static async Task ReadUntilCloseAsync(ClientWebSocket socket, CancellationToken cancellationToken)
