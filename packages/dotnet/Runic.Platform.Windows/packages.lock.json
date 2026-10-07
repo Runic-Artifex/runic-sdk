@@ -49,7 +49,7 @@
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.6.0-preview.1, )"
+          "Runic.Platform": "[0.7.0-preview.1, )"
         }
       }
     }
