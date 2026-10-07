@@ -97,6 +97,7 @@ public sealed record DesktopHostOptions
     /// not requested its page by then is stopped and launched again, with a fresh profile unless the window
     /// configures one, and a <c>browser-launch-stalled</c> diagnostic is reported. A page that was requested,
     /// a browser that exited and embedded WebViews are never relaunched. Defaults to 2; 1 disables relaunching.
+    /// Values outside 1 to 5 make building the host throw <see cref="ArgumentOutOfRangeException"/>.
     /// </remarks>
     public int BrowserLaunchAttempts { get; init; } = DefaultBrowserLaunchAttempts;
 
@@ -166,7 +167,7 @@ public enum BrowserKind
     /// <summary>Yandex Browser.</summary>
     Yandex,
 
-    /// <summary>The first available installed Chromium-based browser: Chrome, Edge, Chromium, Brave, Vivaldi, Epic or Yandex.</summary>
+    /// <summary>The first available installed Chromium-based browser, searched in the order Chrome, Edge, Epic, Vivaldi, Brave, Yandex, Chromium.</summary>
     ChromiumBased,
 
     /// <summary>The platform's embedded WebView: WebView2 on Windows, WKWebView on macOS, or the selected WebKitGTK toolkit on Linux.</summary>
@@ -270,11 +271,15 @@ public sealed record DesktopWindowOptions
     public uint? MinimumHeight { get; init; }
 
     /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
-    /// <remarks>Applies only together with <see cref="Y"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.</remarks>
+    /// <remarks>Applies only together with <see cref="Y"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.
+    /// When unset, the Windows WebView2 window opens at (100, 100). Windows scales <see cref="Width"/> and
+    /// <see cref="Height"/> for the monitor DPI, but not the position.</remarks>
     public uint? X { get; init; }
 
     /// <summary>Gets the initial vertical screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
-    /// <remarks>Applies only together with <see cref="X"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.</remarks>
+    /// <remarks>Applies only together with <see cref="X"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.
+    /// When unset, the Windows WebView2 window opens at (100, 100). Windows scales <see cref="Width"/> and
+    /// <see cref="Height"/> for the monitor DPI, but not the position.</remarks>
     public uint? Y { get; init; }
 
     /// <summary>Gets whether the embedded window opens centered on the screen, replacing <see cref="X"/> and <see cref="Y"/>.</summary>

@@ -28,7 +28,7 @@ public interface IDesktopWindowHostFactory
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
 public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
 {
-    /// <summary>Gets whether <see cref="DispatchNativeAsync"/> can currently run work on the window's owning thread.</summary>
+    /// <summary>Gets whether <see cref="DispatchNativeAsync"/> can run work on the window's owning thread.</summary>
     bool SupportsNativeDispatch { get; }
 
     /// <summary>Gets whether the caller is executing on the thread that owns the native window.</summary>
@@ -131,7 +131,10 @@ public interface IDesktopWindowHost : IAsyncDisposable
     /// <summary>Starts a user-driven native move of the window, as when the page drags a frameless window.</summary>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>A task that completes when the move has started.</returns>
-    /// <remarks>Runic Desktop ignores failures, so a host that cannot move the window may throw <see cref="NotSupportedException"/>.</remarks>
+    /// <remarks>
+    /// Runic Desktop ignores a faulted task, so a host that cannot move the window may return a task faulted with
+    /// <see cref="NotSupportedException"/>. Do not throw synchronously: that ends the session's receive loop.
+    /// </remarks>
     ValueTask BeginMoveAsync(CancellationToken cancellationToken = default);
 }
 

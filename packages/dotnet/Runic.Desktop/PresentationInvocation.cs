@@ -54,10 +54,10 @@ public sealed class PresentationInvocation
     /// <summary>Gets the kind of event being delivered.</summary>
     public PresentationEventKind Kind => (PresentationEventKind)_event.EventType;
 
-    /// <summary>Gets the capability or element name the event was dispatched to; empty for connection events.</summary>
+    /// <summary>Gets the capability or element name the event was dispatched to; empty for connection and navigation events.</summary>
     public string Capability => _event.Element;
 
-    /// <summary>Gets the event number assigned by the session.</summary>
+    /// <summary>Gets the event number, taken from one counter per surface that all of its sessions share.</summary>
     public ulong InvocationId => _event.EventNumber;
 
     /// <summary>Gets the opaque identity shared with any redacted diagnostic for this invocation.</summary>
@@ -73,23 +73,25 @@ public sealed class PresentationInvocation
     /// <summary>Gets the raw bytes of an argument.</summary>
     /// <param name="index">The zero-based argument index.</param>
     /// <returns>The argument bytes as sent by the page.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative or not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="OverflowException"><paramref name="index"/> is negative.</exception>
     /// <exception cref="ObjectDisposedException">The invocation is no longer active.</exception>
     public ReadOnlyMemory<byte> GetBytes(int index = 0) => _event.GetMemory(checked((nuint)index));
 
     /// <summary>Gets an argument decoded as UTF-8 text.</summary>
     /// <param name="index">The zero-based argument index.</param>
     /// <returns>The decoded argument.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative or not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="OverflowException"><paramref name="index"/> is negative.</exception>
     /// <exception cref="ObjectDisposedException">The invocation is no longer active.</exception>
     public string GetString(int index = 0) => Encoding.UTF8.GetString(GetBytes(index).Span);
 
     /// <summary>Gets an argument parsed as a signed 64-bit integer using the invariant culture.</summary>
     /// <param name="index">The zero-based argument index.</param>
     /// <returns>The parsed argument.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative or not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not less than <see cref="ArgumentCount"/>.</exception>
     /// <exception cref="FormatException">The argument is not an integer.</exception>
-    /// <exception cref="OverflowException">The argument is outside the <see cref="long"/> range.</exception>
+    /// <exception cref="OverflowException"><paramref name="index"/> is negative, or the argument is outside the <see cref="long"/> range.</exception>
     /// <exception cref="ObjectDisposedException">The invocation is no longer active.</exception>
     public long GetInt64(int index = 0) =>
         long.Parse(GetString(index), NumberStyles.Integer, CultureInfo.InvariantCulture);
@@ -97,7 +99,8 @@ public sealed class PresentationInvocation
     /// <summary>Gets an argument parsed as a double-precision number using the invariant culture.</summary>
     /// <param name="index">The zero-based argument index.</param>
     /// <returns>The parsed argument.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative or not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="OverflowException"><paramref name="index"/> is negative.</exception>
     /// <exception cref="FormatException">The argument is not a number.</exception>
     /// <exception cref="ObjectDisposedException">The invocation is no longer active.</exception>
     public double GetDouble(int index = 0) =>
@@ -106,7 +109,8 @@ public sealed class PresentationInvocation
     /// <summary>Gets an argument as a Boolean, accepting <c>1</c>, <c>0</c>, <c>true</c> and <c>false</c> (case-insensitive).</summary>
     /// <param name="index">The zero-based argument index.</param>
     /// <returns>The parsed argument.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative or not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is not less than <see cref="ArgumentCount"/>.</exception>
+    /// <exception cref="OverflowException"><paramref name="index"/> is negative.</exception>
     /// <exception cref="FormatException">The argument is not a Boolean value.</exception>
     /// <exception cref="ObjectDisposedException">The invocation is no longer active.</exception>
     public bool GetBoolean(int index = 0) => _event.GetBoolean(checked((nuint)index));
