@@ -64,9 +64,11 @@ With `--output json` a successful run writes one line such as:
 
 A failure sets `success` to `false`, `exitCode` to one of the exit codes below
 and `fault.code` to the `RAS` code. `fault.details` carries the source
-directory, entry point or underlying reason; a value that contains a home or
-temporary path or exception text is shown as `[redacted]`. Human output prints
-the full message.
+directory, entry point or underlying reason. A value that looks like a home,
+`/tmp` or `/root` path (`/home/`, `/Users/`, `/root/`, `/tmp/`), a drive or UNC
+path, or exception text is shown as `[redacted]`; other absolute paths, such as
+macOS `/var/folders/...` or `/srv/...`, are shown as they are. Human output
+prints the full message.
 
 The archive is deterministic: the same files produce the same bytes, so it can
 be cached or compared with `cmp`.

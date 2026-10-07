@@ -1131,15 +1131,17 @@ internal static class Program
     }
 
     // Runs the packer this checkout built, as a separate process, for each
-    // documented failure. JSON output keeps the RAS code and the exit code; a
-    // path below the temporary directory is redacted from the details, while
-    // human output still names it.
+    // documented failure. JSON output keeps the RAS code and the exit code, and
+    // its message names no path. Runic.CommandLine redacts a detail value that
+    // looks like a home, /tmp or /root path, a drive or UNC path, or exception
+    // text, so the source directory is redacted only where the temporary
+    // directory looks like one; macOS /var/folders is shown. Human output still
+    // names the path.
     private static async Task PackerJsonFaults()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("site/index.html", "<p>x</p>");
         string site = Path.Combine(directory.Path, "site");
-        File.CreateSymbolicLink(Path.Combine(site, "linked.txt"), Path.Combine(site, "index.html"));
         string archive = Path.Combine(directory.Path, "out.runic-assets");
         string missing = Path.Combine(directory.Path, "missing");
 
@@ -1147,7 +1149,9 @@ internal static class Program
         Equal(3, exitCode);
         Equal("RAS1001", fault.GetProperty("code").GetString());
         Equal("The source directory does not exist.", fault.GetProperty("message").GetString());
-        Equal("[redacted]", fault.GetProperty("details").GetProperty("sourceDirectory").GetString());
+        Equal(
+            SanitizerRedacts(missing) ? "[redacted]" : missing,
+            fault.GetProperty("details").GetProperty("sourceDirectory").GetString());
         (int humanExitCode, string _, string error) = await RunPackerAsync(missing, archive).ConfigureAwait(false);
         Equal(3, humanExitCode);
         Equal($"Source directory '{missing}' does not exist.", error.Trim());
@@ -1155,16 +1159,35 @@ internal static class Program
         (exitCode, fault) = await PackJsonAsync(site, archive, "--entry-point", "missing.html", "--trusted-generated-output").ConfigureAwait(false);
         Equal(4, exitCode);
         Equal("RAS1002", fault.GetProperty("code").GetString());
+        True(!fault.GetProperty("message").GetString()!.Contains(directory.Path, StringComparison.Ordinal));
         Equal("missing.html", fault.GetProperty("details").GetProperty("entryPoint").GetString());
 
+        // Creating a symbolic link on Windows needs Developer Mode or elevation.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        File.CreateSymbolicLink(Path.Combine(site, "linked.txt"), Path.Combine(site, "index.html"));
         (exitCode, fault) = await PackJsonAsync(site, archive, "--trusted-generated-output").ConfigureAwait(false);
         Equal(5, exitCode);
         Equal("RAS1003", fault.GetProperty("code").GetString());
+        Equal("The archive could not be packed.", fault.GetProperty("message").GetString());
         Equal(
             "Trusted generated asset output cannot contain symbolic links or reparse points.",
             fault.GetProperty("details").GetProperty("reason").GetString());
         True(!File.Exists(archive));
     }
+
+    // Mirrors the technical-content rule of Runic.CommandLine's fault sanitizer.
+    private static bool SanitizerRedacts(string value) =>
+        value.Contains("Exception", StringComparison.Ordinal)
+        || value.Contains(@"\\", StringComparison.Ordinal)
+        || value.Contains("/home/", StringComparison.Ordinal)
+        || value.Contains("/Users/", StringComparison.Ordinal)
+        || value.Contains("/root/", StringComparison.Ordinal)
+        || value.Contains("/tmp/", StringComparison.Ordinal)
+        || System.Text.RegularExpressions.Regex.IsMatch(value, "[A-Za-z]:[\\\\/]");
 
     private static async Task<(int ExitCode, JsonElement Fault)> PackJsonAsync(params string[] arguments)
     {
@@ -1183,7 +1206,11 @@ internal static class Program
         string configuration = output.Parent!.Name;
         string repository = Path.GetFullPath(Path.Combine(output.FullName, "../../../../../.."));
         string packer = Path.Combine(repository, "tools/Runic.Assets.Packer/bin", configuration, "net10.0/Runic.Assets.Packer.dll");
-        True(File.Exists(packer));
+        if (!File.Exists(packer))
+        {
+            throw new InvalidOperationException(
+                $"The packer was not found at '{packer}'. Build tools/Runic.Assets.Packer first ({configuration}).");
+        }
 
         var start = new System.Diagnostics.ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
         {
