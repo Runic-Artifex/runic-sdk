@@ -17,6 +17,26 @@
       "path": "data/org.freedesktop.portal.Inhibit.xml",
       "file": "org.freedesktop.portal.Inhibit.xml",
       "sha256": "6b17d2666fbb0ea0ccf85df53b64dec705bedfba21275fd2972fc516b6450e30"
+    },
+    {
+      "path": "data/org.freedesktop.portal.Request.xml",
+      "file": "org.freedesktop.portal.Request.xml",
+      "sha256": "66950f3216685e7730f548c4290a3997e438b3bdd64cc8cfcbc0d283c158cab5"
+    },
+    {
+      "path": "data/org.freedesktop.portal.Settings.xml",
+      "file": "org.freedesktop.portal.Settings.xml",
+      "sha256": "ffd03f4b1d24704fa2a380426497e1cb77512d02298442ece897c8ce1c088df0"
+    },
+    {
+      "path": "data/org.freedesktop.portal.OpenURI.xml",
+      "file": "org.freedesktop.portal.OpenURI.xml",
+      "sha256": "8a464a05f1e0ab9e4a9a4c61f87fd6cd864f5d78e1b3d1c3b392d5e18df01962"
+    },
+    {
+      "path": "data/org.freedesktop.portal.FileChooser.xml",
+      "file": "org.freedesktop.portal.FileChooser.xml",
+      "sha256": "380cf17e35578adb180af6ed3e4ecd3deb2b0a49941ea69e78f8c494657352d0"
     }
   ]
 }

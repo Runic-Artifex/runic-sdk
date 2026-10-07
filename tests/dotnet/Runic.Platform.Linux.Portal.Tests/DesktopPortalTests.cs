@@ -74,6 +74,9 @@ internal static class DesktopPortalTests
                 var transport = new PortalTransport(destination: connection.UniqueName!, file: handle, ask: true);
                 var handoff = await transport.RequestAsync("x11:1234", method, "", default);
                 Check(handoff.Code == 0 && service.Ask && service.Parent == "x11:1234" && service.FileContents == "file descriptor content", "owned FD handoff and application chooser option");
+                Check(service.Call == $"org.freedesktop.portal.OpenURI.{method}(sha{{sv}})" && service.VersionInterface == "org.freedesktop.portal.OpenURI",
+                    "FD operations use the OpenURI interface and its version guard");
+                Check(RandomAccess.Read(handle, new byte[4], 0) == 4, "the caller's file handle stays open after the handoff");
             }
         }
         finally { File.Delete(path); }
@@ -130,7 +133,7 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
 {
     public string Path => "/org/freedesktop/portal/desktop";
     public bool HandlesChildPaths => true;
-    internal string? Removed, Parent, FileContents;
+    internal string? Removed, Parent, FileContents, Call, VersionInterface;
     internal bool Ask, Deny;
     internal uint Version = 3;
     internal string? RegisteredId;
@@ -173,12 +176,13 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
             var values = writer.WriteDictionaryStart();
             ReadAllSenders.Add(context.Request.SenderAsString!);
             foreach (var (key, value) in new[] { ("color-scheme", VariantValue.UInt32(ColorScheme)), ("contrast", VariantValue.UInt32(1)),
-                ("reduced-motion", VariantValue.UInt32(999)), ("accent-color", VariantValue.Struct(VariantValue.Double(0.25), VariantValue.Double(0.5), VariantValue.Double(1))) })
+                ("reduced-motion", VariantValue.UInt32(999)), ("accent-color", VariantValue.Struct(VariantValue.Double(0.25), VariantValue.Double(0.5), VariantValue.Double(1))),
+                ("color-scheme", VariantValue.UInt32(ColorScheme)) }) // A repeated key must not fail the read.
             { writer.WriteDictionaryEntryStart(); writer.WriteString(key); writer.WriteVariant(value); }
             writer.WriteDictionaryEnd(values); writer.WriteDictionaryEnd(namespaces); context.Reply(writer.CreateMessage());
         }
         else if (context.Request.MemberAsString == "Get")
-        { using var writer = context.CreateReplyWriter("v"); writer.WriteVariant(VariantValue.UInt32(Version)); context.Reply(writer.CreateMessage()); }
+        { VersionInterface = reader.ReadString(); using var writer = context.CreateReplyWriter("v"); writer.WriteVariant(VariantValue.UInt32(Version)); context.Reply(writer.CreateMessage()); }
         else if (context.Request.MemberAsString == "AddNotification")
         {
             if (Deny) { context.ReplyError("org.freedesktop.portal.Error.NotAllowed", "Disabled by user"); return ValueTask.CompletedTask; }
@@ -194,6 +198,7 @@ internal sealed class DesktopPortalService(DBusConnection connection) : IPathMet
         { Removed = reader.ReadString(); using var writer = context.CreateReplyWriter(null); context.Reply(writer.CreateMessage()); }
         else
         {
+            Call = $"{context.Request.InterfaceAsString}.{context.Request.MemberAsString}({context.Request.SignatureAsString})";
             Parent = reader.ReadString();
             if (context.Request.SignatureAsString == "sha{sv}")
             {

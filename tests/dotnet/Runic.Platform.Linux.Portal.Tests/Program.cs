@@ -74,6 +74,8 @@ foreach (bool oldHandle in new[] { false, true })
     var result = await realTransport.RequestAsync("x11:1234", "SaveFile", "saved.txt", default);
     Check(result.Code == 0 && result.Uris.Single() == "file:///tmp/saved.txt", "real D-Bus early response and returned handle");
     Check(fake.Parent == "x11:1234" && fake.CurrentName == "saved.txt", "parent and filename encoded");
+    Check(fake.Call == "org.freedesktop.portal.FileChooser.SaveFile(ssa{sv}) handle_token,modal,current_name" && fake.Argument == "Save file",
+        "SaveFile wire shape and option order");
 }
 fake.MalformedUris = true;
 try { await new PortalFilePicker(owner, realTransport).SelectAsync(true, "saved.txt", default); throw new InvalidOperationException("malformed portal URIs accepted"); }
@@ -81,6 +83,7 @@ catch (IOException) { }
 fake.MalformedUris = false;
 var uriResult = await realTransport.RequestAsync("x11:1234", "OpenURI", "https://example.org/", default);
 Check(uriResult.Code == 0 && fake.Argument == "https://example.org/", "OpenURI request encoding");
+Check(fake.Call == "org.freedesktop.portal.OpenURI.OpenURI(ssa{sv}) handle_token", "OpenURI wire shape");
 fake.AutoRespond = false;
 fake.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
 using (var cancellation = new CancellationTokenSource())
@@ -90,6 +93,8 @@ using (var cancellation = new CancellationTokenSource())
     cancellation.Cancel();
     try { await waiting.WaitAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("D-Bus cancellation ignored"); } catch (OperationCanceledException) { }
     await fake.Closed.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    Check(fake.Call == "org.freedesktop.portal.FileChooser.OpenFile(ssa{sv}) handle_token,modal" && fake.Argument == "Open file", "OpenFile wire shape");
+    Check(fake.ClosedPath == fake.RequestPath && fake.ClosedCall == "org.freedesktop.portal.Request.Close()", "Request.Close targets the returned handle");
 }
 fake.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
 var disconnected = realTransport.RequestAsync("x11:1234", "OpenFile", "", default).AsTask();
@@ -153,12 +158,15 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public string? Parent;
     public string? Argument;
     public string? CurrentName;
+    public string? Call, RequestPath, ClosedCall, ClosedPath;
     public TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public ValueTask HandleMethodAsync(MethodContext context)
     {
         if (context.Request.MemberAsString == "Close")
         {
+            ClosedCall = $"{context.Request.InterfaceAsString}.Close({context.Request.SignatureAsString})";
+            ClosedPath = context.Request.PathAsString;
             using var reply = context.CreateReplyWriter(null);
             context.Reply(reply.CreateMessage());
             Closed.TrySetResult();
@@ -168,15 +176,19 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
         Parent = reader.ReadString();
         Argument = reader.ReadString();
         string token = "";
+        var keys = new List<string>();
         var dictionary = reader.ReadDictionaryStart();
         while (reader.HasNext(dictionary))
         {
             string key = reader.ReadString();
+            keys.Add(key);
             var value = reader.ReadVariantValue();
             if (key == "handle_token") token = value.GetString();
             if (key == "current_name") CurrentName = value.GetString();
         }
+        Call = $"{context.Request.InterfaceAsString}.{context.Request.MemberAsString}({context.Request.SignatureAsString}) {string.Join(',', keys)}";
         string path = Path + "/request/" + context.Request.SenderAsString![1..].Replace('.', '_') + "/" + (OldHandle ? "legacy" : token);
+        RequestPath = path;
         if (AutoRespond)
         {
             using var signal = connection.GetMessageWriter();

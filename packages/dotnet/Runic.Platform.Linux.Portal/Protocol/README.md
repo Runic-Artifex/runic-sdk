@@ -1,6 +1,7 @@
-# Portal protocol generation pilot
+# Portal protocol generation
 
-Registry and Notification XML are unmodified upstream inputs, pinned to the
+The Registry, Notification, Inhibit, Request, Settings, OpenURI and FileChooser
+XML files are unmodified upstream inputs, pinned to the
 commit and SHA-256 hashes in `upstream.json`. Their original license headers are
 preserved; `COPYING` is upstream's license text. They are not relicensed under the
 SDK's license.
@@ -10,15 +11,20 @@ produces internal proxies using `Tmds.DBus.Protocol` 0.95.1. The generator is a
 private build dependency, not a consumer/runtime dependency. Normal builds do not
 fetch XML or introspect the user's session. Generated C# stays under `obj`.
 
-The provider uses generated Registry.Register, Notification.Add/Remove, version
-reads and ActionInvoked decoding. Extensible notification dictionaries, desktop
-identity, bus-name ownership, early-action tracking, deadlines, cancellation,
-permission mapping and application callbacks remain handwritten. Generated v2
-members do not mean the public Runic API uses v2 features.
+The provider uses generated Registry.Register, Notification.Add/Remove and
+ActionInvoked decoding, Inhibit.Inhibit, Settings.ReadAll,
+OpenURI.OpenURI/OpenFile/OpenDirectory, FileChooser.OpenFile/SaveFile,
+Request.Close and version reads. Option and notification dictionaries, desktop
+identity, bus-name ownership, early-action tracking, the signal subscriptions made
+before a request (Request.Response across the sender's request-path namespace and
+the namespace-filtered Settings.SettingChanged), returned-handle validation,
+borrowed file descriptors, portal version guards, deadlines, cancellation,
+permission mapping and application callbacks remain handwritten. Generated members
+for newer portal versions do not mean the public Runic API uses those features.
 
 Run `direnv exec . node eng/portals/check-protocol.mjs` from the SDK root for an
 offline integrity check. To update, select a reviewed upstream commit, download
-its two `data/` files byte-for-byte, update the manifest's commit/tag/hashes and
+its pinned `data/` files byte-for-byte, update the manifest's commit/tag/hashes and
 review the XML diff and generated signatures. Preserve licensing. Do not replace
 these files with runtime introspection output from one installed desktop.
 
