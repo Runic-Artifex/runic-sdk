@@ -2,3 +2,6 @@
 Runic.Application.Views.ReactiveUI.BridgeSnapshotObservableExtensions
 static Runic.Application.Views.ReactiveUI.BridgeSnapshotObservableExtensions.BatchBridgeSnapshots<T>(this System.IObservable<T>! source, object! model) -> System.IObservable<T>!
 Runic.Application.Views.ReactiveUI.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.RoutingState! router, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void
+Runic.Application.Views.ReactiveUI.RunicReactiveExceptions
+static Runic.Application.Views.ReactiveUI.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, Microsoft.Extensions.Logging.ILogger! logger) -> System.IDisposable!
+static Runic.Application.Views.ReactiveUI.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, System.Action<System.Exception!>! onUnexpected) -> System.IDisposable!

@@ -6,6 +6,7 @@ using Runic.Application.Views;
 #if SYSTEM_REACTIVE
 using System.Reactive;
 using ReactiveUI.Reactive;
+using ReactiveUI.Reactive.Builder;
 using Runic.Platform;
 using ReactiveUI.Binding.Reactive;
 using Runic.Application.Views.ReactiveUI.Reactive;
@@ -14,6 +15,7 @@ using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
 using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
 #elif DEFAULT_FLAVOR
 using ReactiveUI;
+using ReactiveUI.Builder;
 using ReactiveUI.Binding;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views.ReactiveUI;
@@ -31,6 +33,8 @@ await InteractionSemanticsAsync();
 await SchedulerFailureAndShutdownSemanticsAsync();
 await StreamOverflowStopsExecutionAsync();
 PlatformImportSemantics();
+// Last: it replaces ReactiveUI's global default exception handler.
+await BridgeExceptionSemanticsAsync();
 Console.WriteLine("REACTIVEUI_BEHAVIORAL_CONFORMANCE_OK");
 
 static async Task CommandSemanticsAsync()
@@ -261,6 +265,61 @@ static void PlatformImportSemantics()
 #endif
 }
 
+// W130-029 M1: a ReactiveCommand also reports a declared failure on
+// ThrownExceptions. Without a subscriber it reaches RxState's default handler;
+// ObserveBridgeExceptions ignores it and still reports unexpected exceptions.
+static async Task BridgeExceptionSemanticsAsync()
+{
+    await using var context = new RunicModelContext();
+    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    var handled = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+    // ReactiveUIBuilder.WithExceptionHandler installs RxState's default handler
+    // for the process, so this runs last. (The test reset helpers are internal.)
+    RxAppBuilder.CreateReactiveUIBuilder().WithExceptionHandler(new ExceptionRecorder(handled.Enqueue)).BuildApp();
+    {
+        var unobserved = ReactiveCommand.CreateFromTask<FlavorUnit, int>(
+            _ => Task.FromException<int>(new RunicFailureException("titleRequired")), scheduler);
+        await RequireThrowsAsync<RunicFailureException>(
+            () => ReactiveCommandExecution.Execute(unobserved, UnitValue(), CancellationToken.None),
+            "A declared failure did not reach the Bridge caller.");
+        await WaitUntilAsync(() => !handled.IsEmpty, "A declared failure without a ThrownExceptions subscriber did not reach the default handler.");
+        Require(handled.Single() is RunicFailureException, "The default handler did not receive the declared failure.");
+        handled.Clear();
+
+        var command = ReactiveCommand.CreateFromTask<bool, int>(unexpected => Task.FromException<int>(unexpected
+            ? new InvalidOperationException("disk full") : new RunicFailureException("titleRequired")), scheduler);
+        var reported = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+        using (command.ObserveBridgeExceptions(reported.Enqueue))
+        {
+            await RequireThrowsAsync<RunicFailureException>(
+                () => ReactiveCommandExecution.Execute(command, false, CancellationToken.None), "The declared failure was not thrown.");
+            await RequireThrowsAsync<InvalidOperationException>(
+                () => ReactiveCommandExecution.Execute(command, true, CancellationToken.None), "The unexpected failure was not thrown.");
+            await WaitUntilAsync(() => !reported.IsEmpty, "An unexpected exception did not reach the callback.");
+        }
+        Require(reported.Single() is InvalidOperationException && handled.IsEmpty,
+            "ObserveBridgeExceptions reported a declared failure or let one reach the default handler.");
+
+        var logger = new RecordingLogger();
+        using (command.ObserveBridgeExceptions(logger))
+        {
+            await RequireThrowsAsync<RunicFailureException>(
+                () => ReactiveCommandExecution.Execute(command, false, CancellationToken.None), "The declared failure was not thrown.");
+            await RequireThrowsAsync<InvalidOperationException>(
+                () => ReactiveCommandExecution.Execute(command, true, CancellationToken.None), "The unexpected failure was not thrown.");
+            await WaitUntilAsync(() => !logger.Entries.IsEmpty, "An unexpected exception was not logged.");
+        }
+        Require(logger.Entries.Single() is { Id: 1042, Level: Microsoft.Extensions.Logging.LogLevel.Error, Exception: InvalidOperationException }
+            && handled.IsEmpty, "The logger overload did not log only the unexpected exception as ReactiveCommandFailed.");
+    }
+}
+
+static async Task WaitUntilAsync(Func<bool> condition, string message)
+{
+    for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
+    Require(condition(), message);
+}
+
 static FlavorUnit UnitValue()
 {
 #if SYSTEM_REACTIVE
@@ -371,6 +430,22 @@ sealed class CallbackDisposable(Action dispose) : IDisposable
 {
     private Action? _dispose = dispose;
     public void Dispose() => Interlocked.Exchange(ref _dispose, null)?.Invoke();
+}
+
+sealed class ExceptionRecorder(Action<Exception> record) : IObserver<Exception>
+{
+    public void OnCompleted() { }
+    public void OnError(Exception error) => record(error);
+    public void OnNext(Exception value) => record(value);
+}
+
+sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger
+{
+    public System.Collections.Concurrent.ConcurrentQueue<(int Id, Microsoft.Extensions.Logging.LogLevel Level, Exception? Exception)> Entries { get; } = new();
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+    public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
+        Exception? exception, Func<TState, Exception?, string> formatter) => Entries.Enqueue((eventId.Id, logLevel, exception));
 }
 
 sealed class EmptyDisposable : IDisposable

@@ -136,6 +136,27 @@ The [ReactiveUI reference guide](https://github.com/Runic-Artifex/runic-site/blo
 defines the supported data shapes, operation semantics, interaction targeting,
 and model-context ownership.
 
+## Declared failures and ThrownExceptions
+
+A `ReactiveCommand` reports every exception on `ThrownExceptions`, including a
+declared `RunicFailureException` (`[RunicFailure]`) that the Bridge already sent
+to the client as `domain-failed`. Without a subscriber, ReactiveUI routes it to
+`RxState.DefaultExceptionHandler`, which breaks into the debugger and throws
+`UnhandledErrorException`. Every bridged `ReactiveCommand` therefore needs a
+`ThrownExceptions` subscriber: this helper, or the application's own.
+
+```csharp
+_saveExceptions = SaveCommand.ObserveBridgeExceptions(logger);
+_discardExceptions = DiscardCommand.ObserveBridgeExceptions(error => status.Report(error));
+```
+
+`ObserveBridgeExceptions` ignores `RunicFailureException` and reports every other
+exception: the `ILogger` overload logs it at Error as `ReactiveCommandFailed`
+(event 1042), the callback overload passes it on. Dispose the returned
+subscription with the ViewModel. An unexpected exception from a Bridge call is
+also logged by the Views runtime (event 1000 or 1004). The helper works on any
+`IHandleObservableErrors`, such as a `ReactiveObject`.
+
 ## System.Reactive flavor
 
 For DynamicData changesets, place `BatchBridgeSnapshots(model)` after

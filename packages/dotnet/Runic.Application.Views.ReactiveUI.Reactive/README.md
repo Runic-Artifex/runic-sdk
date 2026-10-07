@@ -47,6 +47,9 @@ normal `ReactiveUI.SourceGenerators` attributes with
 `ReactiveUI.Reactive.ReactiveObject`. There is no separate Reactive-flavor
 source-generator package.
 
-`BatchBridgeSnapshots(model)` is also available in this adapter's namespace.
+`BatchBridgeSnapshots(model)` and `ObserveBridgeExceptions` are also available in
+this adapter's namespace; this flavor's commands implement the same
+`IHandleObservableErrors`. See
+[Declared failures and ThrownExceptions](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#declared-failures-and-thrownexceptions).
 Place it after `ObserveOn(modelScheduler)` and before collection binding; see
 the [DynamicData guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/guides/dynamicdata.md).

@@ -407,6 +407,7 @@ output accordingly. The message properties are listed per event.
 | 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. | `ErrorType` |
 | 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
+| 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` on `ThrownExceptions`. | `Source`, `ErrorType` |
 | 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -427,13 +428,14 @@ Events 1000-1021 and 1050 use the category `Runic.Application.Views`
 `Trace` output. Events 2000-2001 use `Runic.Application.Desktop`. Events 3000-3003
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 
-Events 1040-1041 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
+Events 1040-1042 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
 flavor) and also use `Runic.Application.Views`. They need the
 `ReactiveRoutedRegion<T>(router, loggerFactory)` constructor, which a
 ViewModel can call with an `ILoggerFactory` injected from DI, as
 `examples/notes-reactive-views` does. Without a factory, the region writes the
 same messages to `Trace` as described above. `Region` is the region's ViewModel
-type name `T`.
+type name `T`. Event 1042 uses the logger passed to `ObserveBridgeExceptions`;
+`Source` is the observed object's type name.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`
 named `Runic.Application.Views` (`RunicViewsTelemetry.ActivitySourceName` and

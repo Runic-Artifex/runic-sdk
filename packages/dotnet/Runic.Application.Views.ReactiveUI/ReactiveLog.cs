@@ -20,6 +20,10 @@ internal static partial class ReactiveLog
     [LoggerMessage(EventId = 1041, EventName = "RoutedRegionRouterFailed", Level = LogLevel.Error,
         Message = "The router of a routed region for {Region} failed with {ErrorType}; the region keeps its last content.")]
     internal static partial void RouterFailed(ILogger logger, Exception? exception, string region, string errorType);
+
+    [LoggerMessage(EventId = 1042, EventName = "ReactiveCommandFailed", Level = LogLevel.Error,
+        Message = "{Source} reported {ErrorType} on ThrownExceptions.")]
+    internal static partial void CommandFailed(ILogger logger, Exception? exception, string source, string errorType);
 }
 
 // The fallback when a component has no ILoggerFactory, matching the Views
