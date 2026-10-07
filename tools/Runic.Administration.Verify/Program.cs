@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
@@ -22,19 +23,34 @@ internal static class VerifierApplication
     internal const int UsageOrPlatform = 2;
     private static readonly string[] LocalCapabilities = ["shortcuts", "services", "tasks", "firewall", "shares", "system", "processes", "networks"];
     private static readonly string[] DomainCapabilities = ["ldap", "gpo", "dns"];
+    private static readonly string[] DeniedCapabilities = ["services", "tasks", "firewall", "shares"];
 
-    internal static Task<int> RunAsync(string[] args) => new CommandApp(GeneratedCommandCatalog.Create())
+    internal static async Task<int> RunAsync(string[] args)
+    {
+        // The first Ctrl+C requests cancellation and keeps the process alive, so the
+        // cleanup of created resources still runs. CommandApp's own handler would
+        // terminate on a second Ctrl+C and skip that cleanup.
+        using var cancellation = new CancellationTokenSource();
+        ConsoleCancelEventHandler handler = (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); };
+        Console.CancelKeyPress += handler;
+        try { return await CreateApplication().RunAsync(args, cancellation.Token); }
+        finally { Console.CancelKeyPress -= handler; }
+    }
+
+    private static CommandApp CreateApplication() => new(GeneratedCommandCatalog.Create())
     {
         Name = "Runic.AdminVerify",
-        Version = typeof(WindowsAdministrationException).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
+        Version = typeof(WindowsAdministrationException).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+            ?? typeof(WindowsAdministrationException).Assembly.GetName().Version?.ToString() ?? "0.0.0",
+        HandleCancelKeyPress = false,
         HelpPresenter = new SpectreHelpPresenter(),
         Console = new SpectreCommandConsole(),
         ExitCodePolicy = VerifierExitCodePolicy.Instance,
         OutcomeSink = VerifierOutcomeSink.Instance,
-    }.RunAsync(args);
+    };
 
     [Command("local",
-        Description = "Verify local Windows administration. Read-only inspection by default; writes need an explicit opt-in on a disposable VM.",
+        Description = "Verify local Windows administration. Read-only inspection by default; writes need an explicit opt-in on a disposable VM. Ctrl+C requests cancellation; cleanup still runs, but a blocking native call can finish first.",
         Examples =
         [
             "Runic.AdminVerify local",
@@ -55,13 +71,15 @@ internal static class VerifierApplication
         if (allowChanges && expectDenied)
             return Usage("RAV1002", "Choose either --allow-changes or --expect-denied.");
         if (Blank(output)) return Usage("RAV1003", "Empty --out value.");
+        if (expectDenied && selected.Count != 0 && !selected.Overlaps(DeniedCapabilities))
+            return Usage("RAV1007", "--expect-denied needs at least one of services, tasks, firewall or shares in --only.");
         if (expectDenied && OperatingSystem.IsWindows() && IsElevated())
             return Usage("RAV1004", "--expect-denied must run from a non-elevated process; an elevated run would create the resources.");
         return RunAsync(context, new Options("local", allowChanges, expectDenied, FullPath(output), null, null, null, null, null, selected), cancellationToken);
     }
 
     [Command("domain",
-        Description = "Verify LDAP, Group Policy and DNS against a disposable test domain. Read-only unless --allow-changes is given with an existing --base-dn.",
+        Description = "Verify LDAP, Group Policy and DNS against a disposable test domain. Read-only unless --allow-changes is given with an existing --base-dn. Ctrl+C requests cancellation; cleanup still runs, but a blocking native call can finish first.",
         Examples =
         [
             "Runic.AdminVerify domain --server dc1.example.test --domain example.test",
