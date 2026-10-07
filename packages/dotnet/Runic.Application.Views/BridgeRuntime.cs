@@ -35,7 +35,9 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
     /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
     /// its navigator's presentation; another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
+#pragma warning disable RUNICNAV001
     [System.Diagnostics.CodeAnalysis.Experimental(RunicNavigator.DiagnosticId)]
+#pragma warning restore RUNICNAV001
     public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
         : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
 

@@ -258,7 +258,7 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// The session uses a different model context, or another live session is already bound.
     /// </exception>
     [EditorBrowsable(EditorBrowsableState.Never)]
-    public void BindPresentation(WindowContentSession session)
+    internal void BindPresentation(WindowContentSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (!ReferenceEquals(session.ModelContext, ModelContext))

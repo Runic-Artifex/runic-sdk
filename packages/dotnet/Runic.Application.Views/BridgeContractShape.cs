@@ -207,7 +207,9 @@ public static class BridgeContractShape
     private static string WireName(PropertyInfo property) => property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
     private static Type? GenericContract(Type type, params string[] names) => type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType && names.Contains(candidate.GetGenericTypeDefinition().FullName, StringComparer.Ordinal));
     internal static Type? NavigationRegionContent(Type type) =>
+#pragma warning disable RUNICNAV001
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(NavigationRegion<>) ? type.GenericTypeArguments[0] : null;
+#pragma warning restore RUNICNAV001
     private static Type[] ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
     private static PresentationView[] DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
     private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }

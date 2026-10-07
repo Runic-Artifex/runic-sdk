@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
@@ -159,6 +160,7 @@ internal static class NavigationPresentationTests
         var shell = new NavShellViewModel(navigator, new NavHomeViewModel());
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport, rootModel: shell, modelContext: context);
+        var observersBefore = ChangeObserverCount(shell.Main);
         using (var bridge = new RuntimeShellBridge(transport, shell, session))
         {
             transport.DrainPublications();
@@ -171,6 +173,10 @@ internal static class NavigationPresentationTests
             Require(Throws<InvalidOperationException>(() => navigator.BindPresentation(other)),
                 "The runtime descriptor hook did not bind the window session.");
         }
+        // Disposing the Bridge releases its PropertyChanged subscription, so the region
+        // has no observer that the Bridge added.
+        Require(ChangeObserverCount(shell.Main) == observersBefore,
+            "Disposing the Bridge did not release its subscription to the region.");
         transport.DrainPublications();
         await Wait(shell.Main.BackAsync());
         await Task.Delay(50);
@@ -255,6 +261,11 @@ internal static class NavigationPresentationTests
         }
     }
 
+    // The number of PropertyChanged handlers on a region, read from the event's backing field.
+    private static int ChangeObserverCount<T>(NavigationRegion<T> region) where T : class =>
+        (typeof(NavigationRegion<T>).GetField("PropertyChanged", BindingFlags.Instance | BindingFlags.NonPublic)?
+            .GetValue(region) as Delegate)?.GetInvocationList().Length ?? 0;
+
     private sealed class RuntimeShellBridge(IBridgeTransport transport, NavShellViewModel vm, WindowContentSession content)
         : ViewModelBridge<NavShellViewModel>(transport, vm, "runtimeShell", Write,
             [new PropertyDescriptor<NavShellViewModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
@@ -264,7 +275,11 @@ internal static class NavigationPresentationTests
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
-            writer.WriteString("title", vm.Main.Current?.Title);
+            switch (vm.Main?.Current)
+            {
+                case null: writer.WriteNull("title"); break;
+                case var page: writer.WriteString("title", page.Title); break;
+            }
             writer.WriteEndObject();
         }
     }
