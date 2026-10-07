@@ -41,7 +41,7 @@ warnings) and as a framework-dependent JIT publish. The `main` verifier at
 | Run | Identity | Command | Result |
 | --- | --- | --- | --- |
 | NativeAOT | elevated (High integrity) | `Runic.AdminVerify.exe local --allow-changes` | 19 passed, exit 0 |
-| JIT | elevated | `Runic.AdminVerify.exe local --allow-changes` | 17 passed; `services.lifecycle` and `cleanup.service` failed with Win32 1061 (see below), exit 1 |
+| JIT | elevated | `Runic.AdminVerify.exe local --allow-changes` | 17 passed; `services.lifecycle` and `cleanup.service` failed with Win32 1061 (see below), exit 1. With the cleanup fix, only `services.lifecycle` fails |
 | NativeAOT | non-elevated (interactive, `RunLevel Limited`) | `Runic.AdminVerify.exe local --expect-denied` | 13 passed, exit 0 |
 | JIT | non-elevated | `Runic.AdminVerify.exe local --expect-denied` | 13 passed, exit 0 |
 | NativeAOT | elevated | `Runic.AdminVerify.exe local --expect-denied` | refused as intended (usage error, exit 2) |
@@ -67,22 +67,41 @@ Accepted on this fixture:
   - firewall: `INetFwRules.Add`, `0x80070005`;
   - share: `NetShareAdd`, Win32 5.
 
-  A standard user can still create a task folder in the root folder. The
-  denied check therefore targets the SYSTEM task registration itself.
+  A standard user could still create a task folder in the root folder: in
+  run `b80751bf` (`main` verifier, non-elevated, `--allow-changes`),
+  `CreateFolder` succeeded and the folder was deleted by `cleanup.task-folder`,
+  while the task registration was denied. The denied check therefore targets
+  the SYSTEM task registration itself.
 
 Independent cleanup check, using `Get-Service`, `Get-ScheduledTask`, the Task
 Scheduler root folders, `Get-NetFirewallRule` and `Get-SmbShare` for
-`RunicVerify-*`. The only resources left were three stopped services from the
-JIT runs. They were deleted by exact name, and a repeated check found nothing.
+`RunicVerify-*`. In the first session, the only resources left were three
+stopped services from the JIT runs; their cleanup had skipped `DeleteService`
+after `Stop` failed. They were deleted by exact name. The cleanup now always
+deletes the service and ends the verifier's own fixture process when stopping
+fails. A rerun with that change (`125793e8`) left nothing behind:
 
-JIT verifier limitation: when the verifier's disposable service is hosted by
-the JIT apphost, it registers and reports `Running` with stop and pause
-accepted. Its control handler is never invoked, and the Service Control
-Manager answers every control, including interrogate, with
-`ERROR_SERVICE_CANNOT_ACCEPT_CTRL`. The same source works under NativeAOT. This
-is a defect in the verifier's service fixture, not in `WindowsServiceClient`,
-which reported the native error correctly. Validate the service lifecycle with
-the NativeAOT verifier until the fixture is fixed.
+- JIT, elevated, `--only services`: `cleanup.service` passed and
+  `services.lifecycle` failed as before.
+- NativeAOT, elevated, `--allow-changes`: 19 passed.
+- NativeAOT, non-elevated, `--expect-denied`: 13 passed.
+
+JIT verifier limitation: when the JIT apphost hosts the verifier's disposable
+service, the service registers its control handler and reports `Running` with
+stop and pause accepted. The test service's diagnostic log
+(`service-diagnostics/<name>.log`) shows what happens next.
+`StartServiceCtrlDispatcherW` returns success about 0.2 to 2 seconds after the
+start, when the first control arrives, while `ServiceMain` is still waiting.
+The control handler is never invoked. The Service Control Manager rejects
+that control and the following ones, including interrogate, with
+`ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061). The process then ends and the
+service is reported `Stopped`.
+
+The same source works under NativeAOT. Why the dispatcher returns under JIT is
+not yet known. This is a defect in the verifier's test service, not in
+`WindowsServiceClient`, which reported the native error correctly. Validate
+the service lifecycle with the NativeAOT verifier until the test service is
+fixed.
 
 ## Not natively accepted
 

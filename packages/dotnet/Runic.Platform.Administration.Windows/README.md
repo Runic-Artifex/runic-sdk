@@ -10,8 +10,10 @@ This is an experimental package under native validation. Local administrative
 writes have been accepted on a disposable Windows 11 x64 VM (2026-10-07). That run
 covered create, read, update and delete of an owned service, scheduled task,
 firewall rule and SMB share, and denial of the same writes to a non-elevated
-process. **Domain scenarios (LDAP/AD, DNS, Group Policy) have not been accepted
-on disposable fixtures.** See
+process. The service lifecycle was accepted with the NativeAOT verifier only; the
+JIT-built verifier's own test service cannot be controlled (see verification).
+**Domain scenarios (LDAP/AD, DNS, Group Policy) have not been accepted on
+disposable fixtures.** See
 [verification](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md) for the distinction between implementation,
 executed checks and remaining acceptance work. Do not infer production readiness
 from a successful pack or NativeAOT publish.

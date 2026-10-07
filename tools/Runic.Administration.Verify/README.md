@@ -53,7 +53,11 @@ disabled firewall rule and an SMB share. Each attempt must fail with
 `AccessDenied`. A lookup then confirms that the resource is absent. The report's
 resource journal records the native code of each denial. The option refuses to
 run elevated, because an elevated run would create the resources. It cannot be
-combined with `--allow-changes`. Shortcut and inspection checks still run.
+combined with `--allow-changes`, and an `--only` selection must include services,
+tasks, firewall or shares. If a write unexpectedly succeeds (for example for an
+account with delegated rights), the verifier deletes that uniquely named
+resource again (the firewall rule only after an identity check), and the check
+still fails. Shortcut and inspection checks still run.
 
 ## Command line
 
@@ -138,8 +142,11 @@ Exit codes:
 - 2: invalid command line or unsupported platform.
 
 Unavailable components and denied permissions are reported as failures when
-selected, not silently converted to passes. Capabilities excluded with --only
-are not run. Mutation checks are explicitly skipped without --allow-changes.
+selected, not silently converted to passes. The exception is `--expect-denied`:
+there a denial is the expected result, and a write that succeeds fails the check
+(the created resource is deleted again first). Capabilities excluded with --only
+are not run. Without --allow-changes, the mutation checks are explicitly skipped,
+or replaced by the denial checks under `--expect-denied`.
 
 ## Coverage
 
@@ -167,12 +174,21 @@ The local write and denied-access suites passed on the Windows 11 VM on
 [verification guide](../../packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md).
 
 JIT limitation: in a JIT build (`dotnet publish` without `-p:PublishAot=true`),
-the disposable service starts and reports `Running`, but its control handler
-never runs. The Service Control Manager rejects every control with
-`ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), so `services.lifecycle` and
-`cleanup.service` fail. The stopped service stays behind and must be deleted
-with `sc.exe delete <name>`, using the name from the resource journal. Run the
-service lifecycle with the NativeAOT executable. All other JIT checks pass.
+the disposable service starts and reports `Running`. When the first control
+arrives, `StartServiceCtrlDispatcherW` returns while `ServiceMain` is still
+waiting, and the control handler never runs. The Service Control Manager rejects
+the controls with `ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), so
+`services.lifecycle` fails. Run the service lifecycle with the NativeAOT
+executable. All other JIT checks pass.
+
+Service cleanup always calls `DeleteService`. If stopping fails, it ends the
+service's process (only after checking that its image is this verifier) and
+waits until the service is gone. If cleanup still fails, delete the service with
+`sc.exe delete <name>`, using the name from the resource journal.
+
+To investigate the test service, create a `service-diagnostics` directory next
+to the executable. Each test service then appends its dispatcher,
+`SetServiceStatus` and control events to `service-diagnostics/<name>.log`.
 
 ## Retesting firewall and share failures
 
