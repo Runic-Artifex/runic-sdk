@@ -909,10 +909,12 @@ internal static class Program
                     _ => DoctorStatus.Failure,
                 }, check.Status);
                 if (target.Status != SupportStatus.CiVerified) Contains(check.Message, target.Reason);
+                else Contains(check.Message, support.CiVerifiedMeaning);
             }
         }
         DoctorCheck unknownHost = Check(InspectTarget(desktop with { Host = RunicViewsHost.Unknown }, "win-arm64", runtime), "target-rid");
         Equal(DoctorStatus.Warning, unknownHost.Status);
+        Contains(unknownHost.Message, "most permissive host");
     }
 
     private static void DoctorRidChecksLinuxAot()

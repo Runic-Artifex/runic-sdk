@@ -95,13 +95,16 @@ internal static class DoctorTargetChecks
             return false;
         }
         SupportTarget? support = FindSupport(project.Host, target.Value);
+        string assumed = project.Host == RunicViewsHost.Unknown
+            ? " The project references no Runic Views host, so doctor assumed the most permissive host."
+            : string.Empty;
         switch (support?.Status)
         {
             case SupportStatus.CiVerified:
-                checks.Add(Pass(id, $"{target.Value} is a supported target that Runic CI builds and runs."));
+                checks.Add(Pass(id, $"{target.Value} is CI-verified: {Support.CiVerifiedMeaning}{assumed}"));
                 return true;
             case SupportStatus.PackagedUnverified:
-                checks.Add(Warn(id, $"{target.Value} has native support but is not verified by Runic CI. {support.Reason}",
+                checks.Add(Warn(id, $"{target.Value} has native support but is not verified by Runic CI. {support.Reason}{assumed}",
                     "Run the published application on a real target machine before you ship it."));
                 return true;
             case SupportStatus.Unsupported:

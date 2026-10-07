@@ -50,15 +50,16 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 | `win-arm64` | Packaged, not CI-verified | Unsupported |
 | `osx-x64` | Packaged, not CI-verified | Packaged, not CI-verified |
 
-- CI-verified: Runic CI builds, tests and publishes it with Native AOT for every change.
+- CI-verified: Runic CI builds and runs the host's native window layer on this RID for changes that affect it.
 - Packaged, not CI-verified: The packages ship native assets for it, but Runic CI does not run it. Test the published application on a real target machine.
 - Unsupported: Runic does not ship the native assets the host needs.
 
 | OS | Host | Requirement | Notes |
 | --- | --- | --- | --- |
-| Windows | Runic Desktop, CS-WebUI | Windows 10 or newer | The .NET 10 baseline. |
+| Windows | Runic Desktop, CS-WebUI | Windows 11, or a Windows 10 release that .NET 10 supports | The .NET 10 supported-OS policy. |
 | Windows | Runic Desktop, CS-WebUI | Microsoft Edge WebView2 Runtime | Evergreen runtime; Windows 11 includes it. CS-WebUI uses it only when no Chromium-family browser is installed. |
-| macOS | Runic Desktop, CS-WebUI | macOS 12.0 or newer | The .NET 10 Native AOT deployment target. WKWebView is part of macOS. |
+| macOS | Runic Desktop | macOS 15 or newer | The oldest macOS in the .NET 10 supported-OS policy. WKWebView is part of macOS. |
+| macOS | CS-WebUI | macOS 26 or newer | The bundled CS-WebUI native library is built for macOS 26. |
 | Linux | CS-WebUI | glibc 2.34 or newer | The CsWebUi.Native Linux library; musl distributions are unsupported. |
 | Linux | Runic Desktop, CS-WebUI | GTK 3 and WebKitGTK 4.1 | Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed. |
 | Linux | Runic Desktop | GTK 4.12 or newer | With Runic.Desktop.Gtk4. |

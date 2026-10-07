@@ -31,9 +31,13 @@ internal sealed record SupportHost(string Id, string Name, string Package, IRead
 
 internal sealed record SupportRequirement(string Id, string Os, IReadOnlyList<string> Hosts, string Component, string? Minimum, string Note);
 
-/// <summary>The support matrix embedded in the compatibility set since schema 3.</summary>
-internal sealed class SupportMatrix(IReadOnlyList<SupportHost> hosts, IReadOnlyList<SupportRequirement> requirements)
+/// <summary>The support matrix embedded in the compatibility set since schema 2.</summary>
+internal sealed class SupportMatrix(
+    IReadOnlyList<SupportHost> hosts, IReadOnlyList<SupportRequirement> requirements, string ciVerifiedMeaning)
 {
+    /// <summary>What ci-verified means, for example which CI coverage it stands for.</summary>
+    internal string CiVerifiedMeaning { get; } = ciVerifiedMeaning;
+
     internal IReadOnlyList<SupportHost> Hosts { get; } = hosts;
 
     internal IReadOnlyList<SupportRequirement> Requirements { get; } = requirements;
@@ -73,16 +77,17 @@ internal sealed class SupportMatrix(IReadOnlyList<SupportHost> hosts, IReadOnlyL
                 requirement.GetProperty("minimum").GetString(),
                 requirement.GetProperty("note").GetString() ?? string.Empty));
         }
-        return new SupportMatrix(hosts, requirements);
+        return new SupportMatrix(hosts, requirements,
+            support.GetProperty("statuses").GetProperty("ci-verified").GetString() ?? string.Empty);
     }
 
-    // A status from a newer generator counts as unsupported instead of failing the tool.
     private static SupportStatus ParseStatus(string? value) =>
         value switch
         {
             "ci-verified" => SupportStatus.CiVerified,
             "packaged-unverified" => SupportStatus.PackagedUnverified,
-            _ => SupportStatus.Unsupported,
+            "unsupported" => SupportStatus.Unsupported,
+            _ => throw new InvalidOperationException($"Unknown support status '{value}' in the embedded compatibility set."),
         };
 }
 
@@ -151,7 +156,6 @@ internal sealed class CompatibilitySetAuthority
                 toolchain.GetProperty("pnpm").GetString() ?? string.Empty),
             nuget.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
             npm.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase),
-            // Schema 1 sets have no support matrix; every RID then counts as unsupported.
-            root.TryGetProperty("support", out JsonElement support) ? SupportMatrix.Parse(support) : new SupportMatrix([], []));
+            SupportMatrix.Parse(root.GetProperty("support")));
     }
 }

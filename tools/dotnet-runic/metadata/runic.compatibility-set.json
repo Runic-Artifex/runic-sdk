@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 2,
   "id": "runic-sdk-0.7.0-preview.2",
   "releaseTrainVersion": "0.7.0-preview.2",
   "toolchain": {
@@ -163,7 +163,7 @@
   ],
   "support": {
     "statuses": {
-      "ci-verified": "Runic CI builds, tests and publishes it with Native AOT for every change.",
+      "ci-verified": "Runic CI builds and runs the host's native window layer on this RID for changes that affect it.",
       "packaged-unverified": "The packages ship native assets for it, but Runic CI does not run it. Test the published application on a real target machine.",
       "unsupported": "Runic does not ship the native assets the host needs."
     },
@@ -274,9 +274,9 @@
           "desktop",
           "cswebui"
         ],
-        "component": "Windows",
-        "minimum": "10",
-        "note": "The .NET 10 baseline."
+        "component": "Windows 11, or a Windows 10 release that .NET 10 supports",
+        "minimum": null,
+        "note": "The .NET 10 supported-OS policy."
       },
       {
         "id": "webview2",
@@ -290,15 +290,24 @@
         "note": "Evergreen runtime; Windows 11 includes it. CS-WebUI uses it only when no Chromium-family browser is installed."
       },
       {
-        "id": "macos",
+        "id": "macos-desktop",
         "os": "osx",
         "hosts": [
-          "desktop",
+          "desktop"
+        ],
+        "component": "macOS",
+        "minimum": "15",
+        "note": "The oldest macOS in the .NET 10 supported-OS policy. WKWebView is part of macOS."
+      },
+      {
+        "id": "macos-cswebui",
+        "os": "osx",
+        "hosts": [
           "cswebui"
         ],
         "component": "macOS",
-        "minimum": "12.0",
-        "note": "The .NET 10 Native AOT deployment target. WKWebView is part of macOS."
+        "minimum": "26",
+        "note": "The bundled CS-WebUI native library is built for macOS 26."
       },
       {
         "id": "glibc",

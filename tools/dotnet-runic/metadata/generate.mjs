@@ -12,9 +12,9 @@ const readmePath = resolve(root, "README.md");
 const workspace = JSON.parse(readFileSync(resolve(root, "eng/workspace.json"), "utf8"));
 const { $comment, schemaVersion, ...support } = readSupport(root);
 // The installed CLI needs an offline snapshot, not repository import provenance.
-// Schema 3 adds `support` (eng/support.json); readers ignore unknown properties.
+// Schema 2 adds `support` from eng/support.json.
 const metadata = {
-  schemaVersion: 3,
+  schemaVersion: 2,
   id: `runic-sdk-${workspace.version}`,
   releaseTrainVersion: workspace.version,
   toolchain: readToolchain(root),

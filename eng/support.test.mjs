@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { root, workspace } from "./run.mjs";
 import { readSupport, renderReadme, renderSupportMarkdown, supportRids, validateSupport } from "./support.mjs";
@@ -9,15 +10,41 @@ const support = readSupport(root);
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8"));
 
 test("ci-verified support entries match the Native CI matrix", () => {
-  // Both Window hosts run in every Native job (Desktop smoke and CS-WebUI probes).
-  const nativeRids = workflow.jobs.native.strategy.matrix.include.map(entry => entry.rid).sort();
+  // Every Native job builds and runs both hosts' native window layers: the
+  // Runic Desktop WebView smoke and the CS-WebUI window probes.
+  const matrix = workflow.jobs.native.strategy.matrix.include;
+  const nativeRids = matrix.map(entry => entry.rid).sort();
   for (const host of support.hosts) {
     const verified = host.targets.filter(target => target.status === "ci-verified").map(target => target.rid).sort();
     assert.deepEqual(verified, nativeRids, `${host.id}: ci-verified RIDs must equal the Native job matrix`);
   }
-  const steps = JSON.stringify(workflow.jobs.native.steps);
-  assert.match(steps, /CsWebUiWindowProbes/, "the Native job must exercise the CS-WebUI host");
-  assert.match(steps, /Runic\.Desktop\.WebViewSmoke/, "the Native job must exercise the Runic Desktop host");
+  const runnerOs = os => /^ubuntu-/.test(os) ? "Linux" : /^windows-/.test(os) ? "Windows" : /^macos-/.test(os) ? "macOS" : assert.fail(`unknown runner ${os}`);
+  // Only the step conditions the Native job uses are understood; anything else fails the test.
+  const runsOn = (step, os) => {
+    if (step.if === undefined) return true;
+    const match = /^runner\.os (==|!=) '(\w+)'$/.exec(step.if);
+    assert.ok(match, `unexpected Native step condition: ${step.if}`);
+    return (match[2] === os) === (match[1] === "==");
+  };
+  for (const entry of matrix) {
+    const os = runnerOs(entry.os);
+    for (const [probe, pattern] of [["Runic Desktop WebView smoke", /dotnet\s+\S*Runic\.Desktop\.WebViewSmoke\.dll|Runic\.Desktop\.WebViewSmoke\.exe/],
+      ["CS-WebUI window probes", /CsWebUiWindowProbes\$\{\{ matrix\.extension \}\} --probe-window-close/]]) {
+      assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && runsOn(step, os)),
+        `${entry.rid}: the Native job must run the ${probe}`);
+    }
+  }
+});
+
+// Read from the restored NuGet cache when present; the CI engineering job may not restore it.
+const nativeVersion = /<PackageVersion Include="CsWebUi\.Native" Version="([^"]+)"/.exec(readFileSync(resolve(root, "Directory.Packages.props"), "utf8"))?.[1];
+const nativePackage = [process.env.NUGET_PACKAGES, resolve(root, ".cache/nuget"), resolve(homedir(), ".nuget/packages")]
+  .filter(Boolean).map(cache => resolve(cache, "cswebui.native", nativeVersion ?? "missing")).find(path => existsSync(path));
+test("CS-WebUI support follows the CsWebUi.Native runtimes", { skip: !nativePackage }, () => {
+  const shipped = readdirSync(resolve(nativePackage, "runtimes")).sort();
+  const listed = support.hosts.find(host => host.id === "cswebui").targets
+    .filter(target => target.status !== "unsupported").map(target => target.rid).sort();
+  assert.deepEqual(listed, shipped, `CS-WebUI entries must match CsWebUi.Native ${nativeVersion} runtimes/`);
 });
 
 test("support hosts name shipped packages and the README table is current", () => {
@@ -30,7 +57,7 @@ test("support hosts name shipped packages and the README table is current", () =
 
 test("the compatibility set embeds the support matrix", () => {
   const set = JSON.parse(readFileSync(resolve(root, "tools/dotnet-runic/metadata/runic.compatibility-set.json"), "utf8"));
-  assert.equal(set.schemaVersion, 3);
+  assert.equal(set.schemaVersion, 2);
   const { $comment, schemaVersion, ...embedded } = support;
   assert.deepEqual(set.support, embedded);
 });
