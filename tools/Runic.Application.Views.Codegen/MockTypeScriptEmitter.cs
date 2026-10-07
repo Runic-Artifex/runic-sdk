@@ -122,7 +122,7 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine("  fields: {");
             foreach (var field in plan.ValueFields)
-                body.AppendLine($"    {Key(field.WireName)}: {{ encode: (value: unknown) => {Encode(field.Graph.EncodeTypeScript("typed"), field.Graph.TypeScriptType())}, decode: (wire: unknown) => {field.Graph.EmitTypeScriptDecoder("wire")} }},");
+                body.AppendLine($"    {Key(field.WireName)}: {{ encode: (value: unknown) => {Encode(field.Graph.EncodeTypeScript("typed"), field.Graph.TypeScriptType())}, decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(field.Graph.EmitTypeScriptDecoder("wire"))} }},");
             body.AppendLine("  },");
         }
         body.AppendLine(plan.Defaults.Count == 0 ? "  defaults: {}," : $"  defaults: {{ {string.Join(", ", plan.Defaults.Select(entry => $"{Key(entry.Field)}: {entry.Default}"))} }},");
@@ -132,7 +132,7 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine("  collections: {");
             foreach (var collection in plan.Collections)
-                body.AppendLine($"    {Key(collection.WireName)}: {{ encode: (value: unknown) => {Encode(collection.Encode, collection.ItemType)}, decode: (wire: unknown) => {collection.Decode}, key: (item: {collection.ItemType}) => {collection.Key} }},");
+                body.AppendLine($"    {Key(collection.WireName)}: {{ encode: (value: unknown) => {Encode(collection.Encode, collection.ItemType)}, decode: (wire: unknown) => {BridgeTypeGraph.ArrowBody(collection.Decode)}, key: (item: {collection.ItemType}) => {collection.Key} }},");
             body.AppendLine("  },");
         }
         if (plan.Setters.Count > 0)
@@ -153,14 +153,14 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine("  operations: {");
             foreach (var operation in plan.Operations)
-                body.AppendLine($"    {operation.Method}: {{ member: {Quote(operation.Member)}{(operation.DecodeInput is null ? "" : $", decodeInput: (wire: unknown) => {operation.DecodeInput}")}{(operation.EncodeResult is null ? "" : $", encodeResult: (value: unknown) => {Encode(operation.EncodeResult, operation.ResultType)}")}{(operation.IsStream ? ", stream: true" : "")} }},");
+                body.AppendLine($"    {operation.Method}: {{ member: {Quote(operation.Member)}{(operation.DecodeInput is null ? "" : $", decodeInput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(operation.DecodeInput)}")}{(operation.EncodeResult is null ? "" : $", encodeResult: (value: unknown) => {Encode(operation.EncodeResult, operation.ResultType)}")}{(operation.IsStream ? ", stream: true" : "")} }},");
             body.AppendLine("  },");
         }
         if (plan.Interactions.Count > 0)
         {
             body.AppendLine("  interactions: {");
             foreach (var interaction in plan.Interactions)
-                body.AppendLine($"    {interaction.Name}: {{ encodeInput: (value: unknown) => {Encode(interaction.EncodeInput, interaction.InputType)}, decodeOutput: (wire: unknown) => {interaction.DecodeOutput} }},");
+                body.AppendLine($"    {interaction.Name}: {{ encodeInput: (value: unknown) => {Encode(interaction.EncodeInput, interaction.InputType)}, decodeOutput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(interaction.DecodeOutput)} }},");
             body.AppendLine("  },");
         }
         body.AppendLine("};");

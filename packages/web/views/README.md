@@ -264,8 +264,6 @@ recovery they trigger) or the producer's key checks: an edit that would leave an
 empty or duplicate key throws a `RangeError` in the test instead of sending a
 failure notice. Use `pushFailure` and `push(frame)` for those client paths.
 
-path.
-
 The [CommunityToolkit Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Frontend/test)
 tests its frontend this way with `bun test`; any runner that loads ES modules,
 such as Vitest, works the same.

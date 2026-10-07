@@ -1001,7 +1001,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var graph = valueProperties[property];
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
-            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(graph.EmitItemTypeScriptDecoder("wire"))}, item => String({TsAccess("item", keyMember.WireName)})),");
         }
         ts.AppendLine("};");
     }
@@ -1053,7 +1053,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var valueGraph = valueProperties[property];
         var encodedBaseline = valueGraph.EncodeTypeScript("baseline.value");
         var encodedValue = valueGraph.EncodeTypeScript("value");
-        ts.AppendLine($"      return view.writeField<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}), value => {valueGraph.EmitTypeScriptDecoder("value")});");
+        ts.AppendLine($"      return view.writeField<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}), value => {BridgeTypeGraph.ArrowBody(valueGraph.EmitTypeScriptDecoder("value"))});");
         ts.AppendLine("    },");
     }
     foreach (var command in commands)

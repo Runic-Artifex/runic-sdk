@@ -125,4 +125,18 @@ function fresh(): MockBridge {
   client.dispose();
 }
 
+// A DTO interaction output round-trips through the client's encoder and the mock's decoder.
+{
+  const bridge = fresh();
+  const { connectDtoInteraction } = await load("dtoInteraction");
+  const { mockDtoInteraction } = await load("dtoInteraction.mock");
+  const mock = mockDtoInteraction(bridge, { state: { picked: null } });
+  const client = await connectDtoInteraction();
+  const stop = client.interactions.chooseEntry.handle((input: string) => ({ name: input, count: 2 }));
+  await client.pick();
+  assert.deepEqual(await mock.interactions.chooseEntry.request("chosen"), { kind: "answered", output: { name: "chosen", count: 2 } });
+  stop();
+  client.dispose();
+}
+
 console.log("GENERATED_MOCKS_OK");

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 type Transcript = {
+  readonly dtoInteraction: { readonly snapshot: string; readonly request: string; readonly output: string };
   readonly dtoList: {
     readonly snapshot: string;
     readonly setRequest: string; readonly setReply: string;
@@ -231,6 +232,36 @@ expect(entriesReceipt.kind === "applied" && entriesReceipt.snapshot.value.length
 await dtoList.replace([{ name: "replaced", count: 5 }]);
 expect(JSON.stringify(dtoList.snapshot.entries) === '[{"name":"replaced","count":5}]', "A DTO list command reply did not decode.");
 dtoList.dispose();
+
+// An interaction with a DTO output answers the .NET request with the object
+// .NET accepted for it.
+let interactionReply: { readonly kind: string; readonly output?: unknown } | undefined;
+let releaseControlWait: ((reply: string) => void) | undefined;
+let interactionDelivered = false;
+let interactionMount = "";
+host.window!.__runicBridge = { isConnected: () => true, async call(route: string, ...args: unknown[]) {
+  switch (route) {
+    case "dtoInteractionSnapshot": return fixture.dtoInteraction.snapshot;
+    case "dtoInteractionMount": interactionMount = String(args[0]); return "ok";
+    case "dtoInteractionUnmount": return "ok";
+    case "__runicInteractionControl": return JSON.stringify({ kind: "ok" });
+    case "__runicInteractionControlWait": return await new Promise<string>(resolve => { releaseControlWait = resolve; });
+    case "__runicInteractionWait":
+      if (interactionDelivered) return await new Promise<string>(() => {});
+      interactionDelivered = true;
+      return JSON.stringify({ ...JSON.parse(fixture.dtoInteraction.request), presentationId: interactionMount });
+    case "__runicInteractionReply": interactionReply = JSON.parse(String(args[0])); return JSON.stringify({ kind: "ok" });
+    default: throw new Error(`Unexpected DTO interaction route ${route}`);
+  }
+} };
+const dtoInteractionModule = await import(pathToFileURL(resolve(generatedDirectory, "dtoInteraction.ts")).href);
+const dtoInteraction = await dtoInteractionModule.connectDtoInteraction();
+dtoInteraction.interactions.chooseEntry.handle((input: string) => ({ name: input === "Pick an entry" ? "picked" : input, count: 6 }));
+for (let attempt = 0; interactionReply === undefined && attempt < 500; attempt++) await Bun.sleep(2);
+expect(interactionReply?.kind === "answered" && JSON.stringify(interactionReply.output) === fixture.dtoInteraction.output,
+  `A DTO interaction output was not encoded as .NET accepts it: ${JSON.stringify(interactionReply)}`);
+dtoInteraction.dispose();
+releaseControlWait?.(JSON.stringify({ kind: "disconnected" }));
 
 function expectArgs(route: string, actual: readonly unknown[], expected: string): void {
   expect(actual.length === 1 && actual[0] === expected,

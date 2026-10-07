@@ -53,6 +53,16 @@ internal sealed class BridgeTypeGraph
     /// <summary>Emits the JSON-wire expression for one public TypeScript collection item.</summary>
     internal string EncodeItemTypeScript(string expression) => EncodeTypeScript(Root.Element!, expression);
 
+    /// <summary>
+    /// Makes a codec expression safe as a concise arrow-function body. A DTO
+    /// encoder (or a custom codec) can emit an object literal, which
+    /// TypeScript would otherwise parse as a block body after <c>=&gt;</c>.
+    /// Every emitter that places an encoder or decoder after <c>=&gt;</c>
+    /// passes it through this.
+    /// </summary>
+    internal static string ArrowBody(string expression) =>
+        expression.TrimStart().StartsWith('{') ? $"({expression})" : expression;
+
     internal void AppendFingerprint(List<string> parts, string scope)
     {
         ArgumentNullException.ThrowIfNull(parts);
@@ -219,8 +229,8 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({expression})",
             BridgeWireKind.TimeSpan => $"bridgeWire.duration({expression})",
             BridgeWireKind.Enum => $"bridgeWire.enumName<{TypeScriptNamedTypes.Reference(node)}>({expression}, [{string.Join(", ", node.EnumCases.Select(@case => Quote(@case.WireName)))}])",
-            BridgeWireKind.Array or BridgeWireKind.List => $"bridgeWire.array({expression}, item => {EmitTypeScriptDecoder(node.Element!, "item")})",
-            BridgeWireKind.StringDictionary => $"bridgeWire.stringRecord({expression}, item => {EmitTypeScriptDecoder(node.Value!, "item")})",
+            BridgeWireKind.Array or BridgeWireKind.List => $"bridgeWire.array({expression}, item => {ArrowBody(EmitTypeScriptDecoder(node.Element!, "item"))})",
+            BridgeWireKind.StringDictionary => $"bridgeWire.stringRecord({expression}, item => {ArrowBody(EmitTypeScriptDecoder(node.Value!, "item"))})",
             BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => LiteralKey(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
@@ -261,8 +271,7 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.TimeOnly => $"bridgeWire.timeOnly({value})",
             BridgeWireKind.DateTime => $"bridgeWire.dateTime({value})",
             BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({value})",
-            // Parenthesized, so an object-literal item is not read as a block body.
-            BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => ({EncodeTypeScript(node.Element!, "item")}))",
+            BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => {ArrowBody(EncodeTypeScript(node.Element!, "item"))})",
             BridgeWireKind.StringDictionary => $"Object.fromEntries(Object.entries({value}).map(([key, item]) => [key, {EncodeTypeScript(node.Value!, "item")}]))",
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),

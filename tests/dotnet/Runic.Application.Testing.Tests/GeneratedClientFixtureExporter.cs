@@ -27,7 +27,7 @@ internal static class GeneratedClientFixtureExporter
         using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel, "validation",
             (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());
         var fixture = new GeneratedClientFixture(dataShape, typedReactive, toolkitTyped, validationHost.Transport.Call("validationSnapshot"),
-            CreateDtoListTranscript());
+            CreateDtoListTranscript(), await CreateDtoInteractionTranscriptAsync());
 
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixture, Json)).ConfigureAwait(false);
     }
@@ -120,6 +120,49 @@ internal static class GeneratedClientFixtureExporter
         }
     }
 
+    // A .NET interaction request whose DTO output the generated client answers.
+    // The recorded output is the reply .NET accepted for that request.
+    private static async Task<DtoInteractionTranscript> CreateDtoInteractionTranscriptAsync()
+    {
+        using var model = new DtoInteractionViewModel();
+        using var host = new RunicWindowTestHost<DtoInteractionViewModel>(model, "dtoInteraction",
+            (transport, content, vm) => new DtoInteractionBridge(transport, vm, content: content), new TestViewLocator());
+        const string route = "dtoInteraction", presentation = "dto:interaction", client = "dto-client", connection = "dto-connection";
+        var contract = $"{BridgeContractShape.Compute(typeof(DtoInteractionViewModel))}:interaction:ChooseEntry";
+        var snapshot = host.Transport.Call(route + "Snapshot");
+        if (host.Transport.Call(route + "Mount", new(StringValue: presentation, ClientKey: client, ConnectionKey: connection)) != "ok")
+            throw new InvalidOperationException("The DTO interaction root did not mount.");
+        var wait = host.Transport.CallAsync(BridgeInteractionRouter.WaitRoute, new(StringValue: JsonSerializer.Serialize(new
+        {
+            route,
+            presentationId = presentation,
+            handlers = new[] { new { name = "chooseEntry", contract } },
+        }), ClientKey: client, ConnectionKey: connection)).AsTask();
+        await Task.Yield();
+        var command = host.Transport.CallAsync(route + "Pick", new(ClientKey: client, ConnectionKey: connection)).AsTask();
+        var request = await wait.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+        using var requestDocument = JsonDocument.Parse(request);
+        var output = new DtoListEntry("picked", 6);
+        var reply = JsonSerializer.Serialize(new
+        {
+            kind = "answered",
+            requestId = requestDocument.RootElement.GetProperty("requestId").GetString(),
+            route,
+            presentationId = presentation,
+            ownerEpoch = requestDocument.RootElement.GetProperty("ownerEpoch").GetInt64(),
+            name = "chooseEntry",
+            contract,
+            output,
+        }, Json);
+        using var replyResult = JsonDocument.Parse(host.Transport.Call(BridgeInteractionRouter.ReplyRoute,
+            new(StringValue: reply, ClientKey: client, ConnectionKey: connection)));
+        using var completed = JsonDocument.Parse(await command.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false));
+        if (replyResult.RootElement.GetProperty("kind").GetString() != "ok" || !completed.RootElement.GetProperty("ok").GetBoolean()
+            || model.Picked is not { Name: "picked", Count: 6 })
+            throw new InvalidOperationException("The DTO interaction output did not reach the ViewModel.");
+        return new(snapshot, request, JsonSerializer.Serialize(output, Json));
+    }
+
     private static async Task<TypedReactiveTranscript> CreateTypedReactiveTranscriptAsync()
     {
         await using var context = new RunicModelContext();
@@ -150,7 +193,10 @@ internal static class GeneratedClientFixtureExporter
     }
 
     private sealed record GeneratedClientFixture(DataShapeTranscript DataShape, TypedReactiveTranscript TypedReactive,
-        ToolkitGeneratedClientTranscript ToolkitTyped, string ValidationSnapshot, DtoListTranscript DtoList);
+        ToolkitGeneratedClientTranscript ToolkitTyped, string ValidationSnapshot, DtoListTranscript DtoList,
+        DtoInteractionTranscript DtoInteraction);
+
+    private sealed record DtoInteractionTranscript(string Snapshot, string Request, string Output);
 
     private sealed record DtoListTranscript(string Snapshot, string SetRequest, string SetReply, string WriteRequest, string WriteReply,
         string ReplaceRequest, string ReplaceReply);
