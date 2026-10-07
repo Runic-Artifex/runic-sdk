@@ -64,15 +64,14 @@ References: [systemd proc masking investigation](https://github.com/systemd/syst
 [bubblewrap nested proc report](https://github.com/containers/bubblewrap/issues/707),
 [Linux per-user-namespace limits](https://github.com/torvalds/linux/blob/master/kernel/ucount.c).
 
-## Coverage and legacy runners
+## Coverage
 
 The container guide records executable coverage and remaining work. Both desktops
 now have compositor input/Pinyin, real scale/pointer and live/cold notification
-automation. Linux VM helpers are deprecated compatibility tools. New Linux
-orchestration belongs in this runner. Hardware, physical
+automation. This runner is the only supported Linux desktop runner; the former
+Linux VM helpers have been removed. Hardware, physical
 power transitions and different-kernel behavior remain distinct from headless
-shared-kernel integration tests; they do not make VMs a permanent prerequisite
-for portal testing. Windows VM and real macOS testing are separate workstreams.
+shared-kernel integration tests. Windows VM and real macOS testing are separate workstreams.
 
 The upstream `config.system.build.nspawn` test launcher and NixOS test driver were
 used during exploration. They are not the supported host execution path: the

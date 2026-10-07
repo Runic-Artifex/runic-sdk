@@ -31,7 +31,7 @@ def walk(node, depth=0):
         nodes.append({"depth": depth, "error": str(error)})
 
 for application in pyatspi.Registry.getDesktop(0):
-    # This runs only in the isolated VM, not against the maintainer's desktop.
+    # This runs only in the isolated test container, not against the maintainer's desktop.
     if application is not None and "runic" in application.name.lower():
         walk(application)
 print(json.dumps(nodes, ensure_ascii=False, indent=2))
