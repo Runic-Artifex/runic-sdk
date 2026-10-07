@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeError, bridgeWire, connectView, defineCollection, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
+import { BridgeError, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
+import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions } from "../dist/generated.js";
+import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge, mockTypedView, type MockBridge, type MockTypedCollection,
   type MockTypedInteraction, type MockTypedOperation, type MockTypedView } from "../dist/mock.js";
 
 type Row = { readonly id: number; readonly label: string };
 type State = { readonly title: string; readonly count: bigint; readonly rows: readonly Row[]; readonly canSave: boolean; readonly isSaveExecuting: boolean };
 const decodeRow = (wire: unknown): Row => bridgeWire.object(wire, value => ({ id: bridgeWire.integer(value["id"], 0, 100000), label: bridgeWire.string(value["label"]) }));
-const collections = { rows: defineCollection(decodeRow, row => String(row.id)) };
+const collections = defineCollections({ rows: defineCollection(decodeRow, row => String(row.id)) });
 const hydrate = (wire: Record<string, unknown>): State => ({
   title: bridgeWire.string(wire["title"]), count: bridgeWire.bigint(wire["count"]), rows: bridgeWire.array(wire["rows"], decodeRow),
   canSave: bridgeWire.boolean(wire["canSave"]), isSaveExecuting: bridgeWire.boolean(wire["isSaveExecuting"]),
@@ -44,7 +46,8 @@ function mockNotes(bridge: MockBridge, definition: Parameters<typeof mockTypedVi
 }
 
 const connect = () => connectView({ contract, route: "notes", mount: true, hydrate, collections, checkedFields: ["title"],
-  interactions: { confirm: { contract: `${contract}:interaction:Confirm`, decodeInput: value => bridgeWire.string(value), encodeOutput: value => value } } });
+  interactions: defineInteractions({ confirm: { contract: `${contract}:interaction:Confirm`, decodeInput: value => bridgeWire.string(value), encodeOutput: value => value } }),
+  operations: bridgeOperations });
 
 test("manual scheduling delivers replies and pushes only when the test flushes", async () => {
   const bridge = fresh("manual");

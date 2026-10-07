@@ -184,7 +184,7 @@ internal static class MockTypeScriptEmitter
         var module = new StringBuilder();
         module.AppendLine(GeneratedOutput.Header);
         if (text.Contains("bridgeWire.", StringComparison.Ordinal))
-            module.AppendLine("import { bridgeWire } from \"@runic-artifex/views\";");
+            module.AppendLine("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";");
         module.AppendLine($"import {{ {string.Join(", ", mockImports)} }} from \"@runic-artifex/views/mock\";");
         module.AppendLine($"import type {{ {name}Client, {name}State }} from \"./{clientModule}.js\";");
         module.AppendLine(TypeScriptModules.NamedTypeImports);

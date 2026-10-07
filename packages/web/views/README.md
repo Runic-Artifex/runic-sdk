@@ -58,7 +58,7 @@ controllers in [Framework bindings](#framework-bindings).
 | `@runic-artifex/views` | Applications: errors, diagnostics, controllers, viewport helpers and client types |
 | `@runic-artifex/views/mock` | Development and tests without .NET |
 | `@runic-artifex/views/generated` | Generated modules and hand-written test clients: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
-| `@runic-artifex/views/generated/wire` | Generated modules and hand-written test clients: the wire decoders, imported as `import * as bridgeWire` |
+| `@runic-artifex/views/generated/wire` | Generated modules, generated `*.mock.ts` files and hand-written test clients: the wire decoders, imported as `import * as bridgeWire` |
 
 The generated entries follow the generator and may change between releases.
 Application code that uses generated clients imports only the root entry.
