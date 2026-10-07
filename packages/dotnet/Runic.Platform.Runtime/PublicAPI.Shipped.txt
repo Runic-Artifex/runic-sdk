@@ -51,14 +51,12 @@ Runic.Platform.Runtime.PresentationClipboard
 Runic.Platform.Runtime.PresentationClipboard.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
 Runic.Platform.Runtime.PresentationClipboard.PresentationClipboard(Runic.Platform.Runtime.PresentationLifetime! lifetime, Runic.Platform.ITextClipboard? backend = null) -> void
 Runic.Platform.Runtime.PresentationClipboard.ReadTextAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
-Runic.Platform.Runtime.PresentationClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.Runtime.PresentationDispatcher
 Runic.Platform.Runtime.PresentationDispatcher.CheckAccess() -> bool
 Runic.Platform.Runtime.PresentationDispatcher.InvokeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Platform.Runtime.PresentationDispatcher.PresentationDispatcher(Runic.Platform.Runtime.PresentationLifetime! lifetime, System.Func<bool>! checkAccess, System.Action<System.Action!>! post) -> void
 Runic.Platform.Runtime.PresentationFileLauncher
 Runic.Platform.Runtime.PresentationFileLauncher.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
-Runic.Platform.Runtime.PresentationFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.Runtime.PresentationFileLauncher.PresentationFileLauncher(Runic.Platform.Runtime.PresentationLifetime! lifetime, Runic.Platform.IDesktopFileLauncher? backend = null) -> void
 Runic.Platform.Runtime.PresentationFiles
 Runic.Platform.Runtime.PresentationFiles.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
@@ -83,3 +81,5 @@ static Runic.Platform.Runtime.NativeFileSelection.operator ==(Runic.Platform.Run
 virtual Runic.Platform.Runtime.DesktopSettingsSource.CloseCoreAsync() -> System.Threading.Tasks.ValueTask
 virtual Runic.Platform.Runtime.DesktopSettingsSource.NextChange() -> System.Threading.Tasks.Task?
 virtual Runic.Platform.Runtime.PortalParentLease.OwnerClosed.get -> System.Threading.CancellationToken
+Runic.Platform.Runtime.PresentationClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.Runtime.PresentationFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>

@@ -15,7 +15,7 @@
     },
     "packages/web/angular": {
       "name": "@runic-artifex/angular",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@angular/common": "22.2.1",
         "@angular/compiler": "22.2.1",
@@ -29,12 +29,12 @@
       },
       "peerDependencies": {
         "@angular/core": ">=20.3.26 <23",
-        "@runic-artifex/views": "0.7.0-preview.1",
+        "@runic-artifex/views": "0.7.0-preview.2",
       },
     },
     "packages/web/react": {
       "name": "@runic-artifex/react",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@runic-artifex/views": "workspace:*",
         "@types/react": "19.3.0",
@@ -46,13 +46,13 @@
         "vitest": "5.0.3",
       },
       "peerDependencies": {
-        "@runic-artifex/views": "0.7.0-preview.1",
+        "@runic-artifex/views": "0.7.0-preview.2",
         "react": ">=18.3.0 <20",
       },
     },
     "packages/web/svelte": {
       "name": "@runic-artifex/svelte",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@runic-artifex/views": "workspace:*",
         "@sveltejs/adapter-static": "4.0.0",
@@ -68,13 +68,13 @@
         "vitest": "5.0.3",
       },
       "peerDependencies": {
-        "@runic-artifex/views": "0.7.0-preview.1",
+        "@runic-artifex/views": "0.7.0-preview.2",
         "svelte": ">=5.46.4 <6",
       },
     },
     "packages/web/sveltekit": {
       "name": "@runic-artifex/sveltekit",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@sveltejs/adapter-static": "4.0.0",
         "@sveltejs/kit": "3.0.0",
@@ -98,7 +98,7 @@
     },
     "packages/web/views": {
       "name": "@runic-artifex/views",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@types/node": "24.19.1",
         "typescript": "6.0.3",
@@ -106,7 +106,7 @@
     },
     "packages/web/views-effect": {
       "name": "@runic-artifex/views-effect",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@runic-artifex/views": "workspace:*",
         "@types/react": "19.3.0",
@@ -119,7 +119,7 @@
         "vitest": "5.0.3",
       },
       "peerDependencies": {
-        "@runic-artifex/views": "0.7.0-preview.1",
+        "@runic-artifex/views": "0.7.0-preview.2",
         "effect": "^4.0.1",
         "react": ">=18.3.0 <20",
       },
@@ -129,7 +129,7 @@
     },
     "packages/web/vite-plugin-runic": {
       "name": "@runic-artifex/vite-plugin-runic",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@types/node": "24.19.1",
         "@vitejs/devtools": "0.7.6",
@@ -147,7 +147,7 @@
     },
     "packages/web/vue": {
       "name": "@runic-artifex/vue",
-      "version": "0.7.0-preview.1",
+      "version": "0.7.0-preview.2",
       "devDependencies": {
         "@runic-artifex/views": "workspace:*",
         "happy-dom": "20.14.5",
@@ -156,7 +156,7 @@
         "vue": "3.5.43",
       },
       "peerDependencies": {
-        "@runic-artifex/views": "0.7.0-preview.1",
+        "@runic-artifex/views": "0.7.0-preview.2",
         "vue": ">=3.5.0 <4",
       },
     },

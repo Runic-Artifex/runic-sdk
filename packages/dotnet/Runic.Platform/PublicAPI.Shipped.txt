@@ -88,7 +88,6 @@ override Runic.Platform.PlatformResult<T>.Unavailable.ToString() -> string!
 override Runic.Platform.SaveFileOptions.Equals(object? obj) -> bool
 override Runic.Platform.SaveFileOptions.GetHashCode() -> int
 override Runic.Platform.SaveFileOptions.ToString() -> string!
-override Runic.Platform.Unit.GetHashCode() -> int
 override sealed Runic.Platform.CapabilityStatus.Available.Equals(Runic.Platform.CapabilityStatus? other) -> bool
 override sealed Runic.Platform.CapabilityStatus.Unavailable.Equals(Runic.Platform.CapabilityStatus? other) -> bool
 override sealed Runic.Platform.FileCommitResult.Committed.Equals(Runic.Platform.FileCommitResult? other) -> bool
@@ -116,11 +115,8 @@ Runic.Platform.CapabilityStatus.Available.Available() -> void
 Runic.Platform.CapabilityStatus.Available.Equals(Runic.Platform.CapabilityStatus.Available? other) -> bool
 Runic.Platform.CapabilityStatus.CapabilityStatus(Runic.Platform.CapabilityStatus! original) -> void
 Runic.Platform.CapabilityStatus.Unavailable
-Runic.Platform.CapabilityStatus.Unavailable.Deconstruct(out Runic.Platform.UnavailableReason Reason) -> void
 Runic.Platform.CapabilityStatus.Unavailable.Equals(Runic.Platform.CapabilityStatus.Unavailable? other) -> bool
-Runic.Platform.CapabilityStatus.Unavailable.Reason.get -> Runic.Platform.UnavailableReason
 Runic.Platform.CapabilityStatus.Unavailable.Reason.init -> void
-Runic.Platform.CapabilityStatus.Unavailable.Unavailable(Runic.Platform.UnavailableReason Reason) -> void
 Runic.Platform.DesktopAccentColor
 Runic.Platform.DesktopAccentColor.<Clone>$() -> Runic.Platform.DesktopAccentColor!
 Runic.Platform.DesktopAccentColor.Blue.get -> double
@@ -198,35 +194,20 @@ Runic.Platform.DesktopNotificationActivation.NotificationId.get -> string!
 Runic.Platform.DesktopNotificationActivation.NotificationId.init -> void
 Runic.Platform.DesktopNotificationActivation.PlatformContext.get -> Runic.Platform.DesktopActivationContext?
 Runic.Platform.DesktopNotificationActivation.PlatformContext.init -> void
-Runic.Platform.FailureCode
-Runic.Platform.FailureCode.Conflict = 5 -> Runic.Platform.FailureCode
-Runic.Platform.FailureCode.InvalidData = 2 -> Runic.Platform.FailureCode
-Runic.Platform.FailureCode.IoError = 4 -> Runic.Platform.FailureCode
-Runic.Platform.FailureCode.PermissionDenied = 0 -> Runic.Platform.FailureCode
-Runic.Platform.FailureCode.ResourceBusy = 1 -> Runic.Platform.FailureCode
-Runic.Platform.FailureCode.TooLarge = 3 -> Runic.Platform.FailureCode
-Runic.Platform.FailureCode.UserDismissed = 6 -> Runic.Platform.FailureCode
 Runic.Platform.FileCommitResult
 Runic.Platform.FileCommitResult.Committed
 Runic.Platform.FileCommitResult.Committed.Committed() -> void
 Runic.Platform.FileCommitResult.Committed.Equals(Runic.Platform.FileCommitResult.Committed? other) -> bool
 Runic.Platform.FileCommitResult.CommitUnknown
-Runic.Platform.FileCommitResult.CommitUnknown.Code.get -> Runic.Platform.FailureCode
 Runic.Platform.FileCommitResult.CommitUnknown.Code.init -> void
-Runic.Platform.FileCommitResult.CommitUnknown.CommitUnknown(Runic.Platform.FailureCode Code) -> void
-Runic.Platform.FileCommitResult.CommitUnknown.Deconstruct(out Runic.Platform.FailureCode Code) -> void
 Runic.Platform.FileCommitResult.CommitUnknown.Equals(Runic.Platform.FileCommitResult.CommitUnknown? other) -> bool
 Runic.Platform.FileCommitResult.FileCommitResult(Runic.Platform.FileCommitResult! original) -> void
 Runic.Platform.FileCommitResult.NotCommitted
-Runic.Platform.FileCommitResult.NotCommitted.Code.get -> Runic.Platform.FailureCode
 Runic.Platform.FileCommitResult.NotCommitted.Code.init -> void
-Runic.Platform.FileCommitResult.NotCommitted.Deconstruct(out Runic.Platform.FailureCode Code) -> void
 Runic.Platform.FileCommitResult.NotCommitted.Equals(Runic.Platform.FileCommitResult.NotCommitted? other) -> bool
-Runic.Platform.FileCommitResult.NotCommitted.NotCommitted(Runic.Platform.FailureCode Code) -> void
 Runic.Platform.FileWritePolicy
 Runic.Platform.FileWritePolicy.RequireAtomicReplace = 0 -> Runic.Platform.FileWritePolicy
 Runic.Platform.IDesktopFileLauncher
-Runic.Platform.IDesktopFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.IDesktopInhibition
 Runic.Platform.IDesktopInhibition.AcquireAsync(Runic.Platform.DesktopInhibitionEffects effects, string! reason, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.IDesktopInhibitionLease!>!>
 Runic.Platform.IDesktopInhibition.SupportedEffects.get -> Runic.Platform.DesktopInhibitionEffects
@@ -234,9 +215,6 @@ Runic.Platform.IDesktopInhibitionLease
 Runic.Platform.IDesktopInhibitionLease.Effects.get -> Runic.Platform.DesktopInhibitionEffects
 Runic.Platform.IDesktopNotifications
 Runic.Platform.IDesktopNotifications.Activated -> System.EventHandler<Runic.Platform.DesktopNotificationActivation!>?
-Runic.Platform.IDesktopNotifications.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
-Runic.Platform.IDesktopNotifications.RequestPermissionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
-Runic.Platform.IDesktopNotifications.ShowAsync(Runic.Platform.DesktopNotification! notification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.IDesktopSettings
 Runic.Platform.IDesktopSettings.ReadAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopAppearance!>!>
 Runic.Platform.IDesktopSettings.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopAppearance!>!>!
@@ -247,7 +225,6 @@ Runic.Platform.IFileWriteTransaction
 Runic.Platform.IFileWriteTransaction.CommitAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.FileCommitResult!>
 Runic.Platform.IFileWriteTransaction.Content.get -> System.IO.Stream!
 Runic.Platform.ILaunchableFileLease
-Runic.Platform.ILaunchableFileLease.LaunchAsync(Runic.Platform.IDesktopFileLauncher! launcher, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.IPlatformCapabilities
 Runic.Platform.IPlatformCapabilities.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
 Runic.Platform.IReadFileLease
@@ -258,7 +235,6 @@ Runic.Platform.ISaveFileLease.BeginWriteAsync(Runic.Platform.FileWritePolicy pol
 Runic.Platform.ISaveFileLease.DisplayName.get -> string!
 Runic.Platform.ITextClipboard
 Runic.Platform.ITextClipboard.ReadTextAsync(int maximumCharacters, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
-Runic.Platform.ITextClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.IUiDispatcher
 Runic.Platform.IUiDispatcher.CheckAccess() -> bool
 Runic.Platform.IUiDispatcher.InvokeAsync(System.Action! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
@@ -276,29 +252,20 @@ Runic.Platform.PickerResult<T>.Dismissed
 Runic.Platform.PickerResult<T>.Dismissed.Dismissed() -> void
 Runic.Platform.PickerResult<T>.Dismissed.Equals(Runic.Platform.PickerResult<T>.Dismissed? other) -> bool
 Runic.Platform.PickerResult<T>.Failed
-Runic.Platform.PickerResult<T>.Failed.Code.get -> Runic.Platform.FailureCode
 Runic.Platform.PickerResult<T>.Failed.Code.init -> void
-Runic.Platform.PickerResult<T>.Failed.Deconstruct(out Runic.Platform.FailureCode Code) -> void
 Runic.Platform.PickerResult<T>.Failed.Equals(Runic.Platform.PickerResult<T>.Failed? other) -> bool
-Runic.Platform.PickerResult<T>.Failed.Failed(Runic.Platform.FailureCode Code) -> void
 Runic.Platform.PickerResult<T>.PickerResult(Runic.Platform.PickerResult<T>! original) -> void
 Runic.Platform.PickerResult<T>.Selected
 Runic.Platform.PickerResult<T>.Selected.Equals(Runic.Platform.PickerResult<T>.Selected? other) -> bool
 Runic.Platform.PickerResult<T>.Selected.Selected(T value) -> void
 Runic.Platform.PickerResult<T>.Selected.Value.get -> T
 Runic.Platform.PickerResult<T>.Unavailable
-Runic.Platform.PickerResult<T>.Unavailable.Deconstruct(out Runic.Platform.UnavailableReason Reason) -> void
 Runic.Platform.PickerResult<T>.Unavailable.Equals(Runic.Platform.PickerResult<T>.Unavailable? other) -> bool
-Runic.Platform.PickerResult<T>.Unavailable.Reason.get -> Runic.Platform.UnavailableReason
 Runic.Platform.PickerResult<T>.Unavailable.Reason.init -> void
-Runic.Platform.PickerResult<T>.Unavailable.Unavailable(Runic.Platform.UnavailableReason Reason) -> void
 Runic.Platform.PlatformResult<T>
 Runic.Platform.PlatformResult<T>.Failed
-Runic.Platform.PlatformResult<T>.Failed.Code.get -> Runic.Platform.FailureCode
 Runic.Platform.PlatformResult<T>.Failed.Code.init -> void
-Runic.Platform.PlatformResult<T>.Failed.Deconstruct(out Runic.Platform.FailureCode Code) -> void
 Runic.Platform.PlatformResult<T>.Failed.Equals(Runic.Platform.PlatformResult<T>.Failed? other) -> bool
-Runic.Platform.PlatformResult<T>.Failed.Failed(Runic.Platform.FailureCode Code) -> void
 Runic.Platform.PlatformResult<T>.PlatformResult(Runic.Platform.PlatformResult<T>! original) -> void
 Runic.Platform.PlatformResult<T>.Success
 Runic.Platform.PlatformResult<T>.Success.Deconstruct(out T Value) -> void
@@ -307,11 +274,8 @@ Runic.Platform.PlatformResult<T>.Success.Success(T Value) -> void
 Runic.Platform.PlatformResult<T>.Success.Value.get -> T
 Runic.Platform.PlatformResult<T>.Success.Value.init -> void
 Runic.Platform.PlatformResult<T>.Unavailable
-Runic.Platform.PlatformResult<T>.Unavailable.Deconstruct(out Runic.Platform.UnavailableReason Reason) -> void
 Runic.Platform.PlatformResult<T>.Unavailable.Equals(Runic.Platform.PlatformResult<T>.Unavailable? other) -> bool
-Runic.Platform.PlatformResult<T>.Unavailable.Reason.get -> Runic.Platform.UnavailableReason
 Runic.Platform.PlatformResult<T>.Unavailable.Reason.init -> void
-Runic.Platform.PlatformResult<T>.Unavailable.Unavailable(Runic.Platform.UnavailableReason Reason) -> void
 Runic.Platform.SaveFileOptions
 Runic.Platform.SaveFileOptions.<Clone>$() -> Runic.Platform.SaveFileOptions!
 Runic.Platform.SaveFileOptions.Deconstruct(out string! SuggestedName, out Runic.Platform.OwnerPolicy OwnerPolicy) -> void
@@ -321,15 +285,6 @@ Runic.Platform.SaveFileOptions.OwnerPolicy.init -> void
 Runic.Platform.SaveFileOptions.SaveFileOptions(string! SuggestedName, Runic.Platform.OwnerPolicy OwnerPolicy = Runic.Platform.OwnerPolicy.RequireOwner) -> void
 Runic.Platform.SaveFileOptions.SuggestedName.get -> string!
 Runic.Platform.SaveFileOptions.SuggestedName.init -> void
-Runic.Platform.UnavailableReason
-Runic.Platform.UnavailableReason.AtomicReplaceUnavailable = 4 -> Runic.Platform.UnavailableReason
-Runic.Platform.UnavailableReason.BackendUnavailable = 3 -> Runic.Platform.UnavailableReason
-Runic.Platform.UnavailableReason.OwnerClosed = 2 -> Runic.Platform.UnavailableReason
-Runic.Platform.UnavailableReason.OwnerUnavailable = 1 -> Runic.Platform.UnavailableReason
-Runic.Platform.UnavailableReason.ProviderNotConfigured = 0 -> Runic.Platform.UnavailableReason
-Runic.Platform.Unit
-Runic.Platform.Unit.Equals(Runic.Platform.Unit other) -> bool
-Runic.Platform.Unit.Unit() -> void
 static Runic.Platform.CapabilitySnapshot.operator !=(Runic.Platform.CapabilitySnapshot? left, Runic.Platform.CapabilitySnapshot? right) -> bool
 static Runic.Platform.CapabilitySnapshot.operator ==(Runic.Platform.CapabilitySnapshot? left, Runic.Platform.CapabilitySnapshot? right) -> bool
 static Runic.Platform.CapabilityStatus.Available.operator !=(Runic.Platform.CapabilityStatus.Available? left, Runic.Platform.CapabilityStatus.Available? right) -> bool
@@ -378,8 +333,6 @@ static Runic.Platform.PlatformResult<T>.Unavailable.operator !=(Runic.Platform.P
 static Runic.Platform.PlatformResult<T>.Unavailable.operator ==(Runic.Platform.PlatformResult<T>.Unavailable? left, Runic.Platform.PlatformResult<T>.Unavailable? right) -> bool
 static Runic.Platform.SaveFileOptions.operator !=(Runic.Platform.SaveFileOptions? left, Runic.Platform.SaveFileOptions? right) -> bool
 static Runic.Platform.SaveFileOptions.operator ==(Runic.Platform.SaveFileOptions? left, Runic.Platform.SaveFileOptions? right) -> bool
-static Runic.Platform.Unit.operator !=(Runic.Platform.Unit left, Runic.Platform.Unit right) -> bool
-static Runic.Platform.Unit.operator ==(Runic.Platform.Unit left, Runic.Platform.Unit right) -> bool
 virtual Runic.Platform.CapabilityStatus.EqualityContract.get -> System.Type!
 virtual Runic.Platform.CapabilityStatus.Equals(Runic.Platform.CapabilityStatus? other) -> bool
 virtual Runic.Platform.CapabilityStatus.PrintMembers(System.Text.StringBuilder! builder) -> bool
@@ -392,5 +345,73 @@ virtual Runic.Platform.PickerResult<T>.PrintMembers(System.Text.StringBuilder! b
 virtual Runic.Platform.PlatformResult<T>.EqualityContract.get -> System.Type!
 virtual Runic.Platform.PlatformResult<T>.Equals(Runic.Platform.PlatformResult<T>? other) -> bool
 virtual Runic.Platform.PlatformResult<T>.PrintMembers(System.Text.StringBuilder! builder) -> bool
-~override Runic.Platform.Unit.Equals(object obj) -> bool
-~override Runic.Platform.Unit.ToString() -> string
+Runic.Platform.CapabilityStatus.Unavailable.Deconstruct(out Runic.Platform.PlatformUnavailableReason Reason) -> void
+Runic.Platform.CapabilityStatus.Unavailable.Reason.get -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.CapabilityStatus.Unavailable.Unavailable(Runic.Platform.PlatformUnavailableReason Reason) -> void
+Runic.Platform.FileCommitResult.CommitUnknown.Code.get -> Runic.Platform.PlatformFailureCode
+Runic.Platform.FileCommitResult.CommitUnknown.CommitUnknown(Runic.Platform.PlatformFailureCode Code) -> void
+Runic.Platform.FileCommitResult.CommitUnknown.Deconstruct(out Runic.Platform.PlatformFailureCode Code) -> void
+Runic.Platform.FileCommitResult.NotCommitted.Code.get -> Runic.Platform.PlatformFailureCode
+Runic.Platform.FileCommitResult.NotCommitted.Deconstruct(out Runic.Platform.PlatformFailureCode Code) -> void
+Runic.Platform.FileCommitResult.NotCommitted.NotCommitted(Runic.Platform.PlatformFailureCode Code) -> void
+Runic.Platform.IDesktopFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopNotifications.RemoveAsync(string! id, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopNotifications.RequestPermissionAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopNotifications.ShowAsync(Runic.Platform.DesktopNotification! notification, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.ILaunchableFileLease.LaunchAsync(Runic.Platform.IDesktopFileLauncher! launcher, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.ITextClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.PickerResult<T>.Failed.Code.get -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PickerResult<T>.Failed.Deconstruct(out Runic.Platform.PlatformFailureCode Code) -> void
+Runic.Platform.PickerResult<T>.Failed.Failed(Runic.Platform.PlatformFailureCode Code) -> void
+Runic.Platform.PickerResult<T>.Unavailable.Deconstruct(out Runic.Platform.PlatformUnavailableReason Reason) -> void
+Runic.Platform.PickerResult<T>.Unavailable.Reason.get -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PickerResult<T>.Unavailable.Unavailable(Runic.Platform.PlatformUnavailableReason Reason) -> void
+Runic.Platform.PlatformDiagnostic
+Runic.Platform.PlatformDiagnostic.<Clone>$() -> Runic.Platform.PlatformDiagnostic!
+Runic.Platform.PlatformDiagnostic.Code.get -> long
+Runic.Platform.PlatformDiagnostic.Code.init -> void
+Runic.Platform.PlatformDiagnostic.Deconstruct(out string! Domain, out long Code, out string? Message) -> void
+Runic.Platform.PlatformDiagnostic.Domain.get -> string!
+Runic.Platform.PlatformDiagnostic.Domain.init -> void
+Runic.Platform.PlatformDiagnostic.Equals(Runic.Platform.PlatformDiagnostic? other) -> bool
+Runic.Platform.PlatformDiagnostic.Message.get -> string?
+Runic.Platform.PlatformDiagnostic.Message.init -> void
+Runic.Platform.PlatformDiagnostic.PlatformDiagnostic(string! Domain, long Code, string? Message = null) -> void
+Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.Conflict = 5 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.InvalidData = 2 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.IoError = 4 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.PermissionDenied = 0 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.ResourceBusy = 1 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.TooLarge = 3 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformFailureCode.UserDismissed = 6 -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformResult<T>.Failed.Code.get -> Runic.Platform.PlatformFailureCode
+Runic.Platform.PlatformResult<T>.Failed.Deconstruct(out Runic.Platform.PlatformFailureCode Code, out Runic.Platform.PlatformDiagnostic? Diagnostic) -> void
+Runic.Platform.PlatformResult<T>.Failed.Diagnostic.get -> Runic.Platform.PlatformDiagnostic?
+Runic.Platform.PlatformResult<T>.Failed.Diagnostic.init -> void
+Runic.Platform.PlatformResult<T>.Failed.Failed(Runic.Platform.PlatformFailureCode Code, Runic.Platform.PlatformDiagnostic? Diagnostic = null) -> void
+Runic.Platform.PlatformResult<T>.Unavailable.Deconstruct(out Runic.Platform.PlatformUnavailableReason Reason) -> void
+Runic.Platform.PlatformResult<T>.Unavailable.Reason.get -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformResult<T>.Unavailable.Unavailable(Runic.Platform.PlatformUnavailableReason Reason) -> void
+Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformUnavailableReason.AtomicReplaceUnavailable = 4 -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformUnavailableReason.BackendUnavailable = 3 -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformUnavailableReason.OwnerClosed = 2 -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformUnavailableReason.OwnerUnavailable = 1 -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformUnavailableReason.ProviderNotConfigured = 0 -> Runic.Platform.PlatformUnavailableReason
+Runic.Platform.PlatformUnit
+Runic.Platform.PlatformUnit.Equals(Runic.Platform.PlatformUnit other) -> bool
+Runic.Platform.PlatformUnit.PlatformUnit() -> void
+override Runic.Platform.PlatformDiagnostic.Equals(object? obj) -> bool
+override Runic.Platform.PlatformDiagnostic.GetHashCode() -> int
+override Runic.Platform.PlatformDiagnostic.ToString() -> string!
+override Runic.Platform.PlatformUnit.GetHashCode() -> int
+static Runic.Platform.PlatformDiagnostic.FromErrno(int errno) -> Runic.Platform.PlatformDiagnostic!
+static Runic.Platform.PlatformDiagnostic.FromHResult(int hresult) -> Runic.Platform.PlatformDiagnostic!
+static Runic.Platform.PlatformDiagnostic.FromWin32Error(int error) -> Runic.Platform.PlatformDiagnostic!
+static Runic.Platform.PlatformDiagnostic.operator !=(Runic.Platform.PlatformDiagnostic? left, Runic.Platform.PlatformDiagnostic? right) -> bool
+static Runic.Platform.PlatformDiagnostic.operator ==(Runic.Platform.PlatformDiagnostic? left, Runic.Platform.PlatformDiagnostic? right) -> bool
+static Runic.Platform.PlatformUnit.operator !=(Runic.Platform.PlatformUnit left, Runic.Platform.PlatformUnit right) -> bool
+static Runic.Platform.PlatformUnit.operator ==(Runic.Platform.PlatformUnit left, Runic.Platform.PlatformUnit right) -> bool
+~override Runic.Platform.PlatformUnit.Equals(object obj) -> bool
+~override Runic.Platform.PlatformUnit.ToString() -> string

@@ -5,7 +5,6 @@ const Runic.Application.Views.BridgeInteractionRouter.ControlWaitRoute = "__runi
 const Runic.Application.Views.BridgeInteractionRouter.ReplyRoute = "__runicInteractionReply" -> string!
 const Runic.Application.Views.BridgeInteractionRouter.WaitRoute = "__runicInteractionWait" -> string!
 const Runic.Application.Views.BridgeOperationStream.DefaultMaximumBytes = 65536 -> int
-const Runic.Application.Views.BridgeProtocol.Version = 1 -> int
 override Runic.Application.Views.BridgeOperationDeliveryFailure.Equals(object? obj) -> bool
 override Runic.Application.Views.BridgeOperationDeliveryFailure.GetHashCode() -> int
 override Runic.Application.Views.BridgeOperationDeliveryFailure.ToString() -> string!
@@ -28,10 +27,6 @@ override Runic.Application.Views.CommandDescriptor<T>.ToString() -> string!
 override Runic.Application.Views.PageReference.Equals(object? obj) -> bool
 override Runic.Application.Views.PageReference.GetHashCode() -> int
 override Runic.Application.Views.PageReference.ToString() -> string!
-override Runic.Application.Views.WindowContentSessionCloseResult.Equals(object? obj) -> bool
-override Runic.Application.Views.WindowContentSessionCloseResult.GetHashCode() -> int
-override Runic.Application.Views.WindowContentSessionCloseResult.ToString() -> string!
-Runic.Application.Views.Bridge
 Runic.Application.Views.BridgeCommandResultCardinality
 Runic.Application.Views.BridgeCommandResultCardinality.Last = 1 -> Runic.Application.Views.BridgeCommandResultCardinality
 Runic.Application.Views.BridgeCommandResultCardinality.Single = 0 -> Runic.Application.Views.BridgeCommandResultCardinality
@@ -158,10 +153,8 @@ Runic.Application.Views.CommandDescriptor<T>
 Runic.Application.Views.CommandDescriptor<T>.<Clone>$() -> Runic.Application.Views.CommandDescriptor<T>!
 Runic.Application.Views.CommandDescriptor<T>.CanExecute.get -> System.Func<T, object?, bool>?
 Runic.Application.Views.CommandDescriptor<T>.CanExecute.init -> void
-Runic.Application.Views.CommandDescriptor<T>.CommandDescriptor(string! Name, System.Func<T, object!>! Get, System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task!>? ExecuteAsync = null, System.Func<Runic.Application.Views.IBridgeArguments!, object?>? ReadArgument = null, System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteResultAsync = null, System.Func<object?, string!>? EncodeArgument = null, System.Func<T, object?, bool>? CanExecute = null, System.Func<T, System.Action!, System.IDisposable!>? Subscribe = null, System.Func<Runic.Application.Views.BridgeOperationStream!>? CreateStream = null, System.Func<T, Runic.Application.Views.BridgeOperationExecution!, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteStreamAsync = null) -> void
 Runic.Application.Views.CommandDescriptor<T>.CreateStream.get -> System.Func<Runic.Application.Views.BridgeOperationStream!>?
 Runic.Application.Views.CommandDescriptor<T>.CreateStream.init -> void
-Runic.Application.Views.CommandDescriptor<T>.Deconstruct(out string! Name, out System.Func<T, object!>! Get, out System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task!>? ExecuteAsync, out System.Func<Runic.Application.Views.IBridgeArguments!, object?>? ReadArgument, out System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteResultAsync, out System.Func<object?, string!>? EncodeArgument, out System.Func<T, object?, bool>? CanExecute, out System.Func<T, System.Action!, System.IDisposable!>? Subscribe, out System.Func<Runic.Application.Views.BridgeOperationStream!>? CreateStream, out System.Func<T, Runic.Application.Views.BridgeOperationExecution!, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteStreamAsync) -> void
 Runic.Application.Views.CommandDescriptor<T>.EncodeArgument.get -> System.Func<object?, string!>?
 Runic.Application.Views.CommandDescriptor<T>.EncodeArgument.init -> void
 Runic.Application.Views.CommandDescriptor<T>.Equals(Runic.Application.Views.CommandDescriptor<T>? other) -> bool
@@ -296,13 +289,10 @@ Runic.Application.Views.ServiceProviderViewLocator.Locate<TView, TViewModel>() -
 Runic.Application.Views.ServiceProviderViewLocator.Locate<TView, TViewModel>(string? contract) -> TView!
 Runic.Application.Views.ServiceProviderViewLocator.ServiceProviderViewLocator(System.IServiceProvider! services) -> void
 Runic.Application.Views.ViewModelBridge<T>
-Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.BridgeSnapshotWriter<T>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null) -> void
-Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, System.Action<System.Text.Json.Utf8JsonWriter!, T, long>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null) -> void
 Runic.Application.Views.WindowContentSession
 Runic.Application.Views.WindowContentSession.AttachPresentation<TView, TViewModel>(TViewModel! viewModel, string! route, System.Func<Runic.Application.Views.IBridgeTransport!, TViewModel!, string!, System.IDisposable!>! attachBridge, string? contract = null) -> System.IDisposable!
 Runic.Application.Views.WindowContentSession.AttachPresentation<TView, TViewModel>(TViewModel! viewModel, string! route, System.Func<Runic.Application.Views.IBridgeTransport!, TViewModel!, string!, System.IDisposable!>! attachBridge, System.Func<TView!>! createView) -> System.IDisposable!
 Runic.Application.Views.WindowContentSession.AttachRootInteractionPresentation(string! route) -> System.IDisposable!
-Runic.Application.Views.WindowContentSession.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.WindowContentSessionCloseResult!>
 Runic.Application.Views.WindowContentSession.Clear(object! owner, string! property) -> void
 Runic.Application.Views.WindowContentSession.ClearOwner(object! owner) -> void
 Runic.Application.Views.WindowContentSession.Dispose() -> void
@@ -315,18 +305,6 @@ Runic.Application.Views.WindowContentSession.PresentItem<T>(object! owner, strin
 Runic.Application.Views.WindowContentSession.PruneCollection(object! owner, string! property, System.Collections.Generic.IReadOnlySet<string!>! activeIds) -> void
 Runic.Application.Views.WindowContentSession.ReleaseConnection(string! connectionKey) -> void
 Runic.Application.Views.WindowContentSession.Suspend(object! viewModel) -> void
-Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), object? rootModel = null, Runic.Application.Views.IRunicModelContext? modelContext = null) -> void
-Runic.Application.Views.WindowContentSessionCloseResult
-Runic.Application.Views.WindowContentSessionCloseResult.<Clone>$() -> Runic.Application.Views.WindowContentSessionCloseResult!
-Runic.Application.Views.WindowContentSessionCloseResult.Deconstruct(out bool Drained, out int RemainingOperations) -> void
-Runic.Application.Views.WindowContentSessionCloseResult.Drained.get -> bool
-Runic.Application.Views.WindowContentSessionCloseResult.Drained.init -> void
-Runic.Application.Views.WindowContentSessionCloseResult.Equals(Runic.Application.Views.WindowContentSessionCloseResult? other) -> bool
-Runic.Application.Views.WindowContentSessionCloseResult.RemainingOperations.get -> int
-Runic.Application.Views.WindowContentSessionCloseResult.RemainingOperations.init -> void
-Runic.Application.Views.WindowContentSessionCloseResult.WindowContentSessionCloseResult(bool Drained, int RemainingOperations) -> void
-static Runic.Application.Views.Bridge.Attach<T>(Runic.Application.Views.IBridgeTransport! transport, T! viewModel) -> System.IDisposable!
-static Runic.Application.Views.Bridge.Register<T>(System.Func<Runic.Application.Views.IBridgeTransport!, T!, System.IDisposable!>! factory) -> void
 static Runic.Application.Views.BridgeContractShape.Compute(System.Type! model) -> string!
 static Runic.Application.Views.BridgeJson.ReadNullableString(string! json) -> string?
 static Runic.Application.Views.BridgeJson.ReadRequiredString(string! json) -> string!
@@ -411,11 +389,95 @@ static Runic.Application.Views.RunicInteractionInvocation.Current.get -> Runic.A
 static Runic.Application.Views.RunicInteractionInvocation.Enter(Runic.Application.Views.WindowContentSession! session, string! route, Runic.Application.Views.IBridgeArguments! arguments, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), string? commandName = null) -> System.IDisposable!
 static Runic.Application.Views.RunicInteractionInvocation.Enter(Runic.Application.Views.WindowContentSession! session, string! route, string? clientKey, string? connectionKey, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken), string? commandName = null) -> System.IDisposable!
 static Runic.Application.Views.RunicModelContextRegistry.Shared.get -> Runic.Application.Views.RunicModelContextRegistry!
-static Runic.Application.Views.WindowContentSessionCloseResult.operator !=(Runic.Application.Views.WindowContentSessionCloseResult? left, Runic.Application.Views.WindowContentSessionCloseResult? right) -> bool
-static Runic.Application.Views.WindowContentSessionCloseResult.operator ==(Runic.Application.Views.WindowContentSessionCloseResult? left, Runic.Application.Views.WindowContentSessionCloseResult? right) -> bool
 virtual Runic.Application.Views.BridgeSnapshotWriter<T>.Invoke(System.Text.Json.Utf8JsonWriter! writer, T viewModel, long revision, System.Action<System.Text.Json.Utf8JsonWriter!>! writeFieldMetadata) -> void
 virtual Runic.Application.Views.RunicView<TViewModel>.DataContext.get -> TViewModel?
 virtual Runic.Application.Views.RunicView<TViewModel>.DataContext.set -> void
 virtual Runic.Application.Views.ViewModelBridge<T>.Dispose() -> void
 ~override Runic.Application.Views.BridgeValidationChild.Equals(object obj) -> bool
 ~override Runic.Application.Views.BridgeValidationChild.ToString() -> string
+Runic.Application.Views.BridgeWindowCloseResult
+Runic.Application.Views.BridgeWindowCloseResult.<Clone>$() -> Runic.Application.Views.BridgeWindowCloseResult!
+Runic.Application.Views.BridgeWindowCloseResult.BridgeWindowCloseResult(bool Drained, int RemainingOperations, System.Threading.Tasks.Task! Completion) -> void
+Runic.Application.Views.BridgeWindowCloseResult.Completion.get -> System.Threading.Tasks.Task!
+Runic.Application.Views.BridgeWindowCloseResult.Completion.init -> void
+Runic.Application.Views.BridgeWindowCloseResult.Deconstruct(out bool Drained, out int RemainingOperations, out System.Threading.Tasks.Task! Completion) -> void
+Runic.Application.Views.BridgeWindowCloseResult.Drained.get -> bool
+Runic.Application.Views.BridgeWindowCloseResult.Drained.init -> void
+Runic.Application.Views.BridgeWindowCloseResult.Equals(Runic.Application.Views.BridgeWindowCloseResult? other) -> bool
+Runic.Application.Views.BridgeWindowCloseResult.RemainingOperations.get -> int
+Runic.Application.Views.BridgeWindowCloseResult.RemainingOperations.init -> void
+Runic.Application.Views.IBridgeWindow
+Runic.Application.Views.IBridgeWindow.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Views.WindowContentSession.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+override Runic.Application.Views.BridgeCollectionDescriptor<T>.Equals(object? obj) -> bool
+override Runic.Application.Views.BridgeCollectionDescriptor<T>.GetHashCode() -> int
+override Runic.Application.Views.BridgeCollectionDescriptor<T>.ToString() -> string!
+Runic.Application.Views.BridgeCollectionDescriptor<T>
+Runic.Application.Views.BridgeCollectionDescriptor<T>.<Clone>$() -> Runic.Application.Views.BridgeCollectionDescriptor<T>!
+Runic.Application.Views.BridgeCollectionDescriptor<T>.BridgeCollectionDescriptor(string! Name, System.Func<T, object?>! Get, System.Action<System.Text.Json.Utf8JsonWriter!, object?>! WriteItem, System.Func<object?, string!>! Key, bool PublishesChanges = true) -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Deconstruct(out string! Name, out System.Func<T, object?>! Get, out System.Action<System.Text.Json.Utf8JsonWriter!, object?>! WriteItem, out System.Func<object?, string!>! Key, out bool PublishesChanges) -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Equals(Runic.Application.Views.BridgeCollectionDescriptor<T>? other) -> bool
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Get.get -> System.Func<T, object?>!
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Get.init -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Key.get -> System.Func<object?, string!>!
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Key.init -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Name.get -> string!
+Runic.Application.Views.BridgeCollectionDescriptor<T>.Name.init -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.PublishesChanges.get -> bool
+Runic.Application.Views.BridgeCollectionDescriptor<T>.PublishesChanges.init -> void
+Runic.Application.Views.BridgeCollectionDescriptor<T>.WriteItem.get -> System.Action<System.Text.Json.Utf8JsonWriter!, object?>!
+Runic.Application.Views.BridgeCollectionDescriptor<T>.WriteItem.init -> void
+Runic.Application.Views.IAsyncBridgeTransport
+Runic.Application.Views.IAsyncBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicCollectionAttribute
+Runic.Application.Views.RunicCollectionAttribute.KeyProperty.get -> string!
+Runic.Application.Views.RunicCollectionAttribute.RunicCollectionAttribute(string! keyProperty) -> void
+Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, Runic.Application.Views.BridgeSnapshotWriter<T>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CheckedPropertyDescriptor<T>![]! checkedProperties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.BridgeCollectionDescriptor<T>![]? collections = null) -> void
+Runic.Application.Views.BridgeDiagnostics
+static Runic.Application.Views.BridgeDiagnostics.IncludeFailureDetail.get -> bool?
+static Runic.Application.Views.BridgeDiagnostics.IncludeFailureDetail.set -> void
+Runic.Application.Views.ViewModelBridge<T>.ViewModelBridge(Runic.Application.Views.IBridgeTransport! transport, T vm, string! name, System.Action<System.Text.Json.Utf8JsonWriter!, T, long>! writeSnapshot, Runic.Application.Views.PropertyDescriptor<T>![]! properties, Runic.Application.Views.CommandDescriptor<T>![]! commands, string? contractFingerprint = null, Runic.Application.Views.WindowContentSession? content = null, Runic.Application.Views.BridgeInteractionDescriptor<T>![]? interactions = null, Runic.Application.Views.BridgeDataSubscriptionMember![]? dataSubscriptions = null, Runic.Application.Views.BridgeCollectionDescriptor<T>![]? collections = null) -> void
+override Runic.Application.Views.BridgeWindowCloseResult.Equals(object? obj) -> bool
+override Runic.Application.Views.BridgeWindowCloseResult.GetHashCode() -> int
+override Runic.Application.Views.BridgeWindowCloseResult.ToString() -> string!
+static Runic.Application.Views.BridgeCollectionDescriptor<T>.operator !=(Runic.Application.Views.BridgeCollectionDescriptor<T>? left, Runic.Application.Views.BridgeCollectionDescriptor<T>? right) -> bool
+static Runic.Application.Views.BridgeCollectionDescriptor<T>.operator ==(Runic.Application.Views.BridgeCollectionDescriptor<T>? left, Runic.Application.Views.BridgeCollectionDescriptor<T>? right) -> bool
+static Runic.Application.Views.BridgeWindowCloseResult.operator !=(Runic.Application.Views.BridgeWindowCloseResult? left, Runic.Application.Views.BridgeWindowCloseResult? right) -> bool
+static Runic.Application.Views.BridgeWindowCloseResult.operator ==(Runic.Application.Views.BridgeWindowCloseResult? left, Runic.Application.Views.BridgeWindowCloseResult? right) -> bool
+Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.IRunicViewLocator? viewLocator, System.Threading.CancellationToken operationShutdown, object? rootModel, Runic.Application.Views.IRunicModelContext? modelContext) -> void
+Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), object? rootModel = null, Runic.Application.Views.IRunicModelContext? modelContext = null, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> void
+Runic.Application.Views.RunicModelContext.RunicModelContext(Microsoft.Extensions.Logging.ILogger<Runic.Application.Views.RunicModelContext!>? logger) -> void
+Runic.Application.Views.RunicViewsTelemetry
+const Runic.Application.Views.RunicViewsTelemetry.ActivitySourceName = "Runic.Application.Views" -> string!
+const Runic.Application.Views.RunicViewsTelemetry.MeterName = "Runic.Application.Views" -> string!
+const Runic.Application.Views.RunicViewsTelemetry.LogCategory = "Runic.Application.Views" -> string!
+Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.WindowContentSessionOptions! options) -> void
+Runic.Application.Views.WindowContentSessionOptions
+Runic.Application.Views.WindowContentSessionOptions.CreateId.get -> System.Func<string!>?
+Runic.Application.Views.WindowContentSessionOptions.CreateId.init -> void
+Runic.Application.Views.WindowContentSessionOptions.LoggerFactory.get -> Microsoft.Extensions.Logging.ILoggerFactory?
+Runic.Application.Views.WindowContentSessionOptions.LoggerFactory.init -> void
+Runic.Application.Views.WindowContentSessionOptions.ModelContext.get -> Runic.Application.Views.IRunicModelContext?
+Runic.Application.Views.WindowContentSessionOptions.ModelContext.init -> void
+Runic.Application.Views.WindowContentSessionOptions.OperationShutdown.get -> System.Threading.CancellationToken
+Runic.Application.Views.WindowContentSessionOptions.OperationShutdown.init -> void
+Runic.Application.Views.WindowContentSessionOptions.RootModel.get -> object?
+Runic.Application.Views.WindowContentSessionOptions.RootModel.init -> void
+Runic.Application.Views.WindowContentSessionOptions.TimeProvider.get -> System.TimeProvider?
+Runic.Application.Views.WindowContentSessionOptions.TimeProvider.init -> void
+Runic.Application.Views.WindowContentSessionOptions.ViewLocator.get -> Runic.Application.Views.IRunicViewLocator?
+Runic.Application.Views.WindowContentSessionOptions.ViewLocator.init -> void
+Runic.Application.Views.WindowContentSessionOptions.WindowContentSessionOptions() -> void
+Runic.Application.Views.CommandDescriptor<T>.CommandDescriptor(string! Name, System.Func<T, object!>! Get, System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task!>? ExecuteAsync = null, System.Func<Runic.Application.Views.IBridgeArguments!, object?>? ReadArgument = null, System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteResultAsync = null, System.Func<object?, string!>? EncodeArgument = null, System.Func<T, object?, bool>? CanExecute = null, System.Func<T, System.Action!, System.IDisposable!>? Subscribe = null, System.Func<Runic.Application.Views.BridgeOperationStream!>? CreateStream = null, System.Func<T, Runic.Application.Views.BridgeOperationExecution!, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteStreamAsync = null, System.Func<object!, string?>? EncodeFailure = null) -> void
+Runic.Application.Views.CommandDescriptor<T>.Deconstruct(out string! Name, out System.Func<T, object!>! Get, out System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task!>? ExecuteAsync, out System.Func<Runic.Application.Views.IBridgeArguments!, object?>? ReadArgument, out System.Func<T, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteResultAsync, out System.Func<object?, string!>? EncodeArgument, out System.Func<T, object?, bool>? CanExecute, out System.Func<T, System.Action!, System.IDisposable!>? Subscribe, out System.Func<Runic.Application.Views.BridgeOperationStream!>? CreateStream, out System.Func<T, Runic.Application.Views.BridgeOperationExecution!, System.Threading.CancellationToken, object?, System.Threading.Tasks.Task<Runic.Application.Views.BridgeOperationResult!>!>? ExecuteStreamAsync, out System.Func<object!, string?>? EncodeFailure) -> void
+Runic.Application.Views.CommandDescriptor<T>.EncodeFailure.get -> System.Func<object!, string?>?
+Runic.Application.Views.CommandDescriptor<T>.EncodeFailure.init -> void
+const Runic.Application.Views.BridgeProtocol.Version = 2 -> int
+Runic.Application.Views.RunicFailureAttribute
+Runic.Application.Views.RunicFailureAttribute.Failure.get -> System.Type!
+Runic.Application.Views.RunicFailureAttribute.RunicFailureAttribute(System.Type! failure) -> void
+Runic.Application.Views.RunicFailureException
+Runic.Application.Views.RunicFailureException.Failure.get -> object!
+Runic.Application.Views.RunicFailureException.RunicFailureException(object! failure) -> void
+Runic.Application.Views.RunicFailureException.RunicFailureException(object! failure, string? message) -> void
+Runic.Application.Views.RunicFailureException.RunicFailureException(object! failure, string? message, System.Exception? innerException) -> void

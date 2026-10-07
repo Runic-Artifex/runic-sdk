@@ -134,7 +134,7 @@
         "dependencies": {
           "GirCore.Gtk-4.0": "[0.8.1, )",
           "GirCore.WebKit-6.0": "[0.8.1, )",
-          "Runic.Desktop": "[0.7.0-preview.1, )"
+          "Runic.Desktop": "[0.7.0-preview.2, )"
         }
       },
       "runic.platform": {
@@ -143,20 +143,20 @@
       "runic.platform.linux.gtk4": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.7.0-preview.1, )"
+          "Runic.Platform.Runtime": "[0.7.0-preview.2, )"
         }
       },
       "runic.platform.linux.portal": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.7.0-preview.1, )",
+          "Runic.Platform.Runtime": "[0.7.0-preview.2, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.7.0-preview.1, )"
+          "Runic.Platform": "[0.7.0-preview.2, )"
         }
       },
       "GirCore.Gtk-4.0": {

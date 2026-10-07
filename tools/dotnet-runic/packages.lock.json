@@ -10,17 +10,17 @@
       },
       "Runic.CommandLine": {
         "type": "Direct",
-        "requested": "[0.6.0-preview.1, )",
-        "resolved": "0.6.0-preview.1",
-        "contentHash": "vqoZBgrJWgP+X9ooMqNBxXyFmAnkWBih62yOhSGF/JG1Lwp1Y52qAs2wJNWeRzpwn3cO9F89VhXyS/emYGgnoA=="
+        "requested": "[0.6.0-preview.2, )",
+        "resolved": "0.6.0-preview.2",
+        "contentHash": "Kvzn865jtbPpxvZZFp8qW3RrFiAJh4vEt4PRNxJGFrUDDWZwUg3umaRuAZ3akABvVvPlt9LFX7pKxGW7+gEftA=="
       },
       "Runic.CommandLine.Spectre": {
         "type": "Direct",
-        "requested": "[0.6.0-preview.1, )",
-        "resolved": "0.6.0-preview.1",
-        "contentHash": "gN11qnAy8RfB51yT6a7GEBitUpalZwa9ox4g+gM8/ORoJQc9FwFbJJBcoSXKe9WX/5mWD8qMP90wjPcr2ADXDg==",
+        "requested": "[0.6.0-preview.2, )",
+        "resolved": "0.6.0-preview.2",
+        "contentHash": "UOTXb+zGf6tYB9gTdEJUedL58gzGHlMtUaUNUs6F1+OErNCzmtTsrux4wqwIsAEOQiJQOX/AzRoTWG1s//Ik7g==",
         "dependencies": {
-          "Runic.CommandLine": "[0.6.0-preview.1]",
+          "Runic.CommandLine": "[0.6.0-preview.2]",
           "Spectre.Console": "0.57.2"
         }
       },

@@ -129,3 +129,18 @@ static Runic.Assets.DevelopmentDocumentAssets.WithDevelopmentDocument(this Runic
 static Runic.Assets.DevelopmentDocumentAssets.WithDevelopmentDocument(this Runic.Assets.IAssetSnapshotSource! source, string! path) -> Runic.Assets.IAssetSnapshotSource!
 static Runic.Assets.EmbeddedAssetRegistration.operator !=(Runic.Assets.EmbeddedAssetRegistration? left, Runic.Assets.EmbeddedAssetRegistration? right) -> bool
 static Runic.Assets.EmbeddedAssetRegistration.operator ==(Runic.Assets.EmbeddedAssetRegistration? left, Runic.Assets.EmbeddedAssetRegistration? right) -> bool
+override Runic.Assets.AssetRoutingOptions.Equals(object? obj) -> bool
+override Runic.Assets.AssetRoutingOptions.GetHashCode() -> int
+override Runic.Assets.AssetRoutingOptions.ToString() -> string!
+Runic.Assets.AssetManifest.TryResolveRequestPath(string? requestPath, Runic.Assets.AssetRoutingOptions? options, out Runic.Assets.AssetDescriptor? asset) -> bool
+Runic.Assets.AssetRoutingOptions
+Runic.Assets.AssetRoutingOptions.<Clone>$() -> Runic.Assets.AssetRoutingOptions!
+Runic.Assets.AssetRoutingOptions.AssetRoutingOptions() -> void
+Runic.Assets.AssetRoutingOptions.EnableSinglePageApplicationFallback.get -> bool
+Runic.Assets.AssetRoutingOptions.EnableSinglePageApplicationFallback.init -> void
+Runic.Assets.AssetRoutingOptions.Equals(Runic.Assets.AssetRoutingOptions? other) -> bool
+Runic.Assets.AssetRoutingOptions.ServeEntryPointAtRoot.get -> bool
+Runic.Assets.AssetRoutingOptions.ServeEntryPointAtRoot.init -> void
+static Runic.Assets.AssetPath.TryNormalize(string? value, out string? normalized) -> bool
+static Runic.Assets.AssetRoutingOptions.operator !=(Runic.Assets.AssetRoutingOptions? left, Runic.Assets.AssetRoutingOptions? right) -> bool
+static Runic.Assets.AssetRoutingOptions.operator ==(Runic.Assets.AssetRoutingOptions? left, Runic.Assets.AssetRoutingOptions? right) -> bool
