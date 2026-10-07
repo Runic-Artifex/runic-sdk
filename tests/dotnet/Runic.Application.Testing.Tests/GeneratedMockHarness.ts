@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { BridgeError } from "@runic-artifex/views";
-import { createMockBridge, installMockBridge, type MockBridge } from "@runic-artifex/views/mock";
+import { BridgeError, bridgeFailure, isBridgeOutcome } from "@runic-artifex/views";
+import { createMockBridge, installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
 
 const [generatedDirectory] = Bun.argv.slice(2);
 if (!generatedDirectory) throw new Error("Usage: GeneratedMockHarness.ts <generated directory>");
@@ -136,6 +136,34 @@ function fresh(): MockBridge {
   await client.pick();
   assert.deepEqual(await mock.interactions.chooseEntry.request("chosen"), { kind: "answered", output: { name: "chosen", count: 2 } });
   stop();
+  client.dispose();
+}
+
+// Declared failures (W130-029) round-trip through the generated mock's failure encoders
+// and the client's decoders: commands resolve a BridgeOutcome, operations outcome().
+{
+  const bridge = fresh();
+  const { connectFailureToolkit } = await load("failureToolkit");
+  const { mockFailureToolkit } = await load("failureToolkit.mock");
+  const mock = mockFailureToolkit(bridge, {
+    state: { title: "" },
+    commands: { save: () => { throw mockFailure({ $case: "titleTaken", existingTitle: "Todo" }); } },
+    operations: { publish: "manual" },
+  });
+  const client = await connectFailureToolkit();
+  const saved = await client.save();
+  assert.equal(isBridgeOutcome(saved), true);
+  assert.deepEqual(saved, bridgeFailure({ $case: "titleTaken", existingTitle: "Todo" }));
+  mock.failNext("reserve", { kind: "domain-failed", failure: { limit: 3, requested: 5 } });
+  assert.deepEqual(await client.reserve(5), bridgeFailure({ limit: 3, requested: 5 }));
+  const publish = await client.startPublish();
+  mock.operations.publish[0].failWith("Archived");
+  assert.deepEqual(await publish.outcome(), bridgeFailure("Archived"));
+  mock.failNext("startPublish", { kind: "domain-failed", failure: "Locked" });
+  assert.deepEqual(await (await client.startPublish()).outcome(), bridgeFailure("Locked"));
+  // An undeclared operation still resolves without a value.
+  const discard = await client.startDiscard();
+  assert.equal((await discard.outcome()).ok, true);
   client.dispose();
 }
 

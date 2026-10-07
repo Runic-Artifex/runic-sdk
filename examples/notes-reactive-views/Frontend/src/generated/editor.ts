@@ -30,8 +30,8 @@ export interface EditorCheckedFields {
   readonly body: string;
 }
 
-export interface EditorSaveOperation extends BridgeOperation<never> {}
-export interface EditorDiscardOperation extends BridgeOperation<never> {}
+export interface EditorSaveOperation extends BridgeOperation<void> {}
+export interface EditorDiscardOperation extends BridgeOperation<void> {}
 
 /** A connected Editor ViewModel. Dispose it when its presentation ends. */
 export interface EditorClient extends ViewClient<EditorState> {
@@ -99,8 +99,8 @@ const checkedFieldNames = ["title", "body"];
 export function connectEditor(): Promise<EditorClient> { return connectEditorAt("editor", true); }
 async function connectEditorAt(route: string, mount = false): Promise<EditorClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, checkedFields: checkedFieldNames, interactions: interactionDefinitions, operations: bridgeOperations });
-  const startSaveOperation = (requestId: string) => view.startOperation<never>("Save", requestId, () => requestId, value => undefined as never);
-  const startDiscardOperation = (requestId: string) => view.startOperation<never>("Discard", requestId, () => requestId, value => undefined as never);
+  const startSaveOperation = (requestId: string) => view.startOperation<void>("Save", requestId, () => requestId, value => undefined);
+  const startDiscardOperation = (requestId: string) => view.startOperation<void>("Discard", requestId, () => requestId, value => undefined);
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -129,9 +129,9 @@ async function connectEditorAt(route: string, mount = false): Promise<EditorClie
     async discard() { return view.command(`${route}Discard`); },
     startSave() { return startSaveOperation(globalThis.crypto.randomUUID()); },
     startSaveWithRequestId(requestId: string) { return startSaveOperation(requestId); },
-    recoverSaveWithRequestId(requestId: string) { return view.recoverOperation<never>("Save", requestId, value => undefined as never); },
+    recoverSaveWithRequestId(requestId: string) { return view.recoverOperation<void>("Save", requestId, value => undefined); },
     startDiscard() { return startDiscardOperation(globalThis.crypto.randomUUID()); },
     startDiscardWithRequestId(requestId: string) { return startDiscardOperation(requestId); },
-    recoverDiscardWithRequestId(requestId: string) { return view.recoverOperation<never>("Discard", requestId, value => undefined as never); },
+    recoverDiscardWithRequestId(requestId: string) { return view.recoverOperation<void>("Discard", requestId, value => undefined); },
   };
 }

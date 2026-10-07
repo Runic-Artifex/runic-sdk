@@ -21,11 +21,11 @@ export interface ShellState {
   readonly isRestorePinnedExecuting: boolean;
 }
 
-export interface ShellOpenHomeOperation extends BridgeOperation<never> {}
-export interface ShellOpenDocumentOperation extends BridgeOperation<never> {}
-export interface ShellSwapPinnedOperation extends BridgeOperation<never> {}
-export interface ShellRemovePinnedOperation extends BridgeOperation<never> {}
-export interface ShellRestorePinnedOperation extends BridgeOperation<never> {}
+export interface ShellOpenHomeOperation extends BridgeOperation<void> {}
+export interface ShellOpenDocumentOperation extends BridgeOperation<void> {}
+export interface ShellSwapPinnedOperation extends BridgeOperation<void> {}
+export interface ShellRemovePinnedOperation extends BridgeOperation<void> {}
+export interface ShellRestorePinnedOperation extends BridgeOperation<void> {}
 
 /** A connected Shell ViewModel. Dispose it when its presentation ends. */
 export interface ShellClient extends ViewClient<ShellState> {
@@ -76,11 +76,11 @@ const bridgeContract = "NotesReactiveViews.ShellViewModel:07C6D370C2A798E254B47B
 export function connectShell(): Promise<ShellClient> { return connectShellAt("shell", false); }
 async function connectShellAt(route: string, mount = false): Promise<ShellClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, operations: bridgeOperations });
-  const startOpenHomeOperation = (requestId: string) => view.startOperation<never>("OpenHome", requestId, () => requestId, value => undefined as never);
-  const startOpenDocumentOperation = (requestId: string) => view.startOperation<never>("OpenDocument", requestId, () => requestId, value => undefined as never);
-  const startSwapPinnedOperation = (requestId: string) => view.startOperation<never>("SwapPinned", requestId, () => requestId, value => undefined as never);
-  const startRemovePinnedOperation = (requestId: string) => view.startOperation<never>("RemovePinned", requestId, () => requestId, value => undefined as never);
-  const startRestorePinnedOperation = (requestId: string) => view.startOperation<never>("RestorePinned", requestId, () => requestId, value => undefined as never);
+  const startOpenHomeOperation = (requestId: string) => view.startOperation<void>("OpenHome", requestId, () => requestId, value => undefined);
+  const startOpenDocumentOperation = (requestId: string) => view.startOperation<void>("OpenDocument", requestId, () => requestId, value => undefined);
+  const startSwapPinnedOperation = (requestId: string) => view.startOperation<void>("SwapPinned", requestId, () => requestId, value => undefined);
+  const startRemovePinnedOperation = (requestId: string) => view.startOperation<void>("RemovePinned", requestId, () => requestId, value => undefined);
+  const startRestorePinnedOperation = (requestId: string) => view.startOperation<void>("RestorePinned", requestId, () => requestId, value => undefined);
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -92,18 +92,18 @@ async function connectShellAt(route: string, mount = false): Promise<ShellClient
     async restorePinned() { return view.command(`${route}RestorePinned`); },
     startOpenHome() { return startOpenHomeOperation(globalThis.crypto.randomUUID()); },
     startOpenHomeWithRequestId(requestId: string) { return startOpenHomeOperation(requestId); },
-    recoverOpenHomeWithRequestId(requestId: string) { return view.recoverOperation<never>("OpenHome", requestId, value => undefined as never); },
+    recoverOpenHomeWithRequestId(requestId: string) { return view.recoverOperation<void>("OpenHome", requestId, value => undefined); },
     startOpenDocument() { return startOpenDocumentOperation(globalThis.crypto.randomUUID()); },
     startOpenDocumentWithRequestId(requestId: string) { return startOpenDocumentOperation(requestId); },
-    recoverOpenDocumentWithRequestId(requestId: string) { return view.recoverOperation<never>("OpenDocument", requestId, value => undefined as never); },
+    recoverOpenDocumentWithRequestId(requestId: string) { return view.recoverOperation<void>("OpenDocument", requestId, value => undefined); },
     startSwapPinned() { return startSwapPinnedOperation(globalThis.crypto.randomUUID()); },
     startSwapPinnedWithRequestId(requestId: string) { return startSwapPinnedOperation(requestId); },
-    recoverSwapPinnedWithRequestId(requestId: string) { return view.recoverOperation<never>("SwapPinned", requestId, value => undefined as never); },
+    recoverSwapPinnedWithRequestId(requestId: string) { return view.recoverOperation<void>("SwapPinned", requestId, value => undefined); },
     startRemovePinned() { return startRemovePinnedOperation(globalThis.crypto.randomUUID()); },
     startRemovePinnedWithRequestId(requestId: string) { return startRemovePinnedOperation(requestId); },
-    recoverRemovePinnedWithRequestId(requestId: string) { return view.recoverOperation<never>("RemovePinned", requestId, value => undefined as never); },
+    recoverRemovePinnedWithRequestId(requestId: string) { return view.recoverOperation<void>("RemovePinned", requestId, value => undefined); },
     startRestorePinned() { return startRestorePinnedOperation(globalThis.crypto.randomUUID()); },
     startRestorePinnedWithRequestId(requestId: string) { return startRestorePinnedOperation(requestId); },
-    recoverRestorePinnedWithRequestId(requestId: string) { return view.recoverOperation<never>("RestorePinned", requestId, value => undefined as never); },
+    recoverRestorePinnedWithRequestId(requestId: string) { return view.recoverOperation<void>("RestorePinned", requestId, value => undefined); },
   };
 }

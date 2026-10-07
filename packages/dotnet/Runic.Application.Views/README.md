@@ -229,6 +229,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
+| `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or a nullable type. | Declare one DTO, enum or `[RunicUnion]` failure type per command. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
 
 ## Build properties
 
@@ -344,7 +345,30 @@ never with `detail`; an operation ends with the `domain-failed` status. Use
 `[RunicUnion]` for several cases. A value that is not the declared type, one
 that cannot be encoded, or one over 4 KiB is reported as an ordinary failure
 (event 1008). A synchronous command reports only failures thrown synchronously
-from `Execute`.
+from `Execute`, so an `async void` plain `ICommand` cannot declare a failure
+that it throws after its first `await`. Operations exist only for asynchronous
+CommunityToolkit and ReactiveUI commands.
+
+```csharp
+[RunicUnion(typeof(TitleRequired), typeof(TitleTaken))]
+public abstract record SaveFailure;
+[RunicUnionCase("titleRequired")] public sealed record TitleRequired : SaveFailure;
+[RunicUnionCase("titleTaken")] public sealed record TitleTaken(string ExistingTitle) : SaveFailure;
+
+[RelayCommand, RunicFailure(typeof(SaveFailure))]
+private async Task SaveAsync(CancellationToken token)
+{
+    if (string.IsNullOrWhiteSpace(Title)) throw new RunicFailureException(new TitleRequired());
+    // ...
+}
+```
+
+The generated client's `save()` then returns
+`Promise<BridgeOutcome<EditorState, SaveFailure>>` instead of
+`Promise<EditorState>`, its operation is `BridgeOperation<void, SaveFailure>`, and
+the generated mock encodes the failure. A ReactiveUI command also reports the
+failure on `ThrownExceptions`, so give every bridged `ReactiveCommand` a
+subscriber.
 
 ## Logging and telemetry
 

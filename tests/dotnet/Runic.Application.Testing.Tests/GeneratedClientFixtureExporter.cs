@@ -27,7 +27,7 @@ internal static class GeneratedClientFixtureExporter
         using var validationHost = new RunicWindowTestHost<ValidationViewModel>(validationModel, "validation",
             (transport, content, vm) => new ValidationBridge(transport, vm, content: content), new TestViewLocator());
         var fixture = new GeneratedClientFixture(dataShape, typedReactive, toolkitTyped, validationHost.Transport.Call("validationSnapshot"),
-            CreateDtoListTranscript(), await CreateDtoInteractionTranscriptAsync());
+            CreateDtoListTranscript(), await CreateDtoInteractionTranscriptAsync(), await FailureGeneratedClientFixture.CreateAsync());
 
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(fixture, Json)).ConfigureAwait(false);
     }
@@ -194,7 +194,7 @@ internal static class GeneratedClientFixtureExporter
 
     private sealed record GeneratedClientFixture(DataShapeTranscript DataShape, TypedReactiveTranscript TypedReactive,
         ToolkitGeneratedClientTranscript ToolkitTyped, string ValidationSnapshot, DtoListTranscript DtoList,
-        DtoInteractionTranscript DtoInteraction);
+        DtoInteractionTranscript DtoInteraction, FailureGeneratedClientTranscript DomainFailures);
 
     private sealed record DtoInteractionTranscript(string Snapshot, string Request, string Output);
 

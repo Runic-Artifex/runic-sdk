@@ -31,6 +31,7 @@
          do not exist during the source-only bootstrap compilation. -->
     <Compile Remove="GeneratedClientFixtureExporter.cs" />
     <Compile Remove="ToolkitGeneratedClientFixture.cs" />
+    <Compile Remove="FailureGeneratedClientFixture.cs" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
   <Import Project="../../../eng/build/application.targets" />

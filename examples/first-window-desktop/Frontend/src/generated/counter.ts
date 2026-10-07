@@ -9,7 +9,7 @@ export interface CounterState {
   readonly isIncrementExecuting: boolean;
 }
 
-export interface CounterIncrementOperation extends BridgeOperation<never> {}
+export interface CounterIncrementOperation extends BridgeOperation<void> {}
 
 /** A connected Counter ViewModel. Dispose it when its presentation ends. */
 export interface CounterClient extends ViewClient<CounterState> {
@@ -42,7 +42,7 @@ const bridgeContract = "FirstWindowDesktop.CounterViewModel:29F2EE89DB8A1AFA399F
 export function connectCounter(): Promise<CounterClient> { return connectCounterAt("counter", false); }
 async function connectCounterAt(route: string, mount = false): Promise<CounterClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, operations: bridgeOperations });
-  const startIncrementOperation = (requestId: string) => view.startOperation<never>("Increment", requestId, () => requestId, value => undefined as never);
+  const startIncrementOperation = (requestId: string) => view.startOperation<void>("Increment", requestId, () => requestId, value => undefined);
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
@@ -50,6 +50,6 @@ async function connectCounterAt(route: string, mount = false): Promise<CounterCl
     async increment() { return view.command(`${route}Increment`); },
     startIncrement() { return startIncrementOperation(globalThis.crypto.randomUUID()); },
     startIncrementWithRequestId(requestId: string) { return startIncrementOperation(requestId); },
-    recoverIncrementWithRequestId(requestId: string) { return view.recoverOperation<never>("Increment", requestId, value => undefined as never); },
+    recoverIncrementWithRequestId(requestId: string) { return view.recoverOperation<void>("Increment", requestId, value => undefined); },
   };
 }

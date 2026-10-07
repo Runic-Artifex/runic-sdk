@@ -9,9 +9,13 @@ using System.Text.Json;
 internal sealed record MockValueField(string WireName, BridgeTypeGraph Graph);
 internal sealed record MockContentField(string WireName, string ReferenceType, bool IsCollection, bool IsNullable);
 internal sealed record MockSetter(string Method, string Route, string WireName, string ValueType, string ReadExpression, string? CheckedRoute);
-internal sealed record MockCommand(string Method, string Route, string? InputType, string? ReadExpression, string? AvailabilityField);
+internal sealed record MockCommand(string Method, string Route, string? InputType, string? ReadExpression, string? AvailabilityField,
+    string? FailureType = null, string? EncodeFailure = null);
 internal sealed record MockOperation(string Method, string Member, string InputType, string ResultType, string? DecodeInput,
-    string? EncodeResult, bool IsStream);
+    string? EncodeResult, bool IsStream, string? FailureType = null, string? EncodeFailure = null)
+{
+    internal string TypeArguments => FailureType is null ? $"{InputType}, {ResultType}" : $"{InputType}, {ResultType}, {FailureType}";
+}
 internal sealed record MockInteraction(string Name, string InputType, string OutputType, string EncodeInput, string DecodeOutput);
 internal sealed record MockCollection(string WireName, string ItemType, string Encode, string Decode, string Key);
 
@@ -90,7 +94,7 @@ internal static class MockTypeScriptEmitter
             body.AppendLine("  /** Operation handlers; without one an operation runs its command handler and succeeds. */");
             body.AppendLine("  readonly operations?: {");
             foreach (var operation in plan.Operations)
-                body.AppendLine($"    readonly {operation.Method}?: MockTypedOperationHandler<{state}, {operation.InputType}, {operation.ResultType}> | \"manual\";");
+                body.AppendLine($"    readonly {operation.Method}?: MockTypedOperationHandler<{state}, {operation.TypeArguments}> | \"manual\";");
             body.AppendLine("  };");
         }
         body.AppendLine("}");
@@ -100,7 +104,7 @@ internal static class MockTypeScriptEmitter
         if (plan.Collections.Count > 0)
             members.Add($"  readonly collections: {{ {string.Join(" ", plan.Collections.Select(collection => $"readonly {Key(collection.WireName)}: MockTypedCollection<{collection.ItemType}>;"))} }};");
         if (plan.Operations.Count > 0)
-            members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly MockTypedOperation<{operation.InputType}, {operation.ResultType}>[];"))} }};");
+            members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly MockTypedOperation<{operation.TypeArguments}>[];"))} }};");
         if (plan.Interactions.Count > 0)
             members.Add($"  readonly interactions: {{ {string.Join(" ", plan.Interactions.Select(interaction => $"readonly {interaction.Name}: MockTypedInteraction<{interaction.InputType}, {interaction.OutputType}>;"))} }};");
         var baseType = $"MockTypedView<{state}, {name}Client, {kinds}>";
@@ -146,14 +150,14 @@ internal static class MockTypeScriptEmitter
         {
             body.AppendLine("  commands: {");
             foreach (var command in plan.Commands)
-                body.AppendLine($"    {command.Method}: {{ route: {Quote(command.Route)}{(command.ReadExpression is null ? "" : $", read: (raw: unknown) => {{ const wire: unknown = JSON.parse(raw as string); return {command.ReadExpression}; }}")}{(command.AvailabilityField is null ? "" : $", available: {Quote(command.AvailabilityField)}")} }},");
+                body.AppendLine($"    {command.Method}: {{ route: {Quote(command.Route)}{(command.ReadExpression is null ? "" : $", read: (raw: unknown) => {{ const wire: unknown = JSON.parse(raw as string); return {command.ReadExpression}; }}")}{(command.AvailabilityField is null ? "" : $", available: {Quote(command.AvailabilityField)}")}{(command.EncodeFailure is null ? "" : $", encodeFailure: (value: unknown) => {Encode(command.EncodeFailure, command.FailureType!)}")} }},");
             body.AppendLine("  },");
         }
         if (plan.Operations.Count > 0)
         {
             body.AppendLine("  operations: {");
             foreach (var operation in plan.Operations)
-                body.AppendLine($"    {operation.Method}: {{ member: {Quote(operation.Member)}{(operation.DecodeInput is null ? "" : $", decodeInput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(operation.DecodeInput)}")}{(operation.EncodeResult is null ? "" : $", encodeResult: (value: unknown) => {Encode(operation.EncodeResult, operation.ResultType)}")}{(operation.IsStream ? ", stream: true" : "")} }},");
+                body.AppendLine($"    {operation.Method}: {{ member: {Quote(operation.Member)}{(operation.DecodeInput is null ? "" : $", decodeInput: (wire: unknown) => {BridgeTypeGraph.ArrowBody(operation.DecodeInput)}")}{(operation.EncodeResult is null ? "" : $", encodeResult: (value: unknown) => {Encode(operation.EncodeResult, operation.ResultType)}")}{(operation.IsStream ? ", stream: true" : "")}{(operation.EncodeFailure is null ? "" : $", encodeFailure: (value: unknown) => {Encode(operation.EncodeFailure, operation.FailureType!)}")} }},");
             body.AppendLine("  },");
         }
         if (plan.Interactions.Count > 0)

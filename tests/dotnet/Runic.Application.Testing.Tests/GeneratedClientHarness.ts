@@ -1,5 +1,6 @@
 import { BridgeError } from "@runic-artifex/views";
 import { runToolkitGeneratedClient, type ToolkitGeneratedClientTranscript } from "./ToolkitGeneratedClientHarness.ts";
+import { runFailureGeneratedClient, type FailureGeneratedClientTranscript } from "./FailureGeneratedClientHarness.ts";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -12,6 +13,7 @@ type Transcript = {
     readonly replaceRequest: string; readonly replaceReply: string;
   };
   readonly toolkitTyped: ToolkitGeneratedClientTranscript;
+  readonly domainFailures: FailureGeneratedClientTranscript;
   readonly validationSnapshot: string;
   readonly dataShape: {
     readonly snapshot: string;
@@ -198,6 +200,7 @@ try {
 }
 typed.dispose();
 await runToolkitGeneratedClient(fixture.toolkitTyped, generatedDirectory);
+await runFailureGeneratedClient(fixture.domainFailures, generatedDirectory);
 host.window!.__runicBridge = { isConnected: () => true, async call(route: string) {
   if (route !== "validationSnapshot") throw new Error(`Unexpected validation route ${route}`);
   return fixture.validationSnapshot;
