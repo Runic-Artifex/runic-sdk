@@ -17,6 +17,14 @@ internal static class PackerApplication
     private const int SourceDirectoryExitCode = 3;
     private const int EntryPointExitCode = 4;
     private const int OperationExitCode = 5;
+
+    // Fault messages stay free of paths and exception text, so the JSON response
+    // keeps the RAS code; Runic.CommandLine replaces a fault whose message looks
+    // technical. Paths and exception messages go into details, which JSON output
+    // redacts individually, and the human output below puts them back.
+    private const string SourceDirectoryDetail = "sourceDirectory";
+    private const string EntryPointDetail = "entryPoint";
+    private const string ReasonDetail = "reason";
     public static Task<int> RunAsync(string[] args) => new CommandApp(GeneratedCommandCatalog.Create())
     {
         Name = "Runic.Assets.Packer",
@@ -45,7 +53,11 @@ internal static class PackerApplication
             return Failure(
                 CommandExitCategory.Validation,
                 "RAS1001",
-                $"Source directory '{fullSourceDirectory}' does not exist.");
+                "The source directory does not exist.",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [SourceDirectoryDetail] = fullSourceDirectory,
+                });
         }
 
         try
@@ -77,7 +89,12 @@ internal static class PackerApplication
                 return Failure(
                     CommandExitCategory.Unavailable,
                     "RAS1002",
-                    $"Entry point '{entryPoint}' does not exist below '{fullSourceDirectory}' or was excluded.");
+                    "The entry point does not exist below the source directory or was excluded.",
+                    new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        [EntryPointDetail] = entryPoint,
+                        [SourceDirectoryDetail] = fullSourceDirectory,
+                    });
             }
 
             try
@@ -130,15 +147,40 @@ internal static class PackerApplication
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException or PlatformNotSupportedException)
         {
-            return Failure(CommandExitCategory.CommandFailure, "RAS1003", exception.Message);
+            return Failure(
+                CommandExitCategory.CommandFailure,
+                "RAS1003",
+                "The archive could not be packed.",
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [ReasonDetail] = exception.Message,
+                });
         }
     }
 
     private static CommandOutcome<PackerResult> Failure(
         CommandExitCategory category,
         string code,
-        string message) =>
-        CommandOutcome.Failure<PackerResult>(category, new CommandFault(code, message));
+        string message,
+        IReadOnlyDictionary<string, string>? details = null) =>
+        CommandOutcome.Failure<PackerResult>(category, new CommandFault(code, message, details));
+
+    // The full message for a person at the terminal, with the paths and the
+    // underlying reason that the machine-readable message leaves out.
+    internal static string HumanMessage(CommandFault fault)
+    {
+        IReadOnlyDictionary<string, string> details = fault.Details;
+        return fault.Code switch
+        {
+            "RAS1001" when details.TryGetValue(SourceDirectoryDetail, out string? source) =>
+                $"Source directory '{source}' does not exist.",
+            "RAS1002" when details.TryGetValue(EntryPointDetail, out string? entry)
+                && details.TryGetValue(SourceDirectoryDetail, out string? source) =>
+                $"Entry point '{entry}' does not exist below '{source}' or was excluded.",
+            "RAS1003" when details.TryGetValue(ReasonDetail, out string? reason) => reason,
+            _ => fault.Message,
+        };
+    }
 
     private static void AddSourceRelativeExclusion(
         string sourceDirectory,
@@ -178,7 +220,7 @@ internal static class PackerApplication
                     cancellationToken);
             }
 
-            string message = outcome.Fault?.Message ?? "The archive could not be packed.";
+            string message = outcome.Fault is { } fault ? HumanMessage(fault) : "The archive could not be packed.";
             return context.Console.WriteErrorAsync(
                 (message + Environment.NewLine).AsMemory(),
                 cancellationToken);

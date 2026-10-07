@@ -16,6 +16,10 @@ for example:
   `AssetArchive.Read`;
 - inspecting exactly what the build would embed.
 
+The [Assets guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/assets/README.md)
+walks through embedding a frontend and serving it from ASP.NET Core or Runic
+Desktop.
+
 ## Run it
 
 The packer ships inside the `Runic.Assets` NuGet package and runs on the .NET 10
@@ -31,7 +35,10 @@ Use the folder from `dotnet nuget locals global-packages --list` if
 `tools/Runic.Assets.Packer` and use
 `tools/Runic.Assets.Packer/bin/<Configuration>/net10.0/Runic.Assets.Packer.dll`.
 MSBuild finds the packaged copy itself; set `RunicAssetsPackerPath` to use
-another build.
+another build. The build passes `--entry-point $(RunicAssetsEntryPoint)`,
+`--exclude $(RunicAssetsDistExclude)` (by default `runic-assets.zip`; setting
+the property replaces that default, so list it again to keep it excluded) and
+`--trusted-generated-output`.
 
 ```text
 Runic.Assets.Packer [pack] <source-directory> <destination-archive> [options]
@@ -48,6 +55,20 @@ Runic.Assets.Packer [pack] <source-directory> <destination-archive> [options]
 | `--trusted-generated-output` | Read the directory as output generated earlier in the same trusted build. See below. |
 | `--output human\|json` | Output format. JSON writes one `runic.commandline/1` result with the `runic.assets.pack-result/1` payload `{ "ArchiveLength": <bytes> }`. |
 | `--help`, `--version` | Show help or the version. |
+
+With `--output json` a successful run writes one line such as:
+
+```json
+{"protocol":"runic.commandline/1","requestId":"35dfb3b13110479eb58ca54afd4a51fd","command":"pack","success":true,"exitCode":0,"payloadType":"runic.assets.pack-result/1","payload":{"ArchiveLength":437},"fault":null,"diagnostics":[]}
+```
+
+A failure sets `success` to `false`, `exitCode` to one of the exit codes below
+and `fault.code` to the `RAS` code. `fault.details` carries the source
+directory, entry point or underlying reason. A value that looks like a home,
+`/tmp` or `/root` path (`/home/`, `/Users/`, `/root/`, `/tmp/`), a drive or UNC
+path, or exception text is shown as `[redacted]`; other absolute paths, such as
+macOS `/var/folders/...` or `/srv/...`, are shown as they are. Human output
+prints the full message.
 
 The archive is deterministic: the same files produce the same bytes, so it can
 be cached or compared with `cmp`.
@@ -78,7 +99,7 @@ a directory another user can write.
 | `2` | Invalid command line, such as a missing argument. |
 | `3` | The source directory does not exist (`RAS1001`). |
 | `4` | The entry point does not exist or was excluded (`RAS1002`). |
-| `5` | Packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`). |
+| `5` | Packing failed (`RAS1003`), for example because of an invalid asset path, a symbolic link or an I/O error, or the pinned mode is unavailable on this OS (`RAS1004`); also a cancelled run. |
 
 Human output writes the result to standard output and the error message to
 standard error. A failed run leaves an existing destination archive unchanged.

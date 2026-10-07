@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
@@ -55,6 +56,7 @@ internal static class Program
         new("development reads reject symlink replacement races", DirectoryLinkSwap),
         new("development source pins its root across root and ancestor swaps", DirectoryRootPinning),
         new("sources honor cancellation", Cancellation),
+        new("packer JSON failures keep their RAS codes and redact paths", PackerJsonFaults),
         new("shipping assembly stays framework neutral", FrameworkNeutral),
     ];
 
@@ -1126,6 +1128,106 @@ internal static class Program
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    // Runs the packer this checkout built, as a separate process, for each
+    // documented failure. JSON output keeps the RAS code and the exit code, and
+    // its message names no path. Runic.CommandLine redacts a detail value that
+    // looks like a home, /tmp or /root path, a drive or UNC path, or exception
+    // text, so the source directory is redacted only where the temporary
+    // directory looks like one; macOS /var/folders is shown. Human output still
+    // names the path.
+    private static async Task PackerJsonFaults()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("site/index.html", "<p>x</p>");
+        string site = Path.Combine(directory.Path, "site");
+        string archive = Path.Combine(directory.Path, "out.runic-assets");
+        string missing = Path.Combine(directory.Path, "missing");
+
+        (int exitCode, JsonElement fault) = await PackJsonAsync(missing, archive).ConfigureAwait(false);
+        Equal(3, exitCode);
+        Equal("RAS1001", fault.GetProperty("code").GetString());
+        Equal("The source directory does not exist.", fault.GetProperty("message").GetString());
+        Equal(
+            SanitizerRedacts(missing) ? "[redacted]" : missing,
+            fault.GetProperty("details").GetProperty("sourceDirectory").GetString());
+        (int humanExitCode, string _, string error) = await RunPackerAsync(missing, archive).ConfigureAwait(false);
+        Equal(3, humanExitCode);
+        Equal($"Source directory '{missing}' does not exist.", error.Trim());
+
+        (exitCode, fault) = await PackJsonAsync(site, archive, "--entry-point", "missing.html", "--trusted-generated-output").ConfigureAwait(false);
+        Equal(4, exitCode);
+        Equal("RAS1002", fault.GetProperty("code").GetString());
+        True(!fault.GetProperty("message").GetString()!.Contains(directory.Path, StringComparison.Ordinal));
+        Equal("missing.html", fault.GetProperty("details").GetProperty("entryPoint").GetString());
+
+        // Creating a symbolic link on Windows needs Developer Mode or elevation.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        File.CreateSymbolicLink(Path.Combine(site, "linked.txt"), Path.Combine(site, "index.html"));
+        (exitCode, fault) = await PackJsonAsync(site, archive, "--trusted-generated-output").ConfigureAwait(false);
+        Equal(5, exitCode);
+        Equal("RAS1003", fault.GetProperty("code").GetString());
+        Equal("The archive could not be packed.", fault.GetProperty("message").GetString());
+        Equal(
+            "Trusted generated asset output cannot contain symbolic links or reparse points.",
+            fault.GetProperty("details").GetProperty("reason").GetString());
+        True(!File.Exists(archive));
+    }
+
+    // Mirrors the technical-content rule of Runic.CommandLine's fault sanitizer.
+    private static bool SanitizerRedacts(string value) =>
+        value.Contains("Exception", StringComparison.Ordinal)
+        || value.Contains(@"\\", StringComparison.Ordinal)
+        || value.Contains("/home/", StringComparison.Ordinal)
+        || value.Contains("/Users/", StringComparison.Ordinal)
+        || value.Contains("/root/", StringComparison.Ordinal)
+        || value.Contains("/tmp/", StringComparison.Ordinal)
+        || System.Text.RegularExpressions.Regex.IsMatch(value, "[A-Za-z]:[\\\\/]");
+
+    private static async Task<(int ExitCode, JsonElement Fault)> PackJsonAsync(params string[] arguments)
+    {
+        (int exitCode, string output, string _) = await RunPackerAsync([.. arguments, "--output", "json"]).ConfigureAwait(false);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        True(!root.GetProperty("success").GetBoolean());
+        Equal(exitCode, root.GetProperty("exitCode").GetInt32());
+        return (exitCode, root.GetProperty("fault").Clone());
+    }
+
+    private static async Task<(int ExitCode, string Output, string Error)> RunPackerAsync(params string[] arguments)
+    {
+        // The test runs from <repository>/tests/dotnet/Runic.Assets.Tests/bin/<Configuration>/net10.0/.
+        var output = new DirectoryInfo(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar));
+        string configuration = output.Parent!.Name;
+        string repository = Path.GetFullPath(Path.Combine(output.FullName, "../../../../../.."));
+        string packer = Path.Combine(repository, "tools/Runic.Assets.Packer/bin", configuration, "net10.0/Runic.Assets.Packer.dll");
+        if (!File.Exists(packer))
+        {
+            throw new InvalidOperationException(
+                $"The packer was not found at '{packer}'. Build tools/Runic.Assets.Packer first ({configuration}).");
+        }
+
+        var start = new System.Diagnostics.ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        start.ArgumentList.Add(packer);
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = System.Diagnostics.Process.Start(start)!;
+        Task<string> standardOutput = process.StandardOutput.ReadToEndAsync();
+        Task<string> standardError = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().ConfigureAwait(false);
+        return (process.ExitCode, await standardOutput.ConfigureAwait(false), await standardError.ConfigureAwait(false));
     }
 
     private sealed class TemporaryDirectory : IDisposable
