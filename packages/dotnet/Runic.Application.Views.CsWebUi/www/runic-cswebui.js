@@ -34,6 +34,8 @@
     if (reconnectTimer === undefined) return;
     clearInterval(reconnectTimer);
     reconnectTimer = undefined;
+    // A loss nobody listened for must not resume a listener registered later.
+    lost = false;
   }
 
   // Views frontends own their navigation. Once the bridge connects it cancels
@@ -95,7 +97,7 @@
     current?.admit();
   }
   // Smoke diagnostics; not part of the Bridge client contract.
-  window.__runicBridgeAdmissions = () => ({ late: late.length, waiting: current !== undefined });
+  window.__runicBridgeAdmissionState = () => ({ late: late.length, waiting: current !== undefined });
   function send(name, args) {
     let release;
     const previous = admission;

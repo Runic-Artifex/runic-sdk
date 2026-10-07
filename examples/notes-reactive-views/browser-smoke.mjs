@@ -307,7 +307,7 @@ try {
   // WebUI never settles calls in flight when its WebSocket closes. A call the
   // admission timeout released is late; a reconnect must forget it, or its
   // missing admission swallows the admission of a call sent afterwards.
-  const admissions = () => query("window.__runicBridgeAdmissions()");
+  const admissions = () => query("window.__runicBridgeAdmissionState()");
   await evaluate(`(() => {
     const webui = window.webui;
     const call = webui.call;
@@ -330,6 +330,9 @@ try {
   await retry(async () => await query("window.webui.isConnected()") === true);
   // Generated clients resume with their own calls; wait until .NET admitted them.
   await retry(async () => !(await admissions()).waiting);
+  // A regression check only, and timing-dependent: it relies on the 250 ms
+  // connection poll seeing the closed socket before WebUI reconnects (after
+  // 500 ms). The host-client-scripts unit tests are the real guard.
   const afterLoss = await admissions();
   if (afterLoss.late !== 0)
     throw new Error(`A reconnect kept admissions from the lost connection: ${JSON.stringify(afterLoss)}`);
