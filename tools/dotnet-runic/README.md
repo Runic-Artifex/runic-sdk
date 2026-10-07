@@ -181,6 +181,19 @@ result into a JSON report:
 dotnet runic size --project path/to/App.csproj --runtime linux-x64 --report measurements/linux.json
 ```
 
+`--verify` names any executable to run after a successful publish: a path or a
+command on `PATH`, such as `node` or `bun`. It is not looked up in the publish
+directory. It runs in the project directory and receives the `--verify-argument`
+values, then the publish directory and the published application's path. Its
+output goes to `verification.log` in the run directory next to the report, and a
+nonzero exit code fails the command:
+
+```bash
+dotnet runic size --runtime linux-x64 --report measurements/linux.json \
+  --verify node --verify-argument scripts/check-publish.mjs
+# runs: node scripts/check-publish.mjs <publish directory> <publish directory>/App
+```
+
 ## Local support envelope
 
 `support` only reads an explicitly selected Editor diagnostic ZIP. It can

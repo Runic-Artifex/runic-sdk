@@ -35,16 +35,16 @@ export interface InjectCommandOptions {
  * // <button [disabled]="!counter.client() || increment.pending()" (click)="increment.run()">
  * ```
  */
-export function injectCommand<TArgs extends readonly unknown[], TResult>(
-  command: (...args: TArgs) => TResult | PromiseLike<TResult>,
+export function injectCommand<TArgs extends readonly unknown[], TReturn>(
+  command: (...args: TArgs) => TReturn,
   options: InjectCommandOptions = {},
-): CommandHandle<TArgs, Awaited<TResult>> {
+): CommandHandle<TArgs, Awaited<TReturn>> {
   if (!options.injector) assertInInjectionContext(injectCommand);
   const injector = options.injector ?? inject(Injector);
   const controller = createCommandController(command);
   const pending = signal(false);
   const error = signal<unknown>(undefined);
-  const failure = signal<BridgeOutcomeFailure<Awaited<TResult>> | undefined>(undefined);
+  const failure = signal<BridgeOutcomeFailure<Awaited<TReturn>> | undefined>(undefined);
   controller.subscribe(() => {
     pending.set(controller.current.pending);
     error.set(controller.current.error);

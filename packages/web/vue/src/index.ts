@@ -138,11 +138,11 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
  * <button :disabled="!client || increment.pending" @click="increment.run()">…</button>
  * ```
  */
-export function useCommand<TArgs extends readonly unknown[], TResult>(
-  command: (...args: TArgs) => TResult | PromiseLike<TResult>,
-): CommandHandle<TArgs, Awaited<TResult>> {
+export function useCommand<TArgs extends readonly unknown[], TReturn>(
+  command: (...args: TArgs) => TReturn,
+): CommandHandle<TArgs, Awaited<TReturn>> {
   const controller = createCommandController(command);
-  const handle = shallowReactive<CommandHandle<TArgs, Awaited<TResult>>>({
+  const handle = shallowReactive<CommandHandle<TArgs, Awaited<TReturn>>>({
     run: controller.run, pending: false, error: undefined, failure: undefined, reset: controller.reset,
   });
   controller.subscribe(() => {

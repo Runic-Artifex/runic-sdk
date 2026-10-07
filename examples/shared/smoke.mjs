@@ -40,32 +40,41 @@ async function collectDetail(detail) {
 
 /**
  * Polls `condition` until it returns a truthy value and returns that value.
- * Each attempt is bounded by the remaining time (at least one second), so a
- * hung page cannot stall the smoke. `detail` may return page or host output
+ * Each attempt is bounded by the remaining time (at least one second) and, if
+ * set, by `attemptTimeout`, so a hung page cannot stall the smoke and a hung
+ * request is retried within `timeout`. `condition` receives an AbortSignal
+ * that aborts when its attempt ends. `detail` may return page or host output
  * for the timeout error.
  */
-export async function waitFor(condition, { timeout = 12_000, interval = 50, label = "the condition", detail } = {}) {
+export async function waitFor(condition, { timeout = 12_000, attemptTimeout, interval = 50, label = "the condition", detail } = {}) {
   const limit = scaled(timeout), minimumAttempt = scaled(1_000);
+  const attemptLimit = attemptTimeout === undefined ? Infinity : scaled(attemptTimeout);
   const deadline = Date.now() + limit;
-  let attempts = 0, lastValue, lastError;
+  let attempts = 0, unsettled = 0, lastValue, lastError;
   while (true) {
     attempts++;
+    const attempt = new AbortController();
     try {
-      const value = await within(Promise.resolve().then(condition), Math.max(deadline - Date.now(), minimumAttempt), "attempt");
+      const value = await within(Promise.resolve(attempt.signal).then(condition),
+        Math.min(Math.max(deadline - Date.now(), minimumAttempt), attemptLimit), "attempt");
       if (value) return value;
       lastValue = value;
-    } catch (error) { lastError = error; }
+    } catch (error) {
+      lastError = error;
+      if (error?.message?.startsWith("attempt did not settle")) unsettled++;
+    } finally { attempt.abort(); }
     if (Date.now() >= deadline) break;
     await pause(interval);
   }
   const last = [`last result: ${describe(lastValue)}`, ...(lastError ? [`last error: ${describe(lastError)}`] : [])].join("; ");
-  throw new Error(`Timed out after ${limit} ms waiting for ${label} (${attempts} attempts); ${last}${await collectDetail(detail)}`,
+  const hung = unsettled ? `, ${unsettled} did not settle` : "";
+  throw new Error(`Timed out after ${limit} ms waiting for ${label} (${attempts} attempts${hung}); ${last}${await collectDetail(detail)}`,
     { cause: lastError });
 }
 
 /** Repeats `action` until it completes without throwing and returns its result. */
 export async function retry(action, options = {}) {
-  return (await waitFor(async () => ({ value: await action() }), options)).value;
+  return (await waitFor(async signal => ({ value: await action(signal) }), options)).value;
 }
 
 function exited(child) {
@@ -157,8 +166,19 @@ export async function launchChromium(url, { profilePrefix = "runic-smoke-", time
       if (!value) throw new Error("DevToolsActivePort is incomplete");
       return value;
     }, { label: "the Chromium DevTools port", timeout });
-    const target = await waitFor(async () => (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json())
-      .find(entry => entry.type === "page" && entry.url.startsWith(url)), { label: `the Chromium page for ${url}`, timeout });
+    // A cold Chromium, notably on Windows runners, can accept a DevTools
+    // request and not answer it. Each request is aborted after a few seconds
+    // and retried, so one stalled request does not use the whole budget.
+    let targets;
+    const target = await waitFor(async signal => {
+      if (exited(child)) throw new Error(`Chromium exited: ${child.exitCode ?? child.signalCode}`);
+      targets = await (await fetch(`http://127.0.0.1:${port}/json/list`, { signal })).json();
+      return targets.find(entry => entry.type === "page" && entry.url.startsWith(url));
+    }, {
+      label: `the Chromium page for ${url}`, timeout, attemptTimeout: 5_000,
+      detail: () => `Chromium ${exited(child) ? `exited: ${child.exitCode ?? child.signalCode}` : "is running"}; DevTools port ${port}; ` +
+        `last targets: ${targets ? describe(targets.map(entry => ({ type: entry.type, url: entry.url }))) : "(no reply)"}`,
+    });
     socket = new WebSocket(target.webSocketDebuggerUrl);
     await within(new Promise((resolve, reject) => {
       socket.addEventListener("open", resolve, { once: true });

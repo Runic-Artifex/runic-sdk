@@ -201,11 +201,14 @@ export interface CommandController<TArgs extends readonly unknown[], TResult, TF
  * Creates the framework-neutral command runner behind `useCommand` and
  * `injectCommand`. The command may return a plain value or `undefined`, for
  * example `() => client?.increment()` while the client is still connecting.
+ * It may also return one of several commands' promises, such as
+ * `name => name === "save" ? client.save() : client.discard()`; the result is
+ * then their union and `failure` the union of their declared failures.
  */
-export function createCommandController<TArgs extends readonly unknown[], TResult>(
-  command: (...args: TArgs) => TResult | PromiseLike<TResult>,
-): CommandController<TArgs, Awaited<TResult>, BridgeOutcomeFailure<Awaited<TResult>>> {
-  type TFailure = BridgeOutcomeFailure<Awaited<TResult>>;
+export function createCommandController<TArgs extends readonly unknown[], TReturn>(
+  command: (...args: TArgs) => TReturn,
+): CommandController<TArgs, Awaited<TReturn>, BridgeOutcomeFailure<Awaited<TReturn>>> {
+  type TFailure = BridgeOutcomeFailure<Awaited<TReturn>>;
   const listeners = new Set<() => void>();
   let current: CommandState<TFailure> = { pending: false, error: undefined, failure: undefined };
   let running = 0;
@@ -224,7 +227,7 @@ export function createCommandController<TArgs extends readonly unknown[], TResul
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    async run(...args): Promise<Awaited<TResult> | undefined> {
+    async run(...args): Promise<Awaited<TReturn> | undefined> {
       running++;
       const run = ++latest;
       publish({ pending: true, error: undefined, failure: undefined });
