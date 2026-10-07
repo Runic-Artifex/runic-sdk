@@ -20,6 +20,7 @@ internal static class WebUiApplication
     private static int _showWaitConnection = 1;
     private static int _multiClient;
     private static int _useCookies = 1;
+    private static long _bridgeHandshakeTimeoutTicks = TimeSpan.FromSeconds(DefaultBridgeHandshakeTimeoutSeconds).Ticks;
 
     /// <summary>Gets whether at least one Runic Desktop server is running.</summary>
     public static bool IsRunning
@@ -239,6 +240,16 @@ internal static class WebUiApplication
     internal static bool ShowWaitConnection => Volatile.Read(ref _showWaitConnection) != 0;
 
     internal static int BrowserLaunchAttempts => Volatile.Read(ref _browserLaunchAttempts);
+
+    // How long an accepted Bridge WebSocket may stay open without a token check
+    // before the server closes it and the page's bridge reconnects (#35).
+    internal const int DefaultBridgeHandshakeTimeoutSeconds = 10;
+
+    internal static TimeSpan BridgeHandshakeTimeout
+    {
+        get => TimeSpan.FromTicks(Volatile.Read(ref _bridgeHandshakeTimeoutTicks));
+        set => Volatile.Write(ref _bridgeHandshakeTimeoutTicks, value.Ticks);
+    }
 
     internal static TimeSpan ConnectionTimeout
     {

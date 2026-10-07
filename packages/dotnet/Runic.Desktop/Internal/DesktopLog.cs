@@ -30,6 +30,10 @@ internal static partial class DesktopLog
         Message = "The browser was still running but had requested nothing after {TimeoutSeconds} seconds on launch attempt {Attempt} of {Attempts}; relaunching it.")]
     internal static partial void BrowserLaunchStalled(ILogger logger, int attempt, int attempts, double timeoutSeconds);
 
+    [LoggerMessage(EventId = 3005, EventName = "BridgeHandshakeExpired", Level = LogLevel.Warning,
+        Message = "Bridge WebSocket {ConnectionId} sent no token check in {SilentSeconds} seconds and was closed ({Reason}); the page reconnects.")]
+    internal static partial void BridgeHandshakeExpired(ILogger logger, ulong connectionId, double silentSeconds, string reason);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

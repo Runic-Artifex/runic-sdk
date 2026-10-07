@@ -149,7 +149,10 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         // with a fresh profile after 30 seconds (the default two attempts). The
         // whole test stays inside CI's two-minute hang timeout, so a timeout
         // still reports its stage and attempt. Relaunches are written to the
-        // test output.
+        // test output. Only a launch that requested nothing is relaunched, so a
+        // launch whose page loaded gets these 30 seconds once. Within them, a Bridge
+        // WebSocket that sends no token check is closed after 10 seconds and the page
+        // reconnects; that is written to the test output too.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));
         WebUiApplication.SetConnectionTimeout(30);
         WebUiApplication.SetBrowserLaunchAttempts(2);
@@ -225,7 +228,8 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    // Records each browser-launch-stalled warning and writes it to the test output.
+    // Records each browser-launch-stalled and bridge-handshake-expired warning and
+    // writes it to the test output.
     private sealed class StalledLaunchListener(Xunit.Abstractions.ITestOutputHelper output) : TraceListener
     {
         public ConcurrentQueue<string> Messages { get; } = new();
@@ -234,7 +238,8 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
 
         public override void WriteLine(string? message)
         {
-            if (message?.StartsWith(WebUiWindow.BrowserLaunchStalledCode, StringComparison.Ordinal) == true)
+            if (message?.StartsWith(WebUiWindow.BrowserLaunchStalledCode, StringComparison.Ordinal) == true
+                || message?.StartsWith(WebUiWindow.BridgeHandshakeExpiredCode, StringComparison.Ordinal) == true)
             {
                 Messages.Enqueue(message);
                 output.WriteLine(message);
