@@ -2,12 +2,13 @@ import { BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOper
   type CollectionViewportController, type ViewClient } from "@runic-artifex/views";
 import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
-import { installMockBridge, type MockBridge } from "@runic-artifex/views/mock";
+import { installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
 import { Cause, Effect, Exit, Fiber, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from "vitest";
 import {
-  command, connect, followViewport, operation, states, ViewCommandFailed, ViewDisconnected, type ViewportRange,
+  catchCase, command, connect, followViewport, operation, states, ViewCommandFailed, ViewDisconnected, ViewDomainFailure,
+  type ViewError, type ViewOperationError, type ViewportRange,
 } from "../dist/index.js";
 
 const contract = "Tests.CounterViewModel:fingerprint";
@@ -353,5 +354,70 @@ describe("operation types", () => {
       return [feed, save];
     };
     expect(typeof programs).toBe("function");
+  });
+});
+
+describe("declared failures", () => {
+  type SaveFailure = { readonly $case: "titleRequired" } | { readonly $case: "titleTaken"; readonly existingTitle: string };
+  const decodeFailure = (wire: unknown) => wire as SaveFailure;
+
+  test("command fails with ViewDomainFailure and succeeds with the outcome's value", async () => {
+    bridge.view("note", {
+      state: { count: 0, title: "" },
+      routes: {
+        Save: state => {
+          if ((state.title as string).length === 0) throw mockFailure({ $case: "titleRequired" });
+          return { count: 1 };
+        },
+      },
+    });
+    const view = await connectView<CounterState>({ contract, route: "note", mount: false, hydrate: (wire: CounterState) => wire });
+    const save = () => view.commandOutcome("noteSave", decodeFailure);
+    const failing = command(save);
+    expectTypeOf(failing).toEqualTypeOf<Effect.Effect<CounterState, ViewError | ViewDomainFailure<SaveFailure>>>();
+    expectTypeOf(command(() => view.command("noteSave"))).toEqualTypeOf<Effect.Effect<CounterState, ViewError>>();
+    const failure = await Effect.runPromise(Effect.flip(failing));
+    expect(failure).toBeInstanceOf(ViewDomainFailure);
+    expect(failure).toMatchObject({ _tag: "ViewDomainFailure", failure: { $case: "titleRequired" }, requestId: undefined });
+    await Effect.runPromise(command(() => view.invoke("noteSetTitle", "Groceries")));
+    expect(await Effect.runPromise(command(save))).toMatchObject({ count: 1, title: "Groceries" });
+    view.dispose();
+  });
+
+  test("operation fails with ViewDomainFailure; a failure that was not delivered is ViewOperationFailed", async () => {
+    const client = await connectCounter();
+    const view = await connectView<CounterState>({ contract, route: "counter", mount: false, hydrate: (wire: CounterState) => wire,
+      operations: bridgeOperations });
+    const start = (requestId: string) => view.startOperation<void, SaveFailure>("Run", requestId, () => requestId, () => undefined, false, decodeFailure);
+    const declared = operation(start, { requestId: "declared" });
+    expectTypeOf(declared).toEqualTypeOf<Effect.Effect<void, ViewOperationError | ViewDomainFailure<SaveFailure>>>();
+    expectTypeOf(operation(() => client.startRun())).toEqualTypeOf<Effect.Effect<number, ViewOperationError>>();
+    const failing = Effect.runPromise(Effect.flip(declared));
+    await until(() => waits.length === 1);
+    waits[0]!.resolve(status("declared", "domain-failed", { failure: { $case: "titleTaken", existingTitle: "Todo" } }));
+    expect(await failing).toMatchObject({ _tag: "ViewDomainFailure", requestId: "declared", failure: { $case: "titleTaken", existingTitle: "Todo" } });
+
+    const dropped = Effect.runPromise(Effect.flip(operation(start, { requestId: "dropped" })));
+    await until(() => waits.length === 2);
+    waits[1]!.resolve(status("dropped", "domain-failed", { delivery: { kind: "result-too-large", message: "Too large." } }));
+    expect(await dropped).toMatchObject({ _tag: "ViewOperationFailed", message: "Too large." });
+    expect(cancels()).toEqual([]);
+    view.dispose();
+  });
+
+  test("catchCase handles every case and passes other errors through", async () => {
+    const failWith = (failure: SaveFailure) =>
+      Effect.fail(new ViewDomainFailure({ message: "declared", failure, requestId: undefined }) as ViewDomainFailure<SaveFailure>);
+    const handle = (effect: Effect.Effect<number, ViewDomainFailure<SaveFailure> | ViewDisconnected>) => catchCase(effect, {
+      titleRequired: () => Effect.succeed("needs a title"),
+      titleTaken: taken => Effect.fail(`taken: ${taken.existingTitle}`),
+    });
+    expectTypeOf(handle(Effect.succeed(1))).toEqualTypeOf<Effect.Effect<number | string, ViewDisconnected | string>>();
+    expect(await Effect.runPromise(handle(failWith({ $case: "titleRequired" })))).toBe("needs a title");
+    expect(await Effect.runPromise(Effect.flip(handle(failWith({ $case: "titleTaken", existingTitle: "Todo" }))))).toBe("taken: Todo");
+    const disconnected = new ViewDisconnected({ message: "gone", route: undefined, cause: new BridgeError("disconnected", "gone") });
+    expect(await Effect.runPromise(Effect.flip(handle(Effect.fail(disconnected))))).toBe(disconnected);
+    // @ts-expect-error every case needs a handler
+    catchCase(failWith({ $case: "titleRequired" }), { titleRequired: () => Effect.succeed(0) });
   });
 });

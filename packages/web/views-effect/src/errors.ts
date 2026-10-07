@@ -66,6 +66,24 @@ export class ViewOperationTimedOut extends Data.TaggedError("ViewOperationTimedO
   readonly cancellation: BridgeOperationCancelKind | "unobserved";
 }> {}
 
+/**
+ * The declared failure of a command or operation (`[RunicFailure]` in .NET):
+ * `failure` is the value the generated client decoded, such as
+ * `{ $case: "titleRequired" }`. Handle it with `Effect.catchTag("ViewDomainFailure", ...)`
+ * or, for a `$case` union, with {@link catchCase}.
+ */
+export class ViewDomainFailure<F = unknown> extends Data.TaggedError("ViewDomainFailure")<{
+  readonly message: string;
+  readonly failure: unknown;
+  /** The operation's request id, for a failure that ended an operation. */
+  readonly requestId: string | undefined;
+}> {
+  declare readonly failure: F;
+}
+
+/** The {@link ViewDomainFailure} a command or operation with failure type `F` adds; nothing when `F` is `never`. */
+export type ViewDomainFailureOf<F> = [F] extends [never] ? never : ViewDomainFailure<F>;
+
 /** The failures of an operation: starting it, observing it, or its terminal status. */
 export type ViewOperationError =
   | ViewError | ViewOperationUncertain | ViewOperationFailed | ViewOperationCancelled | ViewOperationTimedOut;

@@ -1,5 +1,6 @@
-import type {
-  BridgeOperation, BridgeOperationStatusOf, CollectionViewport, CollectionViewportController, ViewClient, ViewConnector,
+import {
+  isBridgeOutcome, type BridgeOperation, type BridgeOperationStatusOf, type BridgeOutcome, type BridgeOutcomeFailure,
+  type CollectionViewport, type CollectionViewportController, type ViewClient, type ViewConnector,
 } from "@runic-artifex/views";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -9,8 +10,8 @@ import type * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
-  bridgeFailure, ViewOperationCancelled, ViewOperationFailed, ViewOperationTimedOut, ViewOperationUncertain,
-  type ViewError, type ViewOperationError,
+  bridgeFailure, ViewDomainFailure, ViewOperationCancelled, ViewOperationFailed, ViewOperationTimedOut, ViewOperationUncertain,
+  type ViewDomainFailureOf, type ViewError, type ViewOperationError,
 } from "./errors.js";
 
 function attempt<A, E>(run: () => PromiseLike<A>, map: (cause: unknown) => E | undefined): Effect.Effect<A, E> {
@@ -60,20 +61,33 @@ export function states<S>(client: ViewClient<S>, options: StatesOptions = {}): S
 }
 
 /**
+ * The success value of a command: for one that declares a failure, the value of
+ * its `BridgeOutcome`, otherwise what the client method resolves to.
+ */
+export type CommandValue<A> = A extends BridgeOutcome<unknown, unknown>
+  ? A extends { readonly ok: true; readonly value: infer V } ? V : never
+  : A;
+
+/**
  * Runs a command, setter, query or checked write. Bridge failures become tagged
  * errors; anything else, such as a `RangeError` for an invalid argument, is a defect.
+ * A command that declares a failure succeeds with its value and fails with
+ * `ViewDomainFailure` for its declared failure.
  * Interruption abandons the reply only: .NET keeps running a command it received.
  *
  * ```ts
  * yield* command(() => editor.save());
  * ```
  */
-export function command<A>(run: () => PromiseLike<A>): Effect.Effect<A, ViewError> {
-  return attempt(run, viewFailure);
+export function command<A>(run: () => PromiseLike<A>):
+  Effect.Effect<CommandValue<A>, ViewError | ViewDomainFailureOf<BridgeOutcomeFailure<A>>> {
+  return attempt(run, viewFailure).pipe(Effect.flatMap(value => {
+    if (!isBridgeOutcome(value)) return Effect.succeed(value as CommandValue<A>);
+    return value.ok ? Effect.succeed(value.value as CommandValue<A>)
+      : Effect.fail(new ViewDomainFailure({ message: "The command failed with its declared failure.", failure: value.failure,
+        requestId: undefined }) as ViewDomainFailureOf<BridgeOutcomeFailure<A>>);
+  }));
 }
-
-/** The success value of an operation: its result, or `void` for a command without one. */
-export type OperationResult<T> = [T] extends [never] ? void : T;
 
 export interface OperationOptions {
   /**
@@ -128,37 +142,39 @@ interface Started {
  * });
  * ```
  */
-export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T, unknown>>, options: RetryOperationOptions):
-  Effect.Effect<OperationResult<T>, ViewOperationError>;
-export function operation<T>(start: () => PromiseLike<BridgeOperation<T, unknown>>, options?: OperationOptions):
-  Effect.Effect<OperationResult<T>, ViewOperationError>;
-export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T, unknown>>,
-  options: OperationOptions & Partial<RetryOperationOptions> = {}): Effect.Effect<OperationResult<T>, ViewOperationError> {
+export function operation<T, F = never>(start: (requestId: string) => PromiseLike<BridgeOperation<T, F>>, options: RetryOperationOptions):
+  Effect.Effect<T, ViewOperationError | ViewDomainFailureOf<F>>;
+export function operation<T, F = never>(start: () => PromiseLike<BridgeOperation<T, F>>, options?: OperationOptions):
+  Effect.Effect<T, ViewOperationError | ViewDomainFailureOf<F>>;
+export function operation<T, F>(start: (requestId: string) => PromiseLike<BridgeOperation<T, F>>,
+  options: OperationOptions & Partial<RetryOperationOptions> = {}): Effect.Effect<T, ViewOperationError | ViewDomainFailureOf<F>> {
   return Effect.suspend(() => {
     const started: Started = { handle: undefined, settled: true };
-    const once = runOperation(() => start(options.requestId ?? ""), options.timeout, started);
+    const once = runOperation<T, F>(() => start(options.requestId ?? ""), options.timeout, started);
     const limit = options.while;
     const attempts = options.requestId === undefined || options.retry === undefined ? once
-      : Effect.retry(once, { schedule: options.retry, while: error => transient(error) && (limit === undefined || limit(error)) });
+      // A declared failure is a terminal outcome, never transient, so it is not retried.
+      : Effect.retry(once as Effect.Effect<T, ViewOperationError>,
+        { schedule: options.retry, while: error => transient(error) && (limit === undefined || limit(error)) }) as typeof once;
     return attempts.pipe(Effect.onExit(exit =>
       Exit.isSuccess(exit) || started.handle === undefined || started.settled ? Effect.void : Effect.asVoid(cancel(started.handle))));
   });
 }
 
-function runOperation<T>(start: () => PromiseLike<BridgeOperation<T, unknown>>, timeout: Duration.Input | undefined, started: Started):
-  Effect.Effect<OperationResult<T>, ViewOperationError> {
+function runOperation<T, F>(start: () => PromiseLike<BridgeOperation<T, F>>, timeout: Duration.Input | undefined, started: Started):
+  Effect.Effect<T, ViewOperationError | ViewDomainFailureOf<F>> {
   // The start is uninterruptible so its handle is always recorded for cancellation.
   return Effect.uninterruptibleMask(restore => attempt(start, bridgeFailure).pipe(
-    Effect.tap(handle => Effect.sync(() => { started.handle = handle; started.settled = false; })),
+    Effect.tap(handle => Effect.sync(() => { started.handle = handle as BridgeOperation<unknown, unknown>; started.settled = false; })),
     Effect.flatMap(handle => restore(waitFor(handle, timeout, started))),
   ));
 }
 
-function waitFor<T>(handle: BridgeOperation<T, unknown>, timeout: Duration.Input | undefined, started: Started):
-  Effect.Effect<OperationResult<T>, ViewOperationError> {
+function waitFor<T, F>(handle: BridgeOperation<T, F>, timeout: Duration.Input | undefined, started: Started):
+  Effect.Effect<T, ViewOperationError | ViewDomainFailureOf<F>> {
   const completed = attempt(() => handle.completion, bridgeFailure).pipe(
     Effect.tap(() => Effect.sync(() => { started.settled = true; })),
-    Effect.flatMap(status => fromStatus<T>(status)),
+    Effect.flatMap(status => fromStatus<T, F>(status)),
   );
   if (timeout === undefined) return completed;
   const duration = Duration.fromInputUnsafe(timeout);
@@ -167,7 +183,7 @@ function waitFor<T>(handle: BridgeOperation<T, unknown>, timeout: Duration.Input
     orElse: () => Effect.suspend(() => {
       // Cancelled here, so the caller's exit does not cancel it again.
       started.settled = true;
-      return cancel(handle);
+      return cancel(handle as BridgeOperation<unknown, unknown>);
     }).pipe(Effect.flatMap(cancellation => {
       const timedOut = Effect.fail(new ViewOperationTimedOut({
         message: `The operation ${handle.requestId} did not complete within ${Duration.format(duration)}; cancellation: ${cancellation}.`,
@@ -176,7 +192,7 @@ function waitFor<T>(handle: BridgeOperation<T, unknown>, timeout: Duration.Input
       // `not-running`: it finished just before the deadline, so report how.
       if (cancellation !== "not-running") return timedOut;
       return Effect.tryPromise({ try: () => handle.status(), catch: cause => cause }).pipe(
-        Effect.matchEffect({ onFailure: () => timedOut, onSuccess: status => status.kind === "running" ? timedOut : fromStatus<T>(status) }));
+        Effect.matchEffect({ onFailure: () => timedOut, onSuccess: status => status.kind === "running" ? timedOut : fromStatus<T, F>(status) }));
     })),
   }));
 }
@@ -190,25 +206,28 @@ function cancel(handle: BridgeOperation<unknown, unknown>) {
 
 // Generic code reads the full status union; the public BridgeOperationStatus
 // of an operation without a declared failure is one of its cases.
-function fromStatus<T>(observed: unknown): Effect.Effect<OperationResult<T>, ViewOperationError> {
-  const status = observed as BridgeOperationStatusOf<T, unknown>;
+function fromStatus<T, F>(observed: unknown): Effect.Effect<T, ViewOperationError | ViewDomainFailureOf<F>> {
+  const status = observed as BridgeOperationStatusOf<T, F>;
   const { requestId } = status;
   switch (status.kind) {
     case "succeeded":
       if (status.delivery !== undefined)
         return Effect.fail(new ViewOperationFailed({ message: status.delivery.message, requestId, status, detail: undefined }));
-      return Effect.succeed(status.result as OperationResult<T>);
+      return Effect.succeed(status.result as T);
     case "failed":
       return Effect.fail(new ViewOperationFailed({
         message: status.error?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: status.error?.detail,
       }));
-    // An operation that declares a failure type ends domain-failed. Until this
-    // adapter has its own tagged error for it, it fails as ViewOperationFailed,
-    // whose status carries the declared failure.
+    // The declared failure. One the window could not retain arrives with a
+    // delivery instead: the command failed as declared, but the value is lost.
     case "domain-failed":
-      return Effect.fail(new ViewOperationFailed({
-        message: status.delivery?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: undefined,
-      }));
+      if (status.failure === undefined)
+        return Effect.fail(new ViewOperationFailed({
+          message: status.delivery?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: undefined,
+        }));
+      return Effect.fail(new ViewDomainFailure({
+        message: `The operation ${requestId} failed with its declared failure.`, failure: status.failure, requestId,
+      }) as ViewDomainFailureOf<F>);
     case "cancelled":
       return Effect.fail(new ViewOperationCancelled({ message: `The operation ${requestId} was cancelled.`, requestId, status }));
     case "timedOut":

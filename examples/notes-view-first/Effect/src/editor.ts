@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { EditorClient, EditorState, SaveFailure } from "../../Frontend/src/generated/editor.js";
+import type { EditorClient, EditorState } from "../../Frontend/src/generated/editor.js";
 import { describeSaveFailure } from "../../Frontend/src/save-failure.js";
 
 // The Effect variant of Frontend/src/editor.ts. The rest of the page is the
@@ -45,11 +45,8 @@ export function mountEditor(host: HTMLElement, editor: EditorClient): () => void
     while: () => active,
     timeout: "10 seconds",
   }))).pipe(Effect.tapError(failure => Effect.sync(() => showError(
-    // Interim until views-effect has its own tag for a declared failure: Save's
-    // domain-failed status arrives as ViewOperationFailed with the failure.
-    failure._tag === "ViewOperationFailed" && failure.status.kind === "domain-failed" && failure.status.failure !== undefined
-      ? { message: describeSaveFailure(failure.status.failure as SaveFailure) }
-      : failure)))));
+    // Save declares SaveFailure, which arrives as ViewDomainFailure<SaveFailure>.
+    failure._tag === "ViewDomainFailure" ? { message: describeSaveFailure(failure.failure) } : failure)))));
   const stopSaving = saving.subscribe(() => {
     save.disabled = !canSave || saving.current.pending;
     if (saving.current.status === "success") showError(undefined);
