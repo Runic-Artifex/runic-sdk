@@ -101,14 +101,12 @@ public sealed record DesktopSurfaceOptions
     /// <summary>Gets the optional single-segment listener path; an opaque path is generated when omitted.</summary>
     public string? Path { get; init; }
 
-    /// <summary>Gets initial HTML, a file/folder path, an external URL, or an empty local-root entry.</summary>
-    public string Content { get; init; } = string.Empty;
-
-    /// <summary>Gets the local content root.</summary>
-    public string RootFolder { get; init; } = Environment.CurrentDirectory;
-
-    /// <summary>Gets an optional request-scoped content resolver.</summary>
-    public ContentHandler? ContentHandler { get; init; }
+    /// <summary>
+    /// Gets what the surface serves: a local <see cref="DesktopContent.Directory"/>, an <see cref="DesktopContent.Html"/>
+    /// document, an <see cref="DesktopContent.ExternalUrl"/>, or a request <see cref="DesktopContent.Handler"/>.
+    /// </summary>
+    /// <remarks>Defaults to the current directory with index discovery.</remarks>
+    public DesktopContent Content { get; init; } = new DesktopContent.Directory(Environment.CurrentDirectory);
 
     /// <summary>Gets a surface-specific security policy, or the host default when omitted.</summary>
     public DesktopSecurityPolicy? Security { get; init; }

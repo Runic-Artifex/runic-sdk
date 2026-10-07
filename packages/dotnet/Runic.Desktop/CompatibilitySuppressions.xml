@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurfaceOptions.get_Content</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurfaceOptions.get_ContentHandler</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurfaceOptions.get_RootFolder</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurfaceOptions.set_ContentHandler(Runic.Desktop.ContentHandler)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Desktop.DesktopSurfaceOptions.set_RootFolder(System.String)</Target>
+    <Left>lib/net10.0/Runic.Desktop.dll</Left>
+    <Right>lib/net10.0/Runic.Desktop.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

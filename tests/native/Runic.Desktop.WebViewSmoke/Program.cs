@@ -50,7 +50,7 @@ static async Task RunAsyncSmoke()
     while (SmokeSoak.NextCycle())
     {
     var closeGuard = new SmokeCloseGuard();
-    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = FirstPage() }))
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(FirstPage()) }))
     await using (var window = await surface.OpenWindowAsync(FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync }))
     {
         await ExerciseFirstWindowAsync(surface, window);
@@ -63,7 +63,7 @@ static async Task RunAsyncSmoke()
 
     await GtkWidgetLifetime.AssertReleasedAsync();
 
-    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = RestartedPage() }))
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(RestartedPage()) }))
     await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions
     {
         Browser = BrowserKind.Embedded,
@@ -91,7 +91,7 @@ static async Task RunWindowsUiAutomationSmokeAsync()
     await using var host = await DesktopHost.StartAsync(CreateHostOptions());
     await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
     {
-        Content =
+        Content = new DesktopContent.Html(
             """
             <!doctype html><html><head><meta charset="utf-8"><script src="webui.js"></script>
             <title>Runic Desktop UI Automation</title></head><body>
@@ -130,7 +130,7 @@ static async Task RunWindowsUiAutomationSmokeAsync()
               }
             });
             </script></body></html>
-            """,
+            """),
     });
     await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
     {
@@ -243,7 +243,7 @@ static void RunMacOsWindow(
     DesktopWindowOptions options,
     Func<DesktopSurface, DesktopWindow, Task> exercise)
 {
-    var surface = host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = content })
+    var surface = host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) })
         .AsTask().GetAwaiter().GetResult();
     DesktopWindow? window = null;
     try

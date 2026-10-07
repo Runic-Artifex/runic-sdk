@@ -17,10 +17,10 @@ await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
     Path = "stress",
-    ContentHandler = (request, _) => ValueTask.FromResult<ContentResponse?>(
+    Content = new DesktopContent.Handler((request, _) => ValueTask.FromResult<ContentResponse?>(
         request.Path == "/payload"
             ? new ContentResponse(payload, "application/octet-stream")
-            : null),
+            : null)),
 });
 
 Write(new

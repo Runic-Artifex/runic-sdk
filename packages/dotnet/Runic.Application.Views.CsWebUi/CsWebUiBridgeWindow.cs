@@ -251,6 +251,11 @@ public static class CsWebUiBridgeWindowExtensions
     /// Creates the application Window in a new scope before attaching its
     /// generated ViewModel Bridge. The Window owns the host adapter lifetime.
     /// </summary>
+    /// <exception cref="CsWebUiConfigurationException">
+    /// No generated Bridge is registered for <typeparamref name="TViewModel"/>
+    /// (<see cref="CsWebUiConfigurationException.BridgeNotRegisteredCode"/>). The check runs before the native
+    /// window is created.
+    /// </exception>
     public static TWindow OpenWindow<TWindow, TViewModel>(this IServiceProvider services,
         Func<CsWebUiBridgeWindow<TViewModel>, TWindow> createWindow)
         where TWindow : RunicWindow<TViewModel>, IAsyncDisposable
@@ -258,6 +263,9 @@ public static class CsWebUiBridgeWindowExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(createWindow);
+        // Fail before a scope or native window exists, naming the missing registration.
+        if (IsBridgeRegistered<TViewModel>(services) == false)
+            throw BridgeNotRegistered<TViewModel>(services);
 
         var scope = services.CreateScope();
         WebUiWindow? window = null;
@@ -268,9 +276,15 @@ public static class CsWebUiBridgeWindowExtensions
         TWindow? applicationWindow = null;
         try
         {
-            var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
+            // The Bridge factories come first, so a missing Bridge constructs no ViewModel.
             var attachWithContent = scope.ServiceProvider.GetService<
                 Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>>();
+            // Containers without IServiceProviderIsService are checked here, before the ViewModel and native window.
+            var attach = attachWithContent is null
+                ? scope.ServiceProvider.GetService<Func<IBridgeTransport, TViewModel, IDisposable>>()
+                    ?? throw BridgeNotRegistered<TViewModel>(services)
+                : null;
+            var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
             window = new WebUiWindow();
             transport = window.CreateBridgeSession();
             content = new WindowContentSession(transport,
@@ -292,8 +306,7 @@ public static class CsWebUiBridgeWindowExtensions
                 throw new InvalidOperationException("The application Window must use its scoped ViewModel as DataContext.");
             var attachment = attachWithContent is not null
                 ? attachWithContent(transport, content, viewModel)
-                : scope.ServiceProvider.GetRequiredService<
-                    Func<IBridgeTransport, TViewModel, IDisposable>>()(transport, viewModel);
+                : attach!(transport, viewModel);
             try { host.Attach(attachment); }
             catch
             {
@@ -334,5 +347,57 @@ public static class CsWebUiBridgeWindowExtensions
             }
             throw;
         }
+    }
+
+    /// <summary>
+    /// Checks at startup, before any window opens, that <paramref name="services"/> can open a Window for
+    /// <typeparamref name="TViewModel"/>: its generated Bridge must be registered.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <c>ValidateDesktopWindow</c> in <c>Runic.Application.Desktop</c>, which returns a
+    /// <c>DesktopValidationResult</c>, this method returns nothing and throws on the first failure: the Bridge
+    /// registration is the only check, and it always fails the Window.
+    /// The check asks the container through <see cref="IServiceProviderIsService"/> and constructs nothing. A
+    /// container without that service is not checked here; <see cref="OpenWindow{TWindow, TViewModel}"/> still
+    /// reports a missing Bridge before it creates the native window. A failure is logged through the provider's
+    /// <see cref="ILoggerFactory"/> (event 1050).
+    /// </remarks>
+    /// <exception cref="CsWebUiConfigurationException">
+    /// No generated Bridge is registered (<see cref="CsWebUiConfigurationException.BridgeNotRegisteredCode"/>).
+    /// </exception>
+    public static void ValidateWindow<TViewModel>(this IServiceProvider services)
+        where TViewModel : class
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        if (IsBridgeRegistered<TViewModel>(services) == false)
+            throw BridgeNotRegistered<TViewModel>(services);
+    }
+
+    // Null when the container cannot answer without constructing services.
+    private static bool? IsBridgeRegistered<TViewModel>(IServiceProvider services)
+        where TViewModel : class
+    {
+        if (services.GetService(typeof(IServiceProviderIsService)) is not IServiceProviderIsService registered)
+            return null;
+        return registered.IsService(typeof(Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>)) ||
+            registered.IsService(typeof(Func<IBridgeTransport, TViewModel, IDisposable>));
+    }
+
+    private static CsWebUiConfigurationException BridgeNotRegistered<TViewModel>(IServiceProvider services)
+        where TViewModel : class
+    {
+        var error = new CsWebUiConfigurationException(
+            CsWebUiConfigurationException.BridgeNotRegisteredCode,
+            $"No generated Bridge is registered for {typeof(TViewModel).FullName ?? typeof(TViewModel).Name}.",
+            "Call services.AddRunicViews() (or AddRunicBridges()) from the generated " +
+                "<Project>.RunicBridgeComposition class. If it is missing or has no Bridge for this ViewModel, " +
+                "check that the project references Runic.Application.CsWebUi and that the ViewModel is a public, " +
+                "top-level class implementing INotifyPropertyChanged.");
+        if (services.GetService(typeof(ILoggerFactory)) is ILoggerFactory loggers)
+        {
+            CsWebUiLog.RegistrationMissing(loggers.CreateLogger(RunicViewsTelemetry.LogCategory),
+                error.Code, error.DiagnosticMessage, error.Remediation);
+        }
+        return error;
     }
 }

@@ -137,8 +137,7 @@ internal static class NativePlatformSmoke
             await using var surface = await host.CreateSurfaceAsync(new()
             {
                 Path = "platform-smoke",
-                RootFolder = root,
-                Content = "index.html",
+                Content = new DesktopContent.Directory(root, "index.html"),
             }, deadline.Token);
             await using var window = await surface.OpenWindowAsync(new()
             {

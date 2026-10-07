@@ -355,6 +355,7 @@ output accordingly. The message properties are listed per event.
 | 1033 | `ModelContextReleaseFailed` | Error | Releasing a model context fails in the background. | `ErrorType` |
 | 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
+| 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
@@ -366,7 +367,7 @@ output accordingly. The message properties are listed per event.
 `Route` the Bridge route (a content presentation's route is per instance, such
 as `content12`).
 
-Events 1000-1021 use the category `Runic.Application.Views`
+Events 1000-1021 and 1050 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
 `RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
 `WindowContentSession` with a logger factory created it, and otherwise the

@@ -18,8 +18,7 @@ await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
 });
 var surfaceOptions = new DesktopSurfaceOptions
 {
-    RootFolder = Path.Combine(AppContext.BaseDirectory, "www"),
-    Content = "index.html",
+    Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html"),
 };
 
 if (serveOnly)

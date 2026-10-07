@@ -165,10 +165,17 @@ public sealed class DesktopHost : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var configured = options ?? new DesktopSurfaceOptions();
-        var rootFolder = Path.GetFullPath(configured.RootFolder);
-        if (!Directory.Exists(rootFolder))
+        var content = configured.Content ?? throw new ArgumentException(
+            "The surface content is required.", nameof(options));
+        // Only directory content serves local files.
+        string? rootFolder = null;
+        if (content is DesktopContent.Directory directory)
         {
-            throw new DirectoryNotFoundException($"The Desktop content root does not exist: {rootFolder}");
+            rootFolder = Path.GetFullPath(directory.Root);
+            if (!Directory.Exists(rootFolder))
+            {
+                throw new DirectoryNotFoundException($"The Desktop content root does not exist: {rootFolder}");
+            }
         }
 
         var id = Guid.NewGuid();
@@ -201,7 +208,7 @@ public sealed class DesktopHost : IAsyncDisposable
 
         try
         {
-            if (configured.ContentHandler is { } handler)
+            if (content is DesktopContent.Handler { Resolve: var handler })
             {
                 engine.SetRequestHandler(async (context, requestPath, token) =>
                 {
@@ -220,7 +227,7 @@ public sealed class DesktopHost : IAsyncDisposable
                     return response?.ToCompatibilityContent();
                 });
             }
-            await engine.StartServerAsync(configured.Content, cancellationToken).ConfigureAwait(false);
+            await engine.StartServerAsync(content, cancellationToken).ConfigureAwait(false);
             return surface;
         }
         catch

@@ -25,7 +25,7 @@ var content = """
     """;
 
 await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } });
-await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = content });
+await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) });
 using var multiply = surface.RegisterCapability(
     "multiply",
     static (invocation, _) => ValueTask.FromResult<PresentationResult>(

@@ -32,3 +32,74 @@ Runic.Desktop.DesktopValidationResult.Warnings.get -> System.Collections.Generic
 Runic.Desktop.IDesktopWindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
 static Runic.Desktop.DesktopValidationResult.operator !=(Runic.Desktop.DesktopValidationResult? left, Runic.Desktop.DesktopValidationResult? right) -> bool
 static Runic.Desktop.DesktopValidationResult.operator ==(Runic.Desktop.DesktopValidationResult? left, Runic.Desktop.DesktopValidationResult? right) -> bool
+abstract Runic.Desktop.DesktopContent.<Clone>$() -> Runic.Desktop.DesktopContent!
+override Runic.Desktop.DesktopContent.Directory.<Clone>$() -> Runic.Desktop.DesktopContent.Directory!
+override Runic.Desktop.DesktopContent.Directory.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopContent.Directory.GetHashCode() -> int
+override Runic.Desktop.DesktopContent.Directory.ToString() -> string!
+override Runic.Desktop.DesktopContent.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopContent.ExternalUrl.<Clone>$() -> Runic.Desktop.DesktopContent.ExternalUrl!
+override Runic.Desktop.DesktopContent.ExternalUrl.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopContent.ExternalUrl.GetHashCode() -> int
+override Runic.Desktop.DesktopContent.ExternalUrl.ToString() -> string!
+override Runic.Desktop.DesktopContent.GetHashCode() -> int
+override Runic.Desktop.DesktopContent.Handler.<Clone>$() -> Runic.Desktop.DesktopContent.Handler!
+override Runic.Desktop.DesktopContent.Handler.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopContent.Handler.GetHashCode() -> int
+override Runic.Desktop.DesktopContent.Handler.ToString() -> string!
+override Runic.Desktop.DesktopContent.Html.<Clone>$() -> Runic.Desktop.DesktopContent.Html!
+override Runic.Desktop.DesktopContent.Html.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopContent.Html.GetHashCode() -> int
+override Runic.Desktop.DesktopContent.Html.ToString() -> string!
+override Runic.Desktop.DesktopContent.ToString() -> string!
+override sealed Runic.Desktop.DesktopContent.Directory.Equals(Runic.Desktop.DesktopContent? other) -> bool
+override sealed Runic.Desktop.DesktopContent.ExternalUrl.Equals(Runic.Desktop.DesktopContent? other) -> bool
+override sealed Runic.Desktop.DesktopContent.Handler.Equals(Runic.Desktop.DesktopContent? other) -> bool
+override sealed Runic.Desktop.DesktopContent.Html.Equals(Runic.Desktop.DesktopContent? other) -> bool
+*REMOVED*Runic.Desktop.DesktopSurfaceOptions.Content.get -> string!
+*REMOVED*Runic.Desktop.DesktopSurfaceOptions.ContentHandler.get -> Runic.Desktop.ContentHandler?
+*REMOVED*Runic.Desktop.DesktopSurfaceOptions.ContentHandler.init -> void
+*REMOVED*Runic.Desktop.DesktopSurfaceOptions.RootFolder.get -> string!
+*REMOVED*Runic.Desktop.DesktopSurfaceOptions.RootFolder.init -> void
+Runic.Desktop.DesktopContent
+Runic.Desktop.DesktopContent.DesktopContent(Runic.Desktop.DesktopContent! original) -> void
+Runic.Desktop.DesktopContent.Directory
+Runic.Desktop.DesktopContent.Directory.Deconstruct(out string! Root, out string? Entry) -> void
+Runic.Desktop.DesktopContent.Directory.Directory(string! Root, string? Entry = null) -> void
+Runic.Desktop.DesktopContent.Directory.Entry.get -> string?
+Runic.Desktop.DesktopContent.Directory.Entry.init -> void
+Runic.Desktop.DesktopContent.Directory.Equals(Runic.Desktop.DesktopContent.Directory? other) -> bool
+Runic.Desktop.DesktopContent.Directory.Root.get -> string!
+Runic.Desktop.DesktopContent.Directory.Root.init -> void
+Runic.Desktop.DesktopContent.ExternalUrl
+Runic.Desktop.DesktopContent.ExternalUrl.Deconstruct(out System.Uri! Url) -> void
+Runic.Desktop.DesktopContent.ExternalUrl.Equals(Runic.Desktop.DesktopContent.ExternalUrl? other) -> bool
+Runic.Desktop.DesktopContent.ExternalUrl.ExternalUrl(System.Uri! Url) -> void
+Runic.Desktop.DesktopContent.ExternalUrl.Url.get -> System.Uri!
+Runic.Desktop.DesktopContent.ExternalUrl.Url.init -> void
+Runic.Desktop.DesktopContent.Handler
+Runic.Desktop.DesktopContent.Handler.Deconstruct(out Runic.Desktop.ContentHandler! Resolve) -> void
+Runic.Desktop.DesktopContent.Handler.Equals(Runic.Desktop.DesktopContent.Handler? other) -> bool
+Runic.Desktop.DesktopContent.Handler.Handler(Runic.Desktop.ContentHandler! Resolve) -> void
+Runic.Desktop.DesktopContent.Handler.Resolve.get -> Runic.Desktop.ContentHandler!
+Runic.Desktop.DesktopContent.Handler.Resolve.init -> void
+Runic.Desktop.DesktopContent.Html
+Runic.Desktop.DesktopContent.Html.Deconstruct(out string! Document) -> void
+Runic.Desktop.DesktopContent.Html.Document.get -> string!
+Runic.Desktop.DesktopContent.Html.Document.init -> void
+Runic.Desktop.DesktopContent.Html.Equals(Runic.Desktop.DesktopContent.Html? other) -> bool
+Runic.Desktop.DesktopContent.Html.Html(string! Document) -> void
+Runic.Desktop.DesktopSurfaceOptions.Content.get -> Runic.Desktop.DesktopContent!
+static Runic.Desktop.DesktopContent.Directory.operator !=(Runic.Desktop.DesktopContent.Directory? left, Runic.Desktop.DesktopContent.Directory? right) -> bool
+static Runic.Desktop.DesktopContent.Directory.operator ==(Runic.Desktop.DesktopContent.Directory? left, Runic.Desktop.DesktopContent.Directory? right) -> bool
+static Runic.Desktop.DesktopContent.ExternalUrl.operator !=(Runic.Desktop.DesktopContent.ExternalUrl? left, Runic.Desktop.DesktopContent.ExternalUrl? right) -> bool
+static Runic.Desktop.DesktopContent.ExternalUrl.operator ==(Runic.Desktop.DesktopContent.ExternalUrl? left, Runic.Desktop.DesktopContent.ExternalUrl? right) -> bool
+static Runic.Desktop.DesktopContent.Handler.operator !=(Runic.Desktop.DesktopContent.Handler? left, Runic.Desktop.DesktopContent.Handler? right) -> bool
+static Runic.Desktop.DesktopContent.Handler.operator ==(Runic.Desktop.DesktopContent.Handler? left, Runic.Desktop.DesktopContent.Handler? right) -> bool
+static Runic.Desktop.DesktopContent.Html.operator !=(Runic.Desktop.DesktopContent.Html? left, Runic.Desktop.DesktopContent.Html? right) -> bool
+static Runic.Desktop.DesktopContent.Html.operator ==(Runic.Desktop.DesktopContent.Html? left, Runic.Desktop.DesktopContent.Html? right) -> bool
+static Runic.Desktop.DesktopContent.operator !=(Runic.Desktop.DesktopContent? left, Runic.Desktop.DesktopContent? right) -> bool
+static Runic.Desktop.DesktopContent.operator ==(Runic.Desktop.DesktopContent? left, Runic.Desktop.DesktopContent? right) -> bool
+virtual Runic.Desktop.DesktopContent.EqualityContract.get -> System.Type!
+virtual Runic.Desktop.DesktopContent.Equals(Runic.Desktop.DesktopContent? other) -> bool
+virtual Runic.Desktop.DesktopContent.PrintMembers(System.Text.StringBuilder! builder) -> bool

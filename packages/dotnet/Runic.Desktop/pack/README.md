@@ -36,13 +36,13 @@ await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
 });
 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
 {
-    Content = """
+    Content = new DesktopContent.Html("""
     <!doctype html>
     <html>
     <head><script src="webui.js"></script></head>
     <body><button onclick="greet('Runic').then(alert)">Greet</button></body>
     </html>
-    """,
+    """),
 });
 using var greeting = surface.RegisterCapability(
     "greet",

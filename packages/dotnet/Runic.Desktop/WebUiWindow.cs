@@ -53,7 +53,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     // How far the current presentation got before authentication, for timeout reports.
     private int _connectionProgress;
-    private string _rootFolder;
+    // Null when the content serves no local files.
+    private string? _rootFolder;
     private string? _profileName;
     private string? _profilePath;
     private string? _generatedProfilePath;
@@ -114,7 +115,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 .Replace('+', '-')
                 .Replace('/', '_')
             : string.Empty;
-        _rootFolder = runtimeOptions?.RootFolder ?? WebUiApplication.GetDefaultRootFolder();
+        _rootFolder = runtimeOptions is null ? WebUiApplication.GetDefaultRootFolder() : runtimeOptions.RootFolder;
     }
 
     /// <summary>Gets the local server URL after the window has started.</summary>
@@ -220,10 +221,22 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     public Uri StartServer(string content) => StartServerAsync(content).GetAwaiter().GetResult();
 
     /// <summary>Starts the managed HTTP and WebSocket server without opening a browser.</summary>
-    public async Task<Uri> StartServerAsync(string content, CancellationToken cancellationToken = default)
+    public Task<Uri> StartServerAsync(string content, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        return StartServerCoreAsync(() => ConfigureContent(content), cancellationToken);
+    }
+
+    /// <summary>Starts the managed server for a Desktop surface's typed content.</summary>
+    internal Task<Uri> StartServerAsync(DesktopContent content, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        return StartServerCoreAsync(() => ConfigureContent(content), cancellationToken);
+    }
+
+    private async Task<Uri> StartServerCoreAsync(Action configureContent, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        ArgumentNullException.ThrowIfNull(content);
 
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -239,7 +252,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 _shutdown = new CancellationTokenSource();
             }
 
-            ConfigureContent(content);
+            configureContent();
             var host = _host ?? new PresentationHostCore(new PresentationHostCoreOptions(
                 _requestedPort,
                 _isPublic ? PresentationNetworkExposure.AllInterfaces : PresentationNetworkExposure.Loopback));
@@ -2091,6 +2104,36 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
+    // The surface's root folder is fixed by DesktopHost: the directory for directory content, otherwise none.
+    private void ConfigureContent(DesktopContent content)
+    {
+        _embeddedHtml = null;
+        _entryFile = null;
+        _externalUrl = null;
+        _allowIndexFallback = false;
+        switch (content)
+        {
+            case DesktopContent.Directory { Entry: { } entry }:
+                _entryFile = NormalizeEntryFile(entry);
+                break;
+            case DesktopContent.Directory:
+                _allowIndexFallback = true;
+                break;
+            case DesktopContent.Html html:
+                _embeddedHtml = html.Document;
+                break;
+            case DesktopContent.ExternalUrl external:
+                _externalUrl = external.Url;
+                break;
+            case DesktopContent.Handler:
+                // DesktopHost installs the request handler before the server starts.
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(content), content, "Unknown Desktop content.");
+        }
+    }
+
+    // CS-WebUI compatible content strings for the engine's string API, which only the engine tests use.
     private void ConfigureContent(string content)
     {
         _embeddedHtml = null;
@@ -2129,7 +2172,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var isRooted = Path.IsPathRooted(content);
         var rootedCandidate = isRooted
             ? Path.GetFullPath(content)
-            : Path.GetFullPath(content, Volatile.Read(ref _rootFolder));
+            : Path.GetFullPath(content, Volatile.Read(ref _rootFolder) ?? Environment.CurrentDirectory);
         if (Directory.Exists(rootedCandidate))
         {
             Volatile.Write(ref _rootFolder, rootedCandidate);
@@ -2221,12 +2264,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     private string? ResolveLocalPath(string path)
     {
-        if (path.Contains('\0'))
+        if (Volatile.Read(ref _rootFolder) is not { } configuredRoot || path.Contains('\0'))
         {
             return null;
         }
 
-        var root = Path.GetFullPath(Volatile.Read(ref _rootFolder));
+        var root = Path.GetFullPath(configuredRoot);
         var relative = path.TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
         var candidate = Path.GetFullPath(Path.Combine(root, relative));
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;

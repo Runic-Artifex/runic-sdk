@@ -11,6 +11,20 @@ single-client admission, scoped-root content access, redacted failures, and
 non-cacheable bootstrap content. Additional origins, multiple clients, missing
 browser origins, or non-loopback exposure are explicit immutable options.
 
+`DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
+
+| Case | Serves |
+| --- | --- |
+| `new DesktopContent.Directory(root, entry)` | The files under `root`. The presentation opens `entry`, such as `"index.html"`; without it, a directory request opens its `index.html`. The default is the current directory. |
+| `new DesktopContent.Html(document)` | One HTML document at the surface root. |
+| `new DesktopContent.ExternalUrl(url)` | An external `http` or `https` URL. |
+| `new DesktopContent.Handler(handler)` | Whatever the `ContentHandler` returns; `null` is 404. Wrap `assets.ToDesktopContentHandler()` from `Runic.Assets.Desktop` to serve a packed asset archive. |
+
+Only `Directory` serves local files. The cases validate when constructed: an
+entry must stay inside its root, and an external URL must be absolute `http`
+or `https`. A missing root fails `CreateSurfaceAsync` with
+`DirectoryNotFoundException`.
+
 Content handlers receive request-scoped services and may return fixed or
 request-owned streaming responses. Stream writes are awaited for backpressure;
 requester disconnect, surface close, and host shutdown propagate cancellation

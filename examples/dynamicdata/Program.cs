@@ -23,7 +23,7 @@ await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
     WaitForConnection = !serveOnly,
     Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
 });
-var surfaceOptions = new DesktopSurfaceOptions { RootFolder = Path.Combine(AppContext.BaseDirectory, "www"), Content = "index.html" };
+var surfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") };
 if (serveOnly)
 {
     await using var scope = provider.CreateAsyncScope();

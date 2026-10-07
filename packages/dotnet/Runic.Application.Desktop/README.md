@@ -35,7 +35,7 @@ var windowOptions = new DesktopWindowOptions { Width = 800, Height = 600 };
 provider.ValidateDesktopWindow<MainViewModel>(desktop, windowOptions).ThrowIfInvalid();
 await using var window = await provider.OpenDesktopWindowAsync<MainWindow, MainViewModel>(
     desktop,
-    new DesktopSurfaceOptions { RootFolder = Path.Combine(AppContext.BaseDirectory, "www"), Content = "index.html" },
+    new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") },
     host => new MainWindow(host),
     windowOptions);
 window.Presentation.WaitForClose();
