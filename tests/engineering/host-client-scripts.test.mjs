@@ -141,6 +141,86 @@ test("runic-cswebui.js credits a late admission to the call the timeout released
   expect(sent).toEqual(["first", "second", "third"]);
 });
 
+const lostMessage = "The CS-WebUI connection was lost before the call completed.";
+
+// WebUI never settles calls in flight when its WebSocket closes, so each would
+// wait forever: a command's pending state, an operation start, a long poll.
+test("runic-cswebui.js rejects every call in flight when the connection is lost", async () => {
+  const sent = [];
+  let online = true;
+  let releaseReconnecting;
+  const context = loadCsWebUiBridge({
+    isConnected: () => online,
+    call: name => {
+      sent.push(name);
+      // WebUI holds a call made while it reconnects until the new connection is ready.
+      if (name === "duringReconnect") return new Promise(resolve => { releaseReconnecting = resolve; });
+      return new Promise(() => {});
+    },
+  });
+  const bridge = context.__runicBridge;
+  const outcome = promise => promise.then(value => ({ value }), error => ({ error: error.message }));
+  const inFlight = ["counterIncrement", "counterStartSave", "__runicInteractionWait"].map(name => outcome(bridge.call(name, "{}")));
+  for (let index = 0; index < 3; index++) {
+    await settle();
+    context.__runicBridgeAdmitted();
+  }
+  await settle();
+  expect(sent).toEqual(["counterIncrement", "counterStartSave", "__runicInteractionWait"]);
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
+
+  online = false;
+  expect(await Promise.all(inFlight)).toEqual([{ error: lostMessage }, { error: lostMessage }, { error: lostMessage }]);
+
+  // A call sent after the loss belongs to the next connection.
+  const reconnecting = outcome(bridge.call("duringReconnect"));
+  await settle();
+  online = true;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  releaseReconnecting("answered");
+  expect(await reconnecting).toEqual({ value: "answered" });
+});
+
+test("runic-cswebui.js keeps no settled calls on a healthy connection", async () => {
+  const context = loadCsWebUiBridge({ isConnected: () => true, call: name => Promise.resolve(name) });
+  const replies = await Promise.all(Array.from({ length: 50 }, (_, index) => context.__runicBridge.call(`call${index}`)));
+  expect(replies.length).toBe(50);
+  await settle();
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false, inFlight: 0 });
+});
+
+// A hidden window throttles timers, so the poll can miss a loss for a while.
+test("runic-cswebui.js sends a call made after an unobserved loss on the next connection", async () => {
+  let online = true;
+  let releaseReconnecting;
+  const context = loadCsWebUiBridge({
+    isConnected: () => online,
+    call: name => name === "duringReconnect" ? new Promise(resolve => { releaseReconnecting = resolve; }) : new Promise(() => {}),
+  });
+  const bridge = context.__runicBridge;
+  bridge.onReconnect(() => {});
+  const before = bridge.call("beforeLoss").catch(error => error.message);
+  await settle();
+  context.__runicBridgeAdmitted();
+  online = false;
+  // Sent before the poll runs: the send itself observes the loss.
+  const after = bridge.call("duringReconnect").then(value => value, error => error.message);
+  expect(await before).toBe(lostMessage);
+  online = true;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  releaseReconnecting("answered");
+  expect(await after).toBe("answered");
+});
+
+test("runic-cswebui.js passes replies and failures through unchanged", async () => {
+  const context = loadCsWebUiBridge({
+    isConnected: () => true,
+    call: name => name === "fail" ? Promise.reject(new Error("No binding")) : Promise.resolve(`${name}-reply`),
+  });
+  expect(await context.__runicBridge.call("snapshot")).toBe("snapshot-reply");
+  await expect(context.__runicBridge.call("fail")).rejects.toThrow("No binding");
+});
+
 // WebUI never settles calls in flight when its WebSocket closes, and their
 // admissions cannot arrive over the new connection. A reconnect must not start
 // with late entries that would swallow the admissions of new calls.
@@ -158,18 +238,18 @@ test("runic-cswebui.js forgets pending admissions when the connection is lost", 
   const bridge = context.__runicBridge;
   let reconnects = 0;
   bridge.onReconnect(() => reconnects++);
-  void bridge.call("first");
-  void bridge.call("second");
+  const lostCalls = [bridge.call("first"), bridge.call("second")].map(call => call.catch(error => error.message));
   const offline = bridge.call("offline").catch(error => error.message);
   await new Promise(resolve => setTimeout(resolve, 1_700));
   expect(sent).toEqual(["first", "second"]);
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 1, waiting: true });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 1, waiting: true });
 
   // The lost transition releases the waiting call and drops the late one.
   online = false;
   await new Promise(resolve => setTimeout(resolve, 300));
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   expect(await offline).toBe("WebSocket is not connected");
+  expect(await Promise.all(lostCalls)).toEqual([lostMessage, lostMessage]);
 
   online = true;
   await new Promise(resolve => setTimeout(resolve, 300));
@@ -183,7 +263,7 @@ test("runic-cswebui.js forgets pending admissions when the connection is lost", 
   context.__runicBridgeAdmitted();
   await settle();
   expect(sent).toEqual(["first", "second", "afterReconnect", "next"]);
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: true });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: true });
 });
 
 test("runic-cswebui.js watches the connection while a call awaits admission", async () => {
@@ -193,16 +273,17 @@ test("runic-cswebui.js watches the connection while a call awaits admission", as
     call: name => name === "lost" ? new Promise(() => {}) : Promise.resolve(name),
   });
   const bridge = context.__runicBridge;
-  void bridge.call("lost");
+  const lost = bridge.call("lost").catch(error => error.message);
   await settle();
   online = false;
   await new Promise(resolve => setTimeout(resolve, 300));
+  expect(await lost).toBe(lostMessage);
   // Without a reconnect listener, the loss still releases the waiting call
   // instead of letting its timeout make it late.
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   online = true;
   await new Promise(resolve => setTimeout(resolve, 1_500));
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   expect(await bridge.call("snapshot")).toBe("snapshot");
 });
 
@@ -214,11 +295,12 @@ test("runic-cswebui.js does not resume a listener registered after an unobserved
   });
   const bridge = context.__runicBridge;
   // The waiting call keeps the poll running; no reconnect listener exists.
-  void bridge.call("lost");
+  const lost = bridge.call("lost").catch(error => error.message);
   await settle();
   online = false;
   await new Promise(resolve => setTimeout(resolve, 300));
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
+  expect(await lost).toBe(lostMessage);
   // The poll stops once idle, so it does not see the reconnect either.
   await new Promise(resolve => setTimeout(resolve, 300));
   online = true;

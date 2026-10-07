@@ -315,7 +315,7 @@ try {
       if (name === "__runicLostProbe") return new Promise(() => {});
       return call.call(this, name, ...args);
     };
-    void window.__runicBridge.call("__runicLostProbe");
+    window.__runicLostProbe = window.__runicBridge.call("__runicLostProbe").then(() => "resolved", error => error.message);
     return true;
   })()`);
   await retry(async () => (await admissions()).late === 1);
@@ -336,9 +336,13 @@ try {
   const afterLoss = await admissions();
   if (afterLoss.late !== 0)
     throw new Error(`A reconnect kept admissions from the lost connection: ${JSON.stringify(afterLoss)}`);
+  // The lost connection also rejects the call it never answered.
+  const probe = await evaluate("window.__runicLostProbe");
+  if (probe !== "The CS-WebUI connection was lost before the call completed.")
+    throw new Error(`A call in flight on the lost connection did not reject: ${probe}`);
   await retry(async () => (await snapshot("shell")).state?.main.kind === "document");
   await expectClickEventsSuppressed("after reconnecting");
-  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation|reconnect-admissions|click-events-suppressed");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation|reconnect-admissions|lost-calls-rejected|click-events-suppressed");
   }
 } finally {
   try { await browser?.close(); }

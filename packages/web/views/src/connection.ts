@@ -392,6 +392,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   if (!isLive()) { dispose(); throw new BridgeError("disconnected", "The Bridge session changed during connection."); }
   if (options.interactions)
     interactions = options.interactions({ bridge, route, presentationId: mountToken, live: () => !lease.disposed && isLive() });
+  if (interactions?.resume) lease.resumeInteractions = () => interactions?.resume?.();
   const ready = async () => { await interactions?.ready(); };
   const operationScope: OperationScope = { bridge, contract: contractId, route, assertConnected, ready };
   const operationSupport = () => {
