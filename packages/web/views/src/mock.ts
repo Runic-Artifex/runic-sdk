@@ -8,7 +8,8 @@ export type MockState = Record<string, unknown>;
  * Answers one route suffix of a mock View. A returned object is merged into the
  * state, a boolean answers a `Can{Command}` query, and a string is the raw reply.
  * A thrown error becomes a failed reply with its type, message and stack as
- * `detail`; an error with a `kind` keeps that kind.
+ * `detail`; an error with a `kind` keeps that kind. `throw mockFailure(failure)`
+ * replies with a declared failure (`domain-failed`).
  */
 export type MockRoute = (state: MockState, ...args: unknown[]) =>
   MockState | boolean | string | void | Promise<MockState | boolean | string | void>;
@@ -25,8 +26,8 @@ export interface MockBridgeOptions {
   readonly scheduling?: MockScheduling;
 }
 
-/** A failure the mock answers instead of running a handler. */
-export interface MockFailure {
+/** An unexpected failure the mock answers instead of running a handler. */
+export interface MockErrorFailure {
   /**
    * The BridgeError kind of the reply. `transport` makes the call itself reject,
    * like a dropped host connection; the client reports it as `failed`, or as
@@ -36,6 +37,37 @@ export interface MockFailure {
   readonly message?: string;
   /** Development-only .NET detail, as `BridgeError.detail` exposes it. */
   readonly detail?: BridgeFailureDetail;
+}
+
+/**
+ * A declared failure (`domain-failed`) the mock answers instead of running a
+ * handler. A command replies with it; a `Start{Command}` admits an operation
+ * that has already failed with it.
+ */
+export interface MockDomainFailure<TFailure = unknown> {
+  readonly kind: "domain-failed";
+  /** The failure; the wire value for the untyped mock, the typed value for a generated mock. */
+  readonly failure: TFailure;
+  readonly message?: string;
+}
+
+/** A failure the mock answers instead of running a handler. */
+export type MockFailure = MockErrorFailure | MockDomainFailure;
+
+const domainFailureKey = Symbol.for("runic.views.mockFailure");
+
+/**
+ * An error that a mock command or operation handler throws to fail with its
+ * declared failure: `throw mockFailure({ $case: "titleRequired" })`.
+ */
+export function mockFailure<TFailure>(failure: TFailure, message = "The command failed with its declared failure."): Error {
+  return Object.assign(new Error(message), { kind: "domain-failed", [domainFailureKey]: { failure } });
+}
+
+/** @internal The failure carried by a `mockFailure` error, if `error` is one. */
+export function mockFailureOf(error: unknown): { readonly failure: unknown } | undefined {
+  return typeof error === "object" && error !== null
+    ? (error as Record<symbol, { readonly failure: unknown } | undefined>)[domainFailureKey] : undefined;
 }
 
 /** One keyed collection edit of a delta frame, as .NET writes it. */
@@ -63,7 +95,7 @@ export interface MockCollection<TItem = unknown> {
   move(key: string, index: number): void;
 }
 
-export type MockOperationKind = "running" | "succeeded" | "failed" | "cancelled";
+export type MockOperationKind = "running" | "succeeded" | "domain-failed" | "failed" | "cancelled";
 
 /** An operation a client started with `start{Command}()`. */
 export interface MockOperation<TInput = unknown, TResult = unknown> {
@@ -77,6 +109,8 @@ export interface MockOperation<TInput = unknown, TResult = unknown> {
   readonly items: readonly TResult[];
   succeed(result?: TResult): void;
   fail(message?: string, detail?: BridgeFailureDetail): void;
+  /** Ends the operation with its declared failure (`domain-failed`), as a wire value. */
+  failWith(failure: unknown): void;
   cancel(): void;
   /** Appends values to a stream operation. */
   emit(...items: TResult[]): void;
@@ -93,7 +127,7 @@ export interface MockOperationOutcome {
 /**
  * Runs a started operation. When the returned promise resolves, a still running
  * operation succeeds with its outcome; a throw fails it, or cancels it after the client
- * asked to cancel. Cancellation is cooperative, as in .NET: a cancel request aborts
+ * asked to cancel, and `throw mockFailure(failure)` ends it `domain-failed`. Cancellation is cooperative, as in .NET: a cancel request aborts
  * `operation.signal`, and the operation keeps running until its handler stops.
  * `"manual"` leaves every operation running until the test settles it through
  * `MockView.operations()`.
@@ -246,6 +280,7 @@ interface OperationRecord {
   readonly items: unknown[];
   kind: MockOperationKind;
   result?: unknown;
+  failure?: unknown;
   error?: { readonly message: string; readonly detail?: BridgeFailureDetail };
   handle: MockOperation;
 }
@@ -294,7 +329,7 @@ export interface MockBridgeInternals {
   readonly publish: (view: MockRegisteredView) => void;
   readonly writeChecked: (view: MockRegisteredView, field: string, payload: unknown,
     apply: (state: MockState, value: unknown) => MockState | void | Promise<MockState | void>) => Promise<string>;
-  readonly envelope: (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown }) => string;
+  readonly envelope: (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown; failure?: unknown }) => string;
 }
 
 const internals = new WeakMap<MockBridge, MockBridgeInternals>();
@@ -346,9 +381,17 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       state["__runicFields"] = Object.fromEntries(view.definition.checkedFields.map(field => [field, { version: view.fieldVersions.get(field) ?? 0 }]));
     return state;
   };
-  const envelope = (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown }) => JSON.stringify({
-    ok: error === undefined, state: wireState(view), error: error ?? null, protocol: 1,
+  // Like .NET, only snapshot replies state the protocol version.
+  const envelope = (view: MockRegisteredView, error?: { kind: string; message: string; detail?: unknown; failure?: unknown },
+    protocol = false) => JSON.stringify({
+    ok: error === undefined, state: wireState(view), error: error ?? null, ...(protocol ? { protocol: 2 } : {}),
   });
+  // A thrown mockFailure replies with the declared failure, which never has detail.
+  const errorReply = (view: MockRegisteredView, suffix: string, error: unknown) => {
+    const declared = mockFailureOf(error);
+    return declared ? envelope(view, { kind: "domain-failed", message: `${suffix} failed.`, failure: declared.failure })
+      : envelope(view, failureFromError(error));
+  };
   function commit(view: MockRegisteredView, next: MockState): void {
     for (const field of view.definition.checkedFields ?? [])
       if (!sameJson(view.state[field], next[field])) view.fieldVersions.set(field, (view.fieldVersions.get(field) ?? 0) + 1);
@@ -455,7 +498,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       ...(operation.kind === "failed" ? { error: { kind: "failed", message: operation.error?.message ?? "The operation failed.",
         ...(operation.error?.detail ? { detail: operation.error.detail } : {}) } } : {}),
       ...(operation.kind === "succeeded" && operation.result !== undefined ? { result: operation.result } : {}),
-      ...(operation.kind === "succeeded" && operation.stream ? { stream: true } : {}),
+      ...(operation.kind === "domain-failed" ? { failure: operation.failure } : {}),
+      ...((operation.kind === "succeeded" || operation.kind === "domain-failed") && operation.stream ? { stream: true } : {}),
     };
   };
 
@@ -463,7 +507,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     result?: unknown, error?: OperationRecord["error"]): void {
     if (operation.kind !== "running") return;
     operation.kind = kind;
-    if (result !== undefined) operation.result = result;
+    if (kind === "domain-failed") operation.failure = result;
+    else if (result !== undefined) operation.result = result;
     if (error) operation.error = error;
     if (kind === "cancelled") operation.controller.abort();
     const executing = `is${operation.member}Executing`;
@@ -475,7 +520,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     operation.settled.resolve();
   }
 
-  function startOperation(view: MockRegisteredView, member: string, payload: unknown): string {
+  function startOperation(view: MockRegisteredView, member: string, payload: unknown, declared?: { readonly failure: unknown }): string {
     const parsed = typeof payload === "string" && payload.startsWith("{") ? parseObject(payload) : undefined;
     const requestId = parsed ? parsed["requestId"] : payload;
     if (typeof requestId !== "string" || requestId.length === 0)
@@ -508,6 +553,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       get items() { return operation.items; },
       succeed: result => settle(view, operation, "succeeded", result),
       fail: (message, detail) => settle(view, operation, "failed", undefined, { message: message ?? "The operation failed.", ...(detail ? { detail } : {}) }),
+      failWith: failure => settle(view, operation, "domain-failed", failure),
       cancel: () => settle(view, operation, "cancelled"),
       emit: (...items) => {
         if (!operation.stream) throw new TypeError(`The operation ${member} is not a stream.`);
@@ -519,7 +565,8 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     operations.set(requestId, operation);
     const executing = `is${member}Executing`;
     if (Object.hasOwn(view.state, executing) && view.state[executing] !== true) { commit(view, { ...view.state, [executing]: true }); publish(view); }
-    if (handler !== "manual") {
+    if (declared) settle(view, operation, "domain-failed", declared.failure);
+    else if (handler !== "manual") {
       const command = view.routes[member];
       void (async () => {
         try {
@@ -533,6 +580,9 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
           if (outcome?.state) { commit(view, { ...view.state, ...outcome.state }); publish(view); }
           settle(view, operation, "succeeded", outcome?.result);
         } catch (error) {
+          // A declared failure is classified by its type, also after a cancel request, as in .NET.
+          const declaredFailure = mockFailureOf(error);
+          if (declaredFailure) { settle(view, operation, "domain-failed", declaredFailure.failure); return; }
           const failure = failureFromError(error);
           // Cancellation is cooperative: a handler that stops by throwing after
           // the request ends cancelled, as a .NET command observing its token does.
@@ -733,12 +783,12 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
         if (typeof result === "boolean") return String(result);
         if (typeof result === "string") return result;
         if (result) commit(view, { ...view.state, ...result });
-        return envelope(view);
+        return envelope(view, undefined, suffix === "Snapshot");
       } catch (error) {
-        return envelope(view, failureFromError(error));
+        return errorReply(view, suffix, error);
       }
     }
-    if (suffix === "Snapshot") return envelope(view);
+    if (suffix === "Snapshot") return envelope(view, undefined, true);
     if (suffix === "Mount") {
       // The mount token identifies the presentation that interaction handlers belong to.
       if (typeof args[0] === "string" && !view.presentations.has(args[0]))
@@ -758,7 +808,13 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     return undefined;
   }
 
-  function injected(name: string, view: MockRegisteredView | undefined, failure: MockFailure): string {
+  function injected(name: string, view: MockRegisteredView | undefined, failure: MockFailure, args: unknown[]): string {
+    if (failure.kind === "domain-failed") {
+      if (!view) throw new TypeError(`A declared failure needs a mock View for ${name}.`);
+      const suffix = name.slice(view.route.length);
+      if (/^Start[A-Z]/.test(suffix)) return startOperation(view, suffix.slice(5), args[0], { failure: failure.failure });
+      return envelope(view, { kind: "domain-failed", message: failure.message ?? `${suffix} failed.`, failure: failure.failure });
+    }
     const message = failure.message ?? `The mock failed ${name}.`;
     if (failure.kind === "transport") throw new Error(message);
     const detail = failure.detail ? { detail: failure.detail } : {};
@@ -781,7 +837,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     if (queued?.length) {
       const failure = queued.shift()!;
       if (queued.length === 0) failures.delete(name);
-      return injected(name, viewFor(name), failure);
+      return injected(name, viewFor(name), failure, args);
     }
     const raw = routes.get(name);
     if (raw) return await raw(...args);
@@ -924,6 +980,7 @@ export function installMockBridge(bridge: MockBridge = createMockBridge()): Mock
 
 export {
   mockTypedView,
+  type MockFailureOf,
   type MockReference,
   type MockTypedCollection,
   type MockTypedInteraction,

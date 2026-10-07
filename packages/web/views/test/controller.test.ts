@@ -271,5 +271,5 @@ test("a command controller ignores the failure of a run superseded by a later on
   const failing = command.run();
   outcomes[2]!(true);
   await failing;
-  assert.equal((command.current.error as Error).message, "stale");
+  assert.equal((command.current.error as unknown as Error).message, "stale");
 });

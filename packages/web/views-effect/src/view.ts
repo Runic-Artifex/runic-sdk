@@ -1,5 +1,5 @@
 import type {
-  BridgeOperation, BridgeOperationStatus, CollectionViewport, CollectionViewportController, ViewClient, ViewConnector,
+  BridgeOperation, BridgeOperationStatusOf, CollectionViewport, CollectionViewportController, ViewClient, ViewConnector,
 } from "@runic-artifex/views";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -158,7 +158,7 @@ function waitFor<T>(handle: BridgeOperation<T>, timeout: Duration.Input | undefi
   Effect.Effect<OperationResult<T>, ViewOperationError> {
   const completed = attempt(() => handle.completion, bridgeFailure).pipe(
     Effect.tap(() => Effect.sync(() => { started.settled = true; })),
-    Effect.flatMap(status => fromStatus(status)),
+    Effect.flatMap(status => fromStatus<T>(status)),
   );
   if (timeout === undefined) return completed;
   const duration = Duration.fromInputUnsafe(timeout);
@@ -176,7 +176,7 @@ function waitFor<T>(handle: BridgeOperation<T>, timeout: Duration.Input | undefi
       // `not-running`: it finished just before the deadline, so report how.
       if (cancellation !== "not-running") return timedOut;
       return Effect.tryPromise({ try: () => handle.status(), catch: cause => cause }).pipe(
-        Effect.matchEffect({ onFailure: () => timedOut, onSuccess: status => status.kind === "running" ? timedOut : fromStatus(status) }));
+        Effect.matchEffect({ onFailure: () => timedOut, onSuccess: status => status.kind === "running" ? timedOut : fromStatus<T>(status) }));
     })),
   }));
 }
@@ -188,7 +188,10 @@ function cancel(handle: BridgeOperation<unknown>) {
   );
 }
 
-function fromStatus<T>(status: BridgeOperationStatus<T>): Effect.Effect<OperationResult<T>, ViewOperationError> {
+// Generic code reads the full status union; the public BridgeOperationStatus
+// of an operation without a declared failure is one of its cases.
+function fromStatus<T>(observed: unknown): Effect.Effect<OperationResult<T>, ViewOperationError> {
+  const status = observed as BridgeOperationStatusOf<T, unknown>;
   const { requestId } = status;
   switch (status.kind) {
     case "succeeded":
@@ -198,6 +201,12 @@ function fromStatus<T>(status: BridgeOperationStatus<T>): Effect.Effect<Operatio
     case "failed":
       return Effect.fail(new ViewOperationFailed({
         message: status.error?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: status.error?.detail,
+      }));
+    // Operations started through this adapter declare no failure type, so the
+    // runtime reports domain-failed as failed; keep the case exhaustive.
+    case "domain-failed":
+      return Effect.fail(new ViewOperationFailed({
+        message: status.delivery?.message ?? `The operation ${requestId} failed.`, requestId, status, detail: undefined,
       }));
     case "cancelled":
       return Effect.fail(new ViewOperationCancelled({ message: `The operation ${requestId} was cancelled.`, requestId, status }));
@@ -212,9 +221,9 @@ function fromStatus<T>(status: BridgeOperationStatus<T>): Effect.Effect<Operatio
         message: `The outcome of operation ${requestId} is ${status.kind}.`, requestId, cause: status,
       }));
     default: {
-      const unknown: never = status.kind;
+      const unknown: never = status;
       return Effect.fail(new ViewOperationUncertain({
-        message: `The outcome of operation ${requestId} is ${String(unknown)}.`, requestId, cause: status,
+        message: `The outcome of operation ${requestId} is ${String((unknown as { readonly kind?: unknown }).kind)}.`, requestId, cause: unknown,
       }));
     }
   }

@@ -1,5 +1,5 @@
 import { BridgeError, BridgeOperationUncertainError, type BridgeFailureDetail, type BridgeOperationCancelKind,
-  type BridgeOperationStatus } from "@runic-artifex/views";
+  type BridgeOperationStatusOf } from "@runic-artifex/views";
 import * as Data from "effect/Data";
 import * as Duration from "effect/Duration";
 
@@ -47,14 +47,14 @@ export class ViewOperationUncertain extends Data.TaggedError("ViewOperationUncer
 export class ViewOperationFailed extends Data.TaggedError("ViewOperationFailed")<{
   readonly message: string;
   readonly requestId: string;
-  readonly status: BridgeOperationStatus<unknown>;
+  readonly status: BridgeOperationStatusOf<unknown, unknown>;
   readonly detail: BridgeFailureDetail | undefined;
 }> {}
 /** The operation ended as `cancelled`, by this client or another one. */
 export class ViewOperationCancelled extends Data.TaggedError("ViewOperationCancelled")<{
   readonly message: string;
   readonly requestId: string;
-  readonly status: BridgeOperationStatus<unknown>;
+  readonly status: BridgeOperationStatusOf<unknown, unknown>;
 }> {}
 /** The `timeout` option passed and the operation was cancelled, or .NET reported a client-side `timedOut` status. */
 export class ViewOperationTimedOut extends Data.TaggedError("ViewOperationTimedOut")<{

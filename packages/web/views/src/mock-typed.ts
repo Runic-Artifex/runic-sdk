@@ -1,8 +1,13 @@
 import type { BridgeErrorKind, BridgeFailureDetail } from "./errors.js";
+import type { BridgeOutcomeFailure } from "./controller.js";
 import {
   mockBridgeInternals,
+  mockFailure,
+  mockFailureOf,
   type MockBridge,
   type MockCall,
+  type MockDomainFailure,
+  type MockErrorFailure,
   type MockFailure,
   type MockInteractionOptions,
   type MockOperationHandler,
@@ -22,7 +27,11 @@ export interface MockReference<TKind extends string = string> {
 type Patch<TState> = Partial<{ -readonly [K in keyof TState]: TState[K] }>;
 type Awaitable<T> = T | Promise<T>;
 
-/** Runs a command and returns the state changes it makes. A thrown error becomes the client's BridgeError. */
+/**
+ * Runs a command and returns the state changes it makes. A thrown error becomes the
+ * client's BridgeError; `throw mockFailure(failure)` resolves the client's outcome
+ * with the declared failure.
+ */
 export type MockCommandHandler<TState, TArgs extends readonly unknown[] = []> =
   (state: TState, ...args: TArgs) => Awaitable<Patch<TState> | void>;
 
@@ -38,27 +47,38 @@ export interface MockTypedOperationOutcome<TState, TResult> {
 }
 
 /** An operation that a client started with `start{Command}()`, with typed input and results. */
-export interface MockTypedOperation<TInput, TResult> {
+export interface MockTypedOperation<TInput, TResult, TFailure = never> {
   readonly requestId: string;
   readonly input: TInput;
   readonly kind: MockOperationKind;
   readonly signal: AbortSignal;
   /** Stream values emitted so far. */
   readonly items: readonly TResult[];
-  succeed(...result: [TResult] extends [never] ? [] : [result: TResult]): void;
+  succeed(...result: [TResult] extends [void] ? [] : [result: TResult]): void;
   fail(message?: string, detail?: BridgeFailureDetail): void;
+  /** Ends the operation with its declared failure (`domain-failed`). */
+  failWith(failure: TFailure): void;
   cancel(): void;
   emit(...items: TResult[]): void;
 }
 
 /**
  * Runs a started operation. When it returns, a still running operation succeeds
- * with the outcome; a throw fails it. Return a promise that waits on the
- * operation's signal, or use `"manual"`, to settle it from the test.
+ * with the outcome; a throw fails it, and `throw mockFailure(failure)` ends it
+ * with its declared failure. Return a promise that waits on the operation's
+ * signal, or use `"manual"`, to settle it from the test.
  */
-export type MockTypedOperationHandler<TState, TInput, TResult> =
-  (state: TState, input: TInput, operation: MockTypedOperation<TInput, TResult>) =>
+export type MockTypedOperationHandler<TState, TInput, TResult, TFailure = never> =
+  (state: TState, input: TInput, operation: MockTypedOperation<TInput, TResult, TFailure>) =>
     Awaitable<MockTypedOperationOutcome<TState, TResult> | void>;
+
+/**
+ * The declared failure type of a client method: `F` for a command that resolves
+ * `BridgeOutcome<_, F>` or a `start{Command}` whose operation declares `F`.
+ */
+export type MockFailureOf<TMethod> = TMethod extends (...args: never[]) => Promise<infer R>
+  ? R extends { outcome(...args: never[]): Promise<infer O> } ? BridgeOutcomeFailure<O> : BridgeOutcomeFailure<R>
+  : never;
 
 /** A keyed collection of a typed mock. Each edit pushes a delta frame. */
 export interface MockTypedCollection<TItem> {
@@ -98,8 +118,12 @@ export interface MockTypedView<TState, TClient, TKind extends string = string> {
   readonly calls: readonly MockCall[];
   /** Merges state changes and pushes the new state, like a .NET publication. */
   update(patch: Patch<TState> | ((state: TState) => Patch<TState>)): void;
-  /** Answers the next `times` calls of a client method with `failure`. */
-  failNext(method: MockMethodName<TClient>, failure: MockFailure, times?: number): void;
+  /**
+   * Answers the next `times` calls of a client method with `failure`: an unexpected
+   * failure, or the method's declared failure as `{ kind: "domain-failed", failure }`.
+   */
+  failNext<M extends MockMethodName<TClient>>(method: M,
+    failure: MockErrorFailure | MockDomainFailure<MockFailureOf<TClient[M]>>, times?: number): void;
   /** Pushes a failure notice; the client keeps its last state and reports the error. */
   pushFailure(failure: { readonly kind?: BridgeErrorKind; readonly message: string; readonly detail?: BridgeFailureDetail }): void;
   /** Pushes the collection edits made by `edit` as one delta frame. */
@@ -123,12 +147,13 @@ export interface MockTypedViewSpec {
   /** Setters by client method: route suffix, wire field, and how to read the route argument as a wire value. */
   readonly setters?: Readonly<Record<string, { readonly route: string; readonly field: string; readonly read: (argument: unknown) => unknown;
     readonly checked?: string }>>;
-  /** Commands by client method. */
+  /** Commands by client method. `encodeFailure` encodes a declared failure. */
   readonly commands?: Readonly<Record<string, { readonly route: string; readonly read?: (argument: unknown) => unknown;
-    readonly available?: string }>>;
-  /** Operations by client command method. */
+    readonly available?: string; readonly encodeFailure?: (value: unknown) => unknown }>>;
+  /** Operations by client command method. `encodeFailure` encodes a declared failure. */
   readonly operations?: Readonly<Record<string, { readonly member: string; readonly decodeInput?: (wire: unknown) => unknown;
-    readonly encodeResult?: (value: unknown) => unknown; readonly stream?: boolean }>>;
+    readonly encodeResult?: (value: unknown) => unknown; readonly stream?: boolean;
+    readonly encodeFailure?: (value: unknown) => unknown }>>;
   /** The generated contract, `{ViewModel full name}:{fingerprint}`. */
   readonly contract?: string;
   readonly interactions?: Readonly<Record<string, { readonly encodeInput: (value: unknown) => unknown; readonly decodeOutput: (wire: unknown) => unknown }>>;
@@ -152,6 +177,12 @@ const upperFirst = (value: string) => value.charAt(0).toUpperCase() + value.slic
 
 function rejected(message: string): Error {
   return Object.assign(new Error(message), { kind: "rejected" });
+}
+
+// A typed handler throws mockFailure(typed); the untyped mock sends the wire value.
+function encodedFailure(error: unknown, encode: ((value: unknown) => unknown) | undefined): unknown {
+  const declared = mockFailureOf(error);
+  return declared && encode ? mockFailure(encode(declared.failure), (error as Error).message) : error;
 }
 
 /**
@@ -200,12 +231,13 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       const input = command.read && args.length > 0 ? [command.read(args[0])] : [];
       if (command.available && state[command.available] === false) throw rejected(`${name} is unavailable.`);
       if (available && !available(decode(state), ...input)) throw rejected(`${name} is unavailable.`);
-      return patchOf(handler ? await handler(decode(state), ...input) : undefined);
+      try { return patchOf(handler ? await handler(decode(state), ...input) : undefined); }
+      catch (error) { throw encodedFailure(error, command.encodeFailure); }
     };
     if (command.read) routes[`Can${name}`] = (state, argument) => available ? available(decode(state), command.read!(argument)) : true;
   }
   const operations: Record<string, MockOperationHandler | "manual"> = {};
-  const wrapOperation = (method: string) => (raw: ReturnType<MockView["operations"]>[number]): MockTypedOperation<unknown, unknown> => {
+  const wrapOperation = (method: string) => (raw: ReturnType<MockView["operations"]>[number]): MockTypedOperation<unknown, unknown, unknown> => {
     const plan = spec.operations![method]!;
     return {
       get requestId() { return raw.requestId; },
@@ -215,17 +247,20 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       get items() { return raw.items; },
       succeed: (...result: unknown[]) => raw.succeed(result.length === 0 || !plan.encodeResult ? result[0] : plan.encodeResult(result[0])),
       fail: (message, detail) => raw.fail(message, detail),
+      failWith: failure => raw.failWith(plan.encodeFailure ? plan.encodeFailure(failure) : failure),
       cancel: () => raw.cancel(),
       emit: (...items) => raw.emit(...items.map(item => plan.encodeResult ? plan.encodeResult(item) : item)),
     };
   };
   for (const [method, plan] of Object.entries(spec.operations ?? {})) {
-    const handler = (definition.operations as Record<string, unknown> | undefined)?.[method] as MockTypedOperationHandler<unknown, unknown, unknown> | "manual" | undefined;
+    const handler = (definition.operations as Record<string, unknown> | undefined)?.[method] as MockTypedOperationHandler<unknown, unknown, unknown, unknown> | "manual" | undefined;
     if (handler === "manual") operations[plan.member] = "manual";
     else if (handler) {
       operations[plan.member] = async (state, _input, operation) => {
         const typed = wrapOperation(method)(operation);
-        const outcome = await handler(decode(state), typed.input, typed);
+        let outcome: MockTypedOperationOutcome<unknown, unknown> | void;
+        try { outcome = await handler(decode(state), typed.input, typed); }
+        catch (error) { throw encodedFailure(error, plan.encodeFailure); }
         if (!outcome) return undefined;
         return {
           ...(outcome.state ? { state: encode(outcome.state) } : {}),
@@ -257,7 +292,7 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
       move: (key, index) => raw.collection(field).move(key, index),
     };
   }
-  const operationLog: Record<string, readonly MockTypedOperation<unknown, unknown>[]> = {};
+  const operationLog: Record<string, readonly MockTypedOperation<unknown, unknown, unknown>[]> = {};
   for (const [method, plan] of Object.entries(spec.operations ?? {}))
     Object.defineProperty(operationLog, method, { enumerable: true, get: () => raw.operations(plan.member).map(wrapOperation(method)) });
   const interactions: Record<string, MockTypedInteraction<unknown, unknown>> = {};
@@ -281,7 +316,17 @@ export function mockTypedView(bridge: MockBridge, spec: MockTypedViewSpec, defin
     update(patch) {
       raw.update(state => ({ ...state, ...encode(typeof patch === "function" ? (patch as (state: never) => object)(decode(state)) : patch as object) }));
     },
-    failNext(method, failure, times) { bridge.failNext(`${route}${upperFirst(method as string)}`, failure, times); },
+    failNext(method, typed, times) {
+      const name = method as string;
+      let failure: MockFailure = typed as MockFailure;
+      if (failure.kind === "domain-failed") {
+        // A start{Command} failure is encoded by the operation's codec, a command's by its own.
+        const operation = /^start[A-Z]/.test(name) ? spec.operations?.[name.charAt(5).toLowerCase() + name.slice(6)] : undefined;
+        const encode = operation ? operation.encodeFailure : spec.commands?.[name]?.encodeFailure;
+        failure = { ...failure, failure: encode ? encode(failure.failure) : failure.failure };
+      }
+      bridge.failNext(`${route}${upperFirst(name)}`, failure, times);
+    },
     pushFailure: failure => raw.pushFailure(failure),
     batch: edit => raw.batch(edit),
     collections,

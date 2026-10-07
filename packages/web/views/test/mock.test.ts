@@ -160,7 +160,8 @@ test("operations stay running until the test settles them and report executing s
 
   // A repeated request id observes the finished operation; reusing it for other input is rejected.
   const repeated = await client.startOperation<string>("Save", "request-1", () => "request-1", value => bridgeWire.string(value));
-  assert.equal((await repeated.status()).result, "saved");
+  const repeatedStatus = await repeated.status();
+  assert.equal(repeatedStatus.kind === "succeeded" ? repeatedStatus.result : repeatedStatus.kind, "saved");
   assert.equal(notes.operations.save.length, 2);
   await assert.rejects(client.startOperation<string>("Save", "request-1", () => JSON.stringify({ requestId: "request-1", input: 1 }),
     value => bridgeWire.string(value)), (error: unknown) => error instanceof BridgeError && error.kind === "rejected");
@@ -177,7 +178,8 @@ test("operation handlers run on the virtual clock", async () => {
   await bridge.advance(999);
   assert.equal(client.snapshot.title, "a");
   await bridge.advance(1);
-  assert.equal((await completion).result, "done");
+  const completed = await completion;
+  assert.equal(completed.kind === "succeeded" ? completed.result : completed.kind, "done");
   assert.equal(client.snapshot.title, "saved");
   assert.equal(bridge.now, 1000);
   client.dispose();

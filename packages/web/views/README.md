@@ -158,8 +158,11 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   again and `dispose()` releases the client. `isViewClient` and
   `viewSourceIdentity` tell clients from connectors and compare sources.
 - `createCommandController(command)` has `run(...args)`, which never rejects
-  and resolves to `undefined` after a failure, and `current` with `pending` and
-  `error`.
+  and resolves to `undefined` after a failure, and `current` with `pending`,
+  `error` and `failure`. For a command that resolves a `BridgeOutcome`,
+  `failure` is the declared failure of the latest run; `error` stays the
+  unexpected failure. Starting a run and `reset()` clear both, and a run that a
+  later one superseded sets neither.
 - `createCollectionViewportController({ totalCount, rowHeight, overscan? })`
   has `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the
@@ -245,8 +248,11 @@ A definition takes:
   same handler and answer `conflict` for a stale baseline.
 - `operations`: runs `start<Command>()`. Without a handler the command handler
   runs and the operation succeeds. `"manual"` keeps each operation running
-  until the test calls `succeed(result)`, `fail(message)`, `cancel()` or, for
-  a stream, `emit(...items)` on `mock.operations.<command>[n]`. Started
+  until the test calls `succeed(result)`, `fail(message)`, `failWith(failure)`
+  (the declared failure), `cancel()` or, for a stream, `emit(...items)` on
+  `mock.operations.<command>[n]`. A command or operation handler that throws
+  `mockFailure(failure)` (from `@runic-artifex/views/mock`) fails with its
+  declared failure, as `throw new RunicFailureException(...)` does in .NET. Started
   operations set `is<Command>Executing`. Cancellation is cooperative, as in
   .NET: the client's `cancel()` aborts the operation's `signal`, and the
   operation ends when its handler stops (a throw after the request ends it
@@ -254,7 +260,8 @@ A definition takes:
   repeated start returns it, and reuse for another command or input is rejected.
 
 The returned mock has `state`, `update(changes)` (pushes a full state like a
-.NET publication), `calls`, `failNext(method, { kind, message, detail })`,
+.NET publication), `calls`, `failNext(method, { kind, message, detail })` or
+`failNext(method, { kind: "domain-failed", failure })` for a method's declared failure,
 `pushFailure({ message })` (a failure notice: the client keeps its last state
 and reports the error), `collections.<field>` with `add`, `remove`, `replace`
 and `move` (each pushes a delta frame; `batch(edit)` combines edits into one),
@@ -279,6 +286,8 @@ The mock follows the .NET protocol where a client can observe it:
 - A checked write retried with the same request id returns its first receipt, and
   reusing the id for another write is a `conflict`. A setter handler that throws an
   error with `kind: "committed-with-error"` keeps the value and returns that receipt.
+- Only snapshot replies carry `protocol`, and a declared failure replies
+  `domain-failed` with `failure` and the state after the call.
 
 It does not model the .NET delivery queue (its 64-frame and 1 MiB bounds and the
 recovery they trigger) or the producer's key checks: an edit that would leave an
@@ -289,6 +298,50 @@ The [CommunityToolkit Notes example](https://github.com/Runic-Artifex/runic-sdk/
 tests its frontend this way with `bun test`; any runner that loads ES modules,
 such as Vitest, works the same.
 
+## Declared failures
+
+A .NET command that declares its failure type (`[RunicFailure(typeof(SaveFailure))]`)
+resolves a `BridgeOutcome` instead of rejecting when it fails as declared:
+`{ ok: true, value }` or `{ ok: false, failure }`. Unexpected failures still
+reject with `BridgeError`. Handle a `$case` union with `matchCase`, which
+requires a handler for every case, or with a `switch` and a `never` check:
+
+```ts
+import { matchCase } from "@runic-artifex/views";
+
+const outcome = await editor.save();
+if (!outcome.ok) {
+  showError(matchCase(outcome.failure, {
+    titleRequired: () => "A note needs a title.",
+    titleTaken: failure => `"${failure.existingTitle}" already exists.`,
+  }));
+  return;
+}
+navigate();
+```
+
+Declaring a failure changes control flow for callers that ignore the result:
+`await save(); navigate()` used to stop at the rejection and now continues after
+a declared failure. Check `outcome.ok` at every call site.
+
+An operation's `outcome(options?)` waits like `wait()` and resolves the same
+way; `wait()` and `completion` still return the status, a union discriminated by
+`kind` (`BridgeOperationStatus<TResult, TFailure>`):
+
+| Terminal status | `outcome()` |
+| --- | --- |
+| `succeeded` | resolves `{ ok: true, value: result }`; a `void` or stream operation resolves `value: undefined` |
+| `succeeded` with `delivery` | a value operation rejects `BridgeError("failed")` with the status as `cause`; a `void` or stream operation resolves |
+| `domain-failed` | resolves `{ ok: false, failure }`; a failure that could not be delivered or decoded rejects `BridgeError("failed")` |
+| `failed` | rejects `BridgeError("failed")` with `detail` in development |
+| `cancelled` | rejects `BridgeError("cancelled")` |
+| `timedOut` | rejects `BridgeError("timeout")` with the status, including `cancellation`, as `cause` |
+| `expired`, `unknown` | rejects `BridgeOperationUncertainError`: the outcome is unknown, so do not retry blindly |
+
+`bridgeSuccess(value)`, `bridgeFailure(failure)` and `isBridgeOutcome(value)`
+create and recognize outcomes, for example in tests and mocks. An outcome is
+recognized by a non-enumerable brand, so a spread or JSON copy is plain data.
+
 ## Errors and diagnostics
 
 A `BridgeError` names what failed and why:
@@ -296,7 +349,9 @@ A `BridgeError` names what failed and why:
 - `kind` is `rejected`, `cancelled`, `failed`, `disconnected`, `timeout`
   (a Bridge is installed but did not connect in time) or `unavailable` (no
   host installed `window.__runicBridge`, for example a frontend opened from a
-  plain Vite server; the message says how to fix it).
+  plain Vite server; the message says how to fix it). A reply kind the client
+  does not know, including a declared failure of a command whose client does not
+  declare it, is `failed`.
 - `route` is the Bridge route that failed, such as `counterIncrement`.
 - `cause` is the underlying error, such as the transport rejection or the
   decoder error of an invalid state.
@@ -335,5 +390,6 @@ if (status.kind === "timedOut") showRetry();
 `onBridgeDiagnostic(listener)` observes runtime failures: failed calls, a
 missing or unconnected Bridge, operation timeouts, and errors the runtime caught
 from listeners, invalid pushes and reconnect work (those are also passed to
-`reportError`). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
+`reportError`), and a .NET host that speaks another Views protocol version
+(`code: "protocol"`, once per Bridge). Each failure is delivered once. `@runic-artifex/vite-plugin-runic`
 forwards them to its DevTools dock during development.

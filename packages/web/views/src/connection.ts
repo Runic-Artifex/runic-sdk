@@ -1,5 +1,6 @@
-import { emitErrorDiagnostic } from "./diagnostics.js";
+import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
+import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import * as bridgeWire from "./wire.js";
@@ -7,7 +8,7 @@ import * as bridgeWire from "./wire.js";
 // clients that use them, so this module imports only their types.
 import type { BridgeCollections } from "./collections.js";
 import type { BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
-import type { BridgeOperations, BridgeStreamOperation, OperationScope } from "./operations.js";
+import type { BridgeOperationRuntimeHandle, BridgeOperations, OperationScope } from "./operations.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -61,38 +62,92 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
   invoke(name: string, ...args: unknown[]): Promise<TState>;
   /** Calls a command route after .NET acknowledged this View's interaction handlers. */
   command(name: string, ...args: unknown[]): Promise<TState>;
+  /**
+   * Calls a command route that declares a failure type, like `command`. Its
+   * declared failure resolves `bridgeFailure(decodeFailure(failure))`; every
+   * other failure still rejects with `BridgeError`.
+   */
+  commandOutcome<TFailure>(name: string, decodeFailure: (value: unknown) => TFailure, ...args: unknown[]): Promise<BridgeOutcome<TState, TFailure>>;
   /** Calls a `Can{Command}` route. */
   query(name: string, ...args: unknown[]): Promise<boolean>;
   writeField<T>(name: string, payload: string, decode: (value: unknown) => T): Promise<FieldWriteReceipt<T>>;
   fieldBaseline(field: string): FieldBaseline<unknown>;
-  startOperation<TResult>(member: string, requestId: string, payload: () => string, decode: (value: unknown) => TResult,
-    stream?: boolean): Promise<BridgeStreamOperation<TResult>>;
-  recoverOperation<TResult>(member: string, requestId: string, decode: (value: unknown) => TResult,
-    stream?: boolean): Promise<BridgeStreamOperation<TResult>>;
+  /** `decodeFailure` is given for an operation that declares a failure type. */
+  startOperation<TResult, TFailure = never>(member: string, requestId: string, payload: () => string, decode: (value: unknown) => TResult,
+    stream?: boolean, decodeFailure?: (value: unknown) => TFailure): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
+  recoverOperation<TResult, TFailure = never>(member: string, requestId: string, decode: (value: unknown) => TResult,
+    stream?: boolean, decodeFailure?: (value: unknown) => TFailure): Promise<BridgeOperationRuntimeHandle<TResult, TFailure>>;
 }
 
-type EnvelopeError = { readonly kind: BridgeErrorKind; readonly message: string; readonly detail?: unknown };
-type Envelope = { readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null };
+type EnvelopeError = { readonly kind: string; readonly message: string; readonly detail?: unknown; readonly failure?: unknown };
+type Envelope = { readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null; readonly protocol?: unknown };
+
+/** The Views wire protocol this runtime implements (specs/application/README.md). */
+export const bridgeProtocol = 2;
 
 const callFailed = (bridge: RunicBridgeClient, message: string, route: string, cause: unknown) =>
   new BridgeError(bridge.isConnected() ? "failed" : "disconnected", message, { cause, route });
 
+const errorKinds: readonly string[] = ["rejected", "cancelled", "failed", "disconnected", "timeout", "unavailable"] satisfies readonly BridgeErrorKind[];
+
+// A kind this client does not know, including `domain-failed` on a route that
+// declares no failure type, is `failed`: a newer host cannot surprise it.
 function replyError(error: EnvelopeError | null, route: string, fallback: string): BridgeError {
   const detail = decodeFailureDetail(error?.detail);
-  return new BridgeError(error?.kind ?? "failed", error?.message ?? fallback, { route, ...(detail === undefined ? {} : { detail }) });
+  const kind = typeof error?.kind === "string" && errorKinds.includes(error.kind) ? error.kind as BridgeErrorKind : "failed";
+  return new BridgeError(kind, error?.message ?? fallback, { route, ...(detail === undefined ? {} : { detail }) });
 }
 
-function unpack(json: string, entry: SharedEntry, route: string): unknown {
+// The protocol version is informational. A snapshot reply from a host that
+// speaks another version is reported once per Bridge, as a diagnostic.
+const protocolReported = new WeakSet<object>();
+function checkProtocol(reply: Envelope, entry: SharedEntry, route: string): void {
+  if (reply.protocol === undefined || reply.protocol === bridgeProtocol || protocolReported.has(entry.bridge)) return;
+  protocolReported.add(entry.bridge);
+  emitBridgeDiagnostic({
+    kind: "error", code: "protocol", route,
+    message: `The .NET host uses Views protocol ${String(reply.protocol)}, but this client was built for protocol ${bridgeProtocol}. ` +
+      "Use the same Runic.Application and @runic-artifex/views version.",
+  });
+}
+
+// Parses a reply and accepts its state. Returns the envelope and the accepted
+// state, which is undefined when the reply carries none.
+function parse(json: string, entry: SharedEntry, route: string): { readonly reply: Envelope; readonly state: unknown } {
   let reply: Envelope;
   try { reply = JSON.parse(json) as Envelope; }
   catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route }); }
   if (reply === null || typeof reply !== "object") throw new BridgeError("failed", "The Bridge returned an invalid response.", { route });
+  if (route.endsWith("Snapshot")) checkProtocol(reply, entry, route);
   let state: unknown;
   try { state = reply.state === null ? undefined : entry.accept(reply.state); }
   catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid state: ${errorMessage(cause)}`, { cause, route }); }
+  return { reply, state };
+}
+
+function unpack(json: string, entry: SharedEntry, route: string): unknown {
+  const { reply, state } = parse(json, entry, route);
   if (!reply.ok) throw replyError(reply.error, route, "The call failed.");
   if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.", { route });
   return state;
+}
+
+// A declared failure resolves the outcome. When .NET could not send the state
+// after the call (D-13), the failure still resolves and the missing state is
+// reported, so the key problem is not lost behind a resolved outcome.
+function unpackOutcome<TFailure>(json: string, entry: SharedEntry, route: string,
+  decodeFailure: (value: unknown) => TFailure): BridgeOutcome<unknown, TFailure> {
+  const { reply, state } = parse(json, entry, route);
+  if (!reply.ok && reply.error?.kind === "domain-failed") {
+    let failure: TFailure;
+    try { failure = decodeFailure(reply.error.failure); }
+    catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid failure: ${errorMessage(cause)}`, { cause, route }); }
+    if (state === undefined) reportBridgeError(new BridgeError("failed", reply.error.message ?? "The Bridge returned no state.", { route }), route);
+    return bridgeFailure(failure);
+  }
+  if (!reply.ok) throw replyError(reply.error, route, "The call failed.");
+  if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.", { route });
+  return bridgeSuccess(state);
 }
 
 // Recovery reads a snapshot up to four times, waiting 250, 500 and 1,000 ms
@@ -357,6 +412,12 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       await ready();
       return invoke(name, ...args);
     }),
+    commandOutcome<TFailure>(name: string, decodeFailure: (value: unknown) => TFailure, ...args: unknown[]) {
+      return observed(name, async () => {
+        await ready();
+        return unpackOutcome(await call(name, args), shared, name, decodeFailure) as BridgeOutcome<TState, TFailure>;
+      });
+    },
     query: (name, ...args) => observed(name, async () => {
       assertConnected();
       let reply: string;
@@ -397,12 +458,12 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
         throw new BridgeError("failed", "The checked field baseline is unavailable for this connection.");
       return { value: (lease.current as Record<string, unknown>)[field], version };
     },
-    async startOperation(member, requestId, payload, decode, stream = false) {
+    async startOperation(member, requestId, payload, decode, stream = false, decodeFailure) {
       if (requestId.length === 0) throw new RangeError("Operation requestId is required.");
-      return observed(`${route}Start${member}`, () => operationSupport().start(operationScope, member, requestId, payload, decode, stream));
+      return observed(`${route}Start${member}`, () => operationSupport().start(operationScope, member, requestId, payload, decode, stream, decodeFailure));
     },
-    recoverOperation: (member, requestId, decode, stream = false) =>
-      observed(`${route}Start${member}`, () => operationSupport().recover(operationScope, member, requestId, decode, stream)),
+    recoverOperation: (member, requestId, decode, stream = false, decodeFailure) =>
+      observed(`${route}Start${member}`, () => operationSupport().recover(operationScope, member, requestId, decode, stream, decodeFailure)),
   };
 }
 
