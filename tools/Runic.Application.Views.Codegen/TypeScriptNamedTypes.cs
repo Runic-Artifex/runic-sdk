@@ -14,34 +14,59 @@ internal static partial class TypeScriptNamedTypes
     internal const string ModuleName = "types";
 
     private const char Marker = '\u0001';
-    private static readonly Dictionary<Type, Entry> ByType = [];
+    private static readonly Dictionary<(Type Type, string Shape), Entry> ByShape = [];
     private static readonly List<Entry> Entries = [];
 
-    // Global TypeScript types and keywords that generated code relies on.
-    // A named type must not shadow them in a module that imports it.
+    // Global TypeScript types and keywords that generated code relies on, and
+    // reserved words and type operators that cannot name a type (a C# type can
+    // be named @class or @default). A named type must not shadow or use them.
     private static readonly HashSet<string> Globals = new(StringComparer.Ordinal)
     {
         "Array", "BigInt", "Boolean", "Date", "Error", "Function", "JSON", "Map", "Math", "Number", "Object",
         "Omit", "Partial", "Pick", "Promise", "RangeError", "Readonly", "ReadonlyArray", "Record", "Set",
         "String", "Symbol", "TypeError", "any", "bigint", "boolean", "never", "null", "number", "object",
         "string", "symbol", "undefined", "unknown", "void",
+        "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do",
+        "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "implements",
+        "import", "in", "infer", "instanceof", "interface", "is", "keyof", "let", "new", "package", "private",
+        "protected", "public", "readonly", "return", "static", "super", "switch", "this", "throw", "true",
+        "try", "type", "typeof", "unique", "var", "while", "with", "yield",
     };
 
     internal static bool IsNamed(BridgeTypeNode node) =>
         node.Kind is BridgeWireKind.Enum or BridgeWireKind.Dto or BridgeWireKind.Union;
 
     /// <summary>Returns the placeholder for a named node and records its definition.</summary>
+    /// <remarks>
+    /// Uses of one C# type share a declaration unless their member
+    /// nullability differs, as for <c>Box&lt;string&gt;</c> and
+    /// <c>Box&lt;string?&gt;</c> when the box has a member of type <c>T</c>.
+    /// </remarks>
     internal static string Reference(BridgeTypeNode node)
     {
-        var type = node.NonNullableType;
-        if (!ByType.TryGetValue(type, out var entry))
+        var key = (node.NonNullableType, Shape(node));
+        if (!ByShape.TryGetValue(key, out var entry))
         {
-            entry = new Entry(Entries.Count, type, node);
-            ByType.Add(type, entry);
+            entry = new Entry(Entries.Count, key.NonNullableType, node);
+            ByShape.Add(key, entry);
             Entries.Add(entry);
         }
         return $"{Marker}{entry.Index}{Marker}";
     }
+
+    // The nullability of a named node's members, down to the named types they
+    // contain. Everything else about a declaration follows from the C# type.
+    private static string Shape(BridgeTypeNode node) => node.Kind switch
+    {
+        BridgeWireKind.Dto => string.Join(",", node.Members.Select(member => Use(member.Type))),
+        BridgeWireKind.Union => string.Join(",", node.Cases.Select(@case => Shape(@case.Type))),
+        _ => "",
+    };
+
+    private static string Use(BridgeTypeNode node) => (node.IsNullable ? "?" : "")
+        + (node.Element is { } element ? "[" + Use(element) + "]" : "")
+        + (node.Value is { } value ? "{" + Use(value) + "}" : "")
+        + (IsNamed(node) ? "(" + Shape(node) + ")" : "");
 
     /// <summary>True when at least one module referenced a named type.</summary>
     internal static bool Any => Entries.Count > 0;
@@ -56,6 +81,13 @@ internal static partial class TypeScriptNamedTypes
         // themselves while it is built.
         for (var index = 0; index < Entries.Count; index++)
             Entries[index].Definition = BridgeTypeGraph.TypeScriptDeclaration(Entries[index].Node, Reference(Entries[index].Node));
+
+        // Uses of one C# type with different shapes are told apart by the
+        // nullable annotations of their type arguments: Box<string> keeps
+        // BoxOfString and Box<string?> becomes BoxOfNullableOfString.
+        foreach (var entry in Entries)
+            entry.BaseName = Entries.Count(other => other.Type == entry.Type) > 1
+                ? BaseName(entry.Type, entry.Node.Nullability) : BaseName(entry.Type, null);
 
         var reserved = new HashSet<string>(Globals, StringComparer.Ordinal);
         foreach (var module in modules) reserved.UnionWith(DeclaredNames(module));
@@ -108,33 +140,40 @@ internal static partial class TypeScriptNamedTypes
     private static string Candidate(Entry entry, int level)
     {
         var qualifiers = Qualifiers(entry.Type);
-        return string.Concat(qualifiers.Take(level).Reverse()) + BaseName(entry.Type);
+        return string.Concat(qualifiers.Take(level).Reverse()) + entry.BaseName;
     }
 
     // Declaring types, then namespace segments, innermost first.
     private static List<string> Qualifiers(Type type)
     {
         var result = new List<string>();
-        for (var outer = type.DeclaringType; outer is not null; outer = outer.DeclaringType) result.Add(BaseName(outer));
+        for (var outer = type.DeclaringType; outer is not null; outer = outer.DeclaringType) result.Add(BaseName(outer, null));
         if (type.Namespace is { } ns)
             result.AddRange(ns.Split('.').Reverse().Where(segment => segment.Length > 0)
                 .Select(segment => Identifier(char.ToUpperInvariant(segment[0]) + segment[1..])));
         return result;
     }
 
-    // Page<NoteRow> -> PageOfNoteRow, Box<string[]> -> BoxOfArrayOfString.
-    // The result is always a TypeScript identifier.
-    private static string BaseName(Type type)
+    // Page<NoteRow> -> PageOfNoteRow, Box<string[]> -> BoxOfArrayOfString,
+    // and with annotations Box<string?> -> BoxOfNullableOfString like
+    // Box<int?> -> BoxOfNullableOfInt32. The result is always a TypeScript
+    // identifier.
+    private static string BaseName(Type type, TypeNullability? nullability)
     {
-        if (type.IsArray) return "ArrayOf" + BaseName(type.GetElementType()!);
-        if (type.IsByRef || type.IsPointer) return BaseName(type.GetElementType()!);
+        if (type.IsArray) return "ArrayOf" + ArgumentName(type.GetElementType()!, nullability?.Element);
+        if (type.IsByRef || type.IsPointer) return BaseName(type.GetElementType()!, nullability);
+        if (Nullable.GetUnderlyingType(type) is { } underlying) return "NullableOf" + BaseName(underlying, nullability);
         var name = type.Name;
         var tick = name.IndexOf('`', StringComparison.Ordinal);
         if (tick >= 0) name = name[..tick];
         if (type.IsGenericType && !type.IsGenericTypeDefinition)
-            name += "Of" + string.Join("And", type.GenericTypeArguments.Select(BaseName));
+            name += "Of" + string.Join("And", type.GenericTypeArguments.Select((argument, index) =>
+                ArgumentName(argument, nullability?.Argument(index))));
         return Identifier(name);
     }
+
+    private static string ArgumentName(Type type, TypeNullability? nullability) =>
+        (nullability?.IsNullable == true && !type.IsValueType ? "NullableOf" : "") + BaseName(type, nullability);
 
     private static string Identifier(string name)
     {
@@ -176,6 +215,7 @@ internal static partial class TypeScriptNamedTypes
         internal Type Type { get; } = type;
         internal BridgeTypeNode Node { get; } = node;
         internal string? Definition { get; set; }
+        internal string BaseName { get; set; } = "";
         internal string? Name { get; set; }
     }
 }

@@ -19,6 +19,11 @@ public enum CodegenShapeMode
 
 public readonly record struct CodegenPoint(int X, int Y);
 
+// A generic DTO whose members take their nullability from the use site:
+// CodegenSlot<string> never holds null, CodegenSlot<string?> may, and
+// Fallback is declared T? so it is nullable in both.
+public sealed record CodegenSlot<T>(T Value, T? Fallback, IReadOnlyList<T> Items);
+
 public sealed class CodegenShapeViewModel : INotifyPropertyChanged
 {
     public CodegenShapeMode Mode { get; set; } = CodegenShapeMode.Default;
@@ -32,6 +37,8 @@ public sealed class CodegenShapeViewModel : INotifyPropertyChanged
     public DateTimeOffset Stamp { get; set; } = new(2026, 10, 3, 12, 30, 0, TimeSpan.FromHours(2));
     public DateTime When { get; set; } = new(2026, 10, 3, 10, 0, 0, DateTimeKind.Utc);
     public TimeOnly At { get; set; } = new(9, 30);
+    public CodegenSlot<string> Required { get; set; } = new("required", null, ["item"]);
+    public CodegenSlot<string?> Optional { get; set; } = new(null, null, [null]);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

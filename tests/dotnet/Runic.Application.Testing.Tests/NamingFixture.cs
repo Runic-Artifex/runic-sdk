@@ -19,8 +19,13 @@ namespace Runic.Application.Testing.Tests
     // Named like the state interface generated for NamingViewModel.
     public sealed record NamingState(int Count);
 
-    // The generator treats a generic-parameter member as nullable.
+    // A member declared T? is nullable for every type argument.
     public sealed record GenericBox<T>(T? Value);
+
+    // A lowercase C# type name that is a TypeScript reserved word.
+#pragma warning disable CS8981, CA1716, IDE1006
+    public sealed record delete(int Id);
+#pragma warning restore CS8981, CA1716, IDE1006
 
 #pragma warning disable CA1008 // The case-less enum is the shape under test.
     public enum EmptyKind { }
@@ -36,6 +41,7 @@ namespace Runic.Application.Testing.Tests
         public NamingState Inner { get; } = new(1);
         public GenericBox<int[]> Box { get; } = new([1]);
         public EmptyKind? Nothing { get; }
+        public delete Removed { get; } = new(1);
 
         // Wire names that are special on JavaScript objects.
         [RunicAlias("__proto__")] public string Proto { get; } = "proto";
