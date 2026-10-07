@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
@@ -32,15 +33,15 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
     private readonly PinnedTaskViewModel _pinnedTask = new();
     private IReadOnlyList<IPinnedItem> _pinned;
 
-    public ShellViewModel(IRunicModelContext modelContext, ISequencer scheduler)
+    public ShellViewModel(IRunicModelContext modelContext, ISequencer scheduler, ILoggerFactory loggerFactory)
     {
         _pinned = [_pinnedNote, _pinnedTask];
         _home = new HomeViewModel(this);
-        _document = new DocumentViewModel(this, modelContext, scheduler);
+        _document = new DocumentViewModel(this, modelContext, scheduler, loggerFactory);
         _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext,
             this, _home, _document, _document.Editor, _document.Preview, _pinnedNote, _pinnedTask);
         Router = new RoutingState(scheduler);
-        _main = new ReactiveRoutedRegion<IMainPage>(Router);
+        _main = new ReactiveRoutedRegion<IMainPage>(Router, loggerFactory);
         _main.PropertyChanged += OnMainChanged;
         OpenHomeCommand = ReactiveCommand.Create(OpenHome, scheduler);
         OpenDocumentCommand = ReactiveCommand.Create(OpenDocument, scheduler);
@@ -111,13 +112,14 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
     private readonly PreviewViewModel _preview;
     private readonly ReactiveRoutedRegion<IDocumentPane> _pane;
 
-    public DocumentViewModel(ShellViewModel host, IRunicModelContext modelContext, ISequencer scheduler)
+    public DocumentViewModel(ShellViewModel host, IRunicModelContext modelContext, ISequencer scheduler,
+        ILoggerFactory loggerFactory)
     {
         HostScreen = host;
         _editor = new EditorViewModel(this, modelContext, scheduler);
         _preview = new PreviewViewModel(this, _editor);
         Router = new RoutingState(scheduler);
-        _pane = new ReactiveRoutedRegion<IDocumentPane>(Router);
+        _pane = new ReactiveRoutedRegion<IDocumentPane>(Router, loggerFactory);
         _pane.PropertyChanged += OnPaneChanged;
         ShowEditorCommand = ReactiveCommand.Create(ShowEditor, scheduler);
         ShowPreviewCommand = ReactiveCommand.Create(ShowPreview, scheduler);

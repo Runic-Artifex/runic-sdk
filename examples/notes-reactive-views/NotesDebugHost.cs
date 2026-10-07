@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Runic.Application.Views;
 
 namespace NotesReactiveViews;
@@ -28,7 +29,8 @@ internal sealed class NotesDebugHost : IDisposable
     public void RecordWindow()
     {
         var sessionPath = Path.Combine(FindProjectDirectory(), "obj", "runic-ide-session.json");
-        File.WriteAllText(sessionPath, JsonSerializer.Serialize(new { pid = Environment.ProcessId, url = Url, profilePath = _profilePath }));
+        File.WriteAllText(sessionPath, JsonSerializer.Serialize(
+            new NotesIdeSession(Environment.ProcessId, Url, _profilePath), NotesDebugJsonContext.Default.NotesIdeSession));
         _windowRecorded = true;
     }
 
@@ -141,7 +143,7 @@ internal sealed class NotesDebugHost : IDisposable
                     notice.style.cssText = 'position:fixed;z-index:2147483647;left:16px;right:16px;bottom:16px;padding:16px 20px;background:#45240b;color:#fff8ea;border:2px solid #f5bc61;border-radius:8px;box-shadow:0 8px 30px #0008;font:600 15px system-ui,sans-serif';
                     document.body.appendChild(notice);
                   }
-                  notice.textContent = {{JsonSerializer.Serialize(notice)}};
+                  notice.textContent = {{JsonSerializer.Serialize(notice, NotesDebugJsonContext.Default.String)}};
                 })();
                 """);
         }
@@ -163,3 +165,12 @@ internal sealed class NotesDebugHost : IDisposable
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 }
+
+/// <summary>The IDE session record that notes-ide-cleanup.mjs reads.</summary>
+internal sealed record NotesIdeSession(int Pid, string Url, string ProfilePath);
+
+// Source-generated serialization keeps the debug host NativeAOT- and trim-safe.
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(NotesIdeSession))]
+[JsonSerializable(typeof(string))]
+internal sealed partial class NotesDebugJsonContext : JsonSerializerContext;
