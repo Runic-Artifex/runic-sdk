@@ -100,6 +100,39 @@ internal static class CodegenDiagnosticsTests
                 public sealed partial class WriteOnlyWindow(WriteOnlyViewModel model) : RunicWindow<WriteOnlyViewModel>(model);
                 """, "RUNICBRIDGE008", "public string Name { set { } }",
                 "WriteOnlyViewModel.Name: a public getter is required.").ConfigureAwait(false);
+            // NavigationRegion<TContent> slots (W230-002): a known content type, get-only.
+            await RejectAt("ObjectRegion", """
+                #pragma warning disable RUNICNAV001
+                public sealed class AnyRegionViewModel : FixtureModel
+                {
+                    public AnyRegionViewModel(RunicNavigator navigator) => Main = navigator.CreateRegion<object>(this);
+                    public NavigationRegion<object> Main { get; }
+                }
+                public sealed partial class AnyRegionWindow(AnyRegionViewModel model) : RunicWindow<AnyRegionViewModel>(model);
+                """, "RUNICBRIDGE008", "public NavigationRegion<object> Main",
+                "AnyRegionViewModel.Main: a NavigationRegion<object> slot has no known content.").ConfigureAwait(false);
+            await RejectAt("SettableRegion", """
+                #pragma warning disable RUNICNAV001
+                public interface IRegionPage : INotifyPropertyChanged { }
+                public sealed class RegionPageViewModel : FixtureModel, IRegionPage { public string Title => ""; }
+                public sealed partial class RegionPageView : RunicView<RegionPageViewModel>;
+                public sealed class SettableRegionViewModel : FixtureModel
+                {
+                    public NavigationRegion<IRegionPage>? Main { get; set; }
+                }
+                public sealed partial class SettableRegionWindow(SettableRegionViewModel model) : RunicWindow<SettableRegionViewModel>(model);
+                """, "RUNICBRIDGE008", "public NavigationRegion<IRegionPage>? Main",
+                "SettableRegionViewModel.Main: a NavigationRegion slot must be get-only").ConfigureAwait(false);
+            await RejectAt("UnknownRegionContent", """
+                #pragma warning disable RUNICNAV001
+                public interface IMissingPage : INotifyPropertyChanged { }
+                public sealed class MissingRegionViewModel : FixtureModel
+                {
+                    public NavigationRegion<IMissingPage>? Main { get; }
+                }
+                public sealed partial class MissingRegionWindow(MissingRegionViewModel model) : RunicWindow<MissingRegionViewModel>(model);
+                """, "RUNICBRIDGE008", "public NavigationRegion<IMissingPage>? Main",
+                "no ViewModel with a registered View is a IMissingPage").ConfigureAwait(false);
             await RejectAt("UnkeyedCollection", """
                 public sealed class Item { public string Label { get; init; } = ""; }
                 public sealed class ItemsViewModel : FixtureModel

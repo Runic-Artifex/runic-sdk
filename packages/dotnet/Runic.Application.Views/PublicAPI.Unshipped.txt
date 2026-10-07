@@ -228,3 +228,5 @@
 ~[RUNICNAV001]virtual Runic.Application.Views.NavigationResult<TContent>.Equals(Runic.Application.Views.NavigationResult<TContent>? other) -> bool
 [RUNICNAV001]virtual Runic.Application.Views.NavigationResult<TContent>.PrintMembers(System.Text.StringBuilder! builder) -> bool
 [RUNICNAV001]Runic.Application.Views.INavigationInputInitialize
+[RUNICNAV001]Runic.Application.Views.PropertyDescriptor<T>.PropertyDescriptor(string! name, System.Func<T, object?>! getter, System.Action<T, Runic.Application.Views.IBridgeArguments!>? setter, System.Func<T, object?>! observe) -> void
+[RUNICNAV001]Runic.Application.Views.RunicNavigator.BindPresentation(Runic.Application.Views.WindowContentSession! session) -> void

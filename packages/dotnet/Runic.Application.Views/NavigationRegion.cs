@@ -14,7 +14,7 @@ namespace Runic.Application.Views;
 /// operation is admitted without blocking and continues on the thread pool; do not block on it there.
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
-public sealed class NavigationRegion<TContent> : INotifyPropertyChanged where TContent : class
+public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INavigationPresentationSource where TContent : class
 {
     private static readonly PropertyChangedEventArgs CurrentChanged = new(nameof(Current));
     private static readonly PropertyChangedEventArgs CurrentEntryChanged = new(nameof(CurrentEntry));
@@ -96,6 +96,20 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged where TC
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken) =>
         NavigationResults.MapAsync<TContent>(Core.Start(operation, target, backTo, options, cancellationToken));
 
+    // A Bridge slot presents Current. It binds the window session as the
+    // navigator's Forget sink and republishes when Current changes.
+    IDisposable INavigationPresentationSource.ObservePresentation(WindowContentSession? session, Action changed)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+        if (session is not null) Core.Navigator.BindPresentation(session);
+        PropertyChangedEventHandler handler = (_, args) =>
+        {
+            if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(Current)) changed();
+        };
+        PropertyChanged += handler;
+        return new Subscription(this, handler);
+    }
+
     private static NavigationTargetCore Target(INavigationTarget<TContent> target)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -115,6 +129,16 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged where TC
         if ((changes & NavigationRegionChanges.Transitioning) != 0) Raise(IsTransitioningChanged);
     }
 
+    private sealed class Subscription(NavigationRegion<TContent> region, PropertyChangedEventHandler handler) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0) region.PropertyChanged -= handler;
+        }
+    }
+
     // D-13: one throwing handler must not skip the others or undo the commit.
     private void Raise(PropertyChangedEventArgs args)
     {
@@ -130,6 +154,12 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged where TC
             }
         }
     }
+}
+
+// Implemented by NavigationRegion<T>; observed through a property descriptor's hook.
+internal interface INavigationPresentationSource
+{
+    IDisposable ObservePresentation(WindowContentSession? session, Action changed);
 }
 
 [Flags]

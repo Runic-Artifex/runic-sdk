@@ -240,6 +240,11 @@ public sealed class WindowContentSession : IDisposable
         get { lock (_gate) return _contentModelLeases.Count; }
     }
 
+    internal bool IsDisposed
+    {
+        get { lock (_gate) return _disposed; }
+    }
+
     internal int DormantAttachmentCount
     {
         get { lock (_gate) return _dormantAttachments.Count; }
@@ -576,7 +581,11 @@ public sealed class WindowContentSession : IDisposable
         foreach (var attachment in rootMounts) attachment.ReleaseConnection(connectionKey);
     }
 
-    /// <summary>Releases identity and routes for an object no longer retained by this window.</summary>
+    /// <summary>
+    /// Releases identity and routes for an object no longer retained by this window. Like
+    /// <see cref="ClearOwner"/>, it is a no-op after the session was disposed, because a
+    /// navigator can retire owned content while its window closes.
+    /// </summary>
     public void Forget(object viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
@@ -585,7 +594,7 @@ public sealed class WindowContentSession : IDisposable
         var forgetFields = false;
         lock (_gate)
         {
-            ThrowIfDisposed();
+            if (_disposed) return;
             if (!_entries.TryGetValue(viewModel, out var variants)) return;
             _entries.Remove(viewModel);
             forgetFields = viewModel is INotifyPropertyChanged;

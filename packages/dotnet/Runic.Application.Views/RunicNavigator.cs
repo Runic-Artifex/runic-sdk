@@ -75,6 +75,9 @@ public sealed class RunicNavigator : IAsyncDisposable
     private int _nextRegionId;
     private bool _closing;
     private TaskCompletionSource? _disposal;
+    // The window session that presents this navigator's regions; the sink
+    // that forgets owned content when it retires.
+    private WindowContentSession? _presentation;
 
     /// <summary>Creates a navigator for one window.</summary>
     public RunicNavigator(RunicNavigatorOptions options)
@@ -245,6 +248,32 @@ public sealed class RunicNavigator : IAsyncDisposable
         catch { }
     }
 
+    /// <summary>
+    /// Binds the window session that presents this navigator's regions. Generated Bridges call it
+    /// when they first observe a region slot; applications do not. The binding is per window: it is
+    /// idempotent for the same session and ends when either side is disposed. Retiring owned content
+    /// is forgotten in the bound session.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The session uses a different model context, or another live session is already bound.
+    /// </exception>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public void BindPresentation(WindowContentSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (!ReferenceEquals(session.ModelContext, ModelContext))
+            throw new InvalidOperationException(
+                "A navigator can be presented only by a window session that shares its model context. Create the session with the navigator's IRunicModelContext.");
+        lock (Gate)
+        {
+            if (_closing || session.IsDisposed) return;
+            if (_presentation is { } bound && !ReferenceEquals(bound, session) && !bound.IsDisposed)
+                throw new InvalidOperationException(
+                    "This navigator is already presented by another window session. Use one navigator per window.");
+            _presentation = session;
+        }
+    }
+
     /// <summary>Completes when no transition is in flight and no retirement is running.</summary>
     public async ValueTask WhenIdleAsync(CancellationToken cancellationToken = default)
     {
@@ -312,6 +341,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             lock (Gate) remaining = [.. _tracked];
             foreach (var entry in remaining.OrderBy(entry => entry.Id.Value))
                 await RetireAsync(entry, null).ConfigureAwait(false);
+            lock (Gate) _presentation = null;
         }
         finally
         {
@@ -1045,10 +1075,13 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
     }
 
-    // The presentation sink for owned content. Window presentation binding
-    // arrives with the region slot; until then there is nothing to forget.
+    // Detaches every presentation of retiring owned content. Forget is a
+    // no-op once the session is disposed.
     private void ForgetPresentation(NavigationEntryCore entry)
     {
+        WindowContentSession? session;
+        lock (Gate) session = _presentation;
+        if (session is not null && entry.Content is { } content) session.Forget(content);
     }
 
     private void Step(NavigationEntryCore entry, string step, Action<NavigationEntryCore> action)

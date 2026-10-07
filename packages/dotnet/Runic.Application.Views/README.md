@@ -225,7 +225,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE005` | The model assembly or one of its dependencies could not be loaded. | Check the bootstrap output and package versions. |
 | `RUNICBRIDGE006` | The assembly has no Window or View class, one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
 | `RUNICBRIDGE007` | A ViewModel does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction. | Change the ViewModel declaration. |
-| `RUNICBRIDGE008` | A state property has no public getter or an empty wire name, ViewModel content has a public setter, or a ViewModel collection's item type has no registered View. | Add a getter, make content read-only to the web view, or register a View for the item type. |
+| `RUNICBRIDGE008` | A state property has no public getter or an empty wire name, ViewModel content or a `NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's item type has no registered View, or a region slot is a `NavigationRegion<object>` or has no ViewModel with a registered View that is a `TContent`. | Add a getter, make content read-only to the web view, register a View for the item or content type, or give the region a specific content interface or base class. |
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
@@ -397,7 +397,22 @@ await main.BackAsync(); // the document retires and is disposed; home resumes
   region and applies the new state in one model turn, which raises
   `PropertyChanged`. A later request of a region supersedes an earlier one that
   has not started committing.
-- A region's presentation through a generated Bridge slot is not available yet.
+- Expose a region as a get-only `NavigationRegion<TContent>` property and the
+  generator treats it as a content slot: the snapshot presents `Current`, or
+  clears the slot when the region is empty, so the wire value and TypeScript type
+  are those of a nullable content property (`TContentPageReference | null`).
+  `TContent` must be an interface or base class of ViewModels with registered
+  Views. The generated Bridge observes the region's `Current` and binds the
+  window session to the navigator (one window per navigator, with the same model
+  context), so retiring owned content forgets its routes. Nothing is forwarded by
+  hand; `ViewOutlet`s and test drivers (`View<T>(vm => vm.Main)`) work unchanged.
+- Going back presents the same `PageReference` id with the retained model; the
+  outlet mounts a fresh View.
+- **Stale-route window.** A commit retires and forgets departing owned content
+  right away, while the frontend sees the new `Current` only with the next state
+  capture. Until then it may still hold the old reference: an invocation on it
+  is rejected like any forgotten route, and the outlet may briefly show the old
+  View or nothing. The next capture converges.
 
 ## Logging and telemetry
 

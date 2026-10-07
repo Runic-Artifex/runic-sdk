@@ -116,6 +116,41 @@ already have. A `RunicViewDriver<T>` has:
   frames in order: `State`, `Delta` with its `RunicCollectionChange`s, or
   `Failure`.
 
+### Navigation (experimental)
+
+A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host
+and drivers apply. Create the navigator with the window's model context and pass
+that context as `RunicWindowTestHostOptions.ModelContext`; a generated Bridge
+rejects a session whose context is not the navigator's.
+
+```csharp
+#pragma warning disable RUNICNAV001
+await using var context = new RunicModelContext();
+await using var navigator = new RunicNavigator(new() { ModelContext = context, TimeProvider = clock });
+var shell = new ShellViewModel(navigator);
+using var host = new RunicWindowTestHost<ShellViewModel>(shell, attach,
+    new RunicWindowTestHostOptions { ModelContext = context, TimeProvider = clock });
+
+// A scripted guard: the test page's CanDepartAsync returns decision.Task, which
+// holds the transition in Guarding until the test decides.
+var decision = new TaskCompletionSource<bool>();
+editor.Departure = decision.Task;
+var back = shell.Main.BackAsync();
+decision.SetResult(true);
+await back;
+await navigator.WhenIdleAsync();
+var home = host.Root.View<HomeViewModel>(vm => vm.Main); // the resumed entry
+```
+
+- `RunicNavigator.WhenIdleAsync()` waits until no transition or retirement is
+  running.
+- `navigator.UnretiredEntryCount()` counts entries that have not finished
+  retiring (zero after `DisposeAsync`), and
+  `host.Content.RetainedContentModelCount()` counts the content models whose
+  model-context leases the window holds.
+- Pass a `FakeTimeProvider` as `RunicNavigatorOptions.TimeProvider` to drive the
+  close timeout and the overrun warning (event 1067) without waiting.
+
 ### Collections and deltas
 
 `Track()` follows a route from a snapshot through its frames, as the generated

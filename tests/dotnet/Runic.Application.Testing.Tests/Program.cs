@@ -13,6 +13,7 @@ if (args is ["--export-generated-client-fixture", var fixturePath])
 if (args is ["--navigation"])
 {
     await NavigationTests.RunAsync();
+    await NavigationPresentationTests.RunAsync();
     Console.WriteLine("Navigation tests passed.");
     return;
 }
@@ -150,6 +151,7 @@ await CollectionDeltaConformanceTests.RunAsync();
 await HostDriverTests.RunAsync();
 TrackerConformanceTests.Run();
 await NavigationTests.RunAsync();
+await NavigationPresentationTests.RunAsync();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();
 await InteractionFixture.VerifyAsync();

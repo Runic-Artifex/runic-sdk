@@ -80,6 +80,13 @@ public static class BridgeContractShape
             if (kind != "state") continue;
             if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is { } collection)
                 parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
+            // A NavigationRegion<TContent> slot presents its Current; the region
+            // kind is part of the contract because its wire value is nullable.
+            if (NavigationRegionContent(property.PropertyType) is { } regionContent)
+            {
+                parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}:region:{TypeName(regionContent)}");
+                continue;
+            }
             if (ContentModels(property, model, models).Length > 0)
             {
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}");
@@ -199,6 +206,8 @@ public static class BridgeContractShape
     private static NullabilityInfo? GenericAnnotation(NullabilityInfo? value, int index) => value is { GenericTypeArguments.Length: > 0 } && value.GenericTypeArguments.Length > index ? value.GenericTypeArguments[index] : null;
     private static string WireName(PropertyInfo property) => property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
     private static Type? GenericContract(Type type, params string[] names) => type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType && names.Contains(candidate.GetGenericTypeDefinition().FullName, StringComparer.Ordinal));
+    internal static Type? NavigationRegionContent(Type type) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(NavigationRegion<>) ? type.GenericTypeArguments[0] : null;
     private static Type[] ContentModels(PropertyInfo property, Type owner, IReadOnlyList<Type> models) { var candidate = TryCollection(property.PropertyType, out var item) ? item! : property.PropertyType; return candidate == typeof(object) ? [] : models.Where(model => model != owner && candidate.IsAssignableFrom(model)).ToArray(); }
     private static PresentationView[] DiscoverViews(Assembly assembly) => LoadableTypes(assembly).Where(type => !type.IsAbstract && type.IsClass && type.IsPublic && !type.IsNested).Select(type => (ViewType: type, ModelType: ViewModelFor(type))).Where(item => item.ModelType is not null).Select(item => new PresentationView(item.ViewType, item.ModelType!, ContractFor(item.ViewType))).ToArray();
     private static Type? ViewModelFor(Type view) { for (var current = view.BaseType; current is not null; current = current.BaseType) if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(RunicView<>)) return current.GenericTypeArguments[0]; return null; }
