@@ -18,6 +18,14 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./generated": {
+      "types": "./dist/generated.d.ts",
+      "import": "./dist/generated.js"
+    },
+    "./generated/wire": {
+      "types": "./dist/wire.d.ts",
+      "import": "./dist/wire.js"
+    },
     "./mock": {
       "types": "./dist/mock.d.ts",
       "import": "./dist/mock.js"
@@ -29,7 +37,8 @@
     "build": "bun run --bun clean && tsc -p tsconfig.build.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "bun run --bun build && bun test --timeout 60000 test/*.test.ts",
-    "pack:check": "bun pm pack --dry-run"
+    "pack:check": "bun pm pack --dry-run",
+    "size": "bun run --bun build && node scripts/bundle-size.mjs"
   },
   "devDependencies": {
     "@types/node": "24.19.1",

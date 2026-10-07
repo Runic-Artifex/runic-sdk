@@ -1,3 +1,5 @@
+// The app-facing API. Generated clients import their runtime from
+// `@runic-artifex/views/generated`.
 export {
   BridgeError,
   BridgeOperationUncertainError,
@@ -6,9 +8,8 @@ export {
   type BridgeFailureDetail,
 } from "./errors.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticListener } from "./diagnostics.js";
-export { bridgeWire, decodeBridgeValidation, type BridgeValidationMessage, type BridgeValidationState } from "./wire.js";
+export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
-export { defineCollection, type BridgeCollectionDefinition } from "./collections.js";
 export {
   collectionViewport,
   createCollectionViewportController,
@@ -29,16 +30,7 @@ export {
   type ViewControllerState,
   type ViewSource,
 } from "./controller.js";
-export {
-  connectView,
-  viewReferences,
-  type FieldBaseline,
-  type FieldWriteOptions,
-  type FieldWriteReceipt,
-  type ViewClient,
-  type ViewConnection,
-  type ViewConnectOptions,
-} from "./connection.js";
+export type { FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
 export type {
   BridgeOperation,
   BridgeOperationCancelKind,
@@ -51,7 +43,7 @@ export type {
   BridgeOperationWaitOptions,
   BridgeStreamOperation,
 } from "./operations.js";
-export type { BridgeInteractionContext, InteractionDefinition, InteractionSurface } from "./interactions.js";
+export type { BridgeInteractionContext, InteractionSurface } from "./interactions.js";
 
 /** A generated content reference: a logical .NET View presented in a ViewModel slot. */
 export interface ViewReference<TClient = unknown> {

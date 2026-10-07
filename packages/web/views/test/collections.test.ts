@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bridgeWire, collectionViewport, connectView, defineCollection, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
+import { collectionViewport, onBridgeDiagnostic, type BridgeDiagnostic } from "../dist/index.js";
+import { connectView, defineCollection, defineCollections } from "../dist/generated.js";
+import * as bridgeWire from "../dist/wire.js";
 import { applyCollectionDelta } from "../dist/collections.js";
 import { createMockBridge, installMockBridge } from "../dist/mock.js";
 
@@ -9,7 +11,7 @@ const decode = (wire: unknown): Row => {
   const row = bridgeWire.object(wire, value => value);
   return { id: bridgeWire.integer(row["id"], 0, 10000), label: bridgeWire.string(row["label"]) };
 };
-const collections = { rows: defineCollection(decode, row => String(row.id)) };
+const definitions = { rows: defineCollection(decode, row => String(row.id)) };
 const change = (kind: string, index: number, keys: string[], items: Row[] = [], oldIndex = index) =>
   ({ field: "rows", kind, index, oldIndex, keys, items });
 
@@ -29,7 +31,7 @@ test("collection frames preserve identity and apply indexed operations in order"
     change("add", 2, ["3"], [{ id: 3, label: "three" }]),
     change("move", 0, ["3"], [], 2),
     change("remove", 2, ["2"]),
-  ], collections) as typeof original;
+  ], definitions) as typeof original;
   assert.deepEqual(next.rows.map(row => row.id), [3, 1]);
   assert.equal(next.rows[1], original.rows[0]);
   assert.equal(next.title, original.title);
@@ -43,7 +45,7 @@ test("invalid frames leave the previous collection untouched", () => {
     change("replace", 0, ["1"], [{ id: 2, label: 7 as unknown as string }]),
     change("move", 2, ["1"], [], 0), { ...change("remove", 0, ["1"]), field: "__proto__" },
   ]) {
-    assert.throws(() => applyCollectionDelta(original, [change("add", 1, ["2"], [{ id: 2, label: "two" }]), invalid], collections));
+    assert.throws(() => applyCollectionDelta(original, [change("add", 1, ["2"], [{ id: 2, label: "two" }]), invalid], definitions));
     assert.deepEqual(original, { rows: [{ id: 1, label: "one" }] });
   }
 });
@@ -53,7 +55,7 @@ test("clients ignore duplicate deltas and recover a revision gap with one snapsh
   delete host[Symbol.for("runic.views.generated-client-runtime")];
   const bridge = installMockBridge(createMockBridge());
   bridge.view("rows", { state: { rows: [{ id: 1, label: "one" }], title: "rows" } });
-  const client = await connectView({ contract: "rows:collections", route: "rows", mount: false, collections,
+  const client = await connectView({ contract: "rows:collections", route: "rows", mount: false, collections: defineCollections(definitions),
     hydrate: (wire: { rows: unknown[]; title: string }) => ({ rows: wire.rows.map(decode), title: wire.title }) });
   const original = client.snapshot.rows[0];
   const push = host["__rowsChanged"] as (wire: unknown) => void;
@@ -85,7 +87,7 @@ async function connectRows(read: (attempt: number) => unknown) {
     const state = reads++ === 0 ? { revision: 1, rows: [{ id: 1, label: "one" }], title: "rows" } : read(reads - 1);
     return JSON.stringify({ ok: true, state, error: null });
   });
-  const client = await connectView({ contract: "rows:recovery", route: "rows", mount: false, collections,
+  const client = await connectView({ contract: "rows:recovery", route: "rows", mount: false, collections: defineCollections(definitions),
     hydrate: (wire: Wire) => ({ rows: wire.rows.map(decode), title: wire.title }) });
   const push = host["__rowsChanged"] as (wire: unknown) => void;
   return { bridge, client, push, reads: () => reads - 1 };

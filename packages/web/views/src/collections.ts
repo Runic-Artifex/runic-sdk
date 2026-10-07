@@ -9,6 +9,28 @@ export function defineCollection<T>(decode: (wire: unknown) => T, key: (item: T)
   return { decode, key: item => key(item as T) };
 }
 
+/**
+ * The keyed collections of one generated client, passed to `connectView` as
+ * `collections`. A View without keyed collections does not bundle this code.
+ */
+export interface BridgeCollections {
+  /** Throws when a decoded state has a missing collection or invalid keys. */
+  validate(state: unknown): void;
+  /** Applies a collection change frame to a decoded state. Throws for an unusable frame. */
+  apply(state: unknown, changes: unknown): unknown;
+  /** Applies a frame that `apply` accepted to the wire state. */
+  applyWire(wire: unknown, changes: readonly unknown[]): Record<string, unknown>;
+}
+
+/** Binds the collection codecs of a generated client to the code that applies their changes. */
+export function defineCollections(definitions: Readonly<Record<string, BridgeCollectionDefinition>>): BridgeCollections {
+  return {
+    validate: state => validateCollections(state, definitions),
+    apply: (state, changes) => applyCollectionDelta(state, changes, definitions),
+    applyWire: applyWireDelta,
+  };
+}
+
 function object(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid collection change.");
   return value as Record<string, unknown>;
@@ -105,21 +127,4 @@ export function applyWireDelta(wire: unknown, changes: readonly unknown[]): Reco
     else rows.splice(change.index, 0, ...rows.splice(change.oldIndex, count));
   }
   return next;
-}
-
-/** Compares two decoded JSON values structurally. */
-export function sameWire(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
-  if (Array.isArray(left)) {
-    if (!Array.isArray(right) || left.length !== right.length) return false;
-    for (let index = 0; index < left.length; index++) if (!sameWire(left[index], right[index])) return false;
-    return true;
-  }
-  if (Array.isArray(right)) return false;
-  const leftKeys = Object.keys(left);
-  if (leftKeys.length !== Object.keys(right).length) return false;
-  for (const key of leftKeys)
-    if (!Object.hasOwn(right, key) || !sameWire((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])) return false;
-  return true;
 }

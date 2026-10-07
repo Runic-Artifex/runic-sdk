@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BridgeError, BridgeOperationUncertainError, bridgeWire, connectView, viewReferences } from "../dist/index.js";
+import { BridgeError, BridgeOperationUncertainError } from "../dist/index.js";
+import { bridgeOperations, connectView, viewReferences } from "../dist/generated.js";
+import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge, type MockBridge } from "../dist/mock.js";
 
 type CounterState = { readonly count: number; readonly label: string };
@@ -22,7 +24,7 @@ function freshBridge(): MockBridge {
 }
 
 function connectCounter(route = "counter", mount = false) {
-  return connectView({ contract: "Tests.CounterViewModel:fingerprint", route, mount, hydrate });
+  return connectView({ contract: "Tests.CounterViewModel:fingerprint", route, mount, hydrate, operations: bridgeOperations });
 }
 
 const routeCalls = (bridge: MockBridge, name: string) => bridge.calls.filter(call => call.name === name);
@@ -194,6 +196,18 @@ test("operations admit, retry a dropped wait and recover by request id", async (
   client.dispose();
 });
 
+test("operations reject without injected operation support and call no route", async () => {
+  const bridge = freshBridge();
+  bridge.view("counter", { state: { count: 1, label: "one" } });
+  const client = await connectView({ contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate });
+  const callsBefore = bridge.calls.length;
+  const unsupported = (error: unknown) => error instanceof BridgeError && error.kind === "failed" && /operation support/.test(error.message);
+  await assert.rejects(client.startOperation("Save", "request-1", () => "request-1", value => value), unsupported);
+  await assert.rejects(client.recoverOperation("Save", "request-1", value => value), unsupported);
+  assert.equal(bridge.calls.length, callsBefore);
+  client.dispose();
+});
+
 test("content references keep their identity per id", () => {
   const references = viewReferences(id => ({ kind: "counter", connect: async () => id }));
   assert.equal(references("a"), references("a"));
@@ -219,7 +233,9 @@ test("copies of the package share one page runtime and one BridgeError identity"
     await cp(dist, join(directory, "b"), { recursive: true });
     const a = await import(pathToFileURL(join(directory, "a/index.js")).href) as typeof import("../dist/index.js");
     const b = await import(pathToFileURL(join(directory, "b/index.js")).href) as typeof import("../dist/index.js");
-    assert.notEqual(a.connectView, b.connectView);
+    const aGenerated = await import(pathToFileURL(join(directory, "a/generated.js")).href) as typeof import("../dist/generated.js");
+    const bGenerated = await import(pathToFileURL(join(directory, "b/generated.js")).href) as typeof import("../dist/generated.js");
+    assert.notEqual(aGenerated.connectView, bGenerated.connectView);
     assert.ok(new a.BridgeError("failed", "copy") instanceof b.BridgeError);
     assert.ok(new b.BridgeError("failed", "copy") instanceof BridgeError);
     assert.ok(!(new Error("plain") instanceof a.BridgeError));
@@ -231,8 +247,8 @@ test("copies of the package share one page runtime and one BridgeError identity"
     const bridge = freshBridge();
     const counter = bridge.view("counter", { state: { count: 1, label: "one" } });
     const options = { contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate };
-    const first = await a.connectView(options);
-    const second = await b.connectView(options);
+    const first = await aGenerated.connectView(options);
+    const second = await bGenerated.connectView(options);
     assert.equal(routeCalls(bridge, "counterSnapshot").length, 1);
     counter.update({ count: 2 });
     assert.equal(first.snapshot.count, 2);

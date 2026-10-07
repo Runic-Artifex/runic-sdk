@@ -73,7 +73,7 @@ async function settledNow<T>(promise: Promise<T>): Promise<T | undefined> {
 }
 
 /** Operation helpers bound to one route contract. */
-export class OperationChannel {
+class OperationChannel {
   constructor(private readonly bridge: RunicBridgeClient, private readonly contract: string) {}
 
   parseStatus<TResult>(json: string, requestId: string, decode: (value: unknown) => TResult,
@@ -205,3 +205,55 @@ export class OperationChannel {
     return this.handle(member, requestId, decode, stream, status.kind === "running" ? undefined : status);
   }
 }
+
+/** The connection an operation starts on. */
+export interface OperationScope {
+  readonly bridge: RunicBridgeClient;
+  /** `{contract}:{route}` of the connection. */
+  readonly contract: string;
+  readonly route: string;
+  /** Throws a disconnected BridgeError when the connection can no longer call .NET. */
+  readonly assertConnected: () => void;
+  /** Resolves when .NET acknowledged the connection's interaction handlers. */
+  readonly ready: () => Promise<void>;
+}
+
+/**
+ * The operation protocol, passed to `connectView` as `operations` by a
+ * generated client with operations. A View without operations does not bundle it.
+ */
+export interface BridgeOperations {
+  start<TResult>(scope: OperationScope, member: string, requestId: string, payload: () => string,
+    decode: (value: unknown) => TResult, stream: boolean): Promise<BridgeStreamOperation<TResult>>;
+  recover<TResult>(scope: OperationScope, member: string, requestId: string,
+    decode: (value: unknown) => TResult, stream: boolean): Promise<BridgeStreamOperation<TResult>>;
+}
+
+export const bridgeOperations: BridgeOperations = {
+  async start(scope, member, requestId, payload, decode, stream) {
+    const startRoute = `${scope.route}Start${member}`;
+    const operations = new OperationChannel(scope.bridge, scope.contract);
+    scope.assertConnected();
+    await scope.ready();
+    let reply: string;
+    try { reply = await scope.bridge.call(startRoute, payload()); }
+    catch (cause) {
+      const recovered = await operations.status(member, requestId, false, decode);
+      if (recovered.kind === "unknown" || recovered.kind === "expired")
+        throw new BridgeOperationUncertainError(scope.contract, requestId, "The operation admission could not be recovered.", { cause });
+      return operations.handle(member, requestId, decode, stream, recovered.kind === "running" ? undefined : recovered);
+    }
+    let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown; readonly detail?: unknown };
+    try { admission = JSON.parse(reply) as typeof admission; }
+    catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
+    if (admission.kind === "accepted" || admission.kind === "duplicate") {
+      const terminal = admission.terminal === null || admission.terminal === undefined
+        ? undefined : operations.parseStatus(JSON.stringify(admission.terminal), requestId, decode);
+      return operations.handle(member, requestId, decode, stream, terminal);
+    }
+    const detail = decodeFailureDetail(admission.detail);
+    throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.",
+      { route: startRoute, ...(detail === undefined ? {} : { detail }) });
+  },
+  recover: (scope, member, requestId, decode, stream) => new OperationChannel(scope.bridge, scope.contract).recover(member, requestId, decode, stream),
+};

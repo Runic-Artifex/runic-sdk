@@ -296,7 +296,9 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
 import assert from 'node:assert/strict';
 import * as vite from '@runic-artifex/vite-plugin-runic';
 import { runicSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
-import { BridgeError, bridgeWire, connectView } from '@runic-artifex/views';
+import { BridgeError, onBridgeDiagnostic } from '@runic-artifex/views';
+import { bridgeOperations, connectView, defineCollection, defineCollections, defineInteractions } from '@runic-artifex/views/generated';
+import * as bridgeWire from '@runic-artifex/views/generated/wire';
 import { installMockBridge } from '@runic-artifex/views/mock';
 import { useView as useReactView } from '@runic-artifex/react';
 import { useView as useVueView } from '@runic-artifex/vue';
@@ -304,10 +306,30 @@ import { command } from '@runic-artifex/views-effect';
 import { Effect } from 'effect';
 assert.equal(runicSpaPageOptions.ssr, false);
 assert.ok(Object.keys(vite).length);
-installMockBridge().view('consumer', { state: { value: 1 } });
+const bridge = installMockBridge();
+const consumerView = bridge.view('consumer', { state: { value: 1, rows: [{ id: 1 }] } });
+bridge.route('consumerStartSave', payload => JSON.stringify({ kind: 'accepted',
+  terminal: { contract: 'Consumer:fingerprint:consumer', requestId: payload, kind: 'succeeded', result: 3 } }));
 const client = await connectView({ contract: 'Consumer:fingerprint', route: 'consumer', mount: false,
-  hydrate: wire => ({ value: bridgeWire.integer(wire.value, 0, 9) }) });
+  hydrate: wire => ({ value: bridgeWire.integer(wire.value, 0, 9),
+    rows: bridgeWire.array(wire.rows, row => bridgeWire.object(row, item => ({ id: bridgeWire.integer(item.id, 0, 9) }))) }),
+  collections: defineCollections({ rows: defineCollection(row => bridgeWire.object(row, item => ({ id: bridgeWire.integer(item.id, 0, 9) })), row => String(row.id)) }),
+  interactions: defineInteractions({ confirm: { contract: 'Consumer:interaction:Confirm', decodeInput: bridgeWire.string, encodeOutput: value => value } }),
+  operations: bridgeOperations });
 assert.equal(client.snapshot.value, 1);
+assert.deepEqual(client.snapshot.rows, [{ id: 1 }]);
+// The injected collection runtime rejects a state with duplicate keys.
+const diagnostics = [];
+const stopDiagnostics = onBridgeDiagnostic(diagnostic => diagnostics.push(diagnostic));
+const consoleError = console.error;
+console.error = () => {};
+try { consumerView.update({ rows: [{ id: 2 }, { id: 2 }] }); } finally { console.error = consoleError; stopDiagnostics(); }
+assert.equal(diagnostics.length, 1);
+assert.deepEqual(client.snapshot.rows, [{ id: 1 }]);
+const stopConfirm = client.interactions.confirm.handle(() => true);
+stopConfirm();
+const operation = await client.startOperation('Save', 'save-1', () => 'save-1', value => bridgeWire.integer(value, 0, 9));
+assert.equal((await operation.completion).result, 3);
 client.dispose();
 await assert.rejects(client.invoke('consumerSetValue', 2), error => error instanceof BridgeError && error.kind === 'disconnected');
 assert.equal((await Effect.runPromise(Effect.flip(command(() => client.invoke('consumerSetValue', 2)))))._tag, 'ViewDisconnected');
