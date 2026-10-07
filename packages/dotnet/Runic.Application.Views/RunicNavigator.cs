@@ -953,19 +953,14 @@ public sealed class RunicNavigator : IAsyncDisposable
         finally { HookTransition.Value = previous; }
     }
 
-    // Interface identity only: an INavigationInitialize<T> that trimming
-    // removed is never called, so not seeing it is equivalent.
-    [UnconditionalSuppressMessage("Trimming", "IL2075",
-        Justification = "Only the identity of implemented interfaces is inspected; no member is invoked through reflection.")]
+    // Interface checks only: every INavigationInitialize<TInput> is an
+    // INavigationInputInitialize, which needs no reflection (NativeAOT).
     private static void RejectInitializable(object content, string parameter)
     {
         if (content is INavigationInitialize)
             throw new ArgumentException($"An initial target's content ({content.GetType().Name}) must not implement INavigationInitialize.", parameter);
-        foreach (var contract in content.GetType().GetInterfaces())
-        {
-            if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(INavigationInitialize<>))
-                throw new ArgumentException($"An initial target's content ({content.GetType().Name}) must not implement INavigationInitialize<TInput>.", parameter);
-        }
+        if (content is INavigationInputInitialize)
+            throw new ArgumentException($"An initial target's content ({content.GetType().Name}) must not implement INavigationInitialize<TInput>.", parameter);
     }
 
     internal static string OperationName(NavigationOperation operation) => operation switch

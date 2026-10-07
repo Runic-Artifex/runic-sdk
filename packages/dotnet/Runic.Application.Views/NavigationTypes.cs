@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Runic.Application.Views;
@@ -199,10 +200,22 @@ public interface INavigationInitialize
     ValueTask InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// The non-generic base of every <see cref="INavigationInitialize{TInput}"/>, so the navigator can recognize
+/// content that initializes with input through an interface check. Implement
+/// <see cref="INavigationInitialize{TInput}"/> instead.
+/// </summary>
+[Experimental(RunicNavigator.DiagnosticId)]
+[EditorBrowsable(EditorBrowsableState.Never)]
+[SuppressMessage("Design", "CA1040:Avoid empty interfaces", Justification = "A marker that keeps the initial-target check free of reflection for NativeAOT.")]
+public interface INavigationInputInitialize
+{
+}
+
 /// <summary>Initializes a new entry created by <see cref="NavigationTarget.Create{T, TInput}"/> with typed input.</summary>
 /// <typeparam name="TInput">The input type.</typeparam>
 [Experimental(RunicNavigator.DiagnosticId)]
-public interface INavigationInitialize<in TInput>
+public interface INavigationInitialize<in TInput> : INavigationInputInitialize
 {
     /// <summary>Initializes the entry's content. Runs outside model turns and at most once per entry.</summary>
     /// <param name="entry">The entry being created.</param>

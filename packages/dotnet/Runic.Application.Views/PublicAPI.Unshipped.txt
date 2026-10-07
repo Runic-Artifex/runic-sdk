@@ -227,3 +227,4 @@
 [RUNICNAV001]virtual Runic.Application.Views.NavigationResult<TContent>.EqualityContract.get -> System.Type!
 ~[RUNICNAV001]virtual Runic.Application.Views.NavigationResult<TContent>.Equals(Runic.Application.Views.NavigationResult<TContent>? other) -> bool
 [RUNICNAV001]virtual Runic.Application.Views.NavigationResult<TContent>.PrintMembers(System.Text.StringBuilder! builder) -> bool
+[RUNICNAV001]Runic.Application.Views.INavigationInputInitialize
