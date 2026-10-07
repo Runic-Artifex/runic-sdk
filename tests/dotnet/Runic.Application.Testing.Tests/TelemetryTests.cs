@@ -212,7 +212,11 @@ internal static class TelemetryTests
         {
             Trace.Listeners.Remove(trace);
         }
-        var entries = trace.Entries.ToArray();
+        // The listener is global, so keep only this region's entries; earlier
+        // suites can still write unrelated Trace output in the background.
+        var entries = trace.Entries
+            .Where(entry => entry.Message.Contains($"routed region for {nameof(PageViewModel)}", StringComparison.Ordinal))
+            .ToArray();
         Require(entries.Length == 2 && entries.All(entry => entry.Type == TraceEventType.Error),
             $"The Trace fallback wrote unexpected entries: {string.Join(" | ", entries)}");
         Require(entries[0].Message == $"A routed region for {nameof(PageViewModel)} received {nameof(OtherViewModel)}, " +
