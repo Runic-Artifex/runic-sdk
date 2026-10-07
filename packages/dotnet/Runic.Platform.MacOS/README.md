@@ -14,6 +14,6 @@ Native clipboard ABI references: [Apple Pasteboard functions](https://developer.
 
 Application-scoped appearance and notification providers, and owned file opening,
 application choice and reveal, are described in the
-[desktop services guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop-services.md). It includes
+[desktop services guide](https://docs.runic-artifex.eu/guides/desktop-services/). It includes
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.

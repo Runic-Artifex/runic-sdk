@@ -1,7 +1,7 @@
 # GTK4 sandbox fixture
 
 This is a disposable Linux desktop test application, not a production packaging recipe.
-Use the [container runner](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md)
+Use the [container runner](https://docs.runic-artifex.eu/guides/desktop/container-automation/)
 for runtime preparation, installation and execution.
 It uses a standard GNOME Platform runtime so both the application sandbox and
 WebKit's nested process sandbox work without exposing `/nix/store` or the home
@@ -21,7 +21,7 @@ standard Flatpak runtime. The portable target pack avoids those paths without
 turning off globalization. Only the disposable test executable gets its ELF
 interpreter/runpath adjusted. Output: `artifacts/gtk4-flatpak/Runic.Desktop.Gtk4.Smoke`.
 
-The maintained [container runner](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/container-automation.md)
+The maintained [container runner](https://docs.runic-artifex.eu/guides/desktop/container-automation/)
 prepares the pinned standard runtime (`org.gnome.Platform/x86_64/50`) outside the
 isolated desktop. The verified runtime commit is
 `545da92354a265d2c3572c91c39ac14dd7e74f9d8f9b66744ad50f478d2497c5`.

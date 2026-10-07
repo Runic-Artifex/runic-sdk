@@ -21,7 +21,7 @@ WebView. It does not load the native WebUI library.
 - Structured browser/WebView preflight with actionable prerequisite diagnostics
 - Sensitive permissions denied by default and explicit, typed presentation opt-in
 - Window geometry, framing, transparency, visibility, focus, and native handles
-- [Asynchronous native close confirmation](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/window-close-lifecycle.md) for unsaved work
+- [Asynchronous native close confirmation](https://docs.runic-artifex.eu/guides/desktop/window-close-lifecycle/) for unsaved work
 - Trimming and NativeAOT-compatible managed core
 
 ## Example
@@ -128,7 +128,7 @@ production dependency on CS-WebUI or the WebUI native library.
 
 The internal WebUI-profile engine remains differential evidence; it is not part
 of the public API. Existing source-preview consumers can use the
-[migration guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/migrations/webui-compat-to-desktop.md).
+[migration guide](https://docs.runic-artifex.eu/guides/desktop/migrations/webui-compat-to-desktop/).
 The [wire profile](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/wire-profile.md) documents the
 compatibility boundary.
 
@@ -155,4 +155,4 @@ Set `RunicDesktopMinimalHost=true` to use the opt-in empty ASP.NET Core builder
 with explicit Kestrel core and socket transport. A NativeAOT linker feature switch
 removes the default slim-builder path. Runic's surface, transport and admission
 behavior is retained; default configuration providers are omitted. Test any custom
-service assumptions. See the SDK's [size and tuning guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/size-and-tuning.md).
+service assumptions. See the SDK's [size and tuning guide](https://docs.runic-artifex.eu/guides/desktop/size-and-tuning/).

@@ -132,7 +132,7 @@ owned context. Each queued context/scheduler item captures its own
 `ExecutionContext`, so a trusted interaction scope follows its own deferred
 work without leaking to another queued operation.
 
-The [ReactiveUI reference guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/reference/reactiveui.md)
+The [ReactiveUI reference guide](https://docs.runic-artifex.eu/guides/application/reference/reactiveui/)
 defines the supported data shapes, operation semantics, interaction targeting,
 and model-context ownership.
 
@@ -172,7 +172,7 @@ For DynamicData changesets, place `BatchBridgeSnapshots(model)` after
 `ObserveOn(modelSequencer)` and before `Bind` or `SortAndBind`. The downstream
 delivery owns the batch even when scheduling is deferred. Annotate a read-only
 DTO collection with `[RunicCollection(nameof(Row.Id))]` to publish indexed
-updates. See the [DynamicData guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/guides/dynamicdata.md).
+updates. See the [DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/).
 
 Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
 `System.Reactive.Unit`, or `IScheduler` should instead reference

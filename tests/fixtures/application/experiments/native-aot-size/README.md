@@ -59,5 +59,5 @@ from another directory. Each result includes both source revisions, working-tree
 status, and whether browser verification was skipped.
 
 The September 3 result is historical evidence, not a new measurement of the
-reorganised SDK. See [host choice and footprint](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-choice-and-footprint.md)
+reorganised SDK. See [host choice and footprint](https://docs.runic-artifex.eu/guides/desktop/host-choice-and-footprint/)
 for the parity assessment and proposed tuning experiments.
