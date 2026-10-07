@@ -19,7 +19,7 @@
     });
   });
 
-  const command = useCommand(async (name: "save" | "discard") => {
+  const command = useCommand((name: "save" | "discard") => {
     const view = editor.client;
     if (!view) return undefined;
     return name === "save" ? writes.run(() => view.save()) : writes.run(() => view.discard());

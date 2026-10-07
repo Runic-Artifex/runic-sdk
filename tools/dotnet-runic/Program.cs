@@ -80,7 +80,7 @@ internal static partial class Program
         [Option("--runtime", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
         [Option("--report", Description = "The JSON report to write. The file must not exist yet.")] string report = "runic-size.json",
-        [Option("--verify", Description = "A published file, relative to the publish directory, to run as an executable check.")] string verify = "") =>
+        [Option("--verify", Description = "An executable to run after a successful publish, as a path or a command on PATH, such as node. It receives the --verify-argument values, then the publish directory and the published application's path. A nonzero exit code fails the command.")] string verify = "") =>
         ExecuteAsync(context, "size", () => SizeApplication.RunAsync(new SizeOptions(
             string.IsNullOrWhiteSpace(project) ? null : project, runtime,
             configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);

@@ -147,6 +147,27 @@ describe("injectCommand", () => {
     expectTypeOf(plain.failure()).toEqualTypeOf<undefined>();
   });
 
+  test("infers the result of a command that returns one of several command promises", async () => {
+    type State = { readonly title: string };
+    type SaveFailure = { readonly $case: "titleRequired" };
+    type PublishFailure = { readonly $case: "offline" };
+    const client = {
+      save: () => Promise.resolve<BridgeOutcome<State, SaveFailure>>(bridgeFailure({ $case: "titleRequired" })),
+      publish: () => Promise.resolve<BridgeOutcome<State, PublishFailure>>(bridgeSuccess({ title: "Published" })),
+      discard: () => Promise.resolve<State>({ title: "Discarded" }),
+    };
+    const command = TestBed.runInInjectionContext(() => injectCommand((name: "save" | "publish" | "discard") =>
+      name === "save" ? client.save() : name === "publish" ? client.publish() : client.discard()));
+    expectTypeOf(command.run).returns.resolves.toEqualTypeOf<BridgeOutcome<State, SaveFailure> | BridgeOutcome<State, PublishFailure> | State | undefined>();
+    expectTypeOf(command.failure()).toEqualTypeOf<SaveFailure | PublishFailure | undefined>();
+    await command.run("save");
+    expect(command.failure()).toEqual({ $case: "titleRequired" });
+    expect(await command.run("discard")).toEqual({ title: "Discarded" });
+    expect(command.failure()).toBeUndefined();
+    const optional = TestBed.runInInjectionContext(() => injectCommand((name: "save" | "discard") => name === "save" ? undefined : client.discard()));
+    expectTypeOf(optional.failure()).toEqualTypeOf<undefined>();
+  });
+
   test("requires an injection context or an injector", () => {
     expect(() => injectCommand(() => undefined)).toThrow();
   });

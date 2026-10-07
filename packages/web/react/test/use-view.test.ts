@@ -391,6 +391,39 @@ describe("useCommand", () => {
     await act(async () => { handle!.reset(); });
     expect(text()).toBe("none");
   });
+
+  test("infers the result of a command that returns one of several command promises", async () => {
+    type State = { readonly title: string };
+    type SaveFailure = { readonly $case: "titleRequired" };
+    type PublishFailure = { readonly $case: "offline" };
+    const client = {
+      save: () => Promise.resolve<BridgeOutcome<State, SaveFailure>>(bridgeFailure({ $case: "titleRequired" })),
+      publish: () => Promise.resolve<BridgeOutcome<State, PublishFailure>>(bridgeSuccess({ title: "Published" })),
+      discard: () => Promise.resolve<State>({ title: "Discarded" }),
+    };
+    const useEditorCommand = () => useCommand((name: "save" | "publish" | "discard") =>
+      name === "save" ? client.save() : name === "publish" ? client.publish() : client.discard());
+    const useOptionalCommand = () => useCommand((name: "save" | "discard") => name === "save" ? undefined : client.discard());
+    let handle: ReturnType<typeof useEditorCommand> | undefined;
+    function Runner(): ReactNode {
+      handle = useEditorCommand();
+      useOptionalCommand();
+      return createElement("output", null, handle.failure?.$case ?? "none");
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(Runner));
+    });
+    expectTypeOf(handle!.run).returns.resolves.toEqualTypeOf<BridgeOutcome<State, SaveFailure> | BridgeOutcome<State, PublishFailure> | State | undefined>();
+    expectTypeOf(handle!.failure).toEqualTypeOf<SaveFailure | PublishFailure | undefined>();
+    expectTypeOf<ReturnType<typeof useOptionalCommand>["failure"]>().toEqualTypeOf<undefined>();
+    await act(async () => { await handle!.run("save"); });
+    expect(text()).toBe("titleRequired");
+    let discarded: unknown;
+    await act(async () => { discarded = await handle!.run("discard"); });
+    expect(discarded).toEqual({ title: "Discarded" });
+    expect(text()).toBe("none");
+  });
 });
 
 describe("useCollectionViewport", () => {

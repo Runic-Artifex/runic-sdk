@@ -28,7 +28,7 @@ export class EditorComponent {
   readonly writeError = signal<unknown>(undefined);
   readonly describeSaveFailure = describeSaveFailure;
   private readonly writes = new EditorWrites(cause => this.writeError.set(cause));
-  readonly command = injectCommand(async (name: "save" | "discard") => {
+  readonly command = injectCommand((name: "save" | "discard") => {
     const view = this.editor.client();
     if (!view) return undefined;
     return name === "save" ? this.writes.run(() => view.save()) : this.writes.run(() => view.discard());

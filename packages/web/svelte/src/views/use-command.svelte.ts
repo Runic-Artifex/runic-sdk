@@ -29,9 +29,9 @@ export interface CommandHandle<TArgs extends readonly unknown[], TResult, TFailu
  * <button disabled={!counter.client || increment.pending} onclick={() => increment.run()}>…</button>
  * ```
  */
-export function useCommand<TArgs extends readonly unknown[], TResult>(
-  command: (...args: TArgs) => TResult | PromiseLike<TResult>,
-): CommandHandle<TArgs, Awaited<TResult>> {
+export function useCommand<TArgs extends readonly unknown[], TReturn>(
+  command: (...args: TArgs) => TReturn,
+): CommandHandle<TArgs, Awaited<TReturn>> {
   const controller = createCommandController(command);
   let current = $state.raw(controller.current);
   controller.subscribe(() => { current = controller.current; });
