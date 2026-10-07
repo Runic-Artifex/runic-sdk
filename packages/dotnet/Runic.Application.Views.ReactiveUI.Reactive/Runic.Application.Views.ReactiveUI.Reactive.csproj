@@ -19,6 +19,7 @@
     <Compile Include="../Runic.Application.Views.ReactiveUI/BridgeSnapshotObservableExtensions.cs" Link="Shared/BridgeSnapshotObservableExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveInteractionDescriptor.cs" Link="Shared/ReactiveInteractionDescriptor.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactivePresentation.cs" Link="Shared/ReactivePresentation.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveLog.cs" Link="Shared/ReactiveLog.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Application.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
