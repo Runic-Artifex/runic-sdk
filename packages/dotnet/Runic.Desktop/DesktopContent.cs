@@ -173,10 +173,10 @@ public abstract record DesktopContent
     public sealed record Directory(string Root, string? Entry = null) : DesktopContent
     {
         /// <summary>Gets the directory, absolute or relative to the current directory.</summary>
-        public string Root { get; init; } = RequireRoot(Root, nameof(Root));
+        public string Root { get; init => field = RequireRoot(value, nameof(Root)); } = RequireRoot(Root, nameof(Root));
 
         /// <summary>Gets the file the presentation opens, relative to <see cref="Root"/>, or <see langword="null"/> for index discovery.</summary>
-        public string? Entry { get; init; } = RequireRelativeEntry(Entry, nameof(Entry));
+        public string? Entry { get; init => field = RequireRelativeEntry(value, nameof(Entry)); } = RequireRelativeEntry(Entry, nameof(Entry));
     }
 
     /// <summary>Serves one HTML document at the surface root. No local files are served.</summary>
@@ -184,7 +184,7 @@ public abstract record DesktopContent
     public sealed record Html(string Document) : DesktopContent
     {
         /// <summary>Gets the HTML document.</summary>
-        public string Document { get; init; } = Document ?? throw new ArgumentNullException(nameof(Document));
+        public string Document { get; init => field = RequireNotNull(value, nameof(Document)); } = RequireNotNull(Document, nameof(Document));
     }
 
     /// <summary>Opens an external <c>http</c> or <c>https</c> URL. No local files are served.</summary>
@@ -192,7 +192,7 @@ public abstract record DesktopContent
     public sealed record ExternalUrl(Uri Url) : DesktopContent
     {
         /// <summary>Gets the absolute URL the presentation opens.</summary>
-        public Uri Url { get; init; } = RequireHttpUrl(Url, nameof(Url));
+        public Uri Url { get; init => field = RequireHttpUrl(value, nameof(Url)); } = RequireHttpUrl(Url, nameof(Url));
     }
 
     /// <summary>Resolves every request with a handler. No local files are served.</summary>
@@ -200,7 +200,16 @@ public abstract record DesktopContent
     public sealed record Handler(ContentHandler Resolve) : DesktopContent
     {
         /// <summary>Gets the request-scoped resolver.</summary>
-        public ContentHandler Resolve { get; init; } = Resolve ?? throw new ArgumentNullException(nameof(Resolve));
+        public ContentHandler Resolve { get; init => field = RequireNotNull(value, nameof(Resolve)); } = RequireNotNull(Resolve, nameof(Resolve));
+    }
+
+    // Each property validates in its initializer (constructor) and in its init accessor (object initializers
+    // and `with` expressions), so no instance holds an unchecked value.
+    private static T RequireNotNull<T>(T value, string parameterName)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(value, parameterName);
+        return value;
     }
 
     private static string RequireRoot(string root, string parameterName)

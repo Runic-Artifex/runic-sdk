@@ -677,6 +677,21 @@ public sealed class DesktopApiTests
         Assert.Throws<ArgumentNullException>(() => new DesktopContent.Html(null!));
         Assert.Throws<ArgumentNullException>(() => new DesktopContent.Handler(null!));
 
+        // Object initializers and `with` expressions run the same checks as the constructors.
+        var url = new DesktopContent.ExternalUrl(new Uri("https://example.test/"));
+        Assert.Throws<ArgumentException>(() => url with { Url = new Uri("file:///etc/passwd") });
+        Assert.Throws<ArgumentException>(() => url with { Url = new Uri("javascript:alert(1)") });
+        Assert.Throws<ArgumentNullException>(() => url with { Url = null! });
+        Assert.Throws<ArgumentException>(() => new DesktopContent.ExternalUrl(new Uri("https://example.test/")) { Url = new Uri("file:///tmp/a") });
+        var directory = new DesktopContent.Directory("www", "index.html");
+        Assert.Throws<ArgumentException>(() => directory with { Entry = "../secret.txt" });
+        Assert.Throws<ArgumentException>(() => directory with { Entry = Path.GetFullPath("index.html") });
+        Assert.Throws<ArgumentException>(() => directory with { Root = "" });
+        Assert.Null((directory with { Entry = null }).Entry);
+        Assert.Throws<ArgumentNullException>(() => new DesktopContent.Html("<p></p>") with { Document = null! });
+        Assert.Throws<ArgumentNullException>(() => new DesktopContent.Handler(static (_, _) => ValueTask.FromResult<ContentResponse?>(null)) with { Resolve = null! });
+        Assert.Equal(new Uri("http://example.test/next"), (url with { Url = new Uri("http://example.test/next") }).Url);
+
         await using var host = await DesktopHost.StartAsync();
         await Assert.ThrowsAsync<DirectoryNotFoundException>(async () => await host.CreateSurfaceAsync(new DesktopSurfaceOptions
         {
