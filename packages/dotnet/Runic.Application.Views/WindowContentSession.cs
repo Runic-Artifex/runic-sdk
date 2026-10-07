@@ -50,6 +50,9 @@ public sealed class WindowContentSession : IDisposable
     // release without waiting for itself. Keep that narrow state thread-local so
     // concurrent callers still wait for the retired route normally.
     private readonly ThreadLocal<DetachmentFrame?> _detachingOnCurrentFlow = new();
+    private readonly Func<string> _createId;
+    // Ids from a custom source, checked for uniqueness. Random ids are not retained.
+    private readonly HashSet<string>? _issuedIds;
     private bool _disposed;
 
     /// <summary>Creates the content session for one window.</summary>
@@ -93,7 +96,28 @@ public sealed class WindowContentSession : IDisposable
     public WindowContentSession(IBridgeTransport transport, IRunicViewLocator? viewLocator = null,
         CancellationToken operationShutdown = default, object? rootModel = null,
         IRunicModelContext? modelContext = null, ILoggerFactory? loggerFactory = null)
+        : this(transport, new WindowContentSessionOptions
+        {
+            ViewLocator = viewLocator, OperationShutdown = operationShutdown, RootModel = rootModel,
+            ModelContext = modelContext, LoggerFactory = loggerFactory,
+        })
     {
+    }
+
+    /// <summary>Creates the content session for one window.</summary>
+    /// <param name="transport">The window's host transport.</param>
+    /// <param name="options">The session's View locator, model context, logging, clock and id source.</param>
+    public WindowContentSession(IBridgeTransport transport, WindowContentSessionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var viewLocator = options.ViewLocator;
+        var operationShutdown = options.OperationShutdown;
+        var rootModel = options.RootModel;
+        var modelContext = options.ModelContext;
+        var loggerFactory = options.LoggerFactory;
+        TimeProvider = options.TimeProvider ?? TimeProvider.System;
+        _createId = options.CreateId ?? (static () => Guid.NewGuid().ToString("N"));
+        _issuedIds = options.CreateId is null ? null : new(StringComparer.Ordinal);
         Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
         HasLogger = loggerFactory is not null;
         var contextLogger = loggerFactory?.CreateLogger<RunicModelContext>();
@@ -114,7 +138,8 @@ public sealed class WindowContentSession : IDisposable
         BridgeFieldWriteRegistryProvider? fieldWrites = null;
         try
         {
-            operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), ownerShutdown: operationShutdown, logger: Logger);
+            operations = new BridgeOperationRouter(_transport, Guid.NewGuid().ToString("N"), ownerShutdown: operationShutdown, logger: Logger,
+                timeProvider: TimeProvider);
             interactions = new BridgeInteractionRouter(this, _transport);
             fieldWrites = new BridgeFieldWriteRegistryProvider(Guid.NewGuid().ToString("N"));
             _operations = operations;
@@ -191,6 +216,23 @@ public sealed class WindowContentSession : IDisposable
     // Snapshot revisions are window-monotonic, so a route re-attached to a new
     // bridge never publishes an older revision than its predecessor did.
     internal long NextRevision() => Interlocked.Increment(ref _revision);
+
+    // The clock of interaction deadlines and close timeouts.
+    internal TimeProvider TimeProvider { get; }
+
+    // Content and interaction request ids. A custom source must keep them
+    // unique, because an id names a route.
+    internal string CreateId()
+    {
+        var id = _createId();
+        if (string.IsNullOrEmpty(id) || id.Length > 64 || !id.All(char.IsAsciiLetterOrDigit))
+            throw new InvalidOperationException($"The session id source returned '{id}'. An id must be 1 to 64 ASCII letters or digits.");
+        if (_issuedIds is not null)
+            lock (_issuedIds)
+                if (!_issuedIds.Add(id))
+                    throw new InvalidOperationException($"The session id source returned '{id}' twice. Ids must be unique within a session.");
+        return id;
+    }
 
     // Diagnostic counts used by headless lifecycle tests.
     internal int RetainedContentModelLeaseCount
@@ -344,7 +386,7 @@ public sealed class WindowContentSession : IDisposable
                     break;
                 }
 
-                var reference = new PageReference(kind, Guid.NewGuid().ToString("N"));
+                var reference = new PageReference(kind, CreateId());
                 BridgeSnapshotPublication.ThrowIfInactive();
                 entry = new Entry(reference) { ContextLease = AcquireContentModelLease(viewModel), Attaching = true };
                 if (variants is null) _entries.Add(viewModel, variants = new Dictionary<string, Entry>(StringComparer.Ordinal));

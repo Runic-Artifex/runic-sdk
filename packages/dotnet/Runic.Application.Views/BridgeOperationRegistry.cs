@@ -21,6 +21,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
     private readonly int _maximumOperations;
     private readonly int _maximumRetainedTerminals;
     private readonly int _maximumRetainedExpiredIds;
+    private readonly TimeProvider _timeProvider;
     private readonly int _maximumRetainedResultBytes;
     private readonly int _maximumRunningStreamBytes;
     private int _retainedBytes;
@@ -38,9 +39,11 @@ internal sealed class BridgeOperationRegistry : IDisposable
         int maximumRetainedResultBytes = 262_144,
         int maximumRunningStreamBytes = 262_144,
         ILogger? logger = null,
+        TimeProvider? timeProvider = null,
         CancellationToken ownerShutdown = default)
     {
         _logger = logger ?? TraceFallbackLogger.Instance;
+        _timeProvider = timeProvider ?? TimeProvider.System;
         if (string.IsNullOrWhiteSpace(ownerId)) throw new ArgumentException("An owner identity is required.", nameof(ownerId));
         ArgumentOutOfRangeException.ThrowIfLessThan(maximumOperations, 1);
         if (maximumRetainedTerminals < 0 || maximumRetainedTerminals > maximumOperations)
@@ -427,7 +430,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         var all = Task.WhenAll(terminals);
         try
         {
-            await all.WaitAsync(timeout, callerCancellation).ConfigureAwait(false);
+            await all.WaitAsync(timeout, _timeProvider, callerCancellation).ConfigureAwait(false);
             return BridgeOperationCloseResult.Completed;
         }
         catch (TimeoutException)

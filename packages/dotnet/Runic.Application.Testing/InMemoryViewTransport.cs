@@ -30,6 +30,7 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
     private readonly object _gate = new();
     private readonly Dictionary<string, Binding> _bindings = new(StringComparer.Ordinal);
     private readonly List<ViewTestPublication> _publications = [];
+    private TaskCompletionSource _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _disposed;
 
     /// <summary>Names of currently bound routes.</summary>
@@ -61,6 +62,8 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
         {
             ThrowIfDisposed();
             _publications.Add(new(name, stateJson));
+            _published.TrySetResult();
+            _published = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
     }
 
@@ -80,6 +83,15 @@ public sealed class InMemoryViewTransport : IBridgeTransport, IDisposable
         if (binding.Async is null) throw new InvalidOperationException($"Route '{name}' is synchronous.");
         return binding.Async(arguments ?? new(), cancellationToken);
     }
+
+    // Completes at the next publication. Drivers wait on it instead of polling.
+    internal Task NextPublication
+    {
+        get { lock (_gate) return _published.Task; }
+    }
+
+    // Whether a bound route is asynchronous, such as an awaited command.
+    internal bool IsAsync(string name) => Find(name).Async is not null;
 
     /// <summary>Returns and clears publications since the previous drain.</summary>
     public IReadOnlyList<ViewTestPublication> DrainPublications()

@@ -73,3 +73,20 @@ Runic.Application.Views.RunicViewsTelemetry
 const Runic.Application.Views.RunicViewsTelemetry.ActivitySourceName = "Runic.Application.Views" -> string!
 const Runic.Application.Views.RunicViewsTelemetry.MeterName = "Runic.Application.Views" -> string!
 const Runic.Application.Views.RunicViewsTelemetry.LogCategory = "Runic.Application.Views" -> string!
+Runic.Application.Views.WindowContentSession.WindowContentSession(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.WindowContentSessionOptions! options) -> void
+Runic.Application.Views.WindowContentSessionOptions
+Runic.Application.Views.WindowContentSessionOptions.CreateId.get -> System.Func<string!>?
+Runic.Application.Views.WindowContentSessionOptions.CreateId.init -> void
+Runic.Application.Views.WindowContentSessionOptions.LoggerFactory.get -> Microsoft.Extensions.Logging.ILoggerFactory?
+Runic.Application.Views.WindowContentSessionOptions.LoggerFactory.init -> void
+Runic.Application.Views.WindowContentSessionOptions.ModelContext.get -> Runic.Application.Views.IRunicModelContext?
+Runic.Application.Views.WindowContentSessionOptions.ModelContext.init -> void
+Runic.Application.Views.WindowContentSessionOptions.OperationShutdown.get -> System.Threading.CancellationToken
+Runic.Application.Views.WindowContentSessionOptions.OperationShutdown.init -> void
+Runic.Application.Views.WindowContentSessionOptions.RootModel.get -> object?
+Runic.Application.Views.WindowContentSessionOptions.RootModel.init -> void
+Runic.Application.Views.WindowContentSessionOptions.TimeProvider.get -> System.TimeProvider?
+Runic.Application.Views.WindowContentSessionOptions.TimeProvider.init -> void
+Runic.Application.Views.WindowContentSessionOptions.ViewLocator.get -> Runic.Application.Views.IRunicViewLocator?
+Runic.Application.Views.WindowContentSessionOptions.ViewLocator.init -> void
+Runic.Application.Views.WindowContentSessionOptions.WindowContentSessionOptions() -> void

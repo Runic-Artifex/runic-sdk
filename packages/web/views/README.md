@@ -173,6 +173,81 @@ operation status, and `disconnect()`/`reconnect()` exercise the reconnect path.
 The wire protocol is specified in the
 [Application Views specification](https://github.com/Runic-Artifex/runic-sdk/tree/main/specs/application).
 
+## Testing
+
+The generator writes a typed mock next to each client: `editor.mock.ts`
+exports `mockEditor(bridge, definition)`. Its state, setter, command, operation
+and interaction types come from the generated client, so a renamed or retyped
+ViewModel member breaks the test at compile time. The mock encodes typed
+values for the wire (for example `bigint` to an `Int64` string) and decodes
+call arguments for the handlers.
+
+```ts
+import { beforeEach, test } from "node:test";
+import assert from "node:assert/strict";
+import { createMockBridge, installMockBridge, type MockBridge } from "@runic-artifex/views/mock";
+import { connectEditor } from "../src/generated/editor.js";
+import { mockEditor } from "../src/generated/editor.mock.js";
+
+let bridge: MockBridge;
+// Each test installs a new Bridge; generated clients then start from a new page runtime.
+beforeEach(() => { bridge = installMockBridge(createMockBridge()); });
+
+test("saving clears the dirty flag", async () => {
+  mockEditor(bridge, {
+    state: { title: "Groceries", body: "", isDirty: true, savedMessage: "" },
+    commands: {
+      save: async state => {
+        await bridge.sleep(250); // virtual time
+        return { isDirty: false, savedMessage: `Saved ${state.title}` };
+      },
+    },
+  });
+  const editor = await connectEditor();
+  const saved = editor.save();
+  await bridge.advance(250);
+  assert.equal((await saved).savedMessage, "Saved Groceries");
+});
+```
+
+A definition takes:
+
+- `state`: the client state. Command availability (`can<Command>`) and
+  execution (`is<Command>Executing`) default to available and idle, and
+  content is a reference `{ kind, id }`: use another mock's `reference`.
+- `id`: presents the mock as content on route `content<id>` instead of the
+  root route.
+- `setters`, `commands`, `canExecute`: handlers by client method. A handler
+  receives the decoded state and arguments and returns state changes; a thrown
+  error becomes the client's `BridgeError`, with its `kind` when it has one. A
+  setter's value is applied first; checked writes (`write<Property>`) use the
+  same handler and answer `conflict` for a stale baseline.
+- `operations`: runs `start<Command>()`. Without a handler the command handler
+  runs and the operation succeeds. `"manual"` keeps each operation running
+  until the test calls `succeed(result)`, `fail(message)`, `cancel()` or, for
+  a stream, `emit(...items)` on `mock.operations.<command>[n]`. Started
+  operations set `is<Command>Executing`.
+
+The returned mock has `state`, `update(changes)` (pushes a full state like a
+.NET publication), `calls`, `failNext(method, { kind, message, detail })`,
+`pushFailure({ message })` (a failure notice: the client keeps its last state
+and reports the error), `collections.<field>` with `add`, `remove`, `replace`
+and `move` (each pushes a delta frame; `batch(edit)` combines edits into one),
+and `interactions.<name>.request(input)`, which resolves with the mounted
+client handler's answer, or `unhandled` when none is registered.
+
+`createMockBridge({ scheduling: "manual" })` queues every reply and pushed
+frame until the test calls `flush()`, `flushUntil(promise)` or `advance(ms)`,
+so the test decides when the client observes each one. `sleep(ms)` resolves in
+virtual time, which only `advance` moves, in both scheduling modes.
+`failNext(route, { kind: "transport" })` rejects the call itself, like a
+dropped connection, and `disconnect()`/`reconnect()` exercise the reconnect
+path.
+
+The [CommunityToolkit Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Frontend/test)
+tests its frontend this way with `bun test`; any runner that loads ES modules,
+such as Vitest, works the same.
+
 ## Errors and diagnostics
 
 A `BridgeError` names what failed and why:

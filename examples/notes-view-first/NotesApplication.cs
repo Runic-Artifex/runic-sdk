@@ -1,5 +1,6 @@
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using ReactiveUI;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
@@ -17,15 +18,7 @@ public sealed class NotesApplication : IDisposable
 
     public static NotesApplication Create(bool useSplat)
     {
-        var services = new ServiceCollection();
-        services.AddScoped<INotesStorage, MemoryNotesStorage>();
-        services.AddScoped<HomeViewModel>();
-        services.AddScoped<EditorViewModel>();
-        services.AddScoped<PreviewViewModel>();
-        services.AddScoped<DocumentViewModel>();
-        services.AddScoped<WorkspaceNavigation>();
-        services.AddScoped<SidebarViewModel>();
-        services.AddScoped<ShellViewModel>();
+        var services = new ServiceCollection().AddNotes();
 
         if (useSplat)
         {
@@ -74,6 +67,26 @@ public sealed class NotesApplication : IDisposable
         where TViewModel : class
     {
         AppLocator.CurrentMutable.Register(() => new TView(), typeof(IViewFor<TViewModel>));
+    }
+}
+
+/// <summary>Registers the notes services and window-scoped ViewModels.</summary>
+public static class NotesServices
+{
+    // Tests call this too, with their own clock and storage registered after it.
+    public static IServiceCollection AddNotes(this IServiceCollection services)
+    {
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddScoped<INotesStorage, MemoryNotesStorage>();
+        services.AddScoped<NotesLibrary>();
+        services.AddScoped<HomeViewModel>();
+        services.AddScoped<EditorViewModel>();
+        services.AddScoped<PreviewViewModel>();
+        services.AddScoped<DocumentViewModel>();
+        services.AddScoped<WorkspaceNavigation>();
+        services.AddScoped<SidebarViewModel>();
+        services.AddScoped<ShellViewModel>();
+        return services;
     }
 }
 

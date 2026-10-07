@@ -206,10 +206,10 @@ public sealed class BridgeInteractionRouter : IDisposable
             if (presentation is null || _pending.Count >= MaximumPending
                 || presentation.Pending.Count >= MaximumPendingPerPresentation) return null;
 
-            var requestId = Guid.NewGuid().ToString("N");
+            var requestId = _session.CreateId();
             var request = new PendingRequest(requestId, key, presentation.Id,
                 presentation.ConnectionKey, presentation.ClientKey, 0, inputJson,
-                value => decodeOutput(value), lifetime);
+                value => decodeOutput(value), lifetime, _session.TimeProvider.GetUtcNow().Add(lifetime));
             _pending.Add(requestId, request);
             presentation.Pending.Enqueue(requestId);
             var cancellation = RegisterCancellation(requestId, request.Timeout, invocation.CancellationToken);
@@ -495,7 +495,7 @@ public sealed class BridgeInteractionRouter : IDisposable
 
     private CancellationLease RegisterCancellation(string requestId, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        var source = new CancellationTokenSource(timeout);
+        var source = new CancellationTokenSource(timeout, _session.TimeProvider);
         var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, source.Token);
         var registration = linked.Token.Register(() =>
         {
@@ -713,8 +713,8 @@ public sealed class BridgeInteractionRouter : IDisposable
     {
         private readonly TaskCompletionSource<object?> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Func<JsonElement, object?> _decodeOutput;
-        public PendingRequest(string requestId, DefinitionKey key, string presentationId, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout)
-        { RequestId = requestId; Key = key; PresentationId = presentationId; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = DateTimeOffset.UtcNow.Add(timeout); _decodeOutput = decodeOutput; }
+        public PendingRequest(string requestId, DefinitionKey key, string presentationId, string? connectionKey, string? clientKey, long ownerEpoch, string inputJson, Func<JsonElement, object?> decodeOutput, TimeSpan timeout, DateTimeOffset expiresAt)
+        { RequestId = requestId; Key = key; PresentationId = presentationId; ConnectionKey = connectionKey; ClientKey = clientKey; OwnerEpoch = ownerEpoch; InputJson = inputJson; Timeout = timeout; ExpiresAt = expiresAt; _decodeOutput = decodeOutput; }
         public object? Decode(JsonElement value) => _decodeOutput(value);
         public string RequestId { get; } public DefinitionKey Key { get; } public string PresentationId { get; } public string? ConnectionKey { get; } public string? ClientKey { get; } public long OwnerEpoch { get; set; } public string InputJson { get; } public TimeSpan Timeout { get; } public DateTimeOffset ExpiresAt { get; } public CancellationLease? Cancellation { get; set; }
         public Task<T> AsTask<T>() => _completion.Task.ContinueWith(task => (T)task.GetAwaiter().GetResult()!, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);

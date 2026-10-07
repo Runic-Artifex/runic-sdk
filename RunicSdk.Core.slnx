@@ -3,6 +3,7 @@
     <Project Path="examples/first-window/FirstWindow.csproj" />
     <Project Path="examples/first-window-desktop/FirstWindowDesktop.csproj" />
     <Project Path="examples/notes-view-first/NotesViewFirst.csproj" />
+    <Project Path="examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj" />
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
   </Folder>
   <Folder Name="/packages/dotnet/">

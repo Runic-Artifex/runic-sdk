@@ -50,6 +50,9 @@ internal sealed class BridgeTypeGraph
     /// <summary>Emits the JSON-wire expression for a public TypeScript value.</summary>
     internal string EncodeTypeScript(string expression) => EncodeTypeScript(Root, expression);
 
+    /// <summary>Emits the JSON-wire expression for one public TypeScript collection item.</summary>
+    internal string EncodeItemTypeScript(string expression) => EncodeTypeScript(Root.Element!, expression);
+
     internal void AppendFingerprint(List<string> parts, string scope)
     {
         ArgumentNullException.ThrowIfNull(parts);
@@ -258,7 +261,8 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.TimeOnly => $"bridgeWire.timeOnly({value})",
             BridgeWireKind.DateTime => $"bridgeWire.dateTime({value})",
             BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({value})",
-            BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => {EncodeTypeScript(node.Element!, "item")})",
+            // Parenthesized, so an object-literal item is not read as a block body.
+            BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => ({EncodeTypeScript(node.Element!, "item")}))",
             BridgeWireKind.StringDictionary => $"Object.fromEntries(Object.entries({value}).map(([key, item]) => [key, {EncodeTypeScript(node.Value!, "item")}]))",
             BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),
