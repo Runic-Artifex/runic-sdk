@@ -1,4 +1,5 @@
 #nullable enable
+*REMOVED*static Runic.Application.Views.CsWebUi.CsWebUiBridgeExtensions.AttachBridge<T>(this CsWebUi.WebUiWindow! window, T! viewModel) -> System.IDisposable!
 *REMOVED*Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult
 *REMOVED*Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult.<Clone>$() -> Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult!
 *REMOVED*Runic.Application.Views.CsWebUi.CsWebUiBridgeCloseResult.Completion.get -> System.Threading.Tasks.Task!

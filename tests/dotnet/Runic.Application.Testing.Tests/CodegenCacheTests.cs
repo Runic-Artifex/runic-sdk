@@ -100,7 +100,7 @@ internal static class CodegenCacheTests
 
     private static Task GenerateAsync(string root, string generator, string csharp, string typescript,
         params string[] options) => GeneratedHarnessProcess.RunAsync("dotnet",
-        [generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, typescript, "--no-registry", .. options], root);
+        [generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, typescript, .. options], root);
 
     private static string Output(string directory, string pattern) => Directory.EnumerateFiles(directory, pattern)
         .OrderBy(path => path, StringComparer.Ordinal)

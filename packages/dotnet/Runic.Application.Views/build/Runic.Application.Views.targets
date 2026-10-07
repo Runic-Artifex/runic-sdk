@@ -32,7 +32,6 @@
     <RunicBridgeCodegenDll Condition="Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
     <RunicBridgeCodegenDll Condition="!Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../tools/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
     <RunicBridgeAotArgument Condition="'$(PublishAot)' == 'true'">--aot</RunicBridgeAotArgument>
-    <RunicBridgeRegistrationArgument Condition="'$(RunicBridgeRegisterGlobally)' == 'false'">--no-registry</RunicBridgeRegistrationArgument>
     <RunicBridgeCompositionArgument Condition="'$(RunicBridgeCompositionType)' != ''">--di-composition &quot;$(RunicBridgeCompositionType)&quot;</RunicBridgeCompositionArgument>
   </PropertyGroup>
 
@@ -76,7 +75,7 @@
        AddRunicBridges() in that pass, so a starter needs no bootstrap-only
        OutputType or Compile changes. -->
   <Target Name="RunicViewsBootstrapComposition" BeforeTargets="CoreCompile"
-          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeCompositionType)' != '' and '$(RunicBridgeRegisterGlobally)' == 'false'">
+          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeCompositionType)' != ''">
     <PropertyGroup>
       <_RunicBridgeBootstrapComposition>$(IntermediateOutputPath)RunicBridgeComposition.Bootstrap.g.cs</_RunicBridgeBootstrapComposition>
     </PropertyGroup>
@@ -128,7 +127,7 @@
     <PropertyGroup>
       <RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicBridgeReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicBridgeReactiveUiFlavor)&quot;</RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
-    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeRegistrationArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument)" />
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument)" />
     <ItemGroup>
       <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />

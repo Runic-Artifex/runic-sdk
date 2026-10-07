@@ -3,14 +3,9 @@ using CsWebUi;
 
 namespace Runic.Application.Views.CsWebUi;
 
-/// <summary>Attaches generated bridges to CS-WebUI windows.</summary>
+/// <summary>Creates Bridge transports for CS-WebUI windows.</summary>
 public static class CsWebUiBridgeExtensions
 {
-    /// <summary>Attaches the generated bridge for <paramref name="viewModel"/> to <paramref name="window"/>.</summary>
-    /// <returns>A lease that detaches the bridge.</returns>
-    public static IDisposable AttachBridge<T>(this WebUiWindow window, T viewModel) where T : class =>
-        Bridge.Attach(new CsWebUiBridgeTransport(window), viewModel);
-
     /// <summary>Creates a transport whose routes outlive individual bridge attachments.</summary>
     public static RebindableBridgeTransport CreateBridgeSession(this WebUiWindow window) =>
         new(new CsWebUiBridgeTransport(window));

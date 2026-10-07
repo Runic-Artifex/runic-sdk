@@ -1,6 +1,5 @@
 <Project>
   <PropertyGroup>
-    <RunicBridgeRegisterGlobally Condition="'$(RunicBridgeRegisterGlobally)' == ''">false</RunicBridgeRegisterGlobally>
     <RunicBridgeCompositionType Condition="'$(RunicBridgeCompositionType)' == ''">$(MSBuildProjectName.Replace('-', '_').Replace(' ', '_')).RunicBridgeComposition</RunicBridgeCompositionType>
   </PropertyGroup>
 </Project>
