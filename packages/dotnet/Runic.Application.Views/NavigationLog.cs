@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
-// Navigation event IDs 1060-1067 (1043-1049 stay reserved for the ReactiveUI
+// Navigation event IDs 1060-1068 (1043-1049 stay reserved for the ReactiveUI
 // navigation adapter). Properties carry type and operation names, never values.
 [Experimental(RunicNavigator.DiagnosticId)]
 internal static partial class NavigationLog
@@ -47,4 +47,8 @@ internal static partial class NavigationLog
         Message = "A superseded {Operation} in navigation region {Region} ({RegionId}) is still running 5 seconds after supersession; later requests keep waiting for it.")]
     internal static partial void NavigationSupersededTransitionOverrun(ILogger logger, Exception? exception, string region, int regionId,
         string operation);
+
+    [LoggerMessage(EventId = 1068, EventName = "NavigationCloseTimedOut", Level = LogLevel.Warning,
+        Message = "Closing navigation region {Region} ({RegionId}) timed out waiting for a model turn; its state was cleared outside a turn.")]
+    internal static partial void NavigationCloseTimedOut(ILogger logger, Exception? exception, string region, int regionId);
 }

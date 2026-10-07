@@ -26,6 +26,8 @@ internal static class NavigationTests
         await PreCancelledRequestDoesNotSupersedeAsync();
         await CloseDuringPreparationIsRejectedAsync();
         await CloseChangesStateInsideTurnsAsync();
+        await CloseTimeoutBoundsDisposalAsync();
+        await GuardFailureDuringCloseIsRejectedAsync();
         await CreateRegionDisposesFactoryInstanceAsync();
         await SupersessionBeforeCommitAsync();
         await NoSupersessionAfterCommitStartsAsync();
@@ -344,12 +346,18 @@ internal static class NavigationTests
             $"A close during preparation gave {result} and logged {fixture.Logs.Count(1061)} preparation failures.");
     }
 
-    private static async Task CloseChangesStateInsideTurnsAsync()
+    // Disposes a navigator whose region's commit turn is blocked in a PropertyChanged handler.
+    // Time is fake: the wait for running transitions is expired first, then the test stops
+    // advancing time while the close waits for a turn (the gated context counts those requests).
+    private static async Task<(Fixture Fixture, GatedContext Context, FakeTimeProvider Time, NavigationRegion<Page> Region, Page Pushed,
+        Task Push, Task Disposal, ManualResetEventSlim Release)> BlockedCloseAsync()
     {
-        await using var fixture = new Fixture(closeTimeout: TimeSpan.FromMilliseconds(100));
+        var context = new GatedContext();
+        var time = new FakeTimeProvider();
+        var fixture = new Fixture(context, time, TimeSpan.FromSeconds(10));
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
         var inTurn = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var release = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
         region.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName != nameof(region.Current)) return;
@@ -359,17 +367,83 @@ internal static class NavigationTests
         var pushed = new Page("pushed");
         var push = region.PushAsync(NavigationTarget.Own(pushed)).AsTask();
         await Wait(inTurn.Task);
-        // The commit turn is still raising notifications. Closing times out waiting for it
-        // and must wait for the turn before it changes the region.
         var disposal = fixture.Navigator.DisposeAsync().AsTask();
-        await Task.Delay(500);
-        var during = (region.Current, region.History.Count);
+        // Expire the wait for the running transition, which is blocked in the turn.
+        await Until(() =>
+        {
+            if (context.ActionRequests > 0) return true;
+            time.Advance(TimeSpan.FromSeconds(11));
+            return false;
+        }, "Closing did not reach the clearing turn.");
+        return (fixture, context, time, region, pushed, push, disposal, release);
+    }
+
+    private static async Task CloseChangesStateInsideTurnsAsync()
+    {
+        var (fixture, _, _, region, pushed, push, disposal, release) = await BlockedCloseAsync();
+        await using (fixture)
+        using (release)
+        {
+            // The commit turn is still raising notifications and the close timeout has not
+            // passed, so the close waits for the turn before it changes the region.
+            await Task.Delay(300);
+            var during = (region.Current, region.History.Count);
+            release.Set();
+            await Wait(disposal);
+            await Wait(push);
+            Require(during.Current == pushed && during.Count == 1 && !disposal.IsFaulted,
+                "Closing changed the region while its commit turn was still raising notifications.");
+            Require(region.Current is null && !region.CanGoBack && pushed.Disposed == 1, "Closing did not clear and retire the region.");
+        }
+    }
+
+    private static async Task CloseTimeoutBoundsDisposalAsync()
+    {
+        var (fixture, _, time, region, pushed, push, disposal, release) = await BlockedCloseAsync();
+        await using (fixture)
+        using (release)
+        {
+            // The turn stays blocked. Once the close timeout passes, the region is cleared
+            // outside a turn and disposal completes with a warning.
+            await Until(() =>
+            {
+                if (disposal.IsCompleted) return true;
+                time.Advance(TimeSpan.FromSeconds(11));
+                return false;
+            }, "A blocked turn kept DisposeAsync from completing after the close timeout.");
+            await Wait(disposal);
+            Require(region.Current is null && pushed.Disposed == 1 && fixture.Logs.Has(1068, LogLevel.Warning),
+                "The timed-out close did not clear and retire the region with a warning.");
+            release.Set();
+            await Wait(push);
+        }
+    }
+
+    private static async Task GuardFailureDuringCloseIsRejectedAsync()
+    {
+        await using var fixture = new Fixture();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var home = new Page("home")
+        {
+            Guard = (_, _) =>
+            {
+                entered.TrySetResult();
+                release.Wait(Timeout, CancellationToken.None);
+                throw new InvalidOperationException("guard failed while closing");
+            },
+        };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var push = Task.Run(() => region.PushAsync(NavigationTarget.Own(new Page("next"))).AsTask());
+        await Wait(entered.Task);
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        await Until(() => Throws<ObjectDisposedException>(() => fixture.Navigator.CreateRegion<Page>(new object())),
+            "The navigator did not start closing.");
         release.Set();
+        var result = await Wait(push);
         await Wait(disposal);
-        await Wait(push);
-        Require(during.Current == pushed && during.Count == 1,
-            "Closing changed the region while its commit turn was still raising notifications.");
-        Require(region.Current is null && !region.CanGoBack && pushed.Disposed == 1, "Closing did not clear and retire the region.");
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && fixture.Logs.Count(1060) == 0,
+            $"A guard failing during a close gave {result} and logged {fixture.Logs.Count(1060)} guard failures.");
     }
 
     private static async Task CreateRegionDisposesFactoryInstanceAsync()
@@ -395,6 +469,13 @@ internal static class NavigationTests
                 NavigationTarget.Create<Page>(_ => bound))),
             "A model context conflict did not fail the region.");
         await Until(() => bound.Disposed == 1, "The factory instance was not disposed when binding failed.");
+
+        // An initializable factory instance that is only IAsyncDisposable is disposed too.
+        var init = new InitPage("init");
+        Require(Throws<ArgumentException>(() => navigating.Navigator.CreateRegion<Page>(new object(),
+                NavigationTarget.Create<Page>(_ => init))),
+            "An initializable factory initial target was accepted.");
+        await Until(() => init.Disposed == 1, "An asynchronously disposable rejected instance was not disposed.");
     }
 
     private static async Task SupersessionBeforeCommitAsync()
@@ -1207,8 +1288,15 @@ internal static class NavigationTests
 
         public bool TryPost(Action turn) => Inner.TryPost(turn);
 
-        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) =>
-            _open.Task.IsCompleted || IsExecuting ? Inner.InvokeAsync(turn, cancellationToken) : new(GatedAsync(turn, cancellationToken));
+        // Requests made through the Action overload (the close's clearing turn).
+        public int ActionRequests => Volatile.Read(ref _actionRequests);
+        private int _actionRequests;
+
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _actionRequests);
+            return _open.Task.IsCompleted || IsExecuting ? Inner.InvokeAsync(turn, cancellationToken) : new(GatedAsync(turn, cancellationToken));
+        }
 
         public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) =>
             _open.Task.IsCompleted || IsExecuting ? Inner.InvokeAsync(turn, cancellationToken) : new(GatedAsync(turn, cancellationToken));
