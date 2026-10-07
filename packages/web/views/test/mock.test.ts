@@ -332,3 +332,26 @@ test("interaction long polls in flight when the connection is lost stop without 
     target.reportError = previous;
   }
 });
+
+test("commands and interactions work again after a reconnect remounts the View", async () => {
+  const bridge = fresh();
+  const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
+  let holdLongPolls = true;
+  const longPoll = (name: string) => name === "__runicInteractionWait" || name === "__runicInteractionControlWait";
+  const transport = loseCallsInFlight(bridge, name => holdLongPolls && longPoll(name));
+  const client = await connect();
+  const inputs: string[] = [];
+  const stop = client.interactions["confirm"]!.handle(((input: string) => { inputs.push(input); return input === "yes"; }) as never);
+  await transport.waitFor(() => transport.held() === 2);
+  transport.lose();
+  await assert.rejects(client.command("notesSave"), (error: unknown) => error instanceof BridgeError && error.kind === "disconnected");
+
+  holdLongPolls = false;
+  bridge.reconnect();
+  await transport.waitFor(() => transport.calls.filter(name => name === "__runicInteractionWait").length >= 2);
+  await client.command("notesSave");
+  assert.deepEqual(await notes.interactions.confirm.request("yes"), { kind: "answered", output: true });
+  assert.deepEqual(inputs, ["yes"]);
+  stop();
+  client.dispose();
+});

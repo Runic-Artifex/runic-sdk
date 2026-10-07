@@ -167,7 +167,7 @@ test("runic-cswebui.js rejects every call in flight when the connection is lost"
   }
   await settle();
   expect(sent).toEqual(["counterIncrement", "counterStartSave", "__runicInteractionWait"]);
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
 
   online = false;
   expect(await Promise.all(inFlight)).toEqual([{ error: lostMessage }, { error: lostMessage }, { error: lostMessage }]);
@@ -179,6 +179,37 @@ test("runic-cswebui.js rejects every call in flight when the connection is lost"
   await new Promise(resolve => setTimeout(resolve, 300));
   releaseReconnecting("answered");
   expect(await reconnecting).toEqual({ value: "answered" });
+});
+
+test("runic-cswebui.js keeps no settled calls on a healthy connection", async () => {
+  const context = loadCsWebUiBridge({ isConnected: () => true, call: name => Promise.resolve(name) });
+  const replies = await Promise.all(Array.from({ length: 50 }, (_, index) => context.__runicBridge.call(`call${index}`)));
+  expect(replies.length).toBe(50);
+  await settle();
+  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false, inFlight: 0 });
+});
+
+// A hidden window throttles timers, so the poll can miss a loss for a while.
+test("runic-cswebui.js sends a call made after an unobserved loss on the next connection", async () => {
+  let online = true;
+  let releaseReconnecting;
+  const context = loadCsWebUiBridge({
+    isConnected: () => online,
+    call: name => name === "duringReconnect" ? new Promise(resolve => { releaseReconnecting = resolve; }) : new Promise(() => {}),
+  });
+  const bridge = context.__runicBridge;
+  bridge.onReconnect(() => {});
+  const before = bridge.call("beforeLoss").catch(error => error.message);
+  await settle();
+  context.__runicBridgeAdmitted();
+  online = false;
+  // Sent before the poll runs: the send itself observes the loss.
+  const after = bridge.call("duringReconnect").then(value => value, error => error.message);
+  expect(await before).toBe(lostMessage);
+  online = true;
+  await new Promise(resolve => setTimeout(resolve, 300));
+  releaseReconnecting("answered");
+  expect(await after).toBe("answered");
 });
 
 test("runic-cswebui.js passes replies and failures through unchanged", async () => {
@@ -211,12 +242,12 @@ test("runic-cswebui.js forgets pending admissions when the connection is lost", 
   const offline = bridge.call("offline").catch(error => error.message);
   await new Promise(resolve => setTimeout(resolve, 1_700));
   expect(sent).toEqual(["first", "second"]);
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 1, waiting: true });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 1, waiting: true });
 
   // The lost transition releases the waiting call and drops the late one.
   online = false;
   await new Promise(resolve => setTimeout(resolve, 300));
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   expect(await offline).toBe("WebSocket is not connected");
   expect(await Promise.all(lostCalls)).toEqual([lostMessage, lostMessage]);
 
@@ -232,7 +263,7 @@ test("runic-cswebui.js forgets pending admissions when the connection is lost", 
   context.__runicBridgeAdmitted();
   await settle();
   expect(sent).toEqual(["first", "second", "afterReconnect", "next"]);
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: true });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: true });
 });
 
 test("runic-cswebui.js watches the connection while a call awaits admission", async () => {
@@ -249,10 +280,10 @@ test("runic-cswebui.js watches the connection while a call awaits admission", as
   expect(await lost).toBe(lostMessage);
   // Without a reconnect listener, the loss still releases the waiting call
   // instead of letting its timeout make it late.
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   online = true;
   await new Promise(resolve => setTimeout(resolve, 1_500));
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   expect(await bridge.call("snapshot")).toBe("snapshot");
 });
 
@@ -268,7 +299,7 @@ test("runic-cswebui.js does not resume a listener registered after an unobserved
   await settle();
   online = false;
   await new Promise(resolve => setTimeout(resolve, 300));
-  expect(context.__runicBridgeAdmissionState()).toEqual({ late: 0, waiting: false });
+  expect(context.__runicBridgeAdmissionState()).toMatchObject({ late: 0, waiting: false });
   expect(await lost).toBe(lostMessage);
   // The poll stops once idle, so it does not see the reconnect either.
   await new Promise(resolve => setTimeout(resolve, 300));

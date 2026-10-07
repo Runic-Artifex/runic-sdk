@@ -13,6 +13,8 @@ export interface SharedLease {
   readonly listeners: Set<(state: unknown) => void>;
   mounted: boolean;
   readonly mountToken: string | undefined;
+  /** Restarts the lease's interaction handlers after a reconnect remounted it. Absent in leases made by older copies of this package. */
+  resumeInteractions?: (() => void) | undefined;
 }
 
 export interface SharedEntry {
@@ -126,6 +128,8 @@ async function remountLease(bridge: RunicBridgeClient, route: string, lease: Sha
         "The View could not be mounted again after a reconnect.", { cause, route: `${route}Mount` }));
       return;
     }
+    // The same token keeps the presentation id, so its interaction handlers resume.
+    if (reply === "ok" && !lease.disposed) lease.resumeInteractions?.();
     if (reply !== "ignored") return;
     await new Promise<void>(resolve => setTimeout(resolve, 250));
   }

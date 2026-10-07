@@ -10,15 +10,19 @@
   let reconnectTimer;
   let wasConnected = false;
   let lost = false;
+  function connectionLost() {
+    lost = true;
+    wasConnected = false;
+    forgetAdmissions();
+    const previous = connection;
+    connection = nextConnection();
+    const error = new Error("The CS-WebUI connection was lost before the call completed.");
+    for (const reject of previous.calls) reject(error);
+    previous.calls.clear();
+  }
   function watchConnection() {
     const now = connected();
-    if (!now && wasConnected) {
-      lost = true;
-      forgetAdmissions();
-      const previous = connection;
-      connection = nextConnection();
-      previous.fail(new Error("The CS-WebUI connection was lost before the call completed."));
-    }
+    if (!now && wasConnected) connectionLost();
     wasConnected = now;
     if (now && lost) {
       lost = false;
@@ -101,25 +105,23 @@
     current?.admit();
   }
   // WebUI also never settles a call that was in flight when its WebSocket
-  // closed, so an awaited reply or long poll would wait forever. Each call
-  // races the promise of the connection it was sent on, which the lost
-  // transition rejects. A call sent while WebUI reconnects belongs to the next
-  // connection.
-  function nextConnection() {
-    let fail;
-    const lost = new Promise((_, reject) => { fail = reject; });
-    lost.catch(() => {});
-    return { lost, fail };
-  }
+  // closed, so an awaited reply or long poll would wait forever. Each
+  // connection holds the rejections of the calls sent on it until they settle,
+  // and the lost transition rejects the rest. A call sent while WebUI
+  // reconnects belongs to the next connection.
+  const nextConnection = () => ({ calls: new Set() });
   let connection = nextConnection();
   let unsettled = 0;
   // Smoke diagnostics; not part of the Bridge client contract.
-  window.__runicBridgeAdmissionState = () => ({ late: late.length, waiting: current !== undefined });
+  window.__runicBridgeAdmissionState = () => ({ late: late.length, waiting: current !== undefined, inFlight: connection.calls.size });
   function send(name, args) {
     let release;
     const previous = admission;
     admission = new Promise(resolve => { release = resolve; });
     return previous.then(() => {
+      // A throttled poll may not have seen the loss yet. Check now, so this
+      // call cannot join the old connection while WebUI sends it on the new one.
+      if (wasConnected && !connected()) connectionLost();
       let timer;
       let done = false;
       const call = {
@@ -156,7 +158,11 @@
         call.settle();
         throw error;
       }
-      const settled = Promise.race([Promise.resolve(reply), connection.lost]);
+      const calls = connection.calls;
+      const settled = new Promise((resolve, reject) => {
+        calls.add(reject);
+        Promise.resolve(reply).then(resolve, reject).finally(() => calls.delete(reject));
+      });
       settled.then(call.settle, call.settle);
       return settled;
     });
