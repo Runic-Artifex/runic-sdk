@@ -196,6 +196,18 @@ test("operations admit, retry a dropped wait and recover by request id", async (
   client.dispose();
 });
 
+test("operations reject without injected operation support and call no route", async () => {
+  const bridge = freshBridge();
+  bridge.view("counter", { state: { count: 1, label: "one" } });
+  const client = await connectView({ contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate });
+  const callsBefore = bridge.calls.length;
+  const unsupported = (error: unknown) => error instanceof BridgeError && error.kind === "failed" && /operation support/.test(error.message);
+  await assert.rejects(client.startOperation("Save", "request-1", () => "request-1", value => value), unsupported);
+  await assert.rejects(client.recoverOperation("Save", "request-1", value => value), unsupported);
+  assert.equal(bridge.calls.length, callsBefore);
+  client.dispose();
+});
+
 test("content references keep their identity per id", () => {
   const references = viewReferences(id => ({ kind: "counter", connect: async () => id }));
   assert.equal(references("a"), references("a"));

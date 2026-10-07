@@ -178,6 +178,35 @@ internal static class CodegenShapeTests
                 $"{Path.GetFileName(path)} still has a deprecated alias or an anonymous 'argument' parameter.");
         }
 
+        // A client imports only the protocol runtimes its ViewModel uses, from
+        // the generated entry, and the decoders as a namespace so bundlers can
+        // drop the ones it does not call.
+        var reactive = File.ReadAllText(Path.Combine(directory, "nullableReactive.ts")).ReplaceLineEndings("\n");
+        foreach (var (file, text, expected) in new[]
+        {
+            ("documented.ts", documented, "import { connectView, viewReferences } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
+            ("nullableReactive.ts", reactive, "import { connectView, viewReferences, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
+            ("nullableReactive.ts", reactive, "const interactionDefinitions = defineInteractions({"),
+            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations });"),
+            ("collectionDelta.ts", collection, "import { connectView, viewReferences, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
+            ("collectionDelta.ts", collection, "const collectionDefinitions = defineCollections({"),
+        })
+            Require(text.Contains(expected, StringComparison.Ordinal),
+                $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
+        foreach (var unused in new[] { "defineInteractions", "bridgeOperations", "defineCollection", "interactions:", "operations:", "collections:" })
+            Require(!documented.Contains(unused, StringComparison.Ordinal),
+                $"documented.ts has no interactions, operations or keyed collections but references '{unused}'.");
+        foreach (var path in Directory.GetFiles(directory, "*.ts"))
+        {
+            var text = File.ReadAllText(path).ReplaceLineEndings("\n");
+            var rootImport = text.Split('\n').FirstOrDefault(line => line.EndsWith(" from \"@runic-artifex/views\";", StringComparison.Ordinal)) ?? "";
+            Require(!rootImport.Contains("connectView", StringComparison.Ordinal) && !rootImport.Contains("bridgeWire", StringComparison.Ordinal),
+                $"{Path.GetFileName(path)} imports generated-code runtime from the application entry: {rootImport}");
+            Require(!text.Contains("bridgeWire.", StringComparison.Ordinal)
+                || text.Contains("import * as bridgeWire from \"@runic-artifex/views/generated/wire\";", StringComparison.Ordinal),
+                $"{Path.GetFileName(path)} uses bridgeWire without the namespace import from @runic-artifex/views/generated/wire.");
+        }
+
         static int Count(string text, string value)
         {
             var count = 0;
