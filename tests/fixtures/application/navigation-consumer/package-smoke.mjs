@@ -36,6 +36,8 @@ function run(command, commandArgs) {
 try {
   for (const file of ["NavigationConsumer.csproj", "Program.cs", "Shell.cs"])
     copyFileSync(join(fixture, file), join(directory, file));
+  // The repository's global.json pins the SDK; the temporary tree must use it too.
+  copyFileSync(join(root, "global.json"), join(directory, "global.json"));
   writeFileSync(join(directory, "NuGet.config"), `<?xml version="1.0" encoding="utf-8"?>
 <configuration><packageSources><clear/><add key="candidate" value="${feed}"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources>
 <packageSourceMapping><clear/><packageSource key="candidate"><package pattern="Runic.*"/></packageSource><packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping>
@@ -45,7 +47,8 @@ try {
   assert.ok(jit.includes("NAVIGATION_CONSUMER_OK"), "The JIT navigation consumer did not pass.");
   if (process.platform === "linux") {
     const output = join(directory, "aot");
-    run("dotnet", ["publish", "NavigationConsumer.csproj", "-c", "Release", "-r", "linux-x64", "--self-contained", "true",
+    const rid = `linux-${process.arch}`;
+    run("dotnet", ["publish", "NavigationConsumer.csproj", "-c", "Release", "-r", rid, "--self-contained", "true",
       "-p:PublishAot=true", "-p:IlcTreatWarningsAsErrors=true", ...properties, "-o", output]);
     const aot = run(join(output, "NavigationConsumer"), []);
     assert.ok(aot.includes("NAVIGATION_CONSUMER_OK"), "The NativeAOT navigation consumer did not pass.");

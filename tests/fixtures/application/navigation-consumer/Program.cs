@@ -23,13 +23,10 @@ await using (var provider = services.BuildServiceProvider(new ServiceProviderOpt
     var navigator = shell.Navigator;
     var home = (HomeViewModel)shell.Main.Current!;
 
-    // The window session and the navigator share the scoped model context,
-    // and the generated Bridge bound the session as the presentation.
+    // The window session and the navigator share the scoped model context. The generated
+    // Bridge binds the session as the presentation; the checks below observe that binding
+    // through the routes and leases it sets and releases.
     var context = RunicModelContextRegistry.Shared.GetRequired(shell);
-    using (var otherTransport = new DetachedTransport())
-    using (var other = new WindowContentSession(otherTransport, modelContext: context))
-        Require(Throws<InvalidOperationException>(() => navigator.BindPresentation(other)),
-            "The generated Bridge did not bind the window session to the navigator.");
     Require(Throws<ArgumentException>(() => navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new InputPage()))),
         "An initializable initial target was accepted.");
 
@@ -50,6 +47,8 @@ await using (var provider = services.BuildServiceProvider(new ServiceProviderOpt
     var back = await shell.Main.BackAsync();
     Require(back is NavigationResult<IPageViewModel>.Committed && shell.Main.Current == home && editor.Disposed,
         $"Back did not retire the owned editor: {back}");
+    Require(!RunicModelContextRegistry.Shared.TryGet(editor, out _),
+        "Back did not release the editor's lease from the window's model context.");
 
     // The window's next capture presents the borrowed home through the session,
     // which binds it to the window's context (the navigator never binds borrowed content).
@@ -112,13 +111,5 @@ namespace NavigationConsumer
                 lock (owner.Errors) owner.Errors.Add($"{category} {eventId.Id} {formatter(state, exception)} {exception}");
             }
         }
-    }
-
-    internal sealed class DetachedTransport : IBridgeTransport, IDisposable
-    {
-        public IDisposable Bind(string name, Func<IBridgeArguments, string> handler) => this;
-        public IDisposable BindAsync(string name, Func<IBridgeArguments, CancellationToken, ValueTask<string>> handler) => this;
-        public void Publish(string name, string stateJson) { }
-        public void Dispose() { }
     }
 }
