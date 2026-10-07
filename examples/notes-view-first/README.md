@@ -43,6 +43,18 @@ its output:
 dotnet run --project examples/notes-view-first/NotesViewFirst.csproj -- --web-root "$PWD/examples/notes-view-first/Svelte/dist"
 ```
 
+The `Effect` folder is the plain frontend with its Editor written with
+[`@runic-artifex/views-effect`](../../packages/web/views-effect/README.md):
+field writes and Save run as Effects, and Save is an operation with an explicit
+request ID, retries and a timeout that cancels it in .NET. Its build swaps
+[`Effect/src/editor.ts`](Effect/src/editor.ts) in for `Frontend/src/editor.ts`,
+so the plain bundle does not change:
+
+```sh
+(cd examples/notes-view-first/Effect && bun run --bun build)
+dotnet run --project examples/notes-view-first/NotesViewFirst.csproj -- --web-root "$PWD/examples/notes-view-first/Effect/dist"
+```
+
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesViewFirst.csproj` with a
 `Runic.Application.CsWebUi` package reference, as described in the
@@ -64,6 +76,7 @@ dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFi
 node examples/notes-view-first/browser-smoke.mjs
 node examples/notes-view-first/window-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-view-first/browser-smoke.mjs
+RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
 ```
 
 On Linux with Nix, prefix the commands with `direnv exec .`.

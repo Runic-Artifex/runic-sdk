@@ -244,7 +244,7 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
           ),
           typescript: "6.0.3",
           "@types/node": "24.19.1",
-          effect: "4.0.0",
+          effect: "4.0.1",
           svelte: "5.57.1",
           vite: "8.3.2",
           "@angular/core": "22.2.1",
@@ -300,6 +300,8 @@ import { BridgeError, bridgeWire, connectView } from '@runic-artifex/views';
 import { installMockBridge } from '@runic-artifex/views/mock';
 import { useView as useReactView } from '@runic-artifex/react';
 import { useView as useVueView } from '@runic-artifex/vue';
+import { command } from '@runic-artifex/views-effect';
+import { Effect } from 'effect';
 assert.equal(runicSpaPageOptions.ssr, false);
 assert.ok(Object.keys(vite).length);
 installMockBridge().view('consumer', { state: { value: 1 } });
@@ -308,6 +310,7 @@ const client = await connectView({ contract: 'Consumer:fingerprint', route: 'con
 assert.equal(client.snapshot.value, 1);
 client.dispose();
 await assert.rejects(client.invoke('consumerSetValue', 2), error => error instanceof BridgeError && error.kind === 'disconnected');
+assert.equal((await Effect.runPromise(Effect.flip(command(() => client.invoke('consumerSetValue', 2)))))._tag, 'ViewDisconnected');
 for (const hook of [useReactView, useVueView]) assert.equal(typeof hook, 'function');
 console.log('Packed npm consumers passed.');
 `,

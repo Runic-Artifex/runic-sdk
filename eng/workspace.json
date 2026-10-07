@@ -27,6 +27,10 @@
       "path": "packages/web/views"
     },
     {
+      "name": "@runic-artifex/views-effect",
+      "path": "packages/web/views-effect"
+    },
+    {
       "name": "@runic-artifex/react",
       "path": "packages/web/react"
     },
@@ -203,6 +207,14 @@
         "tests/fixtures/application/reactiveui-reactive-flavor"
       ]
     },
+    "views-effect": {
+      "dependsOn": [
+        "application"
+      ],
+      "paths": [
+        "packages/web/views-effect"
+      ]
+    },
     "vite": {
       "dependsOn": [
         "application"
@@ -242,7 +254,8 @@
         "assets",
         "svelte",
         "vite",
-        "platform"
+        "platform",
+        "views-effect"
       ],
       "paths": [
         "examples/first-window",
