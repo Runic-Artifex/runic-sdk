@@ -60,6 +60,24 @@ This example builds the Runic packages from source. To copy it out, replace the
 `Runic.Application.CsWebUi` package reference, as described in the
 [First Window README](../first-window/README.md#copy-it-into-your-own-project).
 
+## Tests
+
+[Tests](Tests/NotesWindowTests.cs) is an xUnit project that drives the real
+ViewModels and generated Bridges with `RunicWindowTestHost` from
+[Runic.Application.Testing](../../packages/dotnet/Runic.Application.Testing/README.md).
+Storage waits on the injected `TimeProvider`, so a test advances a fake clock
+to finish a save. Home lists saved notes in a `[RunicCollection]`; a test checks
+that saving a note again arrives as keyed collection changes.
+
+[Frontend/test](Frontend/test/notes.test.ts) tests the frontend against the
+generated typed mocks (`src/generated/*.mock.ts`) with `bun test`, without .NET or
+a browser.
+
+```sh
+dotnet test examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj
+(cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
+```
+
 ## Checks
 
 [ViewLifetimeCheck.cs](ViewLifetimeCheck.cs) checks repeated pane changes, web

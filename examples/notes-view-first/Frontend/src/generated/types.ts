@@ -6,3 +6,9 @@
  * - `Preview`: The rendered note.
  */
 export type DocumentPane = "Editor" | "Preview";
+
+/** A saved note listed on the home page. */
+export interface SavedNote {
+  readonly title: string;
+  readonly excerpt: string;
+}

@@ -1,6 +1,7 @@
 <Project>
   <!-- Wrappers map their Runic<Component>ShippingProject flag to RunicPolicyShippingProject. -->
-  <PropertyGroup Condition="'$(RunicPolicyShippingProject)' == 'true'">
+  <!-- RunicTrimmable=false opts a test-only shipping package out of trimming and its analyzers. -->
+  <PropertyGroup Condition="'$(RunicPolicyShippingProject)' == 'true' and '$(RunicTrimmable)' != 'false'">
     <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == '' and ('$(RunicVerificationBuild)' == 'true' or '$(PublishTrimmed)' == 'true' or '$(PublishAot)' == 'true')">true</EnableTrimAnalyzer>
     <EnableTrimAnalyzer Condition="'$(EnableTrimAnalyzer)' == ''">false</EnableTrimAnalyzer>
     <EnableAotAnalyzer Condition="'$(EnableAotAnalyzer)' == '' and ('$(RunicVerificationBuild)' == 'true' or '$(PublishAot)' == 'true')">true</EnableAotAnalyzer>

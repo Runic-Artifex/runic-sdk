@@ -112,6 +112,7 @@ try
             .Concat(viewTypes.Values.SelectMany(variants => variants).Select(view => (Path: ViewFileName(view), Owner: view.FullName!)))
             .ToArray();
         var typescriptOutputs = models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.ts", Owner: entry.Model.FullName!))
+            .Concat(models.Select(entry => (Path: $"{LowerFirst(entry.Name)}.mock.ts", Owner: entry.Model.FullName!)))
             .Append((Path: $"{TypeScriptNamedTypes.ModuleName}.ts", Owner: "the generated named types")).ToArray();
         foreach (var group in csharpOutputs.Concat(typescriptOutputs)
             .GroupBy(output => output.Path, StringComparer.OrdinalIgnoreCase).Where(group => group.Count() > 1))
@@ -1000,7 +1001,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         {
             var graph = valueProperties[property];
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
-            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {graph.EmitItemTypeScriptDecoder("wire")}, item => String({TsAccess("item", keyMember.WireName)})),");
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(graph.EmitItemTypeScriptDecoder("wire"))}, item => String({TsAccess("item", keyMember.WireName)})),");
         }
         ts.AppendLine("};");
     }
@@ -1052,7 +1053,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var valueGraph = valueProperties[property];
         var encodedBaseline = valueGraph.EncodeTypeScript("baseline.value");
         var encodedValue = valueGraph.EncodeTypeScript("value");
-        ts.AppendLine($"      return view.writeField<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}), value => {valueGraph.EmitTypeScriptDecoder("value")});");
+        ts.AppendLine($"      return view.writeField<{TsPropertyType(property)}>(`${{route}}Write{property.Name}`, JSON.stringify({{ requestId: options.requestId, expectedVersion: baseline.version, expectedValue: {encodedBaseline}, value: {encodedValue} }}), value => {BridgeTypeGraph.ArrowBody(valueGraph.EmitTypeScriptDecoder("value"))});");
         ts.AppendLine("    },");
     }
     foreach (var command in commands)
@@ -1092,6 +1093,47 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
 
     WriteIfChanged(csharpPath, cs.ToString());
     TypeScriptModules.Add(typescriptPath, ts.ToString());
+    TypeScriptModules.Add(MockModulePath(typescriptPath), MockTypeScriptEmitter.Emit(new MockTypeScriptPlan(
+        shortName, prefix,
+        ownContracts.Select(contract => PageKind(shortName, contract)).ToArray(),
+        valueProperties.Select(entry => new MockValueField(WireName(entry.Key), entry.Value)).ToArray(),
+        contentBindings.Select(entry => new MockContentField(WireName(entry.Key),
+            string.Join(" | ", entry.Value.Select(page => $"MockReference<{JsonSerializer.Serialize(PageKind(page.Name, ContractFor(entry.Key)))}>")),
+            contentCollections.ContainsKey(entry.Key),
+            nullability.Create(entry.Key).ReadState == NullabilityState.Nullable)).ToArray(),
+        MockDefaults(),
+        checkedProperties.Select(WireName).ToArray(),
+        properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property))
+            .Select(property => new MockSetter($"set{property.Name}", $"Set{property.Name}", WireName(property), TsPropertyType(property),
+                property.PropertyType == typeof(int) || property.PropertyType == typeof(bool)
+                    || property.PropertyType == typeof(string) && !IsNullableString(property)
+                    ? "raw" : "JSON.parse(raw as string)",
+                checkedProperties.Contains(property) ? $"Write{property.Name}" : null)).ToArray(),
+        commands.Select(command =>
+        {
+            var plan = commandPlans[command];
+            var name = command.Name[..^"Command".Length];
+            return new MockCommand(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : null,
+                plan.HasArgument ? plan.InputGraph?.EmitTypeScriptDecoder("wire") ?? "bridgeWire.string(wire)" : null,
+                plan.HasArgument ? null : $"can{name}");
+        }).ToArray(),
+        commands.Where(command => commandPlans[command].IsAsync).Select(command =>
+        {
+            var plan = commandPlans[command];
+            var name = command.Name[..^"Command".Length];
+            return new MockOperation(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : "void",
+                plan.ResultGraph?.TypeScriptType() ?? "never", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
+                plan.ResultGraph?.EncodeTypeScript("typed"), plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream);
+        }).ToArray(),
+        interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
+            plan.Output.TypeScriptType(), plan.Input.EncodeTypeScript("typed"), plan.Output.EmitTypeScriptDecoder("wire"))).ToArray(),
+        incrementalCollections.Select(entry =>
+        {
+            var graph = valueProperties[entry.Key];
+            var keyMember = graph.Root.Element!.Members.Single(member => member.Property == entry.Value);
+            return new MockCollection(WireName(entry.Key), graph.ItemTypeScriptType(), graph.EncodeItemTypeScript("typed"),
+                graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
+        }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)));
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
     return hasContent || interactions.Length > 0;
 
@@ -1106,7 +1148,26 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         property.PropertyType == typeof(string)
         && nullability.Create(property).ReadState == NullabilityState.Nullable;
 
+    // State a mock fills in unless the test sets it: command availability and
+    // execution, and empty validation.
+    (string Field, string Default)[] MockDefaults()
+    {
+        var defaults = new List<(string Field, string Default)>();
+        if (hasValidation) defaults.Add(("validation", "{ hasErrors: false, truncated: false, errors: [] }"));
+        if (hasErrors) defaults.AddRange(properties.Select(property => (WireName(property) + "Errors", "[]")));
+        foreach (var command in commands)
+        {
+            var plan = commandPlans[command];
+            var name = command.Name[..^"Command".Length];
+            if (!plan.HasArgument) defaults.Add(($"can{name}", "true"));
+            if (plan.HasExecutionState) defaults.Add(($"is{name}Executing", "false"));
+        }
+        return [.. defaults];
+    }
 }
+
+static string MockModulePath(string typescriptPath) =>
+    Path.Combine(Path.GetDirectoryName(Path.GetFullPath(typescriptPath))!, $"{Path.GetFileNameWithoutExtension(typescriptPath)}.mock.ts");
 
 // The command inspectors live in adapter assemblies and report shape errors
 // as NotSupportedException; attach the command diagnostic code and location.

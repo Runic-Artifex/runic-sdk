@@ -1,6 +1,8 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Runic.Application.Views;
 
 namespace NotesWindowViews;
 
@@ -106,9 +108,41 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
     public void Dispose() => _navigation.PropertyChanged -= OnNavigationChanged;
 }
 
-public partial class HomeViewModel : ObservableObject, IMainViewModel
+/// <summary>A saved note listed on the home page.</summary>
+public sealed record SavedNote(string Title, string Excerpt);
+
+/// <summary>The notes saved in one window, most recently saved first.</summary>
+public sealed class NotesLibrary
+{
+    private readonly ObservableCollection<SavedNote> _notes = [];
+
+    public NotesLibrary() => Notes = new(_notes);
+
+    public ReadOnlyObservableCollection<SavedNote> Notes { get; }
+
+    // Saving a title again replaces its row and moves it to the top, so the
+    // browser receives keyed collection changes rather than a new list.
+    public void Record(string title, string body)
+    {
+        var note = new SavedNote(title, body.Length <= 40 ? body : body[..40] + "...");
+        var index = _notes.Select(saved => saved.Title).ToList().IndexOf(title);
+        if (index < 0)
+        {
+            _notes.Insert(0, note);
+            return;
+        }
+        _notes[index] = note;
+        if (index != 0) _notes.Move(index, 0);
+    }
+}
+
+public partial class HomeViewModel(NotesLibrary library) : ObservableObject, IMainViewModel
 {
     public string Greeting => "Welcome to composed Notes";
+
+    /// <summary>The saved notes, most recent first.</summary>
+    [RunicCollection(nameof(SavedNote.Title))]
+    public ReadOnlyObservableCollection<SavedNote> RecentNotes => library.Notes;
 }
 
 public partial class DocumentViewModel : ObservableObject, IMainViewModel
@@ -144,7 +178,7 @@ public partial class DocumentViewModel : ObservableObject, IMainViewModel
     private void ShowPreview() => CurrentPane = _preview;
 }
 
-public partial class EditorViewModel(INotesStorage storage) : ObservableObject, IDocumentPaneViewModel
+public partial class EditorViewModel(INotesStorage storage, NotesLibrary library) : ObservableObject, IDocumentPaneViewModel
 {
     [ObservableProperty] private string title = "Untitled";
     [ObservableProperty] private string body = "";
@@ -188,6 +222,7 @@ public partial class EditorViewModel(INotesStorage storage) : ObservableObject, 
         _savedBody = body;
         IsDirty = Title != title || Body != body;
         SavedMessage = $"Saved {title}";
+        library.Record(title, body);
     }
 }
 

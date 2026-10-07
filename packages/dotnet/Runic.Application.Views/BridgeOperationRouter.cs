@@ -27,11 +27,13 @@ internal sealed class BridgeOperationRouter : IDisposable
         int maximumRetainedTerminals = 32,
         int maximumRetainedExpiredIds = 128,
         ILogger? logger = null,
+        TimeProvider? timeProvider = null,
         CancellationToken ownerShutdown = default)
     {
         ArgumentNullException.ThrowIfNull(transport);
         _operations = new BridgeOperationRegistry(
-            ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown, logger: logger);
+            ownerId, maximumOperations, maximumRetainedTerminals, maximumRetainedExpiredIds, ownerShutdown: ownerShutdown, logger: logger,
+            timeProvider: timeProvider);
         var bindings = new List<IDisposable>();
         try
         {

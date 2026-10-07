@@ -36,7 +36,7 @@ internal static class OperationTypeScriptEmitter
         {
             var parameter = operation.HasInput ? $", {operation.InputName}: {operation.InputType}" : string.Empty;
             var payload = operation.HasInput ? $"JSON.stringify({{ requestId, input: {operation.EncodeInputExpression} }})" : "requestId";
-            ts.AppendLine($"  const start{operation.Name}Operation = (requestId: string{parameter}) => view.startOperation<{operation.ResultType}>({JsonSerializer.Serialize(operation.Name)}, requestId, () => {payload}, value => {operation.DecodeResultExpression}{(operation.IsStream ? ", true" : string.Empty)});");
+            ts.AppendLine($"  const start{operation.Name}Operation = (requestId: string{parameter}) => view.startOperation<{operation.ResultType}>({JsonSerializer.Serialize(operation.Name)}, requestId, () => {payload}, value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{(operation.IsStream ? ", true" : string.Empty)});");
         }
     }
 
@@ -48,7 +48,7 @@ internal static class OperationTypeScriptEmitter
             var argument = operation.HasInput ? $", {operation.InputName}" : string.Empty;
             ts.AppendLine($"    start{operation.Name}({parameter}) {{ return start{operation.Name}Operation(globalThis.crypto.randomUUID(){argument}); }},");
             ts.AppendLine($"    start{operation.Name}WithRequestId(requestId: string{(operation.HasInput ? $", {parameter}" : string.Empty)}) {{ return start{operation.Name}Operation(requestId{argument}); }},");
-            ts.AppendLine($"    recover{operation.Name}WithRequestId(requestId: string) {{ return view.recoverOperation<{operation.ResultType}>({JsonSerializer.Serialize(operation.Name)}, requestId, value => {operation.DecodeResultExpression}{(operation.IsStream ? ", true" : string.Empty)}); }},");
+            ts.AppendLine($"    recover{operation.Name}WithRequestId(requestId: string) {{ return view.recoverOperation<{operation.ResultType}>({JsonSerializer.Serialize(operation.Name)}, requestId, value => {BridgeTypeGraph.ArrowBody(operation.DecodeResultExpression)}{(operation.IsStream ? ", true" : string.Empty)}); }},");
         }
     }
 }

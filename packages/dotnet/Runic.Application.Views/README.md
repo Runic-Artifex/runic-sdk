@@ -155,7 +155,10 @@ examples exercise the packaged graph and generated client.
 Each ViewModel gets a module named after it (`EditorViewModel` becomes
 `editor.ts`) with its state interface, client interface and `connect`
 function. Every enum, DTO and union in the contract becomes one exported type
-named after its C# type, declared once in `types.ts` beside the modules. Each
+named after its C# type, declared once in `types.ts` beside the modules. Next
+to each client, `editor.mock.ts` exports a typed test double, `mockEditor`; see
+[Testing](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
+Applications import it only from tests, so it is not bundled. Each
 module imports the named types it uses and re-exports them, so
 `import type { DocumentPane } from "./generated/document.js"` works too:
 

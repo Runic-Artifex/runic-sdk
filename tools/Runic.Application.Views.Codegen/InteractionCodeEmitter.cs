@@ -205,7 +205,7 @@ internal static class InteractionCodeEmitter
         foreach (var plan in all)
         {
             var typedValue = $"(value as {plan.Output.TypeScriptType()})";
-            source.AppendLine($"  {LowerFirst(plan.Property.Name)}: {{ contract: \"{plan.ContractId}\", decodeInput: (value: unknown) => {plan.Input.EmitTypeScriptDecoder("value")}, encodeOutput: (value: unknown) => {plan.Output.EncodeTypeScript(typedValue)} }},");
+            source.AppendLine($"  {LowerFirst(plan.Property.Name)}: {{ contract: \"{plan.ContractId}\", decodeInput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Input.EmitTypeScriptDecoder("value"))}, encodeOutput: (value: unknown) => {BridgeTypeGraph.ArrowBody(plan.Output.EncodeTypeScript(typedValue))} }},");
         }
         source.AppendLine("};");
     }

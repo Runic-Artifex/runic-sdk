@@ -25,6 +25,8 @@ internal static class GeneratedClientHarness
                 "GeneratedClientHarness.ts"), fixture, generated], root).ConfigureAwait(false);
             await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
                 "GeneratedReconnectClientHarness.ts"), generated], root).ConfigureAwait(false);
+            await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",
+                "GeneratedMockHarness.ts"), generated], root).ConfigureAwait(false);
         }
         finally
         {

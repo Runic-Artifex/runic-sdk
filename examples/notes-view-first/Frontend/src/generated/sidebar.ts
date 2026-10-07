@@ -31,7 +31,7 @@ function hydrate(wire: WireState): SidebarState {
     selected: bridgeWire.string(wire.selected),
   };
 }
-const bridgeContract = "NotesWindowViews.SidebarViewModel:0263E56D21FEA3C045C17C68009F4CD68A776B69845B934E6B138FDD64D9C697";
+const bridgeContract = "NotesWindowViews.SidebarViewModel:F4390477D2A9E5A3E3E93242829B29158C025D90D325F6A36BAC1E6731F9AB9C";
 
 export function connectSidebar(): Promise<SidebarClient> { return connectSidebarAt("sidebar", false); }
 async function connectSidebarAt(route: string, mount = false): Promise<SidebarClient> {
