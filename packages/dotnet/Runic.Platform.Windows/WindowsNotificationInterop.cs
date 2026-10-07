@@ -1,12 +1,20 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Windows.Win32;
+using Windows.Win32.System.WinRT;
 
 namespace Runic.Platform.Windows;
 
 // Fixed WinRT ABI calls preserve NativeAOT support without a Windows-only managed TFM.
-internal static unsafe partial class WindowsNotificationInterop
+// The flat runtime and HSTRING functions use generated bindings; the WinRT projection
+// (vtable slots, parameterized delegate) stays handwritten. See docs/interop-inventory.md.
+[System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+internal static unsafe class WindowsNotificationInterop
 {
     internal static void Check(int result) { if (result < 0) Marshal.ThrowExceptionForHR(result); }
+    // S_FALSE (already initialized) succeeds; RPC_E_CHANGED_MODE throws as before.
+    internal static void InitializeRuntime() => Check(PInvoke.RoInitialize(RO_INIT_TYPE.RO_INIT_MULTITHREADED).Value);
+    internal static void UninitializeRuntime() => PInvoke.RoUninitialize();
     internal static nint Slot(nint instance, int slot) => (*(nint**)instance)[slot];
     internal static void Release(nint instance) { if (instance != 0) ((delegate* unmanaged[Stdcall]<nint, uint>)Slot(instance, 2))(instance); }
     internal static nint Query(nint instance, string id)
@@ -20,26 +28,38 @@ internal static unsafe partial class WindowsNotificationInterop
     { nint result = 0; Check(((delegate* unmanaged[Stdcall]<nint, nint, nint*, int>)Slot(instance, slot))(instance, argument, &result)); return result; }
     internal static void Call(nint instance, int slot, nint argument) => Check(((delegate* unmanaged[Stdcall]<nint, nint, int>)Slot(instance, slot))(instance, argument));
     internal static nint Factory(string name, string id)
-    { using var text = new HString(name); Guid iid = new(id); Check(RoGetActivationFactory(text.Handle, in iid, out var factory)); return factory; }
+    {
+        using var text = new HString(name); Guid iid = new(id); void* factory = null;
+        Check(PInvoke.RoGetActivationFactory(text.Value, &iid, &factory).Value); return (nint)factory;
+    }
     internal static nint Activate(string name)
-    { using var text = new HString(name); Check(RoActivateInstance(text.Handle, out var result)); return result; }
+    {
+        using var text = new HString(name); IInspectable* result = null;
+        Check(PInvoke.RoActivateInstance(text.Value, &result).Value); return (nint)result;
+    }
     internal static string ReadString(nint value)
-    { var data = WindowsGetStringRawBuffer(value, out var length); return new string((char*)data, 0, checked((int)length)); }
+    { uint length = 0; var data = PInvoke.WindowsGetStringRawBuffer(new HSTRING(value), &length); return new string(data.Value, 0, checked((int)length)); }
+    internal static void DeleteString(nint value) => _ = PInvoke.WindowsDeleteString(new HSTRING(value));
+    // Owns one HSTRING. The generated SafeHandle overload is not used because the handle is
+    // passed by value through fixed WinRT ABI slots.
     internal sealed class HString : IDisposable
     {
-        internal nint Handle { get; }
-        internal HString(string value) { Check(WindowsCreateString(value, (uint)value.Length, out var handle)); Handle = handle; }
-        public void Dispose() => _ = WindowsDeleteString(Handle);
+        internal HSTRING Value { get; }
+        internal nint Handle => Value;
+        internal HString(string value)
+        {
+            HSTRING handle;
+            fixed (char* text = value) Check(PInvoke.WindowsCreateString(text, (uint)value.Length, &handle).Value);
+            Value = handle;
+        }
+        public void Dispose() => DeleteString(Handle);
     }
-    [LibraryImport("combase.dll")] internal static partial int RoInitialize(uint mode);
-    [LibraryImport("combase.dll")] internal static partial void RoUninitialize();
-    [LibraryImport("combase.dll")] private static partial int RoGetActivationFactory(nint name, in Guid iid, out nint result);
-    [LibraryImport("combase.dll")] private static partial int RoActivateInstance(nint name, out nint result);
-    [LibraryImport("combase.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int WindowsCreateString(string value, uint length, out nint result);
-    [LibraryImport("combase.dll")] internal static partial int WindowsDeleteString(nint value);
-    [LibraryImport("combase.dll")] private static partial nint WindowsGetStringRawBuffer(nint value, out uint length);
 }
 
+// Handwritten by necessity: TypedEventHandler<ToastNotification,IInspectable> is a WinRT
+// parameterized delegate absent from Win32 metadata, so CsWin32 has no interface or IID to
+// generate. The static unmanaged vtable keeps the callback NativeAOT-safe.
+[System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
 internal static unsafe class ToastActivationHandler
 {
     [StructLayout(LayoutKind.Sequential)] private struct Instance { internal nint Vtable, Context; internal int References; }
@@ -86,7 +106,7 @@ internal static unsafe class ToastActivationHandler
             ((Action<string>)GCHandle.FromIntPtr(self->Context).Target!)(WindowsNotificationInterop.ReadString(text));
         }
         catch { /* No application callback may unwind into COM. */ }
-        finally { if (text != 0) _ = WindowsNotificationInterop.WindowsDeleteString(text); WindowsNotificationInterop.Release(typed); }
+        finally { if (text != 0) WindowsNotificationInterop.DeleteString(text); WindowsNotificationInterop.Release(typed); }
         return 0;
     }
 }

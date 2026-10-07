@@ -16,6 +16,7 @@
     <InternalsVisibleTo Include="Runic.Platform.Windows.Tests" />
     <InternalsVisibleTo Include="Runic.Platform.Runtime.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="docs/**/*.md" Pack="true" PackagePath="docs/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

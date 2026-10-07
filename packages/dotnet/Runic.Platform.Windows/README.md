@@ -14,7 +14,9 @@ native execution prevents the operation; after execution starts, the actual writ
 outcome is returned. Win32 can clear the previous clipboard before a subsequent
 write fails; failures must not be interpreted as preservation of previous text.
 
-Native interop uses static imports and raw COM vtables for NativeAOT. Windows JIT,
+Win32 and COM declarations are private CsWin32-generated unmanaged bindings; the
+Windows Runtime projection uses raw ABI vtables. Both preserve NativeAOT. The
+[interop inventory](docs/interop-inventory.md) records each retained declaration. Windows JIT,
 NativeAOT and actual interactive selection acceptance are release gates; portable
 conformance alone does not certify the Windows environment.
 

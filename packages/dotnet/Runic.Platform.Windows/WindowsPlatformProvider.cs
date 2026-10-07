@@ -7,22 +7,22 @@ public static class WindowsPlatformProvider
 {
     /// <summary>Creates operation-scoped idle power inhibition.</summary>
     public static IDesktopInhibition CreateInhibition()
-    { if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(); return new WindowsDesktopInhibition(); }
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsDesktopInhibition(); }
 
     /// <summary>Creates observable Windows appearance preferences.</summary>
     public static IDesktopSettings CreateSettings()
-    { if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(); return new WindowsDesktopSettings(); }
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsDesktopSettings(); }
     /// <summary>Creates native toasts for an installed AppUserModelID. The application owns shell registration.</summary>
     public static IDesktopNotifications CreateNotifications(string applicationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
         if (applicationId.Length > 128 || applicationId.Contains('\0')) throw new ArgumentException("Invalid AppUserModelID.", nameof(applicationId));
-        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
         return new WindowsDesktopNotifications(applicationId);
     }
     /// <summary>Creates owned shell handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
-    { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }
+    { ArgumentNullException.ThrowIfNull(owner); if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }
 
     /// <summary>Creates owned native file dialogs. The owner must dispatch on its Windows STA.</summary>
     public static IPickerBackend CreateFileDialogs(INativePickerOwner owner)

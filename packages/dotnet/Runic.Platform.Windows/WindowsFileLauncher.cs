@@ -1,9 +1,15 @@
 using System.Runtime.InteropServices;
+using Windows.Win32;
+using Windows.Win32.Foundation;
+using Windows.Win32.System.Com;
+using Windows.Win32.UI.Shell;
+using Windows.Win32.UI.Shell.Common;
+using Windows.Win32.UI.WindowsAndMessaging;
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.Windows;
 
-internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
+internal sealed class WindowsFileLauncher(INativePickerOwner owner) : IDesktopFileLauncher
 {
     public async ValueTask<PlatformResult<PlatformUnit>> LaunchAsync(string path, DesktopFileOperation operation = DesktopFileOperation.Open, CancellationToken cancellationToken = default)
     {
@@ -15,43 +21,52 @@ internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : ID
             await owner.InvokeAsync(window =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                int initialized = CoInitializeEx(0, 2); // Owner must be STA for shell UI.
-                if (initialized < 0) { result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); return; }
-                try
-                {
-                    if (operation == DesktopFileOperation.Open)
-                    {
-                        var status = ShellExecute(window, "open", path, null, null, 1);
-                        result = status > 32 ? Success() : new PlatformResult<PlatformUnit>.Failed(
-                            status == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
-                            new PlatformDiagnostic("ShellExecute", status));
-                    }
-                    else if (operation == DesktopFileOperation.ChooseApplication)
-                    {
-                        unsafe
-                        {
-                            fixed (char* fileName = path)
-                            {
-                                var info = new OpenWithInfo { File = (nint)fileName, Flags = 4 }; // OAIF_EXEC: open once.
-                                // S_OK also occurs on dismissal on Windows 11. It acknowledges shell
-                                // handling; this API cannot reliably prove selection or launch.
-                                result = FromHResult(SHOpenWithDialog(window, in info));
-                            }
-                        }
-                    }
-                    else
-                    {
-                        int status = SHParseDisplayName(path, 0, out var item, 0, out _);
-                        if (status < 0) { result = FromHResult(status); return; }
-                        try { result = FromHResult(SHOpenFolderAndSelectItems(item, 0, 0, 0)); }
-                        finally { Marshal.FreeCoTaskMem(item); }
-                    }
-                }
-                finally { CoUninitialize(); }
+                if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+                result = Launch(window, path, operation);
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (OwnerClosedException) { }
         return result;
+    }
+    [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
+    private static unsafe PlatformResult<PlatformUnit> Launch(nint window, string path, DesktopFileOperation operation)
+    {
+        var hwnd = new HWND(window);
+        // Owner must be STA for shell UI.
+        if (PInvoke.CoInitializeEx(null, COINIT.COINIT_APARTMENTTHREADED).Value < 0)
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        try
+        {
+            fixed (char* file = path)
+            {
+                if (operation == DesktopFileOperation.Open)
+                {
+                    fixed (char* verb = "open")
+                    {
+                        // Raw overload: the generated FreeLibrarySafeHandle overload would treat the
+                        // legacy status code as a module handle and free it.
+                        nint status = PInvoke.ShellExecute(hwnd, verb, file, null, null, SHOW_WINDOW_CMD.SW_SHOWNORMAL);
+                        return status > 32 ? Success() : new PlatformResult<PlatformUnit>.Failed(
+                            status == 5 ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError,
+                            new PlatformDiagnostic("ShellExecute", status));
+                    }
+                }
+                if (operation == DesktopFileOperation.ChooseApplication)
+                {
+                    var info = new OPENASINFO { pcszFile = file, oaifInFlags = OPEN_AS_INFO_FLAGS.OAIF_EXEC }; // Open once.
+                    // S_OK also occurs on dismissal on Windows 11. It acknowledges shell
+                    // handling; this API cannot reliably prove selection or launch.
+                    return FromHResult(PInvoke.SHOpenWithDialog(hwnd, &info).Value);
+                }
+                ITEMIDLIST* item = null;
+                int parsed = PInvoke.SHParseDisplayName(file, null, &item, 0, null).Value;
+                if (parsed < 0) return FromHResult(parsed);
+                // SHParseDisplayName transfers the absolute PIDL to the caller (CoTaskMemFree).
+                try { return FromHResult(PInvoke.SHOpenFolderAndSelectItems(item, 0, null, 0).Value); }
+                finally { Marshal.FreeCoTaskMem((nint)item); }
+            }
+        }
+        finally { PInvoke.CoUninitialize(); }
     }
     // The shell's default verb runs programs, scripts, installers and shortcuts, which can
     // target a program themselves. Opening a document must never execute code.
@@ -86,16 +101,4 @@ internal sealed partial class WindowsFileLauncher(INativePickerOwner owner) : ID
             unchecked((int)0x80070005) => PlatformFailureCode.PermissionDenied,
             _ => PlatformFailureCode.IoError
         }, PlatformDiagnostic.FromHResult(result));
-    [StructLayout(LayoutKind.Sequential)]
-    private struct OpenWithInfo
-    {
-        internal nint File, Class;
-        internal uint Flags;
-    }
-    [LibraryImport("shell32.dll")] private static partial int SHOpenWithDialog(nint owner, in OpenWithInfo info);
-    [LibraryImport("shell32.dll", EntryPoint = "ShellExecuteW", StringMarshalling = StringMarshalling.Utf16)] private static partial nint ShellExecute(nint owner, string operation, string file, string? parameters, string? directory, int show);
-    [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)] private static partial int SHParseDisplayName(string path, nint bindContext, out nint item, uint attributes, out uint result);
-    [LibraryImport("shell32.dll")] private static partial int SHOpenFolderAndSelectItems(nint item, uint count, nint children, uint flags);
-    [LibraryImport("ole32.dll")] private static partial int CoInitializeEx(nint reserved, uint mode);
-    [LibraryImport("ole32.dll")] private static partial void CoUninitialize();
 }

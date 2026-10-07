@@ -8,6 +8,7 @@ using static Runic.Platform.Windows.WindowsNotificationInterop;
 
 namespace Runic.Platform.Windows;
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
 internal sealed class WindowsDesktopNotifications(string applicationId) : IDesktopNotifications
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -87,7 +88,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
             return await Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                int initialized = RoInitialize(1); Check(initialized);
+                InitializeRuntime();
                 nint factory = 0, notifier = 0;
                 try
                 {
@@ -95,7 +96,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
                     using var app = new HString(applicationId); notifier = Get(factory, 7, app.Handle);
                     return action(notifier);
                 }
-                finally { Release(notifier); Release(factory); RoUninitialize(); }
+                finally { Release(notifier); Release(factory); UninitializeRuntime(); }
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (UnauthorizedAccessException error) { return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, PlatformDiagnostic.FromHResult(error.HResult)); }
@@ -164,7 +165,7 @@ internal sealed class WindowsDesktopNotifications(string applicationId) : IDeskt
         try
         {
             if (_disposed) return; _disposed = true; Activated = null;
-            await Task.Run(() => { int initialized = RoInitialize(1); Check(initialized); try { foreach (var toast in _toasts.Values) toast.Dispose(); _toasts.Clear(); _recent.Clear(); } finally { RoUninitialize(); } }).ConfigureAwait(false);
+            await Task.Run(() => { InitializeRuntime(); try { foreach (var toast in _toasts.Values) toast.Dispose(); _toasts.Clear(); _recent.Clear(); } finally { UninitializeRuntime(); } }).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
     }
