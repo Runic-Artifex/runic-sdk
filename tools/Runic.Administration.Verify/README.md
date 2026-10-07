@@ -39,6 +39,38 @@ Use --only to isolate a failing capability:
 Available local selections: shortcuts, services, tasks, firewall, shares, system,
 processes, networks. No --only means every capability in the selected suite.
 
+## Denied access
+
+From a non-elevated terminal, `--expect-denied` attempts the same owned writes
+and requires Windows to refuse each one:
+
+~~~powershell
+.\Runic.AdminVerify.exe local --expect-denied --only services,tasks,firewall,shares
+~~~
+
+The run attempts to create a service, a scheduled task that runs as SYSTEM, a
+disabled firewall rule and an SMB share. Each attempt must fail with
+`AccessDenied`. A lookup then confirms that the resource is absent. The report's
+resource journal records the native code of each denial. The option refuses to
+run elevated, because an elevated run would create the resources. It cannot be
+combined with `--allow-changes`. Shortcut and inspection checks still run.
+
+## Command line
+
+The verifier follows the Runic command-line conventions:
+
+- `--help` works for the tool and for each command (`local --help`, `domain --help`).
+- `--version` prints the version.
+- `--output json` writes one `runic.commandline/1` envelope to stdout, with a
+  `runic.administration.verify/1` summary as its payload: run ID, report folder
+  and the number of passed, failed, skipped and canceled checks. Progress then
+  goes to stderr.
+- `completion powershell` prints tab completions.
+
+Usage errors return a `RAV1xxx` code. A failed or canceled run returns `RAV2001`
+or `RAV2002`. The `--service` and `--task-marker` arguments are internal entry
+points for the Service Control Manager and Task Scheduler. They are not commands.
+
 ## Generated bindings
 
 All Windows interop uses pinned CsWin32 0.3.346 generated bindings with preserved
@@ -126,10 +158,21 @@ eight DNS record types with TTL updates and cleanup.
 
 Not covered as full acceptance: large ranged LDAP attributes, all task trigger
 executions, task password identities, GPO security-delegation writes or real WMI
-filter associations, denied-rights matrices, all firewall protocol transitions,
-DNS sibling-record concurrency, service failure/reboot actions, other
-architectures and all Windows Server versions. The VM runs themselves have not
-been executed on the development machine.
+filter associations, denied-rights matrices beyond creation by a standard user,
+all firewall protocol transitions, DNS sibling-record concurrency, service
+failure/reboot actions, other architectures and all Windows Server versions.
+
+The local write and denied-access suites passed on the Windows 11 VM on
+2026-10-07. See the
+[verification guide](../../packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md).
+
+JIT limitation: in a JIT build (`dotnet publish` without `-p:PublishAot=true`),
+the disposable service starts and reports `Running`, but its control handler
+never runs. The Service Control Manager rejects every control with
+`ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), so `services.lifecycle` and
+`cleanup.service` fail. The stopped service stays behind and must be deleted
+with `sc.exe delete <name>`, using the name from the resource journal. Run the
+service lifecycle with the NativeAOT executable. All other JIT checks pass.
 
 ## Retesting firewall and share failures
 
