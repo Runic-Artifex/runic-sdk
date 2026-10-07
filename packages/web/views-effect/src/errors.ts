@@ -79,6 +79,10 @@ export class ViewDomainFailure<F = unknown> extends Data.TaggedError("ViewDomain
   readonly requestId: string | undefined;
 }> {
   declare readonly failure: F;
+
+  constructor(args: { readonly message: string; readonly failure: F; readonly requestId: string | undefined }) {
+    super(args);
+  }
 }
 
 /** The {@link ViewDomainFailure} a command or operation with failure type `F` adds; nothing when `F` is `never`. */

@@ -156,7 +156,10 @@ _discardExceptions = DiscardCommand.ObserveBridgeExceptions(error => status.Repo
 exception: the `ILogger` overload logs it at Error as `ReactiveCommandFailed`
 (event 1042) with the command's expression, such as `SaveCommand`, as `Source`
 (pass `sourceName` to choose another), and the callback overload passes it on.
-While it is attached, no exception of that command reaches
+Both overloads, including the logger, also ignore an `OperationCanceledException`
+that is not the Bridge's, such as an `HttpClient` timeout when the command runs
+outside the Bridge; subscribe to `ThrownExceptions` yourself to report those. While it is attached, no
+exception of that command reaches
 `RxState.DefaultExceptionHandler`. An exception thrown by the callback surfaces
 from `ThrownExceptions.OnNext`, inside ReactiveUI. Dispose the returned
 subscription with the ViewModel. An unexpected exception from a Bridge call is

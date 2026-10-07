@@ -193,7 +193,7 @@ const exit = await Effect.runPromise(Effect.gen(function* () {
 ## Bundle cost
 
 Measured on 2026-10-07 for 0.7.0-preview.1 with esbuild 0.28.2
-(`--bundle --minify --format=esm --target=es2023`) and `gzip -9`, against the
+(`--bundle --minify --format=esm --target=es2023`) and Node.js `zlib` gzip level 9, against the
 generated Notes Editor client of
 [the Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first),
 whose Save declares a failure, and Effect 4.0.1. The
@@ -203,16 +203,17 @@ than doubles the cost, so prefer subpath imports in browser code:
 
 | Bundle | gzip bytes |
 | --- | --- |
-| Plain client: connect, subscribe, command, operation with wait timeout and cancel | 7,818 |
-| Adapter: `command` and `operation`, plain subscribe | 22,397 |
-| Adapter: scoped `connect`, `states` Stream, `command`, `operation` with timeout | 27,505 |
-| Notes frontend, plain | 11,437 |
-| Notes frontend with the Effect editor | 30,151 |
-| Same adapter bundle, importing `{ Effect, Stream } from "effect"` | 62,853 |
+| Plain client: connect, subscribe, command, operation with wait timeout and cancel | 7,795 |
+| Adapter: `command` and `operation`, plain subscribe | 22,292 |
+| Adapter: scoped `connect`, `states` Stream, `command`, `operation` with timeout | 27,387 |
+| Notes frontend, plain | 11,371 |
+| Notes frontend with the Effect editor | 30,024 |
+| Same adapter bundle, importing `{ Effect, Stream } from "effect"` | 62,566 |
 
-The plain client row was 9,358 bytes in 0.6. Splitting the generated-code entries
-in 0.7 brought it to 6,858; declared failures (`BridgeOutcome`, the
-operation status union and Save's failure decoder) add 960, and 1,116 to the plain
-Notes frontend.
+The plain client row was 9,358 bytes before the 0.7 entry split, which brought
+it to 6,833; declared failures (`BridgeOutcome`, the
+operation status union and Save's failure decoder) add 962, and 1,116 to the plain
+Notes frontend. `bun run size` in `packages/web/views` reproduces the plain
+client row.
 
 Applications that do not import this package do not pay for it.

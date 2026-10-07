@@ -401,13 +401,25 @@ describe("declared failures", () => {
     await until(() => waits.length === 2);
     waits[1]!.resolve(status("dropped", "domain-failed", { delivery: { kind: "result-too-large", message: "Too large." } }));
     expect(await dropped).toMatchObject({ _tag: "ViewOperationFailed", message: "Too large." });
+
+    // A declared failure is a terminal outcome: retry never starts the operation again.
+    const starts = () => bridge.calls.filter(call => call.name === "counterStartRun").length;
+    const before = starts();
+    const retried = Effect.runPromise(Effect.flip(operation(start, { requestId: "retried", retry: Schedule.recurs(3) })));
+    await until(() => waits.length === 3);
+    waits[2]!.resolve(status("retried", "domain-failed", { failure: { $case: "titleRequired" } }));
+    expect(await retried).toMatchObject({ _tag: "ViewDomainFailure", requestId: "retried" });
+    expect(starts() - before).toBe(1);
+    expect(waits.length).toBe(3);
     expect(cancels()).toEqual([]);
     view.dispose();
   });
 
   test("catchCase handles every case and passes other errors through", async () => {
     const failWith = (failure: SaveFailure) =>
-      Effect.fail(new ViewDomainFailure({ message: "declared", failure, requestId: undefined }) as ViewDomainFailure<SaveFailure>);
+      Effect.fail(new ViewDomainFailure({ message: "declared", failure, requestId: undefined }));
+    expectTypeOf(new ViewDomainFailure({ message: "declared", failure: { $case: "titleRequired" } as SaveFailure, requestId: undefined }))
+      .toEqualTypeOf<ViewDomainFailure<SaveFailure>>();
     const handle = (effect: Effect.Effect<number, ViewDomainFailure<SaveFailure> | ViewDisconnected>) => catchCase(effect, {
       titleRequired: () => Effect.succeed("needs a title"),
       titleTaken: taken => Effect.fail(`taken: ${taken.existingTitle}`),
@@ -419,5 +431,18 @@ describe("declared failures", () => {
     expect(await Effect.runPromise(Effect.flip(handle(Effect.fail(disconnected))))).toBe(disconnected);
     // @ts-expect-error every case needs a handler
     catchCase(failWith({ $case: "titleRequired" }), { titleRequired: () => Effect.succeed(0) });
+    // @ts-expect-error a misspelled case is not a handler
+    catchCase(failWith({ $case: "titleRequired" }), { titleRequired: () => Effect.succeed(0), titleTaken: () => Effect.succeed(0), titelTaken: () => Effect.succeed(0) });
+    // A declared failure without $case (a DTO or enum) is not a case union: catchCase does not apply and the error stays.
+    const quota = Effect.fail(new ViewDomainFailure({ message: "declared", failure: { limit: 3 }, requestId: undefined }));
+    // @ts-expect-error a DTO failure has no cases
+    catchCase(quota, {});
+    // Only the case union is removed from the error channel.
+    const mixed = Effect.fail(new ViewDomainFailure({ message: "declared", failure: { limit: 3 }, requestId: undefined })) as
+      Effect.Effect<number, ViewDomainFailure<{ readonly limit: number }> | ViewDomainFailure<SaveFailure>>;
+    expectTypeOf(catchCase(mixed, { titleRequired: () => Effect.succeed(0), titleTaken: () => Effect.succeed(1) }))
+      .toEqualTypeOf<Effect.Effect<number, ViewDomainFailure<{ readonly limit: number }>>>();
+    expect(await Effect.runPromise(Effect.flip(catchCase(mixed, { titleRequired: () => Effect.succeed(0), titleTaken: () => Effect.succeed(1) }))))
+      .toMatchObject({ _tag: "ViewDomainFailure", failure: { limit: 3 } });
   });
 });
