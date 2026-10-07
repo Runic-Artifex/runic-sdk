@@ -19,6 +19,7 @@ internal static class Program
         (string Name, Action Body)[] tests =
         [
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
+            ("a repeated signal forces exit unless shutdown is protected", RepeatedSignalForcesExitUnlessProtected),
             ("project discovery rejects ambiguity", ProjectDiscoveryRejectsAmbiguity),
             ("commands keep arguments shell-free", CommandsKeepArgumentsShellFree),
             ("commands end input and tolerate invalid UTF-8", CommandsEndInputAndTolerateInvalidUtf8),
@@ -76,6 +77,33 @@ internal static class Program
 
         Console.WriteLine($"{tests.Length - failures}/{tests.Length} dotnet-runic tests passed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void RepeatedSignalForcesExitUnlessProtected()
+    {
+        var exits = new List<int>();
+        using (ToolSignalCancellation signals = ToolSignalCancellation.CreateForTest(exits.Add))
+        {
+            True(signals.Handle(System.Runtime.InteropServices.PosixSignal.SIGTERM), "The first signal was not cancelled.");
+            True(signals.Token.IsCancellationRequested, "The first signal did not cancel the command.");
+            Equal(0, exits.Count);
+            signals.Handle(System.Runtime.InteropServices.PosixSignal.SIGTERM);
+            SequenceEqual<int>([143], exits);
+        }
+
+        exits.Clear();
+        using (ToolSignalCancellation signals = ToolSignalCancellation.CreateForTest(exits.Add))
+        {
+            IDisposable protection = ToolSignalCancellation.ProtectShutdown();
+            signals.Handle(System.Runtime.InteropServices.PosixSignal.SIGINT);
+            signals.Handle(System.Runtime.InteropServices.PosixSignal.SIGINT);
+            signals.Handle(System.Runtime.InteropServices.PosixSignal.SIGQUIT);
+            Equal(0, exits.Count);
+            protection.Dispose();
+            protection.Dispose();
+            signals.Handle(System.Runtime.InteropServices.PosixSignal.SIGQUIT);
+            SequenceEqual<int>([131], exits);
+        }
     }
 
     private static void ProjectDiscoveryAcceptsDirectory()
