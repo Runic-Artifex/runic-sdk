@@ -81,5 +81,5 @@ revision:
 Because the workflow is not required, check its latest `main` run before a
 release.
 
-See the [DynamicData guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/guides/dynamicdata.md)
+See the [DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/)
 for model scheduling, supported row shapes and fallback behavior.

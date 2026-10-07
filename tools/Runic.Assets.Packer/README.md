@@ -16,7 +16,7 @@ for example:
   `AssetArchive.Read`;
 - inspecting exactly what the build would embed.
 
-The [Assets guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/assets/README.md)
+The [Assets guide](https://docs.runic-artifex.eu/guides/assets/)
 walks through embedding a frontend and serving it from ASP.NET Core or Runic
 Desktop.
 

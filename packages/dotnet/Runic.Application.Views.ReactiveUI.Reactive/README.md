@@ -52,4 +52,4 @@ this adapter's namespace; this flavor's commands implement the same
 `IHandleObservableErrors`. See
 [Declared failures and ThrownExceptions](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#declared-failures-and-thrownexceptions).
 Place it after `ObserveOn(modelScheduler)` and before collection binding; see
-the [DynamicData guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/guides/dynamicdata.md).
+the [DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/).

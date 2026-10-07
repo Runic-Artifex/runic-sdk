@@ -86,7 +86,7 @@ in `package.json` (`bun eng/toolchain.mjs` prints every toolchain pin).
 On Linux with Nix, `nix develop` provides the SDK, Node, Bun, C++ compiler, and
 webview dependencies from the shared flake. Run these commands from this directory:
 
-See [NixOS development and native shutdown](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/nixos-development.md)
+See [NixOS development and native shutdown](https://docs.runic-artifex.eu/guides/desktop/nixos-development/)
 for the environment requirements and regression checks.
 
 ```sh
@@ -127,9 +127,9 @@ Start with the [first Window](examples/first-window/README.md), then compare the
 [CommunityToolkit Notes](examples/notes-view-first/README.md) and
 [Reactive Notes](examples/notes-reactive-views/README.md) examples. They use
 explicit .NET Window and View types, generated TypeScript clients, and ordinary
-frontend components. See the [Views guide](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/application/README.md)
-and [host selection](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-selection.md).
-The [host-choice and footprint assessment](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/host-choice-and-footprint.md)
+frontend components. See the [Views guide](https://docs.runic-artifex.eu/guides/application/)
+and [host selection](https://docs.runic-artifex.eu/guides/desktop/host-selection/).
+The [host-choice and footprint assessment](https://docs.runic-artifex.eu/guides/desktop/host-choice-and-footprint/)
 retains the historical Linux measurement and links to current size guidance.
 
 ## Verify packages and releases
