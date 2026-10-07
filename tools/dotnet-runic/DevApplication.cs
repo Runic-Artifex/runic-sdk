@@ -28,7 +28,9 @@ internal static class DevApplication
         }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         // Stop the frontend and native host process trees on Ctrl+C and also when
-        // an IDE or terminal ends only this process.
+        // an IDE or terminal ends only this process. A repeated signal must not
+        // exit before those process trees are stopped.
+        using IDisposable protectShutdown = ToolSignalCancellation.ProtectShutdown();
         Action<PosixSignalContext> stopHandler = context =>
         {
             context.Cancel = true;

@@ -28,15 +28,18 @@ internal static partial class Program
     internal static async Task<int> RunAsync(string[] arguments, ICommandConsole? console = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
+        using ToolSignalCancellation signals = ToolSignalCancellation.Register();
         return await new CommandApp(GeneratedCommandCatalog.Create())
         {
+            // ToolSignalCancellation keeps Command Line's behavior but lets dev finish its cleanup.
+            HandleCancelKeyPress = false,
             Name = "dotnet runic",
             CompletionExecutableName = "dotnet-runic",
             Version = Version,
             HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
             Console = console ?? new SpectreCommandConsole(),
             ExitCodePolicy = ToolExitCodePolicy.Instance,
-        }.RunAsync(arguments).ConfigureAwait(false);
+        }.RunAsync(arguments, signals.Token).ConfigureAwait(false);
     }
 
     [Command("dev", Description = "Run the application with development watchers.",

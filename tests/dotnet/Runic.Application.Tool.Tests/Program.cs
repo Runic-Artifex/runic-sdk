@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.Application.Tool;
@@ -56,6 +57,8 @@ internal static class Program
             ("development servers are inferred from the frontend", DevelopmentServersAreInferred),
             ("a development server owns the frontend build", DevelopmentServerOwnsFrontendBuild),
             ("compatibility authority includes the public Views packages", CompatibilityAuthorityIncludesViews),
+            ("a repeated signal forces exit unless shutdown is protected", RepeatedSignalForcesExitUnlessProtected),
+            ("SIGTERM cancels a running command through the tool's handler", SigtermCancelsRunningCommand),
         ];
 
         int failures = 0;
@@ -1160,6 +1163,96 @@ internal static class Program
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
+    }
+
+    private static void RepeatedSignalForcesExitUnlessProtected()
+    {
+        var exits = new List<int>();
+        using (ToolSignalCancellation signals = ToolSignalCancellation.CreateForTest(exits.Add))
+        {
+            True(signals.Handle(PosixSignal.SIGTERM), "The first signal was not cancelled.");
+            True(signals.Token.IsCancellationRequested, "The first signal did not cancel the command.");
+            Equal(0, exits.Count);
+            signals.Handle(PosixSignal.SIGTERM);
+            SequenceEqual<int>([143], exits);
+        }
+
+        exits.Clear();
+        using (ToolSignalCancellation signals = ToolSignalCancellation.CreateForTest(exits.Add))
+        {
+            IDisposable protection = ToolSignalCancellation.ProtectShutdown();
+            try
+            {
+                signals.Handle(PosixSignal.SIGINT);
+                signals.Handle(PosixSignal.SIGINT);
+                signals.Handle(PosixSignal.SIGQUIT);
+                Equal(0, exits.Count);
+            }
+            finally
+            {
+                protection.Dispose();
+            }
+            protection.Dispose();
+            signals.Handle(PosixSignal.SIGQUIT);
+            SequenceEqual<int>([131], exits);
+        }
+    }
+
+    // Proves the RunAsync wiring (HandleCancelKeyPress = false plus the tool's token):
+    // a SIGTERM while doctor waits for MSBuild cancels the command (RCLI4000, internal
+    // failure exit code) instead of the default termination. A second signal is not
+    // sent: it could coalesce with the first or arrive after the process has exited;
+    // the unit test above covers the forced exit.
+    private static void SigtermCancelsRunningCommand()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+        using var workspace = new TestWorkspace();
+        workspace.Write("App.csproj", "<Project />");
+        string started = Path.Combine(workspace.Root, "started");
+        string fakeHost = workspace.Write("fake-dotnet", $"#!/bin/sh\necho $ > '{started}'\nexec sleep 60\n");
+        File.SetUnixFileMode(fakeHost, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var startInfo = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } dotnet ? dotnet : "dotnet")
+        {
+            WorkingDirectory = workspace.Root,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add(typeof(Runic.Application.Tool.Program).Assembly.Location);
+        startInfo.ArgumentList.Add("doctor");
+        startInfo.ArgumentList.Add("--project");
+        startInfo.ArgumentList.Add("App.csproj");
+        startInfo.Environment["DOTNET_HOST_PATH"] = fakeHost;
+        using Process tool = Process.Start(startInfo)!;
+        Task<string> output = tool.StandardOutput.ReadToEndAsync();
+        Task<string> error = tool.StandardError.ReadToEndAsync();
+        try
+        {
+            var deadline = Stopwatch.StartNew();
+            while (!(File.Exists(started) && File.ReadAllText(started).Length > 0) && deadline.Elapsed < TimeSpan.FromSeconds(30) && !tool.HasExited) Thread.Sleep(50);
+            True(File.Exists(started), "doctor did not start the MSBuild evaluation.");
+            using (Process kill = Process.Start("kill", ["-TERM", tool.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)]))
+            {
+                kill.WaitForExit();
+            }
+            True(tool.WaitForExit(TimeSpan.FromSeconds(30)), "doctor did not exit after SIGTERM.");
+            string text = output.Result + error.Result;
+            Equal(Runic.Application.Tool.Program.InternalFailure, tool.ExitCode);
+            Contains(text, "RCLI4000");
+        }
+        finally
+        {
+            if (!tool.HasExited) tool.Kill(entireProcessTree: true);
+            // The tool should have stopped the fake MSBuild; never leave it behind.
+            if (File.Exists(started) && int.TryParse(File.ReadAllText(started).Trim(), out int fakePid))
+            {
+                try { using Process fake = Process.GetProcessById(fakePid); fake.Kill(); }
+                catch (ArgumentException) { }
+                catch (InvalidOperationException) { }
+            }
+        }
     }
 
     private static void True(bool value, string message)
