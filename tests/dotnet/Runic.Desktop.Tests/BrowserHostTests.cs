@@ -7,7 +7,7 @@ using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
 
-public sealed class BrowserHostTests
+public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output)
 {
     [Fact]
     public void DiscoversBrowsersFromTheConfiguredFolder()
@@ -144,14 +144,17 @@ public sealed class BrowserHostTests
         }
 
         // Each launch starts Chromium with a fresh profile. On Windows runners a
-        // fresh Chromium occasionally stays running without requesting anything
-        // (#35); 45 seconds did not help where 30 did not. Such a launch is
-        // relaunched once with a fresh profile after 30 seconds (the default two
-        // attempts). The whole test stays inside CI's two-minute hang timeout, so
-        // a timeout still reports its stage and attempt.
+        // fresh Chromium occasionally keeps running without requesting anything
+        // (#35); a 45-second wait did not help. Such a launch is relaunched once
+        // with a fresh profile after 30 seconds (the default two attempts). The
+        // whole test stays inside CI's two-minute hang timeout, so a timeout
+        // still reports its stage and attempt. Relaunches are written to the
+        // test output.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));
         WebUiApplication.SetConnectionTimeout(30);
         WebUiApplication.SetBrowserLaunchAttempts(2);
+        using var relaunches = new StalledLaunchListener(output);
+        Trace.Listeners.Add(relaunches);
         await using var window = new WebUiWindow();
         window.SetHidden(true);
         window.SetCustomParameters("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
@@ -217,7 +220,25 @@ public sealed class BrowserHostTests
         }
         finally
         {
+            Trace.Listeners.Remove(relaunches);
             WebUiApplication.SetConnectionTimeout(15);
+        }
+    }
+
+    // Records each browser-launch-stalled warning and writes it to the test output.
+    private sealed class StalledLaunchListener(Xunit.Abstractions.ITestOutputHelper output) : TraceListener
+    {
+        public ConcurrentQueue<string> Messages { get; } = new();
+
+        public override void Write(string? message) { }
+
+        public override void WriteLine(string? message)
+        {
+            if (message?.StartsWith(WebUiWindow.BrowserLaunchStalledCode, StringComparison.Ordinal) == true)
+            {
+                Messages.Enqueue(message);
+                output.WriteLine(message);
+            }
         }
     }
 
@@ -229,6 +250,8 @@ public sealed class BrowserHostTests
         var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
         var launches = Path.Combine(folder.FullName, "launches");
         var window = new WebUiWindow();
+        using var relaunches = new StalledLaunchListener(output);
+        Trace.Listeners.Add(relaunches);
         try
         {
             await WriteStallingBrowserAsync(folder.FullName, launches);
@@ -248,9 +271,14 @@ public sealed class BrowserHostTests
             Assert.Equal(3, profiles.Distinct(StringComparer.Ordinal).Count());
             Assert.All(profiles, profile => Assert.False(Directory.Exists(profile), profile));
             Assert.Equal((nuint)0, window.BrowserProcessId);
+            // Without a Desktop logger, each relaunch is traced with the attempt that stalled.
+            Assert.Collection(relaunches.Messages,
+                message => Assert.Contains("on launch attempt 1 of 3: no request reached the server", message),
+                message => Assert.Contains("on launch attempt 2 of 3: no request reached the server", message));
         }
         finally
         {
+            Trace.Listeners.Remove(relaunches);
             await window.DisposeAsync();
             ResetBrowserLaunch();
             folder.Delete(recursive: true);
