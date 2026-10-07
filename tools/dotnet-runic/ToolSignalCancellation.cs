@@ -56,7 +56,7 @@ internal sealed class ToolSignalCancellation : IDisposable
             _exit(ForcedExitCode(signal));
             return true;
         }
-        try { _cancellation.Cancel(); }
+        try { _ = _cancellation.CancelAsync(); }
         catch (ObjectDisposedException) { }
         return true;
     }
