@@ -16,11 +16,11 @@ runs:
     - shell: bash
       run: |
         # Only Linux needs system packages; they are not part of the cached directory.
-        if [[ "$RUNNER_OS" == Linux ]]; then
-          bunx --bun playwright-core install --with-deps chromium
-        else
-          bunx --bun playwright-core install chromium
-        fi
+        # A stalled apt or browser download has hung jobs for over 30 minutes, while
+        # a normal install takes under three, so each attempt is time-limited.
+        deps=()
+        if [[ "$RUNNER_OS" == Linux ]]; then deps=(--with-deps); fi
+        eng/ci/retry.sh 3 300 bunx --bun playwright-core install "${deps[@]}" chromium
         bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path); console.log("WEBUI_BROWSER_PATH=" + path)' >> "$GITHUB_ENV"
     - name: Check the installed browser can start
       shell: bash
