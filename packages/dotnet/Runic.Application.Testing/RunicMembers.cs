@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json.Serialization;
@@ -38,6 +39,8 @@ internal static class RunicMembers
     internal static string LowerFirst(string value) => value.Length == 0 ? value : char.ToLowerInvariant(value[0]) + value[1..];
 
     // `[RunicCollection]` fields of a ViewModel and the wire name of each row key.
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
+    [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
     internal static IReadOnlyDictionary<string, string> CollectionKeys(Type model)
     {
         var keys = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -62,6 +65,7 @@ internal static class RunicMembers
         return value.ValueKind == System.Text.Json.JsonValueKind.String ? value.GetString()! : value.GetRawText();
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
     private static Type? ItemType(Type type)
     {
         if (type.IsArray) return type.GetElementType();

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -229,7 +230,11 @@ public sealed class RunicViewDriver<TModel> where TModel : class
     private static class Fingerprint
     {
         // The generated operation contract includes the ViewModel's contract fingerprint.
-        internal static readonly string Value = BridgeContractShape.Compute(typeof(TModel));
+        internal static readonly string Value = Compute();
+
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
+        [UnconditionalSuppressMessage("Trimming", "IL2087", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
+        private static string Compute() => BridgeContractShape.Compute(typeof(TModel));
     }
 }
 

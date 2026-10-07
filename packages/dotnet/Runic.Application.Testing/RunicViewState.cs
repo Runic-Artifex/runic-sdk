@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -76,6 +77,7 @@ public sealed class RunicViewState<TModel> where TModel : class
     private static PageReference ReferenceOf(JsonElement value) =>
         new(value.GetProperty("kind").GetString()!, value.GetProperty("id").GetString()!);
 
+    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "The test host reflects over the application's ViewModels in an untrimmed test process.")]
     private static object? Convert(JsonElement value, Type type)
     {
         if (value.ValueKind == JsonValueKind.Null) return null;
