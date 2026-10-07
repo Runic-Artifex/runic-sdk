@@ -1199,26 +1199,10 @@ static T? InspectCommand<T>(Type model, PropertyInfo command, Func<T?> inspect) 
 
 // CommunityToolkit generates SaveCommand from [RelayCommand] Save, SaveAsync
 // or OnSave. The method carries the parameter name, documentation and the
-// source line that the generated property lacks.
-static MethodInfo? ToolkitSourceMethod(Type model, PropertyInfo command)
-{
-    if (!command.Name.EndsWith("Command", StringComparison.Ordinal)) return null;
-    var name = command.Name[..^"Command".Length];
-    return (command.DeclaringType ?? model).GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance
-            | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-        .Where(method => method.CustomAttributes.Any(attribute =>
-            attribute.AttributeType.FullName == "CommunityToolkit.Mvvm.Input.RelayCommandAttribute"))
-        .OrderBy(method => method.MetadataToken)
-        .FirstOrDefault(method =>
-        {
-            var candidate = method.Name;
-            if (candidate.Length > 2 && candidate.StartsWith("On", StringComparison.Ordinal) && char.IsUpper(candidate[2]))
-                candidate = candidate[2..];
-            if (candidate.Length > "Async".Length && candidate.EndsWith("Async", StringComparison.Ordinal))
-                candidate = candidate[..^"Async".Length];
-            return candidate == name;
-        });
-}
+// source line that the generated property lacks. The lookup is shared with
+// BridgeContractShape, which fingerprints failure declarations on the method.
+static MethodInfo? ToolkitSourceMethod(Type model, PropertyInfo command) =>
+    BridgeCommandSources.ToolkitSourceMethod(model, command);
 
 // A [RelayCommand] property's generated comment only says which method it
 // wraps, so a Toolkit command uses its method's documentation alone.

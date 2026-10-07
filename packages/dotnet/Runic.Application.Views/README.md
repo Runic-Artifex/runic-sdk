@@ -334,6 +334,18 @@ Set `BridgeDiagnostics.IncludeFailureDetail` to `true` or `false` to choose
 explicitly. Detail can contain file paths and application data, so do not
 enable it for a distributed build.
 
+## Declared failures
+
+A command declares its expected failure type with `[RunicFailure(typeof(SaveFailure))]`
+on the command property or on its CommunityToolkit `[RelayCommand]` method, and
+signals it by throwing `RunicFailureException(new TitleRequired())`. The Bridge
+replies `domain-failed` with the encoded failure, in every environment and
+never with `detail`; an operation ends with the `domain-failed` status. Use
+`[RunicUnion]` for several cases. A value that is not the declared type, one
+that cannot be encoded, or one over 4 KiB is reported as an ordinary failure
+(event 1008). A synchronous command reports only failures thrown synchronously
+from `Execute`.
+
 ## Logging and telemetry
 
 `OpenWindow` (CS-WebUI) and `OpenDesktopWindowAsync` (Desktop) pass the scope's
@@ -357,6 +369,9 @@ output accordingly. The message properties are listed per event.
 | 1003 | `BridgeOperationAdmissionFailed` | Error | Admitting an operation throws. | `Model`, `Member`, `Route`, `ErrorType` |
 | 1004 | `BridgeOperationFailed` | Error | An admitted operation throws. | `Member`, `ErrorType` |
 | 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes. | `ErrorType` |
+| 1006 | `BridgeCommandDomainFailed` | Debug | A command throws its declared failure. | `Model`, `Member`, `Route`, `FailureType` |
+| 1007 | `BridgeOperationDomainFailed` | Debug | An admitted operation throws its declared failure. | `Member`, `FailureType` |
+| 1008 | `BridgeDomainFailureNotEncoded` | Error | A `RunicFailureException` is undeclared, cannot be encoded or is over 4 KiB, so it is reported as failed. | `Member`, `FailureType`, `Reason` |
 | 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. | `Model`, `Route`, `ErrorType` |
 | 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. | `Model`, `Route`, `ErrorType` |
 | 1012 | `BridgeCollectionKeysRejected` | Error | A `[RunicCollection]` has a null row or a null, empty or duplicate key, so the route withholds its state. | `Model`, `Field`, `Key`, `Route` |
@@ -378,7 +393,8 @@ output accordingly. The message properties are listed per event.
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
-as `content12`).
+as `content12`). A declared failure is an expected outcome, so it is logged at
+Debug, still with its exception; `FailureType` is the failure value's type.
 
 Events 1000-1021 and 1050 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
@@ -412,10 +428,12 @@ exception types, never arguments or state.
 Spans are named `<kind> <Model>.<Member>` and have the tags
 `runic.bridge.kind`, `runic.bridge.model`, `runic.bridge.member`,
 `runic.bridge.route` and `runic.bridge.outcome`. The outcome is `ok`,
-`rejected`, `cancelled`, `failed` or `disconnected`. An admission can also be
-`unavailable`, `capacity`, `duplicate` or `expired`, and an operation whose
-result could not be delivered is `delivery_failed`. A failed span has the
-status `Error` and `error.type`.
+`rejected`, `cancelled`, `failed`, `domain_failed` or `disconnected`. An
+admission can also be `unavailable`, `capacity`, `duplicate` or `expired`, and
+an operation whose result could not be delivered is `delivery_failed`. A failed
+span has the status `Error` and `error.type`. A `domain_failed` call is an
+expected outcome: its span status stays Unset, it has no `error.type`, and
+`runic.bridge.failures` does not count it.
 
 | Instrument | Type | Unit | Tags |
 | --- | --- | --- | --- |

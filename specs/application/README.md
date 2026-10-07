@@ -1,6 +1,6 @@
 # Runic Application Views wire protocol
 
-This is the protocol, version 1, between a .NET window session
+This is the protocol, version 2, between a .NET window session
 (`WindowContentSession` and generated `ViewModelBridge` subclasses) and the
 generated TypeScript clients, as implemented by `Runic.Application.Views`. The
 previous preview Application Bridge protocol and its Bridge IR are retired.
@@ -12,9 +12,13 @@ specification is maintained by [Runic Translations](https://github.com/Runic-Art
 
 ## Version
 
-Every reply from a snapshot route carries `"protocol": 1`. Clients ignore
-envelope members they do not know, so adding members is compatible. The version
-changes only when a client built for the previous version could misread a reply.
+Every reply from a snapshot route carries `"protocol": 2`; command, setter and
+write replies do not. The version is informational: generated clients do not
+gate on it, and in development report a snapshot reply whose `protocol` differs
+from their own as a diagnostic. Clients ignore envelope members they do not
+know, so adding members is compatible. The version changes only when a client
+built for the previous version could misread a reply. Version 2 added the
+`domain-failed` error and operation status kind.
 
 ## Transport
 
@@ -77,13 +81,26 @@ routes exist only for a root bridge that exposes interactions.
 ## Reply envelope and state
 
 ```json
-{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 1 }
+{ "ok": true, "state": { "revision": 12 }, "error": null, "protocol": 2 }
 ```
 
 `error` is `{kind, message}` with `kind` one of `rejected`, `cancelled`,
-`failed` or `disconnected`; `ok` is false exactly when `error` is set. In
-development (`BridgeDiagnostics`), an error caused by an exception adds
-`detail: {type, message, stack}`; production replies never carry it. `state`
+`failed`, `domain-failed` or `disconnected`; `ok` is false exactly when `error`
+is set. In development (`BridgeDiagnostics`), an error caused by an exception
+adds `detail: {type, message, stack}`; production replies never carry it.
+
+`domain-failed` is a command's declared failure (`[RunicFailure]`, thrown as
+`RunicFailureException`): `error` adds `failure`, the encoded value of the
+declared type, and never has `detail`. The reply carries the state after the
+call. A thrown value that is not the declared type, cannot be encoded or
+encodes to more than 4 KiB of UTF-8 is `failed`. When the state after a call
+cannot be sent because of invalid collection keys, the reply keeps its kind
+(including `domain-failed` with `failure`), has `state: null` and appends the
+reason to `message`; a `domain-failed` reply still has no `detail`.
+
+```json
+{ "ok": false, "state": { "revision": 13 }, "error": { "kind": "domain-failed", "message": "Save failed.", "failure": { "$case": "titleRequired" } } }
+``` `state`
 is null when the bridge was detached or closed. A checked write adds `receipt`:
 `applied` or `committed-with-error` with `snapshot: {value, version}`,
 `conflict` with `incoming`, or `rejected` with `message`.
@@ -161,17 +178,23 @@ command member and the canonical input digest: reusing it for other work is
 `identity-conflict`, and a retry observes the original operation.
 
 A status is `{contract, requestId, kind}` with `kind` one of `running`,
-`succeeded`, `failed`, `cancelled`, `expired`, `unknown`. Success may add
-`result`, `delivery: {kind, message}` (`result-too-large`,
+`succeeded`, `failed`, `domain-failed`, `cancelled`, `expired`, `unknown`.
+Success may add `result`, `delivery: {kind, message}` (`result-too-large`,
 `result-encoding-failed`, `stream-overflow`, `stream-retention-too-large`) and
 `stream: true`; failure adds `error: {kind, message}`, with `detail` in
-development. A cancel answers `cancellation-requested`,
+development. `domain-failed` adds `failure` and may add `delivery` and
+`stream: true`, but never `error` or `detail`. It is classified by exception
+type, so a declared failure thrown while cancellation is requested is still
+`domain-failed`. A stream operation that fails as declared keeps the values it
+published; its pages report `kind: "domain-failed"` and `completed: true`. A cancel answers `cancellation-requested`,
 `not-running`, `unknown` or `expired`; cancellation never rewrites a success. A
 stream page adds `cursor`, `completed`, `items: [{sequence, value}]` and
 `delivery`. Malformed requests answer `{kind: "invalid-request"}`.
 
 A window retains at most 64 operations, 32 terminal results, 128 expired ids, and
-256 KiB of results and stream replay. Running streams reserve their bound against
+256 KiB of results, declared failures and stream replay. A declared failure that
+does not fit stays `domain-failed` (the command did fail and must not be retried
+blindly) without `failure` and with `delivery: {kind: "result-too-large"}`. Running streams reserve their bound against
 a 256 KiB window budget; the default stream bound is 128 items and 64 KiB. An
 overflowing stream is terminal and visible as `stream-overflow`.
 
@@ -239,3 +262,10 @@ equality treats byte-identical writer output as equal without validating it.
 - A page runtime created by an earlier generated client gains new runtime
   fields when a newer module loads.
 - Clients that predate `protocol` or `onReconnect` ignore them.
+- Clients treat a reply error `kind` they do not know as `failed`. A generated
+  client also treats `domain-failed` as `failed` for a command or operation
+  that declares no failure, so a newer host cannot surprise an older client.
+
+Portable fixtures under [`fixtures/domain-failures`](fixtures/domain-failures)
+pair the wire .NET writes for declared failures with the outcome a declared
+client reports; the .NET tests and `@runic-artifex/views` check both sides.

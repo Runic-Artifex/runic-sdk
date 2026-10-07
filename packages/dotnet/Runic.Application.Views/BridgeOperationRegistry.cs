@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 [assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
 
@@ -232,7 +233,10 @@ internal sealed class BridgeOperationRegistry : IDisposable
         BridgeOperationStatusKind terminal;
         string? failure = null;
         BridgeFailureDetail? failureDetail = null;
+        string? domainFailure = null;
+        BridgeOperationDeliveryFailure? failureDelivery = null;
         BridgeOperationResult result = BridgeOperationResult.None;
+        var member = entry.Request?.Member ?? "(unnamed)";
         try
         {
             result = await work(new BridgeOperationExecution(entry.Stream), entry.Cancellation.Token).ConfigureAwait(false);
@@ -254,16 +258,40 @@ internal sealed class BridgeOperationRegistry : IDisposable
             // cannot rewrite its terminal success.
             terminal = BridgeOperationStatusKind.Succeeded;
         }
+        // A declared failure, already encoded by the command's observer. It is
+        // an expected outcome: Debug log with the exception, no detail (D-1).
+        // The values a stream published before it stay readable.
+        catch (BridgeDomainFailedException domain)
+        {
+            terminal = BridgeOperationStatusKind.DomainFailed;
+            ViewsLog.OperationDomainFailed(_logger, domain.InnerException, member, domain.FailureType);
+            domainFailure = domain.EncodedJson;
+            if (entry.Stream is not null)
+            {
+                entry.Stream.Complete();
+                result = BridgeOperationResult.Stream(entry.Stream);
+                if (entry.Stream.Failure is { } streamFailure)
+                    result = result.WithoutValue(streamFailure);
+            }
+        }
         catch (OperationCanceledException)
         {
             terminal = BridgeOperationStatusKind.Cancelled;
+        }
+        catch (BridgeDomainFailureNotEncodedException notEncoded)
+        {
+            terminal = BridgeOperationStatusKind.Failed;
+            var error = notEncoded.InnerException ?? notEncoded;
+            ViewsLog.DomainFailureNotEncoded(_logger, error, member, notEncoded.FailureType, notEncoded.Reason);
+            failure = "The operation failed.";
+            failureDetail = BridgeDiagnostics.Capture(error);
         }
         catch (Exception error)
         {
             terminal = BridgeOperationStatusKind.Failed;
             // The bounded message is the wire contract. Exception detail joins
             // it only when BridgeDiagnostics allows local failure detail.
-            ViewsLog.OperationFailed(_logger, error, entry.Request?.Member ?? "(unnamed)", BridgeTelemetry.ErrorType(error));
+            ViewsLog.OperationFailed(_logger, error, member, BridgeTelemetry.ErrorType(error));
             failure = "The operation failed.";
             failureDetail = BridgeDiagnostics.Capture(error);
         }
@@ -276,6 +304,24 @@ internal sealed class BridgeOperationRegistry : IDisposable
         lock (_gate)
         {
             _reservedRunningStreamBytes -= entry.ReservedRunningStreamBytes;
+            // A declared failure is retained like a value result. One that does
+            // not fit keeps the domain-failed status, because the command did
+            // fail as declared and must not be retried blindly.
+            if (domainFailure is not null)
+            {
+                var bytes = Encoding.UTF8.GetByteCount(domainFailure);
+                if (bytes <= _maximumRetainedResultBytes) TrimRetention(bytes);
+                if (bytes > _maximumRetainedResultBytes || _retainedBytes > _maximumRetainedResultBytes - bytes)
+                {
+                    domainFailure = null;
+                    failureDelivery = BridgeOperationDeliveryFailure.FailureTooLarge(_maximumRetainedResultBytes);
+                }
+                else
+                {
+                    entry.RetainedResultBytes = bytes;
+                    _retainedBytes += bytes;
+                }
+            }
             if (result.Kind is BridgeOperationResultKind.Value)
             {
                 var bytes = result.EncodedByteCount;
@@ -324,6 +370,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
             entry.Status = terminal;
             entry.Failure = failure;
             entry.FailureDetail = failureDetail;
+            entry.DomainFailure = domainFailure;
+            entry.FailureDelivery = failureDelivery;
             entry.Result = result;
             var snapshot = entry.Snapshot();
             entry.Terminal.TrySetResult(snapshot);
@@ -521,6 +569,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public BridgeOperationStatusKind Status { get; set; } = BridgeOperationStatusKind.Running;
         public string? Failure { get; set; }
         public BridgeFailureDetail? FailureDetail { get; set; }
+        public string? DomainFailure { get; set; }
+        public BridgeOperationDeliveryFailure? FailureDelivery { get; set; }
         public BridgeOperationResult Result { get; set; } = BridgeOperationResult.None;
         public int RetainedResultBytes { get; set; }
         public int RetainedStreamBytes { get; set; }
@@ -528,7 +578,7 @@ internal sealed class BridgeOperationRegistry : IDisposable
         public TaskCompletionSource<BridgeOperationStatus> Terminal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool Matches(BridgeOperationRequest? request) => BridgeOperationRegistry.Matches(Request, request);
         public bool MatchesMember(string? member) => BridgeOperationRegistry.MatchesMember(Request, member);
-        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result, FailureDetail);
+        public BridgeOperationStatus Snapshot() => new(RequestId, Status, Failure, Result, FailureDetail, DomainFailure, FailureDelivery);
         public void DisposeCancellation()
         {
             if (Interlocked.Exchange(ref _cancellationDisposed, 1) == 0)
@@ -546,7 +596,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
 }
 
 internal enum BridgeOperationAdmissionKind { Accepted, Duplicate, Expired, Rejected }
-internal enum BridgeOperationStatusKind { Unknown, Expired, Running, Succeeded, Failed, Cancelled }
+// Wire tokens are the lowercase names, except DomainFailed ("domain-failed").
+internal enum BridgeOperationStatusKind { Unknown, Expired, Running, Succeeded, Failed, Cancelled, DomainFailed }
 
 internal sealed record BridgeOperationAdmission(
     string RequestId,
@@ -560,7 +611,9 @@ internal sealed record BridgeOperationStatus(
     BridgeOperationStatusKind Kind,
     string? Failure,
     BridgeOperationResult? Result = null,
-    BridgeFailureDetail? FailureDetail = null)
+    BridgeFailureDetail? FailureDetail = null,
+    string? DomainFailure = null,
+    BridgeOperationDeliveryFailure? FailureDelivery = null)
 {
     public static BridgeOperationStatus Unknown(string requestId) => new(requestId, BridgeOperationStatusKind.Unknown, null);
     public static BridgeOperationStatus Expired(string requestId) => new(requestId, BridgeOperationStatusKind.Expired, null);

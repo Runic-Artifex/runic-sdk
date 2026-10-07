@@ -129,6 +129,11 @@ public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
 /// <param name="Subscribe">Observes changes of the command's executability.</param>
 /// <param name="CreateStream">Creates the result stream of a streaming command.</param>
 /// <param name="ExecuteStreamAsync">Executes a streaming command.</param>
+/// <param name="EncodeFailure">
+/// Encodes the value of a <see cref="RunicFailureException"/> when it is the command's declared
+/// failure type, and returns <see langword="null"/> otherwise. <see langword="null"/> when the
+/// command declares no failure.
+/// </param>
 public sealed record CommandDescriptor<T>(
     string Name,
     Func<T, object> Get,
@@ -139,10 +144,16 @@ public sealed record CommandDescriptor<T>(
     Func<T, object?, bool>? CanExecute = null,
     Func<T, Action, IDisposable>? Subscribe = null,
     Func<BridgeOperationStream>? CreateStream = null,
-    Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync = null);
+    Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync = null,
+    Func<object, string?>? EncodeFailure = null);
 
 // Detail is present only when BridgeDiagnostics allows local failure detail.
-internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null);
+// Failure is the encoded declared failure of a domain-failed reply, which
+// never carries detail (D-1).
+internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureDetail? Detail = null, string? Failure = null)
+{
+    internal const string DomainFailed = "domain-failed";
+}
 
 /// <summary>The Views wire protocol described in specs/application/README.md.</summary>
 public static class BridgeProtocol
@@ -150,9 +161,10 @@ public static class BridgeProtocol
     /// <summary>
     /// The protocol version reported as <c>protocol</c> in every snapshot-route reply.
     /// It changes only when a generated client built for the previous version could
-    /// misread a reply.
+    /// misread a reply. It is informational: generated clients do not gate on it.
     /// </summary>
-    public const int Version = 1;
+    /// <remarks>Version 2 adds the <c>domain-failed</c> reply error and operation status.</remarks>
+    public const int Version = 2;
 }
 
 internal interface IHotReloadableBridge
@@ -581,6 +593,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 call.Complete(BridgeCallOutcome.Ok);
                 return reply;
             }
+            catch (Exception error) when (BridgeDomainFailures.Find(error) is { } domain)
+            {
+                return EncodeTerminal(CommandDomainFailure(ref call, descriptor, domain));
+            }
             catch (OperationCanceledException)
             {
                 call.Complete(BridgeCallOutcome.Cancelled);
@@ -634,6 +650,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             call.Complete(BridgeCallOutcome.Ok);
             return ReplyAfterCommand(() => EncodeTerminal());
         }
+        catch (Exception error) when (BridgeDomainFailures.Find(error) is { } domain)
+        {
+            var failure = CommandDomainFailure(ref call, descriptor, domain);
+            return ReplyAfterCommand(() => EncodeTerminal(failure));
+        }
         catch (OperationCanceledException)
         {
             call.Complete(BridgeCallOutcome.Cancelled);
@@ -652,6 +673,24 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var detail = BridgeDiagnostics.Capture(error);
             return ReplyAfterCommand(() => EncodeTerminal(new("failed", $"{descriptor.Name} failed.", detail)));
         }
+    }
+
+    // A declared failure is an expected outcome: a Debug log with the exception
+    // (D-12) and no failure metric. One that cannot be sent as declared falls
+    // back to the failed reply and is logged as an error.
+    private BridgeFailure CommandDomainFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, RunicFailureException domain)
+    {
+        var failureType = BridgeDomainFailures.TypeName(domain);
+        var encoded = BridgeDomainFailures.TryEncode(descriptor.EncodeFailure, domain, out var reason);
+        if (encoded is not null)
+        {
+            call.Complete(BridgeCallOutcome.DomainFailed);
+            ViewsLog.CommandDomainFailed(_logger, domain, ModelName, descriptor.Name, _name, failureType);
+            return new(BridgeFailure.DomainFailed, $"{descriptor.Name} failed.", Failure: encoded);
+        }
+        call.Complete(BridgeCallOutcome.Failed, domain);
+        ViewsLog.DomainFailureNotEncoded(_logger, domain, $"{ModelName}.{descriptor.Name}", failureType, reason);
+        return new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(domain));
     }
 
     // The model context can be gone when an awaited command completes after
@@ -725,14 +764,14 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 var request = new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
                 var admission = descriptor.ExecuteStreamAsync is { } executeStream
                     ? content.Operations.Accept(request, () => IsAvailable(descriptor, argument), descriptor.CreateStream!(),
-                        (execution, cancellation) => ObserveOperationAsync(descriptor.Name, _name, () =>
+                        (execution, cancellation) => ObserveOperationAsync(descriptor.Name, _name, descriptor.EncodeFailure, () =>
                         {
                             using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                             return executeStream(_vm, execution, cancellation, argument);
                         }))
                     : content.Operations.Accept(request,
                     () => IsAvailable(descriptor, argument),
-                    cancellation => ObserveOperationAsync(descriptor.Name, _name, () =>
+                    cancellation => ObserveOperationAsync(descriptor.Name, _name, descriptor.EncodeFailure, () =>
                     {
                         using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                         return InvokeCommandAsync(descriptor, argument, cancellation);
@@ -761,9 +800,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     // Runs the admitted work of an operation inside its span. The registry
-    // owns the terminal state and logs a failure.
+    // owns the terminal state and logs a failure. A declared failure reaches
+    // the registry already encoded, so the registry stays type-agnostic.
     private static async Task<BridgeOperationResult> ObserveOperationAsync(string member, string route,
-        Func<Task<BridgeOperationResult>> run)
+        Func<object, string?>? encodeFailure, Func<Task<BridgeOperationResult>> run)
     {
         var call = BridgeCall.Start(BridgeCallKind.Operation, ModelName, route, member);
         try
@@ -771,6 +811,20 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             var result = await run().ConfigureAwait(false);
             call.Complete(result.DeliveryFailure is null ? BridgeCallOutcome.Ok : BridgeCallOutcome.DeliveryFailed);
             return result;
+        }
+        catch (Exception error) when (BridgeDomainFailures.Find(error) is { } domain)
+        {
+            // Classified by exception type, like success: a declared failure
+            // thrown while cancellation is requested is still domain-failed.
+            var failureType = BridgeDomainFailures.TypeName(domain);
+            var encoded = BridgeDomainFailures.TryEncode(encodeFailure, domain, out var reason);
+            if (encoded is null)
+            {
+                call.Complete(BridgeCallOutcome.Failed, domain);
+                throw new BridgeDomainFailureNotEncodedException(failureType, reason, domain);
+            }
+            call.Complete(BridgeCallOutcome.DomainFailed);
+            throw new BridgeDomainFailedException(encoded, failureType, domain);
         }
         catch (OperationCanceledException)
         {
@@ -835,7 +889,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             if (protocol) return EncodeWithoutSnapshot(failure);
             return EncodeWithoutSnapshot(error is null
                 ? failure with { Message = $"The call ran, but the updated state could not be sent: {failure.Message}" }
-                : error with { Message = $"{error.Message} The updated state could not be sent: {failure.Message}", Detail = error.Detail ?? failure.Detail });
+                : error with
+                {
+                    Message = $"{error.Message} The updated state could not be sent: {failure.Message}",
+                    // D-1: a domain failure never carries detail; its failure is the contract.
+                    Detail = error.Kind == BridgeFailure.DomainFailed ? null : error.Detail ?? failure.Detail,
+                });
         }
     }
 
@@ -1052,7 +1111,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             writer.WriteStartObject();
             writer.WriteString("kind", error.Kind);
             writer.WriteString("message", error.Message);
-            BridgeDiagnostics.Write(writer, error.Detail);
+            if (error.Failure is { } failure)
+            {
+                writer.WritePropertyName("failure");
+                writer.WriteRawValue(failure, skipInputValidation: true);
+            }
+            else BridgeDiagnostics.Write(writer, error.Detail);
             writer.WriteEndObject();
         }
         if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);

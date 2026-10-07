@@ -22,6 +22,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="../../../specs/application/fixtures/collection-deltas/*.json" Link="fixtures/collection-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../specs/application/fixtures/domain-failures/*.json" Link="fixtures/domain-failures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />

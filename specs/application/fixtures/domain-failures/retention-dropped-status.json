@@ -1,0 +1,6 @@
+{
+  "description": "A failure that does not fit the window's retention budget (here 16 bytes) keeps the domain-failed status, because the command did fail as declared, but omits failure and adds delivery. outcome() rejects with BridgeError(\"failed\") carrying the delivery message.",
+  "scenario": "retention-dropped-status",
+  "wire": { "contract": "Tests.Editor:fixture:editor", "requestId": "save-1", "kind": "domain-failed", "delivery": { "kind": "result-too-large", "message": "The operation failed as declared, but its failure exceeds the 16 byte retention limit." } },
+  "client": { "declared": true, "error": { "kind": "failed", "message": "The operation failed as declared, but its failure exceeds the 16 byte retention limit." } }
+}

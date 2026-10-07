@@ -17,6 +17,7 @@ public sealed class RunicCallReply<TModel> where TModel : class
         {
             ErrorKind = error.GetProperty("kind").GetString();
             ErrorMessage = error.GetProperty("message").GetString();
+            if (error.TryGetProperty("failure", out var failure)) Failure = failure.Clone();
         }
     }
 
@@ -26,10 +27,15 @@ public sealed class RunicCallReply<TModel> where TModel : class
     public string Json { get; }
     /// <summary>Whether the call succeeded.</summary>
     public bool Ok { get; }
-    /// <summary>The BridgeError kind of a failed call, such as <c>rejected</c> or <c>failed</c>.</summary>
+    /// <summary>
+    /// The error kind of a failed call, such as <c>rejected</c> or <c>failed</c>, or
+    /// <c>domain-failed</c> for a command's declared failure (<see cref="Failure"/>).
+    /// </summary>
     public string? ErrorKind { get; }
     /// <summary>The message of a failed call.</summary>
     public string? ErrorMessage { get; }
+    /// <summary>The encoded declared failure of a <c>domain-failed</c> reply, such as <c>{"$case":"titleRequired"}</c>.</summary>
+    public JsonElement? Failure { get; }
     /// <summary>The state after the call, when the reply carries one.</summary>
     public RunicViewState<TModel>? State { get; }
 
@@ -90,12 +96,17 @@ public sealed class RunicFieldWriteReceipt<TModel> where TModel : class
 }
 
 /// <summary>The status of an operation, as the generated client reads it.</summary>
-/// <param name="Kind"><c>running</c>, <c>succeeded</c>, <c>failed</c>, <c>cancelled</c>, <c>expired</c> or <c>unknown</c>.</param>
+/// <param name="Kind">
+/// <c>running</c>, <c>succeeded</c>, <c>failed</c>, <c>domain-failed</c>, <c>cancelled</c>, <c>expired</c> or <c>unknown</c>.
+/// </param>
 /// <param name="Result">The encoded result of a succeeded operation with a result.</param>
 /// <param name="ErrorMessage">Why a failed operation failed.</param>
 /// <param name="Json">The status as .NET serialized it.</param>
 public sealed record RunicOperationStatus(string Kind, JsonElement? Result, string? ErrorMessage, string Json)
 {
+    /// <summary>The encoded declared failure of a <c>domain-failed</c> operation, when it was retained.</summary>
+    public JsonElement? Failure { get; init; }
+
     internal static RunicOperationStatus Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -103,7 +114,10 @@ public sealed record RunicOperationStatus(string Kind, JsonElement? Result, stri
         return new(root.TryGetProperty("kind", out var kind) ? kind.GetString() ?? "unknown" : "unknown",
             root.TryGetProperty("result", out var result) ? result.Clone() : null,
             root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object ? error.GetProperty("message").GetString() : null,
-            json);
+            json)
+        {
+            Failure = root.TryGetProperty("failure", out var failure) ? failure.Clone() : null,
+        };
     }
 }
 

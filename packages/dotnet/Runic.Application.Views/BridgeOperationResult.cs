@@ -105,6 +105,12 @@ public sealed record BridgeOperationDeliveryFailure(BridgeOperationDeliveryFailu
         new(BridgeOperationDeliveryFailureKind.ResultTooLarge,
             $"The operation result exceeds the {maximumBytes} byte retention limit.");
 
+    // A declared failure that does not fit the retention budget. The status
+    // stays domain-failed; only the failure value is lost.
+    internal static BridgeOperationDeliveryFailure FailureTooLarge(int maximumBytes) =>
+        new(BridgeOperationDeliveryFailureKind.ResultTooLarge,
+            $"The operation failed as declared, but its failure exceeds the {maximumBytes} byte retention limit.");
+
     internal static BridgeOperationDeliveryFailure ResultEncodingFailed() =>
         new(BridgeOperationDeliveryFailureKind.ResultEncodingFailed,
             "The operation completed, but its result could not be encoded.");

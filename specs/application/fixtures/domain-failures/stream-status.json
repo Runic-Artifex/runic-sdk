@@ -1,0 +1,6 @@
+{
+  "description": "A stream operation keeps the domain-failed status: the status adds stream: true and the values published before the failure stay readable through completed stream pages of kind domain-failed.",
+  "scenario": "stream-status",
+  "wire": { "contract": "Tests.Editor:fixture:editor", "requestId": "save-1", "kind": "domain-failed", "failure": { "$case": "titleTaken", "existingTitle": "Todo" }, "stream": true },
+  "client": { "declared": true, "outcome": { "ok": false, "failure": { "$case": "titleTaken", "existingTitle": "Todo" } } }
+}

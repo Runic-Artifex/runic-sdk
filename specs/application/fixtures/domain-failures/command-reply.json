@@ -1,0 +1,6 @@
+{
+  "description": "A command that throws its declared failure replies domain-failed with the encoded failure and the state after the call. A declared client resolves the outcome with the failure. \"state\": {} stands for the model's state.",
+  "scenario": "command-reply",
+  "wire": { "ok": false, "state": {}, "error": { "kind": "domain-failed", "message": "Submit failed.", "failure": { "$case": "titleTaken", "existingTitle": "Todo" } } },
+  "client": { "declared": true, "outcome": { "ok": false, "failure": { "$case": "titleTaken", "existingTitle": "Todo" } } }
+}
