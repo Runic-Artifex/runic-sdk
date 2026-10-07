@@ -73,16 +73,27 @@ clipboard. The test project does not reference CsWin32, and these imports do not
 On 2026-10-07 the Windows 11 VM (build 26200, .NET SDK 10.0.401) ran the
 NativeAOT publishes of `Runic.Platform.Windows.Tests` and
 `Runic.Platform.Runtime.Tests`, built from `b1c5d5af`. Neither publish produced a
-warning. Each check ran in the signed-in user's session and exited with 0:
+warning. Each check ran in the signed-in user's session.
 
-- `--native-settings`, `--native` (clipboard) and `--native-inhibition`.
-- `--native-services` with `Open` (a Notepad window for the owned file) and
-  `Reveal` (Explorer with the file selected).
-- `ChooseApplication`: Notepad was selected in the picker and confirmed with
-  "Just once", which opened the owned file in a new Notepad process. The
-  picker offers no "Always" button for this call.
-- `Notifications`, using a per-user test AppUserModelID from
-  `tests/native/windows-notifications/Configure-TestIdentity.ps1`: the toast
+`Runic.Platform.Windows.Tests.exe` passed `--native-settings`, `--native`
+(clipboard) and `--native-inhibition`, each exiting with 0.
+
+`Runic.Platform.Runtime.Tests.exe` passed its conformance run without arguments
+(14/14). It also ran `--native-services`, with `RUNIC_TEST_SERVICE` selecting
+each operation:
+
+- `Open` exited with 0, and Notepad opened the owned file.
+- `Reveal` exited with 0, and Explorer opened with the file selected.
+- `ChooseApplication` printed `PASS` with no error output. Its exit code was
+  not captured: the PowerShell driver used `Start-Process -PassThru
+  -NoNewWindow`, which returned no `ExitCode`. Notepad was selected in the
+  picker and confirmed with "Just once", and the owned file then opened in a
+  new Notepad process. The picker offers no "Always" button for this call.
+  Notepad was already the default application for `.txt`, so this result
+  cannot tell a choice made in the picker from a plain `Open`. It shows that
+  the picker appeared and that "Just once" launched the file.
+- `Notifications` exited with 0, using a per-user test AppUserModelID from
+  `tests/native/windows-notifications/Configure-TestIdentity.ps1`. The toast
   appeared, and clicking its "Open result" action raised the activation event
   (`NotificationId = native-services, ActionId = open`). This run covers
   `RoGetActivationFactory` and `WindowsGetStringRawBuffer`.
