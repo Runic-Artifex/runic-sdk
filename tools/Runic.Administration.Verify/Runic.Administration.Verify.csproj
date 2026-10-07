@@ -8,6 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" />
+    <PackageReference Include="Runic.CommandLine" />
+    <PackageReference Include="Runic.CommandLine.Spectre" />
     <TrimmerRootAssembly Include="Runic.Platform.Administration.Windows" />
     <None Update="README.md" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

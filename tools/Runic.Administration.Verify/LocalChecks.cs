@@ -46,7 +46,9 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
                 Require(service is not null && service.BinaryCommandLine.Length > 0, "EventLog configuration missing.");
                 return Task.CompletedTask;
             }, token);
-            if (options.Changes) await report.Check("services.lifecycle", Services, token); else report.Skip("services.lifecycle", "Requires --allow-changes on a disposable VM.");
+            if (options.Changes) await report.Check("services.lifecycle", Services, token);
+            else if (options.ExpectDenied) await report.Check("services.denied", ServicesDenied, token);
+            else report.Skip("services.lifecycle", "Requires --allow-changes on a disposable VM.");
         }
         if (options.Includes("tasks"))
         {
@@ -57,7 +59,9 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
                 Require(await client.FindAsync("\\" + report.Prefix, token) is null, "Unique missing task was found.");
                 await client.ValidateAsync(new(new("SYSTEM", TaskLogonType.ServiceAccount), [new(Executable, "--help")], []), token);
             }, token);
-            if (options.Changes) await report.Check("tasks.roundtrip-and-execution", Tasks, token); else report.Skip("tasks.roundtrip-and-execution", "Requires --allow-changes.");
+            if (options.Changes) await report.Check("tasks.roundtrip-and-execution", Tasks, token);
+            else if (options.ExpectDenied) await report.Check("tasks.denied", TasksDenied, token);
+            else report.Skip("tasks.roundtrip-and-execution", "Requires --allow-changes.");
         }
         if (options.Includes("firewall"))
         {
@@ -67,12 +71,15 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
                 Require((await client.GetProfilesAsync(token)).Length == 3, "Expected three firewall profiles.");
                 _ = await client.EnumerateAsync(token);
             }, token);
-            if (options.Changes) await report.Check("firewall.roundtrip", Firewall, token); else report.Skip("firewall.roundtrip", "Requires --allow-changes.");
+            if (options.Changes) await report.Check("firewall.roundtrip", Firewall, token);
+            else if (options.ExpectDenied) await report.Check("firewall.denied", FirewallDenied, token);
+            else report.Skip("firewall.roundtrip", "Requires --allow-changes.");
         }
         if (options.Includes("shares"))
         {
             await report.Check("shares.inspect", () => { _ = new WindowsShareClient().Enumerate(); return Task.CompletedTask; }, token);
             if (options.Changes) await report.Check("shares.explicit-security", Shares, token);
+            else if (options.ExpectDenied) await report.Check("shares.denied", SharesDenied, token);
             else report.Skip("shares.explicit-security", "Requires --allow-changes.");
         }
     }
@@ -127,14 +134,30 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
         {
             if (created) await report.Check("cleanup.service", async () =>
             {
-                var state = client.FindStatus(name);
-                if (state is not null && state.State != ServiceState.Stopped)
+                Exception? stopFailure = null;
+                try
                 {
-                    if (state.State != ServiceState.StopPending) client.Stop(name);
-                    await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30));
+                    var state = client.FindStatus(name);
+                    if (state is not null && state.State != ServiceState.Stopped)
+                    {
+                        if (state.State != ServiceState.StopPending) client.Stop(name);
+                        await client.WaitForStateAsync(name, ServiceState.Stopped, TimeSpan.FromSeconds(30));
+                    }
                 }
+                catch (Exception error) when (error is WindowsAdministrationException or TimeoutException) { stopFailure = error; }
+                // DeleteService also marks a running service; the SCM removes it once its process ends.
                 Require(client.Delete(name), "Created service unexpectedly absent before cleanup.");
-                await Until(() => Task.FromResult(client.FindStatus(name) is null), TimeSpan.FromSeconds(20), default);
+                if (stopFailure is not null)
+                {
+                    report.Resource("  service stop failed during cleanup: " + stopFailure.Message);
+                    if (client.FindStatus(name) is { ProcessId: not 0 } running)
+                    {
+                        // Only this verifier's own executable is ended; FixtureProcess checks the image path.
+                        FixtureProcess.Terminate(running.ProcessId, Executable);
+                        report.Resource("  ended the fixture service process " + running.ProcessId);
+                    }
+                }
+                await Until(() => Task.FromResult(client.FindStatus(name) is null), TimeSpan.FromSeconds(30), default);
                 Require(!client.Delete(name), "Second service deletion did not report absence.");
             });
         }
@@ -258,6 +281,85 @@ internal sealed class LocalChecks(RunReport report, Options options, Cancellatio
             });
             else if (Directory.Exists(path)) Directory.Delete(path);
         }
+    }
+    // --expect-denied: a non-elevated caller attempts each owned write. Windows must refuse it
+    // with AccessDenied, and an independent lookup must find no resource afterwards.
+    private async Task ServicesDenied()
+    {
+        var client = new WindowsServiceClient();
+        var name = report.Prefix;
+        report.Resource("Denied service attempt: " + name);
+        await Denied(() => { client.Create(new(name, "\"" + Executable + "\" --service " + name, "LocalSystem")); return Task.CompletedTask; },
+            () => { Require(client.Delete(name), "Unexpectedly created service was already absent."); return Task.CompletedTask; });
+        Require(client.FindStatus(name) is null, "Denied service creation left a service behind.");
+    }
+    private async Task TasksDenied()
+    {
+        var client = new WindowsTaskSchedulerClient();
+        var path = "\\" + report.Prefix;
+        report.Resource("Denied task attempt: " + path);
+        var spec = new ScheduledTaskSpecification(new("SYSTEM", TaskLogonType.ServiceAccount),
+            [new(Executable, "--help")], []) { Description = "fixture", ExecutionTimeLimit = TimeSpan.FromMinutes(1) };
+        await Denied(() => client.CreateAsync(path, spec, cancellationToken: token),
+            async () => Require(await client.DeleteAsync(path), "Unexpectedly registered task was already absent."));
+        Require(await client.FindAsync(path, token) is null, "Denied task registration left a task behind.");
+    }
+    private async Task FirewallDenied()
+    {
+        var client = new WindowsFirewallClient();
+        var spec = new FirewallRuleSpecification(report.Prefix, FirewallDirection.Inbound, FirewallAction.Block)
+        {
+            Enabled = false, ApplicationPath = Executable, Protocol = 6, LocalPorts = "49199", RemoteAddresses = "127.0.0.1",
+            Grouping = report.Prefix, Description = "fixture"
+        };
+        Require(await client.FindAsync(spec.Name, token) is null, "Fixture firewall name already exists; refusing to touch it.");
+        report.Resource("Denied firewall rule attempt: " + spec.Name);
+        var identity = new FirewallRuleIdentity(spec.Name, spec.Grouping, spec.ApplicationPath, spec.ServiceName, spec.Direction);
+        await Denied(() => client.CreateAsync(spec, token), async () =>
+        {
+            // Delete only the exact rule this run attempted.
+            var observed = await client.FindAsync(spec.Name) ?? throw new InvalidOperationException("Unexpectedly created rule was already absent.");
+            Require(observed.Identity == identity, "Firewall identity changed; refusing rollback.");
+            Require(await client.DeleteAsync(identity), "Unexpectedly created rule was already absent.");
+        });
+        Require(await client.FindAsync(spec.Name, token) is null, "Denied firewall creation left a rule behind.");
+    }
+    private async Task SharesDenied()
+    {
+        var client = new WindowsShareClient();
+        var name = report.Prefix + "-denied";
+        var path = Path.Combine(report.Folder, "share-denied");
+        Directory.CreateDirectory(path);
+        report.Resource("Denied SMB share attempt: " + name + "; directory: " + path);
+        try
+        {
+            await Denied(() => { client.Create(new ShareSpecification(name, path, Descriptor("O:BAG:BAD:(A;;FA;;;BA)(A;;FR;;;BU)"))); return Task.CompletedTask; },
+                () => { Require(client.Delete(name), "Unexpectedly created share was already absent."); return Task.CompletedTask; });
+            // Enumeration (level 1) needs no administrative rights, unlike reading a share's security.
+            Require(!client.Enumerate().Any(share => string.Equals(share.Name, name, StringComparison.OrdinalIgnoreCase)), "Denied share creation left a share behind.");
+        }
+        finally { Directory.Delete(path); }
+    }
+    // When the write unexpectedly succeeds (for example with delegated rights), roll back the
+    // uniquely named resource immediately and still fail the check.
+    private async Task Denied(Func<Task> action, Func<Task> rollback)
+    {
+        try { await action(); }
+        catch (WindowsAdministrationException error) when (error.Category == AdministrationErrorCategory.AccessDenied)
+        {
+            report.Resource($"  denied as expected: {error.Operation}; {error.NativeErrorDomain} 0x{error.NativeErrorCode:X8}");
+            return;
+        }
+        catch (WindowsAdministrationException error)
+        {
+            throw new WindowsAdministrationException(error.Operation, error.Category, error.NativeErrorDomain,
+                error.NativeErrorCode, $"Expected AccessDenied, received {error.Category}. {error.Message}", error);
+        }
+        string outcome;
+        try { await rollback(); outcome = "the created resource was deleted"; }
+        catch (Exception error) when (error is WindowsAdministrationException or InvalidOperationException) { outcome = "rollback failed (" + error.Message + "); inspect the resource journal and revert the fixture"; }
+        report.Resource("  write unexpectedly succeeded; " + outcome);
+        throw new InvalidOperationException("The non-elevated write unexpectedly succeeded; " + outcome + ".");
     }
     private static System.Collections.Immutable.ImmutableArray<byte> Descriptor(string sddl)
     {

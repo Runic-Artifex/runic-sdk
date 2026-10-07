@@ -39,6 +39,42 @@ Use --only to isolate a failing capability:
 Available local selections: shortcuts, services, tasks, firewall, shares, system,
 processes, networks. No --only means every capability in the selected suite.
 
+## Denied access
+
+From a non-elevated terminal, `--expect-denied` attempts the same owned writes
+and requires Windows to refuse each one:
+
+~~~powershell
+.\Runic.AdminVerify.exe local --expect-denied --only services,tasks,firewall,shares
+~~~
+
+The run attempts to create a service, a scheduled task that runs as SYSTEM, a
+disabled firewall rule and an SMB share. Each attempt must fail with
+`AccessDenied`. A lookup then confirms that the resource is absent. The report's
+resource journal records the native code of each denial. The option refuses to
+run elevated, because an elevated run would create the resources. It cannot be
+combined with `--allow-changes`, and an `--only` selection must include services,
+tasks, firewall or shares. If a write unexpectedly succeeds (for example for an
+account with delegated rights), the verifier deletes that uniquely named
+resource again (the firewall rule only after an identity check), and the check
+still fails. Shortcut and inspection checks still run.
+
+## Command line
+
+The verifier follows the Runic command-line conventions:
+
+- `--help` works for the tool and for each command (`local --help`, `domain --help`).
+- `--version` prints the version.
+- `--output json` writes one `runic.commandline/1` envelope to stdout, with a
+  `runic.administration.verify/1` summary as its payload: run ID, report folder
+  and the number of passed, failed, skipped and canceled checks. Progress then
+  goes to stderr.
+- `completion powershell` prints tab completions.
+
+Usage errors return a `RAV1xxx` code. A failed or canceled run returns `RAV2001`
+or `RAV2002`. The `--service` and `--task-marker` arguments are internal entry
+points for the Service Control Manager and Task Scheduler. They are not commands.
+
 ## Generated bindings
 
 All Windows interop uses pinned CsWin32 0.3.346 generated bindings with preserved
@@ -106,8 +142,11 @@ Exit codes:
 - 2: invalid command line or unsupported platform.
 
 Unavailable components and denied permissions are reported as failures when
-selected, not silently converted to passes. Capabilities excluded with --only
-are not run. Mutation checks are explicitly skipped without --allow-changes.
+selected, not silently converted to passes. The exception is `--expect-denied`:
+there a denial is the expected result, and a write that succeeds fails the check
+(the created resource is deleted again first). Capabilities excluded with --only
+are not run. Without --allow-changes, the mutation checks are explicitly skipped,
+or replaced by the denial checks under `--expect-denied`.
 
 ## Coverage
 
@@ -126,10 +165,30 @@ eight DNS record types with TTL updates and cleanup.
 
 Not covered as full acceptance: large ranged LDAP attributes, all task trigger
 executions, task password identities, GPO security-delegation writes or real WMI
-filter associations, denied-rights matrices, all firewall protocol transitions,
-DNS sibling-record concurrency, service failure/reboot actions, other
-architectures and all Windows Server versions. The VM runs themselves have not
-been executed on the development machine.
+filter associations, denied-rights matrices beyond creation by a standard user,
+all firewall protocol transitions, DNS sibling-record concurrency, service
+failure/reboot actions, other architectures and all Windows Server versions.
+
+The local write and denied-access suites passed on the Windows 11 VM on
+2026-10-07. See the
+[verification guide](../../packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md).
+
+JIT limitation: in a JIT build (`dotnet publish` without `-p:PublishAot=true`),
+the disposable service starts and reports `Running`. When the first control
+arrives, `StartServiceCtrlDispatcherW` returns while `ServiceMain` is still
+waiting, and the control handler never runs. The Service Control Manager rejects
+the controls with `ERROR_SERVICE_CANNOT_ACCEPT_CTRL` (1061), so
+`services.lifecycle` fails. Run the service lifecycle with the NativeAOT
+executable. All other JIT checks pass.
+
+Service cleanup always calls `DeleteService`. If stopping fails, it ends the
+service's process (only after checking that its image is this verifier) and
+waits until the service is gone. If cleanup still fails, delete the service with
+`sc.exe delete <name>`, using the name from the resource journal.
+
+To investigate the test service, create a `service-diagnostics` directory next
+to the executable. Each test service then appends its dispatcher,
+`SetServiceStatus` and control events to `service-diagnostics/<name>.log`.
 
 ## Retesting firewall and share failures
 

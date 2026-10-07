@@ -6,8 +6,14 @@ Host-independent Windows administration for .NET 10. Construct a capability clie
 directly; no Runic Desktop, Application host, UI framework, dependency injection,
 automatic elevation or helper process is required.
 
-This is a local implementation under native validation. **Administrative write and
-domain scenarios have not been accepted on disposable fixtures.** See
+This is an experimental package under native validation. Local administrative
+writes have been accepted on a disposable Windows 11 x64 VM (2026-10-07). That run
+covered create, read, update and delete of an owned service, scheduled task,
+firewall rule and SMB share, and denial of the same writes to a non-elevated
+process. The service lifecycle was accepted with the NativeAOT verifier only; the
+JIT-built verifier's own test service cannot be controlled (see verification).
+**Domain scenarios (LDAP/AD, DNS, Group Policy) have not been accepted on
+disposable fixtures.** See
 [verification](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Administration.Windows/docs/verification.md) for the distinction between implementation,
 executed checks and remaining acceptance work. Do not infer production readiness
 from a successful pack or NativeAOT publish.
@@ -146,10 +152,11 @@ to `RemoveTrustee`. These paths still require domain fixture execution.
 
 Verification after migration: managed native checks and the 115-type public API
 baseline pass. The Windows x64 NativeAOT verifier publishes without warnings and
-its local run passed 9 checks, with 5 administrative checks explicitly skipped.
-This includes temporary shortcut roundtrips but no machine administration writes.
-GPO/LDAP/DNS fixture operations remain unaccepted until executed on a disposable
-domain.
+its local inspection run passed 9 checks, with 5 administrative checks
+explicitly skipped. On 2026-10-07 the NativeAOT verifier also passed the local
+write suite elevated (19 checks) and the denied-access suite non-elevated
+(13 checks) on the Windows 11 VM. GPO/LDAP/DNS fixture operations remain
+unaccepted until executed on a disposable domain.
 
 ## Applicability to Runic.Platform.Windows
 
