@@ -137,7 +137,7 @@ public sealed class EmbeddedHostTests
         }
     }
 
-    private sealed class RecordingHostFactory : IWebUiEmbeddedHostFactory
+    internal sealed class RecordingHostFactory : IWebUiEmbeddedHostFactory
     {
         internal IWebUiEmbeddedHost? Host { get; private set; }
 
@@ -146,7 +146,7 @@ public sealed class EmbeddedHostTests
         public IWebUiEmbeddedHost Create() => Host = new RecordingHost();
     }
 
-    private sealed class RecordingHost : IWebUiEmbeddedHost
+    internal sealed class RecordingHost : IWebUiEmbeddedHost
     {
         internal TaskCompletionSource DisposalEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource? ReleaseDisposal { get; set; }

@@ -53,6 +53,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private TaskCompletionSource _browserConnected = NewCompletionSource();
     // How far the current presentation got before authentication, for timeout reports.
     private int _connectionProgress;
+    // What the server saw of the current presentation's handshake, for timeout reports.
+    private BridgeHandshakeLog _handshakeLog = new();
     // Null when the content serves no local files.
     private string? _rootFolder;
     private string? _profileName;
@@ -1183,6 +1185,21 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal void NotifyAuthenticated() => _browserConnected.TrySetResult();
 
+    internal BridgeHandshakeLog HandshakeLog => Volatile.Read(ref _handshakeLog);
+
+    internal void ReportHandshakeExpired(nuint connectionId, TimeSpan silentFor, string reason)
+    {
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.BridgeHandshakeExpired(logger, connectionId, silentFor.TotalSeconds, reason);
+        }
+        else
+        {
+            Trace.TraceWarning(
+                $"{BridgeHandshakeExpiredCode}: Bridge WebSocket {connectionId} sent no token check in {silentFor.TotalSeconds:0.###} seconds and was closed ({reason}); the page reconnects.");
+        }
+    }
+
     internal void ProcessEmbeddedHostEvents()
     {
         if (_embeddedHost is IWebUiMainThreadHost host)
@@ -1688,6 +1705,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task BeginConnection()
     {
         Volatile.Write(ref _connectionProgress, (int)ConnectionProgress.NoRequest);
+        Volatile.Write(ref _handshakeLog, new BridgeHandshakeLog());
         _browserConnected = NewCompletionSource();
         return _browserConnected.Task;
     }
@@ -1848,7 +1866,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             process = "; the browser process exited before it could be relaunched";
         }
         var attemptText = attempts > 1 ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
-        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{attemptText}: {progress}{process}.";
+        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{attemptText}: {progress}{process}. {HandshakeLog.Describe()}";
     }
 
     private Task HandleRequestAsync(HttpContext context) => PrepareResponseAsync(context, DispatchRequestAsync);
@@ -1858,11 +1876,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         var path = context.Request.Path;
         if (path == BridgePath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
         {
+            HandshakeLog.Record($"{BridgePath} requested");
             ReportConnectionProgress(ConnectionProgress.BridgeRequested);
             return ServeBridgeAsync(context);
         }
         if (path == DesktopBootstrapPath && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
         {
+            HandshakeLog.Record($"{DesktopBootstrapPath} requested");
             ReportConnectionProgress(ConnectionProgress.BridgeRequested);
             return ServeDesktopBootstrapAsync(context);
         }
@@ -1872,6 +1892,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         if (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
         {
+            if (context.Request.Path == "/" || Volatile.Read(ref _connectionProgress) < (int)ConnectionProgress.DocumentRequested)
+            {
+                HandshakeLog.Record($"{context.Request.Method} {context.Request.Path} requested");
+            }
             ReportConnectionProgress(ConnectionProgress.DocumentRequested);
             return ServeContentAsync(context);
         }
@@ -2098,6 +2122,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (!context.WebSockets.IsWebSocketRequest)
         {
             ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            HandshakeLog.RecordRejection("not a WebSocket upgrade");
             context.Response.StatusCode = StatusCodes.Status426UpgradeRequired;
             return;
         }
@@ -2106,14 +2131,18 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (acceptedSubprotocol is null)
         {
             ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+            HandshakeLog.RecordRejection(context.Response.StatusCode == StatusCodes.Status401Unauthorized
+                ? "the session credential was missing"
+                : "the origin is not allowed");
             return;
         }
 
         lock (_connectionGate)
         {
-            if (!AllowMultipleClients && _activeConnections > 0)
+            if (!AllowMultipleClients && _activeConnections > 0 && !YieldSilentConnections())
             {
                 ReportConnectionProgress(ConnectionProgress.WebSocketRejected);
+                HandshakeLog.RecordRejection("another WebSocket holds the only connection");
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return;
             }
@@ -2128,12 +2157,14 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 acceptedSubprotocol.Length == 0 ? null : acceptedSubprotocol).ConfigureAwait(false);
             ReportConnectionProgress(ConnectionProgress.WebSocketOpened);
             var connectionId = checked((nuint)Interlocked.Increment(ref _nextConnectionId));
+            HandshakeLog.Record($"WebSocket {connectionId} opened");
             var session = new WebUiSession(
                 this,
                 socket,
                 clientId == 0 ? connectionId : clientId,
                 connectionId,
-                context.Request.Headers.Cookie.ToString());
+                context.Request.Headers.Cookie.ToString(),
+                WebUiApplication.BridgeHandshakeTimeout);
             if (!_sessions.TryAdd(session.Id, session))
             {
                 await session.DisposeAsync().ConfigureAwait(false);
@@ -2167,6 +2198,23 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 _activeConnections--;
             }
         }
+    }
+
+    // Called under the connection gate when a new WebSocket finds the only
+    // connection taken. A socket that never checked its token, such as one from a
+    // replaced page, gives the connection up; an authenticated one keeps it, and so
+    // does one still being accepted. Returns whether the connection is now free.
+    private bool YieldSilentConnections()
+    {
+        var holding = _activeConnections;
+        foreach (var session in _sessions.Values)
+        {
+            if (session.IsHandshakeExpired || session.TryYieldSilentHandshake())
+            {
+                holding--;
+            }
+        }
+        return holding <= 0;
     }
 
     private async Task PrepareResponseAsync(HttpContext context, RequestDelegate next)
@@ -2268,6 +2316,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private int BrowserLaunchAttempts => _runtimeOptions?.BrowserLaunchAttempts ?? WebUiApplication.BrowserLaunchAttempts;
 
     internal const string BrowserLaunchStalledCode = "browser-launch-stalled";
+    internal const string BridgeHandshakeExpiredCode = "bridge-handshake-expired";
 
     private string? BrowserFolder => _runtimeOptions?.BrowserFolder ?? WebUiApplication.GetBrowserFolder();
 

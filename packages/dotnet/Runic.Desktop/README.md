@@ -108,6 +108,11 @@ browser can take up to about 16 seconds more (close, kill, output and profile cl
 so with the defaults a window that never connects fails after at most about 46 seconds
 instead of 15. A page that was requested, a browser that exited and embedded WebViews
 are not relaunched.
+The page's Bridge sends its token check as soon as its WebSocket opens. A WebSocket
+that sends none is closed after 10 seconds, or after 2 seconds when a newer WebSocket
+needs the only connection, and the page's Bridge reconnects. Each close logs event
+3005. A token that does not match still fails the connection. The timeout message
+lists what the server saw of the handshake, with times since launch.
 GTK4 stays optional; existing first-party applications explicitly retain GTK3.
 
 The optional native dispatcher interface lets application platform services use the
