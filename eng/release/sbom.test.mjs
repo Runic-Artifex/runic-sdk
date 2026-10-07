@@ -50,16 +50,19 @@ function withFixtures(check) {
     check(directory);
   } finally { rmSync(directory, {recursive: true, force: true}); }
 }
-const sbom = (directory, files, output = join(directory, 'sbom.json'), version = VERSION) => {
+const sbom = (directory, files, output = join(directory, 'sbom.json'), version = VERSION, artifactVersions = {}) => {
   const result = spawnSync(python, [join(root, 'eng/release/sbom.py'), '--repository', 'Runic-Artifex/runic-sdk', '--version', version,
-    '--source', source, '--epoch', '1790000000', '--output', output, ...files.map(file => join(directory, 'packages', file))], {encoding: 'utf8'});
+    '--source', source, '--epoch', '1790000000', '--output', output,
+    ...Object.entries(artifactVersions).flatMap(([file, value]) => ['--artifact-version', `${file}=${value}`]),
+    ...files.map(file => join(directory, 'packages', file))], {encoding: 'utf8'});
   return {result, bom: result.status === 0 ? JSON.parse(readFileSync(output, 'utf8')) : undefined};
 };
 const nuget = name => `nuget/${name}.${VERSION}.nupkg`;
 const npmFile = `npm/runic-artifex-fixture-${VERSION}.tgz`;
 
 test('the SBOM describes each artifact by hash with its declared and bundled dependencies', () => withFixtures(directory => {
-  const {result, bom} = sbom(directory, [nuget('Runic.Fixture'), nuget('Runic.Fixture.Core'), nuget('dotnet-fixture'), npmFile, 'vsix/fixture.vsix']);
+  const {result, bom} = sbom(directory, [nuget('Runic.Fixture'), nuget('Runic.Fixture.Core'), nuget('dotnet-fixture'), npmFile, 'vsix/fixture.vsix'],
+    undefined, VERSION, {'fixture.vsix': '0.0.1'});
   expect(result.stderr).toBe('');
   expect(bom).toMatchObject({bomFormat: 'CycloneDX', specVersion: '1.6', version: 1});
   expect(bom.serialNumber).toMatch(/^urn:uuid:[0-9a-f-]{36}$/);
@@ -102,6 +105,18 @@ test('the SBOM is deterministic and rejects artifacts of another version', () =>
   const {result} = sbom(directory, files, join(directory, 'c.json'), '9.9.9-preview.9');
   expect(result.status).not.toBe(0);
   expect(result.stderr).toContain(`is version ${VERSION}, not 9.9.9-preview.9`);
+}));
+
+test('every artifact declares the release version unless --artifact-version names its own', () => withFixtures(directory => {
+  const files = [nuget('Runic.Fixture.Core'), 'vsix/fixture.vsix'];
+  // A VSIX is not exempt: without its mapped version it must declare the release version.
+  expect(sbom(directory, files).result.stderr).toContain(`fixture.vsix is version 0.0.1, not ${VERSION}`);
+  expect(sbom(directory, files, undefined, VERSION, {'fixture.vsix': '0.0.2'}).result.stderr).toContain('fixture.vsix is version 0.0.1, not 0.0.2');
+  expect(sbom(directory, files, undefined, VERSION, {'fixture.vsix': '0.0.1'}).result.status).toBe(0);
+  expect(sbom(directory, files, undefined, VERSION, {'fixture.vsix': '0.0.1', 'other.vsix': '1'}).result.stderr).toContain('--artifact-version names no artifact: other.vsix');
+  const malformed = spawnSync(python, [join(root, 'eng/release/sbom.py'), '--repository', 'Runic-Artifex/runic-sdk', '--version', VERSION, '--source', source,
+    '--epoch', '1', '--output', join(directory, 'x.json'), '--artifact-version', 'fixture.vsix', join(directory, 'packages', files[1])], {encoding: 'utf8'});
+  expect(malformed.stderr).toContain('expects one FILE_NAME=VERSION');
 }));
 
 test('describe writes the same bundle, SBOM and checksums for the same packages', () => withFixtures(directory => {
