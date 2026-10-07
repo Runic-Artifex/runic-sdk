@@ -35,14 +35,17 @@ to its `Host`, a `CsWebUiBridgeWindow<TViewModel>`; `Host.NativeWindow` exposes
 the underlying `WebUiWindow`.
 
 `ValidateWindow<TViewModel>` checks at startup that the generated Bridge for
-the ViewModel is registered, and `OpenWindow` repeats the check before it
-creates the native window. A missing `AddRunicViews()` throws a
-`CsWebUiConfigurationException` (an `InvalidOperationException`) with the code
-`bridge-not-registered`, the same code Runic Desktop reports, and a
-remediation, instead of a dependency-injection error. It is logged as event
-1050 through the provider's `ILoggerFactory`. `ValidateWindow` asks the
-container through `IServiceProviderIsService`; a container without it is
-checked only when `OpenWindow` resolves the Bridge.
+the ViewModel is registered. It returns nothing and throws on failure, unlike
+Runic Desktop's `ValidateDesktopWindow`, which returns a result to inspect,
+because the Bridge check is the only one and always fails the Window.
+`OpenWindow` repeats the check before it creates the native window. A missing
+`AddRunicViews()` throws a `CsWebUiConfigurationException` (an
+`InvalidOperationException`) with the code `bridge-not-registered`, the same
+code Runic Desktop reports, and a remediation, instead of a
+dependency-injection error. It is logged as event 1050 through the provider's
+`ILoggerFactory`. `ValidateWindow` asks the container through
+`IServiceProviderIsService`; a container without it is checked only when
+`OpenWindow` resolves the Bridge.
 
 Both hosts share one lifetime contract, `IBridgeWindow` from
 `Runic.Application.Views`: `CloseAsync(timeout)` returns a `BridgeWindowCloseResult`,

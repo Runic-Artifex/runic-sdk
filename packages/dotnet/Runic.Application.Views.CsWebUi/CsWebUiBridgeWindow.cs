@@ -276,14 +276,15 @@ public static class CsWebUiBridgeWindowExtensions
         TWindow? applicationWindow = null;
         try
         {
-            var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
+            // The Bridge factories come first, so a missing Bridge constructs no ViewModel.
             var attachWithContent = scope.ServiceProvider.GetService<
                 Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>>();
-            // Containers without IServiceProviderIsService are checked here, still before the native window.
+            // Containers without IServiceProviderIsService are checked here, before the ViewModel and native window.
             var attach = attachWithContent is null
                 ? scope.ServiceProvider.GetService<Func<IBridgeTransport, TViewModel, IDisposable>>()
                     ?? throw BridgeNotRegistered<TViewModel>(services)
                 : null;
+            var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
             window = new WebUiWindow();
             transport = window.CreateBridgeSession();
             content = new WindowContentSession(transport,
@@ -353,6 +354,9 @@ public static class CsWebUiBridgeWindowExtensions
     /// <typeparamref name="TViewModel"/>: its generated Bridge must be registered.
     /// </summary>
     /// <remarks>
+    /// Unlike <c>ValidateDesktopWindow</c> in <c>Runic.Application.Desktop</c>, which returns a
+    /// <c>DesktopValidationResult</c>, this method returns nothing and throws on the first failure: the Bridge
+    /// registration is the only check, and it always fails the Window.
     /// The check asks the container through <see cref="IServiceProviderIsService"/> and constructs nothing. A
     /// container without that service is not checked here; <see cref="OpenWindow{TWindow, TViewModel}"/> still
     /// reports a missing Bridge before it creates the native window. A failure is logged through the provider's

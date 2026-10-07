@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CsWebUi;
 using CsWebUiWindowProbes;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views.CsWebUi;
 
 // Each probe prints one marker that CI matches.
@@ -72,7 +73,14 @@ static async Task ProbeWindowCloseAsync()
 static void ProbeMissingBridge()
 {
     var services = new ServiceCollection();
-    services.AddScoped<ProbeViewModel>();
+    var viewModels = 0;
+    services.AddScoped(_ =>
+    {
+        viewModels++;
+        return new ProbeViewModel();
+    });
+    var log = new RecordingLoggerFactory();
+    services.AddSingleton<ILoggerFactory>(log);
     using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
     RequireBridgeNotRegistered(() => provider.ValidateWindow<ProbeViewModel>(), "ValidateWindow");
     foreach (var (name, candidate) in new (string, IServiceProvider)[]
@@ -86,6 +94,12 @@ static void ProbeMissingBridge()
         }), name);
         if (created) throw new InvalidOperationException($"{name} constructed a Window without its Bridge.");
     }
+    if (viewModels != 0)
+        throw new InvalidOperationException($"A missing Bridge still constructed {viewModels} ViewModels.");
+    if (log.Entries.Count != 3 || log.Entries.Any(static entry => entry.Category != "Runic.Application.Views" ||
+            entry.EventId.Id != 1050 || entry.EventId.Name != "CsWebUiWindowRegistrationMissing" ||
+            entry.Level != LogLevel.Error || !entry.Message.Contains("bridge-not-registered", StringComparison.Ordinal)))
+        throw new InvalidOperationException("A missing Bridge was not logged once per check as event 1050 in Runic.Application.Views.");
 
     var registered = new ServiceCollection();
     registered.AddScoped<ProbeViewModel>();
@@ -127,6 +141,25 @@ namespace CsWebUiWindowProbes
     {
         public object? GetService(Type serviceType) =>
             serviceType == typeof(IServiceProviderIsService) ? null : inner.GetService(serviceType);
+    }
+
+    internal sealed record LogEntry(string Category, EventId EventId, LogLevel Level, string Message);
+
+    internal sealed class RecordingLoggerFactory : ILoggerFactory
+    {
+        public List<LogEntry> Entries { get; } = [];
+        public ILogger CreateLogger(string categoryName) => new RecordingLogger(this, categoryName);
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
+
+        private sealed class RecordingLogger(RecordingLoggerFactory owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) =>
+                owner.Entries.Add(new LogEntry(category, eventId, logLevel, formatter(state, exception)));
+        }
     }
 
     internal sealed class ScopeProbe(Action onDispose) : IDisposable
