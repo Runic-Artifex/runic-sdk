@@ -305,6 +305,8 @@ jobs:
           bun run --cwd packages/web/views --bun build
           node examples/first-window/package-smoke.mjs
           node examples/first-window-desktop/package-smoke.mjs
+      - name: Verify the packaged navigation consumer with JIT and NativeAOT
+        run: bun tests/fixtures/application/navigation-consumer/package-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:
