@@ -20,6 +20,8 @@ test("ci-verified support entries match the Native CI matrix", () => {
   }
   const runnerOs = os => /^ubuntu-/.test(os) ? "Linux" : /^windows-/.test(os) ? "Windows" : /^macos-/.test(os) ? "macOS" : assert.fail(`unknown runner ${os}`);
   // Only the step conditions the Native job uses are understood; anything else fails the test.
+  // It cannot see `$RUNNER_OS` branches inside a step's shell script, such as the probe step's
+  // Linux/else branches; the patterns below match commands that both branches run.
   const runsOn = (step, os) => {
     if (step.if === undefined) return true;
     const match = /^runner\.os (==|!=) '(\w+)'$/.exec(step.if);
