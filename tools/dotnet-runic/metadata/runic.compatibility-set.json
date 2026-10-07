@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "runic-sdk-0.7.0-preview.2",
-  "releaseTrainVersion": "0.7.0-preview.2",
+  "id": "runic-sdk-0.7.0-preview.3",
+  "releaseTrainVersion": "0.7.0-preview.3",
   "toolchain": {
     "dotnetSdk": "10.0.401",
     "node": "24.21.0",
@@ -13,152 +13,152 @@
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Administration.Windows",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Assets",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Assets.AspNetCore",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Assets.Desktop",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Desktop",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Testing",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.ReactiveUI",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.ReactiveUI.Reactive",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.CsWebUi",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Desktop",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Application.Templates",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "dotnet-runic",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Create",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Runtime",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Windows",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Linux",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.MacOS",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Desktop.Gtk4",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Linux.Portal",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "nuget",
       "identity": "Runic.Platform.Linux.Gtk4",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/angular",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/vite-plugin-runic",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/svelte",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/sveltekit",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/views",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/views-effect",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/react",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     },
     {
       "ecosystem": "npm",
       "identity": "@runic-artifex/vue",
-      "version": "0.7.0-preview.2"
+      "version": "0.7.0-preview.3"
     }
   ],
   "support": {

@@ -96,8 +96,8 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Application": "[0.7.0-preview.2, )",
-          "Runic.Desktop": "[0.7.0-preview.2, )"
+          "Runic.Application": "[0.7.0-preview.3, )",
+          "Runic.Desktop": "[0.7.0-preview.3, )"
         }
       },
       "Runic.Application.ReactiveUI": {
@@ -105,7 +105,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "ReactiveUI": "[26.0.1, )",
-          "Runic.Application": "[0.7.0-preview.2, )"
+          "Runic.Application": "[0.7.0-preview.3, )"
         }
       },
       "runic.desktop": {

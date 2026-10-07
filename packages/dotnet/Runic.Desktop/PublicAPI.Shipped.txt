@@ -586,3 +586,5 @@ static Runic.Desktop.DesktopContent.operator ==(Runic.Desktop.DesktopContent? le
 virtual Runic.Desktop.DesktopContent.EqualityContract.get -> System.Type!
 virtual Runic.Desktop.DesktopContent.Equals(Runic.Desktop.DesktopContent? other) -> bool
 virtual Runic.Desktop.DesktopContent.PrintMembers(System.Text.StringBuilder! builder) -> bool
+Runic.Desktop.DesktopHostOptions.BrowserLaunchAttempts.get -> int
+Runic.Desktop.DesktopHostOptions.BrowserLaunchAttempts.init -> void

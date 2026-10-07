@@ -225,7 +225,7 @@
         "dependencies": {
           "GirCore.Gtk-4.0": "[0.8.1, )",
           "GirCore.WebKit-6.0": "[0.8.1, )",
-          "Runic.Desktop": "[0.7.0-preview.2, )"
+          "Runic.Desktop": "[0.7.0-preview.3, )"
         }
       },
       "GirCore.Gtk-4.0": {
