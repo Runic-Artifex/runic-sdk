@@ -150,7 +150,7 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
     where TViewModel : class
 {
     private readonly IDisposable _subscription;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private TViewModel? _current;
 
     /// <summary>Observes <paramref name="router"/>'s current ViewModel and writes failures to <see cref="Trace"/>.</summary>
@@ -170,7 +170,7 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
 
     internal ReactiveRoutedRegion(IObservable<IRoutableViewModel?> currentViewModel, ILoggerFactory? loggerFactory)
     {
-        _logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory);
+        _logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceLogger.Instance;
         _subscription = currentViewModel.Subscribe(new RouteObserver(this));
     }
 
@@ -179,14 +179,7 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
         // Throwing here would tear down the router's notification for every
         // observer. An incompatible route instead presents no content.
         if (viewModel is not null && viewModel is not TViewModel)
-        {
-            var region = typeof(TViewModel).Name;
-            var model = viewModel.GetType().Name;
-            if (_logger is null)
-                Trace.TraceError($"A routed region for {region} received {model}, which it cannot present; the region presents no content.");
-            else
-                ReactiveLog.RouteIncompatible(_logger, region, model);
-        }
+            ReactiveLog.RouteIncompatible(_logger, typeof(TViewModel).Name, viewModel.GetType().Name);
         var current = viewModel as TViewModel;
         if (ReferenceEquals(_current, current)) return;
         _current = current;
@@ -195,13 +188,9 @@ public sealed class ReactiveRoutedRegion<TViewModel> : INotifyPropertyChanged, I
 
     private void OnRouterFailed(Exception error)
     {
-        var region = typeof(TViewModel).Name;
-        var errorType = error.GetType().FullName ?? error.GetType().Name;
         // D-12: the entry carries the exception in every environment.
-        if (_logger is null)
-            Trace.TraceError($"The router of a routed region for {region} failed with {errorType}; the region keeps its last content. {error}");
-        else
-            ReactiveLog.RouterFailed(_logger, error, region, errorType);
+        ReactiveLog.RouterFailed(_logger, error, typeof(TViewModel).Name,
+            error.GetType().FullName ?? error.GetType().Name);
     }
 
     private sealed class RouteObserver(ReactiveRoutedRegion<TViewModel> owner) : IObserver<IRoutableViewModel?>

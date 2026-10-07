@@ -390,9 +390,10 @@ use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 Events 1040-1041 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
 flavor) and also use `Runic.Application.Views`. They need the
 `ReactiveRoutedRegion<T>(router, loggerFactory)` constructor, which a
-ViewModel can call with an `ILoggerFactory` injected from DI; without a
-factory, the region writes to `Trace`. `Region` is the region's ViewModel type
-name `T`.
+ViewModel can call with an `ILoggerFactory` injected from DI, as
+`examples/notes-reactive-views` does. Without a factory, the region writes the
+same messages to `Trace` as described above. `Region` is the region's ViewModel
+type name `T`.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`
 named `Runic.Application.Views` (`RunicViewsTelemetry.ActivitySourceName` and

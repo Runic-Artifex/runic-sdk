@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Text.Json;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,7 @@ internal static class TelemetryTests
             await SnapshotFramesAreMeasuredAsync();
             ModelContextLogsUnhandledTurns();
             ReactiveRoutedRegionLogsFailures();
+            ReactiveRoutedRegionTracesFailuresWithoutLoggerFactory();
         }
         finally
         {
@@ -188,6 +190,55 @@ internal static class TelemetryTests
             "The router failure entry did not carry the exception.");
     }
 
+    // W130-050: without an ILoggerFactory the region writes the same messages,
+    // and the router's exception, to Trace.
+    private static void ReactiveRoutedRegionTracesFailuresWithoutLoggerFactory()
+    {
+        var trace = new TraceCapture();
+        Trace.Listeners.Add(trace);
+        try
+        {
+            var router = new RoutingState();
+            using (var region = new ReactiveRoutedRegion<PageViewModel>(router))
+            {
+                router.Navigate.Execute(new OtherViewModel()).Subscribe(_ => { });
+                Require(region.Current is null, "An incompatible route was presented.");
+            }
+            var routes = new FailingRoutes();
+            using (new ReactiveRoutedRegion<PageViewModel>(routes, loggerFactory: null))
+                routes.Fail(new InvalidOperationException("Router failed for customer-secret."));
+        }
+        finally
+        {
+            Trace.Listeners.Remove(trace);
+        }
+        // The listener is global, so keep only this region's entries; earlier
+        // suites can still write unrelated Trace output in the background.
+        var entries = trace.Entries
+            .Where(entry => entry.Message.Contains($"routed region for {nameof(PageViewModel)}", StringComparison.Ordinal))
+            .ToArray();
+        Require(entries.Length == 2 && entries.All(entry => entry.Type == TraceEventType.Error),
+            $"The Trace fallback wrote unexpected entries: {string.Join(" | ", entries)}");
+        Require(entries[0].Message == $"A routed region for {nameof(PageViewModel)} received {nameof(OtherViewModel)}, " +
+                "which it cannot present; the region presents no content.",
+            $"The incompatible route Trace entry was wrong: {entries[0].Message}");
+        Require(entries[1].Message.StartsWith($"The router of a routed region for {nameof(PageViewModel)} failed with " +
+                $"{typeof(InvalidOperationException).FullName}; the region keeps its last content. " +
+                $"{typeof(InvalidOperationException).FullName}: Router failed for customer-secret.", StringComparison.Ordinal),
+            $"The router failure Trace entry did not carry the message and exception: {entries[1].Message}");
+    }
+
+    private sealed class TraceCapture : TraceListener
+    {
+        public ConcurrentQueue<(TraceEventType Type, string Message)> Entries { get; } = new();
+        public override void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, string? message) =>
+            Entries.Enqueue((eventType, message ?? string.Empty));
+        public override void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id,
+            string? format, params object?[]? args) =>
+            Entries.Enqueue((eventType, args is null ? format ?? string.Empty : string.Format(CultureInfo.InvariantCulture, format ?? string.Empty, args)));
+        public override void Write(string? message) { }
+        public override void WriteLine(string? message) { }
+    }
     private sealed class PageViewModel : ReactiveObject, IRoutableViewModel
     {
         public string UrlPathSegment => "page";
