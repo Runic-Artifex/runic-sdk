@@ -20,14 +20,14 @@
       "runic.platform.linux.portal": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform.Runtime": "[0.6.0-preview.1, )",
+          "Runic.Platform.Runtime": "[0.7.0-preview.1, )",
           "Tmds.DBus.Protocol": "[0.95.1, )"
         }
       },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.6.0-preview.1, )"
+          "Runic.Platform": "[0.7.0-preview.1, )"
         }
       },
       "Tmds.DBus.Protocol": {
