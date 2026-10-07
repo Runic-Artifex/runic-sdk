@@ -547,12 +547,17 @@ internal sealed class BridgeTypeGraph
         private BridgeTypeNode BuildNode(Type declared, TypeNullability? nullability, string path, HashSet<Type> stack,
             RunicBridgeCodecAttribute? memberCodec, bool unionCase)
         {
+            // Without annotations (a type from typeof, a union case, or a
+            // contract argument the declaration does not close) every
+            // position is non-nullable, so Box<string> means the same type
+            // wherever it is used.
+            var annotations = nullability ?? TypeNullability.NotNull(declared);
             var nullable = !declared.IsValueType
-                ? nullability?.IsNullable == true
+                ? annotations.IsNullable
                 : Nullable.GetUnderlyingType(declared) is not null;
             var type = Nullable.GetUnderlyingType(declared) ?? declared;
             if (stack.Contains(type)) throw new BridgeTypeGraphException(path, "Recursive DTO graphs are not a bridge contract.");
-            var node = new BridgeTypeNode(_nextId++, type, nullable) { Nullability = nullability };
+            var node = new BridgeTypeNode(_nextId++, type, nullable) { Nullability = annotations };
             Nodes.Add(node);
             if (TryScalar(type, out var scalar)) { node.Kind = scalar; return node; }
             if (type.IsEnum)
@@ -590,7 +595,7 @@ internal sealed class BridgeTypeGraph
                 stack.Add(type);
                 // Array element annotations live in ElementType, not in
                 // GenericTypeArguments: string?[] must keep its nullable items.
-                node.Element = Build(element!, type.IsArray ? nullability?.Element : nullability?.Argument(0),
+                node.Element = Build(element!, type.IsArray ? annotations.Element : annotations.Argument(0),
                     path + "[]", stack, null);
                 stack.Remove(type);
                 return node;
@@ -599,7 +604,7 @@ internal sealed class BridgeTypeGraph
             {
                 node.Kind = BridgeWireKind.StringDictionary;
                 stack.Add(type);
-                node.Value = Build(value!, nullability?.Argument(1), path + "{}", stack, null);
+                node.Value = Build(value!, annotations.Argument(1), path + "{}", stack, null);
                 stack.Remove(type);
                 return node;
             }
@@ -616,7 +621,7 @@ internal sealed class BridgeTypeGraph
                 throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} has no public readable properties, so it would always serialize as {{}}. Add properties or a RunicBridgeCodec.");
             foreach (var property in members)
             {
-                var info = MemberNullability(type, property, nullability);
+                var info = MemberNullability(type, property, annotations);
                 node.Members.Add(new BridgeTypeMember(node.Members.Count, property, WireName(property),
                     Build(property.PropertyType, info, path + "." + WireName(property), stack,
                         property.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true), origin: property)));
@@ -681,27 +686,45 @@ internal sealed class BridgeTypeGraph
         // A member of a closed generic DTO takes the nullability of its type
         // parameters from the use site: Box<string>.Value is a string and
         // Box<string?>.Value a string or null. Reflection cannot tell them
-        // apart, because both uses share one runtime type. Without a known
-        // use site, and for members declared on a generic base type, the
-        // reflected annotations apply.
-        private TypeNullability? MemberNullability(Type owner, PropertyInfo property, TypeNullability? ownerNullability)
+        // apart, because both uses share one runtime type. A member declared
+        // on a generic base type follows the base type arguments through
+        // each derived declaration (Derived<T> : Base<T>).
+        private TypeNullability? MemberNullability(Type owner, PropertyInfo property, TypeNullability ownerNullability)
         {
-            if (ownerNullability is null || !owner.IsConstructedGenericType || property.DeclaringType != owner)
+            var declaring = property.DeclaringType!;
+            if (!declaring.IsConstructedGenericType || DeclaringNullability(owner, ownerNullability, declaring) is not { } declaringNullability)
                 return TypeNullability.From(_nullability.Create(property));
-            var definition = owner.GetGenericTypeDefinition()
+            var definition = declaring.GetGenericTypeDefinition()
                 .GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
                 .Single(candidate => candidate.HasSameMetadataDefinitionAs(property));
             if (!definition.PropertyType.ContainsGenericParameters)
                 return TypeNullability.From(_nullability.Create(property));
             var index = 0;
             return Substitute(definition.PropertyType, _nullability.Create(definition), NullableAnnotations.Of(definition),
-                ref index, ownerNullability);
+                ref index, declaringNullability);
         }
 
-        // Walks the open member type in the order of the compiler's annotation
-        // bytes, as NullabilityInfoContext reads them. A type parameter is
-        // replaced by the use site's annotations for its argument, made
-        // nullable when the member is declared `T?`.
+        // The annotations of a base type of the owner. The compiler records a
+        // base type's annotations on the deriving type declaration.
+        private static TypeNullability? DeclaringNullability(Type owner, TypeNullability nullability, Type declaring)
+        {
+            for (var current = owner; current != declaring; current = current.BaseType)
+            {
+                if (current?.BaseType is null) return null;
+                var definition = current.IsConstructedGenericType ? current.GetGenericTypeDefinition() : current;
+                var index = 0;
+                if (Substitute(definition.BaseType!, null, NullableAnnotations.Of(definition), ref index, nullability) is not { } next)
+                    return null;
+                nullability = next;
+            }
+            return nullability;
+        }
+
+        // Walks the open type in the order of the compiler's annotation bytes,
+        // as NullabilityInfoContext reads them. A type parameter is replaced
+        // by the use site's annotations for its argument, made nullable when
+        // declared `T?`. Other positions take the reflected nullability, or
+        // the annotation byte where there is none (a base type).
         private static TypeNullability? Substitute(Type type, NullabilityInfo? info, Func<int, byte> annotations, ref int index,
             TypeNullability owner)
         {
@@ -714,6 +737,7 @@ internal sealed class BridgeTypeGraph
                     : TypeNullability.From(info);
             }
             TypeNullability? element = null;
+            var nullable = false;
             if (type.IsValueType)
             {
                 type = Nullable.GetUnderlyingType(type) ?? type;
@@ -721,6 +745,8 @@ internal sealed class BridgeTypeGraph
             }
             else
             {
+                nullable = info is null ? annotations(index) == NullableAnnotations.Annotated
+                    : info.ReadState == NullabilityState.Nullable;
                 index++;
                 if (type.IsArray) element = Substitute(type.GetElementType()!, info?.ElementType, annotations, ref index, owner);
             }
@@ -732,7 +758,7 @@ internal sealed class BridgeTypeGraph
                     arguments.Add(Substitute(generic[position], info?.GenericTypeArguments.ElementAtOrDefault(position),
                         annotations, ref index, owner));
             }
-            return new TypeNullability(info?.ReadState == NullabilityState.Nullable, element, arguments);
+            return new TypeNullability(nullable, element, arguments);
         }
 
         // Every collection the generated reader can construct. Derived or
@@ -899,6 +925,14 @@ internal sealed record TypeNullability(bool IsNullable, TypeNullability? Element
         : new(info.ReadState == NullabilityState.Nullable, From(info.ElementType), [.. info.GenericTypeArguments.Select(From)]);
 
     internal TypeNullability? Argument(int index) => index < Arguments.Count ? Arguments[index] : null;
+
+    /// <summary>The annotations of a type used without any nullable position.</summary>
+    internal static TypeNullability NotNull(Type type)
+    {
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return new(false, type.IsArray ? NotNull(type.GetElementType()!) : null,
+            type.IsGenericType ? [.. type.GetGenericArguments().Select(NotNull)] : []);
+    }
 }
 
 /// <summary>Reads the compiler's nullable annotation bytes of a member.</summary>

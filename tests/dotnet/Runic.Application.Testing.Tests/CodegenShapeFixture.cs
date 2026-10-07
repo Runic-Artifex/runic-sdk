@@ -22,7 +22,21 @@ public readonly record struct CodegenPoint(int X, int Y);
 // A generic DTO whose members take their nullability from the use site:
 // CodegenSlot<string> never holds null, CodegenSlot<string?> may, and
 // Fallback is declared T? so it is nullable in both.
-public sealed record CodegenSlot<T>(T Value, T? Fallback, IReadOnlyList<T> Items);
+public sealed record CodegenSlot<T>(T Value, T? Fallback, IReadOnlyList<T> Items, T[] Values,
+    Dictionary<string, T> Map, CodegenInner<T> Inner);
+
+public sealed record CodegenInner<T>(T Value);
+
+// A property-based generic class whose base declares a T member.
+public class CodegenBase<T>
+{
+    public T Inherited { get; set; } = default!;
+}
+
+public sealed class CodegenDerived<T> : CodegenBase<T>
+{
+    public T Own { get; set; } = default!;
+}
 
 public sealed class CodegenShapeViewModel : INotifyPropertyChanged
 {
@@ -37,8 +51,23 @@ public sealed class CodegenShapeViewModel : INotifyPropertyChanged
     public DateTimeOffset Stamp { get; set; } = new(2026, 10, 3, 12, 30, 0, TimeSpan.FromHours(2));
     public DateTime When { get; set; } = new(2026, 10, 3, 10, 0, 0, DateTimeKind.Utc);
     public TimeOnly At { get; set; } = new(9, 30);
-    public CodegenSlot<string> Required { get; set; } = new("required", null, ["item"]);
-    public CodegenSlot<string?> Optional { get; set; } = new(null, null, [null]);
+    public CodegenSlot<string> Required { get; set; } = new("required", null, ["item"], ["value"], new() { ["key"] = "entry" }, new("inner"));
+    public CodegenSlot<string?> Optional { get; set; } = new(null, null, [null], [null], new() { ["key"] = null }, new(null));
+    public CodegenDerived<string> Derived { get; set; } = new() { Inherited = "base", Own = "own" };
+
+    // typeof() carries no annotations: the input is CodegenSlot<string> with
+    // non-nullable members, and shares the state property's declaration.
+    [RunicCommandInput(typeof(CodegenSlot<string>))]
+    public System.Windows.Input.ICommand ApplyCommand { get; }
+
+    public CodegenShapeViewModel() => ApplyCommand = new Apply(this);
+
+    private sealed class Apply(CodegenShapeViewModel owner) : System.Windows.Input.ICommand
+    {
+        public event EventHandler? CanExecuteChanged { add { } remove { } }
+        public bool CanExecute(object? parameter) => parameter is CodegenSlot<string>;
+        public void Execute(object? parameter) => owner.Required = (CodegenSlot<string>)parameter!;
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

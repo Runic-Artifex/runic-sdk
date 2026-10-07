@@ -21,7 +21,11 @@ export function requiredValue(state: CodegenShapeState): string {
   return state.required.value;
 }
 
-export const optionalSlot: CodegenShapeState["optional"] = { value: null, fallback: null, items: [null, "item"] };
+export const optionalSlot: CodegenShapeState["optional"] = {
+  value: null, fallback: null, items: [null, "item"], values: [null], map: { key: null }, inner: { value: null },
+};
 
-// @ts-expect-error CodegenSlot<string> does not accept null.
-export const requiredSlot: CodegenShapeState["required"] = { value: null, fallback: null, items: [] };
+export const requiredSlot: CodegenShapeState["required"] = {
+  // @ts-expect-error CodegenSlot<string> does not accept null.
+  value: null, fallback: null, items: [], values: [], map: { key: "m" }, inner: { value: "i" },
+};
