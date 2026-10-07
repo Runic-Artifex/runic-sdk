@@ -125,7 +125,7 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged where TC
             try { ((PropertyChangedEventHandler)handler)(this, args); }
             catch (Exception error)
             {
-                ViewsLog.NavigationNotificationFailed(Core.Navigator.Logger, error, Core.ContentTypeName, Core.Id,
+                NavigationLog.NavigationNotificationFailed(Core.Navigator.Logger, error, Core.ContentTypeName, Core.Id,
                     args.PropertyName ?? string.Empty, BridgeTelemetry.ErrorType(error));
             }
         }
@@ -142,13 +142,19 @@ internal enum NavigationRegionChanges
     Transitioning = 8,
 }
 
+// Immutable history cache entry: the stack a view was built from, and that view.
+[Experimental(RunicNavigator.DiagnosticId)]
+internal sealed record HistoryCache(NavigationEntryCore[] Source, object View);
+
 // The non-generic region state. Every field is guarded by the navigator's gate;
 // the stack is an immutable array replaced on change.
+[Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, string contentTypeName, object owner,
     NavigationChildRetention whileParentRetained)
 {
-    private NavigationEntryCore[]? _historySource;
-    private object? _historyView;
+    // One immutable (source, view) pair, so a reader can never pair a stack with
+    // another reader's view. Published and read only through Volatile.
+    private HistoryCache? _history;
     private bool _raisedTransitioning;
 
     public RunicNavigator Navigator { get; } = navigator;
@@ -187,12 +193,12 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public IReadOnlyList<NavigationEntry<T>> History<T>() where T : class
     {
         var stack = Stack;
-        if (ReferenceEquals(stack, Volatile.Read(ref _historySource)) && _historyView is IReadOnlyList<NavigationEntry<T>> cached)
-            return cached;
+        var cached = Volatile.Read(ref _history);
+        if (cached is not null && ReferenceEquals(cached.Source, stack) && cached.View is IReadOnlyList<NavigationEntry<T>> typed)
+            return typed;
         var view = new NavigationEntry<T>[Math.Max(0, stack.Length - 1)];
         for (var index = 0; index < view.Length; index++) view[index] = stack[index].View<T>();
-        _historyView = view;
-        Volatile.Write(ref _historySource, stack);
+        Volatile.Write(ref _history, new HistoryCache(stack, view));
         return view;
     }
 

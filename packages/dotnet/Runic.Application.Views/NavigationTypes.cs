@@ -295,6 +295,7 @@ public static class NavigationTarget
 
 // The only INavigationTarget<T> implementations. The region works with this
 // non-generic core; the public interface stays a covariant marker.
+[Experimental(RunicNavigator.DiagnosticId)]
 internal abstract class NavigationTargetCore
 {
     public abstract NavigationOwnership Ownership { get; }
@@ -311,6 +312,7 @@ internal abstract class NavigationTargetCore
         ValueTask.CompletedTask;
 }
 
+[Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class InstanceNavigationTarget<T>(T content, NavigationOwnership ownership)
     : NavigationTargetCore, INavigationTarget<T> where T : class
 {
@@ -318,6 +320,7 @@ internal sealed class InstanceNavigationTarget<T>(T content, NavigationOwnership
     public override object? Instance => content;
 }
 
+[Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, T> factory)
     : NavigationTargetCore, INavigationTarget<T> where T : class
 {
@@ -327,6 +330,7 @@ internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, T> facto
         factory(services) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
 }
 
+[Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class InputNavigationTarget<T, TInput>(Func<IServiceProvider, T> factory, TInput input)
     : NavigationTargetCore, INavigationTarget<T> where T : class, INavigationInitialize<TInput>
 {

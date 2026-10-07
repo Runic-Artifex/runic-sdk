@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
@@ -22,6 +23,7 @@ internal static class NavigationTests
         await CancellationWhileGuardingAsync();
         await CancellationWhilePreparingAsync();
         await CancellationBeforeCommitTurnAsync();
+        await PreCancelledRequestDoesNotSupersedeAsync();
         await SupersessionBeforeCommitAsync();
         await NoSupersessionAfterCommitStartsAsync();
         await HookFailuresAsync();
@@ -47,6 +49,8 @@ internal static class NavigationTests
         await ServiceRegistrationAsync();
         await RandomizedRaceAsync(seed: 230_002);
         await RandomizedRaceAsync(seed: 61);
+        await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true);
+        await RandomizedRaceAsync(seed: 61, disposeDuringRace: true);
     }
 
     // ---- Basic operations ------------------------------------------------
@@ -276,6 +280,40 @@ internal static class NavigationTests
     }
 
     // ---- Supersession ----------------------------------------------------
+
+    // A request whose token is already cancelled is rejected at admission, so it
+    // must not supersede the transition that is already in flight.
+    private static async Task PreCancelledRequestDoesNotSupersedeAsync()
+    {
+        await using var fixture = new Fixture();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var home = new Page("home");
+        home.Guard = async (departure, token) =>
+        {
+            if (departure.Entry.Value == 1 && !started.Task.IsCompleted)
+            {
+                started.SetResult();
+                await release.Task.WaitAsync(token);
+            }
+            return true;
+        };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var older = new Page("older");
+        var first = region.PushAsync(NavigationTarget.Own(older)).AsTask();
+        await Wait(started.Task);
+
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        var rejected = await Wait(region.PushAsync(NavigationTarget.Own(new Page("cancelled")), null, cancelled.Token));
+        Require(rejected is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled },
+            $"A cancelled request gave {rejected}.");
+
+        release.SetResult();
+        var committed = await Wait(first);
+        Require(committed is NavigationResult<Page>.Committed && Names(region) == "home,older" && older.Disposed == 0,
+            $"A cancelled request superseded its predecessor: {committed}, {Names(region)}.");
+    }
 
     private static async Task SupersessionBeforeCommitAsync()
     {
@@ -855,31 +893,44 @@ internal static class NavigationTests
 
     // ---- Randomized race -------------------------------------------------
 
-    private static async Task RandomizedRaceAsync(int seed)
+    // disposeDuringRace disposes the navigator while the workers are still running,
+    // with a zero CloseTimeout, so retirement overlaps admitted transitions.
+    private static async Task RandomizedRaceAsync(int seed, bool disposeDuringRace = false)
     {
         RacePage.Calm = false;
         var master = new Random(seed);
-        var violations = new ConcurrentQueue<string>();
+        var state = new RaceState(seed);
+        var violations = state.Violations;
         var created = new ConcurrentQueue<RacePage>();
-        var pool = Enumerable.Range(0, 4).Select(index => new RacePage($"borrowed{index}", violations)).ToArray();
-        var fixture = new Fixture();
+        var pool = Enumerable.Range(0, 4).Select(index => new RacePage($"borrowed{index}", state)).ToArray();
+        var fixture = new Fixture(closeTimeout: disposeDuringRace ? TimeSpan.Zero : null);
         var region = fixture.Navigator.CreateRegion<RacePage>(fixture.Root, NavigationTarget.Borrow(pool[0]));
         var childRegions = new ConcurrentQueue<NavigationRegion<RacePage>>();
         var checking = true;
         var committed = 0;
-        region.PropertyChanged += (_, args) =>
-        {
-            if (!checking || args.PropertyName != nameof(region.CurrentEntry)) return;
-            if (region.CurrentEntry is { } current && (current.State != NavigationEntryState.Active || current.Content.Disposed > 0))
-                violations.Enqueue($"seed {seed}: retired entry {current} became current");
-        };
+        // Drawn before any task starts: System.Random is not thread-safe.
+        var workerSeeds = Enumerable.Range(0, 4).Select(_ => master.Next()).ToArray();
+        var disposeAfterCommits = 1 + master.Next(8);
 
-        RacePage Create(Random random)
+        // A retired entry must never become current, on the root or on any child region.
+        void Watch(NavigationRegion<RacePage> observed)
         {
-            var page = new InitRacePage($"page{created.Count}", violations)
+            observed.PropertyChanged += (_, args) =>
+            {
+                if (!checking || args.PropertyName != nameof(observed.CurrentEntry)) return;
+                if (observed.CurrentEntry is { } current && (current.State != NavigationEntryState.Active || current.Content.Disposed > 0))
+                    violations.Enqueue($"seed {seed}: retired entry {current} became current");
+            };
+        }
+        Watch(region);
+
+        RacePage Create(Random random, NavigationRegion<RacePage> origin)
+        {
+            var page = new InitRacePage($"page{created.Count}", state)
             {
                 Behavior = random.Next(20),
                 Delay = random.Next(3),
+                Origin = origin,
             };
             if (random.Next(3) == 0)
             {
@@ -887,6 +938,7 @@ internal static class NavigationTests
                 page.Child = fixture.Navigator.CreateRegion<RacePage>(page, NavigationTarget.Borrow(pool[random.Next(pool.Length)]),
                     new NavigationRegionOptions(policy));
                 childRegions.Enqueue(page.Child);
+                Watch(page.Child);
             }
             created.Enqueue(page);
             return page;
@@ -894,7 +946,7 @@ internal static class NavigationTests
 
         async Task WorkerAsync(int worker)
         {
-            var random = new Random(master.Next() ^ worker);
+            var random = new Random(workerSeeds[worker]);
             for (var step = 0; step < 150; step++)
             {
                 var target = region;
@@ -908,7 +960,7 @@ internal static class NavigationTests
                 var pageRandom = new Random(random.Next());
                 INavigationTarget<RacePage> NewTarget() => random.Next(4) == 0
                     ? NavigationTarget.Borrow(pool[random.Next(pool.Length)])
-                    : NavigationTarget.Create(_ => Create(pageRandom));
+                    : NavigationTarget.Create(_ => Create(pageRandom, target));
                 var operation = choice switch
                 {
                     < 4 => target.PushAsync(NewTarget(), options, cancel.Token),
@@ -930,27 +982,43 @@ internal static class NavigationTests
             }
         }
 
-        await Task.WhenAll(Enumerable.Range(0, 4).Select(worker => Task.Run(() => WorkerAsync(worker))));
-        await Wait(fixture.Navigator.WhenIdleAsync());
-
-        // History stays coherent: ids increase bottom to top, the top is active.
-        foreach (var observed in childRegions.Append(region))
+        var workers = Enumerable.Range(0, 4).Select(worker => Task.Run(() => WorkerAsync(worker))).ToList();
+        if (disposeDuringRace)
         {
-            var stack = observed.History.Append(observed.CurrentEntry).OfType<NavigationEntry<RacePage>>().ToArray();
-            for (var index = 0; index < stack.Length; index++)
+            // Disposal races the admitted transitions and their retirements.
+            workers.Add(Task.Run(async () =>
             {
-                var expectedState = index == stack.Length - 1 ? NavigationEntryState.Active : NavigationEntryState.Retained;
-                if (stack[index].State != expectedState || stack[index].Content.Disposed > 0
-                    || (index > 0 && stack[index].Id.Value <= stack[index - 1].Id.Value))
-                    violations.Enqueue($"seed {seed}: incoherent history {string.Join(",", stack.Select(entry => entry.ToString()))}");
-            }
-            if (observed.IsTransitioning) violations.Enqueue($"seed {seed}: a region is still transitioning when idle");
+                // Dispose once some transitions committed, bounded so a quiet run still ends.
+                for (var waited = 0; Volatile.Read(ref committed) < disposeAfterCommits && waited < 5000; waited++)
+                    await Task.Delay(1);
+                await fixture.Navigator.DisposeAsync().AsTask();
+            }));
         }
+        await Wait(Task.WhenAll(workers));
 
-        // Admission always recovers.
-        RacePage.Calm = true;
-        var final = await Wait(region.ResetAsync(NavigationTarget.Create(_ => Create(new Random(seed)))));
-        if (final is not NavigationResult<RacePage>.Committed) violations.Enqueue($"seed {seed}: admission did not recover: {final}");
+        if (!disposeDuringRace)
+        {
+            await Wait(fixture.Navigator.WhenIdleAsync());
+
+            // History stays coherent: ids increase bottom to top, the top is active.
+            foreach (var observed in childRegions.Append(region))
+            {
+                var stack = observed.History.Append(observed.CurrentEntry).OfType<NavigationEntry<RacePage>>().ToArray();
+                for (var index = 0; index < stack.Length; index++)
+                {
+                    var expectedState = index == stack.Length - 1 ? NavigationEntryState.Active : NavigationEntryState.Retained;
+                    if (stack[index].State != expectedState || stack[index].Content.Disposed > 0
+                        || (index > 0 && stack[index].Id.Value <= stack[index - 1].Id.Value))
+                        violations.Enqueue($"seed {seed}: incoherent history {string.Join(",", stack.Select(entry => entry.ToString()))}");
+                }
+                if (observed.IsTransitioning) violations.Enqueue($"seed {seed}: a region is still transitioning when idle");
+            }
+
+            // Admission always recovers.
+            RacePage.Calm = true;
+            var final = await Wait(region.ResetAsync(NavigationTarget.Create(_ => Create(new Random(seed), region))));
+            if (final is not NavigationResult<RacePage>.Committed) violations.Enqueue($"seed {seed}: admission did not recover: {final}");
+        }
 
         checking = false;
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
@@ -958,11 +1026,18 @@ internal static class NavigationTests
         if (fixture.Navigator.TrackedEntryCount != 0)
             violations.Enqueue($"seed {seed}: {fixture.Navigator.TrackedEntryCount} entries were left unretired");
         foreach (var page in created)
+        {
             if (page.Disposed != 1) violations.Enqueue($"seed {seed}: {page.Name} was disposed {page.Disposed} times");
+            // Every lease bound during the race is released by the time the navigator is gone.
+            if (RunicModelContextRegistry.Shared.TryGet(page, out _))
+                violations.Enqueue($"seed {seed}: {page.Name} kept its model-context lease after disposal");
+        }
         foreach (var page in pool)
             if (page.Disposed != 0) violations.Enqueue($"seed {seed}: borrowed {page.Name} was disposed");
         Require(violations.IsEmpty, string.Join(Environment.NewLine, violations.Take(10)));
-        Require(committed >= 3 && !created.IsEmpty, $"seed {seed}: the race committed only {committed} transitions and created {created.Count} pages.");
+        if (!disposeDuringRace)
+            Require(committed >= 3 && !created.IsEmpty && state.GuardsRun > 0,
+                $"seed {seed}: the race committed only {committed} transitions, created {created.Count} pages and ran {state.GuardsRun} guards.");
     }
 
     // ---- Helpers ---------------------------------------------------------
@@ -1194,27 +1269,65 @@ internal static class NavigationTests
 
     private sealed class RaceException() : Exception("race");
 
-    private sealed class InitRacePage(string name, ConcurrentQueue<string> violations)
-        : RacePage(name, violations), INavigationInitialize
+    // Shared by the race pages: the violation log, and the guards in flight per region.
+    private sealed class RaceState(int seed)
+    {
+        // The guards running in each region, as "page kind" descriptions.
+        private readonly Dictionary<NavigationRegion<RacePage>, List<string>> _guardsInRegion = [];
+        private int _guardsRun;
+
+        public ConcurrentQueue<string> Violations { get; } = new();
+        public int GuardsRun => Volatile.Read(ref _guardsRun);
+
+        public void EnterGuard(NavigationRegion<RacePage>? region, string description)
+        {
+            if (region is null) return;
+            lock (_guardsInRegion)
+            {
+                _guardsRun++;
+                if (!_guardsInRegion.TryGetValue(region, out var running)) _guardsInRegion.Add(region, running = []);
+                running.Add(description);
+                if (running.Count > 1)
+                    Violations.Enqueue($"seed {seed}: guards overlapped in one region: {string.Join(", ", running)}");
+            }
+        }
+
+        public void ExitGuard(NavigationRegion<RacePage>? region, string description)
+        {
+            if (region is null) return;
+            lock (_guardsInRegion) _guardsInRegion[region].Remove(description);
+        }
+    }
+
+    private sealed class InitRacePage(string name, RaceState state)
+        : RacePage(name, state), INavigationInitialize
     {
         public ValueTask InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken) => Hook(1, cancellationToken);
     }
 
-    private class RacePage(string name, ConcurrentQueue<string> violations)
+    private class RacePage(string name, RaceState state)
         : Page(name), INavigationDepartureGuard
     {
         public static volatile bool Calm;
         public int Behavior { get; init; }
         public int Delay { get; init; }
         public NavigationRegion<RacePage>? Child { get; set; }
+        // The region this page was admitted to; null for borrowed pool pages.
+        public NavigationRegion<RacePage>? Origin { get; init; }
 
         ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
-            GuardAsync(cancellationToken);
+            GuardAsync(departure.Kind, cancellationToken);
 
-        private async ValueTask<bool> GuardAsync(CancellationToken cancellationToken)
+        private async ValueTask<bool> GuardAsync(NavigationDepartureKind kind, CancellationToken cancellationToken)
         {
-            await Hook(2, cancellationToken);
-            return Calm || Behavior != 3;
+            var description = $"{Name}#{RuntimeHelpers.GetHashCode(this)} {kind}";
+            state.EnterGuard(Origin, description);
+            try
+            {
+                await Hook(2, cancellationToken);
+                return Calm || Behavior != 3;
+            }
+            finally { state.ExitGuard(Origin, description); }
         }
 
         // Only the transition that created a pending entry, or navigator
@@ -1223,7 +1336,7 @@ internal static class NavigationTests
         // never awaits guards), so only initialize is checked.
         protected async ValueTask Hook(int failure, CancellationToken cancellationToken)
         {
-            if (failure == 1 && Disposed > 0) violations.Enqueue($"{Name} was initialized after disposal");
+            if (failure == 1 && Disposed > 0) state.Violations.Enqueue($"{Name} was initialized after disposal");
             if (Delay == 1) await Task.Yield();
             else if (Delay == 2) await Task.Delay(1, cancellationToken);
             if (!Calm && Behavior == failure) throw new RaceException();

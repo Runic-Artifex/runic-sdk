@@ -72,6 +72,7 @@ internal enum NavigationEntryPhase
 }
 
 // The non-generic entry shared by a region's typed views.
+[Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class NavigationEntryCore
 {
     private object? _typedView;

@@ -1,10 +1,12 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
-// Navigation event IDs 1060-1069 (1043-1049 stay reserved for the ReactiveUI
+// Navigation event IDs 1060-1067 (1043-1049 stay reserved for the ReactiveUI
 // navigation adapter). Properties carry type and operation names, never values.
-internal static partial class ViewsLog
+[Experimental(RunicNavigator.DiagnosticId)]
+internal static partial class NavigationLog
 {
     [LoggerMessage(EventId = 1060, EventName = "NavigationGuardFailed", Level = LogLevel.Error,
         Message = "A departure guard of {EntryType} in navigation region {Region} ({RegionId}) failed during {Operation} with {ErrorType}.")]
