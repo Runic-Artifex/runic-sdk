@@ -7,7 +7,7 @@ using Runic.Platform.Administration.Windows;
 internal sealed record CheckResult(string Name, string Status, double Seconds, string Detail, string? ErrorType,
     string? Operation, string? Category, string? NativeDomain, int? NativeCode, string? StackTrace);
 internal sealed record ReportDocument(string RunId, string Machine, string Os, string LibraryVersion, string Suite,
-    bool ChangesEnabled, string? Server, string? Domain, string? BaseDn, DateTimeOffset Started, DateTimeOffset? Finished,
+    bool ChangesEnabled, bool ExpectDenied, string? Server, string? Domain, string? BaseDn, DateTimeOffset Started, DateTimeOffset? Finished,
     List<CheckResult> Results, List<string> Resources);
 [JsonSerializable(typeof(ReportDocument))]
 [JsonSourceGenerationOptions(WriteIndented = true)]
@@ -21,20 +21,22 @@ internal sealed class RunReport
     internal List<CheckResult> Results { get; } = [];
     private readonly ReportDocument _document;
     private readonly Stopwatch _watch = Stopwatch.StartNew();
-    internal RunReport(Options options)
+    private readonly Action<string> _output;
+    internal RunReport(Options options, Action<string> output)
     {
+        _output = output;
         Folder = Path.Combine(options.Output, DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture) + "-" + Id);
         Directory.CreateDirectory(Folder);
         _document = new(Id, Environment.MachineName, Environment.OSVersion.ToString(),
             typeof(WindowsAdministrationException).Assembly.GetName().Version?.ToString() ?? "unknown",
-            options.Suite, options.Changes, options.Server, options.Domain, options.BaseDn, DateTimeOffset.UtcNow, null, Results, []);
+            options.Suite, options.Changes, options.ExpectDenied, options.Server, options.Domain, options.BaseDn, DateTimeOffset.UtcNow, null, Results, []);
         Save();
     }
     internal async Task Check(string name, Func<Task> action, CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested) { Record(name, "CANCELED", detail: "Not started."); return; }
         var start = _watch.Elapsed;
-        Console.WriteLine("RUN  " + name);
+        _output("RUN  " + name);
         try { await action(); Record(name, "PASS", seconds: (_watch.Elapsed - start).TotalSeconds); }
         catch (OperationCanceledException error) { Record(name, "CANCELED", error, seconds: (_watch.Elapsed - start).TotalSeconds); }
         catch (Exception error) { Record(name, "FAIL", error, seconds: (_watch.Elapsed - start).TotalSeconds); }
@@ -46,7 +48,7 @@ internal sealed class RunReport
         var native = error as WindowsAdministrationException;
         Results.Add(new(name, status, seconds, error?.Message ?? detail, error?.GetType().FullName,
             native?.Operation, native?.Category.ToString(), native?.NativeErrorDomain.ToString(), native?.NativeErrorCode, error?.StackTrace));
-        Console.WriteLine($"{status,-8} {name}" + (error is null ? "" : ": " + error.Message));
+        _output($"{status,-8} {name}" + (error is null ? "" : ": " + error.Message));
         Save();
     }
     internal void Finish() => Save(_document with { Finished = DateTimeOffset.UtcNow });
@@ -56,7 +58,7 @@ internal sealed class RunReport
         var json = Path.Combine(Folder, "report.json");
         File.WriteAllText(json + ".tmp", JsonSerializer.Serialize(data, ReportJson.Default.ReportDocument));
         File.Move(json + ".tmp", json, true);
-        var text = new StringBuilder($"Runic administration verification {Id}\nMachine: {data.Machine}; OS: {data.Os}\nSuite: {data.Suite}; changes: {data.ChangesEnabled}\n\n");
+        var text = new StringBuilder($"Runic administration verification {Id}\nMachine: {data.Machine}; OS: {data.Os}\nSuite: {data.Suite}; changes: {data.ChangesEnabled}; expect denied: {data.ExpectDenied}\n\n");
         foreach (var result in Results)
         {
             text.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"{result.Status,-8} {result.Name} ({result.Seconds:F2}s) {result.Detail}");

@@ -1,81 +1,179 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.Principal;
+using System.Text.Json.Serialization;
+using Runic.CommandLine;
+using Runic.CommandLine.Generated;
+using Runic.CommandLine.Spectre;
+using Runic.Platform.Administration.Windows;
 
 [assembly: SupportedOSPlatform("windows")]
 
-if (args is ["--help"] or ["-h"] or [])
-{
-    Console.WriteLine("""
-Runic Windows Administration verification (Windows x64, NativeAOT)
-  Runic.AdminVerify local [--allow-changes] [--only shortcuts,services,tasks,firewall,shares,system,processes,networks]
-  Runic.AdminVerify domain --server DC --domain example.test [--base-dn "OU=Tests,DC=example,DC=test"]
-      [--dns-server DNS] [--dns-zone example.test] [--allow-changes] [--only ldap,gpo,dns]
-  Common: --out DIRECTORY (default ./runic-results)
-
-Without --allow-changes: inspection only, plus owned temporary shortcut files.
-With --allow-changes: use ONLY a disposable VM/domain fixture. Take a VM snapshot first.
-Domain writes require an explicit existing --base-dn and use a new child OU.
-Uses the current Windows identity. Run an elevated terminal for local writes.
-No elevation, credentials on the command line, existing-resource replacement or global settings changes.
-Each check and cleanup is recorded in report.json and report.txt.
-Exit: 0 selected checks passed (inspect SKIPs), 1 failure/canceled, 2 usage/platform error.
-Ctrl+C requests cancellation; native calls may finish before cleanup can run.
-""");
-    return 0;
-}
-if (!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
-{
-    Console.Error.WriteLine("Windows x64 is required."); return 2;
-}
+// Fixture entry points started by the Service Control Manager and Task Scheduler.
+// They are process contracts of the write suite, not part of the command surface.
 if (args is ["--service", var serviceName]) return ServiceFixture.Run(serviceName);
 if (args is ["--task-marker", var marker]) { File.WriteAllText(marker, "Runic task completed"); return 0; }
+return await VerifierApplication.RunAsync(args);
 
-Options options;
-try { options = Options.Parse(args); }
-catch (ArgumentException error) { Console.Error.WriteLine(error.Message); Console.Error.WriteLine("Use --help for usage."); return 2; }
-using var cancellation = new CancellationTokenSource();
-Console.CancelKeyPress += (_, eventArgs) => { eventArgs.Cancel = true; cancellation.Cancel(); };
-var report = new RunReport(options);
-Console.WriteLine($"Run {report.Id}; reports: {report.Folder}");
-Console.WriteLine("Windows capabilities use generated bindings; LDAP uses System.DirectoryServices.Protocols.");
-Console.WriteLine(options.Changes ? "Administrative fixture writes ENABLED." : "Administrative inspection only.");
-try
+internal static class VerifierApplication
 {
-    if (options.Suite == "local") await new LocalChecks(report, options, cancellation.Token).RunAsync();
-    else await new DomainChecks(report, options, cancellation.Token).RunAsync();
-}
-catch (Exception error) { report.Record("runner", "FAIL", error); }
-report.Finish();
-Console.WriteLine($"Finished: {report.Results.Count(r => r.Status == "PASS")} passed; {report.Results.Count(r => r.Status == "FAIL")} failed; {report.Results.Count(r => r.Status == "SKIP")} skipped.");
-Console.WriteLine($"Report: {Path.Combine(report.Folder, "report.txt")}");
-return report.Results.Any(r => r.Status is "FAIL" or "CANCELED") || cancellation.IsCancellationRequested ? 1 : 0;
+    internal const int ChecksPassed = 0;
+    internal const int ChecksFailed = 1;
+    internal const int UsageOrPlatform = 2;
+    private static readonly string[] LocalCapabilities = ["shortcuts", "services", "tasks", "firewall", "shares", "system", "processes", "networks"];
+    private static readonly string[] DomainCapabilities = ["ldap", "gpo", "dns"];
 
-internal sealed record Options(string Suite, bool Changes, string Output, string? Server, string? Domain,
+    internal static Task<int> RunAsync(string[] args) => new CommandApp(GeneratedCommandCatalog.Create())
+    {
+        Name = "Runic.AdminVerify",
+        Version = typeof(WindowsAdministrationException).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
+        HelpPresenter = new SpectreHelpPresenter(),
+        Console = new SpectreCommandConsole(),
+        ExitCodePolicy = VerifierExitCodePolicy.Instance,
+        OutcomeSink = VerifierOutcomeSink.Instance,
+    }.RunAsync(args);
+
+    [Command("local",
+        Description = "Verify local Windows administration. Read-only inspection by default; writes need an explicit opt-in on a disposable VM.",
+        Examples =
+        [
+            "Runic.AdminVerify local",
+            "Runic.AdminVerify local --allow-changes --only services,tasks,firewall,shares",
+            "Runic.AdminVerify local --expect-denied --only services,tasks,firewall,shares",
+        ])]
+    [CommandResult("runic.administration.verify/1", typeof(VerifierJsonContext))]
+    internal static Task<CommandOutcome<VerificationSummary>> Local(
+        CommandExecutionContext context,
+        CancellationToken cancellationToken,
+        [Option("--allow-changes", Description = "Create, update and delete owned services, tasks, firewall rules and shares. Elevated terminal on a snapshotted VM only.")] bool allowChanges = false,
+        [Option("--expect-denied", Description = "From a non-elevated process, attempt the owned writes and require Windows to deny each one.")] bool expectDenied = false,
+        [Option("--only", ValueName = "CAPABILITIES", Description = "Comma-separated subset: shortcuts, services, tasks, firewall, shares, system, processes, networks.")] string? only = null,
+        [Option("--out", ValueName = "DIRECTORY", Description = "Parent directory for the run's report folder (default ./runic-results).")] string? output = null)
+    {
+        if (Select(only, LocalCapabilities) is not { } selected)
+            return Usage("RAV1001", "Invalid --only selection for the local suite.");
+        if (allowChanges && expectDenied)
+            return Usage("RAV1002", "Choose either --allow-changes or --expect-denied.");
+        if (Blank(output)) return Usage("RAV1003", "Empty --out value.");
+        if (expectDenied && OperatingSystem.IsWindows() && IsElevated())
+            return Usage("RAV1004", "--expect-denied must run from a non-elevated process; an elevated run would create the resources.");
+        return RunAsync(context, new Options("local", allowChanges, expectDenied, FullPath(output), null, null, null, null, null, selected), cancellationToken);
+    }
+
+    [Command("domain",
+        Description = "Verify LDAP, Group Policy and DNS against a disposable test domain. Read-only unless --allow-changes is given with an existing --base-dn.",
+        Examples =
+        [
+            "Runic.AdminVerify domain --server dc1.example.test --domain example.test",
+            "Runic.AdminVerify domain --server dc1.example.test --domain example.test --base-dn \"OU=RunicTests,DC=example,DC=test\" --dns-zone example.test --allow-changes",
+        ])]
+    [CommandResult("runic.administration.verify/1", typeof(VerifierJsonContext))]
+    internal static Task<CommandOutcome<VerificationSummary>> Domain(
+        CommandExecutionContext context,
+        [Option("--server", ValueName = "DC", Description = "Domain controller for LDAP and Group Policy.")] string server,
+        [Option("--domain", ValueName = "DNS-NAME", Description = "DNS name of the test domain.")] string domain,
+        CancellationToken cancellationToken,
+        [Option("--base-dn", ValueName = "DN", Description = "Existing disposable OU; writes create a child OU below it.")] string? baseDn = null,
+        [Option("--dns-server", ValueName = "HOST", Description = "DNS server, when separate from the controller.")] string? dnsServer = null,
+        [Option("--dns-zone", ValueName = "ZONE", Description = "Existing test zone for DNS record checks; no zone is created.")] string? dnsZone = null,
+        [Option("--allow-changes", Description = "Create and delete owned directory objects, GPOs and DNS records.")] bool allowChanges = false,
+        [Option("--only", ValueName = "CAPABILITIES", Description = "Comma-separated subset: ldap, gpo, dns.")] string? only = null,
+        [Option("--out", ValueName = "DIRECTORY", Description = "Parent directory for the run's report folder (default ./runic-results).")] string? output = null)
+    {
+        if (Select(only, DomainCapabilities) is not { } selected)
+            return Usage("RAV1001", "Invalid --only selection for the domain suite.");
+        if (Blank(server) || Blank(domain) || Blank(baseDn) || Blank(dnsServer) || Blank(dnsZone) || Blank(output))
+            return Usage("RAV1003", "Option values must not be empty.");
+        if (allowChanges && baseDn is null)
+            return Usage("RAV1005", "Domain writes require an explicit existing --base-dn.");
+        return RunAsync(context, new Options("domain", allowChanges, false, FullPath(output), server, domain, baseDn, dnsServer, dnsZone, selected), cancellationToken);
+    }
+
+    private static async Task<CommandOutcome<VerificationSummary>> RunAsync(CommandExecutionContext context, Options options, CancellationToken token)
+    {
+        if (!OperatingSystem.IsWindows() || RuntimeInformation.ProcessArchitecture != Architecture.X64)
+            return CommandOutcome.Failure<VerificationSummary>(CommandExitCategory.Unavailable, new CommandFault("RAV1006", "Windows x64 is required."));
+        // Progress goes through the invocation console, so JSON output keeps stdout for its envelope.
+        void Write(string line) => context.Console.WriteOutAsync((line + Environment.NewLine).AsMemory(), CancellationToken.None).AsTask().GetAwaiter().GetResult();
+        var report = new RunReport(options, Write);
+        Write($"Run {report.Id}; reports: {report.Folder}");
+        Write("Windows capabilities use generated bindings; LDAP uses System.DirectoryServices.Protocols.");
+        Write(options.Changes ? "Administrative fixture writes ENABLED."
+            : options.ExpectDenied ? "Non-elevated write attempts ENABLED; each must be denied."
+            : "Administrative inspection only.");
+        try
+        {
+            if (options.Suite == "local") await new LocalChecks(report, options, token).RunAsync();
+            else await new DomainChecks(report, options, token).RunAsync();
+        }
+        catch (Exception error) { report.Record("runner", "FAIL", error); }
+        report.Finish();
+        var summary = new VerificationSummary(report.Id, options.Suite, options.Changes, options.ExpectDenied, report.Folder,
+            Count("PASS"), Count("FAIL"), Count("SKIP"), Count("CANCELED"));
+        Write($"Finished: {summary.Passed} passed; {summary.Failed} failed; {summary.Skipped} skipped.");
+        Write($"Report: {Path.Combine(report.Folder, "report.txt")}");
+        if (summary.Canceled > 0 || token.IsCancellationRequested)
+            return CommandOutcome.Failure<VerificationSummary>(CommandExitCategory.Cancelled, new CommandFault("RAV2002", "The run was canceled; inspect the report and the resource journal."));
+        if (summary.Failed > 0)
+            return CommandOutcome.Failure<VerificationSummary>(CommandExitCategory.CommandFailure, new CommandFault("RAV2001", "One or more selected checks failed; see the report."));
+        return CommandOutcome.Success(summary);
+        int Count(string status) => report.Results.Count(r => r.Status == status);
+    }
+
+    private static HashSet<string>? Select(string? only, string[] capabilities)
+    {
+        if (only is null) return [];
+        var selected = only.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
+        return selected.Count == 0 || selected.Any(value => !capabilities.Contains(value, StringComparer.Ordinal)) ? null : selected;
+    }
+    private static bool Blank(string? value) => value is not null && string.IsNullOrWhiteSpace(value);
+    private static string FullPath(string? output) => Path.GetFullPath(output ?? "runic-results");
+    [SupportedOSPlatform("windows")]
+    private static bool IsElevated()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+    private static Task<CommandOutcome<VerificationSummary>> Usage(string code, string message) =>
+        Task.FromResult(CommandOutcome.Failure<VerificationSummary>(CommandExitCategory.Validation, new CommandFault(code, message)));
+
+    private sealed class VerifierExitCodePolicy : IExitCodePolicy
+    {
+        public static VerifierExitCodePolicy Instance { get; } = new();
+        public int GetExitCode(CommandExitCategory category) => category switch
+        {
+            CommandExitCategory.Success => ChecksPassed,
+            CommandExitCategory.CommandFailure or CommandExitCategory.Cancelled or CommandExitCategory.HostFailure => ChecksFailed,
+            CommandExitCategory.Usage or CommandExitCategory.Validation or CommandExitCategory.Unavailable => UsageOrPlatform,
+            _ => throw new ArgumentOutOfRangeException(nameof(category)),
+        };
+    }
+
+    // Human output: the progress, summary and report path are already written; only
+    // report a fault. JSON output keeps the standard versioned envelope.
+    private sealed class VerifierOutcomeSink : ICommandOutcomeSink
+    {
+        public static VerifierOutcomeSink Instance { get; } = new();
+        public ValueTask WriteAsync<TResult>(CommandDescriptor command, CommandExecutionContext context, CommandOutcome<TResult> outcome,
+            ICommandResultCodec<TResult> codec, int exitCode, IReadOnlyList<CommandDiagnostic> diagnostics, CancellationToken cancellationToken)
+        {
+            if (context.OutputMode == CommandOutputMode.Json)
+                return new CommandOutputDispatcher().WriteAsync(command, context, outcome, codec, exitCode, diagnostics, cancellationToken);
+            return outcome.Fault is { } fault
+                ? context.Console.WriteErrorAsync((fault.Message + Environment.NewLine).AsMemory(), cancellationToken)
+                : ValueTask.CompletedTask;
+        }
+    }
+}
+
+internal sealed record Options(string Suite, bool Changes, bool ExpectDenied, string Output, string? Server, string? Domain,
     string? BaseDn, string? DnsServer, string? DnsZone, HashSet<string> Only)
 {
     internal bool Includes(string capability) => Only.Count == 0 || Only.Contains(capability);
-    internal static Options Parse(string[] args)
-    {
-        if (args[0] is not ("local" or "domain")) throw new ArgumentException("Choose local or domain.");
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        var changes = false;
-        var allowed = new[] { "--out", "--server", "--domain", "--base-dn", "--dns-server", "--dns-zone", "--only" };
-        for (var i = 1; i < args.Length; i++)
-        {
-            if (args[i] == "--allow-changes") { if (changes) throw new ArgumentException("Duplicate --allow-changes."); changes = true; continue; }
-            var name = args[i];
-            if (!allowed.Contains(name, StringComparer.Ordinal) || i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
-                throw new ArgumentException("Unknown option or missing value: " + name);
-            if (!values.TryAdd(name, args[++i]) || string.IsNullOrWhiteSpace(args[i])) throw new ArgumentException("Duplicate or empty option: " + name);
-        }
-        string? Get(string key) => values.GetValueOrDefault(key);
-        var capabilities = args[0] == "local" ? new[] { "shortcuts", "services", "tasks", "firewall", "shares", "system", "processes", "networks" } : ["ldap", "gpo", "dns"];
-        var only = (Get("--only") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
-        if (values.ContainsKey("--only") && only.Count == 0 || only.Any(value => !capabilities.Contains(value, StringComparer.Ordinal)))
-            throw new ArgumentException("Invalid --only selection for this suite.");
-        if (args[0] == "local" && values.Keys.Any(key => key is not ("--out" or "--only"))) throw new ArgumentException("Domain target options cannot be used with local.");
-        if (args[0] == "domain" && (Get("--server") is null || Get("--domain") is null)) throw new ArgumentException("Domain suite requires --server and --domain.");
-        if (args[0] == "domain" && changes && Get("--base-dn") is null) throw new ArgumentException("Domain writes require an explicit existing --base-dn.");
-        return new(args[0], changes, Path.GetFullPath(Get("--out") ?? "runic-results"), Get("--server"), Get("--domain"), Get("--base-dn"), Get("--dns-server"), Get("--dns-zone"), only);
-    }
 }
+
+internal sealed record VerificationSummary(string RunId, string Suite, bool ChangesEnabled, bool ExpectDenied, string ReportFolder,
+    int Passed, int Failed, int Skipped, int Canceled);
+
+[JsonSerializable(typeof(VerificationSummary))]
+internal sealed partial class VerifierJsonContext : JsonSerializerContext;
