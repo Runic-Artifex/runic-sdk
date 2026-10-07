@@ -16,6 +16,7 @@ internal static class WebUiApplication
     private static string? _browserFolder;
     private static IWebUiEmbeddedHostFactory _embeddedHostFactory = WebUiEmbeddedHostFactory.Instance;
     private static long _connectionTimeoutTicks = TimeSpan.FromSeconds(15).Ticks;
+    private static int _browserLaunchAttempts = DesktopHostOptions.DefaultBrowserLaunchAttempts;
     private static int _showWaitConnection = 1;
     private static int _multiClient;
     private static int _useCookies = 1;
@@ -62,6 +63,13 @@ internal static class WebUiApplication
         var timeout = clampedSeconds == 0 ? TimeSpan.Zero : TimeSpan.FromSeconds(clampedSeconds);
         Volatile.Write(ref _connectionTimeoutTicks, timeout.Ticks);
     }
+
+    /// <summary>
+    /// Sets how many times a show call launches a browser that starts but requests nothing within the
+    /// connection timeout. Values are clamped to 1 (no relaunch) through 5; the default is 2.
+    /// </summary>
+    public static void SetBrowserLaunchAttempts(nuint attempts)
+        => Volatile.Write(ref _browserLaunchAttempts, (int)Math.Clamp(attempts, 1, (nuint)DesktopHostOptions.MaximumBrowserLaunchAttempts));
 
     /// <summary>Sets an optional folder searched before system browser locations.</summary>
     public static void SetBrowserFolder(string path)
@@ -229,6 +237,8 @@ internal static class WebUiApplication
     internal static bool UseCookies => Volatile.Read(ref _useCookies) != 0;
 
     internal static bool ShowWaitConnection => Volatile.Read(ref _showWaitConnection) != 0;
+
+    internal static int BrowserLaunchAttempts => Volatile.Read(ref _browserLaunchAttempts);
 
     internal static TimeSpan ConnectionTimeout
     {

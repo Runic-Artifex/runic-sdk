@@ -18,6 +18,30 @@ export function managedTests(base = root, platform = process.platform) {
       : "platform" }));
 }
 
+// Application fixtures outside RunicSdk.Core.slnx. The application suite builds and
+// runs them after its test executables; each one exits non-zero when its proof fails.
+// An `aot` fixture pins linux-x64, so it is published with NativeAOT and run on Linux only.
+export const applicationFixtures = [
+  { path: "tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj" },
+  { path: "tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj" },
+  { path: "tests/fixtures/application/reactiveui25-aot/ReactiveUi25AotProof.csproj", aot: true },
+];
+
+// The commands that build and run the application fixtures on `platform`.
+export function applicationFixtureCommands(configuration, base = root, platform = process.platform) {
+  return applicationFixtures.flatMap(({ path, aot }) => {
+    const project = resolve(base, path);
+    if (!aot) return [["dotnet", ["run", "--project", project, "-c", configuration]]];
+    if (platform !== "linux") return [];
+    const name = path.split("/").at(-1).replace(/\.csproj$/, "");
+    const output = resolve(base, "artifacts/application-fixtures", name);
+    return [
+      ["dotnet", ["publish", project, "-c", configuration, "-p:IlcTreatWarningsAsErrors=true", "-o", output]],
+      [resolve(output, name), []],
+    ];
+  });
+}
+
 export function webTests() {
   return workspace.npm.filter(item => JSON.parse(readFileSync(resolve(root, item.path, "package.json"), "utf8")).scripts?.test)
     .map(item => ({ package: item.path.split("/").at(-1), node: item.name === "@runic-artifex/vite-plugin-runic" }));

@@ -3,9 +3,11 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root, run, configuration, workspace, viewsRuntime, engineeringTestDirectories } from './run.mjs';
-import { managedGroups, managedTests } from './ci/plan.mjs';
+import { managedGroups, managedTests, applicationFixtureCommands } from './ci/plan.mjs';
 export function selection(scope) {
-  if (managedGroups.includes(scope)) return {kind: 'managed', paths: managedTests().filter(p => p.group === scope).map(p => p.path)};
+  // The application group also builds and runs the fixtures outside RunicSdk.Core.slnx, as CI does.
+  if (managedGroups.includes(scope)) return {kind: 'managed', paths: managedTests().filter(p => p.group === scope).map(p => p.path),
+    commands: scope === 'application' ? applicationFixtureCommands(configuration) : []};
   if (scope === 'engineering') return {kind: 'bun', paths: engineeringTestDirectories.flatMap(dir =>
     readdirSync(resolve(root, dir)).filter(name => name.endsWith('.test.mjs')).map(name => `./${dir}/${name}`))};
   if (scope?.startsWith('web/')) {
@@ -43,6 +45,7 @@ function main() {
       if (selected.kind === 'managed') run('dotnet', ['run', '--project', path, '-c', configuration, ...(extra.length ? ['--', ...extra] : [])]);
       else run('dotnet', ['test', path, '-c', configuration, ...extra]);
     }
+    for (const [command, args] of selected.commands ?? []) run(command, args);
   }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

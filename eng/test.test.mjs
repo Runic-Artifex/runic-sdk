@@ -19,3 +19,10 @@ test('application checks run both ReactiveUI flavors through the shared conforma
     expect(application.paths).toContain(`tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.${flavor}.Conformance.Tests.csproj`);
   }
 });
+test('application checks also build and run the fixtures outside the core solution', () => {
+  const lines = selection('application').commands.map(([command, args]) => [command, ...args].join(' '));
+  expect(lines.some(line => line.includes('reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj'))).toBe(true);
+  expect(lines.some(line => line.includes('reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj'))).toBe(true);
+  expect(lines.some(line => line.includes('ReactiveUi25AotProof'))).toBe(process.platform === 'linux');
+  expect(selection('assets').commands).toEqual([]);
+});

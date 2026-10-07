@@ -346,6 +346,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         Task connection;
         Uri browserUrl;
         Process? launched = null;
+        var launchedBrowser = WebUiBrowser.NoBrowser;
         var navigateExisting = false;
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -378,42 +379,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 var requestedBrowser = browser == WebUiBrowser.AnyBrowser && _currentBrowser != WebUiBrowser.NoBrowser
                     ? _currentBrowser
                     : browser;
-                var installation = WebUiBrowserDiscovery.Find(requestedBrowser, BrowserFolder)
-                    ?? throw new InvalidOperationException($"No supported installation was found for {browser}.");
-                var profilePath = GetOrCreateProfilePath(installation.Browser);
-                var options = new WebUiBrowserLaunchOptions(
-                    _profileName,
-                    profilePath,
-                    _proxyServer,
-                    _customBrowserArguments,
-                    _kiosk,
-                    _hidden,
-                    _width,
-                    _height,
-                    _x,
-                    _y,
-                    _allowedPermissions);
-                connection = BeginConnection();
-                Process process;
-                Task outputClosed;
-                try
-                {
-                    process = WebUiBrowserHost.Start(installation, browserUrl, options, out outputClosed);
-                }
-                catch
-                {
-                    if (_generatedProfilePath is { } failedProfile)
-                    {
-                        _generatedProfilePath = null;
-                        _ = TryDeleteGeneratedProfile(failedProfile);
-                    }
-                    throw;
-                }
-                _browserProcess = process;
-                _browserOutputClosed = outputClosed;
-                _currentBrowser = installation.Browser;
-                launched = process;
-                _ = MonitorBrowserAsync(process);
+                launched = LaunchBrowser(requestedBrowser, browserUrl, out connection);
+                launchedBrowser = _currentBrowser;
             }
         }
         finally
@@ -427,11 +394,86 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         else if (WaitForConnection && _externalUrl is null)
         {
-            await WaitForConnectionAsync(connection, launched, surfaceHosted: content is null, cancellationToken)
+            await WaitForConnectionAsync(
+                    connection,
+                    launched,
+                    surfaceHosted: content is null,
+                    cancellationToken,
+                    stalled => RelaunchStalledBrowserAsync(stalled, launchedBrowser, browserUrl, cancellationToken))
                 .ConfigureAwait(false);
         }
 
         return url;
+    }
+
+    // Called with the lifecycle gate held. Starts the browser with the current
+    // profile, or a new generated one, and returns the connection to wait for.
+    private Process LaunchBrowser(WebUiBrowser requestedBrowser, Uri browserUrl, out Task connection)
+    {
+        var installation = WebUiBrowserDiscovery.Find(requestedBrowser, BrowserFolder)
+            ?? throw new InvalidOperationException($"No supported installation was found for {requestedBrowser}.");
+        var profilePath = GetOrCreateProfilePath(installation.Browser);
+        var options = new WebUiBrowserLaunchOptions(
+            _profileName,
+            profilePath,
+            _proxyServer,
+            _customBrowserArguments,
+            _kiosk,
+            _hidden,
+            _width,
+            _height,
+            _x,
+            _y,
+            _allowedPermissions);
+        connection = BeginConnection();
+        Process process;
+        Task outputClosed;
+        try
+        {
+            process = WebUiBrowserHost.Start(installation, browserUrl, options, out outputClosed);
+        }
+        catch
+        {
+            if (_generatedProfilePath is { } failedProfile)
+            {
+                _generatedProfilePath = null;
+                _ = TryDeleteGeneratedProfile(failedProfile);
+            }
+            throw;
+        }
+        _browserProcess = process;
+        _browserOutputClosed = outputClosed;
+        _currentBrowser = installation.Browser;
+        _ = MonitorBrowserAsync(process);
+        return process;
+    }
+
+    // A browser that is running but has not requested anything after a whole
+    // connection timeout is stuck in its own startup (#35); its page was never
+    // asked for, so starting it again is safe. Stop it, which deletes a generated
+    // profile, and launch it once more with a fresh one. Returns null when the
+    // presentation changed in the meantime, such as a concurrent close.
+    private async Task<(Task Connection, Process Process)?> RelaunchStalledBrowserAsync(
+        Process stalled,
+        WebUiBrowser browser,
+        Uri browserUrl,
+        CancellationToken cancellationToken)
+    {
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0 || !ReferenceEquals(_browserProcess, stalled) || Url is null)
+            {
+                return null;
+            }
+            await StopBrowserAsync().ConfigureAwait(false);
+            var process = LaunchBrowser(browser, browserUrl, out var connection);
+            return (connection, process);
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
     }
 
     /// <summary>Starts the managed server and opens it in the platform embedded WebView.</summary>
@@ -1595,23 +1637,98 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         Task connection,
         Process? browserProcess,
         bool surfaceHosted,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Func<Process, Task<(Task Connection, Process Process)?>>? relaunchStalled = null)
     {
+        // Each attempt gets the whole connection timeout. Only a launched browser
+        // that never requested anything is relaunched; see RelaunchStalledBrowserAsync.
+        var attempts = browserProcess is null || relaunchStalled is null ? 1 : BrowserLaunchAttempts;
+        for (var attempt = 1; ; attempt++)
+        {
+            string? stalled = null;
+            try
+            {
+                await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (TimeoutException exception)
+            {
+                // Describe the browser process before closing the presentation stops it.
+                var description = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                if (attempt < attempts && IsStalledBeforeFirstRequest(browserProcess))
+                {
+                    stalled = description;
+                }
+                else
+                {
+                    var timeout = new TimeoutException(description, exception);
+                    await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                    throw timeout;
+                }
+            }
+            catch
+            {
+                await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                throw;
+            }
+
+            ReportStalledLaunch(stalled, attempt, attempts);
+            (Task Connection, Process Process)? relaunched;
+            try
+            {
+                relaunched = await relaunchStalled!(browserProcess!).ConfigureAwait(false);
+            }
+            catch
+            {
+                await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                throw;
+            }
+            if (relaunched is not { } next)
+            {
+                throw new IOException("The window closed before bridge authentication completed.");
+            }
+            (connection, browserProcess) = next;
+        }
+    }
+
+    private bool IsStalledBeforeFirstRequest(Process? browserProcess)
+    {
+        if (browserProcess is null
+            || (ConnectionProgress)Volatile.Read(ref _connectionProgress) != ConnectionProgress.NoRequest)
+        {
+            return false;
+        }
         try
         {
-            await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
+            return !browserProcess.HasExited;
         }
-        catch (TimeoutException exception)
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
-            // Describe the browser process before closing the presentation stops it.
-            var timeout = new TimeoutException(DescribeConnectionTimeout(browserProcess), exception);
-            await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-            throw timeout;
+            return false;
         }
-        catch
+    }
+
+    private void ReportStalledLaunch(string description, int attempt, int attempts)
+    {
+        var profile = _profileConfigured ? "its configured profile" : "a fresh profile";
+        var message = $"{description} Relaunching it with {profile} (attempt {attempt + 1} of {attempts}).";
+        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+            DesktopErrorCategory.TimedOut,
+            BrowserLaunchStalledCode,
+            message,
+            Retryable: true,
+            Remediation: "No action is needed if the relaunch connects. Set DesktopHostOptions.BrowserLaunchAttempts to 1 to disable relaunching.")
         {
-            await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
-            throw;
+            Severity = DesktopDiagnosticSeverity.Warning,
+            Option = "DesktopHostOptions.BrowserLaunchAttempts",
+        });
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.BrowserLaunchStalled(logger, attempt, attempts, ConnectionTimeout.TotalSeconds);
+        }
+        else
+        {
+            Trace.TraceWarning($"{BrowserLaunchStalledCode}: {message}");
         }
     }
 
@@ -1620,7 +1737,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task CloseFailedPresentationAsync(bool surfaceHosted) =>
         surfaceHosted ? ClosePresentationAsync() : CloseCoreAsync(CancellationToken.None);
 
-    private string DescribeConnectionTimeout(Process? browserProcess)
+    private string DescribeConnectionTimeout(Process? browserProcess, int attempt = 1, int attempts = 1)
     {
         var progress = (ConnectionProgress)Volatile.Read(ref _connectionProgress) switch
         {
@@ -1644,7 +1761,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             {
             }
         }
-        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds: {progress}{process}.";
+        var attemptText = attempts > 1 ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
+        return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{attemptText}: {progress}{process}.";
     }
 
     private Task HandleRequestAsync(HttpContext context) => PrepareResponseAsync(context, DispatchRequestAsync);
@@ -2060,6 +2178,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private bool WaitForConnection => _runtimeOptions?.WaitForConnection ?? WebUiApplication.ShowWaitConnection;
 
     private TimeSpan ConnectionTimeout => _runtimeOptions?.ConnectionTimeout ?? WebUiApplication.ConnectionTimeout;
+
+    private int BrowserLaunchAttempts => _runtimeOptions?.BrowserLaunchAttempts ?? WebUiApplication.BrowserLaunchAttempts;
+
+    internal const string BrowserLaunchStalledCode = "browser-launch-stalled";
 
     private string? BrowserFolder => _runtimeOptions?.BrowserFolder ?? WebUiApplication.GetBrowserFolder();
 

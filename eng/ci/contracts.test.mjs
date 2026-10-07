@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { root, workspace } from '../run.mjs';
 import { sourceDigest } from './source-state.mjs';
 import { snapshot } from './snapshot.mjs';
 import { buildPaths, validateBuild } from './build-artifact.mjs';
-import { managedGroups, managedTests, webTests, plan } from './plan.mjs';
+import { managedGroups, managedTests, webTests, plan, applicationFixtures, applicationFixtureCommands } from './plan.mjs';
 import { actArguments } from './local.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
@@ -94,6 +94,28 @@ test('all managed executable suites are assigned exactly once to workflow groups
   assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
   assert.ok(workflow.jobs.native.steps.some(step =>
     step.run?.includes('dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/') && step.run.includes('PublishAot=true')));
+});
+
+test('every executable application fixture runs in CI', () => {
+  // Experiments are measured by hand; see tests/fixtures/application/experiments.
+  const fixtures = readdirSync(resolve(root, 'tests/fixtures/application'), { recursive: true })
+    .map(path => `tests/fixtures/application/${path.replaceAll('\\', '/')}`)
+    .filter(path => path.endsWith('.csproj') && !/\/(bin|obj|experiments)\//.test(path)
+      && /<OutputType>Exe<\/OutputType>/.test(readFileSync(resolve(root, path), 'utf8')));
+  const workflows = readdirSync(resolve(root, '.github/workflows')).map(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8')).join('\n');
+  const suites = managedTests(root, 'linux').map(item => item.path);
+  const listed = applicationFixtures.map(item => item.path);
+  for (const path of fixtures)
+    assert.ok(suites.includes(path) || listed.includes(path) || workflows.includes(path.slice(0, path.lastIndexOf('/'))), path);
+  for (const path of ['reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj',
+    'reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj', 'reactiveui25-aot/ReactiveUi25AotProof.csproj'])
+    assert.ok(listed.includes(`tests/fixtures/application/${path}`), path);
+  // The managed job runs on Linux, so it publishes and runs the NativeAOT fixture.
+  const linux = applicationFixtureCommands('Release', root, 'linux').map(([command, args]) => [command, ...args].join(' '));
+  assert.ok(linux.some(line => line.startsWith('dotnet publish') && line.includes('ReactiveUi25AotProof.csproj')));
+  assert.ok(linux.some(line => line.endsWith('/ReactiveUi25AotProof')));
+  assert.ok(applicationFixtureCommands('Release', root, 'win32').every(([, args]) => args[0] === 'run'));
+  assert.equal(workflow.jobs.managed['runs-on'], 'ubuntu-24.04');
 });
 
 test('every web package with a test script is included in the dynamic matrix', () => {

@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 using Runic.Desktop;
 using Runic.Desktop.Internal;
 
@@ -140,12 +143,15 @@ public sealed class BrowserHostTests
             return;
         }
 
-        // Each launch starts Chromium with a fresh profile. On a busy Windows
-        // runner the first connection occasionally took longer than 30 seconds
-        // (#35). Allow 45 seconds per launch and keep the whole test inside
-        // CI's two-minute hang timeout, so a timeout still reports its stage.
+        // Each launch starts Chromium with a fresh profile. On Windows runners a
+        // fresh Chromium occasionally stays running without requesting anything
+        // (#35); 45 seconds did not help where 30 did not. Such a launch is
+        // relaunched once with a fresh profile after 30 seconds (the default two
+        // attempts). The whole test stays inside CI's two-minute hang timeout, so
+        // a timeout still reports its stage and attempt.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(110));
-        WebUiApplication.SetConnectionTimeout(45);
+        WebUiApplication.SetConnectionTimeout(30);
+        WebUiApplication.SetBrowserLaunchAttempts(2);
         await using var window = new WebUiWindow();
         window.SetHidden(true);
         window.SetCustomParameters("--no-first-run --no-sandbox --disable-gpu --disable-dev-shm-usage");
@@ -213,6 +219,195 @@ public sealed class BrowserHostTests
         {
             WebUiApplication.SetConnectionTimeout(15);
         }
+    }
+
+    [Fact]
+    public async Task RelaunchesABrowserThatStallsBeforeItsFirstRequestWithAFreshProfile()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        var window = new WebUiWindow();
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            WebUiApplication.SetBrowserFolder(folder.FullName);
+            WebUiApplication.SetConnectionTimeout(1);
+            WebUiApplication.SetBrowserLaunchAttempts(3);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() =>
+                window.ShowInBrowserAsync(Page("stalled"), WebUiBrowser.Chrome, timeout.Token));
+
+            Assert.Contains(
+                "within 1 seconds on launch attempt 3 of 3: no request reached the server; the browser process is still running",
+                exception.Message);
+            var profiles = await File.ReadAllLinesAsync(launches, timeout.Token);
+            Assert.Equal(3, profiles.Length);
+            Assert.Equal(3, profiles.Distinct(StringComparer.Ordinal).Count());
+            Assert.All(profiles, profile => Assert.False(Directory.Exists(profile), profile));
+            Assert.Equal((nuint)0, window.BrowserProcessId);
+        }
+        finally
+        {
+            await window.DisposeAsync();
+            ResetBrowserLaunch();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DoesNotRelaunchABrowserWhosePageWasRequested()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        var window = new WebUiWindow();
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            WebUiApplication.SetBrowserFolder(folder.FullName);
+            WebUiApplication.SetConnectionTimeout(2);
+            WebUiApplication.SetBrowserLaunchAttempts(2);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var show = window.ShowInBrowserAsync(Page("requested"), WebUiBrowser.Chrome, timeout.Token);
+            while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
+            // The page request stands in for a browser that started, then stalled later.
+            using (var client = new HttpClient())
+            {
+                await client.GetStringAsync(window.Url, timeout.Token);
+            }
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show);
+
+            Assert.Contains("on launch attempt 1 of 2: the page was requested", exception.Message);
+            Assert.Single(await File.ReadAllLinesAsync(launches, timeout.Token));
+        }
+        finally
+        {
+            await window.DisposeAsync();
+            ResetBrowserLaunch();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DesktopHostReportsAndLogsEachStalledLaunch()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+            var loggers = new ConfigurationValidationTests.RecordingLoggerFactory();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                BrowserFolder = folder.FullName,
+                ConnectionTimeout = TimeSpan.FromMilliseconds(500),
+                BrowserLaunchAttempts = 2,
+                DiagnosticSink = diagnostics.Enqueue,
+                LoggerFactory = loggers,
+            });
+            await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("never requested"),
+            });
+
+            var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
+                await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }));
+
+            Assert.Equal("presentation-connection-timeout", exception.Code);
+            Assert.Contains("on launch attempt 2 of 2: no request reached the server",
+                Assert.IsType<TimeoutException>(exception.InnerException).Message);
+            var stalled = Assert.Single(diagnostics, static item => item.Code == "browser-launch-stalled");
+            Assert.Equal(DesktopDiagnosticSeverity.Warning, stalled.Severity);
+            Assert.Contains("on launch attempt 1 of 2", stalled.Message);
+            Assert.Contains("with a fresh profile (attempt 2 of 2)", stalled.Message);
+            Assert.Contains(loggers.Entries, static entry =>
+                entry.Category == "Runic.Desktop" && entry.Level == LogLevel.Warning && entry.EventId.Id == 3004
+                && entry.Message.Contains("attempt 1 of 2", StringComparison.Ordinal));
+            var profiles = await File.ReadAllLinesAsync(launches);
+            Assert.Equal(2, profiles.Distinct(StringComparer.Ordinal).Count());
+            Assert.All(profiles, profile => Assert.False(Directory.Exists(profile), profile));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DesktopHostLaunchesAStalledBrowserOnceWhenRelaunchingIsDisabled()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await DesktopHost.StartAsync(new DesktopHostOptions { BrowserLaunchAttempts = 0 }));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await DesktopHost.StartAsync(new DesktopHostOptions { BrowserLaunchAttempts = 6 }));
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                BrowserFolder = folder.FullName,
+                ConnectionTimeout = TimeSpan.FromMilliseconds(500),
+                BrowserLaunchAttempts = 1,
+                DiagnosticSink = diagnostics.Enqueue,
+            });
+            await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("never requested"),
+            });
+
+            var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
+                await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }));
+
+            var timeout = Assert.IsType<TimeoutException>(exception.InnerException);
+            Assert.Contains("no request reached the server", timeout.Message);
+            Assert.DoesNotContain("attempt", timeout.Message);
+            Assert.DoesNotContain(diagnostics, static item => item.Code == "browser-launch-stalled");
+            Assert.Single(await File.ReadAllLinesAsync(launches));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    // A Chrome stand-in that records its profile, then runs without requesting anything.
+    [UnsupportedOSPlatform("windows")]
+    private static async Task WriteStallingBrowserAsync(string folder, string launches)
+    {
+        var executable = Path.Combine(folder, ChromeExecutableName());
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        await File.WriteAllTextAsync(executable, $$"""
+            #!/bin/sh
+            for arg do
+              case "$arg" in
+                --user-data-dir=*) profile=${arg#*=} ;;
+              esac
+            done
+            printf '%s\n' "$profile" >> '{{launches}}'
+            exec sleep 60
+            """);
+        File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    private static void ResetBrowserLaunch()
+    {
+        WebUiApplication.SetBrowserFolder(string.Empty);
+        WebUiApplication.SetConnectionTimeout(15);
+        WebUiApplication.SetBrowserLaunchAttempts(2);
     }
 
     [Fact]

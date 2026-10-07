@@ -358,7 +358,7 @@ public sealed class ConfigurationValidationTests
         }
     }
 
-    private sealed class RecordingLoggerFactory : ILoggerFactory
+    internal sealed class RecordingLoggerFactory : ILoggerFactory
     {
         public ConcurrentQueue<(string Category, LogLevel Level, EventId EventId, string Message)> Entries { get; } = new();
         public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);

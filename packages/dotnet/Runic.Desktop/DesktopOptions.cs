@@ -85,6 +85,21 @@ public sealed record DesktopHostOptions
     /// <summary>Gets the bridge authentication deadline.</summary>
     public TimeSpan ConnectionTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
+    internal const int DefaultBrowserLaunchAttempts = 2;
+
+    internal const int MaximumBrowserLaunchAttempts = 5;
+
+    /// <summary>
+    /// Gets how many times a browser presentation is launched when the browser starts but requests nothing.
+    /// </summary>
+    /// <remarks>
+    /// Each attempt waits the whole <see cref="ConnectionTimeout"/>. A browser that is still running but has
+    /// not requested its page by then is stopped and launched again, with a fresh profile unless the window
+    /// configures one, and a <c>browser-launch-stalled</c> diagnostic is reported. A page that was requested,
+    /// a browser that exited and embedded WebViews are never relaunched. Defaults to 2; 1 disables relaunching.
+    /// </remarks>
+    public int BrowserLaunchAttempts { get; init; } = DefaultBrowserLaunchAttempts;
+
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 

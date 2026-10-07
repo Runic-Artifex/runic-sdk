@@ -61,4 +61,5 @@ internal sealed record PresentationSurfaceRuntimeOptions(
     bool WaitForConnection,
     TimeSpan ConnectionTimeout,
     Action<DesktopDiagnostic>? DiagnosticSink,
-    Microsoft.Extensions.Logging.ILogger? Logger = null);
+    Microsoft.Extensions.Logging.ILogger? Logger = null,
+    int BrowserLaunchAttempts = DesktopHostOptions.DefaultBrowserLaunchAttempts);
