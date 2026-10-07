@@ -592,6 +592,7 @@ public sealed class WindowContentSession : IDisposable
         List<IDisposable> attachments = [];
         List<IRunicModelContextLease> modelLeases = [];
         var forgetFields = false;
+        List<Entry> forgotten = [];
         lock (_gate)
         {
             if (_disposed) return;
@@ -607,6 +608,7 @@ public sealed class WindowContentSession : IDisposable
             foreach (var entry in variants.Values)
             {
                 entry.Forgotten = true;
+                forgotten.Add(entry);
                 if (SuspendCore(entry) is { } attachment) attachments.Add(attachment);
                 if (TakeContextLease(entry) is { } lease) modelLeases.Add(lease);
                 if (entry.Dormant is { } dormant)
@@ -619,6 +621,14 @@ public sealed class WindowContentSession : IDisposable
         }
         foreach (var attachment in attachments) attachment.Dispose();
         foreach (var lease in modelLeases) lease.Dispose();
+        // Another flow (a Present replacing the property) may have begun
+        // detaching one of these entries first; Forget must not return while
+        // its routes are still bound, or a stale reference stays callable.
+        lock (_gate)
+        {
+            while (!_disposed && forgotten.Any(entry => entry.Detaching && !IsDetachingOnCurrentFlow(entry)))
+                Monitor.Wait(_gate);
+        }
         // Do not hold the session gate while the provider detaches its
         // PropertyChanged observers. Those observers participate in the model
         // turn and may be running user code synchronously.
@@ -738,7 +748,6 @@ public sealed class WindowContentSession : IDisposable
         var disposeDormant = false;
         lock (_gate)
         {
-            entry.Detaching = false;
             if (dormant is not null)
             {
                 if (_disposed || entry.Forgotten) disposeDormant = true;
@@ -748,11 +757,26 @@ public sealed class WindowContentSession : IDisposable
                     _dormantAttachments.Add(dormant);
                 }
             }
+            if (!disposeDormant) entry.Detaching = false;
             lease = entry.Attachment is null && !entry.Attaching ? TakeContextLease(entry) : null;
             Monitor.PulseAll(_gate);
         }
         try { lease?.Dispose(); }
-        finally { if (disposeDormant) dormant!.Dispose(); }
+        finally
+        {
+            if (disposeDormant)
+            {
+                try { dormant!.Dispose(); }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        entry.Detaching = false;
+                        Monitor.PulseAll(_gate);
+                    }
+                }
+            }
+        }
     }
 
     // Called by a dormant attachment after its final browser presentation
