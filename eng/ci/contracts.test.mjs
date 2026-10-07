@@ -98,15 +98,26 @@ test('all managed executable suites are assigned exactly once to workflow groups
 
 test('every executable application fixture runs in CI', () => {
   // Experiments are measured by hand; see tests/fixtures/application/experiments.
+  // A project counts as executable unless it declares itself a library, so an
+  // OutputType inherited from a Directory.Build.props file is covered too.
   const fixtures = readdirSync(resolve(root, 'tests/fixtures/application'), { recursive: true })
     .map(path => `tests/fixtures/application/${path.replaceAll('\\', '/')}`)
     .filter(path => path.endsWith('.csproj') && !/\/(bin|obj|experiments)\//.test(path)
-      && /<OutputType>Exe<\/OutputType>/.test(readFileSync(resolve(root, path), 'utf8')));
-  const workflows = readdirSync(resolve(root, '.github/workflows')).map(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8')).join('\n');
+      && !/<OutputType>Library<\/OutputType>/.test(readFileSync(resolve(root, path), 'utf8')));
+  // Only command lines count, not paths filters or comments.
+  const commands = readdirSync(resolve(root, '.github/workflows'))
+    .flatMap(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8').split('\n'))
+    .filter(line => /\bdotnet (run|publish|test)\b/.test(line));
+  const runByWorkflow = path => {
+    const directory = path.slice(0, path.lastIndexOf('/'));
+    return commands.some(line => line.includes(path) || new RegExp(`${directory.replaceAll('.', '\\.')}(?=[\\s"']|$)`).test(line));
+  };
   const suites = managedTests(root, 'linux').map(item => item.path);
   const listed = applicationFixtures.map(item => item.path);
+  assert.ok(fixtures.length >= 7, fixtures.join(', '));
   for (const path of fixtures)
-    assert.ok(suites.includes(path) || listed.includes(path) || workflows.includes(path.slice(0, path.lastIndexOf('/'))), path);
+    assert.ok(suites.includes(path) || listed.includes(path) || runByWorkflow(path), path);
+  assert.ok(!runByWorkflow('tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj'));
   for (const path of ['reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj',
     'reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj', 'reactiveui25-aot/ReactiveUi25AotProof.csproj'])
     assert.ok(listed.includes(`tests/fixtures/application/${path}`), path);

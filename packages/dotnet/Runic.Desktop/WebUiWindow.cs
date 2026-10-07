@@ -399,7 +399,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                     launched,
                     surfaceHosted: content is null,
                     cancellationToken,
-                    stalled => RelaunchStalledBrowserAsync(stalled, launchedBrowser, browserUrl, cancellationToken))
+                    (stalled, stalledConnection) => RelaunchStalledBrowserAsync(
+                        stalled, stalledConnection, launchedBrowser, browserUrl, cancellationToken))
                 .ConfigureAwait(false);
         }
 
@@ -448,13 +449,28 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return process;
     }
 
+    private enum RelaunchOutcome
+    {
+        // The stalled browser was stopped and a new one launched.
+        Relaunched,
+        // A request or authentication arrived meanwhile; keep waiting on the same launch.
+        KeepWaiting,
+        // The stalled browser exited by itself before it could be relaunched.
+        Exited,
+        // The presentation was closed, disposed or replaced meanwhile.
+        Closed,
+    }
+
+    private readonly record struct RelaunchResult(RelaunchOutcome Outcome, Task? Connection = null, Process? Process = null);
+
     // A browser that is running but has not requested anything after a whole
     // connection timeout is stuck in its own startup (#35); its page was never
-    // asked for, so starting it again is safe. Stop it, which deletes a generated
-    // profile, and launch it once more with a fresh one. Returns null when the
-    // presentation changed in the meantime, such as a concurrent close.
-    private async Task<(Task Connection, Process Process)?> RelaunchStalledBrowserAsync(
+    // asked for, so starting it again is safe. Under the lifecycle gate, confirm
+    // the stall still holds, stop the browser, which deletes a generated profile,
+    // and launch it once more with a fresh one.
+    private async Task<RelaunchResult> RelaunchStalledBrowserAsync(
         Process stalled,
+        Task stalledConnection,
         WebUiBrowser browser,
         Uri browserUrl,
         CancellationToken cancellationToken)
@@ -462,17 +478,52 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Volatile.Read(ref _disposed) != 0 || !ReferenceEquals(_browserProcess, stalled) || Url is null)
+            if (Volatile.Read(ref _disposed) != 0 || Url is null)
             {
-                return null;
+                return new(RelaunchOutcome.Closed);
             }
-            await StopBrowserAsync().ConfigureAwait(false);
+            if (!ReferenceEquals(_browserProcess, stalled))
+            {
+                // Without a current browser, it exited and its monitor already stopped it.
+                return new(_browserProcess is null ? RelaunchOutcome.Exited : RelaunchOutcome.Closed);
+            }
+            if (HasExited(stalled))
+            {
+                return new(RelaunchOutcome.Exited);
+            }
+            if (stalledConnection.IsCompleted
+                || (ConnectionProgress)Volatile.Read(ref _connectionProgress) != ConnectionProgress.NoRequest)
+            {
+                return new(RelaunchOutcome.KeepWaiting);
+            }
+            try
+            {
+                await StopBrowserAsync().ConfigureAwait(false);
+            }
+            catch (TimeoutException exception)
+            {
+                throw new TimeoutException(
+                    "The browser stalled before its first request and did not stop when it was closed for a relaunch.",
+                    exception);
+            }
             var process = LaunchBrowser(browser, browserUrl, out var connection);
-            return (connection, process);
+            return new(RelaunchOutcome.Relaunched, connection, process);
         }
         finally
         {
             _lifecycleGate.Release();
+        }
+    }
+
+    private static bool HasExited(Process process)
+    {
+        try
+        {
+            return process.HasExited;
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return true;
         }
     }
 
@@ -1592,12 +1643,34 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             // Waiting for the browser's main process does not wait for all of its
             // descendants. Give their profile handles a bounded interval to close.
             long cleanupStarted = Stopwatch.GetTimestamp();
-            while (!TryDeleteGeneratedProfile(profilePath)
+            var deleted = false;
+            while (!(deleted = TryDeleteGeneratedProfile(profilePath))
                 && Stopwatch.GetElapsedTime(cleanupStarted) < TimeSpan.FromSeconds(5))
             {
                 await Task.Delay(50).ConfigureAwait(false);
             }
+            if (!deleted)
+            {
+                _ = DeleteGeneratedProfileLaterAsync(profilePath);
+            }
         }
+    }
+
+    // On Windows a browser descendant can hold a profile file for longer than the
+    // bounded wait, for example after a stalled launch was killed. Keep retrying in
+    // the background so the profile is not leaked. WebUiApplication also keeps it
+    // registered for DeleteAllProfiles until a deletion succeeds.
+    private static async Task DeleteGeneratedProfileLaterAsync(string path)
+    {
+        for (var retry = 0; retry < 60; retry++)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            if (WebUiApplication.TryDeleteGeneratedProfile(path))
+            {
+                return;
+            }
+        }
+        Trace.TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.");
     }
 
     private static TaskCompletionSource NewCompletionSource() =>
@@ -1638,14 +1711,15 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         Process? browserProcess,
         bool surfaceHosted,
         CancellationToken cancellationToken,
-        Func<Process, Task<(Task Connection, Process Process)?>>? relaunchStalled = null)
+        Func<Process, Task, Task<RelaunchResult>>? relaunchStalled = null)
     {
         // Each attempt gets the whole connection timeout. Only a launched browser
         // that never requested anything is relaunched; see RelaunchStalledBrowserAsync.
         var attempts = browserProcess is null || relaunchStalled is null ? 1 : BrowserLaunchAttempts;
-        for (var attempt = 1; ; attempt++)
+        var attempt = 1;
+        while (true)
         {
-            string? stalled = null;
+            string stalled;
             try
             {
                 await connection.WaitAsync(ConnectionTimeout, cancellationToken).ConfigureAwait(false);
@@ -1654,14 +1728,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             catch (TimeoutException exception)
             {
                 // Describe the browser process before closing the presentation stops it.
-                var description = DescribeConnectionTimeout(browserProcess, attempt, attempts);
-                if (attempt < attempts && IsStalledBeforeFirstRequest(browserProcess))
+                stalled = DescribeConnectionTimeout(browserProcess, attempt, attempts);
+                if (attempt >= attempts || !IsStalledBeforeFirstRequest(browserProcess))
                 {
-                    stalled = description;
-                }
-                else
-                {
-                    var timeout = new TimeoutException(description, exception);
+                    var timeout = new TimeoutException(stalled, exception);
                     await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
                     throw timeout;
                 }
@@ -1672,59 +1742,70 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 throw;
             }
 
-            ReportStalledLaunch(stalled, attempt, attempts);
-            (Task Connection, Process Process)? relaunched;
+            RelaunchResult relaunch;
             try
             {
-                relaunched = await relaunchStalled!(browserProcess!).ConfigureAwait(false);
+                relaunch = await relaunchStalled!(browserProcess!, connection).ConfigureAwait(false);
             }
             catch
             {
                 await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
                 throw;
             }
-            if (relaunched is not { } next)
+            switch (relaunch.Outcome)
             {
-                throw new IOException("The window closed before bridge authentication completed.");
+                case RelaunchOutcome.KeepWaiting:
+                    // The page progressed after the stall check; this attempt continues.
+                    continue;
+                case RelaunchOutcome.Exited:
+                {
+                    var exited = new TimeoutException(
+                        DescribeConnectionTimeout(browserProcess, attempt, attempts, exitedBeforeRelaunch: true));
+                    await CloseFailedPresentationAsync(surfaceHosted).ConfigureAwait(false);
+                    throw exited;
+                }
+                case RelaunchOutcome.Closed:
+                    throw new IOException("The window closed before bridge authentication completed.");
             }
-            (connection, browserProcess) = next;
+            attempt++;
+            ReportStalledLaunch(stalled, attempt, attempts);
+            connection = relaunch.Connection!;
+            browserProcess = relaunch.Process!;
         }
     }
 
-    private bool IsStalledBeforeFirstRequest(Process? browserProcess)
-    {
-        if (browserProcess is null
-            || (ConnectionProgress)Volatile.Read(ref _connectionProgress) != ConnectionProgress.NoRequest)
-        {
-            return false;
-        }
-        try
-        {
-            return !browserProcess.HasExited;
-        }
-        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            return false;
-        }
-    }
+    // Checked again under the lifecycle gate before the relaunch commits.
+    private bool IsStalledBeforeFirstRequest(Process? browserProcess) =>
+        browserProcess is not null
+        && (ConnectionProgress)Volatile.Read(ref _connectionProgress) == ConnectionProgress.NoRequest
+        && !HasExited(browserProcess);
 
+    // Reported after the relaunch, outside the lifecycle gate, so a slow or failing
+    // sink cannot hold the stalled browser or its profile.
     private void ReportStalledLaunch(string description, int attempt, int attempts)
     {
         var profile = _profileConfigured ? "its configured profile" : "a fresh profile";
-        var message = $"{description} Relaunching it with {profile} (attempt {attempt + 1} of {attempts}).";
-        _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+        var message = $"{description} Relaunched it with {profile} (attempt {attempt} of {attempts}).";
+        try
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
             DesktopErrorCategory.TimedOut,
             BrowserLaunchStalledCode,
             message,
             Retryable: true,
             Remediation: "No action is needed if the relaunch connects. Set DesktopHostOptions.BrowserLaunchAttempts to 1 to disable relaunching.")
         {
-            Severity = DesktopDiagnosticSeverity.Warning,
-            Option = "DesktopHostOptions.BrowserLaunchAttempts",
-        });
+                Severity = DesktopDiagnosticSeverity.Warning,
+                Option = "DesktopHostOptions.BrowserLaunchAttempts",
+            });
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Trace.TraceWarning($"The diagnostic sink failed for {BrowserLaunchStalledCode}: {exception.GetType().FullName}");
+        }
         if (_runtimeOptions?.Logger is { } logger)
         {
-            DesktopLog.BrowserLaunchStalled(logger, attempt, attempts, ConnectionTimeout.TotalSeconds);
+            DesktopLog.BrowserLaunchStalled(logger, attempt - 1, attempts, ConnectionTimeout.TotalSeconds);
         }
         else
         {
@@ -1737,7 +1818,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Task CloseFailedPresentationAsync(bool surfaceHosted) =>
         surfaceHosted ? ClosePresentationAsync() : CloseCoreAsync(CancellationToken.None);
 
-    private string DescribeConnectionTimeout(Process? browserProcess, int attempt = 1, int attempts = 1)
+    private string DescribeConnectionTimeout(
+        Process? browserProcess, int attempt = 1, int attempts = 1, bool exitedBeforeRelaunch = false)
     {
         var progress = (ConnectionProgress)Volatile.Read(ref _connectionProgress) switch
         {
@@ -1760,6 +1842,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
             {
             }
+        }
+        if (exitedBeforeRelaunch && process.Length == 0)
+        {
+            process = "; the browser process exited before it could be relaunched";
         }
         var attemptText = attempts > 1 ? $" on launch attempt {attempt} of {attempts}" : string.Empty;
         return $"{presentation} did not connect within {ConnectionTimeout.TotalSeconds:0.###} seconds{attemptText}: {progress}{process}.";

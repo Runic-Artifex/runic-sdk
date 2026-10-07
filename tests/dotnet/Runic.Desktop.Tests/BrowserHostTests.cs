@@ -322,6 +322,93 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
     }
 
     [Fact]
+    public async Task KeepsWaitingWhenThePageIsRequestedWhileTheRelaunchWaitsForTheGate()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        var window = new WebUiWindow();
+        var gate = (SemaphoreSlim)typeof(WebUiWindow)
+            .GetField("_lifecycleGate", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .GetValue(window)!;
+        var held = false;
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            WebUiApplication.SetBrowserFolder(folder.FullName);
+            WebUiApplication.SetConnectionTimeout(1);
+            WebUiApplication.SetBrowserLaunchAttempts(2);
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            var show = window.ShowInBrowserAsync(Page("late"), WebUiBrowser.Chrome, timeout.Token);
+            while (!File.Exists(launches)) await Task.Delay(10, timeout.Token);
+            // Hold the gate across the timeout, so the stall is detected but the
+            // relaunch has to wait; the page request then arrives first.
+            await gate.WaitAsync(timeout.Token);
+            held = true;
+            await Task.Delay(TimeSpan.FromSeconds(1.5), timeout.Token);
+            using (var client = new HttpClient())
+            {
+                await client.GetStringAsync(window.Url, timeout.Token);
+            }
+            gate.Release();
+            held = false;
+
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => show);
+            Assert.Contains("on launch attempt 1 of 2: the page was requested", exception.Message);
+            Assert.Single(await File.ReadAllLinesAsync(launches, timeout.Token));
+        }
+        finally
+        {
+            if (held) gate.Release();
+            await window.DisposeAsync();
+            ResetBrowserLaunch();
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task AFailingDiagnosticSinkDoesNotStopTheRelaunch()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-stall-");
+        var launches = Path.Combine(folder.FullName, "launches");
+        try
+        {
+            await WriteStallingBrowserAsync(folder.FullName, launches);
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                BrowserFolder = folder.FullName,
+                ConnectionTimeout = TimeSpan.FromMilliseconds(500),
+                BrowserLaunchAttempts = 2,
+                DiagnosticSink = static diagnostic =>
+                {
+                    if (diagnostic.Code == "browser-launch-stalled") throw new InvalidOperationException("sink failed");
+                },
+            });
+            await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("never requested"),
+            });
+
+            var exception = await Assert.ThrowsAsync<DesktopException>(async () =>
+                await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Chrome }));
+
+            Assert.Contains("on launch attempt 2 of 2: no request reached the server",
+                Assert.IsType<TimeoutException>(exception.InnerException).Message);
+            var profiles = await File.ReadAllLinesAsync(launches);
+            Assert.Equal(2, profiles.Distinct(StringComparer.Ordinal).Count());
+            Assert.All(profiles, profile => Assert.False(Directory.Exists(profile), profile));
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task DesktopHostReportsAndLogsEachStalledLaunch()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -355,7 +442,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
             var stalled = Assert.Single(diagnostics, static item => item.Code == "browser-launch-stalled");
             Assert.Equal(DesktopDiagnosticSeverity.Warning, stalled.Severity);
             Assert.Contains("on launch attempt 1 of 2", stalled.Message);
-            Assert.Contains("with a fresh profile (attempt 2 of 2)", stalled.Message);
+            Assert.Contains("Relaunched it with a fresh profile (attempt 2 of 2)", stalled.Message);
             Assert.Contains(loggers.Entries, static entry =>
                 entry.Category == "Runic.Desktop" && entry.Level == LogLevel.Warning && entry.EventId.Id == 3004
                 && entry.Message.Contains("attempt 1 of 2", StringComparison.Ordinal));
