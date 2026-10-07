@@ -8,7 +8,9 @@ if (args.Length > 0 && args[0] == "--native-inhibition")
     return await InhibitionTests.RunAsync(args.Contains("--inspect-power-requests", StringComparer.Ordinal), args.Contains("--system-only", StringComparer.Ordinal));
 if (args.Length > 0 && args[0] is "--native-notifications" or "--notification-activation")
     return await NotificationTests.RunAsync(args);
+if (args.Length > 0 && args[0] == "--native-settings") return await SettingsTests.RunAsync();
 if (args.Length > 0) return NativeTests.Run(args);
+#pragma warning disable CA1416 // Portable checks of pure classification and XML helpers; nothing here calls native code.
 Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x80070490), 0) is PlatformResult<PlatformUnit>.Success);
 Check(WindowsDesktopNotifications.NotificationSettingResult(0, 0) is PlatformResult<PlatformUnit>.Success);
 foreach (var setting in new[] { 1, 2, 3, 4, 99 })
@@ -26,6 +28,7 @@ Check(WindowsDesktopNotifications.NotificationSettingResult(unchecked((int)0x800
 Console.WriteLine("PASS notification first-use eligibility, denial and backend failure classification");
 var xml = System.Xml.Linq.XElement.Parse(WindowsDesktopNotifications.ToastXml(new("saved", "<Title>", "A & B")
 { Actions = [new("open", "Open <result>")], ActivationUri = new Uri("runic-test://result/1") }));
+#pragma warning restore CA1416
 Check(xml.Descendants("text").First().Value == "<Title>");
 Check(xml.Descendants("action").Single().Attribute("activationType")?.Value == "protocol");
 Check(xml.Descendants("action").Single().Attribute("arguments")?.Value.Contains("runic-action=open") == true);
@@ -117,12 +120,12 @@ internal static partial class NativeTests
 {
     internal static int Run(string[] args)
     {
-        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native clipboard evidence requires Windows.");
+        if (!OperatingSystem.IsWindowsVersionAtLeast(8)) throw new PlatformNotSupportedException("Native clipboard evidence requires Windows.");
         if (args[0] == "--native-hold")
         {
-            if (Win32Clipboard.OpenClipboard(0) == 0) throw new InvalidOperationException("Could not hold clipboard");
+            if (!Win32Clipboard.Open(0)) throw new InvalidOperationException("Could not hold clipboard");
             try { Console.WriteLine("ready"); Console.Out.Flush(); Console.ReadLine(); }
-            finally { Win32Clipboard.CloseClipboard(); }
+            finally { Win32Clipboard.Close(); }
             return 0;
         }
         // A real HWND is required by EmptyClipboard/SetClipboardData; STATIC is a system class.
@@ -149,9 +152,9 @@ internal static partial class NativeTests
                 Assert(native.Read(window, text.Length) is PlatformResult<string?>.Success success && success.Value == text);
                 if (text.Length > 0) Assert(native.Read(window, text.Length - 1) is PlatformResult<string?>.Failed { Code: PlatformFailureCode.TooLarge });
             }
-            Assert(Win32Clipboard.OpenClipboard(window) != 0);
-            try { Assert(Win32Clipboard.EmptyClipboard() != 0); }
-            finally { Win32Clipboard.CloseClipboard(); }
+            Assert(Win32Clipboard.Open(window));
+            try { Assert(Win32Clipboard.Empty()); }
+            finally { Win32Clipboard.Close(); }
             Assert(native.Read(window, 0) is PlatformResult<string?>.Success { Value: null });
             using (var holder = Start("--native-hold"))
             {

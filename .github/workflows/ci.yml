@@ -465,6 +465,13 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --native-inhibition --system-only
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --native-inhibition --system-only
+      - name: Verify Windows settings read with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --native-settings
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --native-settings
       - name: Verify NativeAOT GTK clipboard
         if: runner.os == 'Linux'
         timeout-minutes: 3
