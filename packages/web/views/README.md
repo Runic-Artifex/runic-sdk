@@ -228,9 +228,10 @@ test("saving clears the dirty flag", async () => {
     },
   });
   const editor = await connectEditor();
-  const saved = editor.save();
+  const saved = editor.save(); // declares SaveFailure, so it resolves a BridgeOutcome
   await bridge.advance(250);
-  assert.equal((await saved).savedMessage, "Saved Groceries");
+  const outcome = await saved;
+  assert.equal(outcome.ok && outcome.value.savedMessage, "Saved Groceries");
 });
 ```
 

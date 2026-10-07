@@ -1,0 +1,9 @@
+{
+  "name": "@runic-artifex/notes-view-first-react",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && bun build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

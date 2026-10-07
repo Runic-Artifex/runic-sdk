@@ -2,6 +2,8 @@
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { mockTypedView, type MockBridge, type MockTypedView, type MockTypedViewSpec, type MockSetterHandler, type MockCommandHandler, type MockTypedOperation, type MockTypedOperationHandler } from "@runic-artifex/views/mock";
 import type { EditorClient, EditorState } from "./editor.js";
+import type { SaveFailure } from "./types.js";
+export type { SaveFailure } from "./types.js";
 
 /** The state of a mock Editor: the client state, with content as `{ kind, id }` and command state optional. */
 export type EditorMockState = Omit<EditorState, "canSave" | "isSaveExecuting"> & Partial<Pick<EditorState, "canSave" | "isSaveExecuting">>;
@@ -20,18 +22,18 @@ export interface EditorMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly save?: MockTypedOperationHandler<EditorMockState, void, void> | "manual";
+    readonly save?: MockTypedOperationHandler<EditorMockState, void, void, SaveFailure> | "manual";
   };
 }
 
 export interface EditorMock extends MockTypedView<EditorMockState, EditorClient, "editor"> {
-  readonly operations: { readonly save: readonly MockTypedOperation<void, void>[]; };
+  readonly operations: { readonly save: readonly MockTypedOperation<void, void, SaveFailure>[]; };
 }
 
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "NotesWindowViews.EditorViewModel:F4390477D2A9E5A3E3E93242829B29158C025D90D325F6A36BAC1E6731F9AB9C",
+  contract: "NotesWindowViews.EditorViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05",
   fields: {
     isDirty: { encode: (value: unknown) => { const typed = value as boolean; return typed; }, decode: (wire: unknown) => bridgeWire.boolean(wire) },
     savedMessage: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -45,10 +47,10 @@ const spec: MockTypedViewSpec = {
     setBody: { route: "SetBody", field: "body", read: (raw: unknown) => raw, checked: "WriteBody" },
   },
   commands: {
-    save: { route: "Save", available: "canSave" },
+    save: { route: "Save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
   },
   operations: {
-    save: { member: "Save" },
+    save: { member: "Save", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTaken": return { "$case": "titleTaken", ["existingTitle"]: bridgeUnion0["existingTitle"] }; default: throw new RangeError("Unknown union case."); } })(); } },
   },
 };
 

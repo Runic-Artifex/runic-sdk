@@ -2,8 +2,8 @@
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { mockTypedView, type MockBridge, type MockTypedView, type MockTypedViewSpec, type MockSetterHandler, type MockCommandHandler, type MockTypedOperation, type MockTypedOperationHandler, type MockTypedInteraction } from "@runic-artifex/views/mock";
 import type { EditorClient, EditorState } from "./editor.js";
-import type { DiscardNoteRequest } from "./types.js";
-export type { DiscardNoteRequest } from "./types.js";
+import type { DiscardNoteRequest, SaveFailure } from "./types.js";
+export type { DiscardNoteRequest, SaveFailure } from "./types.js";
 
 /** The state of a mock Editor: the client state, with content as `{ kind, id }` and command state optional. */
 export type EditorMockState = Omit<EditorState, "canSave" | "isSaveExecuting" | "canDiscard" | "isDiscardExecuting"> & Partial<Pick<EditorState, "canSave" | "isSaveExecuting" | "canDiscard" | "isDiscardExecuting">>;
@@ -24,20 +24,20 @@ export interface EditorMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
-    readonly save?: MockTypedOperationHandler<EditorMockState, void, void> | "manual";
+    readonly save?: MockTypedOperationHandler<EditorMockState, void, void, SaveFailure> | "manual";
     readonly discard?: MockTypedOperationHandler<EditorMockState, void, void> | "manual";
   };
 }
 
 export interface EditorMock extends MockTypedView<EditorMockState, EditorClient, "editor" | "editorCompact"> {
-  readonly operations: { readonly save: readonly MockTypedOperation<void, void>[]; readonly discard: readonly MockTypedOperation<void, void>[]; };
+  readonly operations: { readonly save: readonly MockTypedOperation<void, void, SaveFailure>[]; readonly discard: readonly MockTypedOperation<void, void>[]; };
   readonly interactions: { readonly confirmDiscard: MockTypedInteraction<DiscardNoteRequest, boolean>; };
 }
 
 const spec: MockTypedViewSpec = {
   kind: "editor",
   route: "editor",
-  contract: "NotesReactiveViews.EditorViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1",
+  contract: "NotesReactiveViews.EditorViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C",
   fields: {
     urlPathSegment: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
@@ -53,11 +53,11 @@ const spec: MockTypedViewSpec = {
     setBody: { route: "SetBody", field: "body", read: (raw: unknown) => raw, checked: "WriteBody" },
   },
   commands: {
-    save: { route: "Save", available: "canSave" },
+    save: { route: "Save", available: "canSave", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     discard: { route: "Discard", available: "canDiscard" },
   },
   operations: {
-    save: { member: "Save" },
+    save: { member: "Save", encodeFailure: (value: unknown) => { const typed = value as SaveFailure; return (() => { const bridgeUnion0: any = bridgeWire.encodeUnion(typed); switch (bridgeUnion0.$case) { case "titleRequired": return { "$case": "titleRequired" }; case "titleTooLong": return { "$case": "titleTooLong", ["maximumLength"]: bridgeUnion0["maximumLength"] }; default: throw new RangeError("Unknown union case."); } })(); } },
     discard: { member: "Discard" },
   },
   interactions: {

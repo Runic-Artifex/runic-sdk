@@ -32,7 +32,7 @@ function hydrate(wire: WireState): HomeState {
     greeting: bridgeWire.string(wire.greeting),
   };
 }
-const bridgeContract = "NotesReactiveViews.HomeViewModel:07C6D370C2A798E254B47B07D1D05B25E2A98E91664ECF1C7B0A4BE3BEC026D1";
+const bridgeContract = "NotesReactiveViews.HomeViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C";
 
 export function connectHome(): Promise<HomeClient> { return connectHomeAt("home", false); }
 async function connectHomeAt(route: string, mount = false): Promise<HomeClient> {

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [],
+    "paths": {
+      "react": ["../../../packages/web/react/node_modules/@types/react"],
+      "react-dom/client": ["../../../packages/web/react/node_modules/@types/react-dom/client"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

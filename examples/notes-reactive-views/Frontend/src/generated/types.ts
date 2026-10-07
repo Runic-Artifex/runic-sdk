@@ -11,3 +11,13 @@ export interface DiscardNoteRequest {
  * - `Preview`: The rendered note.
  */
 export type DocumentPane = "Editor" | "Preview";
+
+/** Why a note could not be saved. */
+export type SaveFailure =
+  | { readonly $case: "titleRequired" }
+  | ({ readonly $case: "titleTooLong" } & TitleTooLong);
+
+/** The title is longer than the notes store accepts. */
+export interface TitleTooLong {
+  readonly maximumLength: number;
+}

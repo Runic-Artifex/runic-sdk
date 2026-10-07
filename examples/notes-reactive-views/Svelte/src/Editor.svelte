@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EditorPageReference, EditorClient } from "../../Frontend/src/generated/editor.js";
   import { EditorWrites } from "../../Frontend/src/editor-writes.js";
+  import { describeSaveFailure } from "../../Frontend/src/save-failure.js";
   import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import { useCommand } from "../../../../packages/web/svelte/src/views/use-command.svelte.js";
 
@@ -18,9 +19,10 @@
     });
   });
 
-  const command = useCommand((name: "save" | "discard") => {
+  const command = useCommand(async (name: "save" | "discard") => {
     const view = editor.client;
-    return view && writes.run(() => view[name]());
+    if (!view) return undefined;
+    return name === "save" ? writes.run(() => view.save()) : writes.run(() => view.discard());
   });
   function write(command: (view: EditorClient) => Promise<unknown>) {
     const view = editor.client;
@@ -39,4 +41,5 @@
 {:else}
   <p>Connecting…</p>
 {/if}
-{#if command.error ?? writeError ?? editor.error}<p role="alert">{String(command.error ?? writeError ?? editor.error)}</p>{/if}
+{#if command.failure}<p role="alert">{describeSaveFailure(command.failure)}</p>
+{:else if command.error ?? writeError ?? editor.error}<p role="alert">{String(command.error ?? writeError ?? editor.error)}</p>{/if}

@@ -7,8 +7,18 @@
  */
 export type DocumentPane = "Editor" | "Preview";
 
+/** Why a note could not be saved. */
+export type SaveFailure =
+  | { readonly $case: "titleRequired" }
+  | ({ readonly $case: "titleTaken" } & TitleTaken);
+
 /** A saved note listed on the home page. */
 export interface SavedNote {
   readonly title: string;
   readonly excerpt: string;
+}
+
+/** Another saved note already has the title. */
+export interface TitleTaken {
+  readonly existingTitle: string;
 }

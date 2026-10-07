@@ -4,7 +4,9 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { BridgeError } from "@runic-artifex/views";
-import { createMockBridge, installMockBridge, type MockBridge } from "@runic-artifex/views/mock";
+import { createMockBridge, installMockBridge, mockFailure, type MockBridge } from "@runic-artifex/views/mock";
+import type { SaveFailure } from "../src/generated/editor.js";
+import { describeSaveFailure } from "../src/save-failure.js";
 import { mountContent } from "../src/content.js";
 import { EditorWrites } from "../src/editor-writes.js";
 import { connectEditor } from "../src/generated/editor.js";
@@ -64,6 +66,24 @@ test("saving stays pending until the virtual clock passes the storage delay", as
   await bridge.advance(1);
   await save;
   assert.deepEqual([client.snapshot.isDirty, client.snapshot.savedMessage], [false, "Saved Groceries"]);
+  client.dispose();
+});
+
+test("Save's declared failures resolve its outcome with the typed failure", async () => {
+  const editor = mockEditor(bridge, {
+    state: { ...draft, title: " " },
+    commands: { save: () => { throw mockFailure<SaveFailure>({ $case: "titleRequired" }); } },
+  });
+  const client = await connectEditor();
+  const missing = await client.save();
+  assert.equal(missing.ok, false);
+  if (!missing.ok) assert.equal(describeSaveFailure(missing.failure), "A note needs a title.");
+  editor.failNext("save", { kind: "domain-failed", failure: { $case: "titleTaken", existingTitle: "Groceries" } });
+  const taken = await client.save();
+  assert.equal(taken.ok ? "" : describeSaveFailure(taken.failure), 'Another note is already called "Groceries".');
+  // Unexpected failures still reject.
+  editor.failNext("save", { kind: "failed", message: "Disk full." });
+  await assert.rejects(client.save(), (error: unknown) => error instanceof BridgeError && error.kind === "failed");
   client.dispose();
 });
 

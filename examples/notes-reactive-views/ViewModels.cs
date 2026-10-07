@@ -116,7 +116,7 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
         ILoggerFactory loggerFactory)
     {
         HostScreen = host;
-        _editor = new EditorViewModel(this, modelContext, scheduler);
+        _editor = new EditorViewModel(this, modelContext, scheduler, loggerFactory.CreateLogger<EditorViewModel>());
         _preview = new PreviewViewModel(this, _editor);
         Router = new RoutingState(scheduler);
         _pane = new ReactiveRoutedRegion<IDocumentPane>(Router, loggerFactory);
@@ -157,17 +157,30 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
 
 public sealed record DiscardNoteRequest(string Title, int BodyLength);
 
+/// <summary>Why a note could not be saved.</summary>
+[RunicUnion(typeof(TitleRequired), typeof(TitleTooLong))]
+public abstract record SaveFailure;
+/// <summary>The note has no title.</summary>
+[RunicUnionCase("titleRequired")]
+public sealed record TitleRequired : SaveFailure;
+/// <summary>The title is longer than the notes store accepts.</summary>
+[RunicUnionCase("titleTooLong")]
+public sealed record TitleTooLong(int MaximumLength) : SaveFailure;
+
 public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatableViewModel, IDisposable
 {
     private readonly IRunicModelContext _modelContext;
+    private const int MaximumTitleLength = 120;
     private readonly IDisposable _fallbackDiscardHandler;
+    private readonly IDisposable _saveExceptions;
+    private readonly IDisposable _discardExceptions;
     private string _title = "Untitled";
     private string _body = "";
     private string _savedMessage = "";
     private int _activationCount;
     private int _deactivationCount;
 
-    public EditorViewModel(DocumentViewModel host, IRunicModelContext modelContext, ISequencer scheduler)
+    public EditorViewModel(DocumentViewModel host, IRunicModelContext modelContext, ISequencer scheduler, ILogger logger)
     {
         HostScreen = host;
         _modelContext = modelContext;
@@ -180,6 +193,10 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
         });
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, scheduler);
         DiscardCommand = ReactiveCommand.CreateFromTask(DiscardAsync, scheduler);
+        // A ReactiveCommand also reports its exceptions on ThrownExceptions. The
+        // Bridge already delivered declared failures; log anything else.
+        _saveExceptions = SaveCommand.ObserveBridgeExceptions(logger);
+        _discardExceptions = DiscardCommand.ObserveBridgeExceptions(logger);
         this.WhenActivated((Action<Action<IDisposable>>)(dispose =>
         {
             ActivationCount++;
@@ -196,13 +213,16 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
     public int ActivationCount { get => _activationCount; private set => this.RaiseAndSetIfChanged(ref _activationCount, value); }
     public int DeactivationCount { get => _deactivationCount; private set => this.RaiseAndSetIfChanged(ref _deactivationCount, value); }
     public Interaction<DiscardNoteRequest, bool> ConfirmDiscard { get; } = new();
+    /// <summary>Saves the note. A missing or overlong title is a declared failure.</summary>
+    [RunicFailure(typeof(SaveFailure))]
     public ReactiveCommand<RxVoid, RxVoid> SaveCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> DiscardCommand { get; }
 
     private async Task SaveAsync(CancellationToken token)
     {
         var input = await _modelContext.InvokeAsync(() => new { Title, Body }, token);
-        if (string.IsNullOrWhiteSpace(input.Title)) throw new ArgumentException("A note needs a title.");
+        if (string.IsNullOrWhiteSpace(input.Title)) throw new RunicFailureException(new TitleRequired());
+        if (input.Title.Length > MaximumTitleLength) throw new RunicFailureException(new TitleTooLong(MaximumTitleLength));
         await Task.Delay(120, token);
         await _modelContext.InvokeAsync(() => SavedMessage = $"Saved {input.Title}", token);
     }
@@ -232,6 +252,8 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
     public void Dispose()
     {
         _fallbackDiscardHandler.Dispose();
+        _saveExceptions.Dispose();
+        _discardExceptions.Dispose();
         SaveCommand.Dispose();
         DiscardCommand.Dispose();
     }

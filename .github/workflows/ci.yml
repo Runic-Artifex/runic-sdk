@@ -227,6 +227,12 @@ jobs:
         run: |
           (cd examples/notes-view-first/Effect && bun run --bun build)
           RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
+      - name: Exercise the React and Vue Notes editor variants
+        run: |
+          (cd examples/notes-view-first/React && bun run --bun build)
+          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
+          (cd examples/notes-view-first/Vue && bun run --bun build)
+          RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
       - name: Exercise Svelte and Angular View outlets
         run: |
           (cd examples/notes-view-first/Svelte && bun install --frozen-lockfile && bun run build)

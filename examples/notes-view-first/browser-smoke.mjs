@@ -38,6 +38,19 @@ try {
   await change("#document-pane textarea", "Line one");
   await retry(async () => (await snapshot(`content${editorId}`)).state?.title === "Draft");
 
+  // Save declares SaveFailure: a missing title shows the frontend's typed text.
+  const alerts = 'Array.from(document.querySelectorAll("#document-pane [role=alert]")).map(alert => alert.textContent.trim()).filter(Boolean)';
+  await change("#document-pane input", " ");
+  await retry(async () => (await snapshot(`content${editorId}`)).state?.title === " ");
+  await click("[data-save]");
+  try {
+    await retry(async () => (await query(alerts)).includes("A note needs a title."));
+  } catch (error) {
+    throw new Error(`The declared failure was not shown: ${JSON.stringify(await query(alerts))}; ${error}`);
+  }
+  await change("#document-pane input", "Draft");
+  await retry(async () => (await snapshot(`content${editorId}`)).state?.title === "Draft");
+
   await click("[data-pane=preview]");
   await retry(async () => await query('document.querySelector("#document-pane h2")?.textContent') === "Draft");
   if (await query('document.querySelector("#document-pane p")?.textContent') !== "Line one")
@@ -93,7 +106,7 @@ try {
     if (host.exitCode !== 0 || !output.includes("WEB_MOUNT_BROWSER_OK"))
       throw new Error(`Web mount verification failed: ${output}\n${errors}`);
   }
-  console.log("NOTES_COMPOSED_OK|sidebar|nested-pane|modal|discard|async-detach|reload" + (process.env.RUNIC_VERIFY_WEB_MOUNT === "1" ? "|web-mount" : ""));
+  console.log("NOTES_COMPOSED_OK|sidebar|nested-pane|declared-failure|modal|discard|async-detach|reload" + (process.env.RUNIC_VERIFY_WEB_MOUNT === "1" ? "|web-mount" : ""));
 } finally {
   try { await browser?.close(); }
   finally {

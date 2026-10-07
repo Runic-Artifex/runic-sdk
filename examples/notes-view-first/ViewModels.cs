@@ -111,6 +111,16 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
 /// <summary>A saved note listed on the home page.</summary>
 public sealed record SavedNote(string Title, string Excerpt);
 
+/// <summary>Why a note could not be saved.</summary>
+[RunicUnion(typeof(TitleRequired), typeof(TitleTaken))]
+public abstract record SaveFailure;
+/// <summary>The note has no title.</summary>
+[RunicUnionCase("titleRequired")]
+public sealed record TitleRequired : SaveFailure;
+/// <summary>Another saved note already has the title.</summary>
+[RunicUnionCase("titleTaken")]
+public sealed record TitleTaken(string ExistingTitle) : SaveFailure;
+
 /// <summary>The notes saved in one window, most recently saved first.</summary>
 public sealed class NotesLibrary
 {
@@ -119,6 +129,8 @@ public sealed class NotesLibrary
     public NotesLibrary() => Notes = new(_notes);
 
     public ReadOnlyObservableCollection<SavedNote> Notes { get; }
+
+    public bool Contains(string title) => _notes.Any(note => note.Title == title);
 
     // Saving a title again replaces its row and moves it to the top, so the
     // browser receives keyed collection changes rather than a new list.
@@ -210,12 +222,17 @@ public partial class EditorViewModel(INotesStorage storage, NotesLibrary library
         SavedMessage = "Changes discarded.";
     }
 
-    [RelayCommand]
+    /// <summary>Saves the note. A missing title, or the title of another saved note, is a declared failure.</summary>
+    [RelayCommand, RunicFailure(typeof(SaveFailure))]
     private async Task SaveAsync(CancellationToken token)
     {
         var title = Title;
         if (string.IsNullOrWhiteSpace(title))
-            throw new ArgumentException("A note needs a title.");
+            throw new RunicFailureException(new TitleRequired());
+        // Saving under this editor's own saved title replaces that note; taking
+        // the title of another note would overwrite it.
+        if (title != _savedTitle && library.Contains(title))
+            throw new RunicFailureException(new TitleTaken(title));
         var body = Body;
         await storage.SaveAsync(title, body, token);
         _savedTitle = title;
