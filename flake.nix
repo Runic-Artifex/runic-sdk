@@ -45,20 +45,6 @@
             ./nixos/portal-container/kde.nix
           ];
         };
-        runic-portal-kde = nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
-          specialArgs.runicSource = self.outPath;
-          specialArgs.runicDevShell = self.devShells.x86_64-linux.default;
-          specialArgs.portalDesktop = "kde";
-          modules = [ ./nixos/portal-vm/kde.nix ];
-        };
-        runic-portal-gnome = nixpkgs.lib.nixosSystem {
-          system = "x86_64-linux";
-          specialArgs.runicSource = self.outPath;
-          specialArgs.runicDevShell = self.devShells.x86_64-linux.default;
-          specialArgs.portalDesktop = "gnome";
-          modules = [ ./nixos/portal-vm/gnome.nix ];
-        };
       };
 
       # Opt-in CPU transcription for captured test-desktop speech; keep it out of

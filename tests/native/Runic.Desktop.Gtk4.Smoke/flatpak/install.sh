@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run only in a disposable graphical test guest with GNOME Platform 50 installed.
+# Run only inside a disposable Runic test container with GNOME Platform 50 installed.
 set -euo pipefail
 binary=$(realpath "${1:?Pass the portable test executable}")
 backend=${2:-wayland}

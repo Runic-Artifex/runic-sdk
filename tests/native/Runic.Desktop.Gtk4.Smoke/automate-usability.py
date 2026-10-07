@@ -556,7 +556,7 @@ class Suite:
         sink = self.args.audio_sink
         if sink is None:
             if len(sinks) != 1:
-                raise RuntimeError("Expected one VM audio sink; choose one explicitly with --audio-sink")
+                raise RuntimeError("Expected one test-desktop audio sink; choose one explicitly with --audio-sink")
             sink = sinks[0]
         if sink not in sinks:
             raise RuntimeError("Requested audio sink does not exist")
@@ -844,8 +844,8 @@ if __name__ == "__main__":
         args.command.pop(0)
     if not args.command:
         parser.error("A fixture launch command is required")
-    if Path("/etc/hostname").read_text().strip() not in {"runic-portal", "runic-headless-gnome", "runic-headless-kde"}:
-        parser.error("Run only inside a disposable Runic test VM or container")
+    if Path("/etc/hostname").read_text().strip() not in {"runic-headless-gnome", "runic-headless-kde"}:
+        parser.error("Run only inside a disposable Runic test container")
     desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
     if (args.x11 or args.kde_keyboard or args.kde_scaling or args.kde_pickers) and desktop != "KDE":
         parser.error("KDE adapters require the KDE desktop")
