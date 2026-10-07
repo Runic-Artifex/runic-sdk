@@ -3,7 +3,10 @@ import { BridgeError, BridgeOperationUncertainError, type BridgeFailureDetail } 
 /** A failure or terminal event the Views runtime observed. */
 export interface BridgeDiagnostic {
   readonly kind: "error" | "operation";
-  /** A `BridgeErrorKind`, `uncertain`, `timedOut`, or `reported` for an application error the runtime caught. */
+  /**
+   * A `BridgeErrorKind`, `uncertain`, `timedOut`, `protocol` for a .NET host that speaks
+   * another Views protocol version, or `reported` for an application error the runtime caught.
+   */
   readonly code: string;
   readonly message: string;
   /** The Bridge route, such as `counterIncrement`, when known. */

@@ -289,6 +289,20 @@ internal sealed class BridgeOperationRouter : IDisposable
             BridgeDiagnostics.Write(writer, status.FailureDetail);
             writer.WriteEndObject();
         }
+        if (status.Kind is BridgeOperationStatusKind.DomainFailed)
+        {
+            // No detail (D-1): the declared failure is the contract. A failure
+            // the retention budget dropped is reported as its delivery.
+            if (status.DomainFailure is { } failure)
+            {
+                writer.WritePropertyName("failure");
+                writer.WriteRawValue(failure, skipInputValidation: true);
+            }
+            if ((status.FailureDelivery ?? status.Result?.DeliveryFailure) is { } failureDelivery)
+                WriteDelivery(writer, failureDelivery);
+            if (status.Result?.Kind is BridgeOperationResultKind.Stream)
+                writer.WriteBoolean("stream", true);
+        }
         if (status.Kind is BridgeOperationStatusKind.Succeeded && status.Result is { } result)
         {
             if (result.Kind is BridgeOperationResultKind.Value && result.EncodedJson is { } encodedJson)
@@ -296,17 +310,19 @@ internal sealed class BridgeOperationRouter : IDisposable
                 writer.WritePropertyName("result");
                 writer.WriteRawValue(encodedJson, skipInputValidation: true);
             }
-            if (result.DeliveryFailure is { } delivery)
-            {
-                writer.WritePropertyName("delivery");
-                writer.WriteStartObject();
-                writer.WriteString("kind", Wire(delivery.Kind));
-                writer.WriteString("message", delivery.Message);
-                writer.WriteEndObject();
-            }
+            if (result.DeliveryFailure is { } delivery) WriteDelivery(writer, delivery);
             if (result.Kind is BridgeOperationResultKind.Stream)
                 writer.WriteBoolean("stream", true);
         }
+        writer.WriteEndObject();
+    }
+
+    private static void WriteDelivery(Utf8JsonWriter writer, BridgeOperationDeliveryFailure delivery)
+    {
+        writer.WritePropertyName("delivery");
+        writer.WriteStartObject();
+        writer.WriteString("kind", Wire(delivery.Kind));
+        writer.WriteString("message", delivery.Message);
         writer.WriteEndObject();
     }
 
@@ -330,7 +346,8 @@ internal sealed class BridgeOperationRouter : IDisposable
         return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
     }
     private static string Wire(BridgeOperationAdmissionKind kind) => kind.ToString().ToLowerInvariant();
-    private static string Wire(BridgeOperationStatusKind kind) => kind.ToString().ToLowerInvariant();
+    private static string Wire(BridgeOperationStatusKind kind) =>
+        kind is BridgeOperationStatusKind.DomainFailed ? "domain-failed" : kind.ToString().ToLowerInvariant();
     private static string Wire(BridgeOperationDeliveryFailureKind kind) => kind switch
     {
         BridgeOperationDeliveryFailureKind.ResultTooLarge => "result-too-large",

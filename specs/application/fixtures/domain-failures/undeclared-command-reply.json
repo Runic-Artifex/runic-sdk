@@ -1,0 +1,6 @@
+{
+  "description": "A RunicFailureException whose value is not the declared type is an unexpected failure: the reply is failed (without detail in production) and the client rejects with BridgeError(\"failed\").",
+  "scenario": "undeclared-command-reply",
+  "wire": { "ok": false, "state": {}, "error": { "kind": "failed", "message": "Submit failed." } },
+  "client": { "declared": true, "error": { "kind": "failed", "message": "Submit failed." } }
+}

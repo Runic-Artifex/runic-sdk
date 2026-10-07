@@ -122,6 +122,9 @@ internal static class BridgeCallOutcome
     internal const string Duplicate = "duplicate";
     internal const string Expired = "expired";
     internal const string DeliveryFailed = "delivery_failed";
+    // A declared failure: an expected outcome, so the span status stays Unset,
+    // it has no error.type and runic.bridge.failures does not count it.
+    internal const string DomainFailed = "domain_failed";
 
     // An operation admission names why it did not start; only Accepted is ok.
     internal static string Of(BridgeOperationAdmissionKind kind, string? reason) => kind switch
@@ -234,6 +237,19 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1005, EventName = "BridgeOperationCancellationCallbackFailed", Level = LogLevel.Warning,
         Message = "A Bridge operation cancellation callback failed with {ErrorType}.")]
     internal static partial void OperationCancellationCallbackFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 1006, EventName = "BridgeCommandDomainFailed", Level = LogLevel.Debug,
+        Message = "Bridge command {Model}.{Member} on route {Route} failed with its declared failure {FailureType}.")]
+    internal static partial void CommandDomainFailed(ILogger logger, Exception? exception, string model, string member, string route, string failureType);
+
+    [LoggerMessage(EventId = 1007, EventName = "BridgeOperationDomainFailed", Level = LogLevel.Debug,
+        Message = "Bridge operation {Member} failed with its declared failure {FailureType}.")]
+    internal static partial void OperationDomainFailed(ILogger logger, Exception? exception, string member, string failureType);
+
+    [LoggerMessage(EventId = 1008, EventName = "BridgeDomainFailureNotEncoded", Level = LogLevel.Error,
+        Message = "Bridge command {Model}.{Member} on route {Route} threw a RunicFailureException with {FailureType} that was reported as failed: {Reason}.")]
+    internal static partial void DomainFailureNotEncoded(ILogger logger, Exception? exception, string model, string member, string route,
+        string failureType, string reason);
 
     [LoggerMessage(EventId = 1010, EventName = "BridgeSnapshotCaptureFailed", Level = LogLevel.Error,
         Message = "Bridge snapshot capture for {Model} on route {Route} failed with {ErrorType}.")]

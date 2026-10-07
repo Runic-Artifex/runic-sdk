@@ -147,3 +147,6 @@ static Runic.Application.Testing.RunicCollectionChange.operator !=(Runic.Applica
 static Runic.Application.Testing.RunicCollectionChange.operator ==(Runic.Application.Testing.RunicCollectionChange? left, Runic.Application.Testing.RunicCollectionChange? right) -> bool
 static Runic.Application.Testing.RunicOperationStatus.operator !=(Runic.Application.Testing.RunicOperationStatus? left, Runic.Application.Testing.RunicOperationStatus? right) -> bool
 static Runic.Application.Testing.RunicOperationStatus.operator ==(Runic.Application.Testing.RunicOperationStatus? left, Runic.Application.Testing.RunicOperationStatus? right) -> bool
+Runic.Application.Testing.RunicCallReply<TModel>.Failure.get -> System.Text.Json.JsonElement?
+Runic.Application.Testing.RunicOperationStatus.Failure.get -> System.Text.Json.JsonElement?
+Runic.Application.Testing.RunicOperationStatus.Failure.init -> void

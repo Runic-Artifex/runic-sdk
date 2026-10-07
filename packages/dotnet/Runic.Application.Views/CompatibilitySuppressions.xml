@@ -10,6 +10,20 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.CommandDescriptor`1.#ctor(System.String,System.Func{`0,System.Object},System.Func{`0,System.Threading.CancellationToken,System.Object,System.Threading.Tasks.Task},System.Func{Runic.Application.Views.IBridgeArguments,System.Object},System.Func{`0,System.Threading.CancellationToken,System.Object,System.Threading.Tasks.Task{Runic.Application.Views.BridgeOperationResult}},System.Func{System.Object,System.String},System.Func{`0,System.Object,System.Boolean},System.Func{`0,System.Action,System.IDisposable},System.Func{Runic.Application.Views.BridgeOperationStream},System.Func{`0,Runic.Application.Views.BridgeOperationExecution,System.Threading.CancellationToken,System.Object,System.Threading.Tasks.Task{Runic.Application.Views.BridgeOperationResult}})</Target>
+    <Left>lib/net10.0/Runic.Application.Views.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.CommandDescriptor`1.Deconstruct(System.String@,System.Func{`0,System.Object}@,System.Func{`0,System.Threading.CancellationToken,System.Object,System.Threading.Tasks.Task}@,System.Func{Runic.Application.Views.IBridgeArguments,System.Object}@,System.Func{`0,System.Threading.CancellationToken,System.Object,System.Threading.Tasks.Task{Runic.Application.Views.BridgeOperationResult}}@,System.Func{System.Object,System.String}@,System.Func{`0,System.Object,System.Boolean}@,System.Func{`0,System.Action,System.IDisposable}@,System.Func{Runic.Application.Views.BridgeOperationStream}@,System.Func{`0,Runic.Application.Views.BridgeOperationExecution,System.Threading.CancellationToken,System.Object,System.Threading.Tasks.Task{Runic.Application.Views.BridgeOperationResult}}@)</Target>
+    <Left>lib/net10.0/Runic.Application.Views.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Application.Views.ViewModelBridge`1.#ctor(Runic.Application.Views.IBridgeTransport,`0,System.String,Runic.Application.Views.BridgeSnapshotWriter{`0},Runic.Application.Views.PropertyDescriptor{`0}[],Runic.Application.Views.CheckedPropertyDescriptor{`0}[],Runic.Application.Views.CommandDescriptor{`0}[],System.String,Runic.Application.Views.WindowContentSession,Runic.Application.Views.BridgeInteractionDescriptor{`0}[],Runic.Application.Views.BridgeDataSubscriptionMember[])</Target>
     <Left>lib/net10.0/Runic.Application.Views.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.dll</Right>

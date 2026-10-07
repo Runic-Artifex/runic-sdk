@@ -102,9 +102,12 @@ already have. A `RunicViewDriver<T>` has:
 - `ExecuteAsync(vm => vm.SaveCommand, argumentJson)`, which waits for an
   asynchronous command, and `CanExecute(command, argumentJson)` for commands with
   an argument. A reply has `Ok`, `ErrorKind`, `ErrorMessage` and `State`;
-  `EnsureOk()` throws for a failed call.
+  `EnsureOk()` throws for a failed call. A command's declared failure
+  (`[RunicFailure]`) replies with `ErrorKind` `domain-failed` and the encoded
+  failure as `Failure`, such as `{"$case":"titleRequired"}`.
 - `Start(command, argumentJson, requestId)` for a recoverable operation, with
-  `Status()`, `WaitAsync()` and `Cancel()`.
+  `Status()`, `WaitAsync()` and `Cancel()`. A status has `Kind`, `Result`,
+  `ErrorMessage` and, for a `domain-failed` operation, `Failure`.
 - `Write(vm => vm.Title, value, expectedVersion)` for a checked write. It uses the
   current value and version as the baseline unless `expectedVersion` is given, so a
   stale version tests the `conflict` receipt.

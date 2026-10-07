@@ -1,4 +1,5 @@
 import type { ViewClient } from "./connection.js";
+import { isBridgeOutcome, type BridgeOutcome } from "./outcome.js";
 
 /** Anything that connects a client: a generated page reference or `{ connect: connect<Name> }`. */
 export interface ViewConnector<TClient> {
@@ -154,25 +155,40 @@ export function createViewController<TClient extends ViewClient>(options: ViewCo
 }
 
 /** One consistent reading of a {@link CommandController}. */
-export interface CommandState {
+export interface CommandState<TFailure = never> {
   /** True while at least one run is in flight. */
   readonly pending: boolean;
-  /** Why the most recently started run failed, or undefined while it runs or after it succeeded. */
+  /**
+   * Why the most recently started run failed unexpectedly, or undefined while it
+   * runs or after it succeeded. A declared failure is `failure` instead.
+   */
   readonly error: unknown;
+  /**
+   * The declared failure of the most recently started run, for a command that
+   * resolves a `BridgeOutcome`; undefined while it runs or after it succeeded.
+   */
+  readonly failure: TFailure | undefined;
 }
 
+type OutcomeOf<T> = Extract<Extract<NonNullable<T>, BridgeOutcome<unknown, unknown>>, { readonly ok: false }>;
+/** The declared failure type of a command result: `F` for a `BridgeOutcome<_, F>`, otherwise `never`. */
+export type BridgeOutcomeFailure<T> = [OutcomeOf<T>] extends [never] ? never
+  : OutcomeOf<T> extends { readonly failure: infer F } ? F : never;
+
 /** Runs a command and tracks whether it is pending and why it last failed. */
-export interface CommandController<TArgs extends readonly unknown[], TResult> {
-  readonly current: CommandState;
+export interface CommandController<TArgs extends readonly unknown[], TResult, TFailure = BridgeOutcomeFailure<TResult>> {
+  readonly current: CommandState<TFailure>;
   /** Calls `listener` after each change of `current`, until the returned function is called. */
   subscribe(listener: () => void): () => void;
   /**
-   * Runs the command. Starting a run clears `error`. Resolves to the command's
-   * result, or to `undefined` after a failure. `error` holds the failure only
-   * if no later run started meanwhile. It never rejects, so callers need no try/catch.
+   * Runs the command. Starting a run clears `error` and `failure`. Resolves to
+   * the command's result, including a `BridgeOutcome` with a declared failure,
+   * or to `undefined` after an unexpected failure. `error` and `failure` are
+   * set only if no later run started meanwhile. It never rejects, so callers
+   * need no try/catch.
    */
   run(...args: TArgs): Promise<TResult | undefined>;
-  /** Clears `error`. */
+  /** Clears `error` and `failure`. */
   reset(): void;
   /** Stops publishing; runs still in flight settle without updating state. */
   dispose(): void;
@@ -185,14 +201,15 @@ export interface CommandController<TArgs extends readonly unknown[], TResult> {
  */
 export function createCommandController<TArgs extends readonly unknown[], TResult>(
   command: (...args: TArgs) => TResult | PromiseLike<TResult>,
-): CommandController<TArgs, Awaited<TResult>> {
+): CommandController<TArgs, Awaited<TResult>, BridgeOutcomeFailure<Awaited<TResult>>> {
+  type TFailure = BridgeOutcomeFailure<Awaited<TResult>>;
   const listeners = new Set<() => void>();
-  let current: CommandState = { pending: false, error: undefined };
+  let current: CommandState<TFailure> = { pending: false, error: undefined, failure: undefined };
   let running = 0;
   let latest = 0;
   let disposed = false;
 
-  function publish(next: Partial<CommandState>): void {
+  function publish(next: Partial<CommandState<TFailure>>): void {
     if (disposed) return;
     current = { ...current, ...next };
     for (const listener of [...listeners]) listener();
@@ -207,23 +224,27 @@ export function createCommandController<TArgs extends readonly unknown[], TResul
     async run(...args): Promise<Awaited<TResult> | undefined> {
       running++;
       const run = ++latest;
-      publish({ pending: true, error: undefined });
+      publish({ pending: true, error: undefined, failure: undefined });
       let failure: { readonly cause: unknown } | undefined;
+      let declared: { readonly failure: TFailure } | undefined;
       try {
-        return await command(...args);
+        const result = await command(...args);
+        if (isBridgeOutcome(result) && !result.ok) declared = { failure: result.failure as TFailure };
+        return result;
       } catch (cause) {
         failure = { cause };
         return undefined;
       } finally {
         running--;
-        // A run superseded by a later one does not report its failure, so an
-        // older failure cannot replace the outcome of a newer run.
+        // A run superseded by a later one reports neither its failure nor its
+        // declared failure, so an older run cannot replace a newer outcome.
         if (failure && run === latest) publish({ pending: running !== 0, error: failure.cause });
+        else if (declared && run === latest) publish({ pending: running !== 0, failure: declared.failure });
         else if (running === 0) publish({ pending: false });
       }
     },
     reset() {
-      if (current.error !== undefined) publish({ error: undefined });
+      if (current.error !== undefined || current.failure !== undefined) publish({ error: undefined, failure: undefined });
     },
     dispose() {
       disposed = true;

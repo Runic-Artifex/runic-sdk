@@ -15,9 +15,17 @@ public static class BridgeContractShape
     /// <summary>Computes the contract fingerprint of <paramref name="model"/> and the views in its assembly.</summary>
     /// <param name="model">The root view-model type.</param>
     /// <returns>An uppercase hexadecimal SHA-256 fingerprint.</returns>
-    public static string Compute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type model)
+    public static string Compute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties
+        | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type model)
     {
         ArgumentNullException.ThrowIfNull(model);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', Parts(model)))));
+    }
+
+    // The canonical lines the fingerprint hashes; tests inspect them.
+    internal static List<string> Parts([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties
+        | DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods)] Type model)
+    {
         var views = DiscoverViews(model.Assembly);
         var models = views.Select(view => view.ModelType).Append(model).Distinct().ToArray();
         var parts = new List<string> { "runic-bridge-contract-v4" };
@@ -29,7 +37,7 @@ public static class BridgeContractShape
         }
         foreach (var view in views.OrderBy(view => TypeName(view.ViewType), StringComparer.Ordinal))
             parts.Add($"view:{TypeName(view.ViewType)}:model:{TypeName(view.ModelType)}:contract:{view.Contract ?? "default"}");
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('\n', parts))));
+        return parts;
     }
 
     private static void AppendModel(List<string> parts, Type model, IReadOnlyList<Type> models, NullabilityInfoContext nullability)
@@ -48,6 +56,7 @@ public static class BridgeContractShape
                 var cardinality = property.GetCustomAttribute<RunicCommandResultAttribute>(true)?.Cardinality
                     ?? BridgeCommandResultCardinality.Single;
                 parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
+                AppendFailure(parts, model, property);
                 continue;
             }
             if (kind == "command")
@@ -59,6 +68,7 @@ public static class BridgeContractShape
                 var isAsync = property.PropertyType.GetInterfaces().Append(property.PropertyType)
                     .Any(type => type.FullName == "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand");
                 parts.Add($"command-async:{TypeName(model)}:{property.Name}:{isAsync}");
+                AppendFailure(parts, model, property);
                 continue;
             }
             if (kind == "interaction" && interaction is not null)
@@ -78,6 +88,17 @@ public static class BridgeContractShape
             AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
         }
         parts.Add($"validation-errors:{TypeName(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
+    }
+
+    // Only declared commands add parts, so undeclared models keep their
+    // fingerprint. A [RelayCommand] method declaration is usually private.
+    private static void AppendFailure(List<string> parts, Type model, PropertyInfo command)
+    {
+        foreach (var (declaredOn, failure) in BridgeCommandSources.FailureDeclarations(model, command))
+        {
+            parts.Add($"command-failure:{TypeName(model)}:{command.Name}:{declaredOn}");
+            AppendType(parts, failure, null, $"{model.Name}.{command.Name}.failure", []);
+        }
     }
 
     // Canonical recursive shape only. Generated code uses direct accesses; it

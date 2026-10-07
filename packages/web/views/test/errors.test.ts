@@ -244,7 +244,8 @@ test("an operation wait with a timeout cancels and resolves to timedOut", async 
 
     bridge.route("__runicOperationCancel", () => { throw new Error("cancel lost"); });
     const unobserved = await client.startOperation("Save", "lost", () => JSON.stringify({ requestId: "lost", input: null }), value => value);
-    assert.equal((await unobserved.wait({ timeout: 0 })).cancellation, "unobserved");
+    const timedOut = await unobserved.wait({ timeout: 0 });
+    assert.equal(timedOut.kind === "timedOut" ? timedOut.cancellation : timedOut.kind, "unobserved");
     assert.ok(diagnostics.some(diagnostic => diagnostic.code === "uncertain"
       && diagnostic.error instanceof BridgeOperationUncertainError && (diagnostic.error.cause as Error).message === "cancel lost"));
   } finally {

@@ -8,6 +8,7 @@ export {
   type BridgeFailureDetail,
 } from "./errors.js";
 export { onBridgeDiagnostic, type BridgeDiagnostic, type BridgeDiagnosticListener } from "./diagnostics.js";
+export { bridgeFailure, bridgeSuccess, isBridgeOutcome, matchCase, type BridgeOutcome } from "./outcome.js";
 export type { BridgeValidationMessage, BridgeValidationState } from "./validation.js";
 export { waitForBridge, type RunicBridgeClient, type WaitForBridgeOptions } from "./transport.js";
 export {
@@ -22,6 +23,7 @@ export {
   createViewController,
   isViewClient,
   viewSourceIdentity,
+  type BridgeOutcomeFailure,
   type CommandController,
   type CommandState,
   type ViewConnector,
@@ -35,9 +37,11 @@ export type {
   BridgeOperation,
   BridgeOperationCancelKind,
   BridgeOperationCancelResult,
+  BridgeOperationDelivery,
   BridgeOperationDeliveryKind,
   BridgeOperationStatus,
   BridgeOperationStatusKind,
+  BridgeOperationStatusOf,
   BridgeOperationStreamItem,
   BridgeOperationStreamPage,
   BridgeOperationWaitOptions,

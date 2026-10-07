@@ -134,6 +134,7 @@ await ValidationTests.RunAsync();
 await SnapshotDeliveryTests.RunAsync();
 await SnapshotBatchTests.RunAsync();
 await FailureDetailTests.RunAsync();
+await DomainFailureTests.RunAsync();
 await TelemetryTests.RunAsync();
 await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();

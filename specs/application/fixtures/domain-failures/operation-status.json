@@ -1,0 +1,6 @@
+{
+  "description": "An operation that throws its declared failure ends domain-failed with the encoded failure and no error or detail. outcome() resolves with the failure.",
+  "scenario": "operation-status",
+  "wire": { "contract": "Tests.Editor:fixture:editor", "requestId": "save-1", "kind": "domain-failed", "failure": { "$case": "titleTaken", "existingTitle": "Todo" } },
+  "client": { "declared": true, "outcome": { "ok": false, "failure": { "$case": "titleTaken", "existingTitle": "Todo" } } }
+}
