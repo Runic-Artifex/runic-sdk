@@ -504,12 +504,27 @@ public sealed class DesktopWindow : IAsyncDisposable
         FellBack = fellBack;
     }
 
+    /// <summary>Gets the presentation requested by <see cref="DesktopWindowOptions.Browser"/>.</summary>
     public BrowserKind RequestedBrowser { get; }
+
+    /// <summary>Gets the presentation that opened.</summary>
+    /// <remarks>
+    /// For a <see cref="BrowserKind.Any"/> or <see cref="BrowserKind.ChromiumBased"/> request this is the concrete
+    /// browser that was launched, or <see cref="BrowserKind.Any"/> when it could not be identified.
+    /// </remarks>
     public BrowserKind Browser { get; }
+
+    /// <summary>Gets whether the embedded WebView was unavailable and the browser fallback opened instead.</summary>
     public bool FellBack { get; }
+
+    /// <summary>Gets whether this is the surface's current window and its browser process or embedded window is still open.</summary>
     public bool IsOpen => Volatile.Read(ref _disposed) == 0 && _surface.IsCurrentWindow(this)
         && (Browser == BrowserKind.Embedded ? _engine.IsEmbeddedWindowOpen : _engine.IsShown);
+
+    /// <summary>Gets the installed browser's process identifier, or zero for an embedded or closed window.</summary>
     public ulong ProcessId => IsOpen ? _engine.BrowserProcessId : 0;
+
+    /// <summary>Gets the native top-level handle of an open embedded window, or zero for an installed browser or closed window.</summary>
     public nint NativeHandle => IsOpen ? _engine.NativeWindowHandle : 0;
 
     /// <summary>Whether this live embedded owner supports native-thread callbacks.</summary>
@@ -530,32 +545,74 @@ public sealed class DesktopWindow : IAsyncDisposable
             action(NativeHandle);
         }, cancellationToken);
     }
+
+    /// <summary>Gets the platform-window operations the open window supports.</summary>
+    /// <remarks>Only embedded windows report capabilities; installed browsers and closed windows report <see cref="DesktopWindowCapabilities.None"/>.</remarks>
     public DesktopWindowCapabilities Capabilities => IsOpen && Browser == BrowserKind.Embedded
         ? _engine.WindowCapabilities |
           (_engine.SupportsCloseConfirmation ? DesktopWindowCapabilities.CloseConfirmation : DesktopWindowCapabilities.None)
         : DesktopWindowCapabilities.None;
 
+    /// <summary>Activates the window and gives it keyboard focus.</summary>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has been focused.</returns>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Focus"/>.</remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public Task FocusAsync(CancellationToken cancellationToken = default)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Focus,
             () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken).AsTask();
     }
 
+    /// <summary>Minimizes the window.</summary>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has been minimized.</returns>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Minimize"/>.</remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public Task MinimizeAsync(CancellationToken cancellationToken = default)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Minimize,
             () => new ValueTask(_engine.MinimizeAsync(cancellationToken)), cancellationToken).AsTask();
     }
 
+    /// <summary>Maximizes the window, or restores it when it is already maximized.</summary>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window state has changed.</returns>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Maximize"/>.</remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public Task ToggleMaximizedAsync(CancellationToken cancellationToken = default)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Maximize,
             () => new ValueTask(_engine.MaximizeAsync(cancellationToken)), cancellationToken).AsTask();
     }
 
+    /// <summary>Resizes the window.</summary>
+    /// <param name="width">The new width in pixels.</param>
+    /// <param name="height">The new height in pixels.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has been resized.</returns>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Resize"/>.</remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
         RequireAndResize(width, height, cancellationToken);
 
+    /// <summary>Moves the window to a screen position.</summary>
+    /// <param name="x">The new horizontal position in pixels.</param>
+    /// <param name="y">The new vertical position in pixels.</param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the window has been moved.</returns>
+    /// <remarks>Requires <see cref="DesktopWindowCapabilities.Move"/>.</remarks>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
     public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
         RequireAndMove(x, y, cancellationToken);
 
@@ -617,6 +674,7 @@ public sealed class DesktopWindow : IAsyncDisposable
         }
     }
 
+    /// <summary>Forcibly closes the window, like <see cref="CloseAsync"/>.</summary>
     public async ValueTask DisposeAsync()
     {
         await CloseAsync().ConfigureAwait(false);

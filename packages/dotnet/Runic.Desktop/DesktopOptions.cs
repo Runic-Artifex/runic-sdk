@@ -97,6 +97,7 @@ public sealed record DesktopHostOptions
     /// not requested its page by then is stopped and launched again, with a fresh profile unless the window
     /// configures one, and a <c>browser-launch-stalled</c> diagnostic is reported. A page that was requested,
     /// a browser that exited and embedded WebViews are never relaunched. Defaults to 2; 1 disables relaunching.
+    /// Values outside 1 to 5 make building the host throw <see cref="ArgumentOutOfRangeException"/>.
     /// </remarks>
     public int BrowserLaunchAttempts { get; init; } = DefaultBrowserLaunchAttempts;
 
@@ -133,18 +134,43 @@ public sealed record DesktopSurfaceOptions
 /// <summary>Identifies an installed or embedded browser presentation.</summary>
 public enum BrowserKind
 {
+    /// <summary>The first available installed browser.</summary>
     Any,
+
+    /// <summary>Google Chrome.</summary>
     Chrome,
+
+    /// <summary>Mozilla Firefox.</summary>
     Firefox,
+
+    /// <summary>Microsoft Edge.</summary>
     Edge,
+
+    /// <summary>Apple Safari. Runic Desktop cannot launch it as a presentation.</summary>
     Safari,
+
+    /// <summary>Chromium.</summary>
     Chromium,
+
+    /// <summary>Opera. Runic Desktop cannot launch it as a presentation.</summary>
     Opera,
+
+    /// <summary>Brave.</summary>
     Brave,
+
+    /// <summary>Vivaldi.</summary>
     Vivaldi,
+
+    /// <summary>Epic Privacy Browser.</summary>
     Epic,
+
+    /// <summary>Yandex Browser.</summary>
     Yandex,
+
+    /// <summary>The first available installed Chromium-based browser, searched in the order Chrome, Edge, Epic, Vivaldi, Brave, Yandex, Chromium.</summary>
     ChromiumBased,
+
+    /// <summary>The platform's embedded WebView: WebView2 on Windows, WKWebView on macOS, or the selected WebKitGTK toolkit on Linux.</summary>
     Embedded,
 }
 
@@ -180,13 +206,28 @@ public enum DesktopPermissionGrant
 [Flags]
 public enum DesktopWindowCapabilities
 {
+    /// <summary>No platform-window operation is available.</summary>
     None = 0,
+
+    /// <summary>The presentation exposes its native top-level window handle.</summary>
     NativeHandle = 1 << 0,
+
+    /// <summary>The window can be activated and focused.</summary>
     Focus = 1 << 1,
+
+    /// <summary>The window can be minimized.</summary>
     Minimize = 1 << 2,
+
+    /// <summary>The window can be maximized and restored.</summary>
     Maximize = 1 << 3,
+
+    /// <summary>The window can be resized.</summary>
     Resize = 1 << 4,
+
+    /// <summary>The window can be moved to a screen position.</summary>
     Move = 1 << 5,
+
+    /// <summary>User close requests can be confirmed by <see cref="DesktopWindowOptions.ConfirmCloseAsync"/>.</summary>
     CloseConfirmation = 1 << 6,
 }
 
@@ -202,24 +243,96 @@ public sealed record DesktopWindowOptions
     /// <summary>Gets the presentation: the platform's embedded WebView by default, or an installed browser.</summary>
     /// <remarks>On Linux, the embedded WebView requires <see cref="DesktopHostOptions.Linux"/> to select a toolkit.</remarks>
     public BrowserKind Browser { get; init; } = BrowserKind.Embedded;
+
+    /// <summary>Gets whether the window may fall back to an installed browser when the embedded WebView cannot open.</summary>
+    /// <remarks>
+    /// Defaults to <see cref="DesktopPresentationPolicy.RequestedOnly"/>. With
+    /// <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/>, the embedded WebView is tried first and
+    /// <see cref="Browser"/> selects the fallback browser, where <see cref="BrowserKind.Embedded"/> means
+    /// <see cref="BrowserKind.Any"/>. The fallback opens without <see cref="AllowedPermissions"/>.
+    /// </remarks>
     public DesktopPresentationPolicy PresentationPolicy { get; init; }
+
+    /// <summary>Gets the sensitive permissions granted to the presentation; none by default.</summary>
     public DesktopPermissionGrant AllowedPermissions { get; init; }
+
+    /// <summary>Gets the initial window width in pixels. Defaults to 800.</summary>
     public uint Width { get; init; } = 800;
+
+    /// <summary>Gets the initial window height in pixels. Defaults to 600.</summary>
     public uint Height { get; init; } = 600;
+
+    /// <summary>Gets the minimum window width in pixels, or <see langword="null"/> for no minimum.</summary>
+    /// <remarks>Applies only together with <see cref="MinimumHeight"/>, and only to embedded windows.</remarks>
     public uint? MinimumWidth { get; init; }
+
+    /// <summary>Gets the minimum window height in pixels, or <see langword="null"/> for no minimum.</summary>
+    /// <remarks>Applies only together with <see cref="MinimumWidth"/>, and only to embedded windows.</remarks>
     public uint? MinimumHeight { get; init; }
+
+    /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
+    /// <remarks>Applies only together with <see cref="Y"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.
+    /// When unset, the Windows WebView2 window opens at (100, 100). Windows scales <see cref="Width"/> and
+    /// <see cref="Height"/> for the monitor DPI, but not the position.</remarks>
     public uint? X { get; init; }
+
+    /// <summary>Gets the initial vertical screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
+    /// <remarks>Applies only together with <see cref="X"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.
+    /// When unset, the Windows WebView2 window opens at (100, 100). Windows scales <see cref="Width"/> and
+    /// <see cref="Height"/> for the monitor DPI, but not the position.</remarks>
     public uint? Y { get; init; }
+
+    /// <summary>Gets whether the embedded window opens centered on the screen, replacing <see cref="X"/> and <see cref="Y"/>.</summary>
     public bool Centered { get; init; }
+
+    /// <summary>Gets whether the user can resize the embedded window. Defaults to <see langword="true"/>.</summary>
     public bool Resizable { get; init; } = true;
+
+    /// <summary>Gets whether the embedded window opens without a title bar and border.</summary>
     public bool Frameless { get; init; }
+
+    /// <summary>Gets whether the embedded window has a transparent background where the page does not paint.</summary>
     public bool Transparent { get; init; }
+
+    /// <summary>Gets whether the presentation opens without a visible window.</summary>
+    /// <remarks>Embedded windows are created hidden; installed browsers run headless.</remarks>
     public bool Hidden { get; init; }
+
+    /// <summary>Gets whether the presentation opens in full-screen kiosk mode without window decorations.</summary>
     public bool Kiosk { get; init; }
+
+    /// <summary>
+    /// Gets whether the presentation reports a high-contrast theme to the page, or <see langword="null"/> to follow
+    /// <see cref="DesktopPlatform.IsHighContrast"/>.
+    /// </summary>
     public bool? HighContrast { get; init; }
+
+    /// <summary>Gets the path of the embedded window's icon file, or <see langword="null"/> for the default icon.</summary>
     public string? IconFile { get; init; }
+
+    /// <summary>Gets the name of an existing Firefox profile to open.</summary>
+    /// <remarks>Only Firefox applies it, and only when <see cref="ProfilePath"/> is not set.</remarks>
     public string? ProfileName { get; init; }
+
+    /// <summary>Gets the browser profile directory, created when missing.</summary>
+    /// <remarks>
+    /// Chromium-based browsers and WebView2 use it as their user-data directory, and Firefox as its profile.
+    /// The macOS and GTK 3 embedded windows ignore it. When neither this nor <see cref="ProfileName"/> is set,
+    /// a fresh temporary profile is generated for the presentation.
+    /// </remarks>
     public string? ProfilePath { get; init; }
+
+    /// <summary>Gets the proxy server passed to a Chromium-based browser, such as <c>http://proxy:8080</c>.</summary>
+    /// <remarks>
+    /// Without it, Chromium-based browsers start with no proxy unless <see cref="BrowserArguments"/> is set.
+    /// Embedded windows use the system proxy, and Firefox ignores the option.
+    /// </remarks>
     public string? ProxyServer { get; init; }
+
+    /// <summary>Gets additional command-line arguments for the browser or WebView2 runtime.</summary>
+    /// <remarks>
+    /// The string is split like a command line and appended to the launch arguments. When set, installed browsers
+    /// no longer receive Runic Desktop's default isolation flags. The macOS and GTK 3 embedded windows ignore it.
+    /// </remarks>
     public string? BrowserArguments { get; init; }
 }

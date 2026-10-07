@@ -1,28 +1,67 @@
 namespace Runic.Desktop;
 
 /// <summary>Identifies a stable presentation-boundary error category.</summary>
+/// <remarks>The categories match the language-neutral Desktop presentation-host contract.</remarks>
 public enum DesktopErrorCategory
 {
+    /// <summary>An argument or configuration value is invalid.</summary>
     InvalidArgument,
+
+    /// <summary>The operation is not valid in the object's current state.</summary>
     InvalidState,
+
+    /// <summary>A frame or structured payload is malformed.</summary>
     InvalidFrame,
+
+    /// <summary>A size, depth, count, or other configured limit was exceeded.</summary>
     LimitExceeded,
+
+    /// <summary>The session credential is missing or not valid for the surface.</summary>
     AuthenticationDenied,
+
+    /// <summary>The requesting origin is not admitted by the surface security policy.</summary>
     OriginDenied,
+
+    /// <summary>The capability or window option is not admitted or not supported.</summary>
     CapabilityDenied,
+
+    /// <summary>The requested resource does not exist.</summary>
     NotFound,
+
+    /// <summary>The operation conflicts with existing state.</summary>
     Conflict,
+
+    /// <summary>The operation was cancelled before it completed.</summary>
     Cancelled,
+
+    /// <summary>The operation did not complete within its deadline.</summary>
     TimedOut,
+
+    /// <summary>The presentation session transport closed before the operation completed.</summary>
     TransportClosed,
+
+    /// <summary>The Desktop host is stopping and no longer accepts the operation.</summary>
     HostStopping,
+
+    /// <summary>The presentation, window host, or capability is not available.</summary>
     Unavailable,
+
+    /// <summary>The operation failed for a reason the caller cannot correct; details are redacted.</summary>
     OperationFailed,
 }
 
 /// <summary>Represents a redacted, stable Desktop operation failure.</summary>
 public class DesktopException : Exception
 {
+    /// <summary>Creates a Desktop failure with a stable category and code.</summary>
+    /// <param name="category">The stable error category.</param>
+    /// <param name="code">The stable, machine-readable error code, such as <c>origin-not-allowed</c>.</param>
+    /// <param name="message">The safe, redacted message.</param>
+    /// <param name="retryable">Whether repeating the operation may succeed.</param>
+    /// <param name="innerException">The underlying failure, kept for diagnostics only.</param>
+    /// <param name="correlationId">The diagnostic correlation identity, or <see langword="null"/> to generate one.</param>
+    /// <exception cref="ArgumentException"><paramref name="code"/> is empty or whitespace.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="code"/> is <see langword="null"/>.</exception>
     public DesktopException(
         DesktopErrorCategory category,
         string code,
@@ -39,9 +78,15 @@ public class DesktopException : Exception
         CorrelationId = correlationId ?? Guid.NewGuid().ToString("N");
     }
 
+    /// <summary>Gets the stable error category.</summary>
     public DesktopErrorCategory Category { get; }
+
+    /// <summary>Gets the stable, machine-readable error code.</summary>
     public string Code { get; }
+
+    /// <summary>Gets whether repeating the operation may succeed.</summary>
     public bool Retryable { get; }
+
     /// <summary>Gets the opaque identity used to correlate redacted frontend and host diagnostics.</summary>
     public string CorrelationId { get; }
 }

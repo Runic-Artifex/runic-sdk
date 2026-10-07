@@ -50,12 +50,25 @@ public sealed class ContentRequest
 /// <summary>Identifies the first terminal cancellation cause observed by a content request.</summary>
 public enum RequestCancellationReason
 {
+    /// <summary>The request has not been cancelled.</summary>
     None,
+
+    /// <summary>The caller that owns the request cancelled it.</summary>
     CallerCancelled,
+
+    /// <summary>The requesting client disconnected or aborted the request.</summary>
     RequesterDisconnected,
+
+    /// <summary>The request exceeded its deadline.</summary>
     DeadlineExceeded,
+
+    /// <summary>The presentation session that issued the request closed.</summary>
     SessionClosed,
+
+    /// <summary>The surface serving the request is closing.</summary>
     SurfaceClosing,
+
+    /// <summary>The Desktop host is stopping.</summary>
     HostStopping,
 }
 

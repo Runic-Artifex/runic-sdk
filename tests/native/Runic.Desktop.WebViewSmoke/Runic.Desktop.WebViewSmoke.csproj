@@ -2,6 +2,7 @@
   <Import Project="../../../eng/build/desktop.props" />
   <PropertyGroup>
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
