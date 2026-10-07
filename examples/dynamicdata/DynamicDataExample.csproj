@@ -5,7 +5,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
     <RunicBridgeCompositionType>DynamicDataExample.RunicBridgeComposition</RunicBridgeCompositionType>
     <RunicBridgeFrontendBuildCommand>bun build.mjs</RunicBridgeFrontendBuildCommand>
   </PropertyGroup>

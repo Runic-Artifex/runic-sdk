@@ -10,6 +10,13 @@
   </Suppression>
   <Suppression>
     <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Application.Views.CsWebUi.CsWebUiBridgeExtensions.AttachBridge``1(CsWebUi.WebUiWindow,``0)</Target>
+    <Left>lib/net10.0/Runic.Application.Views.CsWebUi.dll</Left>
+    <Right>lib/net10.0/Runic.Application.Views.CsWebUi.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
     <Target>M:Runic.Application.Views.CsWebUi.CsWebUiBridgeWindow`1.CloseAsync(System.TimeSpan)</Target>
     <Left>lib/net10.0/Runic.Application.Views.CsWebUi.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.CsWebUi.dll</Right>

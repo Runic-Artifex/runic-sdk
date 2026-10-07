@@ -169,7 +169,7 @@ async function verifyConsumers(directory, packageName) {
     const consumer = join(directory, p.name);
     const viewTestConsumer = p.name === "Runic.Application.Testing";
     const bridgeProperties = viewTestConsumer
-      ? `<RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled><RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally><RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand><RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir><RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir><OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>`
+      ? `<RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled><RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand><RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir><RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir><OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>`
       : ["Runic.Application", "Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.ReactiveUI.Reactive", "Runic.Application.Desktop"].includes(p.name)
         ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : "";
     mkdirSync(consumer);

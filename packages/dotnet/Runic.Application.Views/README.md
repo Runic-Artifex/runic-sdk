@@ -218,7 +218,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 
 | ID | Problem | Fix |
 | --- | --- | --- |
-| `RUNICBRIDGE001` | Invalid generator invocation or build configuration, such as ViewModel content or interactions generated without `RunicBridgeRegisterGlobally=false`; also an internal generator error. | Correct the build property. Report an internal error with the ViewModel that triggers it. |
+| `RUNICBRIDGE001` | Invalid generator invocation or build configuration, such as a malformed `RunicBridgeCompositionType`; also an internal generator error. | Correct the build property. Report an internal error with the ViewModel that triggers it. |
 | `RUNICBRIDGE002` | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish. | Publish framework-dependent until its validation is verified under AOT. |
 | `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. |
 | `RUNICBRIDGE004` | Two generated names collide: ViewModel names, presentation kinds, state wire names, the reserved `revision` and `validation` fields, interactions, routes, client members, or generated files (including a hand-written `types.ts`). | Rename one member, or set a wire name with `[RunicAlias]`. |
@@ -248,7 +248,6 @@ departs from the conventional `Frontend` folder.
 | `RunicBridgeBuildFrontend` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicBridgeCopyFrontend` | `true` | Copies `<frontend>/dist` to `www/` in the build output. Publish always copies it. |
 | `RunicBridgeCompositionType` | `<project name>.RunicBridgeComposition` (host adapters) | Generated composition class. |
-| `RunicBridgeRegisterGlobally` | `false` (host adapters) | `true` registers Bridges in a process-wide registry instead of the DI composition. |
 | `RunicBridgeModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
 | `RunicBridgeReactiveUiFlavor` | none | `primitives` or `reactive` for ReactiveUI projects. |
 

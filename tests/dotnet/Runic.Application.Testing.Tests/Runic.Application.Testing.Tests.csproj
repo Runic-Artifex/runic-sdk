@@ -8,7 +8,6 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled>
-    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
     <RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand>
     <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicBridgeFrontendDir>
     <RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/generated</RunicBridgeTypescriptDir>

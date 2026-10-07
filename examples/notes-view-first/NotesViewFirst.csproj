@@ -4,7 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeRegisterGlobally>false</RunicBridgeRegisterGlobally>
     <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
     <RunicBridgeCompositionType>NotesWindowViews.RunicBridgeComposition</RunicBridgeCompositionType>
   </PropertyGroup>

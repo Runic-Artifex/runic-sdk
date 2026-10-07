@@ -1,4 +1,7 @@
 #nullable enable
+*REMOVED*Runic.Application.Views.Bridge
+*REMOVED*static Runic.Application.Views.Bridge.Attach<T>(Runic.Application.Views.IBridgeTransport! transport, T! viewModel) -> System.IDisposable!
+*REMOVED*static Runic.Application.Views.Bridge.Register<T>(System.Func<Runic.Application.Views.IBridgeTransport!, T!, System.IDisposable!>! factory) -> void
 Runic.Application.Views.BridgeWindowCloseResult
 Runic.Application.Views.BridgeWindowCloseResult.<Clone>$() -> Runic.Application.Views.BridgeWindowCloseResult!
 Runic.Application.Views.BridgeWindowCloseResult.BridgeWindowCloseResult(bool Drained, int RemainingOperations, System.Threading.Tasks.Task! Completion) -> void

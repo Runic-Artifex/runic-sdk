@@ -1,12 +1,10 @@
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
-using System.Reactive.Subjects;
 using System.Reactive;
 using System.Text.Json;
 using ReactiveUI;
 using ReactiveUI.Binding.Reactive;
 using ReactiveUI.Reactive;
-using ReactiveUI.SourceGenerators;
 using ReactiveUiReactiveFlavorProof;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI.Reactive;
@@ -33,7 +31,7 @@ var commandResult = await ReactiveCommandExecution.Execute(command, Unit.Default
 if (commandResult != 42) throw new InvalidOperationException("The Reactive flavor command adapter lost its typed result.");
 
 using (var transport = new InMemoryViewTransport())
-using (Bridge.Attach(transport, model))
+using (new FlavorModelBridge(transport, model))
 {
     for (var execution = 0; execution < 100; execution++)
     {
@@ -82,35 +80,4 @@ file static class Scheduled
     public static TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public static Task<string> Task => Completion.Task;
     public static void TrySetResult(string value) => Completion.TrySetResult(value);
-}
-
-namespace ReactiveUiReactiveFlavorProof
-{
-    public sealed partial class FlavorModel : ReactiveObject
-    {
-        private readonly BehaviorSubject<bool> _disableAvailability = new(true);
-
-        [Reactive]
-        public partial string Name { get; set; }
-
-        public FlavorModel(IScheduler commandScheduler)
-        {
-            CountCommand = ReactiveCommand.Create(() => 42, outputScheduler: commandScheduler);
-            DisableCommand = ReactiveCommand.Create(
-                () =>
-                {
-                    _disableAvailability.OnNext(false);
-                    return 42;
-                },
-                _disableAvailability,
-                commandScheduler);
-        }
-
-        public ReactiveCommand<Unit, int> CountCommand { get; }
-        public ReactiveCommand<Unit, int> DisableCommand { get; }
-    }
-
-    public sealed partial class FlavorView : ReactiveRunicView<FlavorModel>
-    {
-    }
 }

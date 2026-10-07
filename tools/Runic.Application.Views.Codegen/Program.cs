@@ -17,7 +17,6 @@ try
     else if (args.Length >= 1 && args[0] == "--generate")
     {
         var aot = false;
-        var registerGlobally = true;
         string? compositionType = null;
         var values = new List<string> { args[0] };
         for (var i = 1; i < args.Length; i++)
@@ -25,7 +24,6 @@ try
             switch (args[i])
             {
                 case "--aot": aot = true; break;
-                case "--no-registry": registerGlobally = false; break;
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
@@ -42,12 +40,10 @@ try
         }
         var positional = values.ToArray();
         if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--no-registry] [--di-composition <namespace.type>]");
-        if (compositionType is not null && registerGlobally)
-            throw new ArgumentException("--di-composition requires --no-registry.");
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--di-composition <namespace.type>]");
 
-        string[] cacheArguments = [$"aot={aot}", $"registry={registerGlobally}",
-            $"composition={compositionType}", $"reactiveui={CodegenOptions.ReactiveUiFlavor}"];
+        string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}",
+            $"reactiveui={CodegenOptions.ReactiveUiFlavor}"];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments))
         {
             Console.WriteLine("Bridge generation is up to date.");
@@ -142,7 +138,7 @@ try
             try
             {
                 if (GenerateOne(entry.Model, Path.Combine(positional[2], BridgeFileName(entry.Model)),
-                    Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, registerGlobally, models, viewTypes))
+                    Path.Combine(positional[3], $"{LowerFirst(entry.Name)}.ts"), entry.Name, models, viewTypes))
                     contentRequired.Add(entry.Model);
                 if (viewTypes.TryGetValue(entry.Model, out var views))
                     foreach (var view in views)
@@ -334,7 +330,7 @@ static string[] CompositionParts(string compositionType)
 
 // Returns true when the generated bridge requires a WindowContentSession.
 static bool GenerateOne(Type model, string csharpPath, string typescriptPath, string shortName,
-    bool registerGlobally = true, (Type Model, string Name)[]? knownModels = null,
+    (Type Model, string Name)[]? knownModels = null,
     IReadOnlyDictionary<Type, List<Type>>? viewTypes = null)
 {
     knownModels ??= [(model, shortName)];
@@ -434,9 +430,6 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
     var contentBindings = contentProperties.Concat(contentCollections).ToArray();
-    if ((hasContent || interactions.Length > 0) && registerGlobally)
-        throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Invocation,
-            $"{model.Name} contains ViewModel content or interactions. Generate it with --no-registry (RunicBridgeRegisterGlobally=false) and attach it through a window content session.", model);
     var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
     var commandSources = commands.ToDictionary(command => command, command => ToolkitSourceMethod(model, command));
@@ -520,13 +513,11 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasValidation && properties.FirstOrDefault(property => WireName(property) == "validation") is { } validationProperty)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}.{validationProperty.Name}: validation is reserved for generated validation state. Alias the model property.", validationProperty);
-    // Checked writes require a WindowContentSession-owned provider. Keep the
-    // established global Bridge surface direct until it gains an equivalent
-    // explicit window owner. The window slice supports the scalar codecs that
-    // the ordinary Bridge already serializes without reflection.
-    var checkedProperties = !registerGlobally
-        ? properties.Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)).ToArray()
-        : [];
+    // Checked writes use a WindowContentSession-owned provider. The window slice
+    // supports the scalar codecs that the ordinary Bridge already serializes
+    // without reflection.
+    var checkedProperties = properties
+        .Where(property => property.SetMethod?.IsPublic == true && valueProperties.ContainsKey(property)).ToArray();
     var needsCheckedWriter = checkedProperties.Length > 0;
     InteractionCodeEmitter.ValidatePublicSurface(model.Name, properties, commands, commandPlans, interactions,
         checkedProperties, WireName, hasErrors, hasValidation);
@@ -818,14 +809,6 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("    }");
     }
     cs.AppendLine("}");
-    if (registerGlobally)
-    {
-        cs.AppendLine($"internal static class {shortName}BridgeRegistration");
-        cs.AppendLine("{");
-        cs.AppendLine("    [global::System.Runtime.CompilerServices.ModuleInitializer]");
-        cs.AppendLine($"    internal static void Register() => global::Runic.Application.Views.Bridge.Register<{fullType}>((transport, vm) => new {shortName}Bridge(transport, vm));");
-        cs.AppendLine("}");
-    }
 
     // The transport, shared page runtime, codecs and error types live in
     // @runic-artifex/views. A generated module holds only this ViewModel's

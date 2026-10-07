@@ -392,7 +392,7 @@ internal static class CodegenDiagnosticsTests
             StartInfo = new ProcessStartInfo("dotnet")
             {
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
-                ArgumentList = { generator, "--generate", assembly, Path.Combine(directory, "cs"), Path.Combine(directory, "ts"), "--no-registry" },
+                ArgumentList = { generator, "--generate", assembly, Path.Combine(directory, "cs"), Path.Combine(directory, "ts") },
             },
         };
         foreach (var option in options) process.StartInfo.ArgumentList.Add(option);
