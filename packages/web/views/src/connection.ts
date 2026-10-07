@@ -1,11 +1,13 @@
 import { emitErrorDiagnostic } from "./diagnostics.js";
-import { BridgeError, BridgeOperationUncertainError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
-import { InteractionRuntime, type InteractionDefinition, type InteractionSurface } from "./interactions.js";
-import { OperationChannel, type BridgeStreamOperation } from "./operations.js";
-import { errorMessage, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
+import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
+import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
 import { hostCallbacks, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
-import { bridgeWire } from "./wire.js";
-import { applyCollectionDelta, applyWireDelta, sameWire, validateCollections, type BridgeCollectionDefinition } from "./collections.js";
+import * as bridgeWire from "./wire.js";
+// Interactions, operations and keyed collections are injected by the generated
+// clients that use them, so this module imports only their types.
+import type { BridgeCollections } from "./collections.js";
+import type { BridgeInteractions, InteractionSession, InteractionSurface } from "./interactions.js";
+import type { BridgeOperations, BridgeStreamOperation, OperationScope } from "./operations.js";
 
 /** The framework-neutral surface every generated client shares. */
 export interface ViewClient<TState = unknown> {
@@ -44,9 +46,12 @@ export interface ViewConnectOptions<TState> {
   readonly hydrate: (wire: never) => TState;
   /** Wire names of fields with checked writes. */
   readonly checkedFields?: readonly string[];
-  readonly interactions?: Readonly<Record<string, InteractionDefinition>>;
-  /** Generated codecs for opt-in keyed collection changes. */
-  readonly collections?: Readonly<Record<string, BridgeCollectionDefinition>>;
+  /** The client's interactions, from `defineInteractions`. */
+  readonly interactions?: BridgeInteractions;
+  /** Generated codecs for opt-in keyed collection changes, from `defineCollections`. */
+  readonly collections?: BridgeCollections;
+  /** `bridgeOperations`, for a client with operations. */
+  readonly operations?: BridgeOperations;
 }
 
 /** The runtime half of a generated client. Generated code is its only intended caller. */
@@ -98,7 +103,7 @@ const recoveryDelay = 250;
 const maximumBufferedFrames = 64;
 
 function createEntry(contract: string, route: string, bridge: RunicBridgeClient, routeEntry: SharedRoute,
-  hydrate: (wire: unknown) => unknown, collections: Readonly<Record<string, BridgeCollectionDefinition>> = {}): SharedEntry {
+  hydrate: (wire: unknown) => unknown, collections: BridgeCollections | undefined): SharedEntry {
   let recovering = false;
   let buffered: unknown[] = [];
   let missedRevision: number | undefined;
@@ -192,7 +197,13 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
         if (entry.current === undefined || delta.baseRevision !== entry.revision ||
           typeof delta.baseRevision !== "number" || revision <= delta.baseRevision) { recover(); return entry.current; }
         let current: unknown;
-        try { current = applyCollectionDelta(entry.current, delta.changes, collections); }
+        let currentWire: Record<string, unknown>;
+        try {
+          if (!collections) throw new Error("This View has no keyed collections.");
+          current = collections.apply(entry.current, delta.changes);
+          // Checked field baselines are unchanged by collection-only frames.
+          currentWire = collections.applyWire(entry.wire, delta.changes as readonly unknown[]);
+        }
         catch (cause) {
           // Report why the change was unusable, then recover from a full snapshot.
           reportBridgeError(new BridgeError("failed", `A collection change for ${route} could not be applied: ${errorMessage(cause)}`,
@@ -202,8 +213,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
         }
         entry.current = current;
         entry.revision = revision;
-        // Checked field baselines are unchanged by collection-only frames.
-        entry.wire = { ...applyWireDelta(entry.wire, delta.changes as readonly unknown[]), revision };
+        entry.wire = { ...currentWire, revision };
         notify(current);
         return current;
       }
@@ -212,7 +222,7 @@ function createEntry(contract: string, route: string, bridge: RunicBridgeClient,
         revision === entry.revision && !sameWire(wire, entry.wire)) {
         // Decode first: a state that fails validation must not advance the revision.
         const current = entry.hydrate(wire);
-        validateCollections(current, collections);
+        collections?.validate(current);
         entry.revision = revision;
         entry.wire = wire;
         entry.current = current;
@@ -263,8 +273,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   const mountToken = options.mount ? `${runtime.mountSession}:${globalThis.crypto.randomUUID()}` : undefined;
   const lease: SharedLease = { disposed: false, current: undefined, listeners: new Set(), mounted: false, mountToken };
   shared.leases.add(lease);
-  const operations = new OperationChannel(bridge, contractId);
-  let interactions: InteractionRuntime | undefined;
+  let interactions: InteractionSession | undefined;
 
   function isLive(): boolean {
     return shared.active && routeEntry.active && runtime.bridge === bridge && routeEntry.generation === runtime.generation;
@@ -321,9 +330,14 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     }
   }
   if (!isLive()) { dispose(); throw new BridgeError("disconnected", "The Bridge session changed during connection."); }
-  if (options.interactions && Object.keys(options.interactions).length !== 0)
-    interactions = new InteractionRuntime({ bridge, route, presentationId: mountToken, live: () => !lease.disposed && isLive() }, options.interactions);
+  if (options.interactions)
+    interactions = options.interactions({ bridge, route, presentationId: mountToken, live: () => !lease.disposed && isLive() });
   const ready = async () => { await interactions?.ready(); };
+  const operationScope: OperationScope = { bridge, contract: contractId, route, assertConnected, ready };
+  const operationSupport = () => {
+    if (!options.operations) throw new BridgeError("failed", "This View was connected without operation support.");
+    return options.operations;
+  };
 
   return {
     get snapshot() { return lease.current as TState; },
@@ -385,33 +399,10 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     },
     async startOperation(member, requestId, payload, decode, stream = false) {
       if (requestId.length === 0) throw new RangeError("Operation requestId is required.");
-      const startRoute = `${route}Start${member}`;
-      return observed(startRoute, async () => {
-        assertConnected();
-        await ready();
-        let reply: string;
-        try { reply = await bridge.call(startRoute, payload()); }
-        catch (cause) {
-          const recovered = await operations.status(member, requestId, false, decode);
-          if (recovered.kind === "unknown" || recovered.kind === "expired")
-            throw new BridgeOperationUncertainError(contractId, requestId, "The operation admission could not be recovered.", { cause });
-          return operations.handle(member, requestId, decode, stream, recovered.kind === "running" ? undefined : recovered);
-        }
-        let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown; readonly detail?: unknown };
-        try { admission = JSON.parse(reply) as typeof admission; }
-        catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
-        if (admission.kind === "accepted" || admission.kind === "duplicate") {
-          const terminal = admission.terminal === null || admission.terminal === undefined
-            ? undefined : operations.parseStatus(JSON.stringify(admission.terminal), requestId, decode);
-          return operations.handle(member, requestId, decode, stream, terminal);
-        }
-        const detail = decodeFailureDetail(admission.detail);
-        throw new BridgeError(admission.kind === "rejected" ? "rejected" : "failed", admission.reason ?? "The operation was not accepted.",
-          { route: startRoute, ...(detail === undefined ? {} : { detail }) });
-      });
+      return observed(`${route}Start${member}`, () => operationSupport().start(operationScope, member, requestId, payload, decode, stream));
     },
     recoverOperation: (member, requestId, decode, stream = false) =>
-      observed(`${route}Start${member}`, () => operations.recover(member, requestId, decode, stream)),
+      observed(`${route}Start${member}`, () => operationSupport().recover(operationScope, member, requestId, decode, stream)),
   };
 }
 

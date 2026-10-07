@@ -3,7 +3,8 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { bridgeWire, connectView, defineCollection } from "../dist/index.js";
+import { connectView, defineCollection, defineCollections } from "../dist/generated.js";
+import * as bridgeWire from "../dist/wire.js";
 import { createMockBridge, installMockBridge } from "../dist/mock.js";
 
 type Row = { readonly id: number; readonly label: string };
@@ -29,7 +30,7 @@ const decode = (wire: unknown): Row => {
   return { id: bridgeWire.integer(row["id"], 0, 1_000_000), label: bridgeWire.string(row["label"]) };
 };
 const hydrate = (wire: Wire): State => ({ rows: bridgeWire.array(wire.rows, decode), title: bridgeWire.string(wire.title) });
-const collections = { rows: defineCollection(decode, row => String(row.id)) };
+const collections = defineCollections({ rows: defineCollection(decode, row => String(row.id)) });
 
 const row = (id: number, width: number): Row => ({ id, label: `row ${id}`.padEnd(width, ".") });
 const range = ([start, count, width = 0]: readonly number[]) =>

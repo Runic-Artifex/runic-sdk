@@ -163,3 +163,20 @@ export function sharedRouteFor(runtime: SharedRuntime, bridge: RunicBridgeClient
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/** Compares two decoded JSON values structurally. */
+export function sameWire(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (Array.isArray(left)) {
+    if (!Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index++) if (!sameWire(left[index], right[index])) return false;
+    return true;
+  }
+  if (Array.isArray(right)) return false;
+  const leftKeys = Object.keys(left);
+  if (leftKeys.length !== Object.keys(right).length) return false;
+  for (const key of leftKeys)
+    if (!Object.hasOwn(right, key) || !sameWire((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key])) return false;
+  return true;
+}

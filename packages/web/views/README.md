@@ -51,6 +51,22 @@ The framework packages `@runic-artifex/react`, `@runic-artifex/vue`,
 clients with the component lifecycle. They are thin bindings over the
 controllers in [Framework bindings](#framework-bindings).
 
+### Package entries
+
+| Entry | For |
+| --- | --- |
+| `@runic-artifex/views` | Applications: errors, diagnostics, controllers, viewport helpers and client types |
+| `@runic-artifex/views/mock` | Development and tests without .NET |
+| `@runic-artifex/views/generated` | Generated modules only: `connectView`, `viewReferences`, `defineCollection(s)`, `defineInteractions`, `bridgeOperations`, `decodeBridgeValidation` |
+| `@runic-artifex/views/generated/wire` | Generated modules only: the wire decoders, imported as `import * as bridgeWire` |
+
+The generated entries change with the generator; applications should not
+import them. A generated module passes the interaction, operation and keyed
+collection runtimes to `connectView` only when its ViewModel has them, and
+imports the decoders as a namespace, so a bundler leaves out the protocol code
+and decoders a View does not use. `bun run size` in this package prints the
+minified and gzip size of the checked-in example clients.
+
 ## Incremental collections
 
 A .NET ViewModel can mark a read-only collection of DTO rows with
@@ -70,11 +86,13 @@ duplicate key, the route keeps its last state and reports the failure through
 function defineCollection<T>(decode: (wire: unknown) => T, key: (item: T) => string): BridgeCollectionDefinition;
 ```
 
-Describes one collection field for the runtime: `decode` validates and converts a
+Exported from `@runic-artifex/views/generated`. Describes one collection field
+for the runtime: `decode` validates and converts a
 wire row (throwing for an invalid one), and `key` returns the row's key, which
 must be a nonempty string unique within the field. Generated modules call it for
 each `[RunicCollection]` field, deriving `key` from the attributed property, and
-pass the result to the runtime. Applications normally do not call it. If you write
+pass the fields to `connectView` as `collections: defineCollections({ ... })`.
+Applications normally do not call it. If you write
 it by hand, the key must match the .NET wire key: the string itself, a lowercase
 GUID, or an `Int32` in decimal.
 

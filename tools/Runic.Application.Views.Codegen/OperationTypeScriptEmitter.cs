@@ -4,7 +4,7 @@ using System.Text.Json;
 // Operation emission is deliberately separate from Program's view/state
 // emission. Typed command inputs, result decoders and stream cursors all use
 // the same small plan; admission, recovery and idempotency handling live in
-// the shared @runic-artifex/views runtime.
+// the shared @runic-artifex/views runtime (`bridgeOperations`).
 internal sealed record OperationTypeScriptPlan(
     string Name,
     string InputType,

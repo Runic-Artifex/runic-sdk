@@ -296,7 +296,9 @@ public sealed class ConsumerViewModel : INotifyPropertyChanged
 import assert from 'node:assert/strict';
 import * as vite from '@runic-artifex/vite-plugin-runic';
 import { runicSpaPageOptions } from '@runic-artifex/sveltekit/page-options';
-import { BridgeError, bridgeWire, connectView } from '@runic-artifex/views';
+import { BridgeError } from '@runic-artifex/views';
+import { connectView } from '@runic-artifex/views/generated';
+import * as bridgeWire from '@runic-artifex/views/generated/wire';
 import { installMockBridge } from '@runic-artifex/views/mock';
 import { useView as useReactView } from '@runic-artifex/react';
 import { useView as useVueView } from '@runic-artifex/vue';

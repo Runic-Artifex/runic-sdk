@@ -17,12 +17,32 @@ export interface InteractionSurface {
   handle(handler: (input: never, context: BridgeInteractionContext) => unknown): () => void;
 }
 
-interface InteractionScope {
+/** The connection one presentation's interaction handlers run in. */
+export interface InteractionScope {
   readonly bridge: RunicBridgeClient;
   readonly route: string;
   readonly presentationId: string | undefined;
   /** The lease is not disposed and its route belongs to the current Bridge session. */
   readonly live: () => boolean;
+}
+
+/** The interaction handlers of one connected presentation. */
+export interface InteractionSession {
+  readonly surface: Readonly<Record<string, InteractionSurface>>;
+  /** Resolves when .NET acknowledged the registered handlers. */
+  ready(): Promise<void>;
+  dispose(): void;
+}
+
+/**
+ * The interactions of one generated client, passed to `connectView` as
+ * `interactions`. A View without interactions does not bundle this code.
+ */
+export type BridgeInteractions = (scope: InteractionScope) => InteractionSession;
+
+/** Binds the interaction codecs of a generated client to the interaction protocol. */
+export function defineInteractions(definitions: Readonly<Record<string, InteractionDefinition>>): BridgeInteractions {
+  return scope => new InteractionRuntime(scope, definitions);
 }
 
 type InteractionHandler = {
@@ -42,7 +62,7 @@ type InteractionRequest = {
  * advertises only active handlers, so an unrendered control preserves the
  * normal .NET interaction fallback.
  */
-export class InteractionRuntime {
+class InteractionRuntime implements InteractionSession {
   readonly surface: Readonly<Record<string, InteractionSurface>>;
   private readonly handlers = new Map<string, InteractionHandler>();
   private generation = 0;

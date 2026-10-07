@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { BridgeError, BridgeOperationUncertainError, bridgeWire, connectView, defineCollection, onBridgeDiagnostic, waitForBridge,
+import { bridgeOperations, connectView, defineCollection, defineCollections } from "../dist/generated.js";
+import * as bridgeWire from "../dist/wire.js";
+import { BridgeError, BridgeOperationUncertainError, onBridgeDiagnostic, waitForBridge,
   type BridgeDiagnostic } from "../dist/index.js";
 import { createMockBridge, installMockBridge, type MockBridge } from "../dist/mock.js";
 
@@ -24,7 +26,7 @@ function freshBridge(): MockBridge {
 }
 
 function connectCounter(route = "counter", mount = false) {
-  return connectView({ contract: "Tests.CounterViewModel:fingerprint", route, mount, hydrate });
+  return connectView({ contract: "Tests.CounterViewModel:fingerprint", route, mount, hydrate, operations: bridgeOperations });
 }
 
 function observe() {
@@ -107,7 +109,7 @@ test("an unusable collection change is reported before the client recovers", asy
   bridge.view("rows", { state: { rows: [{ id: 1 }] } });
   const decodeRow = (wire: unknown) => ({ id: bridgeWire.integer(bridgeWire.object(wire, value => value)["id"], 0, 100) });
   const client = await connectView({ contract: "rows:errors", route: "rows", mount: false,
-    collections: { rows: defineCollection(decodeRow, row => String(row.id)) },
+    collections: defineCollections({ rows: defineCollection(decodeRow, row => String(row.id)) }),
     hydrate: (wire: { rows: unknown[] }) => ({ rows: wire.rows.map(decodeRow) }) });
   const { reported, restore } = observe();
   try {

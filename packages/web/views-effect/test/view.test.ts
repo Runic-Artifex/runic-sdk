@@ -1,5 +1,7 @@
-import { BridgeError, bridgeWire, connectView, waitForBridge, type BridgeOperation, type CollectionViewport,
+import { BridgeError, waitForBridge, type BridgeOperation, type CollectionViewport,
   type CollectionViewportController, type ViewClient } from "@runic-artifex/views";
+import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
+import * as bridgeWire from "@runic-artifex/views/generated/wire";
 import { installMockBridge, type MockBridge } from "@runic-artifex/views/mock";
 import { Cause, Effect, Exit, Fiber, Schedule, Scope, Stream } from "effect";
 import { TestClock } from "effect/testing";
@@ -22,7 +24,7 @@ interface CounterClient extends ViewClient<CounterState> {
 // Shaped like a generated module, so the adapter is tested against the same surface.
 async function connectCounter(mount = false): Promise<CounterClient> {
   const view = await connectView<CounterState>({
-    contract, route: "counter", mount,
+    contract, route: "counter", mount, operations: bridgeOperations,
     hydrate: (wire: { count: unknown; title: unknown }) => ({ count: bridgeWire.integer(wire.count, 0, 1000), title: bridgeWire.string(wire.title) }),
   });
   const start = (requestId: string) => view.startOperation<number>("Run", requestId, () => requestId, value => bridgeWire.integer(value, 0, 1000));

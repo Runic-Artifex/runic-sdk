@@ -16,7 +16,7 @@ A read-only ViewModel property of DTO rows marked `[RunicCollection(keyProperty)
 publishes deltas, for example
 `[RunicCollection(nameof(Row.Id))] ReadOnlyObservableCollection<Row> Rows`. The
 generated client registers a codec and key function for the field with
-`defineCollection` (see the [views package guide](../../packages/web/views/README.md#incremental-collections)).
+`defineCollection` and `defineCollections` from `@runic-artifex/views/generated` (see the [views package guide](../../packages/web/views/README.md#incremental-collections)).
 The key property is a nonnullable `string`, `Guid` or `Int32`. Its wire key is the
 string itself, the lowercase `D` form of a `Guid`, or the invariant decimal form
 of an `Int32`. Keys must be nonempty and unique within the field, and rows must
