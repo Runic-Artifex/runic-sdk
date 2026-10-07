@@ -681,7 +681,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private BridgeFailure CommandDomainFailure(ref BridgeCall call, CommandDescriptor<T> descriptor, RunicFailureException domain)
     {
         var failureType = BridgeDomainFailures.TypeName(domain);
-        var encoded = BridgeDomainFailures.TryEncode(descriptor.EncodeFailure, domain, out var reason);
+        var encoded = BridgeDomainFailures.TryEncode(descriptor.EncodeFailure, domain, out var reason, out var logged);
         if (encoded is not null)
         {
             call.Complete(BridgeCallOutcome.DomainFailed);
@@ -689,7 +689,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             return new(BridgeFailure.DomainFailed, $"{descriptor.Name} failed.", Failure: encoded);
         }
         call.Complete(BridgeCallOutcome.Failed, domain);
-        ViewsLog.DomainFailureNotEncoded(_logger, domain, $"{ModelName}.{descriptor.Name}", failureType, reason);
+        ViewsLog.DomainFailureNotEncoded(_logger, logged, ModelName, descriptor.Name, _name, failureType, reason);
         return new("failed", $"{descriptor.Name} failed.", BridgeDiagnostics.Capture(domain));
     }
 
@@ -764,14 +764,14 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 var request = new BridgeOperationRequest(OperationContract(), descriptor.Name, requestId, BridgeOperationRequest.CanonicalDigest(canonicalInput));
                 var admission = descriptor.ExecuteStreamAsync is { } executeStream
                     ? content.Operations.Accept(request, () => IsAvailable(descriptor, argument), descriptor.CreateStream!(),
-                        (execution, cancellation) => ObserveOperationAsync(descriptor.Name, _name, descriptor.EncodeFailure, () =>
+                        (execution, cancellation) => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                         {
                             using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                             return executeStream(_vm, execution, cancellation, argument);
                         }))
                     : content.Operations.Accept(request,
                     () => IsAvailable(descriptor, argument),
-                    cancellation => ObserveOperationAsync(descriptor.Name, _name, descriptor.EncodeFailure, () =>
+                    cancellation => ObserveOperationAsync(_logger, descriptor.Name, _name, descriptor.EncodeFailure, () =>
                     {
                         using var invocation = EnterInvocation(descriptor, arguments, cancellation);
                         return InvokeCommandAsync(descriptor, argument, cancellation);
@@ -801,8 +801,10 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     // Runs the admitted work of an operation inside its span. The registry
     // owns the terminal state and logs a failure. A declared failure reaches
-    // the registry already encoded, so the registry stays type-agnostic.
-    private static async Task<BridgeOperationResult> ObserveOperationAsync(string member, string route,
+    // the registry already encoded, so the registry stays type-agnostic; one
+    // that cannot be sent is logged here (1008), where the model is known.
+    private static async Task<BridgeOperationResult> ObserveOperationAsync(Microsoft.Extensions.Logging.ILogger logger,
+        string member, string route,
         Func<object, string?>? encodeFailure, Func<Task<BridgeOperationResult>> run)
     {
         var call = BridgeCall.Start(BridgeCallKind.Operation, ModelName, route, member);
@@ -817,11 +819,12 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             // Classified by exception type, like success: a declared failure
             // thrown while cancellation is requested is still domain-failed.
             var failureType = BridgeDomainFailures.TypeName(domain);
-            var encoded = BridgeDomainFailures.TryEncode(encodeFailure, domain, out var reason);
+            var encoded = BridgeDomainFailures.TryEncode(encodeFailure, domain, out var reason, out var logged);
             if (encoded is null)
             {
                 call.Complete(BridgeCallOutcome.Failed, domain);
-                throw new BridgeDomainFailureNotEncodedException(failureType, reason, domain);
+                ViewsLog.DomainFailureNotEncoded(logger, logged, ModelName, member, route, failureType, reason);
+                throw new BridgeDomainFailureNotEncodedException(domain);
             }
             call.Complete(BridgeCallOutcome.DomainFailed);
             throw new BridgeDomainFailedException(encoded, failureType, domain);

@@ -67,13 +67,10 @@ internal sealed class BridgeDomainFailedException(string encodedJson, string fai
 }
 
 // Thrown by the operation observer when a RunicFailureException could not be
-// sent as the declared failure. The registry reports it as failed and logs 1008.
-internal sealed class BridgeDomainFailureNotEncodedException(string failureType, string reason, Exception original)
-    : Exception("The operation's failure could not be sent as its declared failure.", original)
-{
-    public string FailureType { get; } = failureType;
-    public string Reason { get; } = reason;
-}
+// sent as the declared failure. The observer already logged 1008; the
+// registry reports the operation as failed without logging it again.
+internal sealed class BridgeDomainFailureNotEncodedException(Exception original)
+    : Exception("The operation's failure could not be sent as its declared failure.", original);
 
 internal static class BridgeDomainFailures
 {
@@ -91,9 +88,14 @@ internal static class BridgeDomainFailures
     internal static string TypeName(RunicFailureException failure) =>
         failure.Failure.GetType().FullName ?? failure.Failure.GetType().Name;
 
-    // Returns the encoded failure, or null with the reason it falls back to failed.
-    internal static string? TryEncode(Func<object, string?>? encode, RunicFailureException failure, out string reason)
+    // Returns the encoded failure, or null with the reason it falls back to
+    // failed and the exception its log entry carries (D-12): the
+    // RunicFailureException, together with the encoder's own exception when
+    // the encoder threw.
+    internal static string? TryEncode(Func<object, string?>? encode, RunicFailureException failure, out string reason,
+        out Exception logged)
     {
+        logged = failure;
         if (encode is null)
         {
             reason = "the command declares no failure type";
@@ -104,6 +106,7 @@ internal static class BridgeDomainFailures
         catch (Exception error) when (error is not OutOfMemoryException)
         {
             reason = $"the failure could not be encoded ({error.GetType().Name})";
+            logged = new AggregateException("The declared failure could not be encoded.", failure, error);
             return null;
         }
         if (json is null)

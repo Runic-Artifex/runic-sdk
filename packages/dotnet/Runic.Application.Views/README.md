@@ -371,7 +371,7 @@ output accordingly. The message properties are listed per event.
 | 1005 | `BridgeOperationCancellationCallbackFailed` | Warning | A cancellation callback throws while a Window closes. | `ErrorType` |
 | 1006 | `BridgeCommandDomainFailed` | Debug | A command throws its declared failure. | `Model`, `Member`, `Route`, `FailureType` |
 | 1007 | `BridgeOperationDomainFailed` | Debug | An admitted operation throws its declared failure. | `Member`, `FailureType` |
-| 1008 | `BridgeDomainFailureNotEncoded` | Error | A `RunicFailureException` is undeclared, cannot be encoded or is over 4 KiB, so it is reported as failed. | `Member`, `FailureType`, `Reason` |
+| 1008 | `BridgeDomainFailureNotEncoded` | Error | A `RunicFailureException` from a command or operation is undeclared, cannot be encoded or is over 4 KiB, so it is reported as failed. When the encoder threw, the entry carries both exceptions. | `Model`, `Member`, `Route`, `FailureType`, `Reason` |
 | 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. | `Model`, `Route`, `ErrorType` |
 | 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. | `Model`, `Route`, `ErrorType` |
 | 1012 | `BridgeCollectionKeysRejected` | Error | A `[RunicCollection]` has a null row or a null, empty or duplicate key, so the route withholds its state. | `Model`, `Field`, `Key`, `Route` |

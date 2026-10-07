@@ -76,8 +76,8 @@ export interface BridgeOperationStreamPage<TResult> {
   readonly delivery?: BridgeOperationDelivery;
 }
 
-/** The members every operation handle has. */
-export interface BridgeOperationHandle<TResult = void, TFailure = never> {
+/** A recoverable .NET command execution identified by its request id. */
+export interface BridgeOperation<TResult = void, TFailure = never> {
   readonly requestId: string;
   status(): Promise<BridgeOperationStatus<TResult, TFailure>>;
   /** The terminal status. A failed observation is retried by the next read. */
@@ -88,10 +88,6 @@ export interface BridgeOperationHandle<TResult = void, TFailure = never> {
    */
   wait(options?: BridgeOperationWaitOptions): Promise<BridgeOperationStatus<TResult, TFailure>>;
   cancel(): Promise<BridgeOperationCancelResult>;
-}
-
-/** A recoverable .NET command execution identified by its request id. */
-export interface BridgeOperation<TResult = void, TFailure = never> extends BridgeOperationHandle<TResult, TFailure> {
   /**
    * Waits like `wait()` and resolves to the result, or to the declared failure.
    * Rejects with `BridgeError` for `failed` (`failed`), `cancelled` (`cancelled`),
@@ -102,11 +98,13 @@ export interface BridgeOperation<TResult = void, TFailure = never> extends Bridg
   outcome(options?: BridgeOperationWaitOptions): Promise<BridgeOutcome<TResult, TFailure>>;
 }
 
-/** An operation whose command yields a stream of results, read through `stream()`. */
-export interface BridgeStreamOperation<TResult = void, TFailure = never> extends BridgeOperationHandle<TResult, TFailure> {
-  /** Like {@link BridgeOperation.outcome}; a stream's values are read through `stream()`, so success has no value. */
-  outcome(options?: BridgeOperationWaitOptions): Promise<BridgeOutcome<void, TFailure>>;
-  stream(cursor?: number): Promise<BridgeOperationStreamPage<TResult>>;
+/**
+ * An operation whose command yields a stream of `TItem` values, read through
+ * `stream()`. Its status and `outcome()` carry no value, so it is a
+ * `BridgeOperation<void, TFailure>`.
+ */
+export interface BridgeStreamOperation<TItem = void, TFailure = never> extends BridgeOperation<void, TFailure> {
+  stream(cursor?: number): Promise<BridgeOperationStreamPage<TItem>>;
 }
 
 /** What the runtime returns for a started or recovered operation: either handle shape. */

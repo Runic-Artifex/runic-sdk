@@ -1,4 +1,4 @@
-import { BridgeError, waitForBridge, type BridgeOperation, type CollectionViewport,
+import { BridgeError, waitForBridge, type BridgeOperation, type BridgeStreamOperation, type CollectionViewport,
   type CollectionViewportController, type ViewClient } from "@runic-artifex/views";
 import { bridgeOperations, connectView } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
@@ -337,5 +337,21 @@ describe("followViewport", () => {
     const cancel = bridge.calls.find(call => call.name === "__runicOperationCancel");
     expect(JSON.parse(cancel!.args[0] as string).requestId).toBe(waits[0]!.requestId);
     await Effect.runPromise(Fiber.interrupt(fiber));
+  });
+});
+
+describe("operation types", () => {
+  // Compile-time: a generated stream start{X}() and an operation that declares a
+  // failure are both accepted, as a stream operation was before 0.7.
+  test("accepts stream operations and operations with a declared failure", () => {
+    interface FeedOperation extends BridgeStreamOperation<number> {}
+    interface SaveOperation extends BridgeOperation<void, { readonly $case: "titleRequired" }> {}
+    interface Client { startFeed(): Promise<FeedOperation>; startSave(): Promise<SaveOperation> }
+    const programs = (client: Client) => {
+      const feed: Effect.Effect<void, unknown> = operation(() => client.startFeed());
+      const save: Effect.Effect<void, unknown> = operation(() => client.startSave(), { timeout: "1 second" });
+      return [feed, save];
+    };
+    expect(typeof programs).toBe("function");
   });
 });

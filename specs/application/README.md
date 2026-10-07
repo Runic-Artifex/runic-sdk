@@ -14,8 +14,8 @@ specification is maintained by [Runic Translations](https://github.com/Runic-Art
 
 Every reply from a snapshot route carries `"protocol": 2`; command, setter and
 write replies do not. The version is informational: generated clients do not
-gate on it, and in development report a snapshot reply whose `protocol` differs
-from their own as a diagnostic. Clients ignore envelope members they do not
+gate on it, and report a snapshot reply whose `protocol` differs from their own
+as a diagnostic, in every environment and once per Bridge. Clients ignore envelope members they do not
 know, so adding members is compatible. The version changes only when a client
 built for the previous version could misread a reply. Version 2 added the
 `domain-failed` error and operation status kind.
@@ -100,8 +100,9 @@ reason to `message`; a `domain-failed` reply still has no `detail`.
 
 ```json
 { "ok": false, "state": { "revision": 13 }, "error": { "kind": "domain-failed", "message": "Save failed.", "failure": { "$case": "titleRequired" } } }
-``` `state`
-is null when the bridge was detached or closed. A checked write adds `receipt`:
+```
+
+`state` is null when the bridge was detached or closed. A checked write adds `receipt`:
 `applied` or `committed-with-error` with `snapshot: {value, version}`,
 `conflict` with `incoming`, or `rejected` with `message`.
 

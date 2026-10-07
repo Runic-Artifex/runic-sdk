@@ -10,6 +10,7 @@
 
 export { decodeBridgeValidation } from "./validation.js";
 export { connectView, viewReferences, type ViewConnection, type ViewConnectOptions } from "./connection.js";
+export type { BridgeOperationRuntimeHandle } from "./operations.js";
 export { defineCollection, defineCollections, type BridgeCollectionDefinition, type BridgeCollections } from "./collections.js";
 export {
   defineInteractions,

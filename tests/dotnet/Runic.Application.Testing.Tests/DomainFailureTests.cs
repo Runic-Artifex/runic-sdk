@@ -7,6 +7,8 @@ using System.Text.Json.Nodes;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
@@ -39,6 +41,7 @@ internal static partial class DomainFailureTests
             await RetentionCountsFailuresAsync();
             await TelemetryTreatsDomainFailuresAsExpectedAsync();
             FingerprintCoversOnlyDeclarations();
+            FingerprintFollowsDeclarationChanges();
             await PortableFixturesMatchAsync();
         }
         finally
@@ -150,9 +153,14 @@ internal static partial class DomainFailureTests
                 $"The {name} did not fall back to failed: {reply}");
             var entry = logs.Entries.LastOrDefault(item => item.EventId.Id == 1008)
                 ?? throw new InvalidOperationException($"The {name} was not logged as BridgeDomainFailureNotEncoded.");
-            Require(entry.Level == LogLevel.Error && entry.Exception is RunicFailureException && entry.State["Reason"] as string == reason
-                && entry.State["Member"] as string == $"{nameof(EditorModel)}.{command}",
-                $"The {name} entry was wrong: {string.Join(", ", entry.State)}");
+            // D-12: an encoder that threw is logged with its own exception beside the RunicFailureException.
+            var logged = name == "codec exception"
+                ? entry.Exception is AggregateException { InnerExceptions: [RunicFailureException, InvalidOperationException { Message: "The codec failed." }] }
+                : entry.Exception is RunicFailureException;
+            Require(entry.Level == LogLevel.Error && logged && entry.State["Reason"] as string == reason
+                && entry.State["Model"] as string == nameof(EditorModel) && entry.State["Member"] as string == command
+                && entry.State["Route"] as string == "editor",
+                $"The {name} entry was wrong: {entry.Exception?.GetType().Name} {string.Join(", ", entry.State)}");
         }
         Require(logs.Entries.Count(entry => entry.EventId.Id == 1008) == cases.Length && !logs.Entries.Any(entry => entry.EventId.Id == 1000),
             $"A fallback was logged twice or as BridgeCommandFailed: {Describe(logs)}");
@@ -163,6 +171,10 @@ internal static partial class DomainFailureTests
             $"An undeclared operation failure was not failed: {status.Json}");
         Require(logs.Entries.Count(entry => entry.EventId.Id == 1008) == cases.Length + 1 && !logs.Entries.Any(entry => entry.EventId.Id == 1004),
             $"The operation fallback was not logged once as 1008: {Describe(logs)}");
+        var operationEntry = logs.Entries.Last(entry => entry.EventId.Id == 1008);
+        Require(operationEntry.State["Model"] as string == nameof(EditorModel) && operationEntry.State["Member"] as string == "Submit"
+            && operationEntry.State["Route"] as string == "editor" && operationEntry.Exception is RunicFailureException,
+            $"The operation fallback entry did not name the model, member and route like a command: {string.Join(", ", operationEntry.State)}");
     }
 
     // Classified by exception type, like success: a declared failure thrown
@@ -267,6 +279,66 @@ internal static partial class DomainFailureTests
         var undeclaredMethod = BridgeContractShape.Parts(typeof(MethodUndeclaredModel));
         Require(!undeclaredMethod.Any(part => part.StartsWith("command-failure:", StringComparison.Ordinal)),
             "An undeclared [RelayCommand] method gained failure lines.");
+    }
+
+    // The same ViewModel, compiled with different declarations, as Hot Reload
+    // compares it: a declaration added, moved between the property and its
+    // [RelayCommand] method, or given another type changes the fingerprint;
+    // the lines of the undeclared command never change.
+    private static void FingerprintFollowsDeclarationChanges()
+    {
+        var variants = new (string Name, string Property, string Method)[]
+        {
+            ("undeclared", "", ""),
+            ("undeclared-again", "", ""),
+            ("property", "[RunicFailure(typeof(TitleRequired))]", ""),
+            ("property-other-type", "[RunicFailure(typeof(TitleTaken))]", ""),
+            ("method", "", "[RunicFailure(typeof(TitleRequired))]"),
+        };
+        var parts = variants.ToDictionary(variant => variant.Name, variant => FixtureParts(variant.Name, variant.Property, variant.Method));
+        static string Hash(List<string> lines) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join('\n', lines))));
+        var fingerprints = parts.ToDictionary(pair => pair.Key, pair => Hash(pair.Value));
+        Require(fingerprints["undeclared"] == fingerprints["undeclared-again"], "An unchanged model changed its fingerprint.");
+        Require(fingerprints.Values.Distinct().Count() == variants.Length - 1,
+            $"A changed declaration did not change the fingerprint: {string.Join(", ", fingerprints)}");
+        var discard = parts.Values.Select(lines => string.Join('\n', lines.Where(line => line.Contains("DiscardCommand", StringComparison.Ordinal)))).Distinct().ToArray();
+        Require(discard.Length == 1 && discard[0].Length > 0, $"The undeclared command's fingerprint lines changed: {string.Join(" | ", discard)}");
+    }
+
+    private static List<string> FixtureParts(string name, string property, string method)
+    {
+        var source = $$"""
+            using System.ComponentModel;
+            using System.Windows.Input;
+            using CommunityToolkit.Mvvm.Input;
+            using Runic.Application.Views;
+            namespace FingerprintFixture;
+            public abstract record SaveFailure;
+            public sealed record TitleRequired : SaveFailure;
+            public sealed record TitleTaken(string ExistingTitle) : SaveFailure;
+            public sealed class EditorViewModel : INotifyPropertyChanged
+            {
+                {{property}} public ICommand SaveCommand { get; } = new RelayCommand(() => { });
+                public ICommand DiscardCommand { get; } = new RelayCommand(() => { });
+                {{method}} [RelayCommand] private void Save() { }
+                public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+            }
+            """;
+        var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries).Select(path => MetadataReference.CreateFromFile(path));
+        var compilation = CSharpCompilation.Create($"FingerprintFixture_{name.Replace('-', '_')}",
+            [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest))], references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
+        using var image = new MemoryStream();
+        var emitted = compilation.Emit(image);
+        Require(emitted.Success, $"The {name} fingerprint fixture did not compile: {string.Join('\n', emitted.Diagnostics)}");
+        image.Position = 0;
+        // Each variant loads separately so they share one type name; dependencies
+        // such as Runic.Application.Views resolve from the default context.
+        var context = new System.Runtime.Loader.AssemblyLoadContext(name, isCollectible: true);
+        try { return BridgeContractShape.Parts(context.LoadFromStream(image).GetType("FingerprintFixture.EditorViewModel", throwOnError: true)!); }
+        finally { context.Unload(); }
     }
 
     // specs/application/fixtures/domain-failures: the producer writes the wire

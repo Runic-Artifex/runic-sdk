@@ -39,7 +39,6 @@ export type {
   BridgeOperationCancelResult,
   BridgeOperationDelivery,
   BridgeOperationDeliveryKind,
-  BridgeOperationHandle,
   BridgeOperationStatus,
   BridgeOperationStatusKind,
   BridgeOperationStatusOf,

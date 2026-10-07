@@ -132,9 +132,14 @@ function unpack(json: string, entry: SharedEntry, route: string): unknown {
   return state;
 }
 
+// .NET appends this to a reply's message when the call ran but its state
+// could not be sent because of invalid collection keys (D-13).
+const stateNotSent = " The updated state could not be sent: ";
+
 // A declared failure resolves the outcome. When .NET could not send the state
 // after the call (D-13), the failure still resolves and the missing state is
-// reported, so the key problem is not lost behind a resolved outcome.
+// reported, so the key problem is not lost behind a resolved outcome. A reply
+// without state from a detached Bridge needs no report.
 function unpackOutcome<TFailure>(json: string, entry: SharedEntry, route: string,
   decodeFailure: (value: unknown) => TFailure): BridgeOutcome<unknown, TFailure> {
   const { reply, state } = parse(json, entry, route);
@@ -142,7 +147,7 @@ function unpackOutcome<TFailure>(json: string, entry: SharedEntry, route: string
     let failure: TFailure;
     try { failure = decodeFailure(reply.error.failure); }
     catch (cause) { throw new BridgeError("failed", `The Bridge returned an invalid failure: ${errorMessage(cause)}`, { cause, route }); }
-    if (state === undefined) reportBridgeError(new BridgeError("failed", reply.error.message ?? "The Bridge returned no state.", { route }), route);
+    if (state === undefined && reply.error.message?.includes(stateNotSent)) reportBridgeError(new BridgeError("failed", reply.error.message ?? "The Bridge returned no state.", { route }), route);
     return bridgeFailure(failure);
   }
   if (!reply.ok) throw replyError(reply.error, route, "The call failed.");

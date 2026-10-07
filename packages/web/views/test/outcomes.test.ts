@@ -106,6 +106,9 @@ test("a declared failure without a state resolves and reports the missing state"
   bridge.route("editorSave", () => JSON.stringify({ ok: false, state: null, error: {
     kind: "domain-failed", message: "Save failed. The updated state could not be sent: rows has a duplicate key.",
     failure: { $case: "titleRequired" } } }));
+  // A detached .NET Bridge replies without state but with the plain message.
+  bridge.route("editorDetached", () => JSON.stringify({ ok: false, state: null, error: {
+    kind: "domain-failed", message: "Save failed.", failure: { $case: "titleRequired" } } }));
   const client = await connect();
   const reports = captureReports();
   try {
@@ -114,6 +117,8 @@ test("a declared failure without a state resolves and reports the missing state"
     const reported = reports.reported[0];
     assert.ok(reported instanceof BridgeError && reported.kind === "failed" && reported.route === "editorSave"
       && /could not be sent/.test(reported.message));
+    assert.deepEqual(await client.commandOutcome("editorDetached", decodeFailure), bridgeFailure({ $case: "titleRequired" }));
+    assert.equal(reports.reported.length, 1, "a reply from a detached Bridge is not a key failure");
   } finally {
     reports.restore();
     client.dispose();

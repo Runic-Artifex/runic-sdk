@@ -281,8 +281,8 @@ internal sealed class BridgeOperationRegistry : IDisposable
         catch (BridgeDomainFailureNotEncodedException notEncoded)
         {
             terminal = BridgeOperationStatusKind.Failed;
+            // The command's observer logged it as BridgeDomainFailureNotEncoded.
             var error = notEncoded.InnerException ?? notEncoded;
-            ViewsLog.DomainFailureNotEncoded(_logger, error, member, notEncoded.FailureType, notEncoded.Reason);
             failure = "The operation failed.";
             failureDetail = BridgeDiagnostics.Capture(error);
         }

@@ -102,7 +102,7 @@ const transient = (error: ViewOperationError) =>
 
 // The operation the latest attempt started, shared by every attempt.
 interface Started {
-  handle: BridgeOperation<unknown> | undefined;
+  handle: BridgeOperation<unknown, unknown> | undefined;
   settled: boolean;
 }
 
@@ -128,11 +128,11 @@ interface Started {
  * });
  * ```
  */
-export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T>>, options: RetryOperationOptions):
+export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T, unknown>>, options: RetryOperationOptions):
   Effect.Effect<OperationResult<T>, ViewOperationError>;
-export function operation<T>(start: () => PromiseLike<BridgeOperation<T>>, options?: OperationOptions):
+export function operation<T>(start: () => PromiseLike<BridgeOperation<T, unknown>>, options?: OperationOptions):
   Effect.Effect<OperationResult<T>, ViewOperationError>;
-export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T>>,
+export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOperation<T, unknown>>,
   options: OperationOptions & Partial<RetryOperationOptions> = {}): Effect.Effect<OperationResult<T>, ViewOperationError> {
   return Effect.suspend(() => {
     const started: Started = { handle: undefined, settled: true };
@@ -145,7 +145,7 @@ export function operation<T>(start: (requestId: string) => PromiseLike<BridgeOpe
   });
 }
 
-function runOperation<T>(start: () => PromiseLike<BridgeOperation<T>>, timeout: Duration.Input | undefined, started: Started):
+function runOperation<T>(start: () => PromiseLike<BridgeOperation<T, unknown>>, timeout: Duration.Input | undefined, started: Started):
   Effect.Effect<OperationResult<T>, ViewOperationError> {
   // The start is uninterruptible so its handle is always recorded for cancellation.
   return Effect.uninterruptibleMask(restore => attempt(start, bridgeFailure).pipe(
@@ -154,7 +154,7 @@ function runOperation<T>(start: () => PromiseLike<BridgeOperation<T>>, timeout: 
   ));
 }
 
-function waitFor<T>(handle: BridgeOperation<T>, timeout: Duration.Input | undefined, started: Started):
+function waitFor<T>(handle: BridgeOperation<T, unknown>, timeout: Duration.Input | undefined, started: Started):
   Effect.Effect<OperationResult<T>, ViewOperationError> {
   const completed = attempt(() => handle.completion, bridgeFailure).pipe(
     Effect.tap(() => Effect.sync(() => { started.settled = true; })),
@@ -181,7 +181,7 @@ function waitFor<T>(handle: BridgeOperation<T>, timeout: Duration.Input | undefi
   }));
 }
 
-function cancel(handle: BridgeOperation<unknown>) {
+function cancel(handle: BridgeOperation<unknown, unknown>) {
   return Effect.tryPromise({ try: () => handle.cancel(), catch: cause => cause }).pipe(
     Effect.map(result => result.kind),
     Effect.orElseSucceed(() => "unobserved" as const),
