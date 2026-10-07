@@ -38,6 +38,7 @@ internal static class Program
             ("doctor JSON payload lists every check", DoctorJsonListsChecks),
             ("doctor --rid accepts only runtime identifier syntax", DoctorRidParsesRuntimeIdentifiers),
             ("doctor --rid rejects unsupported targets", DoctorRidRejectsUnsupportedTargets),
+            ("doctor --rid follows the embedded support matrix", DoctorRidFollowsSupportMatrix),
             ("doctor --rid checks a Linux Native AOT target", DoctorRidChecksLinuxAot),
             ("doctor --rid refuses cross-OS Native AOT", DoctorRidRefusesCrossOsAot),
             ("doctor --rid checks framework-dependent and RuntimeIdentifiers", DoctorRidChecksFrameworkDependent),
@@ -881,6 +882,39 @@ internal static class Program
             Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, musl, runtime), "target-rid").Status);
         }
         Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-arm64", runtime), "target-rid").Status);
+    }
+
+    private static void DoctorRidFollowsSupportMatrix()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        var runtime = new FakeDoctorRuntime(authority.Toolchain);
+        SupportMatrix support = authority.Support;
+        SequenceEqual(["desktop", "cswebui"], support.Hosts.Select(host => host.Id).ToArray());
+        True(support.Requirements.Any(requirement => requirement.Id == "glibc" && requirement.Minimum == "2.34"),
+            "The support matrix must record the CS-WebUI glibc baseline.");
+        foreach (SupportHost host in support.Hosts)
+        {
+            DoctorProjectConfiguration project = desktop with
+            {
+                Host = host.Id == "desktop" ? RunicViewsHost.Desktop : RunicViewsHost.CsWebUi,
+            };
+            foreach (SupportTarget target in host.Targets)
+            {
+                DoctorCheck check = Check(InspectTarget(project, target.Rid, runtime), "target-rid");
+                Equal(target.Status switch
+                {
+                    SupportStatus.CiVerified => DoctorStatus.Pass,
+                    SupportStatus.PackagedUnverified => DoctorStatus.Warning,
+                    _ => DoctorStatus.Failure,
+                }, check.Status);
+                if (target.Status != SupportStatus.CiVerified) Contains(check.Message, target.Reason);
+                else Contains(check.Message, support.CiVerifiedMeaning);
+            }
+        }
+        DoctorCheck unknownHost = Check(InspectTarget(desktop with { Host = RunicViewsHost.Unknown }, "win-arm64", runtime), "target-rid");
+        Equal(DoctorStatus.Warning, unknownHost.Status);
+        Contains(unknownHost.Message, "most permissive host");
     }
 
     private static void DoctorRidChecksLinuxAot()
