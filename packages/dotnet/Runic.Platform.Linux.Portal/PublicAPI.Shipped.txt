@@ -10,7 +10,6 @@ Runic.Platform.Linux.Portal.PortalApplication.CreateInhibition(Runic.Platform.Ru
 Runic.Platform.Linux.Portal.PortalApplication.CreateNotifications() -> Runic.Platform.IDesktopNotifications!
 Runic.Platform.Linux.Portal.PortalApplication.CreateSettings() -> Runic.Platform.IDesktopSettings!
 Runic.Platform.Linux.Portal.PortalApplication.CreateUnparentedFileDialogs() -> Runic.Platform.Runtime.IPickerBackend!
-Runic.Platform.Linux.Portal.PortalApplication.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
 Runic.Platform.Linux.Portal.PortalApplication.PortalApplication(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> void
 Runic.Platform.Linux.Portal.PortalDiagnostic
 Runic.Platform.Linux.Portal.PortalDiagnostic.<Clone>$() -> Runic.Platform.Linux.Portal.PortalDiagnostic!
@@ -31,4 +30,5 @@ static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateFileLauncher(Run
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateNotifications(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopNotifications!
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateUnparentedFileDialogs() -> Runic.Platform.Runtime.IPickerBackend!
-static Runic.Platform.Linux.Portal.PortalPlatformProvider.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>
+Runic.Platform.Linux.Portal.PortalApplication.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>

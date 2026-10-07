@@ -45,3 +45,9 @@ virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel
 virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicView<TViewModel>.OnDetached() -> void
 virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicWindow<TViewModel>.OnAttached() -> void
 virtual Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicWindow<TViewModel>.OnDetached() -> void
+Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions
+static Runic.Application.Views.ReactiveUI.Reactive.BridgeSnapshotObservableExtensions.BatchBridgeSnapshots<T>(this System.IObservable<T>! source, object! model) -> System.IObservable<T>!
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveRoutedRegion<TViewModel>.ReactiveRoutedRegion(ReactiveUI.Reactive.RoutingState! router, Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void
+Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveExceptions
+static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, Microsoft.Extensions.Logging.ILogger! logger, string? sourceName = null) -> System.IDisposable!
+static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveExceptions.ObserveBridgeExceptions(this ReactiveUI.IHandleObservableErrors! source, System.Action<System.Exception!>! onUnexpected) -> System.IDisposable!

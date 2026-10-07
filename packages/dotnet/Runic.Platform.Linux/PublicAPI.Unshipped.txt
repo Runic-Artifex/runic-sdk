@@ -1,3 +1,1 @@
 #nullable enable
-Runic.Platform.Linux.LinuxTextClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
-*REMOVED*Runic.Platform.Linux.LinuxTextClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.Unit>!>

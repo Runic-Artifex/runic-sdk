@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/react",
-  "version": "0.7.0-preview.1",
+  "version": "0.7.0-preview.2",
   "description": "React hooks for generated Runic Views clients",
   "license": "MIT",
   "type": "module",
@@ -29,7 +29,7 @@
   },
   "peerDependencies": {
     "react": ">=18.3.0 <20",
-    "@runic-artifex/views": "0.7.0-preview.1"
+    "@runic-artifex/views": "0.7.0-preview.2"
   },
   "devDependencies": {
     "@runic-artifex/views": "workspace:*",

@@ -8,3 +8,4 @@ Runic.Desktop.Gtk4.Gtk4WindowHostFactory.Gtk4WindowHostFactory() -> void
 Runic.Desktop.Gtk4.Gtk4WindowHostFactory.IsSupported.get -> bool
 static Runic.Desktop.Gtk4.Gtk4Application.Run(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
 static Runic.Desktop.Gtk4.Gtk4Application.Run(System.Func<System.Threading.Tasks.Task<int>!>! application, string! applicationId) -> int
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ValidateOptions(Runic.Desktop.DesktopWindowHostOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!

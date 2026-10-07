@@ -1,14 +1,3 @@
 #nullable enable
-override Runic.Assets.Desktop.DesktopAssetOptions.Equals(object? obj) -> bool
-override Runic.Assets.Desktop.DesktopAssetOptions.GetHashCode() -> int
-override Runic.Assets.Desktop.DesktopAssetOptions.ToString() -> string!
 Runic.Assets.Desktop.DesktopAssetExtensions
-Runic.Assets.Desktop.DesktopAssetOptions
-Runic.Assets.Desktop.DesktopAssetOptions.<Clone>$() -> Runic.Assets.Desktop.DesktopAssetOptions!
-Runic.Assets.Desktop.DesktopAssetOptions.DesktopAssetOptions() -> void
-Runic.Assets.Desktop.DesktopAssetOptions.EnableSinglePageApplicationFallback.get -> bool
-Runic.Assets.Desktop.DesktopAssetOptions.EnableSinglePageApplicationFallback.init -> void
-Runic.Assets.Desktop.DesktopAssetOptions.Equals(Runic.Assets.Desktop.DesktopAssetOptions? other) -> bool
-static Runic.Assets.Desktop.DesktopAssetExtensions.ToDesktopContentHandler(this Runic.Assets.IAssetSource! source, Runic.Assets.Desktop.DesktopAssetOptions? options = null) -> Runic.Desktop.ContentHandler!
-static Runic.Assets.Desktop.DesktopAssetOptions.operator !=(Runic.Assets.Desktop.DesktopAssetOptions? left, Runic.Assets.Desktop.DesktopAssetOptions? right) -> bool
-static Runic.Assets.Desktop.DesktopAssetOptions.operator ==(Runic.Assets.Desktop.DesktopAssetOptions? left, Runic.Assets.Desktop.DesktopAssetOptions? right) -> bool
+static Runic.Assets.Desktop.DesktopAssetExtensions.ToDesktopContentHandler(this Runic.Assets.IAssetSnapshotSource! source, Runic.Assets.AssetRoutingOptions? routing = null) -> Runic.Desktop.ContentHandler!
