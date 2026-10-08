@@ -24,8 +24,9 @@ namespace Runic.Application.Views.ReactiveUI;
 /// The navigator replaces ReactiveUI's <c>RoutingState</c>; these helpers do not wrap one.
 /// </summary>
 /// <remarks>
-/// A region raises its changes inside the model turn that commits them, so the observables deliver
-/// on that turn. Use <c>ObserveOn</c> to move to another scheduler. An entry's lifetime is not
+/// Each subscription receives its initial value on the subscribing thread, inside <c>Subscribe</c>.
+/// Later values arrive on the model turn in which the region raises the change, the commit turn for
+/// a navigation. Use <c>ObserveOn</c> to move to another scheduler. An entry's lifetime is not
 /// ReactiveUI activation: a retained entry stays alive while it is not presented, and its View may
 /// deactivate and activate again when it returns.
 /// </remarks>
@@ -65,13 +66,16 @@ public static class ReactiveNavigation
     /// Creates a command that goes back in <paramref name="region"/>. It can execute while
     /// <see cref="NavigationRegion{TContent}.CanGoBack"/> is <see langword="true"/> and
     /// <see cref="NavigationRegion{TContent}.IsTransitioning"/> is <see langword="false"/>, and its
-    /// output is the <see cref="NavigationResult{TContent}"/>.
+    /// output is the <see cref="NavigationResult{TContent}"/>. <c>CanExecute</c> reflects this region only: a
+    /// transition of an ancestor region does not disable it.
     /// </summary>
     /// <remarks>
     /// A rejected, superseded or failed Back is a result, not an exception, so <c>ThrownExceptions</c>
     /// reports only defects and cancellation. Observe it, for example with
     /// <c>RunicReactiveExceptions.ObserveBridgeExceptions</c>.
     /// Cancelling an execution cancels the Back until it commits.
+    /// The command observes the region through a <c>PropertyChanged</c> handler until the command is disposed,
+    /// so dispose it with its owner, for example with <c>DisposeWith</c>.
     /// </remarks>
     /// <param name="region">The region.</param>
     /// <param name="scheduler">
@@ -101,6 +105,9 @@ public static class ReactiveNavigation
     // Emits the value on subscription and then each change, distinct until changed. Each
     // subscription reads and emits under its own lock, so a change raised while the initial
     // value is emitted on another thread is neither lost nor delivered out of order.
+    // OnNext therefore runs under that lock: an observer must not block on another thread
+    // that raises a change of the same region. The lock is reentrant, so a change raised
+    // synchronously from OnNext on the same thread is delivered inside that OnNext call.
     private sealed class RegionObservable<TContent, T>(
         NavigationRegion<TContent> region, Func<NavigationRegion<TContent>, T> read, string? property, IEqualityComparer<T> comparer)
         : IObservable<T> where TContent : class
@@ -115,7 +122,13 @@ public static class ReactiveNavigation
             ArgumentNullException.ThrowIfNull(observer);
             var subscription = new Subscription(this, observer);
             _region.PropertyChanged += subscription.Changed;
-            subscription.Emit();
+            try { subscription.Emit(); }
+            catch
+            {
+                // The initial value's observer threw: remove the handler before the exception propagates.
+                subscription.Dispose();
+                throw;
+            }
             return subscription;
         }
 

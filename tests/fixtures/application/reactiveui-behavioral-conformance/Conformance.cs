@@ -414,6 +414,14 @@ static async Task NavigationAdapterSemanticsAsync()
     var late = new Recorder<NavigationPage?>();
     using (region.WhenCurrentChanged().Subscribe(late))
         Require(late.Values.SequenceEqual([(NavigationPage?)null]), "A subscription to an empty region did not receive null.");
+
+    // An observer that throws on the initial value: the subscription is removed before the
+    // exception propagates, so later changes no longer reach it.
+    var throwing = new ThrowingObserver<NavigationPage?>();
+    await RequireThrowsAsync<InvalidOperationException>(() => { region.WhenCurrentChanged().Subscribe(throwing); return Task.CompletedTask; },
+        "The initial emission's exception did not propagate from Subscribe.");
+    await region.PushAsync(NavigationTarget.Own(new NavigationPage("after")));
+    Require(throwing.Calls == 1, $"A subscription whose initial emission threw still observed the region ({throwing.Calls} calls).");
 }
 
 static async Task WaitUntilAsync(Func<bool> condition, string message)
@@ -570,6 +578,19 @@ sealed class Recorder<T> : IObserver<T>
     public void OnCompleted() { }
     public void OnError(Exception error) => throw new InvalidOperationException("The sequence failed.", error);
     public void OnNext(T value) { lock (_lock) _values.Add(value); }
+}
+
+sealed class ThrowingObserver<T> : IObserver<T>
+{
+    private int _calls;
+    public int Calls => Volatile.Read(ref _calls);
+    public void OnCompleted() { }
+    public void OnError(Exception error) { }
+    public void OnNext(T value)
+    {
+        Interlocked.Increment(ref _calls);
+        throw new InvalidOperationException("The observer failed.");
+    }
 }
 
 sealed class NavigationPage(string name) : INavigationDepartureGuard

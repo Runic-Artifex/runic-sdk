@@ -174,15 +174,15 @@ also logged by the Views runtime (event 1000 or 1004). The helper works on any
 has awaited departure guards, stable entry ids, owned content and supersession,
 which `RoutingState`'s mutable stack and synchronous `Navigate` cannot enforce.
 Use a `NavigationRegion<TContent>` for new navigation, and keep
-`ReactiveRoutedRegion<T>` for existing `RoutingState` code; it is unchanged
-through 0.8. Expose the region as a get-only property and the generator presents
-its `Current` like any content slot.
+`ReactiveRoutedRegion<T>` for existing `RoutingState` code. Expose the
+region as a get-only property and the generator presents its `Current` like
+any content slot.
 
 The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
 
 ```csharp
 var scheduler = new RunicReactiveSchedulerProvider().For(context);
-BackCommand = Main.CreateBackCommand(scheduler);
+BackCommand = Main.CreateBackCommand(scheduler).DisposeWith(disposables); // holds a region handler
 BackCommand.ObserveBridgeExceptions(logger).DisposeWith(disposables);
 
 Main.WhenCurrentChanged()          // TContent?, distinct by instance
@@ -196,15 +196,19 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance
   empty) on subscription and then each different instance.
   `WhenEntryChanged()` emits each `NavigationEntry<TContent>`, also when two
   entries present the same borrowed instance.
-- Both deliver inside the model turn that commits the change, never complete,
-  and stop when the subscription is disposed.
+- Both emit the initial value on the subscribing thread, inside `Subscribe`,
+  and later values on the model turn that raises the change: the commit turn
+  for a navigation. Use `ObserveOn` to deliver elsewhere. They never
+  complete, and stop when the subscription is disposed.
 - `CreateBackCommand(scheduler)` returns a
   `ReactiveCommand<RxVoid, NavigationResult<TContent>>`
   (`ReactiveCommand<Unit, NavigationResult<TContent>>` in the System.Reactive flavor). It can execute
   while `CanGoBack` is true and `IsTransitioning` is false, including
-  transitions it did not start. A rejected, superseded or failed Back is its
-  output, not an exception, so `ThrownExceptions` carries only defects and
-  cancellation.
+  transitions it did not start. It reflects this region only: a transition of
+  an ancestor region does not disable it. The command observes the region
+  until it is disposed, so dispose it with its owner. A rejected, superseded
+  or failed Back is its output, not an exception, so `ThrownExceptions`
+  carries only defects and cancellation.
 - **Activation is not entry lifetime.** ReactiveUI activation follows a mounted
   View. A navigation entry lives from its push until it retires: a retained
   entry stays alive and keeps its state while nothing presents it, and its View
