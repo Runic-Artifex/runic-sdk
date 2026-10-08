@@ -77,7 +77,7 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
   matches the window's backend; no custom adapter is needed:
   - Windows: `WindowsPlatformProvider.CreateFileDialogs(owner)`.
   - macOS: `MacOSPlatformProvider.CreateFileDialogs(owner)`.
-  - Linux with the default GTK 3 backend:
+  - Linux with GTK 3:
     `LinuxPlatformProvider.CreateFileDialogs(owner)`.
   - Linux with GTK 4:
     `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`.
