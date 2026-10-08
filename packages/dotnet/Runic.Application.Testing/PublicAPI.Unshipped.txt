@@ -1,1 +1,2 @@
 #nullable enable
+*REMOVED*[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.UnretiredEntryCount(this Runic.Application.Views.RunicNavigator! navigator) -> int

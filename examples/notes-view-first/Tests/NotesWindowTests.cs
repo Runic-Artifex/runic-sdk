@@ -200,7 +200,7 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.Equal(NavigationEntryState.Retired, firstEntry.State);
         Assert.Equal(NavigationEntryState.Retired, paneEntry.State);
         Assert.Null(first.CurrentPane.Current);
-        Assert.Equal(1, Navigator.UnretiredEntryCount());
+        Assert.Equal(1, Navigator.UnretiredEntryCount);
         Assert.Equal("Home", Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Snapshot().Read(vm => vm.Selected));
 
         var editor = await OpenEditorAsync();
@@ -222,7 +222,7 @@ public sealed class NotesWindowTests : IAsyncLifetime
         var notes = Navigation.OpenNotesAsync();
         await Task.WhenAll(notes, Navigation.OpenNotesAsync());
         // Home, one document and its editor pane.
-        Assert.Equal(3, Navigator.UnretiredEntryCount());
+        Assert.Equal(3, Navigator.UnretiredEntryCount);
         Assert.IsType<DocumentViewModel>(Navigation.Main.Current);
         Assert.Single(Navigation.Main.History);
 
@@ -240,7 +240,7 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.IsType<HomeViewModel>(Navigation.Main.Current);
         Assert.Null(Navigation.Dialog.Current);
         Assert.Equal("Home", sidebar.Snapshot().Read(vm => vm.Selected));
-        Assert.Equal(1, Navigator.UnretiredEntryCount());
+        Assert.Equal(1, Navigator.UnretiredEntryCount);
     }
 
     // The confirm is modal: the sidebar and the document's pane commands report that they
@@ -386,12 +386,12 @@ public sealed class NotesWindowTests : IAsyncLifetime
 
         (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).EnsureOk();
         Assert.IsType<HomeViewModel>(navigation.Main.Current);
-        Assert.Equal(1, navigator.UnretiredEntryCount());
+        Assert.Equal(1, navigator.UnretiredEntryCount);
         Assert.Equal("home", window.Host.Root.Snapshot().Reference(vm => vm.Main)?.Kind);
 
         (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).EnsureOk();
         Assert.IsType<DocumentViewModel>(navigation.Main.Current);
-        Assert.Equal(3, navigator.UnretiredEntryCount());
+        Assert.Equal(3, navigator.UnretiredEntryCount);
         Assert.Equal(2, attempts);
     }
 
@@ -406,7 +406,7 @@ public sealed class NotesWindowTests : IAsyncLifetime
 
         await Navigator.DisposeAsync();
         await leaving;
-        Assert.Equal(0, Navigator.UnretiredEntryCount());
+        Assert.Equal(0, Navigator.UnretiredEntryCount);
         Assert.True(Editor.IsDirty);
     }
 

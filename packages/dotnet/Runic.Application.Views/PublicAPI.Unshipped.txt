@@ -1,1 +1,22 @@
 #nullable enable
+[RUNICNAV001]Runic.Application.Views.INavigationEntry
+[RUNICNAV001]Runic.Application.Views.INavigationEntry.Content.get -> object!
+[RUNICNAV001]Runic.Application.Views.INavigationEntry.Id.get -> Runic.Application.Views.NavigationEntryId
+[RUNICNAV001]Runic.Application.Views.INavigationEntry.Ownership.get -> Runic.Application.Views.NavigationOwnership
+[RUNICNAV001]Runic.Application.Views.INavigationEntry.State.get -> Runic.Application.Views.NavigationEntryState
+[RUNICNAV001]Runic.Application.Views.INavigationPresentation
+[RUNICNAV001]Runic.Application.Views.INavigationPresentation.Forget(object! content) -> void
+[RUNICNAV001]Runic.Application.Views.INavigationRegion
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.BackAsync(Runic.Application.Views.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.NavigationResult<object!>!>
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.CanGoBack.get -> bool
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.ClearAsync(Runic.Application.Views.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.NavigationResult<object!>!>
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.ContentType.get -> System.Type!
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.Current.get -> object?
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.CurrentEntry.get -> Runic.Application.Views.INavigationEntry?
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.History.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.INavigationEntry!>!
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.IsTransitioning.get -> bool
+[RUNICNAV001]Runic.Application.Views.INavigationRegion.Navigator.get -> Runic.Application.Views.RunicNavigator!
+[RUNICNAV001]Runic.Application.Views.NavigationRegion<TContent>.Navigator.get -> Runic.Application.Views.RunicNavigator!
+[RUNICNAV001]Runic.Application.Views.RunicNavigator.AttachPresentation(Runic.Application.Views.INavigationPresentation! presentation) -> System.IDisposable!
+[RUNICNAV001]Runic.Application.Views.RunicNavigator.ModelContext.get -> Runic.Application.Views.IRunicModelContext!
+[RUNICNAV001]Runic.Application.Views.RunicNavigator.UnretiredEntryCount.get -> int

@@ -4,6 +4,44 @@ using System.Diagnostics.CodeAnalysis;
 namespace Runic.Application.Views;
 
 /// <summary>
+/// The content-type-independent view of a <see cref="NavigationRegion{TContent}"/>, for hosts that present
+/// a region without knowing its content type. Only <see cref="NavigationRegion{TContent}"/> implements it.
+/// </summary>
+/// <remarks>
+/// <see cref="INotifyPropertyChanged.PropertyChanged"/> is the region's event, with the same property names.
+/// </remarks>
+[Experimental(RunicNavigator.DiagnosticId)]
+public interface INavigationRegion : INotifyPropertyChanged
+{
+    /// <summary>Gets the navigator that owns the region.</summary>
+    RunicNavigator Navigator { get; }
+
+    /// <summary>Gets the region's content type.</summary>
+    Type ContentType { get; }
+
+    /// <summary>Gets the current content, or <see langword="null"/> when the region is empty.</summary>
+    object? Current { get; }
+
+    /// <summary>Gets the current entry, or <see langword="null"/> when the region is empty.</summary>
+    INavigationEntry? CurrentEntry { get; }
+
+    /// <summary>Gets the retained entries below the current entry, from bottom to top.</summary>
+    IReadOnlyList<INavigationEntry> History { get; }
+
+    /// <summary>Gets whether a retained entry exists to go back to.</summary>
+    bool CanGoBack { get; }
+
+    /// <summary>Gets whether a transition of this region is in flight.</summary>
+    bool IsTransitioning { get; }
+
+    /// <summary>Retires the current entry and resumes the top retained entry.</summary>
+    ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>Retires every entry. The region becomes empty.</summary>
+    ValueTask<NavigationResult<object>> ClearAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// One navigation region: a stack of typed entries whose top is <see cref="Current"/>. State changes
 /// commit in one model turn and raise <see cref="PropertyChanged"/> inside that turn.
 /// </summary>
@@ -14,7 +52,7 @@ namespace Runic.Application.Views;
 /// operation is admitted without blocking and continues on the thread pool; do not block on it there.
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
-public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INavigationPresentationSource where TContent : class
+public sealed class NavigationRegion<TContent> : INavigationRegion where TContent : class
 {
     private static readonly PropertyChangedEventArgs CurrentChanged = new(nameof(Current));
     private static readonly PropertyChangedEventArgs CurrentEntryChanged = new(nameof(CurrentEntry));
@@ -30,7 +68,16 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INaviga
 
     internal NavigationRegionCore Core { get; }
 
-    internal RunicNavigator Navigator => Core.Navigator;
+    /// <summary>Gets the navigator that owns the region.</summary>
+    public RunicNavigator Navigator => Core.Navigator;
+
+    Type INavigationRegion.ContentType => typeof(TContent);
+
+    object? INavigationRegion.Current => Current;
+
+    INavigationEntry? INavigationRegion.CurrentEntry => CurrentEntry;
+
+    IReadOnlyList<INavigationEntry> INavigationRegion.History => History;
 
     /// <summary>Gets the current content, or <see langword="null"/> when the region is empty.</summary>
     public TContent? Current => (TContent?)Core.CurrentEntry?.Content;
@@ -115,19 +162,13 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INaviga
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken) =>
         NavigationResults.MapAsync<TContent>(Core.Start(operation, target, backTo, options, cancellationToken));
 
-    // A Bridge slot presents Current. It binds the window session as the
-    // navigator's Forget sink and republishes when Current changes.
-    IDisposable INavigationPresentationSource.ObservePresentation(WindowContentSession? session, Action changed)
-    {
-        ArgumentNullException.ThrowIfNull(changed);
-        if (session is not null) Core.Navigator.BindPresentation(session);
-        PropertyChangedEventHandler handler = (_, args) =>
-        {
-            if (string.IsNullOrEmpty(args.PropertyName) || args.PropertyName == nameof(Current)) changed();
-        };
-        PropertyChanged += handler;
-        return new Subscription(this, handler);
-    }
+    ValueTask<NavigationResult<object>> INavigationRegion.BackAsync(NavigationRequestOptions? options,
+        CancellationToken cancellationToken) =>
+        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Back, null, null, options, cancellationToken));
+
+    ValueTask<NavigationResult<object>> INavigationRegion.ClearAsync(NavigationRequestOptions? options,
+        CancellationToken cancellationToken) =>
+        NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Clear, null, null, options, cancellationToken));
 
     private static NavigationTargetCore Target(INavigationTarget<TContent> target)
     {
@@ -148,16 +189,6 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INaviga
         if ((changes & NavigationRegionChanges.Transitioning) != 0) Raise(IsTransitioningChanged);
     }
 
-    private sealed class Subscription(NavigationRegion<TContent> region, PropertyChangedEventHandler handler) : IDisposable
-    {
-        private int _disposed;
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) region.PropertyChanged -= handler;
-        }
-    }
-
     // D-13: one throwing handler must not skip the others or undo the commit.
     private void Raise(PropertyChangedEventArgs args)
     {
@@ -173,12 +204,6 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INaviga
             }
         }
     }
-}
-
-// Implemented by NavigationRegion<T>; observed through a property descriptor's hook.
-internal interface INavigationPresentationSource
-{
-    IDisposable ObservePresentation(WindowContentSession? session, Action changed);
 }
 
 [Flags]

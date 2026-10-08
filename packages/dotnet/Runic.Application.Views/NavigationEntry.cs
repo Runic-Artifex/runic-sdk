@@ -2,10 +2,30 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Runic.Application.Views;
 
+/// <summary>
+/// The content-type-independent view of a <see cref="NavigationEntry{TContent}"/>, for hosts that present
+/// a region without knowing its content type. Only <see cref="NavigationEntry{TContent}"/> implements it.
+/// </summary>
+[Experimental(RunicNavigator.DiagnosticId)]
+public interface INavigationEntry
+{
+    /// <summary>Gets the entry's id, unique within its navigator.</summary>
+    NavigationEntryId Id { get; }
+
+    /// <summary>Gets the entry's content.</summary>
+    object Content { get; }
+
+    /// <summary>Gets whether the navigator owns the content.</summary>
+    NavigationOwnership Ownership { get; }
+
+    /// <summary>Gets the entry's current state.</summary>
+    NavigationEntryState State { get; }
+}
+
 /// <summary>One entry of a navigation region: its stable id, content, ownership and state.</summary>
 /// <typeparam name="TContent">The region's content type.</typeparam>
 [Experimental(RunicNavigator.DiagnosticId)]
-public sealed class NavigationEntry<TContent> where TContent : class
+public sealed class NavigationEntry<TContent> : INavigationEntry where TContent : class
 {
     internal NavigationEntry(NavigationEntryCore core) => Core = core;
 
@@ -16,6 +36,8 @@ public sealed class NavigationEntry<TContent> where TContent : class
 
     /// <summary>Gets the entry's content.</summary>
     public TContent Content => (TContent)Core.Content!;
+
+    object INavigationEntry.Content => Core.Content!;
 
     /// <summary>Gets whether the navigator owns the content.</summary>
     public NavigationOwnership Ownership => Core.Ownership;
@@ -153,6 +175,13 @@ internal sealed class NavigationEntryCore
         _ => NavigationEntryState.Retired,
     };
 
-    public NavigationEntry<T> View<T>() where T : class =>
-        _typedView as NavigationEntry<T> ?? (NavigationEntry<T>)(_typedView = new NavigationEntry<T>(this));
+    // The cached view keeps the region's typed entry stable. An object view (from
+    // NavigationEntryContext or INavigationRegion) does not replace a typed one.
+    public NavigationEntry<T> View<T>() where T : class
+    {
+        if (_typedView is NavigationEntry<T> cached) return cached;
+        var view = new NavigationEntry<T>(this);
+        if (_typedView is null || typeof(T) != typeof(object)) _typedView = view;
+        return view;
+    }
 }
