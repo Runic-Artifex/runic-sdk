@@ -178,6 +178,9 @@ test('Views replace the Bridge application gates', () => {
   // W230-002: the experimental navigator through a packaged Bridge window, with JIT and NativeAOT.
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run === 'bun tests/fixtures/application/navigation-consumer/package-smoke.mjs'));
+  // W240-003: the packed Runic.Navigation alone, with no Runic build assets or Node, with JIT and NativeAOT.
+  assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
+    step.run === 'bun tests/fixtures/navigation/standalone-consumer/package-smoke.mjs'));
   assert.ok(workflow.jobs.native.steps.some(step =>
     step.run?.includes('dotnet publish examples/first-window/FirstWindow.csproj') && step.run.includes('PublishAot=true')));
 });

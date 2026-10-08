@@ -181,7 +181,8 @@
       "dependsOn": [],
       "paths": [
         "packages/dotnet/Runic.Navigation",
-        "tests/dotnet/Runic.Navigation.Tests"
+        "tests/dotnet/Runic.Navigation.Tests",
+        "tests/fixtures/navigation"
       ]
     },
     "application": {
