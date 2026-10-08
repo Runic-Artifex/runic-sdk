@@ -2,6 +2,7 @@ import { Component, DestroyRef, ElementRef, ViewChild, afterRenderEffect, inject
 import type { ConfirmNavigationPageReference } from "../../../Frontend/src/generated/confirmNavigation.js";
 import { injectCommand } from "../../../../../packages/web/angular/src/inject-command";
 import { injectPage, WindowOperations } from "./window-operations";
+import { focusOrigin, restoreFocus } from "../../../Frontend/src/focus.js";
 
 @Component({
   selector: "notes-confirm-navigation",
@@ -27,7 +28,7 @@ export class ConfirmNavigationComponent {
   readonly answer = injectCommand((name: "cancel" | "confirm") =>
     this.operations.run(this.dialog.client(), view => view[name]()));
   private readonly destroyRef = inject(DestroyRef);
-  private readonly previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  private readonly previousFocus = focusOrigin();
   private focused = false;
   private cancelElement: HTMLButtonElement | undefined;
   private confirmElement: HTMLButtonElement | undefined;
@@ -40,7 +41,7 @@ export class ConfirmNavigationComponent {
   }
 
   constructor() {
-    this.destroyRef.onDestroy(() => this.previousFocus?.focus());
+    this.destroyRef.onDestroy(() => restoreFocus(this.previousFocus));
     afterRenderEffect({ write: () => {
       if (this.dialog.state()?.canCancel && this.cancelElement && !this.focused) {
         this.cancelElement.focus();

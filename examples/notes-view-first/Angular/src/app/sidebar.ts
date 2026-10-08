@@ -23,6 +23,9 @@ export class SidebarComponent {
   readonly page = input.required<SidebarPageReference>();
   readonly sidebar = injectPage(this.page);
   private readonly operations = inject(WindowOperations);
+  // A navigation completes only after the document's guard is answered in the dialog, a later
+  // window command. Ordering its completion would queue that answer behind it, so it is
+  // ordered by dispatch.
   readonly open = injectCommand((name: "openHome" | "openNotes") =>
-    this.operations.run(this.sidebar.client(), view => view[name]()));
+    this.operations.runDispatched(this.sidebar.client(), view => view[name]()));
 }

@@ -4,7 +4,7 @@ using NotesWindowViews;
 var useSplat = args.Contains("--splat", StringComparer.Ordinal);
 if (args.Contains("--check-view-lifetime", StringComparer.Ordinal))
 {
-    ViewLifetimeCheck.Run(useSplat);
+    await ViewLifetimeCheck.RunAsync(useSplat);
     return;
 }
 var webRootOption = Array.IndexOf(args, "--web-root");

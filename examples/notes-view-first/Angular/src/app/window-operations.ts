@@ -34,7 +34,10 @@ export class WindowOperations {
     });
   }
 
-  /** Diagnostic only: starts a command before admitting later calls. */
+  /**
+   * Starts a command before admitting later calls, without waiting for it to complete. The
+   * dispatch probe uses it for Save; navigation uses it because a guard may wait for a later call.
+   */
   runDispatched<V extends DisposableView, T>(view: V | undefined, action: (view: V) => Promise<T>): Promise<T> {
     if (!view) return Promise.reject(new Error("The view is not connected."));
     const lease = this.lease(view);

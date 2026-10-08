@@ -77,12 +77,13 @@ public static class NotesServices
     public static IServiceCollection AddNotes(this IServiceCollection services)
     {
         services.TryAddSingleton(TimeProvider.System);
+        // One model context and one navigator per window scope; the window session shares the context.
+        services.AddRunicNavigation();
         services.AddScoped<INotesStorage, MemoryNotesStorage>();
         services.AddScoped<NotesLibrary>();
         services.AddScoped<HomeViewModel>();
         services.AddScoped<EditorViewModel>();
         services.AddScoped<PreviewViewModel>();
-        services.AddScoped<DocumentViewModel>();
         services.AddScoped<WorkspaceNavigation>();
         services.AddScoped<SidebarViewModel>();
         services.AddScoped<ShellViewModel>();

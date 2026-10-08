@@ -35,7 +35,7 @@ function hydrate(wire: WireState): HomeState {
     recentNotes: bridgeWire.array(wire.recentNotes, item => bridgeWire.object<SavedNote>(item, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])}))),
   };
 }
-const bridgeContract = "NotesWindowViews.HomeViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05";
+const bridgeContract = "NotesWindowViews.HomeViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3";
 
 const collectionDefinitions = defineCollections({
   recentNotes: defineCollection<SavedNote>(wire => bridgeWire.object<SavedNote>(wire, value => ({ title: bridgeWire.string(value["title"]), excerpt: bridgeWire.string(value["excerpt"])})), item => String(item.title)),
