@@ -104,13 +104,14 @@ test('every executable application fixture runs in CI', () => {
     .map(path => `tests/fixtures/application/${path.replaceAll('\\', '/')}`)
     .filter(path => path.endsWith('.csproj') && !/\/(bin|obj|experiments)\//.test(path)
       && !/<OutputType>Library<\/OutputType>/.test(readFileSync(resolve(root, path), 'utf8')));
-  // Only command lines count, not paths filters or comments.
+  // Only command lines count, not paths filters or comments. A fixture that
+  // restores packed packages runs through its own package-smoke.mjs.
   const commands = readdirSync(resolve(root, '.github/workflows'))
     .flatMap(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8').split('\n'))
-    .filter(line => /\bdotnet (run|publish|test)\b/.test(line));
+    .filter(line => /\bdotnet (run|publish|test)\b/.test(line) || /\b(bun|node) \S*package-smoke\.mjs\b/.test(line));
   const runByWorkflow = path => {
     const directory = path.slice(0, path.lastIndexOf('/'));
-    return commands.some(line => line.includes(path) || new RegExp(`${directory.replaceAll('.', '\\.')}(?=[\\s"']|$)`).test(line));
+    return commands.some(line => line.includes(path) || line.includes(`${directory}/package-smoke.mjs`) || new RegExp(`${directory.replaceAll('.', '\\.')}(?=[\\s"']|$)`).test(line));
   };
   const suites = managedTests(root, 'linux').map(item => item.path);
   const listed = applicationFixtures.map(item => item.path);
@@ -174,6 +175,9 @@ test('Views replace the Bridge application gates', () => {
     step.run?.includes('bun run --cwd packages/web/views --bun build')));
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run?.includes('examples/first-window-desktop/package-smoke.mjs')));
+  // W230-002: the experimental navigator through a packaged Bridge window, with JIT and NativeAOT.
+  assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
+    step.run === 'bun tests/fixtures/application/navigation-consumer/package-smoke.mjs'));
   assert.ok(workflow.jobs.native.steps.some(step =>
     step.run?.includes('dotnet publish examples/first-window/FirstWindow.csproj') && step.run.includes('PublishAot=true')));
 });

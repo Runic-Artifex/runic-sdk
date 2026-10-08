@@ -25,6 +25,25 @@ internal static class BridgeModelGates
 /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
 public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter)
 {
+    /// <summary>Describes a property whose value comes from an observed sub-object, such as a navigation region slot.</summary>
+    /// <param name="name">The .NET property name.</param>
+    /// <param name="getter">Reads the property's wire value.</param>
+    /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
+    /// <param name="observe">
+    /// Returns the sub-object the Bridge observes for this property. The Bridge subscribes when it is created and
+    /// again when the ViewModel reports a change, and publishes when the sub-object changes. A
+    /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
+    /// its navigator's presentation; another <see cref="INotifyPropertyChanged"/> publishes on every change.
+    /// </param>
+#pragma warning disable RUNICNAV001
+    [System.Diagnostics.CodeAnalysis.Experimental(RunicNavigator.DiagnosticId)]
+#pragma warning restore RUNICNAV001
+    public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
+        : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
+
+    // The sub-object whose changes the Bridge observes, if any.
+    internal Func<T, object?>? Observe { get; }
+
     /// <summary>The .NET property name.</summary>
     public string Name { get; } = name;
     /// <summary>Whether the browser may write the property.</summary>
@@ -246,6 +265,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly IDisposable[] _bindings;
     private readonly INotifyDataErrorInfo? _errors;
     private readonly Dictionary<string, INotifyCollectionChanged> _collections = new();
+    // Sub-objects observed through PropertyDescriptor.Observe, by property name.
+    private readonly Dictionary<string, (object Source, IDisposable Subscription)> _observed = new(StringComparer.Ordinal);
     private readonly BridgeCollectionDescriptor<T>[] _keyedCollections;
     private readonly BridgeCollectionDescriptor<T>[] _incrementalCollections;
     // The keys of each frame-publishing collection as of the last full state and
@@ -392,6 +413,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             }
             _vm.PropertyChanged += OnChanged;
             RefreshCollectionSubscriptions();
+            RefreshObservedSubObjects();
             if (_errors is not null) _errors.ErrorsChanged += OnErrorsChanged;
             foreach (var command in _commands)
             {
@@ -438,6 +460,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         catch
         {
             foreach (var binding in bindings) binding.Dispose();
+            ReleaseObservedSubObjects();
             _vm.PropertyChanged -= OnChanged;
             foreach (var collection in _collections.Values) collection.CollectionChanged -= OnCollectionChanged;
             _collections.Clear();
@@ -1142,6 +1165,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         {
             if (IsInactive) return;
             RefreshCollectionSubscriptions();
+            RefreshObservedSubObjects();
             Publish();
         }
     }
@@ -1415,6 +1439,47 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
+    private void RefreshObservedSubObjects()
+    {
+        foreach (var property in _properties)
+        {
+            if (property.Observe is not { } observe) continue;
+            var next = observe(_vm);
+            _observed.TryGetValue(property.Name, out var previous);
+            if (ReferenceEquals(previous.Source, next)) continue;
+            previous.Subscription?.Dispose();
+            _observed.Remove(property.Name);
+            var subscription = next switch
+            {
+                INavigationPresentationSource region => region.ObservePresentation(_content, Publish),
+                INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, Publish),
+                _ => null,
+            };
+            if (next is not null && subscription is not null) _observed[property.Name] = (next, subscription);
+        }
+    }
+
+    private void ReleaseObservedSubObjects()
+    {
+        foreach (var (_, subscription) in _observed.Values) subscription.Dispose();
+        _observed.Clear();
+    }
+
+    private sealed class SubObjectSubscription : IDisposable
+    {
+        private readonly INotifyPropertyChanged _source;
+        private readonly PropertyChangedEventHandler _handler;
+
+        public SubObjectSubscription(INotifyPropertyChanged source, Action changed)
+        {
+            _source = source;
+            _handler = (_, _) => changed();
+            _source.PropertyChanged += _handler;
+        }
+
+        public void Dispose() => _source.PropertyChanged -= _handler;
+    }
+
     /// <summary>Unbinds the bridge's routes and stops observing the ViewModel.</summary>
     public virtual void Dispose()
     {
@@ -1436,6 +1501,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             foreach (var command in _subscribedCommands)
                 command.CanExecuteChanged -= OnCanExecuteChanged;
             foreach (var binding in _bindings) binding.Dispose();
+            ReleaseObservedSubObjects();
         }
     }
 

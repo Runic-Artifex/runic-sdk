@@ -1,3 +1,7 @@
 <Project>
   <Import Project="../Directory.Build.props" />
+  <PropertyGroup>
+    <!-- Examples may use the experimental navigation API. -->
+    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+  </PropertyGroup>
 </Project>

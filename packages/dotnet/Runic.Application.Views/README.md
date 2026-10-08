@@ -225,7 +225,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE005` | The model assembly or one of its dependencies could not be loaded. | Check the bootstrap output and package versions. |
 | `RUNICBRIDGE006` | The assembly has no Window or View class, one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
 | `RUNICBRIDGE007` | A ViewModel does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction. | Change the ViewModel declaration. |
-| `RUNICBRIDGE008` | A state property has no public getter or an empty wire name, ViewModel content has a public setter, or a ViewModel collection's item type has no registered View. | Add a getter, make content read-only to the web view, or register a View for the item type. |
+| `RUNICBRIDGE008` | A state property has no public getter or an empty wire name, ViewModel content or a `NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's item type has no registered View, or a region slot is a `NavigationRegion<object>` or has no ViewModel with a registered View that is a `TContent`. | Add a getter, make content read-only to the web view, register a View for the item or content type, or give the region a specific content interface or base class. |
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
@@ -369,6 +369,51 @@ the generated mock encodes the failure. A ReactiveUI command also reports the
 failure on `ThrownExceptions`, so give every bridged `ReactiveCommand` a
 subscriber.
 
+## Navigation (experimental)
+
+`RunicNavigator` owns typed navigation regions with stable entry ids, awaited
+departure guards, initialize-once and resume-on-return hooks, and owned or
+borrowed content. The API is experimental: every type is marked
+`[Experimental("RUNICNAV001")]`, so suppress `RUNICNAV001` to use it, and expect
+changes before it is supported.
+
+```csharp
+services.AddRunicNavigation(); // one model context and navigator per window scope
+
+var main = navigator.CreateRegion<IMainViewModel>(this, NavigationTarget.Borrow<IMainViewModel>(home));
+var result = await main.PushAsync(NavigationTarget.Create<IMainViewModel>(services => new DocumentViewModel(
+    services.GetRequiredService<EditorViewModel>())));
+if (result is NavigationResult<IMainViewModel>.Committed) { /* main.Current is the document */ }
+await main.BackAsync(); // the document retires and is disposed; home resumes
+```
+
+- Operations return a `NavigationResult`: `Committed`, `Rejected` (guard,
+  cancelled, closed, reentrant, no history, not current, entry not found),
+  `Failed` or `Superseded`. They throw only for argument and ownership errors.
+- `Borrow` content is never disposed. `Own` and `Create` content is constructed
+  with `new`, owned once, and on retirement its child regions close, then it is
+  disposed outside model turns and its model-context lease is released.
+- Guards, initialize and resume run outside model turns. A commit re-checks the
+  region and applies the new state in one model turn, which raises
+  `PropertyChanged`. A later request of a region supersedes an earlier one that
+  has not started committing.
+- Expose a region as a get-only `NavigationRegion<TContent>` property and the
+  generator treats it as a content slot: the snapshot presents `Current`, or
+  clears the slot when the region is empty, so the wire value and TypeScript type
+  are those of a nullable content property (`TContentPageReference | null`).
+  `TContent` must be an interface or base class of ViewModels with registered
+  Views. The generated Bridge observes the region's `Current` and binds the
+  window session to the navigator (one window per navigator, with the same model
+  context), so retiring owned content forgets its routes. Nothing is forwarded by
+  hand; `ViewOutlet`s and test drivers (`View<T>(vm => vm.Main)`) work unchanged.
+- Going back presents the same `PageReference` id with the retained model; the
+  outlet mounts a fresh View.
+- **Stale-route window.** A commit retires and forgets departing owned content
+  right away, while the frontend sees the new `Current` only with the next state
+  capture. Until then it may still hold the old reference: an invocation on it
+  is rejected like any forgotten route, and the outlet may briefly show the old
+  View or nothing. The next capture converges.
+
 ## Logging and telemetry
 
 `OpenWindow` (CS-WebUI) and `OpenDesktopWindowAsync` (Desktop) pass the scope's
@@ -407,6 +452,16 @@ output accordingly. The message properties are listed per event.
 | 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
 | 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` or a cancellation on `ThrownExceptions`. | `Source` (the command expression or `sourceName`), `ErrorType` |
+| 1060 | `NavigationGuardFailed` | Error | A navigation departure guard throws; the transition fails. A close of the navigator or region is rejected as `Closed` and does not log it. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
+| 1061 | `NavigationPreparationFailed` | Error | A navigation factory, the ownership check, binding, initialize or resume throws. A close of the navigator or region is rejected as `Closed` and does not log it. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
+| 1062 | `NavigationCommitFailed` | Error | A navigation commit turn cannot run. | `Region`, `RegionId`, `Operation`, `ErrorType` |
+| 1063 | `NavigationNotificationFailed` | Error | A navigation region `PropertyChanged` handler throws; the commit stands. | `Region`, `RegionId`, `Property`, `ErrorType` |
+| 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (`Retirement`, `Children`, `Forget`, `Dispose`, `Lease`), the clearing of a closed region (`Close`) or the cancellation of transitions (`Cancel`, a throwing cancellation callback) fails; later steps still run. `EntryType` is `None` for `Close` and `Cancel`. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
+| 1065 | `NavigationTransitionRejected` | Debug | A navigation request is rejected. | `Region`, `RegionId`, `Operation`, `Reason` |
+| 1066 | `NavigationTransitionSuperseded` | Debug | A later request supersedes a navigation request. | `Region`, `RegionId`, `Operation` |
+| 1067 | `NavigationSupersededTransitionOverrun` | Warning | A superseded navigation request is still running 5 seconds after supersession. | `Region`, `RegionId`, `Operation` |
+| 1068 | `NavigationCloseTimedOut` | Warning | Closing a navigation region timed out waiting for a model turn; its state was cleared outside a turn. The clearing turns of one disposal share one close timeout, so a disposal takes about twice `CloseTimeout` at most. | `Region`, `RegionId` |
+| 1069 | `NavigationInitializeTimedOut` | Warning | Retiring an entry stopped waiting for its running initialize hook after the close timeout and disposed the content while the hook runs. During disposal the wait is skipped once the wait for cancelled transitions timed out. | `Region`, `RegionId`, `EntryType` |
 | 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -422,7 +477,7 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1021 and 1050 use the category `Runic.Application.Views`
+Events 1000-1021, 1050 and 1060-1069 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
 `RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
 `WindowContentSession` with a logger factory created it, and otherwise the

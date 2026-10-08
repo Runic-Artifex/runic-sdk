@@ -1,1 +1,4 @@
 #nullable enable
+[RUNICNAV001]Runic.Application.Testing.RunicNavigationTestExtensions
+[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.RetainedContentModelCount(this Runic.Application.Views.WindowContentSession! session) -> int
+[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.UnretiredEntryCount(this Runic.Application.Views.RunicNavigator! navigator) -> int

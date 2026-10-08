@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Runic.Application.Testing.Tests")]
+[assembly: InternalsVisibleTo("Runic.Application.Testing")]
 
 namespace Runic.Application.Views;
 
