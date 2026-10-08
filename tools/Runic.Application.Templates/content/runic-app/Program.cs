@@ -19,12 +19,17 @@ services.AddScoped<WelcomeViewModel>();
 services.AddScoped<CounterViewModel>();
 services.AddRunicViews();
 
+// Fallbacks and limitations, such as a missing WebKitGTK runtime, are written to standard error.
 #if (gtk4)
 // Linux embeds WebKitGTK 6 through GTK 4. Windows uses WebView2 and macOS WKWebView.
-var options = new DesktopHostOptions().WithGtk4();
+var options = new DesktopHostOptions { DiagnosticSink = ReportDiagnostic }.WithGtk4();
 #else
 // Linux embeds WebKitGTK 4.1 through GTK 3. Windows uses WebView2 and macOS WKWebView.
-var options = new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } };
+var options = new DesktopHostOptions
+{
+    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
+    DiagnosticSink = ReportDiagnostic,
+};
 #endif
 
 // Runs the application on the event loop this platform and backend need. Call it before any await.
@@ -50,6 +55,9 @@ return DesktopEventLoop.Run(options, async desktop =>
     window.Presentation.WaitForClose();
     return 0;
 });
+
+static void ReportDiagnostic(DesktopDiagnostic diagnostic) =>
+    Console.Error.WriteLine($"{diagnostic.Severity} {diagnostic.Code}: {diagnostic.Message} {diagnostic.Remediation}".TrimEnd());
 #else
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;

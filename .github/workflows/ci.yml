@@ -342,19 +342,7 @@ jobs:
         run: eng/ci/apt-install.sh libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
       - name: Permit the WebKit sandbox on Ubuntu
         if: matrix.desktop-smoke == '1'
-        run: |
-          # Ubuntu restricts capabilities inside unprivileged user namespaces.
-          # Permit the distribution's bwrap helper without disabling AppArmor or WebKit's sandbox.
-          test "$(command -v bwrap)" = /usr/bin/bwrap
-          sudo tee /etc/apparmor.d/runic-ci-bwrap > /dev/null <<'PROFILE'
-          abi <abi/4.0>,
-          include <tunables/global>
-          profile runic-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
-            userns,
-          }
-          PROFILE
-          sudo apparmor_parser -r /etc/apparmor.d/runic-ci-bwrap
-          bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev true
+        run: eng/ci/permit-webkit-sandbox.sh
       - name: Verify generated template applications
         run: bun run verify:templates
         env:
@@ -425,19 +413,7 @@ jobs:
         run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
-        run: |
-          # Ubuntu restricts capabilities inside unprivileged user namespaces.
-          # Permit the distribution's bwrap helper without disabling AppArmor or WebKit's sandbox.
-          test "$(command -v bwrap)" = /usr/bin/bwrap
-          sudo tee /etc/apparmor.d/runic-ci-bwrap > /dev/null <<'PROFILE'
-          abi <abi/4.0>,
-          include <tunables/global>
-          profile runic-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
-            userns,
-          }
-          PROFILE
-          sudo apparmor_parser -r /etc/apparmor.d/runic-ci-bwrap
-          bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev true
+        run: eng/ci/permit-webkit-sandbox.sh
       - name: Build native window smoke
         run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
       - name: Exercise native window close interception on Linux

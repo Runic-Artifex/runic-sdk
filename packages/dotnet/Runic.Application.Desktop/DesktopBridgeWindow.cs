@@ -170,11 +170,13 @@ public static class DesktopBridgeWindowExtensions
 {
     /// <summary>Creates an application Window in a new scope, then opens its Desktop presentation.</summary>
     /// <remarks>
-    /// When the <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c> environment variable is <c>1</c>, the presentation is
-    /// closed as soon as it has opened (and, with <see cref="DesktopHostOptions.WaitForConnection"/>, its bridge has
-    /// connected), after <c>RUNIC_APPLICATION_OPENED=&lt;presentation&gt;</c>, such as <c>Embedded</c> or
-    /// <c>Chrome</c>, is written to standard output. <see cref="DesktopWindow.WaitForClose"/> then returns, so an
-    /// unchanged application exits normally. Test harnesses use this to start an application without a user.
+    /// When the <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c> environment variable is <c>1</c>, every window opened through
+    /// this method is closed as soon as it has opened (and, with <see cref="DesktopHostOptions.WaitForConnection"/>,
+    /// its bridge has connected). Before closing, a warning is written to standard error (and logged as event 2002
+    /// when an <c>ILoggerFactory</c> is registered) and <c>RUNIC_APPLICATION_OPENED=&lt;presentation&gt;</c>, such as
+    /// <c>Embedded</c> or <c>Chrome</c>, is written to standard output. It is an automation switch for applications
+    /// shaped like the <c>runic-app</c> template, which exit when their one window's
+    /// <see cref="DesktopWindow.WaitForClose"/> returns; other applications may keep running or reopen windows.
     /// </remarks>
     public static async ValueTask<TWindow> OpenDesktopWindowAsync<TWindow, TViewModel>(
         this IServiceProvider services,
@@ -237,7 +239,7 @@ public static class DesktopBridgeWindowExtensions
             catch { attachment.Dispose(); throw; }
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
             owner.SetPresentation(presentation);
-            await CloseAfterOpenIfRequestedAsync(presentation).ConfigureAwait(false);
+            await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return applicationWindow;
         }
         catch
@@ -263,9 +265,16 @@ public static class DesktopBridgeWindowExtensions
 
     // An automation contract like CS-WebUI's RUNIC_APPLICATION_SERVE_ONLY: report the presentation that opened,
     // then close it so the application's own WaitForClose returns.
-    private static async ValueTask CloseAfterOpenIfRequestedAsync(DesktopWindow presentation)
+    // The variable is inherited by child processes, so an active switch is always announced on standard error
+    // and, when the application registered an ILoggerFactory, logged as event 2002.
+    private static async ValueTask CloseAfterOpenIfRequestedAsync(DesktopWindow presentation, ILoggerFactory? loggerFactory)
     {
         if (Environment.GetEnvironmentVariable(CloseAfterOpenEnvironmentVariable) != "1") return;
+        Console.Error.WriteLine(
+            $"warning: {CloseAfterOpenEnvironmentVariable}=1 is set; Runic is closing the Desktop window it just opened.");
+        Console.Error.Flush();
+        if (loggerFactory is not null)
+            DesktopLog.CloseAfterOpen(loggerFactory.CreateLogger(DesktopBridgeTransport.LogCategory), CloseAfterOpenEnvironmentVariable);
         Console.Out.WriteLine($"RUNIC_APPLICATION_OPENED={presentation.Browser}");
         Console.Out.Flush();
         await presentation.CloseAsync().ConfigureAwait(false);

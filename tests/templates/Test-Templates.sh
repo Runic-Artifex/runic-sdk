@@ -205,8 +205,12 @@ verify_template() {
   local manager="$2"
   local host="$3"
   local view_models="$4"
-  local host_name="${host//-/}"
-  local project_name="Acceptance${framework^}${manager^}${host_name^}${view_models^}"
+  # desktop-gtk4 becomes DesktopGtk4.
+  local host_name="" host_part
+  local -a host_parts
+  IFS=- read -ra host_parts <<< "$host"
+  for host_part in "${host_parts[@]}"; do host_name+="${host_part^}"; done
+  local project_name="Acceptance${framework^}${manager^}${host_name}${view_models^}"
   local output="$template_tmp/$framework-$manager-$host-$view_models"
   local expected_manager_version
   local selected_lock
@@ -249,11 +253,12 @@ verify_template() {
       grep -Fq 'runic-desktop-views.js' "$index_html"
       [[ "$framework" == angular ]] || grep -Fq 'runic({ desktop: true })' "$output/Frontend/vite.config.ts"
       grep -Fq 'DesktopEventLoop.Run(options' "$output/Program.cs"
+      grep -Fq 'DiagnosticSink = ReportDiagnostic' "$output/Program.cs"
       ;;
   esac
   # Only the GTK 4 variant selects GTK 4 and references its provider and portal packages.
   if [[ "$host" == desktop-gtk4 ]]; then
-    grep -Fq 'new DesktopHostOptions().WithGtk4()' "$output/Program.cs"
+    grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4();' "$output/Program.cs"
     for package in Runic.Desktop.Gtk4 Runic.Platform.Linux.Gtk4 Runic.Platform.Linux.Portal; do
       grep -Fq "\"$package\"" "$output/$project_name.csproj"
     done
