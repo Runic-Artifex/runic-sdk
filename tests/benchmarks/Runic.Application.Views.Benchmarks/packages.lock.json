@@ -150,7 +150,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, )",
-          "Runic.Application": "[0.7.0-preview.3, )"
+          "Runic.Application": "[0.7.0-preview.4, )"
         }
       },
       "Microsoft.CodeAnalysis.CSharp": {

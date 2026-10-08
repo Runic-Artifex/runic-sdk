@@ -207,3 +207,6 @@ static Runic.Application.Testing.RunicOperationStatus.operator ==(Runic.Applicat
 Runic.Application.Testing.RunicCallReply<TModel>.Failure.get -> System.Text.Json.JsonElement?
 Runic.Application.Testing.RunicOperationStatus.Failure.get -> System.Text.Json.JsonElement?
 Runic.Application.Testing.RunicOperationStatus.Failure.init -> void
+[RUNICNAV001]Runic.Application.Testing.RunicNavigationTestExtensions
+[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.RetainedContentModelCount(this Runic.Application.Views.WindowContentSession! session) -> int
+[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.UnretiredEntryCount(this Runic.Application.Views.RunicNavigator! navigator) -> int

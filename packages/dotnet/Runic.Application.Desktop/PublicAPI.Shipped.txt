@@ -15,3 +15,11 @@ static Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions.OpenDesktop
 Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 static Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions.ValidateDesktopWindow<TViewModel>(this System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop, Runic.Desktop.DesktopWindowOptions? windowOptions = null) -> Runic.Desktop.DesktopValidationResult!
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.NativeOwner.get -> Runic.Application.Views.Desktop.DesktopNativeOwner!
+Runic.Application.Views.Desktop.DesktopNativeOwner
+Runic.Application.Views.Desktop.DesktopNativeOwner.CheckAccess() -> bool
+Runic.Application.Views.Desktop.DesktopNativeOwner.DesktopNativeOwner(Runic.Desktop.DesktopWindow! window) -> void
+Runic.Application.Views.Desktop.DesktopNativeOwner.Generation.get -> System.Guid
+Runic.Application.Views.Desktop.DesktopNativeOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopNativeOwner.IsAvailable.get -> bool
+Runic.Application.Views.Desktop.DesktopNativeOwner.Window.get -> Runic.Desktop.DesktopWindow!

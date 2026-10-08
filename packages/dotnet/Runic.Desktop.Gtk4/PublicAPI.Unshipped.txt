@@ -1,9 +1,1 @@
 #nullable enable
-Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-static Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions.WithGtk4(this Runic.Desktop.DesktopHostOptions! options) -> Runic.Desktop.DesktopHostOptions!
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ApplicationId.get -> string?
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.ApplicationId.init -> void
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
-Runic.Desktop.Gtk4.Gtk4WindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-static Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions.WithGtk4(this Runic.Desktop.DesktopHostOptions! options, string! applicationId) -> Runic.Desktop.DesktopHostOptions!

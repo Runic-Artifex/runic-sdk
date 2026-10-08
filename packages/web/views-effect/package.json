@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/views-effect",
-  "version": "0.7.0-preview.3",
+  "version": "0.7.0-preview.4",
   "description": "Optional Effect 4 adapter for generated Runic Views clients",
   "license": "MIT",
   "type": "module",
@@ -32,7 +32,7 @@
     "pack:check": "bun pm pack --dry-run"
   },
   "peerDependencies": {
-    "@runic-artifex/views": "0.7.0-preview.3",
+    "@runic-artifex/views": "0.7.0-preview.4",
     "effect": "^4.0.1",
     "react": ">=18.3.0 <20"
   },
