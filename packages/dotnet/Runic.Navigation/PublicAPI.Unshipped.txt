@@ -48,6 +48,8 @@ Runic.Navigation.RunicModelContextRegistry.TryGet(object! model, out Runic.Navig
 [RUNICNAV001]Runic.Navigation.INavigationResume
 [RUNICNAV001]Runic.Navigation.INavigationResume.ResumeAsync(Runic.Navigation.NavigationResume! resume, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 [RUNICNAV001]Runic.Navigation.INavigationTarget<TContent>
+[RUNICNAV001]Runic.Navigation.IRunicModelHookScheduler
+[RUNICNAV001]Runic.Navigation.IRunicModelHookScheduler.RunHookAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! hook, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<T>!
 [RUNICNAV001]Runic.Navigation.NavigationChildRetention
 [RUNICNAV001]Runic.Navigation.NavigationChildRetention.Clear = 2 -> Runic.Navigation.NavigationChildRetention
 [RUNICNAV001]Runic.Navigation.NavigationChildRetention.Keep = 0 -> Runic.Navigation.NavigationChildRetention
@@ -195,6 +197,7 @@ Runic.Navigation.RunicModelContextRegistry.TryGet(object! model, out Runic.Navig
 [RUNICNAV001]Runic.Navigation.RunicNavigator
 [RUNICNAV001]Runic.Navigation.RunicNavigator.AttachPresentation(Runic.Navigation.INavigationPresentation! presentation) -> System.IDisposable!
 [RUNICNAV001]Runic.Navigation.RunicNavigator.CreateRegion<TContent>(object! owner, Runic.Navigation.INavigationTarget<TContent!>? initial = null, Runic.Navigation.NavigationRegionOptions? options = null) -> Runic.Navigation.NavigationRegion<TContent!>!
+[RUNICNAV001]Runic.Navigation.RunicNavigator.Dispose() -> void
 [RUNICNAV001]Runic.Navigation.RunicNavigator.DisposeAsync() -> System.Threading.Tasks.ValueTask
 [RUNICNAV001]Runic.Navigation.RunicNavigator.IsClosed.get -> bool
 [RUNICNAV001]Runic.Navigation.RunicNavigator.ModelContext.get -> Runic.Navigation.IRunicModelContext!

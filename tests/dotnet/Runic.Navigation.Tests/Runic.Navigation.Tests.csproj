@@ -15,5 +15,12 @@
     <!-- Only the engine: navigation and the model context need no Views runtime. -->
     <ProjectReference Include="../../../packages/dotnet/Runic.Navigation/Runic.Navigation.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- NavigationSourceScanTests checks every await in the engine's sources (W240-001 §4.5). -->
+    <EmbeddedResource Include="../../../packages/dotnet/Runic.Navigation/**/*.cs"
+                      Exclude="../../../packages/dotnet/Runic.Navigation/bin/**;../../../packages/dotnet/Runic.Navigation/obj/**"
+                      LogicalName="RunicNavigationSource/%(RecursiveDir)%(Filename)%(Extension)"
+                      Visible="false" />
+  </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>
