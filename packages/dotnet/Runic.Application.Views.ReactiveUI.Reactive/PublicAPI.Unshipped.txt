@@ -1,5 +1,1 @@
 #nullable enable
-[RUNICNAV001]Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation
-[RUNICNAV001]static Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Application.Views.NavigationRegion<TContent!>! region, System.Reactive.Concurrency.IScheduler! scheduler) -> ReactiveUI.Reactive.ReactiveCommand<System.Reactive.Unit, Runic.Application.Views.NavigationResult<TContent!>!>!
-[RUNICNAV001]static Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation.WhenCurrentChanged<TContent>(this Runic.Application.Views.NavigationRegion<TContent!>! region) -> System.IObservable<TContent?>!
-[RUNICNAV001]static Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation.WhenEntryChanged<TContent>(this Runic.Application.Views.NavigationRegion<TContent!>! region) -> System.IObservable<Runic.Application.Views.NavigationEntry<TContent!>?>!

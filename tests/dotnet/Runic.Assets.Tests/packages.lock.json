@@ -8,7 +8,7 @@
       "runic.assets.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.7.0-preview.3, )"
+          "Runic.Assets": "[0.7.0-preview.4, )"
         }
       }
     }

@@ -1,9 +1,1 @@
 #nullable enable
-Runic.Desktop.DesktopPresentationAvailability.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-Runic.Desktop.DesktopPresentationAvailability.Diagnostics.init -> void
-Runic.Desktop.DesktopPresentationPreflight.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-Runic.Desktop.IDesktopWindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-Runic.Desktop.IDesktopEventLoopWindowHostFactory
-Runic.Desktop.IDesktopEventLoopWindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
-Runic.Desktop.IDesktopEventLoopWindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
-static Runic.Desktop.DesktopEventLoop.Run(Runic.Desktop.DesktopHostOptions! options, System.Func<Runic.Desktop.DesktopHost!, System.Threading.Tasks.Task<int>!>! application) -> int

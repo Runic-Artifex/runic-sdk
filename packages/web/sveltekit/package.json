@@ -1,6 +1,6 @@
 {
   "name": "@runic-artifex/sveltekit",
-  "version": "0.7.0-preview.3",
+  "version": "0.7.0-preview.4",
   "description": "SvelteKit adapter for Runic Desktop applications",
   "homepage": "https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/sveltekit#readme",
   "bugs": {

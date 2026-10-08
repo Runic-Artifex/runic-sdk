@@ -73,7 +73,7 @@
         "type": "Project",
         "dependencies": {
           "ReactiveUI": "[26.0.1, )",
-          "Runic.Application": "[0.7.0-preview.3, )"
+          "Runic.Application": "[0.7.0-preview.4, )"
         }
       },
       "runic.application.views.codegen.toolkit": {
