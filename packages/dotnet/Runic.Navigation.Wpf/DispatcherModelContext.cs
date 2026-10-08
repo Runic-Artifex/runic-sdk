@@ -86,6 +86,9 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     // The current turn nesting on the UI thread, for tests.
     internal int TurnDepth => _turnDepth;
 
+    // Whether a SynchronizationContext is the one hooks run under, for tests.
+    internal static bool IsHookContext(SynchronizationContext? context) => context is HookContext;
+
     /// <inheritdoc />
     public bool TryPost(Action turn)
     {
@@ -444,7 +447,7 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         public override void Post(SendOrPostCallback d, object? state)
         {
             ArgumentNullException.ThrowIfNull(d);
-            var continuation = new Continuation(d, state, ExecutionContext.Capture());
+            var continuation = new Continuation(this, d, state, ExecutionContext.Capture());
             if (_dispatcher.HasShutdownStarted)
             {
                 continuation.RunOnPool();
@@ -464,14 +467,14 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         public override SynchronizationContext CreateCopy() => new HookContext(_dispatcher, _priority);
 
         // context is null when the poster suppressed the flow: the callback then runs in the pool's default context.
-        private sealed class Continuation(SendOrPostCallback callback, object? state, ExecutionContext? context)
+        private sealed class Continuation(HookContext owner, SendOrPostCallback callback, object? state, ExecutionContext? context)
         {
             private static readonly ContextCallback InvokeInContext = static self => ((Continuation)self!).Invoke();
             private int _ran;
 
             public void Run()
             {
-                if (Interlocked.Exchange(ref _ran, 1) == 0) callback(state);
+                if (Interlocked.Exchange(ref _ran, 1) == 0) Invoke();
             }
 
             public void RunOnPool()
@@ -486,7 +489,15 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
                 else ExecutionContext.Run(context, InvokeInContext, this);
             }
 
-            private void Invoke() => callback(state);
+            // Under the hook context again, so the continuation's own awaits come back here: WPF runs a dispatcher
+            // operation under its DispatcherSynchronizationContext, and the pool under none.
+            private void Invoke()
+            {
+                var previous = SynchronizationContext.Current;
+                SetSynchronizationContext(owner);
+                try { callback(state); }
+                finally { SetSynchronizationContext(previous); }
+            }
         }
     }
 }

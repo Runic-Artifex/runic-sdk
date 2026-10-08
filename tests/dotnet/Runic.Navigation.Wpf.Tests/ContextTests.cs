@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using static Runic.Navigation.Wpf.Tests.Ui;
@@ -90,9 +91,11 @@ internal static class ContextTests
         var fixture = new NavFixture();
         var context = fixture.Context;
 
-        // Never inline, on the UI thread, with the dispatcher's context, awaits resume there.
+        // Never inline, on the UI thread, under the context's hook SynchronizationContext (which forwards to the
+        // dispatcher and moves to the pool after shutdown, A9); awaits resume on the UI thread under it again.
         var ran = false;
         SynchronizationContext? captured = null;
+        SynchronizationContext? resumedUnder = null;
         var resumedOnUi = false;
         var task = context.RunHookAsync(async () =>
         {
@@ -101,11 +104,12 @@ internal static class ContextTests
             Require(context.TurnDepth == 0, "A hook ran as a turn.");
             await Task.Yield();
             resumedOnUi = context.Dispatcher.CheckAccess();
+            resumedUnder = SynchronizationContext.Current;
             return 5;
         }, CancellationToken.None);
         Require(!ran, "A hook ran inline in its caller on the UI thread.");
-        Require(Pump(task) == 5 && resumedOnUi && captured is DispatcherSynchronizationContext,
-            $"The hook ran under {captured?.GetType().Name} and resumed on the UI thread: {resumedOnUi}.");
+        Require(Pump(task) == 5 && resumedOnUi && DispatcherModelContext.IsHookContext(captured) && DispatcherModelContext.IsHookContext(resumedUnder),
+            $"The hook ran under {captured?.GetType().Name}, resumed under {resumedUnder?.GetType().Name}, on the UI thread: {resumedOnUi}.");
 
         // A synchronous throw is the hook's outcome.
         var thrown = context.RunHookAsync<int>(() => throw new FormatException(), CancellationToken.None);
@@ -285,14 +289,37 @@ internal static class ContextTests
         Require(thread.Join(WaitLimit), "The secondary UI thread did not stop.");
         if (error is not null) throw new InvalidOperationException("The secondary UI thread failed.", error);
 
-        var late = Pump(region!.PushAsync(NavigationTarget.Own<object>(new Page("late"))));
-        Require(late is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }, $"A push after shutdown gave {late}.");
-        gate.SetResult();
-        var watch = Stopwatch.StartNew();
-        Pump(navigator!.DisposeAsync().AsTask(), "navigator disposal after shutdown");
-        Require(watch.Elapsed < TimeSpan.FromSeconds(1), $"Navigator disposal after shutdown took {watch.Elapsed}.");
+        // Release the hook first: a later push in the same region waits for the gated transition to end, and the
+        // hook doesn't observe its cancellation, so pushing before the gate opens would wait for the gate.
+        var stage = "gate";
+        Task<NavigationResult<object>>? latePush = null;
+        Task? disposal = null;
+        try
+        {
+            gate.SetResult();
+            stage = "the hook's continuation after shutdown";
+            PumpUntil(() => gated.ResumedOn is not null, stage);
+            stage = "the gated push";
+            var gatedResult = Pump(gatedPush!, stage);
+            Require(gatedResult is NavigationResult<object>.Rejected, $"The gated push gave {gatedResult} after shutdown.");
+            stage = "a push after shutdown";
+            latePush = region!.PushAsync(NavigationTarget.Own<object>(new Page("late"))).AsTask();
+            var late = Pump(latePush, stage);
+            Require(late is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }, $"A push after shutdown gave {late}.");
+            stage = "navigator disposal after shutdown";
+            var watch = Stopwatch.StartNew();
+            disposal = navigator!.DisposeAsync().AsTask();
+            Pump(disposal, stage);
+            Require(watch.Elapsed < TimeSpan.FromSeconds(1), $"Navigator disposal after shutdown took {watch.Elapsed}.");
+        }
+        catch (Exception failure) when (failure is TimeoutException or InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                $"Stalled or failed at {stage}: hook started {gated.Started}, resumed on {gated.ResumedOn?.ManagedThreadId.ToString(CultureInfo.InvariantCulture) ?? "none"}"
+                + $" (pool {gated.ResumedOn?.IsThreadPoolThread}), gated push {gatedPush?.Status}, late push {latePush?.Status},"
+                + $" disposal {disposal?.Status}, navigator closed {navigator?.IsClosed}, unretired {navigator?.UnretiredEntryCount}.", failure);
+        }
         Require(gated.ResumedOn is { IsThreadPoolThread: true }, $"The hook resumed on {gated.ResumedOn?.Name ?? "no thread"} after shutdown.");
-        Require(gatedPush!.IsCompleted, "The gated push did not settle.");
         Require(owned!.DisposedOn is { } disposer && disposer != uiThread && disposer.IsThreadPoolThread,
             $"Owned content was disposed on {owned.DisposedOn?.Name ?? "no thread"}.");
         Require(navigator.UnretiredEntryCount == 0, $"{navigator.UnretiredEntryCount} entries were not retired.");
