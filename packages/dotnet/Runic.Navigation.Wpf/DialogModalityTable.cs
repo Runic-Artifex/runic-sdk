@@ -1,49 +1,71 @@
 using System.Runtime.InteropServices;
+using System.Windows.Interop;
 
 namespace Runic.Navigation.Wpf;
 
 // The shared disable table (W240-001 §8.4): one refcount per HWND for the UI thread, shared by every dialog host.
 // A host counts only windows it disabled itself, or that another host disabled, and never re-enables a window
-// that something else disabled.
+// that something else disabled. A count is a Hold on one table entry: an entry dies with its window, so a
+// recycled window handle never inherits counts, and a stale Hold never re-enables an unrelated window.
 internal static class DialogModalityTable
 {
-    [ThreadStatic] private static Dictionary<nint, int>? _counts;
+    [ThreadStatic] private static Dictionary<nint, Hold>? _entries;
 
-    private static Dictionary<nint, int> Counts => _counts ??= [];
+    private static Dictionary<nint, Hold> Entries => _entries ??= [];
 
-    // Takes one count on `hwnd` if it is enabled or disabled by a host. Returns whether it took one.
-    public static bool TryDisable(nint hwnd)
+    // Takes one count on `hwnd` if it is enabled or disabled by a host. Returns the hold, or null.
+    public static Hold? TryDisable(nint hwnd)
     {
-        if (hwnd == 0 || !NativeMethods.IsWindow(hwnd)) return false;
+        if (hwnd == 0 || !NativeMethods.IsWindow(hwnd)) return null;
+        Entries.TryGetValue(hwnd, out var entry);
         if (NativeMethods.IsWindowEnabled(hwnd))
         {
-            Counts[hwnd] = 1;
+            // Hosts hold it but something re-enabled it: keep their counts and add this one.
+            entry ??= Track(hwnd);
+            entry.Count++;
             NativeMethods.EnableWindow(hwnd, false);
-            return true;
+            return entry;
         }
-        if (Counts.TryGetValue(hwnd, out var count) && count > 0)
+        if (entry is { Count: > 0 })
         {
-            Counts[hwnd] = count + 1;
-            return true;
+            entry.Count++;
+            return entry;
         }
         // Disabled by the app or a native dialog: not ours to count.
-        return false;
+        return null;
     }
 
     // Releases one count; the last one re-enables the window.
-    public static void Release(nint hwnd)
+    public static void Release(Hold hold)
     {
-        if (!Counts.TryGetValue(hwnd, out var count)) return;
-        if (count > 1)
-        {
-            Counts[hwnd] = count - 1;
-            return;
-        }
-        Counts.Remove(hwnd);
-        if (NativeMethods.IsWindow(hwnd)) NativeMethods.EnableWindow(hwnd, true);
+        if (hold.Dead || !Entries.TryGetValue(hold.Hwnd, out var entry) || !ReferenceEquals(entry, hold)) return;
+        if (--hold.Count > 0) return;
+        Forget(hold);
+        if (NativeMethods.IsWindow(hold.Hwnd)) NativeMethods.EnableWindow(hold.Hwnd, true);
     }
 
-    internal static int CountOf(nint hwnd) => Counts.TryGetValue(hwnd, out var count) ? count : 0;
+    internal static int CountOf(nint hwnd) => Entries.TryGetValue(hwnd, out var entry) ? entry.Count : 0;
+
+    private static Hold Track(nint hwnd)
+    {
+        var entry = new Hold(hwnd);
+        Entries[hwnd] = entry;
+        // A WPF window's entry ends with its HwndSource.
+        if (HwndSource.FromHwnd(hwnd) is { } source)
+        {
+            entry.Source = source;
+            source.Disposed += entry.OnSourceDisposed;
+        }
+        return entry;
+    }
+
+    private static void Forget(Hold entry)
+    {
+        entry.Dead = true;
+        if (Entries.TryGetValue(entry.Hwnd, out var current) && ReferenceEquals(current, entry)) Entries.Remove(entry.Hwnd);
+        if (entry.Source is { } source) source.Disposed -= entry.OnSourceDisposed;
+        entry.Source = null;
+    }
 
     // The visible top-level windows of the calling thread.
     public static List<nint> ThreadWindows()
@@ -66,6 +88,20 @@ internal static class DialogModalityTable
     {
         if (NativeMethods.IsWindowVisible(hwnd)) ((List<nint>)GCHandle.FromIntPtr(state).Target!).Add(hwnd);
         return 1;
+    }
+
+    // One window's entry in the table; hosts keep it as the proof of their counts.
+    internal sealed class Hold(nint hwnd)
+    {
+        public nint Hwnd { get; } = hwnd;
+
+        public int Count { get; set; }
+
+        public bool Dead { get; set; }
+
+        public HwndSource? Source { get; set; }
+
+        public void OnSourceDisposed(object? sender, EventArgs e) => Forget(this);
     }
 }
 

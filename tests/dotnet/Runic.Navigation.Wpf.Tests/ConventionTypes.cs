@@ -10,3 +10,14 @@ namespace Runic.Navigation.Wpf.Tests.Views
 {
     internal sealed class ShelfPage : Border;
 }
+
+// ViewModels and views in unrelated namespaces, as in separate Core and WPF assemblies.
+namespace Runic.Navigation.Wpf.Tests.Core.Archive
+{
+    internal sealed class LedgerViewModel;
+}
+
+namespace Runic.Navigation.Wpf.Tests.Screens
+{
+    internal sealed class LedgerView : Border;
+}

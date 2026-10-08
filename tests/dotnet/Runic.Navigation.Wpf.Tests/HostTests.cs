@@ -114,10 +114,14 @@ internal static class HostTests
                 Require(ViewOf(host) is TextBox { DataContext: var data } && ReferenceEquals(data, templated),
                     "The implicit DataTemplate was not used.");
 
-                Pump(region.PushAsync(NavigationTarget.Own<object>(new UnpresentedViewModel())));
-                Pump(region.PushAsync(NavigationTarget.Own<object>(new UnpresentedViewModel())));
+                var first = Pump(region.PushAsync(NavigationTarget.Own<object>(new UnpresentedViewModel())));
+                var second = Pump(region.PushAsync(NavigationTarget.Own<object>(new UnpresentedViewModel())));
+                Require(first is NavigationResult<object>.Committed && second is NavigationResult<object>.Committed,
+                    $"The unpresented pushes gave {first} and {second}.");
                 Require(logs.Count(1082) == 1 && logs.All(1082).Single().Category == "Runic.Navigation.Wpf",
-                    $"Expected one 1082 for the unpresented type, got {logs.Count(1082)}.");
+                    $"Expected one 1082 for the unpresented type, got {logs.Count(1082)}. Presented: {ViewOf(host)?.GetType().FullName ?? "nothing"}; "
+                    + $"template: {NavigationPresenters.FindTemplate(host, typeof(UnpresentedViewModel))?.DataType ?? "none"}; "
+                    + $"events: {string.Join(", ", logs.Ids())}.");
             }
             finally { window.Close(); }
         }
@@ -131,9 +135,15 @@ internal static class HostTests
         Require(Find(typeof(ViewModels.ShelfViewModel)) == typeof(Views.ShelfPage), "The ViewModels namespace did not map to Views.");
         Require(Find(typeof(TemplatedViewModel)) is null, "A ViewModel without a view matched.");
         Require(Find(typeof(Page)) is null, "A type without the ViewModel suffix matched.");
+        Require(Find(typeof(Core.Archive.LedgerViewModel)) is null, "A view in an unrelated namespace matched without a view assembly.");
+        Require(FindIn(typeof(Core.Archive.LedgerViewModel), typeof(Screens.LedgerView).Assembly) == typeof(Screens.LedgerView),
+            "A view assembly did not find the view by name.");
 
         [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Test.")]
         static Type? Find(Type type) => NavigationViewLocator.FindByConvention(type);
+
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Test.")]
+        static Type? FindIn(Type type, System.Reflection.Assembly assembly) => NavigationViewLocator.FindByConvention(type, [assembly]);
     }
 
     // BrowseBack goes back when the region can and isn't transitioning.
@@ -174,17 +184,87 @@ internal static class HostTests
         try
         {
             var host = Mount(window, region);
-            for (var attempt = 0; attempt < 10 && host.IsAlive; attempt++)
+            // WPF releases layout, input and command bookkeeping in idle operations; let them run between collections.
+            for (var attempt = 0; attempt < 30 && host.IsAlive; attempt++)
             {
-                GC.Collect();
+                Drain();
+                Pump(Task.Delay(10), "a short delay");
+                GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
-                Drain();
             }
             Require(!host.IsAlive, "An unloaded host was not collected.");
             Pump(region.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("after"))));
         }
         finally { window.Close(); }
+    }
+
+    // A view whose constructor takes the content's type gets the entry's content, never a container instance.
+    public static void LocatorPassesTheContent()
+    {
+        var provider = new ServiceCollection()
+            .AddTransient<ContentViewModel>()
+            .AddRunicWpfNavigation(options => options.MapView<ContentViewModel, ContentView>().MapView<PlainContentViewModel, PlainContentView>())
+            .BuildServiceProvider();
+        try
+        {
+            var region = provider.GetRequiredService<RunicNavigator>().CreateRegion<object>(new object());
+            var host = new NavigationHost { Region = region };
+            var window = ShowWindow(host);
+            try
+            {
+                var content = new ContentViewModel();
+                Pump(region.PushAsync(NavigationTarget.Own<object>(content)));
+                Require(ViewOf(host) is ContentView { Model: var model, DataContext: var data } && ReferenceEquals(model, content) && ReferenceEquals(data, content),
+                    "The view's constructor did not get the entry's content.");
+                Pump(region.PushAsync<ContentViewModel>());
+                Require(ViewOf(host) is ContentView { Model: var built } && ReferenceEquals(built, region.Current),
+                    "A container-built entry's view got another instance.");
+                Pump(region.PushAsync(NavigationTarget.Own<object>(new PlainContentViewModel())));
+                Require(ViewOf(host) is PlainContentView { DataContext: PlainContentViewModel }, "A view without a content parameter was not created.");
+            }
+            finally { window.Close(); }
+        }
+        finally { Pump(provider.DisposeAsync().AsTask(), "provider disposal"); }
+    }
+
+    // A failed view leaves no stale view behind, and rebinding to another navigator's region (whose entry ids
+    // repeat) presents that region.
+    public static void FailedViewAndRebinding()
+    {
+        using var first = new NavFixture();
+        using var second = new NavFixture();
+        var one = first.Region(NavigationTarget.Own<object>(new DocumentViewModel("one")));
+        var other = second.Region(NavigationTarget.Own<object>(new DocumentViewModel("other")));
+        Require(one.CurrentEntry!.Id == other.CurrentEntry!.Id, "The fixtures' entry ids differ; the rebinding check needs equal ids.");
+        var locator = new FailingLocator();
+        var host = new NavigationHost { Region = one, ViewLocator = locator };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(DocumentViewModel)));
+        try
+        {
+            var before = ViewOf(host);
+            Require(before is TextBox { DataContext: DocumentViewModel { Name: "one" } }, "The first region is not presented.");
+            host.Region = other;
+            Drain();
+            Require(ViewOf(host) is TextBox { DataContext: DocumentViewModel { Name: "other" } } after && !ReferenceEquals(before, after),
+                "Rebinding to a region with the same entry id kept the old view.");
+
+            locator.Fail = true;
+            var pushed = Pump(other.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("broken"))));
+            Require(pushed is NavigationResult<object>.Committed, $"The push gave {pushed}.");
+            Require(host.Content is null && host.PresentedEntry is null, $"A failed view left {host.Content} presented.");
+            locator.Fail = false;
+            Pump(other.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel("fixed"))));
+            Require(ViewOf(host) is TextBox { DataContext: DocumentViewModel { Name: "fixed" } }, "The host did not recover after a failed view.");
+        }
+        finally { window.Close(); }
+    }
+
+    private sealed class FailingLocator : INavigationViewLocator
+    {
+        public bool Fail { get; set; }
+
+        public FrameworkElement? ResolveView(INavigationEntry entry) => Fail ? throw new InvalidOperationException("No view.") : null;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -230,3 +310,16 @@ internal sealed class ProbeView : Border;
 internal sealed class SettingsViewModel;
 
 internal sealed class SettingsPage : Border;
+
+internal sealed class ContentViewModel;
+
+internal sealed class ContentView(ContentViewModel model, ILoggerFactory? logs = null) : Border
+{
+    public ContentViewModel Model { get; } = model;
+
+    public ILoggerFactory? Logs { get; } = logs;
+}
+
+internal sealed class PlainContentViewModel;
+
+internal sealed class PlainContentView : Border;

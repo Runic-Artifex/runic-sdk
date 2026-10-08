@@ -62,7 +62,7 @@ public static class RunicWpfNavigationServiceCollectionExtensions
         }), lifetime));
         if (options.Views.Count > 0 || options.ViewNamingConvention)
         {
-            var locator = new NavigationViewLocator(new Dictionary<Type, Type>(options.Views), options.ViewNamingConvention);
+            var locator = new NavigationViewLocator(new Dictionary<Type, Type>(options.Views), options.ViewNamingConvention, [.. options.ViewAssemblies]);
             services.Replace(ServiceDescriptor.Singleton<INavigationViewLocator>(locator));
         }
         return services;

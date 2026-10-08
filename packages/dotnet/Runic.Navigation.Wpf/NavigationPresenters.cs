@@ -47,10 +47,11 @@ internal static class NavigationPresenters
         return presenter;
     }
 
-    // The implicit template on the content type's base-type chain, as ContentPresenter looks it up.
+    // The implicit template on the content type's base-type chain, as ContentPresenter looks it up. A template keyed
+    // by object is a catch-all, not a template for the content's type, so the walk stops before it.
     public static DataTemplate? FindTemplate(FrameworkElement scope, Type contentType)
     {
-        for (var type = contentType; type is not null; type = type.BaseType)
+        for (var type = contentType; type is not null && type != typeof(object); type = type.BaseType)
             if (scope.TryFindResource(new DataTemplateKey(type)) is DataTemplate template)
                 return template;
         return null;

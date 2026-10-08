@@ -184,6 +184,8 @@ internal sealed class LogCapture : ILoggerFactory
 
     public int Count(int id) => _entries.Count(entry => entry.Id == id);
 
+    public IEnumerable<int> Ids() => _entries.Select(entry => entry.Id);
+
     public IEnumerable<(string Category, LogLevel Level, int Id, Exception? Error)> All(int id) => _entries.Where(entry => entry.Id == id);
 
     private sealed class Logger(LogCapture owner, string category) : ILogger

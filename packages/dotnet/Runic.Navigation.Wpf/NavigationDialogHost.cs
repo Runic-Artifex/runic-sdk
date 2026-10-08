@@ -51,10 +51,11 @@ public class NavigationDialogHost : FrameworkElement
 
     private readonly PropertyChangedEventHandler _regionChanged;
     private readonly List<DialogWindow> _windows = [];
-    private readonly HashSet<nint> _disabled = [];
+    private readonly Dictionary<nint, DialogModalityTable.Hold> _disabled = [];
     private INavigationRegion? _attached;
     private INavigationRegion? _lastRegion;
     private Window? _owner;
+    private bool _noOwnerLogged;
     private bool _ownerClosed;
     private bool _modal;
     private int _reconcilePosted;
@@ -127,6 +128,12 @@ public class NavigationDialogHost : FrameworkElement
             DetachOwner();
             _owner = owner;
             if (owner is not null) owner.Closed += OnOwnerClosed;
+        }
+        if (owner is null && !_noOwnerLogged)
+        {
+            // Dialogs open only under an owner window: in a Popup or an ElementHost there is none.
+            _noOwnerLogged = true;
+            WpfNavigationLog.DialogHostWithoutWindow(WpfNavigationLog.For(Region?.Navigator.Services));
         }
         _ownerClosed = false;
         AttachRegion();
@@ -351,7 +358,7 @@ public class NavigationDialogHost : FrameworkElement
         List<DialogWindow> open = [.. _windows.Where(dialog => !dialog.HostClosing)];
         if (open.Count == 0 || _ownerClosed)
         {
-            foreach (var hwnd in _disabled) DialogModalityTable.Release(hwnd);
+            foreach (var hold in _disabled.Values) DialogModalityTable.Release(hold);
             _disabled.Clear();
             if (_modal)
             {
@@ -368,13 +375,17 @@ public class NavigationDialogHost : FrameworkElement
         // Each dialog disables what it found when it opened, which never includes the dialogs above it.
         HashSet<nint> required = [];
         foreach (var dialog in open) required.UnionWith(dialog.Level);
-        foreach (var hwnd in _disabled.Where(hwnd => !required.Contains(hwnd)).ToList())
+        foreach (var hwnd in _disabled.Keys.Where(hwnd => !required.Contains(hwnd)).ToList())
         {
+            DialogModalityTable.Release(_disabled[hwnd]);
             _disabled.Remove(hwnd);
-            DialogModalityTable.Release(hwnd);
         }
         foreach (var hwnd in required)
-            if (!_disabled.Contains(hwnd) && DialogModalityTable.TryDisable(hwnd)) _disabled.Add(hwnd);
+        {
+            // A dead hold stays: its window was destroyed, and a new window with that handle isn't this dialog's to disable.
+            if (_disabled.ContainsKey(hwnd)) continue;
+            if (DialogModalityTable.TryDisable(hwnd) is { } hold) _disabled[hwnd] = hold;
+        }
     }
 
     // What a dialog shown now makes modal: with Application, every other visible top-level window of the thread, as

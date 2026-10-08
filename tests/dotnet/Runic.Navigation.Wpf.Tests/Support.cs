@@ -223,3 +223,18 @@ internal sealed class SignallingContext(DispatcherModelContext inner) : IRunicMo
 
     public void Arm() => Volatile.Write(ref _armed, true);
 }
+
+// An InitializeAsync that awaits a gate, recording where it resumed.
+internal sealed class GatedInitializePage(Task gate) : Page("gated"), INavigationInitialize
+{
+    public bool Started { get; private set; }
+
+    public Thread? ResumedOn { get; private set; }
+
+    public async ValueTask InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken)
+    {
+        Started = true;
+        await gate;
+        ResumedOn = Thread.CurrentThread;
+    }
+}

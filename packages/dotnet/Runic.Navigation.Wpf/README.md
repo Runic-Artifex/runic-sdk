@@ -85,6 +85,18 @@ public sealed class HomeViewModel(MainNavigation navigation)
 default singleton navigator, each container-built entry gets its own service
 scope, which is disposed when the entry retires.
 
+To pass parameters, push a target you build, or pass an input that the
+ViewModel receives in `InitializeAsync`:
+
+```csharp
+await Main.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel(documentId)));
+await Main.PushAsync(NavigationTarget.Create<object>(services =>
+    new DocumentViewModel(documentId, services.GetRequiredService<IDocumentStore>())));
+
+// DocumentViewModel : INavigationInitialize<DocumentId>, created from the container
+await Main.PushAsync<DocumentViewModel, DocumentId>(documentId);
+```
+
 Bind the hosts in the shell window:
 
 ```xml
@@ -130,10 +142,20 @@ next. It looks for a View in this order:
 When none presents the content, the host logs event 1082 once per type.
 
 - A locator View is created with `ActivatorUtilities` from the entry's
-  services. Its `DataContext` is the content unless the View sets one.
+  services. A constructor parameter that the content can be assigned to gets
+  **the entry's content**, never another instance from the container, so
+  `DocumentView(DocumentViewModel model)` binds to the pushed ViewModel. Other
+  parameters come from the entry's services. The View's `DataContext` is the
+  content unless the View sets one.
 - `UseViewNamingConvention()` maps `FooViewModel` to `FooView`, then `FooPage`,
-  in the same assembly, also from a `.ViewModels` namespace to `.Views`. It
-  uses reflection; prefer `MapView` for an app you trim.
+  in the same assembly, also from a `.ViewModels` namespace to `.Views`. When
+  the ViewModels live in a separate assembly, pass the View assemblies:
+  `UseViewNamingConvention(typeof(MainWindow).Assembly)`. There a View in
+  another namespace matches by name when exactly one View type has it. The
+  convention uses reflection; prefer `MapView` for an app you trim.
+- The host sets its own `Content`. Don't set `Content`, `ContentTemplate` or
+  `ContentTemplateSelector` on it; present entries with implicit
+  `DataTemplate`s or a locator.
 - Retention keeps the ViewModel, not the View. On Back the host builds a new
   View for the retained ViewModel, so state that must survive belongs in the
   ViewModel.
@@ -158,11 +180,27 @@ message loop:
 - `WindowStyle` styles each dialog window: title, chrome, size. Templates
   come from the host's position, because a dialog window doesn't inherit the
   owner's resources.
+- When the host isn't inside a `Window` (for example in a `Popup`), it can't
+  own dialog windows and logs event 1086 once.
 - Closing a dialog (the close button, Alt+F4, or Esc with `CloseOnEscape`)
   goes Back in the region, or clears a single dialog. The dialog's guards run,
   and a veto keeps the window open.
 - When the owner window closes, the host releases the windows it disabled and
   clears the region once.
+
+A dialog window's `DataContext` is the entry's content, so the style can bind
+the title to the ViewModel:
+
+```xml
+<rn:NavigationDialogHost Region="{Binding Dialog}">
+  <rn:NavigationDialogHost.WindowStyle>
+    <Style TargetType="Window">
+      <Setter Property="Title" Value="{Binding Title}" />
+      <Setter Property="ResizeMode" Value="NoResize" />
+    </Style>
+  </rn:NavigationDialogHost.WindowStyle>
+</rn:NavigationDialogHost>
+```
 
 Return a result through the entry. A dialog pushed with
 `PushForResult<TResult>` completes with `entry.CompleteAsync(value)` and
@@ -217,6 +255,9 @@ regions can then commit through the message box's nested loop.
   event 1080. It never reaches `Dispatcher.UnhandledException`.
 - The context closes when the dispatcher starts shutting down. Navigation then
   ends `Rejected(Closed)`.
+- A hook that is still awaiting when the dispatcher shuts down continues on
+  the thread pool, so disposing the navigator doesn't hang. Turns that the
+  close drops are reported on the thread that closes the context.
 
 **Decorators must forward the hook scheduler.** A context that wraps
 `DispatcherModelContext` must implement `IRunicModelHookScheduler` and forward
@@ -282,8 +323,11 @@ across contents of the same type.
 
 ## Logging
 
-The category is `Runic.Navigation.Wpf`. Without an `ILoggerFactory`, warnings
-go to `System.Diagnostics.Trace`.
+The hosts log under the category `Runic.Navigation.Wpf`. `DispatcherModelContext`
+logs through its `ILogger<DispatcherModelContext>`, so its category is the full
+type name, `Runic.Navigation.Wpf.DispatcherModelContext`. Without an
+`ILoggerFactory` or logger, warnings and errors go to
+`System.Diagnostics.Trace`.
 
 | Event | Level | Meaning |
 | --- | --- | --- |
@@ -293,5 +337,6 @@ go to `System.Diagnostics.Trace`.
 | 1083 | Error | A dialog window failed to show; the host clears the dialog region once. |
 | 1084 | Warning | A posted turn was dropped because the context closed, and it has no handler. |
 | 1085 | Error | The `UnhandledTurnException` handler threw. |
+| 1086 | Warning | A dialog host was loaded outside a `Window` (once per host). |
 
 Events up to 1089 are reserved for the package.

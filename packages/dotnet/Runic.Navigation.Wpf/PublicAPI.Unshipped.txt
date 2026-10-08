@@ -49,7 +49,7 @@
 [RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.Priority.get -> System.Windows.Threading.DispatcherPriority
 [RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.Priority.set -> void
 [RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.RunicWpfNavigationOptions() -> void
-[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.UseViewNamingConvention() -> Runic.Navigation.Wpf.RunicWpfNavigationOptions!
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.UseViewNamingConvention(params System.Reflection.Assembly![]! viewAssemblies) -> Runic.Navigation.Wpf.RunicWpfNavigationOptions!
 [RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationServiceCollectionExtensions
 [RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.CloseOnEscapeProperty -> System.Windows.DependencyProperty!
 [RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.ModalityProperty -> System.Windows.DependencyProperty!

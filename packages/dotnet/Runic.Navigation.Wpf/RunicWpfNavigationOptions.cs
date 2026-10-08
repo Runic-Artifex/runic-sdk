@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,7 @@ namespace Runic.Navigation.Wpf;
 public sealed class RunicWpfNavigationOptions
 {
     private readonly Dictionary<Type, Type> _views = [];
+    private readonly List<Assembly> _viewAssemblies = [];
 
     /// <summary>
     /// Gets or sets the UI thread's dispatcher. The default is <see cref="Application.Current"/>'s dispatcher, read when the
@@ -37,6 +39,8 @@ public sealed class RunicWpfNavigationOptions
 
     internal bool ViewNamingConvention { get; private set; }
 
+    internal IReadOnlyList<Assembly> ViewAssemblies => _viewAssemblies;
+
     /// <summary>
     /// Presents content of type <typeparamref name="TViewModel"/>, or a type derived from it, with a new
     /// <typeparamref name="TView"/> created from the entry's services.
@@ -55,13 +59,19 @@ public sealed class RunicWpfNavigationOptions
     /// <summary>
     /// Finds views by name for content without a <see cref="MapView{TViewModel, TView}"/> pair: <c>FooViewModel</c> is
     /// presented by <c>FooView</c>, then <c>FooPage</c>, in the ViewModel's namespace and then with a <c>ViewModels</c>
-    /// namespace segment replaced by <c>Views</c>, from the ViewModel's assembly.
+    /// namespace segment replaced by <c>Views</c>, from the ViewModel's assembly and then from
+    /// <paramref name="viewAssemblies"/>. In a view assembly, a view in another namespace matches by name when exactly
+    /// one view type has that name. Call it again to add assemblies.
     /// </summary>
+    /// <param name="viewAssemblies">More assemblies to search, for ViewModels in a separate assembly.</param>
     /// <returns>These options.</returns>
     [RequiresUnreferencedCode("Finds view types by name. Use MapView when the app is trimmed.")]
-    public RunicWpfNavigationOptions UseViewNamingConvention()
+    public RunicWpfNavigationOptions UseViewNamingConvention(params Assembly[] viewAssemblies)
     {
+        ArgumentNullException.ThrowIfNull(viewAssemblies);
         ViewNamingConvention = true;
+        foreach (var assembly in viewAssemblies)
+            if (!_viewAssemblies.Contains(assembly)) _viewAssemblies.Add(assembly ?? throw new ArgumentException("An assembly is null.", nameof(viewAssemblies)));
         return this;
     }
 }

@@ -37,6 +37,8 @@ internal static class Program
             Run("presenter per entry", HostTests.PresenterPerEntry);
             Run("remount", HostTests.Remount);
             Run("view locator order", HostTests.LocatorOrder);
+            Run("view constructors get the content", HostTests.LocatorPassesTheContent);
+            Run("failed view and rebinding", HostTests.FailedViewAndRebinding);
             Run("naming convention", HostTests.NamingConvention);
             Run("BrowseBack", HostTests.BrowseBack);
             Run("unloaded host is collectable", HostTests.UnloadedHostIsCollectable);
@@ -48,6 +50,7 @@ internal static class Program
             Run("application modality", DialogTests.ApplicationModality);
             Run("owner modality", DialogTests.OwnerModality);
             Run("shared refcount", DialogTests.SharedRefcount);
+            Run("modality table holds", DialogTests.ModalityTableHolds);
             Run("Esc", DialogTests.Escape);
             Run("owner close", DialogTests.OwnerClose);
             Run("leave confirmation in a dialog", DialogTests.LeaveConfirmationInDialog);
@@ -55,9 +58,15 @@ internal static class Program
             Run("Application.Shutdown", DialogTests.ApplicationShutdown);
 
             if (unhandled.Count > 0)
-                throw new InvalidOperationException($"Exceptions reached the dispatcher: {string.Join(Environment.NewLine, unhandled)}");
-            Console.WriteLine("Runic.Navigation.Wpf tests passed.");
-            return 0;
+                Failures.Add(("dispatcher", new InvalidOperationException($"Exceptions reached the dispatcher: {string.Join(Environment.NewLine, unhandled)}")));
+            if (Failures.Count == 0)
+            {
+                Console.WriteLine("Runic.Navigation.Wpf tests passed.");
+                return 0;
+            }
+            Console.Error.WriteLine($"{Failures.Count} Runic.Navigation.Wpf test(s) failed:");
+            foreach (var (name, failure) in Failures) Console.Error.WriteLine($"FAIL {name}: {failure}");
+            return 1;
         }
         catch (Exception error)
         {
@@ -66,11 +75,26 @@ internal static class Program
         }
     }
 
+    private static readonly List<(string Name, Exception Error)> Failures = [];
+
+    // Runs every test; a failure is reported at once and again in the summary, and the run goes on.
     private static void Run(string name, Action test)
     {
         var watch = Stopwatch.StartNew();
-        test();
-        Console.WriteLine($"PASS {name} ({watch.ElapsedMilliseconds} ms)");
-        if (Dispatcher.FromThread(Thread.CurrentThread) is { HasShutdownStarted: false }) Ui.CloseStrayWindows(name);
+        try
+        {
+            test();
+            Console.WriteLine($"PASS {name} ({watch.ElapsedMilliseconds} ms)");
+        }
+        catch (Exception error)
+        {
+            Failures.Add((name, error));
+            Console.WriteLine($"FAIL {name} ({watch.ElapsedMilliseconds} ms): {error}");
+        }
+        if (Dispatcher.FromThread(Thread.CurrentThread) is { HasShutdownStarted: false })
+        {
+            try { Ui.CloseStrayWindows(name); }
+            catch (Exception error) { Failures.Add(($"{name} (cleanup)", error)); }
+        }
     }
 }

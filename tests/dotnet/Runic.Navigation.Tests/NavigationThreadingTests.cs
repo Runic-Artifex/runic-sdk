@@ -50,6 +50,7 @@ internal static partial class NavigationTests
         await ScopedFactoryCancelledBeforeStartAsync();
         await ContextClosedBeforeScopedFactoryStartsAsync();
         await NestedPumpHandlersAreNotTheHookAsync();
+        await YieldStyleContinuationsAreTheHookAsync();
     }
 
     // Factories, guards, initialize and resume run on the model thread, each as its own operation:
@@ -696,6 +697,41 @@ internal static partial class NavigationTests
             $"The guarded push gave {detail}.");
         await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
         Require(region.Current is ProbePage { Name: "from-handler" }, $"The region shows {region.Current}.");
+    }
+
+    // A hook's continuation that resumes in a new operation on the model thread, not through the
+    // hook's SynchronizationContext (await Dispatcher.Yield(), BeginInvoke, ObserveOn(DispatcherScheduler)),
+    // is still the hook's code: it carries the hook's ExecutionContext outside any nested pump.
+    private static async Task YieldStyleContinuationsAreTheHookAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext(freshContexts: true);
+        await using var fixture = new Fixture(context);
+        var probe = new Probe(context);
+        NavigationRegion<ProbePage>? region = null;
+        Task<NavigationResult<ProbePage>>? fromContinuation = null;
+        var guards = 0;
+        var home = new PumpingGuardPage(probe, async () =>
+        {
+            if (Interlocked.Increment(ref guards) > 1) return true;
+            var resumed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Like Dispatcher.BeginInvoke: a new operation with a fresh context, on the captured ExecutionContext.
+            var captured = ExecutionContext.Capture()!;
+            context.Post(() => ExecutionContext.Run(captured, _ =>
+            {
+                fromContinuation = region!.PushAsync(NavigationTarget.Own(new ProbePage("from-continuation", probe))).AsTask();
+                resumed.SetResult();
+            }, null));
+            await resumed.Task;
+            return true;
+        });
+        region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(home));
+        var detail = await Wait(context.RunOnThreadAsync(() => region.PushAsync(NavigationTarget.Own(new ProbePage("detail", probe))).AsTask()));
+        Require(fromContinuation is not null, "The continuation did not run.");
+        var continued = await Wait(fromContinuation!);
+        Require(continued is NavigationResult<ProbePage>.Rejected { Reason: NavigationRejection.Reentrant },
+            $"A request from a hook's continuation in a new operation gave {continued}.");
+        Require(detail is NavigationResult<ProbePage>.Committed, $"The guarded push gave {detail}.");
+        Require(region.Current is ProbePage { Name: "detail" }, $"The region shows {region.Current}.");
     }
 
     private sealed class PumpingGuardPage(Probe probe, Func<ValueTask<bool>> guard) : ProbePage("home", probe), INavigationDepartureGuard

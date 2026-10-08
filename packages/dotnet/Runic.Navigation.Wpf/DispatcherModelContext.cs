@@ -23,7 +23,9 @@ namespace Runic.Navigation.Wpf;
 /// <para>
 /// The context closes when it is disposed or when its dispatcher starts shutting down. Pending and later
 /// requests then fail with <see cref="ObjectDisposedException"/>, and <see cref="TryPost"/> returns
-/// <see langword="false"/>. Disposing the context never shuts the dispatcher down.
+/// <see langword="false"/>. Disposing the context never shuts the dispatcher down. Hooks run under a dispatcher
+/// <see cref="SynchronizationContext"/> that moves their continuations to the thread pool once the dispatcher
+/// shuts down, so a hook that awaits past shutdown still finishes.
 /// </para>
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
@@ -39,6 +41,7 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     private readonly HashSet<WorkItem> _pending = [];
     private readonly DispatcherPriority _priority;
     private readonly ILogger _logger;
+    private readonly HookContext _hookContext;
     private bool _closed;
     private bool _nestedLogged;
     // Turns this context runs on the UI thread; only read and written there. Hooks don't count.
@@ -58,9 +61,14 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         Dispatcher = dispatcher;
         _priority = priority;
         _logger = logger ?? (ILogger)TraceFallbackLogger.Instance;
-        if (dispatcher.HasShutdownStarted)
-            throw new InvalidOperationException("The dispatcher has started shutting down.");
+        _hookContext = new HookContext(dispatcher, priority);
+        // Subscribe first: a shutdown that starts in between is then seen by the check or by the handler.
         dispatcher.ShutdownStarted += OnShutdownStarted;
+        if (dispatcher.HasShutdownStarted)
+        {
+            dispatcher.ShutdownStarted -= OnShutdownStarted;
+            throw new InvalidOperationException("The dispatcher has started shutting down.");
+        }
     }
 
     /// <summary>Gets the dispatcher that runs this context's turns and hooks.</summary>
@@ -132,6 +140,11 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     /// Closes the context: later requests fail with <see cref="ObjectDisposedException"/>, pending invocations and
     /// hooks fail with it, and pending posted turns are reported as dropped. A running turn is not interrupted.
     /// </summary>
+    /// <remarks>
+    /// Dropped posted turns are reported synchronously, on the thread that closes the context, through
+    /// <see cref="UnhandledTurnException"/>, or logged as event 1084 without a handler. A hook still running keeps
+    /// running; once the dispatcher shuts down, its continuations run on the thread pool.
+    /// </remarks>
     public void Dispose() => Close();
 
     /// <summary>Closes the context like <see cref="Dispose"/>; completes at once.</summary>
@@ -172,10 +185,11 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         }
         catch (Exception)
         {
+            // Not queued: the caller rejects it (TryPost reports false).
             Forget(item);
-            item.Reject();
-            return true;
+            return false;
         }
+        item.Operation = operation;
         // A dispatcher that finished shutting down aborts operations at once; shutdown aborts queued ones.
         operation.Aborted += (_, _) =>
         {
@@ -233,9 +247,20 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     {
         private int _claimed;
 
+        // The queued operation, aborted when the request is cancelled before it runs.
+        public DispatcherOperation? Operation { get; set; }
+
         protected DispatcherModelContext Owner { get; } = owner;
 
         protected bool TryClaim() => Interlocked.Exchange(ref _claimed, 1) == 0;
+
+        // A request cancelled before it ran: leave the queue and drop the dispatcher operation.
+        protected void Withdraw()
+        {
+            Owner.Forget(this);
+            try { Operation?.Abort(); }
+            catch (InvalidOperationException) { }
+        }
 
         public void Run()
         {
@@ -300,7 +325,9 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
 
         private void Cancel()
         {
-            if (TryClaim()) _completion.TrySetCanceled(_cancellationToken);
+            if (!TryClaim()) return;
+            _completion.TrySetCanceled(_cancellationToken);
+            Withdraw();
         }
     }
 
@@ -327,12 +354,15 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         {
             _registration.Dispose();
             Task<T> task;
+            var previous = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(Owner._hookContext);
             try { task = _hook(); }
             catch (Exception error)
             {
                 _completion.TrySetException(error);
                 return;
             }
+            finally { SynchronizationContext.SetSynchronizationContext(previous); }
             if (task.IsCompleted) Complete(task, _completion);
             else
                 task.ContinueWith(static (completed, state) => Complete(completed, (TaskCompletionSource<T>)state!), _completion,
@@ -347,7 +377,9 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
 
         private void Cancel()
         {
-            if (TryClaim()) _completion.TrySetCanceled(_cancellationToken);
+            if (!TryClaim()) return;
+            _completion.TrySetCanceled(_cancellationToken);
+            Withdraw();
         }
 
         private static void Complete(Task<T> task, TaskCompletionSource<T> completion)
@@ -360,6 +392,75 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
                 catch (OperationCanceledException canceled) { completion.TrySetCanceled(canceled.CancellationToken); }
                 catch (Exception error) { completion.TrySetException(error); }
             }
+        }
+    }
+
+    // The SynchronizationContext hooks run under: the dispatcher while it runs, and the thread pool once it shuts
+    // down (A9), so a hook awaiting past shutdown still finishes and navigator disposal doesn't wait for it in vain.
+    // WPF drops BeginInvoke after shutdown started, and aborts operations still queued when it starts.
+    private sealed class HookContext : SynchronizationContext
+    {
+        private readonly Dispatcher _dispatcher;
+        private readonly DispatcherPriority _priority;
+        private readonly DispatcherSynchronizationContext _inner;
+
+        public HookContext(Dispatcher dispatcher, DispatcherPriority priority)
+        {
+            _dispatcher = dispatcher;
+            _priority = priority;
+            _inner = new DispatcherSynchronizationContext(dispatcher, priority);
+            if (_inner.IsWaitNotificationRequired()) SetWaitNotificationRequired();
+        }
+
+        public override void Send(SendOrPostCallback d, object? state) => _inner.Send(d, state);
+
+        public override int Wait(IntPtr[] waitHandles, bool waitAll, int millisecondsTimeout) =>
+            _inner.Wait(waitHandles, waitAll, millisecondsTimeout);
+
+        private static readonly DispatcherOperationCallback RunOnce = static state =>
+        {
+            ((Continuation)state!).Run();
+            return null;
+        };
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            ArgumentNullException.ThrowIfNull(d);
+            var continuation = new Continuation(d, state);
+            if (_dispatcher.HasShutdownStarted)
+            {
+                continuation.RunOnPool();
+                return;
+            }
+            DispatcherOperation operation;
+            try { operation = _dispatcher.BeginInvoke(_priority, RunOnce, continuation); }
+            catch (Exception)
+            {
+                continuation.RunOnPool();
+                return;
+            }
+            operation.Aborted += (_, _) => continuation.RunOnPool();
+            if (operation.Status == DispatcherOperationStatus.Aborted) continuation.RunOnPool();
+        }
+
+        public override SynchronizationContext CreateCopy() => new HookContext(_dispatcher, _priority);
+
+        private sealed class Continuation(SendOrPostCallback callback, object? state)
+        {
+            private int _ran;
+
+            public void Run()
+            {
+                if (Interlocked.Exchange(ref _ran, 1) == 0) callback(state);
+            }
+
+            public void RunOnPool()
+            {
+                if (Interlocked.Exchange(ref _ran, 1) == 0)
+                    ThreadPool.QueueUserWorkItem(static self => self.Invoke(), this, preferLocal: false);
+            }
+
+            private void Invoke() => callback(state);
         }
     }
 }

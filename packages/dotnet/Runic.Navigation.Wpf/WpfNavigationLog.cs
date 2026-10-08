@@ -29,6 +29,10 @@ internal static partial class WpfNavigationLog
         Message = "A dispatcher model context dropped a posted turn at shutdown: {ErrorType}.")]
     internal static partial void PostedTurnDropped(ILogger logger, Exception? exception, string errorType);
 
+    [LoggerMessage(EventId = 1086, EventName = "DialogHostWithoutWindow", Level = LogLevel.Warning,
+        Message = "A NavigationDialogHost was loaded outside a Window, so it can't own dialog windows; its region's entries get no windows. Logged once per host.")]
+    internal static partial void DialogHostWithoutWindow(ILogger logger);
+
     [LoggerMessage(EventId = 1085, EventName = "UnhandledTurnHandlerFailed", Level = LogLevel.Error,
         Message = "An UnhandledTurnException handler failed with {ErrorType}.")]
     internal static partial void UnhandledTurnHandlerFailed(ILogger logger, Exception? exception, string errorType);

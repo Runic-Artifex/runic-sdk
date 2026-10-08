@@ -255,6 +255,10 @@ internal static class ContextTests
         RunicNavigator? navigator = null;
         NavigationRegion<object>? region = null;
         OwnedProbe? owned = null;
+        // A hook that still awaits when the dispatcher shuts down: its continuation must run on the pool (A9).
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gated = new GatedInitializePage(gate.Task);
+        Task<NavigationResult<object>>? gatedPush = null;
         Thread? uiThread = null;
         Exception? error = null;
         var thread = new Thread(() =>
@@ -269,6 +273,8 @@ internal static class ContextTests
                 owned = new OwnedProbe();
                 Pump(region.PushAsync(NavigationTarget.Own<object>(owned)));
                 Pump(region.PushAsync(NavigationTarget.Own<object>(new Page("top"))));
+                gatedPush = region.PushAsync(NavigationTarget.Own<object>(gated)).AsTask();
+                PumpUntil(() => gated.Started, "the gated InitializeAsync");
                 dispatcher.BeginInvoke(() => dispatcher.InvokeShutdown());
                 Dispatcher.Run();
             }
@@ -281,9 +287,12 @@ internal static class ContextTests
 
         var late = Pump(region!.PushAsync(NavigationTarget.Own<object>(new Page("late"))));
         Require(late is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }, $"A push after shutdown gave {late}.");
+        gate.SetResult();
         var watch = Stopwatch.StartNew();
         Pump(navigator!.DisposeAsync().AsTask(), "navigator disposal after shutdown");
         Require(watch.Elapsed < TimeSpan.FromSeconds(1), $"Navigator disposal after shutdown took {watch.Elapsed}.");
+        Require(gated.ResumedOn is { IsThreadPoolThread: true }, $"The hook resumed on {gated.ResumedOn?.Name ?? "no thread"} after shutdown.");
+        Require(gatedPush!.IsCompleted, "The gated push did not settle.");
         Require(owned!.DisposedOn is { } disposer && disposer != uiThread && disposer.IsThreadPoolThread,
             $"Owned content was disposed on {owned.DisposedOn?.Name ?? "no thread"}.");
         Require(navigator.UnretiredEntryCount == 0, $"{navigator.UnretiredEntryCount} entries were not retired.");

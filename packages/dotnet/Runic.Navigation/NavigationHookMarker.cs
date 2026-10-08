@@ -6,23 +6,37 @@ namespace Runic.Navigation;
 // a request from the hook's own code into its region, or a related one, is Rejected(Reentrant): the
 // hook would otherwise wait on a transition that waits on it.
 //
-// The marker flows with the hook's ExecutionContext (an AsyncLocal). That alone is too wide: a hook
-// may pump messages, for example a guard that shows a modal dialog, and a UI host then dispatches
-// input handlers nested inside the hook's frame, on the same ExecutionContext. Those handlers are not
-// the hook's code. A host does install its own SynchronizationContext for every message it dispatches
-// (WPF installs a fresh DispatcherSynchronizationContext for each window message and in each
-// PushFrame), so the marker applies only to code that runs under the SynchronizationContext the hook
-// runs with. The hook runs under a HookSynchronizationContext that wraps the context it started on and
-// re-establishes itself around the hook's posted continuations. Code with no SynchronizationContext,
-// such as a hook's continuations on the thread pool, still counts as the hook's code.
+// The marker flows with the hook's ExecutionContext (an AsyncLocal), so it reaches every continuation
+// of the hook, however it resumes: through the SynchronizationContext, on the pool, or in a new
+// dispatcher operation (Dispatcher.Yield, BeginInvoke, ObserveOn).
+//
+// That alone is too wide in one case: a hook may pump messages, for example a guard that shows a
+// modal dialog, and a UI host then dispatches input handlers nested inside the hook's synchronous
+// frame, on the same ExecutionContext. Those handlers are not the hook's code. The marker therefore
+// tracks, per thread, the frame in which the hook's code runs: the hook's own synchronous call (Enter
+// to Dispose) and each continuation posted through the hook's HookSynchronizationContext. Inside such
+// a frame, only code under the context the frame runs with counts as the hook; anything else was
+// dispatched by a nested pump (UI hosts install their own SynchronizationContext for every message
+// they dispatch). Outside such a frame, a marker in the ExecutionContext always means the hook.
+//
+// The marker holds its transition weakly: user code may keep the hook's SynchronizationContext (for
+// example Progress<T> or ObserveOn(SynchronizationContext.Current)), and that must not keep the
+// transition, its entries and region alive.
 [Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class NavigationHookMarker
 {
     private static readonly AsyncLocal<NavigationHookMarker?> Current = new();
 
-    private NavigationHookMarker(NavigationTransition transition) => Transition = transition;
+    // The marker whose frame runs on this thread, and whether that frame runs under the marker's
+    // HookSynchronizationContext (false: under no context).
+    [ThreadStatic] private static NavigationHookMarker? t_frame;
+    [ThreadStatic] private static bool t_frameWrapped;
 
-    public NavigationTransition Transition { get; }
+    private readonly WeakReference<NavigationTransition> _transition;
+
+    private NavigationHookMarker(NavigationTransition transition) => _transition = new(transition);
+
+    public NavigationTransition? Transition => _transition.TryGetTarget(out var transition) ? transition : null;
 
     // The transition whose hook the calling code belongs to, or null.
     public static NavigationTransition? Active
@@ -31,10 +45,16 @@ internal sealed class NavigationHookMarker
         {
             var marker = Current.Value;
             if (marker is null) return null;
-            var context = SynchronizationContext.Current;
-            return context is null || context is HookSynchronizationContext hook && ReferenceEquals(hook.Marker, marker)
-                ? marker.Transition
-                : null;
+            if (ReferenceEquals(t_frame, marker))
+            {
+                // Inside the hook's frame: code under another context was dispatched by a nested pump.
+                var context = SynchronizationContext.Current;
+                var hookContext = t_frameWrapped
+                    ? context is HookSynchronizationContext hook && ReferenceEquals(hook.Marker, marker)
+                    : context is null;
+                if (!hookContext) return null;
+            }
+            return marker.Transition;
         }
     }
 
@@ -45,24 +65,32 @@ internal sealed class NavigationHookMarker
     {
         var previousMarker = Current.Value;
         var previousContext = SynchronizationContext.Current;
+        var previousFrame = t_frame;
+        var previousFrameWrapped = t_frameWrapped;
         var marker = transition is null ? null : new NavigationHookMarker(transition);
         Current.Value = marker;
         var wrapped = marker is not null && previousContext is not null;
         if (wrapped) SynchronizationContext.SetSynchronizationContext(new HookSynchronizationContext(previousContext!, marker!));
-        return new Scope(previousMarker, previousContext, wrapped);
+        t_frame = marker;
+        t_frameWrapped = wrapped;
+        return new Scope(previousMarker, previousContext, wrapped, previousFrame, previousFrameWrapped);
     }
 
-    public readonly struct Scope(NavigationHookMarker? previousMarker, SynchronizationContext? previousContext, bool wrapped) : IDisposable
+    public readonly struct Scope(NavigationHookMarker? previousMarker, SynchronizationContext? previousContext, bool wrapped,
+        NavigationHookMarker? previousFrame, bool previousFrameWrapped) : IDisposable
     {
         public void Dispose()
         {
             if (wrapped) SynchronizationContext.SetSynchronizationContext(previousContext);
             Current.Value = previousMarker;
+            t_frame = previousFrame;
+            t_frameWrapped = previousFrameWrapped;
         }
     }
 
-    // Forwards to the context the hook started on, and runs each callback under itself, so the hook's
-    // continuations keep the marker while other work dispatched by that context does not.
+    // Forwards to the context the hook started on, and runs each callback under itself as a frame of
+    // the hook, so the hook's continuations keep the marker while other work dispatched by that
+    // context does not.
     private sealed class HookSynchronizationContext : SynchronizationContext
     {
         private readonly SynchronizationContext _inner;
@@ -96,9 +124,18 @@ internal sealed class NavigationHookMarker
             public void Invoke()
             {
                 var previous = SynchronizationContext.Current;
+                var previousFrame = t_frame;
+                var previousFrameWrapped = t_frameWrapped;
                 SetSynchronizationContext(owner);
+                t_frame = owner.Marker;
+                t_frameWrapped = true;
                 try { callback(state); }
-                finally { SetSynchronizationContext(previous); }
+                finally
+                {
+                    t_frame = previousFrame;
+                    t_frameWrapped = previousFrameWrapped;
+                    SetSynchronizationContext(previous);
+                }
             }
         }
     }

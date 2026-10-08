@@ -20,6 +20,10 @@ namespace Runic.Navigation.Wpf;
 /// The host follows the region while it is loaded, and never changes entries when it is unloaded.
 /// <see cref="NavigationCommands.BrowseBack"/> goes back when the region can go back and isn't transitioning.
 /// </para>
+/// <para>
+/// The host sets its own <see cref="ContentControl.Content"/>: don't set <c>Content</c>, <c>ContentTemplate</c> or
+/// <c>ContentTemplateSelector</c> on it. Present entries with implicit <see cref="DataTemplate"/>s or a locator.
+/// </para>
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
 public class NavigationHost : ContentControl
@@ -124,6 +128,8 @@ public class NavigationHost : ContentControl
     {
         if (_attached is not null) _attached.PropertyChanged -= _regionChanged;
         _attached = null;
+        // Entry ids are unique only within one navigator: the next region starts afresh.
+        _presented = null;
     }
 
     private void OnRegionPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -160,9 +166,19 @@ public class NavigationHost : ContentControl
             return;
         }
         if (_presented == entry.Id && !_showsEmpty) return;
+        ContentPresenter presenter;
+        try { presenter = NavigationPresenters.Create(this, region!, entry, ViewLocator, explicitTemplate: false); }
+        catch
+        {
+            // No stale view: the next change or Loaded tries again.
+            _presented = null;
+            _showsEmpty = false;
+            Content = null;
+            throw;
+        }
         _showsEmpty = false;
         _presented = entry.Id;
-        Content = NavigationPresenters.Create(this, region!, entry, ViewLocator, explicitTemplate: false);
+        Content = presenter;
     }
 
     private void OnCanBrowseBack(object sender, CanExecuteRoutedEventArgs e)

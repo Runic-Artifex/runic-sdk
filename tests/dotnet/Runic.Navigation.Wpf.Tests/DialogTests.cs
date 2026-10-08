@@ -94,7 +94,8 @@ internal static class DialogTests
             {
                 signalling!.Arm();
                 clear = scene.Region.ClearAsync().AsTask();
-                Require(signalling.OffThreadTurn.Wait(WaitLimit), "The clear never requested its commit turn.");
+                // Blocks the UI thread only until the clear, which has no hooks, requests its commit turn from the pool.
+                Require(signalling.OffThreadTurn.Wait(TimeSpan.FromSeconds(5)), "The clear never requested its commit turn.");
             });
         };
         var pushed = Pump(scene.Region.PushAsync(NavigationTarget.Own<object>(dialog)));
@@ -204,6 +205,35 @@ internal static class DialogTests
             EnableWindow(Handle(appDisabled), true);
             appDisabled.Close();
         }
+    }
+
+    // The table counts a window that something re-enabled while held, and an entry dies with its window, so a
+    // recycled handle never inherits counts.
+    public static void ModalityTableHolds()
+    {
+        var window = ShowWindow();
+        var hwnd = Handle(window);
+        try
+        {
+            var first = DialogModalityTable.TryDisable(hwnd);
+            Require(first is not null && !IsWindowEnabled(hwnd) && DialogModalityTable.CountOf(hwnd) == 1, "The first hold did not disable the window.");
+            EnableWindow(hwnd, true);
+            var second = DialogModalityTable.TryDisable(hwnd);
+            Require(ReferenceEquals(first, second) && DialogModalityTable.CountOf(hwnd) == 2 && !IsWindowEnabled(hwnd),
+                $"A re-enabled held window has {DialogModalityTable.CountOf(hwnd)} counts.");
+            DialogModalityTable.Release(first!);
+            Require(!IsWindowEnabled(hwnd), "One release re-enabled a window with two counts.");
+            DialogModalityTable.Release(second!);
+            Require(IsWindowEnabled(hwnd) && DialogModalityTable.CountOf(hwnd) == 0, "The last release did not re-enable the window.");
+
+            var held = DialogModalityTable.TryDisable(hwnd);
+            EnableWindow(hwnd, true);
+            window.Close();
+            Drain();
+            Require(held is { Dead: true } && DialogModalityTable.CountOf(hwnd) == 0, "A destroyed window's entry stayed in the table.");
+            DialogModalityTable.Release(held!);
+        }
+        finally { window.Close(); }
     }
 
     public static void Escape()
