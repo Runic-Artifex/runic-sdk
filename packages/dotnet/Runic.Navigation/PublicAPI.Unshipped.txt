@@ -49,6 +49,8 @@ Runic.Navigation.RunicModelContextRegistry.TryGet(object! model, out Runic.Navig
 [RUNICNAV001]Runic.Navigation.INavigationResume
 [RUNICNAV001]Runic.Navigation.INavigationResume.ResumeAsync(Runic.Navigation.NavigationResume! resume, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 [RUNICNAV001]Runic.Navigation.INavigationTarget<TContent>
+[RUNICNAV001]Runic.Navigation.IRunicModelContextLifetime
+[RUNICNAV001]Runic.Navigation.IRunicModelContextLifetime.Closed.get -> System.Threading.CancellationToken
 [RUNICNAV001]Runic.Navigation.IRunicModelHookScheduler
 [RUNICNAV001]Runic.Navigation.IRunicModelHookScheduler.RunHookAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! hook, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<T>!
 [RUNICNAV001]Runic.Navigation.LeaveConfirmation

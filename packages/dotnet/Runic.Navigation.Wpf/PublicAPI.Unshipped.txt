@@ -1,5 +1,6 @@
 #nullable enable
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Closed.get -> System.Threading.CancellationToken
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Dispatcher.get -> System.Windows.Threading.Dispatcher!
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.DispatcherModelContext(System.Windows.Threading.Dispatcher! dispatcher, System.Windows.Threading.DispatcherPriority priority = System.Windows.Threading.DispatcherPriority.Normal, Microsoft.Extensions.Logging.ILogger<Runic.Navigation.Wpf.DispatcherModelContext!>? logger = null) -> void
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.DisposeAsync() -> System.Threading.Tasks.ValueTask

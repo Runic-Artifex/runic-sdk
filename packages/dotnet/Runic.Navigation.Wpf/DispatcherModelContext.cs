@@ -29,7 +29,7 @@ namespace Runic.Navigation.Wpf;
 /// </para>
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
-public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHookScheduler, IDisposable
+public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime, IDisposable
 {
     private static readonly DispatcherOperationCallback RunItem = static state =>
     {
@@ -42,6 +42,8 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     private readonly DispatcherPriority _priority;
     private readonly ILogger _logger;
     private readonly HookContext _hookContext;
+    // Never disposed: Closed stays valid for registrations made after the close.
+    private readonly CancellationTokenSource _closedSource = new();
     private bool _closed;
     private bool _nestedLogged;
     // Turns this context runs on the UI thread; only read and written there. Hooks don't count.
@@ -150,6 +152,14 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     /// </remarks>
     public void Dispose() => Close();
 
+    /// <summary>Gets a token that is cancelled when the context closes, on disposal or when the dispatcher starts shutting down.</summary>
+    /// <remarks>
+    /// A navigator subscribes to it, so requests made after the close end <see cref="NavigationRejection.Closed"/> at once.
+    /// Callbacks run synchronously on the closing thread, before pending work is rejected; their exceptions are reported
+    /// like a failing posted turn's, through <see cref="UnhandledTurnException"/> or event 1080.
+    /// </remarks>
+    public CancellationToken Closed => _closedSource.Token;
+
     /// <summary>Closes the context like <see cref="Dispose"/>; completes at once.</summary>
     public ValueTask DisposeAsync()
     {
@@ -170,6 +180,11 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
             _pending.Clear();
         }
         Dispatcher.ShutdownStarted -= OnShutdownStarted;
+        try { _closedSource.Cancel(); }
+        catch (AggregateException failures)
+        {
+            foreach (var failure in failures.InnerExceptions) Report(failure, dropped: false);
+        }
         foreach (var item in pending) item.Reject();
     }
 

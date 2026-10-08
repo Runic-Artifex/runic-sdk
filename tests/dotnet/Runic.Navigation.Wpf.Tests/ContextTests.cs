@@ -259,6 +259,7 @@ internal static class ContextTests
         RunicNavigator? navigator = null;
         NavigationRegion<object>? region = null;
         OwnedProbe? owned = null;
+        DispatcherModelContext? context = null;
         // A hook that still awaits when the dispatcher shuts down: its continuation must run on the pool (A9).
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gated = new GatedInitializePage(gate.Task);
@@ -271,7 +272,7 @@ internal static class ContextTests
             {
                 var dispatcher = Dispatcher.CurrentDispatcher;
                 uiThread = Thread.CurrentThread;
-                var context = new DispatcherModelContext(dispatcher);
+                context = new DispatcherModelContext(dispatcher);
                 navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
                 region = navigator.CreateRegion<object>(new object());
                 owned = new OwnedProbe();
@@ -289,23 +290,25 @@ internal static class ContextTests
         Require(thread.Join(WaitLimit), "The secondary UI thread did not stop.");
         if (error is not null) throw new InvalidOperationException("The secondary UI thread failed.", error);
 
-        // Release the hook first: a later push in the same region waits for the gated transition to end, and the
-        // hook doesn't observe its cancellation, so pushing before the gate opens would wait for the gate.
-        var stage = "gate";
+        // The context's Closed token told the navigator about the shutdown (A6), so a push while the hook still awaits
+        // its gate, ignoring its cancellation, is rejected at once instead of waiting behind the gated transition.
+        var stage = "a push after shutdown";
         Task<NavigationResult<object>>? latePush = null;
         Task? disposal = null;
         try
         {
+            Require(context!.Closed.IsCancellationRequested && navigator!.IsClosed, "The navigator did not learn that the context closed.");
+            latePush = region!.PushAsync(NavigationTarget.Own<object>(new Page("late"))).AsTask();
+            Require(latePush.IsCompleted, "A push after shutdown waited behind the gated hook.");
+            var late = latePush.Result;
+            Require(late is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }, $"A push after shutdown gave {late}.");
+            stage = "gate";
             gate.SetResult();
             stage = "the hook's continuation after shutdown";
             PumpUntil(() => gated.ResumedOn is not null, stage);
             stage = "the gated push";
             var gatedResult = Pump(gatedPush!, stage);
             Require(gatedResult is NavigationResult<object>.Rejected, $"The gated push gave {gatedResult} after shutdown.");
-            stage = "a push after shutdown";
-            latePush = region!.PushAsync(NavigationTarget.Own<object>(new Page("late"))).AsTask();
-            var late = Pump(latePush, stage);
-            Require(late is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }, $"A push after shutdown gave {late}.");
             stage = "navigator disposal after shutdown";
             var watch = Stopwatch.StartNew();
             disposal = navigator!.DisposeAsync().AsTask();

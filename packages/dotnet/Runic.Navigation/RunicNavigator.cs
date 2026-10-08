@@ -112,8 +112,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private long _nextEntryId;
     private int _nextRegionId;
     private bool _closing;
-    // Set when the model context reported itself closed (ObjectDisposedException before a turn or hook started).
+    // Set when the model context reported itself closed: through IRunicModelContextLifetime.Closed, or with an
+    // ObjectDisposedException before a turn or hook started.
     private bool _contextClosed;
+    // The registration on IRunicModelContextLifetime.Closed, released when disposal finishes.
+    private readonly CancellationTokenRegistration _contextClosedRegistration;
     private TaskCompletionSource? _disposal;
     // Completed when disposal starts, so scheduled owned disposal that is still queued becomes bounded.
     private readonly TaskCompletionSource _disposalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -133,6 +136,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         _time = options.TimeProvider ?? TimeProvider.System;
         _closeTimeout = options.CloseTimeout;
         Logger = options.LoggerFactory?.CreateLogger(LogCategory) ?? TraceFallbackLogger.Instance;
+        // Last: a context that is already closed runs the callback here, and closing needs the fields above.
+        if (ModelContext is IRunicModelContextLifetime lifetime)
+            _contextClosedRegistration = lifetime.Closed.UnsafeRegister(static state => ((RunicNavigator)state!).OnModelContextClosing(), this);
     }
 
     /// <summary>Gets the model context whose turns commit this navigator's state. Owned content is bound to it.</summary>
@@ -155,7 +161,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Gets whether <see cref="DisposeAsync"/> has started. A closed navigator rejects requests as
+    /// Gets whether <see cref="DisposeAsync"/> has started or the model context closed (see <see cref="IRunicModelContextLifetime"/>). A closed navigator rejects requests as
     /// <see cref="NavigationRejection.Closed"/>, throws <see cref="ObjectDisposedException"/> from <see cref="CreateRegion{TContent}"/>
     /// and ignores <see cref="AttachPresentation"/>.
     /// </summary>
@@ -500,6 +506,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         finally
         {
             transitionWait.Dispose();
+            _contextClosedRegistration.Unregister();
             disposal.TrySetResult();
         }
     }
@@ -533,6 +540,21 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             _contextClosed = true;
         }
         BeginClosing();
+    }
+
+    // IRunicModelContextLifetime.Closed fired, on the thread that closed the context (often the UI thread while it
+    // shuts down). Requests are refused from here on, synchronously, so none is admitted to wait behind a hook that
+    // ignores its cancellation; dismissing result requests and cancelling transitions runs user callbacks, so that
+    // part runs on the pool.
+    private void OnModelContextClosing()
+    {
+        lock (Gate)
+        {
+            if (_contextClosed) return;
+            _contextClosed = true;
+            _closing = true;
+        }
+        ThreadPool.UnsafeQueueUserWorkItem(static self => self.BeginClosing(), this, preferLocal: false);
     }
 
     // ---- Admission -------------------------------------------------------

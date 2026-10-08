@@ -25,6 +25,7 @@ internal static partial class NavigationTests
         await ScheduledHookFailuresAsync(synchronous: false);
         await ScheduledHookCancelledBeforeStartAsync();
         await ContextClosedBeforeHookStartsAsync();
+        await ClosedSignalRejectsWithoutWaitingAsync();
         foreach (var hook in new[] { "factory", "initialize", "resume" })
             await ContextClosedBeforeLaterHookStartsAsync(hook);
         await ContextClosedBeforeCommitTurnAsync(scheduling: false);
@@ -259,6 +260,42 @@ internal static partial class NavigationTests
         await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled } && guardRuns == 0 && next.Disposed == 1,
             $"A guard cancelled before it started gave {result} and ran {guardRuns} times.");
+    }
+
+    // A6 with IRunicModelContextLifetime: once the context reports itself closed, a request ends Rejected(Closed) at
+    // once, also when it would otherwise wait behind a transition whose hook ignores its cancellation.
+    private static async Task ClosedSignalRejectsWithoutWaitingAsync()
+    {
+        using var inner = new SchedulingSyncContextModelContext();
+        var context = new LifetimeContext(inner);
+        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var guardStarted = false;
+        var home = new Page("home")
+        {
+            Guard = async (_, _) =>
+            {
+                Volatile.Write(ref guardStarted, true);
+                await gate.Task.ConfigureAwait(false);
+                return true;
+            },
+        };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var next = new Page("next");
+        var push = region.PushAsync(NavigationTarget.Own(next)).AsTask();
+        await Until(() => Volatile.Read(ref guardStarted), "The guard did not start.");
+        await context.DisposeAsync();
+        Require(fixture.Navigator.IsClosed, "The navigator did not start closing when the context closed.");
+        var late = region.PushAsync(NavigationTarget.Own(new Page("late"))).AsTask();
+        Require(late.IsCompleted, "A request after the close waited.");
+        Require(await late is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, $"A request after the close gave {late.Result}.");
+        gate.SetResult();
+        var result = await Wait(push);
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, $"The guarded push gave {result} after the close.");
+        var watch = Stopwatch.StartNew();
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        Require(watch.Elapsed < TimeSpan.FromSeconds(10) && next.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0,
+            $"Disposal after the context closed took {watch.Elapsed}.");
     }
 
     // A6: a context that closes before a scheduled hook starts gives Rejected(Closed), logs no failure,
@@ -1020,6 +1057,34 @@ internal static partial class NavigationTests
     {
         public ConcurrentQueue<bool> Calls { get; } = new();
         public void Forget(object content) => Calls.Enqueue(context.IsOnThread);
+    }
+
+    // A scheduling context that reports its close through IRunicModelContextLifetime.
+    private sealed class LifetimeContext(SchedulingSyncContextModelContext inner)
+        : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime
+    {
+        private readonly CancellationTokenSource _closed = new();
+
+        public CancellationToken Closed => _closed.Token;
+
+        public bool IsExecuting => inner.IsExecuting;
+
+        public event Action<Exception>? UnhandledTurnException
+        {
+            add => inner.UnhandledTurnException += value;
+            remove => inner.UnhandledTurnException -= value;
+        }
+
+        public bool TryPost(Action turn) => inner.TryPost(turn);
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) => inner.InvokeAsync(turn, cancellationToken);
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => inner.InvokeAsync(turn, cancellationToken);
+        public Task<T> RunHookAsync<T>(Func<Task<T>> hook, CancellationToken cancellationToken) => inner.RunHookAsync(hook, cancellationToken);
+
+        public async ValueTask DisposeAsync()
+        {
+            await inner.DisposeAsync();
+            await _closed.CancelAsync();
+        }
     }
 
     // Forwards IRunicModelContext only, hiding any scheduler of the inner context.

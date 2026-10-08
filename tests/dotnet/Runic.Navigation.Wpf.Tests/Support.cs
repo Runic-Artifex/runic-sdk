@@ -182,9 +182,11 @@ internal sealed class DialogScene : IDisposable
 }
 
 // Forwards a DispatcherModelContext and signals when a turn is requested off the UI thread.
-internal sealed class SignallingContext(DispatcherModelContext inner) : IRunicModelContext, IRunicModelHookScheduler
+internal sealed class SignallingContext(DispatcherModelContext inner) : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime
 {
     public ManualResetEventSlim OffThreadTurn { get; } = new(false);
+
+    public CancellationToken Closed => inner.Closed;
 
     public bool IsExecuting => inner.IsExecuting;
 

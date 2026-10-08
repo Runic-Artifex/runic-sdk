@@ -259,21 +259,26 @@ regions can then commit through the message box's nested loop.
   commit needs the dispatcher.
 - A posted turn that throws goes to `UnhandledTurnException`, or is logged as
   event 1080. It never reaches `Dispatcher.UnhandledException`.
-- The context closes when the dispatcher starts shutting down. Navigation then
-  ends `Rejected(Closed)`.
+- The context closes when the dispatcher starts shutting down, and tells the
+  navigator through its `Closed` token. Requests then end `Rejected(Closed)` at
+  once, and transitions in flight are cancelled.
 - A hook that is still awaiting when the dispatcher shuts down continues on
   the thread pool, so disposing the navigator doesn't hang. Turns that the
   close drops are reported on the thread that closes the context.
 
-**Decorators must forward the hook scheduler.** A context that wraps
-`DispatcherModelContext` must implement `IRunicModelHookScheduler` and forward
-`RunHookAsync` to it. Otherwise hooks run on the thread pool instead of the UI
-thread:
+**Decorators must forward the hook scheduler and the close signal.** A context
+that wraps `DispatcherModelContext` must implement `IRunicModelHookScheduler`
+and `IRunicModelContextLifetime` and forward them. Otherwise hooks run on the
+thread pool instead of the UI thread, and the navigator learns about a shutdown
+only when a turn fails, so a request can wait behind a hook that ignores its
+cancellation:
 
 ```csharp
-public sealed class TracingContext(DispatcherModelContext inner) : IRunicModelContext, IRunicModelHookScheduler
+public sealed class TracingContext(DispatcherModelContext inner)
+    : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime
 {
     // ... forward the IRunicModelContext members ...
+    public CancellationToken Closed => inner.Closed;
     public Task<T> RunHookAsync<T>(Func<Task<T>> hook, CancellationToken cancellationToken) =>
         inner.RunHookAsync(hook, cancellationToken);
 }

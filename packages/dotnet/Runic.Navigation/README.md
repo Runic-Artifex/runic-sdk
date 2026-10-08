@@ -391,6 +391,15 @@ the caller, never inside a turn. Hook operations don't count as turns. Once
 the context is closed, disposal runs on the thread pool. A decorator that
 wraps a scheduling context must implement and forward the interface too.
 
+A context that can close on its own, for example when its UI thread shuts
+down, can also implement `IRunicModelContextLifetime`. The navigator subscribes
+to its `Closed` token and starts closing when it fires: later requests are
+`Rejected(Closed)` at once, and transitions in flight are cancelled as closed.
+Without it, the navigator learns about the close only when a turn or hook
+fails with `ObjectDisposedException`, so a request can wait behind a
+transition whose hook ignores its cancellation. Decorators forward this
+interface too.
+
 During `DisposeAsync`, a scheduled disposal that hasn't started by the
 clearing turns' deadline runs on the thread pool instead, exactly once, so
 disposal completes even when the model's thread is blocked. Don't block the
