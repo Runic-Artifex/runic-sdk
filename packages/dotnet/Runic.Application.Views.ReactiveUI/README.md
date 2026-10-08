@@ -11,6 +11,8 @@ CommunityToolkit dependency. It provides:
 - `ReactiveRoutedRegion<T>`, projecting `RoutingState.CurrentViewModel` into
   a generated content property, logging an incompatible route or failed
   router through an optional `ILoggerFactory` (Views events 1040-1041);
+- experimental observables and a back command for `RunicNavigator` regions
+  (see [Navigation](#navigation-experimental));
 - mount-owned `IActivatableViewModel` leases; and
 - typed command, interaction, and model-context scheduler adapters used by
   the compiled-model generator.
@@ -165,6 +167,52 @@ from `ThrownExceptions.OnNext`, inside ReactiveUI. Dispose the returned
 subscription with the ViewModel. An unexpected exception from a Bridge call is
 also logged by the Views runtime (event 1000 or 1004). The helper works on any
 `IHandleObservableErrors`, such as a `ReactiveObject`.
+
+## Navigation (experimental)
+
+`RunicNavigator` regions replace `RoutingState` rather than wrap it: a region
+has awaited departure guards, stable entry ids, owned content and supersession,
+which `RoutingState`'s mutable stack and synchronous `Navigate` cannot enforce.
+Use a `NavigationRegion<TContent>` for new navigation, and keep
+`ReactiveRoutedRegion<T>` for existing `RoutingState` code; it is unchanged
+through 0.8. Expose the region as a get-only property and the generator presents
+its `Current` like any content slot.
+
+The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
+
+```csharp
+var scheduler = new RunicReactiveSchedulerProvider().For(context);
+BackCommand = Main.CreateBackCommand(scheduler);
+BackCommand.ObserveBridgeExceptions(logger).DisposeWith(disposables);
+
+Main.WhenCurrentChanged()          // TContent?, distinct by instance
+    .Select(current => current is DocumentViewModel)
+    .ObserveOn(scheduler)
+    .Subscribe(isDocument => IsDocumentOpen = isDocument)
+    .DisposeWith(disposables);
+```
+
+- `WhenCurrentChanged()` emits the current content (`null` when the region is
+  empty) on subscription and then each different instance.
+  `WhenEntryChanged()` emits each `NavigationEntry<TContent>`, also when two
+  entries present the same borrowed instance.
+- Both deliver inside the model turn that commits the change, never complete,
+  and stop when the subscription is disposed.
+- `CreateBackCommand(scheduler)` returns a
+  `ReactiveCommand<RxVoid, NavigationResult<TContent>>`
+  (`ReactiveCommand<Unit, NavigationResult<TContent>>` in the System.Reactive flavor). It can execute
+  while `CanGoBack` is true and `IsTransitioning` is false, including
+  transitions it did not start. A rejected, superseded or failed Back is its
+  output, not an exception, so `ThrownExceptions` carries only defects and
+  cancellation.
+- **Activation is not entry lifetime.** ReactiveUI activation follows a mounted
+  View. A navigation entry lives from its push until it retires: a retained
+  entry stays alive and keeps its state while nothing presents it, and its View
+  deactivates and activates again when the entry returns. Put per-presentation
+  subscriptions in `WhenActivated`. Use the navigator's hooks
+  (`INavigationInitialize`, `INavigationResume`, `INavigationDepartureGuard`) and
+  the entry's `Retirement` token for per-entry work, and `Dispose` for owned
+  content.
 
 ## System.Reactive flavor
 

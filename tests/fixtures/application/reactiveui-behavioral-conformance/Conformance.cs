@@ -33,6 +33,7 @@ await InteractionSemanticsAsync();
 await SchedulerFailureAndShutdownSemanticsAsync();
 await StreamOverflowStopsExecutionAsync();
 PlatformImportSemantics();
+await NavigationAdapterSemanticsAsync();
 // Last: it replaces ReactiveUI's global default exception handler.
 await BridgeExceptionSemanticsAsync();
 Console.WriteLine("REACTIVEUI_BEHAVIORAL_CONFORMANCE_OK");
@@ -344,6 +345,77 @@ static async Task BridgeExceptionSemanticsAsync()
     }
 }
 
+static async Task NavigationAdapterSemanticsAsync()
+{
+    await using var context = new RunicModelContext();
+    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+    var home = new NavigationPage("home");
+    var region = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(home));
+
+    var currents = new Recorder<NavigationPage?>();
+    var entries = new Recorder<NavigationEntry<NavigationPage>?>();
+    using var currentSubscription = region.WhenCurrentChanged().Subscribe(currents);
+    using (region.WhenEntryChanged().Subscribe(entries))
+    {
+        Require(currents.Values.SequenceEqual([home]) && entries.Values.Single() == region.CurrentEntry,
+            "A subscription did not receive the current content and entry first.");
+
+        var document = new NavigationPage("document");
+        await region.PushAsync(NavigationTarget.Own(document));
+        // The same borrowed instance in a new entry: a new entry, not a new Current.
+        await region.PushAsync(NavigationTarget.Borrow(home));
+        await region.PushAsync(NavigationTarget.Borrow(home));
+        Require(currents.Values.SequenceEqual([home, document, home]),
+            $"WhenCurrentChanged emitted {string.Join(", ", currents.Values.Select(page => page?.Name))}.");
+        Require(entries.Values.Length == 4 && entries.Values.Distinct().Count() == 4 && entries.Values[^1] == region.CurrentEntry,
+            $"WhenEntryChanged emitted {entries.Values.Length} entries; expected one per entry.");
+    }
+    var entryCount = entries.Values.Length;
+
+    var back = region.CreateBackCommand(scheduler);
+    var outputs = new Recorder<NavigationResult<NavigationPage>>();
+    using var outputSubscription = back.Subscribe(outputs);
+    await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was disabled with history.");
+    var result = await ReactiveCommandExecution.Execute(back, UnitValue(), CancellationToken.None);
+    Require(result is NavigationResult<NavigationPage>.Committed { Current.Content: var resumed } && resumed == home
+        && region.History.Count == 2 && entries.Values.Length == entryCount,
+        $"The back command gave {result}; a disposed subscription must not emit.");
+    await WaitUntilAsync(() => outputs.Values.Length == 1, "The back command did not emit its result.");
+    Require(outputs.Values[0] == result, "The command output was not the navigation result.");
+
+    // Disabled while a transition is in flight, also one the command did not start: a guard holds a Back.
+    var guarding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var guarded = new NavigationPage("guarded")
+    {
+        Guard = async () =>
+        {
+            guarding.TrySetResult();
+            return await release.Task;
+        },
+    };
+    await region.PushAsync(NavigationTarget.Own(guarded));
+    await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was disabled after a push.");
+    var vetoed = region.BackAsync().AsTask();
+    await guarding.Task.WaitAsync(TimeSpan.FromSeconds(10));
+    await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was enabled while transitioning.");
+    release.SetResult(false);
+    Require(await vetoed is NavigationResult<NavigationPage>.Rejected { Reason: NavigationRejection.Guard } && region.Current == guarded,
+        "A vetoed Back was not returned as a rejection.");
+    await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command stayed disabled after the veto.");
+    guarded.Guard = null;
+
+    // Disabled without history; an emptied region emits null.
+    await region.ClearHistoryAsync();
+    await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was enabled without history.");
+    await region.ClearAsync();
+    Require(currents.Values[^1] is null && region.Current is null, "WhenCurrentChanged did not emit null for an empty region.");
+    var late = new Recorder<NavigationPage?>();
+    using (region.WhenCurrentChanged().Subscribe(late))
+        Require(late.Values.SequenceEqual([(NavigationPage?)null]), "A subscription to an empty region did not receive null.");
+}
+
 static async Task WaitUntilAsync(Func<bool> condition, string message)
 {
     for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
@@ -488,4 +560,22 @@ sealed class EmptyDisposable : IDisposable
 sealed class ConformanceInteractionModel
 {
     public Interaction<string, bool> Confirm { get; } = new();
+}
+
+sealed class Recorder<T> : IObserver<T>
+{
+    private readonly Lock _lock = new();
+    private readonly List<T> _values = [];
+    public T[] Values { get { lock (_lock) return [.. _values]; } }
+    public void OnCompleted() { }
+    public void OnError(Exception error) => throw new InvalidOperationException("The sequence failed.", error);
+    public void OnNext(T value) { lock (_lock) _values.Add(value); }
+}
+
+sealed class NavigationPage(string name) : INavigationDepartureGuard
+{
+    public string Name { get; } = name;
+    public Func<Task<bool>>? Guard { get; set; }
+    public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+        Guard is not { } guard || await guard();
 }
