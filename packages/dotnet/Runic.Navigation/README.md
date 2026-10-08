@@ -85,6 +85,7 @@ context for the window's session.
 | `BackAsync` | The current entry retires, and the top retained entry resumes. With fewer than two entries the request is `Rejected(NoHistory)`. |
 | `BackToAsync(id)` | Every entry above the target retires, and the target resumes. |
 | `ReplaceAsync` | The current entry retires, and the history is unchanged. |
+| `ReplaceBorrowedAsync` on `INavigationRegion` | A host selects an existing model without knowing the generic content type. The model is type-checked, borrowed, and replaced through the same guards and engine. |
 | `ResetAsync` | Every entry retires, and the new entry becomes the root. |
 | `ClearHistoryAsync` | The retained entries retire, and the current entry stays. |
 | `ClearAsync` | Every entry retires, and the region becomes empty. |

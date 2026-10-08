@@ -9,8 +9,9 @@ namespace Runic.Navigation;
 /// </summary>
 /// <remarks>
 /// <see cref="INotifyPropertyChanged.PropertyChanged"/> is the region's event, with the same property names.
-/// The entry in a <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/> or
-/// <see cref="ClearAsync"/> is a <see cref="NavigationEntry{TContent}"/> of <see cref="object"/>, a different
+/// The entry in a <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/>,
+/// <see cref="ClearAsync"/> or <see cref="ReplaceBorrowedAsync"/> is a <see cref="NavigationEntry{TContent}"/>
+/// of <see cref="object"/>, a different
 /// instance from the typed entry in <see cref="CurrentEntry"/> and <see cref="History"/>. Compare entries by
 /// <see cref="INavigationEntry.Id"/>, not by reference.
 /// </remarks>
@@ -45,6 +46,15 @@ public interface INavigationRegion : INotifyPropertyChanged
     /// <summary>Retires every entry. The region becomes empty.</summary>
     /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
     ValueTask<NavigationResult<object>> ClearAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Replaces the current entry with borrowed <paramref name="content"/>. For presentation adapters
+    /// that select existing models without knowing the region's generic content type.
+    /// </summary>
+    /// <remarks>The engine runs the same guards and lifetime rules as typed Replace. The caller retains ownership.</remarks>
+    /// <exception cref="ArgumentException">The content is not assignable to <see cref="ContentType"/>.</exception>
+    ValueTask<NavigationResult<object>> ReplaceBorrowedAsync(object content, NavigationRequestOptions? options = null,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -75,6 +85,16 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     }
 
     internal NavigationRegionCore Core { get; }
+
+    ValueTask<NavigationResult<object>> INavigationRegion.ReplaceBorrowedAsync(object content,
+        NavigationRequestOptions? options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        if (content is not TContent typed)
+            throw new ArgumentException("The selected content is not assignable to the region's content type.", nameof(content));
+        return NavigationResults.MapAsync<object>(Core.Start(NavigationOperation.Replace,
+            Target(NavigationTarget.Borrow(typed)), null, options, cancellationToken));
+    }
 
     /// <summary>Gets the navigator that owns the region.</summary>
     public RunicNavigator Navigator => Core.Navigator;

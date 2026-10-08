@@ -1,4 +1,20 @@
 #nullable enable
+[RUNICNAV001]Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(object! content, System.IServiceProvider! services) -> System.Windows.FrameworkElement?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationSelector
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationSelector.RegionProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static Runic.Navigation.Wpf.NavigationSelector.GetRegion(System.Windows.Controls.Primitives.Selector! selector) -> Runic.Navigation.INavigationRegion?
+[RUNICNAV001]static Runic.Navigation.Wpf.NavigationSelector.SetRegion(System.Windows.Controls.Primitives.Selector! selector, Runic.Navigation.INavigationRegion? region) -> void
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.ViewHost() -> void
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.Content.get -> object?
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.Content.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.ViewLocator.get -> Runic.Navigation.Wpf.INavigationViewLocator?
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.ViewLocator.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.Services.get -> System.IServiceProvider?
+[RUNICNAV001]Runic.Navigation.Wpf.ViewHost.Services.set -> void
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.ViewHost.ContentProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.ViewHost.ViewLocatorProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.ViewHost.ServicesProperty -> System.Windows.DependencyProperty!
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Closed.get -> System.Threading.CancellationToken
 [RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Dispatcher.get -> System.Windows.Threading.Dispatcher!

@@ -74,11 +74,11 @@ Lines as C# / XAML / **total**:
 | Setup: bootstrap, shell, registrations | 33 / 8 / **41** | 26 / 9 / **35** | 29 / 27 / **56** | 29 / 8 / **37** |
 | S1 master-detail with a guard | 52 / 16 / **68** | 64 / 16 / **80** | 69 / 18 / **87** | 70 / 18 / **88** |
 | S2 confirm with a result | 35 / 12 / **47** | 29 / 11 / **40** | 25 / 11 / **36** | 25 / 11 / **36** |
-| S3 nested tabs | 48 / 19 / **67** | 30 / 19 / **49** | 43 / 21 / **64** | 41 / 21 / **62** |
+| S3 nested tabs | 35 / 13 / **48** | 30 / 19 / **49** | 43 / 21 / **64** | 41 / 21 / **62** |
 | S4 Back button | 0 / 1 / **1** | 6 / 1 / **7** | 1 / 1 / **2** | 5 / 1 / **6** |
-| **Total** | **224** | **211** | **245** | **229** |
+| **Total** | **205** | **211** | **245** | **229** |
 
-The totals are within about 15% of each other, so size alone doesn't separate
+The totals are within about 20% of each other, so size alone doesn't separate
 the libraries. Where the lines go does:
 
 - **S1** is shortest in Runic, because `LeaveConfirmation.InDialog` is the
@@ -94,14 +94,14 @@ the libraries. Where the lines go does:
   View in a dialog region, the same as any page, and answers with
   `entry.CompleteAsync(true)`. ReactiveUI's `Interaction<string, bool>` with a
   handler that opens a window is shorter.
-- **S3** is longest in Runic, and Prism's is shortest: its TabControl is a
-  region and the tabs are registered views. Runic's page owns a child region;
-  selecting a tab replaces the region's entry, a rejected selection must
-  re-sync the TabControl, and the TabControl's content is a `NavigationHost`.
-  The child region pays off only when the tabs have guards or lifetimes of
-  their own; for plain tabs it is ceremony. Runic has no TabControl or
-  selector adapter, and no host for plain content without navigation, yet;
-  both are planned (W240-015).
+- **S3** is now shortest in Runic, close to Prism. The page owns a child
+  region; one `NavigationSelector.Region` binding adapts the TabControl to
+  borrowed Replace requests. The adapter restores rejected selection and
+  supplies a default `NavigationHost` content template. It removes the
+  ViewModel's setter, event forwarding and rejection re-sync (previously 67
+  lines; now 48). The child region is useful when tabs have guards or lifetimes
+  of their own. For plain content, `ViewHost` uses the same registered view
+  mapping without creating navigation entries.
 - **S4:** Prism's shell re-queries its Back command on each navigation, so
   that it is disabled without history.
 - **Setup:** Runic's `AppRegions` service, which holds the window's regions,
@@ -117,7 +117,7 @@ only what the app uses is listed. Treat the counts as ±3.
 
 | Library | Count | Concepts |
 | --- | --- | --- |
-| Runic | 18 | `AddRunicWpfNavigation` with `UseViewNamingConvention`; `RunicNavigator.CreateRegion` and its owner; `NavigationRegion<T>` (`PushAsync<T>`, `ResetAsync`, `ReplaceAsync`, `Current`, `PropertyChanged`); child regions that close with their page; `NavigationHost` with `NavigationCommands.BrowseBack`; `NavigationDialogHost`; `NavigationTarget.Create` / `Borrow`; `INavigationInitialize<TInput>`; `NavigationEntryContext` (`CompleteAsync`, `DismissAsync`); `INavigationResume`; `INavigationDepartureGuard`; `LeaveConfirmation.InDialog`; `PushForResult<T>` with `NavigationCompletion<T>`; `NavigationResult<T>`; `ValueTask` returns; Microsoft.Extensions.DependencyInjection; CommunityToolkit's `ObservableObject` with `SetProperty`; `RelayCommand` / `AsyncRelayCommand` |
+| Runic | 19 | `AddRunicWpfNavigation` with `UseViewNamingConvention`; `RunicNavigator.CreateRegion` and its owner; `NavigationRegion<T>` (`PushAsync<T>`, `ResetAsync`, `ReplaceAsync`, `Current`); child regions that close with their page; `NavigationHost` with `NavigationCommands.BrowseBack`; `NavigationSelector.Region`; `NavigationDialogHost`; `NavigationTarget.Create` / `Borrow`; `INavigationInitialize<TInput>`; `NavigationEntryContext` (`CompleteAsync`, `DismissAsync`); `INavigationResume`; `INavigationDepartureGuard`; `LeaveConfirmation.InDialog`; `PushForResult<T>` with `NavigationCompletion<T>`; `NavigationResult<T>`; `ValueTask` returns; Microsoft.Extensions.DependencyInjection; CommunityToolkit's `ObservableObject` with `SetProperty`; `RelayCommand` / `AsyncRelayCommand` |
 | Prism | 25 | `PrismApplication` (`CreateShell`, `RegisterTypes`, `OnInitialized`); `IContainerRegistry`; `RegisterForNavigation`; `RegionManager.RegionName`; `IRegionManager` (`Regions`, `ContainsRegionWithName`); `RequestNavigate`; `NavigationParameters`; `NavigationContext`; `IRegionAware` (`OnNavigatedTo`, `OnNavigatedFrom`); `IConfirmNavigationRequest` with its continuation; `IRegionMemberLifetime` / `KeepAlive`; `IRegionNavigationJournal` (`GoBack`, `CanGoBack`); `IRegionNavigationService.Navigated`; view reuse through `IsNavigationTarget`; `RegisterViewWithRegion`; the TabControl region adapter with a `TabItem` header bound through `DataContext`; `IDialogService.ShowDialog` with its callback; `ShowDialogAsync`; `RegisterDialog`; `IDialogAware`; `DialogCloseListener`; `DialogParameters` / `IDialogParameters` with `ButtonResult`; `BindableBase` with `SetProperty`; `DelegateCommand` / `AsyncDelegateCommand` with `RaiseCanExecuteChanged`; `ViewModelLocator.AutoWireViewModel` |
 | CrissCross, with the ReactiveUI it builds on | 17 | `RxAppBuilder` with `WithWpf` and `RegisterView`; Splat `AppLocator` and `SetupComplete`; ViewModel lifetimes (`RegisterLazySingleton` vs `Register`, because history stores types); `RxObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `NavigationWindow` with its `HostName` template; `ViewModelRoutedViewHost`; `NavigationKeyRequest<T>` with `NavigationRequestOptions.Parameter`; `NavigateToView` / `NavigateBack` / `CanNavigateBack`; `WhenNavigatedTo` / `WhenNavigating`; `IViewModelNavigatingEventArgs.Cancel`; `ReactiveUserControl<T>` and `DataContext` wiring; `WhenActivated` with `MultipleDisposable`; `ReactiveCommand`; `Interaction<TIn, TOut>` with `RegisterHandler` and `Handle`; `ViewModelViewHost`; `RxVoid` |
 | ReactiveUI RoutingState | 15, plus the app's own guard | `RxAppBuilder` with `WithWpf` and `RegisterView`; `IScreen`; `RoutingState` (`Navigate`, `NavigateBack`, `CanNavigateBack`, `GetCurrentViewModel`); `IRoutableViewModel` (`HostScreen`, `UrlPathSegment`); `RoutedViewHost`; `ViewModelViewHost`; `ReactiveObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `ReactiveUserControl<T>` and `DataContext` wiring; `IActivatableViewModel` with `ViewModelActivator` and `WhenActivated`; `ReactiveCommand` and its CanExecute observable; `Interaction<TIn, TOut>` with `RegisterHandler` and `Handle`; awaiting an `IObservable` with `FirstAsync`; `MultipleDisposable`; `RxVoid`. Plus the app-defined leave-guard interface |
@@ -202,7 +202,7 @@ the first has committed is a new request and pops again.
   ones. Runic.Navigation.Wpf needs .NET 10.
 - **Prism** is mature and widely deployed. Its modules and region adapters
   make regions a general composition tool: a TabControl becomes a region with
-  one attached property, which is why its S3 is shortest. It has forward
+  one attached property. Its S3 is close to Runic's selector adapter. It has forward
   history, and `KeepAlive` keeps a page's View, so scroll position and
   selection survive Back; Runic keeps the ViewModel and builds a new View, so
   that state must live in the ViewModel. Its dialog service is mature.

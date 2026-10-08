@@ -20,4 +20,11 @@ public interface INavigationViewLocator
     /// <param name="entry">The entry to present.</param>
     /// <returns>A new view, or <see langword="null"/>.</returns>
     FrameworkElement? ResolveView(INavigationEntry entry);
+
+    /// <summary>Creates a new view for plain content in a <see cref="ViewHost"/>, without a navigation entry.</summary>
+    /// <remarks>
+    /// The default returns null, so existing entry-specific locators fall back to implicit templates.
+    /// ViewHost borrows content and never creates an entry, scope or retirement token.
+    /// </remarks>
+    FrameworkElement? ResolveView(object content, IServiceProvider services) => null;
 }

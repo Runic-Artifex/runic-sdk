@@ -16,8 +16,9 @@ It covers four scenarios, each in its own folder:
   into the dialog region with `PushForResult<bool>` and deletes only on
   `Completed(true)`. The dialog is a ViewModel and a View like any page.
 - **Nested tabs** (`Settings/`). The settings page owns a child region for its
-  tabs. Selecting a tab replaces the region's entry, and the region closes
-  with the page.
+  tabs. `NavigationSelector.Region` connects the TabControl to borrowed
+  replacement, restores selection on rejection, and supplies the entry host.
+  The region closes with the page.
 - **Back** (`Shell/MainWindow.xaml`). The Back button sends
   `NavigationCommands.BrowseBack` to the `NavigationHost`, which can't execute
   while a Back is in flight.
