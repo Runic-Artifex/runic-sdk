@@ -24,10 +24,15 @@ return DesktopEventLoop.Run(new DesktopHostOptions().WithGtk4(), async host =>
 `DesktopEventLoop.Run(options, application)` picks the loop for the platform
 and the host. On Linux with `WithGtk4()` it runs `Gtk4Application.Run`. On
 macOS it runs the AppKit loop. On Windows and Linux GTK 3 it waits for the work.
-The same `Main` therefore works on every platform. When the GTK 4 libraries are
-missing, it does not start GTK: the host still runs, so `Validate` can explain
-the problem and a browser fallback can open. The host is disposed before the
-loop ends. `Gtk4Application.Run` remains available for applications that start
+The same `Main` therefore works on every platform. It validates the options and
+builds the host before GTK starts, so an options error does not use up the one
+GTK lifetime per process. When the GTK 4 libraries are missing, or no display
+can be opened (an SSH session, a headless machine, WSL without WSLg), it does
+not start GTK. Instead it reports the reasons, including
+`gtk4-display-unavailable`, to `DiagnosticSink` and the Desktop logger. The host
+still runs, so a browser fallback can open. The host is disposed before the loop
+ends. Only one Desktop event loop runs per process; a nested call throws.
+`WithGtk4(applicationId)` validates the reverse-DNS ID on every OS. `Gtk4Application.Run` remains available for applications that start
 hosts themselves.
 
 `WithGtk4()` applies the GTK 4 profile in one step: it selects

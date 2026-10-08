@@ -16,7 +16,10 @@ called directly from `Main` before any await. It returns the application's exit
 code and picks the event loop for the platform and the window host: the
 factory's own loop for an `IDesktopEventLoopWindowHostFactory` (GTK 4 through
 `WithGtk4()` from `Runic.Desktop.Gtk4`), the AppKit main-thread loop on macOS,
-and a plain wait on Windows and Linux GTK 3.
+and a plain wait on Windows and Linux GTK 3. The options are validated before
+any loop starts. If the factory cannot run its loop, the reasons go to
+`DiagnosticSink` and the logger, and the plain loop runs so a browser fallback
+can open. One Desktop event loop runs per process.
 
 `DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
 

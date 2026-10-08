@@ -38,13 +38,32 @@ public static class Gtk4DesktopHostOptionsExtensions
     /// <param name="options">The host options to copy.</param>
     /// <param name="applicationId">The reverse-DNS application ID. Inside Flatpak it must match the package ID.</param>
     /// <returns>A copy of <paramref name="options"/> with the GTK 4 profile applied.</returns>
-    /// <exception cref="ArgumentException"><paramref name="options"/> already has a different window host factory.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="applicationId"/> is not a valid reverse-DNS ID (checked on every OS), or <paramref name="options"/>
+    /// already has a different window host factory.
+    /// </exception>
     public static DesktopHostOptions WithGtk4(this DesktopHostOptions options, string applicationId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        ValidateApplicationId(applicationId, nameof(applicationId));
         var configured = options.WithGtk4();
         return OperatingSystem.IsLinux()
             ? configured with { WindowHostFactory = new Gtk4WindowHostFactory { ApplicationId = applicationId } }
             : configured;
+    }
+
+    // GLib's g_application_id_is_valid rules, checked without loading GLib so every OS validates the same way:
+    // at most 255 characters, two or more non-empty dot-separated elements of [A-Za-z0-9_-], none starting
+    // with a digit.
+    internal static void ValidateApplicationId(string applicationId, string? parameterName = "value")
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId, parameterName);
+        var elements = applicationId.Split('.');
+        if (applicationId.Length > 255 || elements.Length < 2 || elements.Any(static element => element.Length == 0
+            || char.IsAsciiDigit(element[0])
+            || !element.All(static c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-')))
+        {
+            throw new ArgumentException(
+                $"'{applicationId}' is not a valid reverse-DNS GTK application ID, such as org.example.App.", parameterName);
+        }
     }
 }

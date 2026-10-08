@@ -32,6 +32,13 @@ try
         Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run entry point.");
         return 0;
     }
+    if (args.Contains("--no-display", StringComparer.Ordinal))
+    {
+        // Run with no reachable display: gtk_init would end the process with exit(1).
+        RunNoDisplaySmoke();
+        Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run without a display falls back and reports why.");
+        return 0;
+    }
     AssertRunnerContract();
     Environment.ExitCode = RunSmoke();
     Console.WriteLine("PASS GTK 4 / WebKitGTK 6 native window lifecycle and capability contract.");
@@ -76,6 +83,42 @@ static void AssertRunnerContract()
 
 // DesktopEventLoop.Run must hand WithGtk4() options to Gtk4Application.Run: otherwise opening the window
 // fails because the GTK 4 factory only creates hosts inside the runner.
+// Without a display DesktopEventLoop.Run must not start GTK: it reports gtk4-display-unavailable, runs the plain
+// loop, and the GTK 4 factory is unsupported from then on, so a browser fallback can take over.
+[SupportedOSPlatform("linux")]
+static void RunNoDisplaySmoke()
+{
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY"))
+        || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+    {
+        throw new InvalidOperationException("Run --no-display with DISPLAY and WAYLAND_DISPLAY unset and GDK_BACKEND=x11.");
+    }
+    List<DesktopDiagnostic> reported = [];
+    var options = new DesktopHostOptions { DiagnosticSink = reported.Add }.WithGtk4("dev.runic.desktop.gtk4.NoDisplaySmoke");
+    var factory = (Gtk4WindowHostFactory)options.WindowHostFactory!;
+    int result = DesktopEventLoop.Run(options, host =>
+    {
+        if (host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Embedded }).IsValid)
+        {
+            throw new InvalidOperationException("The embedded GTK 4 presentation validated without a display.");
+        }
+        return Task.FromResult(7);
+    });
+    if (result != 7)
+    {
+        throw new InvalidOperationException($"DesktopEventLoop.Run returned {result} instead of the application's result.");
+    }
+    var codes = reported.Select(static diagnostic => diagnostic.Code).ToArray();
+    if (!codes.Contains("event-loop-unavailable") || !codes.Contains("gtk4-display-unavailable"))
+    {
+        throw new InvalidOperationException($"The no-display fallback reported [{string.Join(", ", codes)}].");
+    }
+    if (factory.IsSupported || !factory.GetAvailabilityDiagnostics().Any(static d => d.Code == "gtk4-display-unavailable"))
+    {
+        throw new InvalidOperationException("The GTK 4 factory stayed supported after no display could be opened.");
+    }
+}
+
 [SupportedOSPlatform("linux")]
 static void RunEventLoopSmoke()
 {
