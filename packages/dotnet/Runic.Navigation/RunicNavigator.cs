@@ -645,7 +645,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], settlement, cancellationToken) { Return = @return, AdmittedVersion = region.Version };
+                    [.. waitFor], settlement, cancellationToken) { Return = @return, AdmittedPlan = plan };
                 if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
                 transitioningChanged = region.InFlight.Count == 1;
@@ -659,7 +659,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (request is not null) FinishResult(request, NavigationResultDismissal.NotCommitted);
             return Task.FromResult(rejected);
         }
-        if (joined is not null) return joined.Result.Task;
+        if (joined is not null)
+        {
+            if (Logger.IsEnabled(LogLevel.Debug)) NavigationLog.NavigationBackJoined(Logger, null, region.ContentTypeName, region.Id);
+            return joined.Result.Task;
+        }
 
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
@@ -673,16 +677,19 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         return transition!.Result.Task;
     }
 
-    // The region's latest admitted transition when it is a plain Back that is still live and the region has not
-    // changed since its admission: a Back admitted now would retire the same entry and resume the same one.
-    // A Back with a cancellable token never joins, and never is joined, so cancelling one caller's Back never
-    // cancels another's. Call under the gate.
+    // The region's latest admitted transition when it is a plain Back that is still live and nothing its plan
+    // covers has changed since its admission: neither the region nor the child regions the departing entry
+    // owns. A Back admitted now would then make the same plan. A return from a result entry (CompleteAsync,
+    // DismissAsync) never is joined: its outcome carries a result. A Back with a cancellable token never joins,
+    // and never is joined, so cancelling one caller's Back never cancels another's. A superseded, cancelled or
+    // closed Back is never joined. (A released transition has left InFlight already.) Call under the gate.
     private static NavigationTransition? JoinableBackLocked(NavigationRegionCore region)
     {
         if (region.InFlight.Count == 0) return null;
         var latest = region.InFlight[^1];
-        return latest is { Operation: NavigationOperation.Back, Return: null, CancelReason: NavigationCancelReason.None, Released: false }
-            && !latest.CallerToken.CanBeCanceled && latest.AdmittedVersion == region.Version
+        return latest is { Operation: NavigationOperation.Back, Return: null, CancelReason: NavigationCancelReason.None,
+                AdmittedPlan: { Rejection: null } plan }
+            && !latest.CallerToken.CanBeCanceled && plan.BasisMatches()
             ? latest
             : null;
     }
@@ -2042,8 +2049,9 @@ internal sealed class NavigationTransition : IDisposable
     // Set for a return from a result entry (CompleteAsync, or a cancelled PushForResult caller).
     public NavigationReturn? Return { get; init; }
 
-    // The region's version at admission, to tell whether a later Back would go to the same entry.
-    public long AdmittedVersion { get; init; }
+    // The provisional plan at admission. Its basis (the versions of the region and the child regions it
+    // would close) tells whether a later Back would make the same plan, and so may join this one.
+    public NavigationPlan? AdmittedPlan { get; init; }
 
     // Set in the commit turn when a returned value found its request already dismissed.
     public bool ResultDropped { get; set; }

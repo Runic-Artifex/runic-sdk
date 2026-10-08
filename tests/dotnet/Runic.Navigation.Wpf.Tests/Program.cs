@@ -41,7 +41,7 @@ internal static class Program
             Run("failed view and rebinding", HostTests.FailedViewAndRebinding);
             Run("naming convention", HostTests.NamingConvention);
             Run("BrowseBack", HostTests.BrowseBack);
-            Run("double BrowseBack", HostTests.DoubleBrowseBack);
+            Run("double BrowseBack, then Back from code", HostTests.DoubleBrowseBackThenBackFromCode);
             Run("unloaded host is collectable", HostTests.UnloadedHostIsCollectable);
             Run("dialog results", DialogTests.Results);
             Run("dialog guard veto", DialogTests.GuardVetoKeepsTheWindow);

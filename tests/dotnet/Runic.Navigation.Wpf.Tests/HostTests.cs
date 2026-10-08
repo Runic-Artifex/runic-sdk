@@ -176,9 +176,10 @@ internal static class HostTests
         finally { window.Close(); }
     }
 
-    // W240-007: a double click on Back. BrowseBack can't execute from the moment the first Back is admitted, before
-    // any dispatcher work runs, so the second click is ignored; a programmatic Back while the guard is pending joins it.
-    public static void DoubleBrowseBack()
+    // W240-007: a double click on Back, then a Back from code. The second click is ignored because BrowseBack can't
+    // execute from the moment the first Back is admitted, before any dispatcher work runs: that is the host's
+    // CanExecute, not the engine's join. Only the programmatic BackAsync while the guard is pending exercises the join.
+    public static void DoubleBrowseBackThenBackFromCode()
     {
         using var fixture = new NavFixture();
         var home = new Page("home");
