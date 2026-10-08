@@ -13,6 +13,9 @@ const projects = [
   ["Runic.Desktop", "Runic.Desktop"],
   ["Runic.Application", "Runic.Application.Views"],
   ["Runic.Application.ReactiveUI", "Runic.Application.Views.ReactiveUI"],
+  // Runic.Application.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner), which depends on Runic.Platform.
+  ["Runic.Platform", "Runic.Platform"],
+  ["Runic.Platform.Runtime", "Runic.Platform.Runtime"],
   ["Runic.Application.Desktop", "Runic.Application.Desktop"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;

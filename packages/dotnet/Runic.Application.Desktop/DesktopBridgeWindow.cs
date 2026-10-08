@@ -17,6 +17,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private readonly IDisposable _connectionBinding;
     private IDisposable? _attachment;
     private DesktopWindow? _presentation;
+    private DesktopNativeOwner? _nativeOwner;
     private Task<BridgeWindowCloseResult>? _close;
     private Task? _completion;
     private bool _finalized;
@@ -38,7 +39,17 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     public DesktopSurface Surface => _surface;
     /// <summary>The opened Desktop window.</summary>
     /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
-    public DesktopWindow Presentation => _presentation ??
+    public DesktopWindow Presentation => Volatile.Read(ref _presentation) ??
+        throw new InvalidOperationException("The Desktop presentation has not opened.");
+    /// <summary>The native platform-service owner of the opened presentation.</summary>
+    /// <remarks>
+    /// Pass it to the platform provider for the window's backend for file dialogs, file launchers and clipboard
+    /// access. It is available while the embedded window is open. A presentation without native dispatch, such
+    /// as an installed browser after an embedded-window fallback, still has an owner, but its
+    /// <see cref="DesktopNativeOwner.IsAvailable"/> is <see langword="false"/>.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
+    public DesktopNativeOwner NativeOwner => Volatile.Read(ref _nativeOwner) ??
         throw new InvalidOperationException("The Desktop presentation has not opened.");
 
     internal void Attach(IDisposable attachment)
@@ -57,7 +68,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         {
             if (_presentation is not null || _close is not null)
                 throw new InvalidOperationException("The Desktop presentation is already open or closing.");
-            _presentation = presentation;
+            // Lock-free readers see the owner no later than the presentation.
+            Volatile.Write(ref _nativeOwner, new DesktopNativeOwner(presentation));
+            Volatile.Write(ref _presentation, presentation);
         }
     }
 
