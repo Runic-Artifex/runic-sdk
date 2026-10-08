@@ -81,15 +81,30 @@ references are `| null`, so every frontend handles an empty region.
   goes back to that same entry, with its draft.
 - **Home** goes back. When the editor has unsaved edits, the document's
   departure guard awaits `Dialog.PushForResult<bool>(…)` for
-  `ConfirmNavigationViewModel`. A confirm discards the edits and lets the Back
-  commit. Cancelling, or a dismissal, keeps the document entry. The confirm
-  calls `CompleteAsync`, which returns from its entry and leaves `Dialog`
-  empty.
+  `ConfirmNavigationViewModel`. Confirming lets the Back commit, and the edits
+  are discarded in the commit turn, so a request that supersedes the Back
+  keeps the draft. Cancelling, or a dismissal, keeps the document entry. The
+  confirm calls `CompleteAsync`, which returns from its entry and leaves
+  `Dialog` empty. If that answer can't commit, Cancel dismisses the request
+  instead, so Cancel and Escape always end the question.
+- The confirm is modal. While it asks, or while a page navigation is in
+  flight, `WorkspaceNavigation.CanNavigate` is false. The sidebar's Home and
+  Notes commands and the document's Editor and Preview commands are
+  unavailable then, and the Bridge rejects them. The navigation methods check
+  it too. A pane change during the guard would otherwise supersede the Back
+  that asks and dismiss the dialog without an answer.
 - The sidebar commands await the navigation, so a command started during the
-  guard's wait completes after the dialog answers. The navigator orders
-  overlapping requests, so the buttons stay enabled meanwhile. The Angular
-  frontend's ordered window queue dispatches them without waiting for them to
-  complete; otherwise the dialog's answer would queue behind them.
+  guard's wait completes after the dialog answers. Its button stays disabled
+  until then, and the dialog returns focus to it once it is enabled again.
+
+**Command ordering and guards.** A client that runs the window's commands one
+after another, waiting for each to complete, deadlocks with a guard that
+awaits the UI: the Home command waits for the dialog's answer, and the
+answer waits in the queue behind the Home command. The Angular frontend's
+ordered [`WindowOperations`](Angular/src/app/window-operations.ts) queue
+therefore starts navigation commands with `runDispatched`, which orders them
+by dispatch, not by completion. Use the same pattern for any command whose
+completion depends on a later command.
 
 The navigation types are experimental, and the projects suppress
 `RUNICNAV001`.

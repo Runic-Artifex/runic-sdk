@@ -12,42 +12,23 @@ namespace NotesViewFirst.Tests;
 public sealed class NotesWindowTests : IAsyncLifetime
 {
     private readonly FakeTimeProvider _clock = new();
-    private readonly ServiceProvider _services;
-    private readonly AsyncServiceScope _scope;
-    private readonly RunicWindowTestHost<ShellViewModel> _host;
+    private readonly TestWindow _window;
 
-    public NotesWindowTests()
-    {
-        // The application's own registrations, with the test clock in place of the system clock.
-        _services = new ServiceCollection()
-            .AddSingleton<TimeProvider>(_clock)
-            .AddNotes()
-            .AddRunicViews()
-            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-        _scope = _services.CreateAsyncScope();
-        var window = _scope.ServiceProvider;
-        _host = new RunicWindowTestHost<ShellViewModel>(
-            window.GetRequiredService<ShellViewModel>(),
-            window.GetRequiredService<Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>(),
-            new RunicWindowTestHostOptions
-            {
-                ViewLocator = window.GetRequiredService<IRunicViewLocator>(),
-                // The window graph shares the navigator's model context.
-                ModelContext = window.GetRequiredService<IRunicModelContext>(),
-                TimeProvider = _clock,
-            });
-    }
+    public NotesWindowTests() => _window = new TestWindow(_clock);
+
+    private AsyncServiceScope Scope => _window.Scope;
+    private RunicWindowTestHost<ShellViewModel> Host => _window.Host;
 
     [Fact]
     public void The_window_opens_on_home_with_stable_content_routes()
     {
-        var shell = _host.Root.Snapshot();
+        var shell = Host.Root.Snapshot();
 
         // The test host numbers content in presentation order.
         Assert.Equal(new PageReference("sidebar", "1"), shell.Reference(vm => vm.Sidebar));
         Assert.Equal(new PageReference("home", "2"), shell.Reference(vm => vm.Main));
         Assert.Null(shell.Reference(vm => vm.Dialog));
-        var home = _host.Root.View<HomeViewModel>(vm => vm.Main).Snapshot();
+        var home = Host.Root.View<HomeViewModel>(vm => vm.Main).Snapshot();
         Assert.Equal("Welcome to composed Notes", home.Read(vm => vm.Greeting));
         Assert.Empty(home.Keys(vm => vm.RecentNotes));
     }
@@ -71,9 +52,9 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.Equal("Saved Groceries", saved.Read(vm => vm.SavedMessage));
         Assert.False(saved.Read(vm => vm.IsDirty));
 
-        var sidebar = _host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+        var sidebar = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
         (await sidebar.ExecuteAsync(vm => vm.OpenHomeCommand)).EnsureOk();
-        var home = _host.Root.View<HomeViewModel>(vm => vm.Main).Snapshot();
+        var home = Host.Root.View<HomeViewModel>(vm => vm.Main).Snapshot();
         Assert.Equal(["Groceries"], home.Keys(vm => vm.RecentNotes));
     }
 
@@ -89,14 +70,14 @@ public sealed class NotesWindowTests : IAsyncLifetime
         // Save declares SaveFailure, so the client receives the typed failure.
         Assert.Equal("domain-failed", reply.ErrorKind);
         Assert.Equal("""{"$case":"titleRequired"}""", reply.Failure?.GetRawText());
-        Assert.Empty(_scope.ServiceProvider.GetRequiredService<NotesLibrary>().Notes);
+        Assert.Empty(Scope.ServiceProvider.GetRequiredService<NotesLibrary>().Notes);
     }
 
     [Fact]
     public async Task A_note_cannot_take_the_title_of_another_note()
     {
         var editor = await OpenEditorAsync();
-        _scope.ServiceProvider.GetRequiredService<NotesLibrary>().Record("Groceries", "Milk");
+        Scope.ServiceProvider.GetRequiredService<NotesLibrary>().Record("Groceries", "Milk");
         editor.Set(vm => vm.Title, "Groceries").EnsureOk();
 
         var reply = await editor.ExecuteAsync(vm => vm.SaveCommand);
@@ -112,9 +93,9 @@ public sealed class NotesWindowTests : IAsyncLifetime
     [Fact]
     public async Task Saved_notes_reach_home_as_keyed_collection_changes()
     {
-        var home = _host.Root.View<HomeViewModel>(vm => vm.Main);
+        var home = Host.Root.View<HomeViewModel>(vm => vm.Main);
         var tracker = home.Track();
-        var library = _scope.ServiceProvider.GetRequiredService<NotesLibrary>();
+        var library = Scope.ServiceProvider.GetRequiredService<NotesLibrary>();
 
         library.Record("Groceries", "Milk");
         library.Record("Ideas", "A notes app");
@@ -136,17 +117,17 @@ public sealed class NotesWindowTests : IAsyncLifetime
     {
         var editor = await OpenEditorAsync();
         editor.Set(vm => vm.Title, "Draft").EnsureOk();
-        var sidebar = _host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+        var sidebar = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
 
         // The Back waits in the document's guard until the dialog answers.
         var leaving = sidebar.Start(vm => vm.OpenHomeCommand);
         await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
-        var dialog = _host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog);
+        var dialog = Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog);
         Assert.Equal("Discard the unsaved edits and return Home?", dialog.Snapshot().Read(vm => vm.Message));
 
         (await dialog.ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
         Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
-        var shell = _host.Root.Snapshot();
+        var shell = Host.Root.Snapshot();
         Assert.Null(shell.Reference(vm => vm.Dialog));
         Assert.Equal("home", shell.Reference(vm => vm.Main)?.Kind);
         Assert.False(Editor.IsDirty);
@@ -163,18 +144,18 @@ public sealed class NotesWindowTests : IAsyncLifetime
         var entry = Navigation.Main.CurrentEntry!;
         var history = Navigation.Main.History.ToArray();
 
-        var leaving = _host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Start(vm => vm.OpenHomeCommand);
+        var leaving = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Start(vm => vm.OpenHomeCommand);
         await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
-        (await _host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.CancelCommand)).EnsureOk();
+        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.CancelCommand)).EnsureOk();
         Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
 
         Assert.Same(entry, Navigation.Main.CurrentEntry);
         Assert.Equal(NavigationEntryState.Active, entry.State);
         Assert.Equal(history, Navigation.Main.History);
         Assert.Null(Navigation.Dialog.Current);
-        Assert.Null(_host.Root.Snapshot().Reference(vm => vm.Dialog));
-        Assert.Equal("document", _host.Root.Snapshot().Reference(vm => vm.Main)?.Kind);
-        Assert.Equal("Draft", _host.Root.View<DocumentViewModel>(vm => vm.Main).View<EditorViewModel>(vm => vm.CurrentPane)
+        Assert.Null(Host.Root.Snapshot().Reference(vm => vm.Dialog));
+        Assert.Equal("document", Host.Root.Snapshot().Reference(vm => vm.Main)?.Kind);
+        Assert.Equal("Draft", Host.Root.View<DocumentViewModel>(vm => vm.Main).View<EditorViewModel>(vm => vm.CurrentPane)
             .Snapshot().Read(vm => vm.Title));
     }
 
@@ -187,7 +168,7 @@ public sealed class NotesWindowTests : IAsyncLifetime
         editor.Set(vm => vm.Body, "Milk").EnsureOk();
         var document = (DocumentViewModel)Navigation.Main.Current!;
         var editorEntry = document.CurrentPane.CurrentEntry!;
-        var documentView = _host.Root.View<DocumentViewModel>(vm => vm.Main);
+        var documentView = Host.Root.View<DocumentViewModel>(vm => vm.Main);
 
         (await documentView.ExecuteAsync(vm => vm.ShowPreviewCommand)).EnsureOk();
         Assert.Equal(DocumentPane.Preview, documentView.Snapshot().Read(vm => vm.ActivePane));
@@ -199,6 +180,9 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.Equal(NavigationEntryState.Active, editorEntry.State);
         Assert.Equal(DocumentPane.Editor, documentView.Snapshot().Read(vm => vm.ActivePane));
         Assert.Equal("Milk", documentView.View<EditorViewModel>(vm => vm.CurrentPane).Snapshot().Read(vm => vm.Body));
+        // Resuming is not initializing: the document initialized once, and the editor entry is the same one.
+        Assert.Equal(1, document.Initializations);
+        Assert.Equal(editorEntry.Id, document.CurrentPane.CurrentEntry!.Id);
     }
 
     // #61: retiring the parent retires its owned child region once; the
@@ -209,15 +193,15 @@ public sealed class NotesWindowTests : IAsyncLifetime
         await OpenEditorAsync();
         var first = (DocumentViewModel)Navigation.Main.Current!;
         var firstEntry = Navigation.Main.CurrentEntry!;
-        (await _host.Root.View<DocumentViewModel>(vm => vm.Main).ExecuteAsync(vm => vm.ShowPreviewCommand)).EnsureOk();
+        (await Host.Root.View<DocumentViewModel>(vm => vm.Main).ExecuteAsync(vm => vm.ShowPreviewCommand)).EnsureOk();
         var paneEntry = first.CurrentPane.CurrentEntry!;
 
-        (await _host.Root.View<SidebarViewModel>(vm => vm.Sidebar).ExecuteAsync(vm => vm.OpenHomeCommand)).EnsureOk();
+        (await Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).ExecuteAsync(vm => vm.OpenHomeCommand)).EnsureOk();
         Assert.Equal(NavigationEntryState.Retired, firstEntry.State);
         Assert.Equal(NavigationEntryState.Retired, paneEntry.State);
         Assert.Null(first.CurrentPane.Current);
         Assert.Equal(1, Navigator.UnretiredEntryCount());
-        Assert.Equal("Home", _host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Snapshot().Read(vm => vm.Selected));
+        Assert.Equal("Home", Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Snapshot().Read(vm => vm.Selected));
 
         var editor = await OpenEditorAsync();
         Assert.NotSame(first, Navigation.Main.Current);
@@ -225,16 +209,16 @@ public sealed class NotesWindowTests : IAsyncLifetime
         // The window-scoped editor is borrowed: the draft survives the visit.
         Assert.Same(Editor, ((DocumentViewModel)Navigation.Main.Current!).CurrentPane.Current);
         editor.Set(vm => vm.Title, "Still here").EnsureOk();
-        Assert.Equal("Still here", _scope.ServiceProvider.GetRequiredService<PreviewViewModel>().Heading);
+        Assert.Equal("Still here", Scope.ServiceProvider.GetRequiredService<PreviewViewModel>().Heading);
     }
 
-    // #61: racing requests. A second Home click supersedes the first: its
-    // dialog is dismissed and only the second asks. Opening the notes twice
-    // creates one document.
+    // #61: racing requests. Opening the notes twice creates one document. While the
+    // dialog asks, the window's navigation is modal: a second Home or Notes request
+    // does nothing, and the one Back that asks decides.
     [Fact]
     public async Task Racing_navigation_has_one_winner()
     {
-        var sidebar = _host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+        var sidebar = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
         var notes = Navigation.OpenNotesAsync();
         await Task.WhenAll(notes, Navigation.OpenNotesAsync());
         // Home, one document and its editor pane.
@@ -242,21 +226,134 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.IsType<DocumentViewModel>(Navigation.Main.Current);
         Assert.Single(Navigation.Main.History);
 
-        Editor.Title = "Draft";
-        var first = Navigation.OpenHomeAsync();
+        await Scope.ServiceProvider.GetRequiredService<IRunicModelContext>().InvokeAsync(() => Editor.Title = "Draft");
+        var leaving = Navigation.OpenHomeAsync();
         await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
-        var firstDialog = Navigation.Dialog.CurrentEntry!;
-        var second = Navigation.OpenHomeAsync();
-        await first;
-        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.CurrentEntry is { } entry && entry != firstDialog);
-        Assert.Equal(NavigationEntryState.Retired, firstDialog.State);
-        Assert.IsType<DocumentViewModel>(Navigation.Main.Current);
+        var dialog = Navigation.Dialog.CurrentEntry!;
+        await Navigation.OpenHomeAsync();
+        await Navigation.OpenNotesAsync();
+        Assert.Same(dialog, Navigation.Dialog.CurrentEntry);
+        Assert.False(leaving.IsCompleted);
 
-        (await _host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
-        await second;
+        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
+        await leaving;
         Assert.IsType<HomeViewModel>(Navigation.Main.Current);
         Assert.Null(Navigation.Dialog.Current);
         Assert.Equal("Home", sidebar.Snapshot().Read(vm => vm.Selected));
+        Assert.Equal(1, Navigator.UnretiredEntryCount());
+    }
+
+    // The confirm is modal: the sidebar and the document's pane commands report that they
+    // are unavailable while it asks, and the Bridge rejects them, so a pane change can't
+    // supersede the Back and dismiss the dialog.
+    [Fact]
+    public async Task Navigation_commands_are_unavailable_while_the_dialog_asks()
+    {
+        var editor = await OpenEditorAsync();
+        editor.Set(vm => vm.Title, "Draft").EnsureOk();
+        var sidebar = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+        var documentView = Host.Root.View<DocumentViewModel>(vm => vm.Main);
+        Assert.True(sidebar.Snapshot().CanExecute(vm => vm.OpenHomeCommand));
+        Assert.True(documentView.Snapshot().CanExecute(vm => vm.ShowPreviewCommand));
+
+        var leaving = sidebar.Start(vm => vm.OpenHomeCommand);
+        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
+        var sidebarState = sidebar.Snapshot();
+        Assert.False(sidebarState.CanExecute(vm => vm.OpenHomeCommand));
+        Assert.False(sidebarState.CanExecute(vm => vm.OpenNotesCommand));
+        var documentState = documentView.Snapshot();
+        Assert.False(documentState.CanExecute(vm => vm.ShowEditorCommand));
+        Assert.False(documentState.CanExecute(vm => vm.ShowPreviewCommand));
+        Assert.Equal("rejected", (await documentView.ExecuteAsync(vm => vm.ShowPreviewCommand)).ErrorKind);
+        Assert.Equal("rejected", (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).ErrorKind);
+        Assert.NotNull(Navigation.Dialog.Current);
+        Assert.Equal(DocumentPane.Editor, documentView.Snapshot().Read(vm => vm.ActivePane));
+
+        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.CancelCommand)).EnsureOk();
+        Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
+        Assert.True(sidebar.Snapshot().CanExecute(vm => vm.OpenHomeCommand));
+        Assert.True(documentView.Snapshot().CanExecute(vm => vm.ShowPreviewCommand));
+    }
+
+    // Cancel always ends the question, also when its answer can't commit. Here another
+    // dialog covers the confirm, so the confirm's Back is rejected as NotCurrent; Cancel
+    // then dismisses the request, and the guard keeps the document.
+    [Fact]
+    public async Task Cancel_ends_the_question_when_its_answer_cannot_commit()
+    {
+        var editor = await OpenEditorAsync();
+        editor.Set(vm => vm.Title, "Draft").EnsureOk();
+        var leaving = Navigation.OpenHomeAsync();
+        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
+        var confirm = (ConfirmNavigationViewModel)Navigation.Dialog.Current!;
+        var cover = new ConfirmNavigationViewModel("Covering");
+        Assert.IsType<NavigationResult<IDialogViewModel>.Committed>(
+            await Navigation.Dialog.PushAsync(NavigationTarget.Own<IDialogViewModel>(cover)));
+
+        await confirm.CancelCommand.ExecuteAsync(null);
+        await leaving.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.IsType<DocumentViewModel>(Navigation.Main.Current);
+        Assert.True(Editor.IsDirty);
+        Assert.Equal("Draft", Editor.Title);
+
+        // The dismissed confirm stays below the cover; when it returns, Cancel closes it.
+        Assert.Same(cover, Navigation.Dialog.Current);
+        await Navigation.Dialog.BackAsync();
+        Assert.Same(confirm, Navigation.Dialog.Current);
+        await confirm.CancelCommand.ExecuteAsync(null);
+        Assert.Null(Navigation.Dialog.Current);
+        Assert.True(Navigation.CanNavigate);
+    }
+
+    // A confirmed departure discards the draft in the turn that commits the Back. A guard
+    // that says yes for a Back that never commits, as a superseded one would, keeps it.
+    [Fact]
+    public async Task A_confirmed_departure_discards_the_draft_only_when_the_back_commits()
+    {
+        var editor = await OpenEditorAsync();
+        editor.Set(vm => vm.Title, "Draft").EnsureOk();
+        var document = (DocumentViewModel)Navigation.Main.Current!;
+        var asking = ((INavigationDepartureGuard)document).CanDepartAsync(
+            new NavigationDeparture(Navigation.Main.CurrentEntry!.Id, NavigationDepartureKind.Retire, NavigationOperation.Back),
+            CancellationToken.None).AsTask();
+        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
+        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
+        Assert.True(await asking);
+        Assert.True(Editor.IsDirty);
+        Assert.Equal("Draft", Editor.Title);
+
+        var leaving = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Start(vm => vm.OpenHomeCommand);
+        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
+        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
+        Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
+        Assert.IsType<HomeViewModel>(Navigation.Main.Current);
+        Assert.False(Editor.IsDirty);
+        Assert.Equal("Untitled", Editor.Title);
+    }
+
+    // #61: a document that fails to prepare leaves Home current and nothing tracked, and
+    // the next visit works. Notes has no reset path, so a guard-rejected reset has no Notes test.
+    [Fact]
+    public async Task A_document_that_fails_to_prepare_leaves_home_and_the_next_visit_works()
+    {
+        var attempts = 0;
+        await using var window = new TestWindow(new FakeTimeProvider(), services => services.AddScoped(provider =>
+            ++attempts == 1
+                ? throw new InvalidOperationException("The preview is unavailable.")
+                : new PreviewViewModel(provider.GetRequiredService<EditorViewModel>())));
+        var navigation = window.Scope.ServiceProvider.GetRequiredService<WorkspaceNavigation>();
+        var navigator = window.Scope.ServiceProvider.GetRequiredService<RunicNavigator>();
+        var sidebar = window.Host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+
+        (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).EnsureOk();
+        Assert.IsType<HomeViewModel>(navigation.Main.Current);
+        Assert.Equal(1, navigator.UnretiredEntryCount());
+        Assert.Equal("home", window.Host.Root.Snapshot().Reference(vm => vm.Main)?.Kind);
+
+        (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).EnsureOk();
+        Assert.IsType<DocumentViewModel>(navigation.Main.Current);
+        Assert.Equal(3, navigator.UnretiredEntryCount());
+        Assert.Equal(2, attempts);
     }
 
     // Closing the window while the dialog asks dismisses it and retires every entry.
@@ -276,17 +373,11 @@ public sealed class NotesWindowTests : IAsyncLifetime
 
     public Task InitializeAsync() => Task.CompletedTask;
 
-    public async Task DisposeAsync()
-    {
-        _host.Dispose();
-        // The window scope disposes its navigator, which retires the entries it owns.
-        await _scope.DisposeAsync();
-        await _services.DisposeAsync();
-    }
+    public async Task DisposeAsync() => await _window.DisposeAsync();
 
-    private WorkspaceNavigation Navigation => _scope.ServiceProvider.GetRequiredService<WorkspaceNavigation>();
-    private RunicNavigator Navigator => _scope.ServiceProvider.GetRequiredService<RunicNavigator>();
-    private EditorViewModel Editor => _scope.ServiceProvider.GetRequiredService<EditorViewModel>();
+    private WorkspaceNavigation Navigation => Scope.ServiceProvider.GetRequiredService<WorkspaceNavigation>();
+    private RunicNavigator Navigator => Scope.ServiceProvider.GetRequiredService<RunicNavigator>();
+    private EditorViewModel Editor => Scope.ServiceProvider.GetRequiredService<EditorViewModel>();
 
     // Completes when the condition holds, checked after each change the region raises.
     private static async Task WhenAsync<T>(NavigationRegion<T> region, Func<bool> condition) where T : class
@@ -310,8 +401,48 @@ public sealed class NotesWindowTests : IAsyncLifetime
 
     private async Task<RunicViewDriver<EditorViewModel>> OpenEditorAsync()
     {
-        var sidebar = _host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
+        var sidebar = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar);
         (await sidebar.ExecuteAsync(vm => vm.OpenNotesCommand)).EnsureOk();
-        return _host.Root.View<DocumentViewModel>(vm => vm.Main).View<EditorViewModel>(vm => vm.CurrentPane);
+        return Host.Root.View<DocumentViewModel>(vm => vm.Main).View<EditorViewModel>(vm => vm.CurrentPane);
+    }
+}
+
+// One notes window: the application's own registrations, with the test clock in place
+// of the system clock, and an optional change to them.
+internal sealed class TestWindow : IAsyncDisposable
+{
+    private readonly ServiceProvider _services;
+
+    public TestWindow(FakeTimeProvider clock, Action<IServiceCollection>? configure = null)
+    {
+        var services = new ServiceCollection()
+            .AddSingleton<TimeProvider>(clock)
+            .AddNotes()
+            .AddRunicViews();
+        configure?.Invoke(services);
+        _services = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        Scope = _services.CreateAsyncScope();
+        var window = Scope.ServiceProvider;
+        Host = new RunicWindowTestHost<ShellViewModel>(
+            window.GetRequiredService<ShellViewModel>(),
+            window.GetRequiredService<Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>(),
+            new RunicWindowTestHostOptions
+            {
+                ViewLocator = window.GetRequiredService<IRunicViewLocator>(),
+                // The window graph shares the navigator's model context.
+                ModelContext = window.GetRequiredService<IRunicModelContext>(),
+                TimeProvider = clock,
+            });
+    }
+
+    public AsyncServiceScope Scope { get; }
+    public RunicWindowTestHost<ShellViewModel> Host { get; }
+
+    public async ValueTask DisposeAsync()
+    {
+        Host.Dispose();
+        // The window scope disposes its navigator, which retires the entries it owns.
+        await Scope.DisposeAsync();
+        await _services.DisposeAsync();
     }
 }

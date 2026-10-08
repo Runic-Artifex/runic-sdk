@@ -91,6 +91,16 @@ neither.
 
 Outside an injection context, pass `{ injector }`.
 
+`injectCommand` runs are independent; it doesn't order one command after
+another. If an app queues commands so that each starts after the previous one
+completes, a command whose completion waits for a later command deadlocks.
+For example, a navigation command whose departure guard awaits a dialog's
+answer never completes while the answer waits behind it. Order such commands
+by dispatch instead: start the next one once the previous one has been sent,
+as the Notes example's
+[`WindowOperations.runDispatched`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Angular/src/app/window-operations.ts)
+does for its navigation commands.
+
 ## Collection viewports
 
 `injectCollectionViewport(element, options)` follows a fixed-row-height scroll

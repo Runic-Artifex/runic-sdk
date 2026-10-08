@@ -1,7 +1,8 @@
 import type { ConfirmNavigationClient } from "./generated/confirmNavigation.js";
+import { focusOrigin, restoreFocus } from "./focus.js";
 
 export function mountConfirmNavigation(host: HTMLElement, dialog: ConfirmNavigationClient): () => void {
-  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const previousFocus = focusOrigin();
   host.innerHTML = `<section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title"><h2 id="dialog-title">Unsaved changes</h2><p data-message></p><div class="dialog-actions"><button data-cancel>Keep editing</button><button data-confirm>Discard changes</button></div></section>`;
   const message = host.querySelector<HTMLElement>("[data-message]")!;
   const cancel = host.querySelector<HTMLButtonElement>("[data-cancel]")!;
@@ -37,6 +38,6 @@ export function mountConfirmNavigation(host: HTMLElement, dialog: ConfirmNavigat
     unsubscribe();
     dialog.dispose();
     host.replaceChildren();
-    previousFocus?.focus();
+    restoreFocus(previousFocus);
   };
 }

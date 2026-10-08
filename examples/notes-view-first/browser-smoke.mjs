@@ -82,8 +82,9 @@ try {
   await retry(async () => await query('document.querySelector("#modal [role=dialog]") === null'));
   if (await query('document.querySelector("#main h1")?.textContent') !== "Document")
     throw new Error("Cancel unexpectedly left the document.");
-  if (await query('document.activeElement?.getAttribute("data-go")') !== "home")
-    throw new Error("Dialog did not return focus to the sidebar.");
+  // Home is unavailable until its Back ends, so focus returns once it is enabled again.
+  await waitFor(async () => await query('document.activeElement?.getAttribute("data-go")') === "home",
+    { label: "the dialog returning focus to the sidebar", detail });
   if ((await snapshot(`content${dialogId}`)).error?.kind !== "disconnected")
     throw new Error("Closed dialog endpoint stayed active.");
 
