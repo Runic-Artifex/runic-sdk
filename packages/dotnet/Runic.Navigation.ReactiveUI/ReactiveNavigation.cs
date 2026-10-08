@@ -24,9 +24,9 @@ namespace Runic.Navigation.ReactiveUI;
 /// </summary>
 /// <remarks>
 /// Each subscription receives its initial value on the subscribing thread, inside <c>Subscribe</c>.
-/// Later values arrive on the model turn in which the region raises the change, the commit turn for
-/// a navigation. Use <c>ObserveOn</c> to move to another scheduler. An entry's lifetime is not
-/// ReactiveUI activation: a retained entry stays alive while it is not presented, and its View may
+/// Later values arrive on the model turn in which the region raises the change; content changes
+/// arrive on the navigation's commit turn. Use <c>ObserveOn</c> to move to another scheduler.
+/// An entry's lifetime is not ReactiveUI activation: a retained entry stays alive while it is not presented, and its View may
 /// deactivate and activate again when it returns.
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
@@ -59,6 +59,34 @@ public static class ReactiveNavigation
         ArgumentNullException.ThrowIfNull(region);
         return new RegionObservable<TContent, NavigationEntry<TContent>?>(region, static region => region.CurrentEntry,
             nameof(NavigationRegion<TContent>.CurrentEntry), Same<NavigationEntry<TContent>?>.Instance);
+    }
+
+    /// <summary>
+    /// Observes whether the region has Back history. Each subscription receives the current value
+    /// and then each different value. This does not include transition availability; compose with
+    /// <see cref="WhenIsTransitioningChanged{TContent}"/> when creating a command.
+    /// </summary>
+    /// <remarks>The sequence never completes; dispose the subscription to stop observing.</remarks>
+    public static IObservable<bool> WhenCanGoBackChanged<TContent>(this NavigationRegion<TContent> region)
+        where TContent : class
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        return new RegionObservable<TContent, bool>(region, static region => region.CanGoBack,
+            nameof(NavigationRegion<TContent>.CanGoBack), EqualityComparer<bool>.Default);
+    }
+
+    /// <summary>
+    /// Observes whether the region has an unsettled transition, including operations started by
+    /// other callers. Each subscription receives the current value and then each different value
+    /// observed when the region raises a change. An ancestor's transitions are not included.
+    /// </summary>
+    /// <remarks>The sequence never completes; dispose the subscription to stop observing.</remarks>
+    public static IObservable<bool> WhenIsTransitioningChanged<TContent>(this NavigationRegion<TContent> region)
+        where TContent : class
+    {
+        ArgumentNullException.ThrowIfNull(region);
+        return new RegionObservable<TContent, bool>(region, static region => region.IsTransitioning,
+            nameof(NavigationRegion<TContent>.IsTransitioning), EqualityComparer<bool>.Default);
     }
 
     /// <summary>

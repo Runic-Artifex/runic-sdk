@@ -32,8 +32,15 @@ context for as long as the context is alive. `AddRunicReactiveModelContext()`
 registers a scoped context, the singleton provider and a transient `IScheduler`
 that returns the provider's scheduler for the resolved context, so every
 resolution for one context shares it. `WhenCurrentChanged()`,
-`WhenEntryChanged()` and `CreateBackCommand(IScheduler)` are experimental
-(`RUNICNAV001`) and return a `ReactiveCommand<Unit, NavigationResult<TContent>>`.
+`WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`
+and `CreateBackCommand(IScheduler)` are experimental (`RUNICNAV001`). The Back
+command returns a `ReactiveCommand<Unit, NavigationResult<TContent>>`.
+
+The [native command composition recipe](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#native-command-composition)
+also applies here. Use `ReactiveUI.Reactive`, `System.Reactive.Linq` and
+`Runic.Navigation.ReactiveUI.Reactive` instead of the default flavor's namespaces,
+and `Unit`/`IScheduler` instead of `RxVoid`/`ISequencer`. Both flavors compose over
+the same core engine and work independently of the WPF or web presentation choice.
 
 The package targets ReactiveUI.Reactive 26.0.1 and brings System.Reactive 7.0.0
 transitively. Its category is `Runic.Navigation.ReactiveUI.Reactive`, with events
