@@ -11,6 +11,7 @@ const feed = join(temporary, "feed");
 const consumer = join(temporary, "consumer");
 const probes = join(temporary, "probes");
 const packageProjects = [
+  ["Runic.Navigation", "Runic.Navigation"],
   ["Runic.Application", "Runic.Application.Views"],
   ["Runic.Application.CsWebUi", "Runic.Application.Views.CsWebUi"]
 ];

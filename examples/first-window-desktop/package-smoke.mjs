@@ -11,6 +11,7 @@ const feed = join(temporary, "feed");
 const consumer = join(temporary, "consumer");
 const projects = [
   ["Runic.Desktop", "Runic.Desktop"],
+  ["Runic.Navigation", "Runic.Navigation"],
   ["Runic.Application", "Runic.Application.Views"],
   ["Runic.Application.ReactiveUI", "Runic.Application.Views.ReactiveUI"],
   // Runic.Application.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner), which depends on Runic.Platform.
