@@ -14,6 +14,7 @@ internal static class ScenarioTests
         ("S1: the guard asks; Cancel keeps the edits, OK discards them", MasterDetailGuardAsync),
         ("S1: saved edits leave without asking, and the list reloads", SavedEditsLeaveAsync),
         ("S2: Delete asks and acts on the typed result", DeleteConfirmAsync),
+        ("Toolkit command cancellation closes Delete without deleting", DeleteCancellationAsync),
         ("S3: the settings tabs are a child region of the page", NestedTabsAsync),
         ("S4: a double click on Back pops once", DoubleClickBackAsync),
         ("S4: two Backs from code pop once and never empty the region", DoubleBackFromCodeAsync),
@@ -89,6 +90,24 @@ internal static class ScenarioTests
         await deleting;
         Require(list.Notes.Count == 2 && scene.Store.All.All(note => note.Id != 3), "OK didn't delete the note.");
         await scene.NoDialogAsync();
+    }
+
+    private static async Task DeleteCancellationAsync()
+    {
+        await using var scene = await StartAsync();
+        var list = scene.List;
+        var ideas = list.Notes.Single(note => note.Id == 3);
+        var deleting = list.DeleteCommand.ExecuteAsync(ideas);
+        var confirm = await scene.ConfirmAsync();
+        Require(list.DeleteCommand.CanBeCanceled, "The Toolkit command did not accept cancellation.");
+        list.DeleteCommand.Cancel();
+        await deleting.WaitAsync(Scene.Timeout);
+        await scene.NoDialogAsync();
+        Require(list.Notes.Count == 3 && scene.Store.All.Count == 3 && !list.DeleteCommand.IsRunning,
+            "Cancelling Delete left its confirmation open or deleted the note.");
+        // A late answer from the retired prompt cannot revive a cancelled request.
+        await confirm.YesCommand.ExecuteAsync(null);
+        Require(scene.Store.All.Count == 3, "A late answer deleted the note after command cancellation.");
     }
 
     private static async Task NestedTabsAsync()

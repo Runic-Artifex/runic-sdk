@@ -6,7 +6,8 @@ regions to ReactiveUI 26 (the `ReactiveUI.Primitives` flavor). It depends on
 host, so it works in a WPF or console app. It provides, in the
 `Runic.Navigation.ReactiveUI` namespace:
 
-- `WhenCurrentChanged()`, `WhenEntryChanged()` and `CreateBackCommand(scheduler)`
+- `WhenCurrentChanged()`, `WhenEntryChanged()`, `WhenCanGoBackChanged()`,
+  `WhenIsTransitioningChanged()` and `CreateBackCommand(scheduler)`
   for `NavigationRegion<TContent>` (experimental, `RUNICNAV001`);
 - `RunicReactiveSchedulerProvider`, which returns an `ISequencer` that runs
   scheduled work through an `IRunicModelContext`; and
@@ -80,10 +81,16 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance
   empty) on subscription and then each different instance.
   `WhenEntryChanged()` emits each `NavigationEntry<TContent>`, also when two
   entries present the same borrowed instance.
-- Both emit the initial value on the subscribing thread, inside `Subscribe`,
-  and later values on the model turn that raises the change: the commit turn
-  for a navigation. Use `ObserveOn` to deliver elsewhere. They never
-  complete, and stop when the subscription is disposed.
+- `WhenCanGoBackChanged()` emits whether the region has Back history.
+  `WhenIsTransitioningChanged()` emits whether it has an unsettled transition,
+  including one started by another caller. They emit initial values and then
+  distinct values observed at region change notifications. Neither includes
+  an ancestor region's state. Back history availability stays true while a
+  guard waits; combine it with transition state when composing a command.
+- All four emit the initial value on the subscribing thread, inside `Subscribe`,
+  and later values on the model turn that raises the change. Content changes
+  arrive on the navigation's commit turn. Use `ObserveOn` to deliver elsewhere.
+  They never complete, and stop when the subscription is disposed.
 - `CreateBackCommand(scheduler)` returns a
   `ReactiveCommand<RxVoid, NavigationResult<TContent>>`. It can execute
   while `CanGoBack` is true and `IsTransitioning` is false, including
@@ -105,6 +112,58 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance
   (`INavigationInitialize`, `INavigationResume`, `INavigationDepartureGuard`) and
   the entry's `Retirement` token for per-entry work, and `Dispose` for owned
   content.
+
+## Native command composition
+
+The adapter supplies observable state for ReactiveUI pipelines; it does not
+replace ReactiveUI's command factories. A ViewModel can compose its own
+application conditions, `ReactiveCommand.CreateFromTask`, observable properties
+and navigation outcomes:
+
+```csharp
+using ReactiveUI;
+using ReactiveUI.Binding;
+using ReactiveUI.Primitives;
+using Runic.Navigation;
+using Runic.Navigation.ReactiveUI;
+
+var canOpen = Main.WhenIsTransitioningChanged()
+    .CombineLatest(this.WhenAnyValue(vm => vm.HasSelection),
+        (busy, selected) => !busy && selected);
+
+OpenCommand = ReactiveCommand.CreateFromTask(async token =>
+{
+    var result = await Main.PushAsync<DocumentViewModel>(cancellationToken: token);
+    await context.InvokeAsync(() => HandleNavigationOutcome(result), CancellationToken.None);
+}, canOpen, scheduler).DisposeWith(disposables);
+
+_isNavigatingHelper = Main.WhenIsTransitioningChanged()
+    .ToProperty(this, vm => vm.IsNavigating)
+    .DisposeWith(disposables);
+```
+
+The `IsNavigating` getter reads `_isNavigatingHelper.Value` (or use ReactiveUI's
+`[ObservableAsProperty]` generator convention).
+
+`HandleNavigationOutcome` is application policy: a guard veto, cancellation,
+supersession or failure is a typed core result, and must not be treated as a
+successful navigation merely because the command's task completed. Command
+availability is advisory; the engine still validates every request. Forward
+the token for cancellation during guards or preparation. For result requests,
+forward it to `PushForResult` to also dismiss a committed prompt on cancellation.
+
+Use a model-context scheduler for model state and the presentation's dispatcher
+for native UI state. Own command/property subscriptions with the ViewModel;
+subscriptions specific to a mounted View belong in `WhenActivated`.
+This command/property shape works in WPF and through Runic's web bridge. The
+example exposes a completion-only command and handles navigation results inside
+the ViewModel, so the web boundary does not need to encode navigation's content
+and ownership objects.
+
+Runic's `ReactiveRoutedRegion<T>` in `Runic.Application.ReactiveUI` is a separate
+interoperability path for an externally owned `RoutingState`. It presents that
+router's content; it does not apply RunicNavigator's guards and entry semantics
+or implement another Runic navigation engine.
 
 ## Moving from Runic.Application.ReactiveUI
 

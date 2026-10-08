@@ -6,12 +6,15 @@ using Microsoft.Extensions.Logging;
 using Runic.Navigation;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Reactive;
+using System.Reactive.Linq;
 using Runic.Navigation.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
 using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
 using FlavorSchedulerProvider = Runic.Navigation.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
 #else
 using ReactiveUI;
+using ReactiveUI.Binding;
+using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Navigation.ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
@@ -23,6 +26,7 @@ await SchedulerSemanticsAsync();
 await DependencyInjectionSemanticsAsync();
 await SchedulerLifetimeSemanticsAsync();
 await NavigationAdapterSemanticsAsync();
+await NavigationStateCompositionAsync();
 await DuplicateBackCommandKeepsOneConfirmationAsync();
 Console.WriteLine("NAVIGATION_REACTIVEUI_ADAPTER_OK");
 
@@ -210,6 +214,54 @@ static async Task NavigationAdapterSemanticsAsync()
         "The initial emission's exception did not propagate from Subscribe.");
     await region.PushAsync(NavigationTarget.Own(new NavigationPage("after")));
     Require(throwing.Calls == 1, $"A subscription whose initial emission threw still observed the region ({throwing.Calls} calls).");
+}
+
+static async Task NavigationStateCompositionAsync()
+{
+    await using var context = new RunicModelContext();
+    await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+    var region = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(new NavigationPage("home")));
+    var history = new Recorder<bool>();
+    var busy = new Recorder<bool>();
+    using var historySubscription = region.WhenCanGoBackChanged().Subscribe(history);
+    var busySubscription = region.WhenIsTransitioningChanged().Subscribe(busy);
+    Require(history.Values.SequenceEqual([false]) && busy.Values.SequenceEqual([false]),
+        "State subscriptions did not emit their initial values synchronously.");
+
+    // A native ReactiveUI command composes the region's state with application state.
+    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    using var push = ReactiveCommand.CreateFromTask(
+        token => region.PushAsync(NavigationTarget.Own(new NavigationPage("document")), cancellationToken: token).AsTask(),
+        region.WhenIsTransitioningChanged().Select(transitioning => !transitioning), scheduler);
+    Require(await ReactiveCommandExecution.Execute(push, UnitValue(), CancellationToken.None)
+        is NavigationResult<NavigationPage>.Committed, "A native reactive Push did not preserve the core outcome.");
+    Require(history.Values.SequenceEqual([false, true]), "Back availability did not become true after Push.");
+
+    var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    region.Current!.Guard = () => { entered.TrySetResult(); return release.Task; };
+    var back = region.BackAsync().AsTask();
+    await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    await WaitUntilAsync(() => busy.Values[^1] && !ReactiveCommandExecution.CanExecute(push, UnitValue()),
+        "The state pipeline did not disable Push while another caller's guard was pending.");
+    Require(history.Values.SequenceEqual([false, true]), "Transitioning incorrectly changed Back history availability.");
+    release.SetResult(false);
+    Require(await back is NavigationResult<NavigationPage>.Rejected { Reason: NavigationRejection.Guard },
+        "A guard veto did not preserve its core rejection.");
+    await WaitUntilAsync(() => !busy.Values[^1] && ReactiveCommandExecution.CanExecute(push, UnitValue()),
+        "The pipeline stayed busy after the guard veto.");
+
+    // Disposed and failed initial subscriptions must detach from subsequent region changes.
+    busySubscription.Dispose();
+    var busyCount = busy.Values.Length;
+    var throwing = new ThrowingObserver<bool>();
+    await RequireThrowsAsync<InvalidOperationException>(() =>
+        { region.WhenIsTransitioningChanged().Subscribe(throwing); return Task.CompletedTask; },
+        "A state observer's initial exception did not propagate.");
+    await region.ClearHistoryAsync();
+    Require(history.Values.SequenceEqual([false, true, false]), "Clearing history did not emit false.");
+    Require(busy.Values.Length == busyCount && throwing.Calls == 1,
+        "A disposed or failed initial state subscription continued observing.");
 }
 
 static async Task WaitUntilAsync(Func<bool> condition, string message)

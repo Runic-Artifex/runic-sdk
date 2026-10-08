@@ -21,6 +21,28 @@ dotnet add package Runic.Navigation --prerelease
 
 Runic.Application apps already have it through that package.
 
+## One engine, idiomatic integrations
+
+`RunicNavigator` is the navigation implementation for every consumer. Guards,
+history, outcomes, cancellation and entry ownership have one set of semantics.
+Presentation hosts and MVVM integrations are independent choices:
+
+| Choice | Integration |
+| --- | --- |
+| WPF presentation | `Runic.Navigation.Wpf` presents regions with native Views and a dispatcher context. |
+| Web presentation | `Runic.Application` presents the same regions through generated Window/View bridges. |
+| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides observables, a Back command and model-context scheduling. Compose native ReactiveUI commands for other operations. |
+| CommunityToolkit ViewModels | Use the core's async operations directly with `AsyncRelayCommand` or `[RelayCommand]`, forwarding the command's cancellation token. No additional navigation adapter is needed. |
+
+An integration can optimize its framework's API without duplicating navigation
+behavior. Replacing WPF Views with web Views can retain the navigation engine
+and ViewModels. Keep native UI activation and dispatcher concerns in the
+presentation integration; retained entry lifetime belongs to navigation.
+
+The [Toolkit WPF example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/wpf-navigation)
+and [ReactiveUI recipes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#native-command-composition)
+show each framework's native command style.
+
 ## Experimental API
 
 `RunicNavigator` owns typed navigation regions. Each region gives its entries
