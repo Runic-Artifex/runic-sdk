@@ -17,6 +17,7 @@ The package targets `net10.0-windows` and isn't trimmable, because WPF isn't.
 Its API is experimental, like the navigator's: suppress `RUNICNAV001` to use it.
 
 ```sh
+# Available from 0.7.0-preview.4.
 dotnet add package Runic.Navigation.Wpf --prerelease
 ```
 
@@ -91,7 +92,8 @@ public sealed class AppRegions
 ```
 
 `NavigationHost` shows the current entry with its View, `NotesView` for
-`NotesViewModel`. Back can't execute while a Back is in flight, so a double
+`NotesViewModel`: Views are plain `UserControl`s, found by name, whose
+`DataContext` is the ViewModel. Back can't execute while a Back is in flight, so a double
 click pops once. `NavigationDialogHost` shows each entry of `Dialog` in a
 window owned by this one.
 
@@ -151,9 +153,15 @@ public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<s
 {
     private NavigationEntryContext? _entry;
 
+    public ConfirmViewModel()
+    {
+        YesCommand = new AsyncRelayCommand(() => _entry!.CompleteAsync(true).AsTask());
+        NoCommand = new AsyncRelayCommand(() => _entry!.DismissAsync().AsTask()); // Esc and the close button dismiss too
+    }
+
     public string Message { get; private set; } = "";
-    public Task YesAsync() => _entry!.CompleteAsync(true).AsTask(); // the OK button
-    public Task NoAsync() => _entry!.DismissAsync().AsTask();       // Cancel; Esc and the close button dismiss too
+    public IAsyncRelayCommand YesCommand { get; } // bound to the OK button
+    public IAsyncRelayCommand NoCommand { get; }  // bound to Cancel
 
     public ValueTask InitializeAsync(NavigationEntryContext entry, string message, CancellationToken token)
     {
@@ -293,7 +301,7 @@ public sealed class DocumentViewModel : INavigationDepartureGuard
 
     public DocumentViewModel(AppRegions regions) =>
         _leave = LeaveConfirmation.InDialog(regions.Dialog,
-            () => NavigationTarget.Own<object>(new ConfirmViewModel("Discard the unsaved edits?")),
+            () => NavigationTarget.Create<ConfirmViewModel, string>("Discard the unsaved edits?"),
             () => IsDirty, DiscardChanges);
 
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken token) =>

@@ -110,6 +110,7 @@ internal static class ScenarioTests
 
         scene.ClickBack();
         await scene.PresentedAsync<NotesListViewModel>();
+        Require(!scene.CanClickBack, "Back is enabled at the root.");
         Require(await settings.Tab.ReplaceAsync(NavigationTarget.Borrow<object>(advanced))
             is NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed }, "The tab region outlived its page.");
     }

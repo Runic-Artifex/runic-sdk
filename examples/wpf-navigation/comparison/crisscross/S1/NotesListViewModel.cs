@@ -14,9 +14,11 @@ public sealed class NotesListViewModel : RxObject
 
     public NotesListViewModel(NoteStore store)
     {
+        // ReactiveCommand.CanExecute is an observable, not a function of the parameter: track the selection.
+        var hasSelection = this.WhenAnyValue(x => x.Selected, (Note? note) => note is not null);
         _store = store;
         Open = ReactiveCommand.Create<Note>(note => this.NavigateToView(
-            new NavigationKeyRequest<NoteDetailViewModel> { Options = new() { Parameter = note.Id } }));
+            new NavigationKeyRequest<NoteDetailViewModel> { Options = new() { Parameter = note.Id } }), hasSelection);
         OpenSettings = ReactiveCommand.Create(() => this.NavigateToView(new NavigationKeyRequest<SettingsViewModel>())); // [S3]
         Delete = ReactiveCommand.CreateFromTask<Note>(async note => // [S2]
         { // [S2]
@@ -25,9 +27,11 @@ public sealed class NotesListViewModel : RxObject
                 store.Delete(note.Id); // [S2]
                 Notes.Remove(note); // [S2]
             } // [S2]
-        }); // [S2]
+        }, hasSelection); // [S2]
     }
 
+    private Note? _selected;
+    public Note? Selected { get => _selected; set => this.RaiseAndSetIfChanged(ref _selected, value); }
     public ObservableCollection<Note> Notes { get; } = [];
     public ReactiveCommand<Note, RxVoid> Open { get; }
     public ReactiveCommand<RxVoid, RxVoid> OpenSettings { get; } // [S3]

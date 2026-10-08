@@ -1,4 +1,4 @@
-// The comparison's shared domain (comparison/shared/Domain.cs), identical in every app. Not counted.
+// The comparison's shared domain (comparison/shared/Domain.cs), the same in every app apart from its namespace. Not counted.
 using System.Collections.ObjectModel;
 
 namespace Runic.Navigation.Examples.Notes;

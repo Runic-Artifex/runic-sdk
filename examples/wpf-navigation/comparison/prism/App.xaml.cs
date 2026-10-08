@@ -30,6 +30,8 @@ public partial class App : PrismApplication
         var regions = Container.Resolve<IRegionManager>();
         regions.RegisterViewWithRegion<GeneralTabView>("SettingsTabs"); // [S3]
         regions.RegisterViewWithRegion<AdvancedTabView>("SettingsTabs"); // [S3]
+        var shell = (ShellWindowViewModel)MainWindow.DataContext; // [S4]
+        regions.Regions["Main"].NavigationService.Navigated += (_, _) => shell.GoBackCommand.RaiseCanExecuteChanged(); // [S4]
         regions.RequestNavigate("Main", nameof(NotesListView)); // [S1]
     }
 }

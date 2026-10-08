@@ -35,7 +35,8 @@ public sealed class NoteDetailViewModel : BindableBase, IConfirmNavigationReques
         Title = _note.Title;
     }
 
-    public void OnNavigatedFrom(NavigationContext context) { }
+    // Runs only once a navigation away has committed, so a cancelled or superseded one keeps the edits.
+    public void OnNavigatedFrom(NavigationContext context) => Title = _note?.Title ?? "";
 
     public void ConfirmNavigationRequest(NavigationContext context, Action<bool> continuationCallback)
     {
@@ -45,15 +46,7 @@ public sealed class NoteDetailViewModel : BindableBase, IConfirmNavigationReques
             return;
         }
 
-        _dialogs.ShowDialog(nameof(ConfirmDialog), new DialogParameters { { "message", "Discard unsaved changes?" } }, result =>
-        {
-            var leave = result.Result == ButtonResult.OK;
-            if (leave)
-            {
-                Title = _note!.Title; // discard; runs before the navigation commits
-            }
-
-            continuationCallback(leave);
-        });
+        _dialogs.ShowDialog(nameof(ConfirmDialog), new DialogParameters { { "message", "Discard unsaved changes?" } },
+            result => continuationCallback(result.Result == ButtonResult.OK));
     }
 }

@@ -11,6 +11,6 @@
       <Button Content="Delete" Command="{Binding Delete}" CommandParameter="{Binding SelectedItem, ElementName=List}" /> <!-- [S2] -->
       <Button Content="Settings" Command="{Binding OpenSettings}" /> <!-- [S3] -->
     </StackPanel>
-    <ListBox x:Name="List" ItemsSource="{Binding Notes}" DisplayMemberPath="Title" />
+    <ListBox x:Name="List" ItemsSource="{Binding Notes}" SelectedItem="{Binding Selected}" DisplayMemberPath="Title" />
   </DockPanel>
 </rxui:ReactiveUserControl>

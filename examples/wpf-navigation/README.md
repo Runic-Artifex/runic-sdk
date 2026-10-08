@@ -62,7 +62,8 @@ bun examples/wpf-navigation/package-smoke.mjs
 
 Inside this repository the app references Runic.Navigation.Wpf as a project.
 In your own project, replace the conditional references in
-`NotesNavigation.csproj` with:
+`NotesNavigation.csproj` with the following. Runic.Navigation.Wpf is available
+from 0.7.0-preview.4.
 
 ```xml
 <PackageReference Include="Runic.Navigation.Wpf" Version="0.7.0-preview.4" />

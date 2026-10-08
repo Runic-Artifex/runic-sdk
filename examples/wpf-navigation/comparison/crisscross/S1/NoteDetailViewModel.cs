@@ -22,10 +22,11 @@ public sealed class NoteDetailViewModel : RxObject
     public bool IsDirty => _note is not null && _note.Title != Title;
     public ReactiveCommand<RxVoid, RxVoid> Save { get; }
 
-    // The parameter arrives with every navigation to this singleton.
+    // The parameter arrives with a navigation to this singleton, but not with a Back to it: history holds types.
     public override void WhenNavigatedTo(IViewModelNavigationEventArgs e, MultipleDisposable disposables)
     {
-        _note = _store.Get((int)e.NavigationParameter!);
+        if (e.NavigationParameter is not int id) return;
+        _note = _store.Get(id);
         Title = _note.Title;
     }
 

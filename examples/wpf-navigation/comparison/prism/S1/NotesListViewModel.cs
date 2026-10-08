@@ -17,7 +17,8 @@ public sealed class NotesListViewModel : BindableBase, IRegionAware
     {
         _store = store;
         OpenCommand = new DelegateCommand<Note>(note =>
-            regions.RequestNavigate("Main", nameof(NoteDetailView), new NavigationParameters { { "id", note.Id } }));
+            regions.RequestNavigate("Main", nameof(NoteDetailView), new NavigationParameters { { "id", note.Id } }),
+            note => note is not null);
         OpenSettingsCommand = new DelegateCommand(() => regions.RequestNavigate("Main", nameof(SettingsView))); // [S3]
         DeleteCommand = new AsyncDelegateCommand<Note>(async note => // [S2]
         { // [S2]
@@ -28,7 +29,7 @@ public sealed class NotesListViewModel : BindableBase, IRegionAware
                 store.Delete(note.Id); // [S2]
                 Notes.Remove(note); // [S2]
             } // [S2]
-        }); // [S2]
+        }, note => note is not null); // [S2]
     }
 
     public ObservableCollection<Note> Notes { get; } = [];
