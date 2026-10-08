@@ -234,3 +234,9 @@ test('a navigation engine change runs its own group and the application group th
   assert.ok(!result.managed.includes('assets'));
   assert.ok(runs(result, 'package-consumers'));
 });
+
+test('the standalone navigation consumer belongs to the navigation component', () => {
+  const result = plan(['tests/fixtures/navigation/standalone-consumer/Program.cs']);
+  assert.ok(result.managed.includes('navigation'));
+  assert.ok(runs(result, 'package-consumers'));
+});
