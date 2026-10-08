@@ -56,7 +56,6 @@
          model assembly), still gets RUNICBRIDGE006 when it has no Window. -->
     <PropertyGroup>
       <_RunicBridgeOptional Condition="'$(RunicBridgeBuildEnabled)' == '' and '$(RunicBridgeCompositionType)' == '' and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeOptional>
-      <_RunicBridgeSkipped Condition="'$(_RunicBridgeSkipped)' == '' and Exists('$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and Exists('$(RunicBridgeCodegenProject)')">true</RunicBridgeBuildEnabled>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and '@(_RunicBridgeDirectPackage)' != ''">true</RunicBridgeBuildEnabled>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == ''">false</RunicBridgeBuildEnabled>
@@ -144,7 +143,10 @@
       <_RunicBridgeSkipped Condition="Exists('$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
     </PropertyGroup>
     <Message Importance="normal" Condition="'$(_RunicBridgeSkipped)' == 'true'"
-             Text="Runic Bridge: $(AssemblyName) declares no Runic Window or View, so no bridge code or frontend build is generated. Set RunicBridgeBuildEnabled=true to require them." />
+             Text="Runic Bridge: $(AssemblyName) declares no Runic Window or View, so no bridge code or frontend build is generated. Set RunicBridgeBuildEnabled=true to require them, or false to skip the bootstrap build entirely." />
+    <ItemGroup Condition="'$(_RunicBridgeSkipped)' == 'true'">
+      <FileWrites Include="$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)" />
+    </ItemGroup>
     <ItemGroup>
       <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />

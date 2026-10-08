@@ -82,11 +82,15 @@ try
         {
             // Bridge generation was on by default, not requested: an assembly
             // without Windows or Views (for example one that only uses the
-            // navigator) builds without bridge output. Remove stale output and
-            // leave a marker so the build skips the frontend steps.
+            // navigator) builds without bridge output. Remove stale generated C# and
+            // TypeScript (never creating the TypeScript directory) and leave a marker
+            // so the build skips the frontend steps.
             Directory.CreateDirectory(positional[2]);
             foreach (var path in Directory.GetFiles(positional[2], "*.g.cs"))
                 if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
+            if (Directory.Exists(positional[3]))
+                foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
+                    if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
             File.WriteAllText(Path.Combine(positional[2], "RunicBridge.NoViews.marker"), "");
             Console.WriteLine($"{assembly.GetName().Name}: no Runic Window/View classes found; skipping Bridge generation.");
             return;

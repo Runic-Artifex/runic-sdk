@@ -363,9 +363,25 @@ internal static class CodegenDiagnosticsTests
             var skippedOutput = await GenerateValidAsync(generator, temporaryRoot, "OptionalNoViews", Preamble + NoViews,
                 "--optional").ConfigureAwait(false);
             Require(File.Exists(Path.Combine(skippedOutput, "RunicBridge.NoViews.marker"))
-                    && Directory.GetFiles(skippedOutput, "*.g.cs").Length == 0
-                    && !Directory.Exists(Path.Combine(Path.GetDirectoryName(skippedOutput)!, "ts")),
+                    && Directory.GetFiles(skippedOutput, "*.g.cs").Length == 0,
                 "An optional generation without Windows or Views did not skip cleanly.");
+            // Views that were removed leave no stale generated C# or TypeScript.
+            var staleCs = await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + """
+                public sealed class StaleViewModel : FixtureModel { public string Title { get; } = ""; }
+                public sealed partial class StaleWindow(StaleViewModel model) : RunicWindow<StaleViewModel>(model);
+                """).ConfigureAwait(false);
+            var staleTs = Path.Combine(Path.GetDirectoryName(staleCs)!, "ts");
+            Require(Directory.GetFiles(staleCs, "*.g.cs").Length > 0 && Directory.GetFiles(staleTs, "*.ts").Length > 0,
+                "The stale-output fixture generated nothing to remove.");
+            await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + NoViews, "--optional").ConfigureAwait(false);
+            Require(Directory.GetFiles(staleCs, "*.g.cs").Length == 0 && Directory.GetFiles(staleTs, "*.ts").Length == 0
+                    && File.Exists(Path.Combine(staleCs, "RunicBridge.NoViews.marker")),
+                "Optional generation without Views left stale generated output.");
+            // Optional does not hide a model assembly that cannot be loaded.
+            var (optionalLoadExit, optionalLoadOutput) = await RunProcessAsync(generator, invalidAssembly, invalidDirectory, "--optional")
+                .ConfigureAwait(false);
+            Require(optionalLoadExit != 0 && optionalLoadOutput.Contains("error RUNICBRIDGE005:", StringComparison.Ordinal),
+                $"Optional generation hid an unloadable model assembly.\n{optionalLoadOutput}");
             await Reject("RequiredNoViews", NoViews, "error RUNICBRIDGE006:", "no Runic Window/View classes found")
                 .ConfigureAwait(false);
             // Optional only forgives a missing Window: an invalid View still fails.
