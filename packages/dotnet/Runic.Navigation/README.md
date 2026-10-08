@@ -31,7 +31,8 @@ experimental: every type is marked `[Experimental("RUNICNAV001")]`. Suppress
 context types are not experimental. The navigator replaces ReactiveUI's
 `RoutingState`; it does not wrap one. See the
 [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
-for observables and a back command.
+for observables and a back command. WPF apps present regions with
+[Runic.Navigation.Wpf](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.Wpf/README.md).
 
 ```csharp
 using Runic.Navigation;
@@ -247,7 +248,8 @@ A host presents a region's `Current`. In Runic.Application, a get-only
 the generated Bridge presents in the window's web View; see
 [Content slots](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#content-slots).
 Other hosts bind `INavigationRegion`, the non-generic view of a region, and
-`INavigationEntry`. `RunicNavigator.AttachPresentation` is for presentation
+`INavigationEntry`. `Runic.Navigation.Wpf` provides WPF hosts and a dispatcher
+model context. `RunicNavigator.AttachPresentation` is for presentation
 integrations only: retirement calls `INavigationPresentation.Forget` once for
 each attached presentation and owned entry.
 

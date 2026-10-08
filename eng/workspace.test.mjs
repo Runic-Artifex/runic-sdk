@@ -9,7 +9,7 @@ import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveM
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 25);
+  assert.equal(workspace.nuget.length, 26);
   assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
@@ -31,7 +31,7 @@ test("workspace defines the complete public SDK package inventory", () => {
     assert.ok(existsSync(resolve(root, p.project)));
 });
 test("SDK package consumers use cross-platform target and execution strategies", () => {
-  for (const packageEntry of workspace.nuget) {
+  for (const packageEntry of workspace.nuget.filter(entry => entry.name !== "Runic.Navigation.Wpf")) {
     for (const platform of ["linux", "win32"]) {
       assert.deepEqual(packageConsumerStrategy(packageEntry, platform), {
         targetFramework: "net10.0",
@@ -41,6 +41,18 @@ test("SDK package consumers use cross-platform target and execution strategies",
         canaryType: undefined,
       }, `${packageEntry.name}: ${platform}`);
     }
+  }
+});
+test("the WPF navigation consumer builds everywhere and runs on Windows", () => {
+  const packageEntry = workspace.nuget.find(entry => entry.name === "Runic.Navigation.Wpf");
+  for (const platform of ["linux", "win32"]) {
+    assert.deepEqual(packageConsumerStrategy(packageEntry, platform), {
+      targetFramework: "net10.0-windows",
+      execute: platform === "win32",
+      enableWindowsTargeting: true,
+      useWpf: true,
+      canaryType: "Runic.Navigation.Wpf.NavigationHost",
+    }, platform);
   }
 });
 test("package verification honors non-Debug build output paths", () => {

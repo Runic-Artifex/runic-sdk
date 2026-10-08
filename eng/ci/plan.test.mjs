@@ -74,8 +74,8 @@ test('a Views runtime change runs its consumers, packages, templates and native 
 
 test('a desktop change runs native checks and every dependent component', () => {
   const result = plan(['packages/dotnet/Runic.Desktop/DesktopSurface.cs']);
-  assert.deepEqual(result.skip, []);
-  // The navigation engine depends on nothing in the SDK, so a desktop change leaves it out.
+  // The navigation engine depends on nothing in the SDK, so a desktop change leaves it and its WPF lane out.
+  assert.deepEqual(result.skip, ['wpf']);
   assert.deepEqual(result.managed, managedGroups.filter(group => group !== 'navigation'));
 });
 
@@ -260,4 +260,26 @@ test('the navigation group runs the adapter tests of both ReactiveUI flavors', (
   const tests = managedTests().filter(test => test.group === 'navigation').map(test => test.path);
   assert.ok(tests.some(path => path.endsWith('Runic.Navigation.ReactiveUI.Tests.csproj')));
   assert.ok(tests.some(path => path.endsWith('Runic.Navigation.ReactiveUI.Reactive.Tests.csproj')));
+});
+
+test('navigation changes run the Windows WPF lane and other components skip it', () => {
+  for (const file of [
+    'packages/dotnet/Runic.Navigation.Wpf/NavigationHost.cs',
+    'tests/dotnet/Runic.Navigation.Wpf.Tests/Program.cs',
+    'tests/fixtures/navigation/wpf-consumer/package-smoke.mjs',
+    'packages/dotnet/Runic.Navigation/RunicNavigator.cs',
+  ]) {
+    const result = plan([file]);
+    assert.ok(runs(result, 'wpf'), file);
+    assert.ok(runs(result, 'packages'), file);
+    assert.ok(result.managed.includes('navigation'), file);
+  }
+  for (const file of ['packages/dotnet/Runic.Desktop/DesktopSurface.cs', 'packages/web/views/src/index.ts', 'tests/templates/Test-Templates.sh'])
+    assert.ok(!runs(plan([file]), 'wpf'), file);
+});
+
+test('the WPF test runner is Windows-only and outside the Linux managed groups', () => {
+  const path = 'tests/dotnet/Runic.Navigation.Wpf.Tests/Runic.Navigation.Wpf.Tests.csproj';
+  assert.ok(!managedTests(root, 'linux').some(test => test.path === path));
+  assert.ok(managedTests(root, 'win32').some(test => test.path === path && test.group === 'navigation'));
 });
