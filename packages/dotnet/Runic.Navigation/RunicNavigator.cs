@@ -1079,6 +1079,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 commit.Current = region.CurrentEntry;
                 changed.Add((region, Changes(regionBefore, region)));
                 committed = [.. transition.CommitActions];
+                // The live entry must not keep its push transition: its commit actions hold the departed
+                // entries, and only a Pending entry needs the link (Dismiss).
+                transition.CommitActions.Clear();
+                if (transition.Pending is { } pushedEntry) pushedEntry.Transition = null;
             }
             // Admission is released in the commit turn, so IsTransitioning
             // changes together with the committed state.
