@@ -20,16 +20,18 @@ import { PreviewComponent } from "./preview";
           [disabled]="!state.canShowPreview" (click)="show.run('showPreview')">Preview</button>
       </div>
       <section id="document-pane" class="card">
-        @switch (state.currentPane.kind) {
-          @case ("editor") {
-            @if (operations.ordered) {
-              <notes-bound-editor [page]="state.currentPane" />
-            } @else {
-              <notes-baseline-editor [page]="state.currentPane" />
+        @if (state.currentPane; as pane) {
+          @switch (pane.kind) {
+            @case ("editor") {
+              @if (operations.ordered) {
+                <notes-bound-editor [page]="pane" />
+              } @else {
+                <notes-baseline-editor [page]="pane" />
+              }
             }
+            @case ("preview") { <notes-preview [page]="pane" /> }
+            @default never(pane);
           }
-          @case ("preview") { <notes-preview [page]="state.currentPane" /> }
-          @default never(state.currentPane);
         }
       </section>
     } @else { <p>Connecting…</p> }

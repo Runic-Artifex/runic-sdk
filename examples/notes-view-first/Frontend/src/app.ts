@@ -17,7 +17,7 @@ const sidebarViews = { sidebar: mountSidebar } satisfies ViewTemplates<ShellStat
 const mainViews = {
   home: mountHome,
   document: mountDocument,
-} satisfies ViewTemplates<ShellState["main"]>;
+} satisfies ViewTemplates<NonNullable<ShellState["main"]>>;
 const dialogViews = {
   confirmNavigation: mountConfirmNavigation,
 } satisfies ViewTemplates<NonNullable<ShellState["dialog"]>>;

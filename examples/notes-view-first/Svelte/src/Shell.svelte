@@ -18,9 +18,9 @@
   </aside>
   <main id="main">
     {#key state.main}
-      {#if state.main.kind === "home"}
+      {#if state.main?.kind === "home"}
         <Home page={state.main} />
-      {:else}
+      {:else if state.main}
         <Document page={state.main} />
       {/if}
     {/key}

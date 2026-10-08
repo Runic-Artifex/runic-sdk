@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
     <RunicBridgeCompositionType>NotesWindowViews.RunicBridgeComposition</RunicBridgeCompositionType>
+    <!-- Typed navigation is experimental. -->
+    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
   </PropertyGroup>
   <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
     <OutputType>Library</OutputType>

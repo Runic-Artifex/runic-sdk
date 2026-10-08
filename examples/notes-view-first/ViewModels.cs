@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 
 namespace NotesWindowViews;
@@ -22,64 +23,38 @@ public enum DocumentPane
     Preview,
 }
 
-public sealed class WorkspaceNavigation(HomeViewModel home, DocumentViewModel document)
-    : ObservableObject
+// The window's navigation: the main page and an in-page dialog, two regions of
+// the window-scoped navigator. Home is borrowed from the window scope; each
+// visit to the notes pushes a fresh owned document, retired when it is left.
+public sealed class WorkspaceNavigation
 {
-    private IMainViewModel _main = home;
-    private IDialogViewModel? _dialog;
-
-    public IMainViewModel Main
+    public WorkspaceNavigation(RunicNavigator navigator, HomeViewModel home)
     {
-        get => _main;
-        private set => SetProperty(ref _main, value);
+        Main = navigator.CreateRegion<IMainViewModel>(this, NavigationTarget.Borrow<IMainViewModel>(home));
+        Dialog = navigator.CreateRegion<IDialogViewModel>(this);
     }
 
-    public IDialogViewModel? Dialog
-    {
-        get => _dialog;
-        private set => SetProperty(ref _dialog, value);
-    }
+    public NavigationRegion<IMainViewModel> Main { get; }
+    public NavigationRegion<IDialogViewModel> Dialog { get; }
 
-    public void OpenDocument() => Main = document;
+    // ExpectedCurrent makes a repeated click a no-op instead of a second document.
+    public Task OpenNotesAsync() => Main.Current is DocumentViewModel
+        ? Task.CompletedTask
+        : Main.PushAsync(NavigationTarget.Create<IMainViewModel>(window => new DocumentViewModel(
+                window.GetRequiredService<EditorViewModel>(), window.GetRequiredService<PreviewViewModel>(),
+                window.GetRequiredService<RunicNavigator>(), window.GetRequiredService<IRunicModelContext>(), Dialog)),
+            new NavigationRequestOptions(Main.CurrentEntry?.Id)).AsTask();
 
-    public void OpenHome()
-    {
-        if (ReferenceEquals(Main, document) && document.Editor.IsDirty)
-        {
-            // This is an in-page modal. The coordinator owns the transient
-            // ViewModel; closing it clears the Shell's dialog outlet.
-            Dialog ??= new ConfirmNavigationViewModel(
-                "Discard the unsaved edits and return Home?",
-                () => { document.Editor.DiscardChanges(); Dialog = null; Main = home; },
-                () => Dialog = null);
-            return;
-        }
-        Main = home;
-    }
+    // The document's departure guard asks before unsaved edits are discarded.
+    public Task OpenHomeAsync() => Main.CanGoBack ? Main.BackAsync().AsTask() : Task.CompletedTask;
 }
 
-public partial class ShellViewModel : ObservableObject, IDisposable
+// The generator presents each region's Current as a content slot; nothing is forwarded.
+public partial class ShellViewModel(SidebarViewModel sidebar, WorkspaceNavigation navigation) : ObservableObject
 {
-    private readonly WorkspaceNavigation _navigation;
-
-    public ShellViewModel(SidebarViewModel sidebar, WorkspaceNavigation navigation)
-    {
-        Sidebar = sidebar;
-        _navigation = navigation;
-        _navigation.PropertyChanged += OnNavigationChanged;
-    }
-
-    public SidebarViewModel Sidebar { get; }
-    public IMainViewModel Main => _navigation.Main;
-    public IDialogViewModel? Dialog => _navigation.Dialog;
-
-    private void OnNavigationChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(WorkspaceNavigation.Main) or nameof(WorkspaceNavigation.Dialog))
-            OnPropertyChanged(e.PropertyName);
-    }
-
-    public void Dispose() => _navigation.PropertyChanged -= OnNavigationChanged;
+    public SidebarViewModel Sidebar { get; } = sidebar;
+    public NavigationRegion<IMainViewModel> Main => navigation.Main;
+    public NavigationRegion<IDialogViewModel> Dialog => navigation.Dialog;
 }
 
 public partial class SidebarViewModel : ObservableObject, IDisposable
@@ -89,23 +64,26 @@ public partial class SidebarViewModel : ObservableObject, IDisposable
     public SidebarViewModel(WorkspaceNavigation navigation)
     {
         _navigation = navigation;
-        _navigation.PropertyChanged += OnNavigationChanged;
+        _navigation.Main.PropertyChanged += OnMainChanged;
     }
 
-    public string Selected => _navigation.Main is DocumentViewModel ? "Notes" : "Home";
+    public string Selected => _navigation.Main.Current is DocumentViewModel ? "Notes" : "Home";
 
-    [RelayCommand]
-    private void OpenHome() => _navigation.OpenHome();
+    // The navigator orders overlapping requests (a later one supersedes an earlier one that
+    // has not committed), so the buttons stay enabled while the document's guard asks.
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private Task OpenHome() => _navigation.OpenHomeAsync();
 
-    [RelayCommand]
-    private void OpenNotes() => _navigation.OpenDocument();
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private Task OpenNotes() => _navigation.OpenNotesAsync();
 
-    private void OnNavigationChanged(object? sender, PropertyChangedEventArgs e)
+    // Raised inside the model turn that commits the navigation.
+    private void OnMainChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(WorkspaceNavigation.Main)) OnPropertyChanged(nameof(Selected));
+        if (e.PropertyName == nameof(NavigationRegion<IMainViewModel>.Current)) OnPropertyChanged(nameof(Selected));
     }
 
-    public void Dispose() => _navigation.PropertyChanged -= OnNavigationChanged;
+    public void Dispose() => _navigation.Main.PropertyChanged -= OnMainChanged;
 }
 
 /// <summary>A saved note listed on the home page.</summary>
@@ -157,37 +135,65 @@ public partial class HomeViewModel(NotesLibrary library) : ObservableObject, IMa
     public ReadOnlyObservableCollection<SavedNote> RecentNotes => library.Notes;
 }
 
-public partial class DocumentViewModel : ObservableObject, IMainViewModel
+// One visit to the notes. The navigator creates and owns it, and disposes it
+// when it retires. The draft lives in the window-scoped editor, which the
+// document borrows, so it survives across visits.
+public partial class DocumentViewModel : ObservableObject, IMainViewModel, INavigationDepartureGuard, IDisposable
 {
     private readonly PreviewViewModel _preview;
-    private IDocumentPaneViewModel _currentPane;
+    private readonly IRunicModelContext _context;
+    private readonly NavigationRegion<IDialogViewModel> _dialog;
 
-    public DocumentViewModel(EditorViewModel editor, PreviewViewModel preview)
+    public DocumentViewModel(EditorViewModel editor, PreviewViewModel preview, RunicNavigator navigator,
+        IRunicModelContext context, NavigationRegion<IDialogViewModel> dialog)
     {
         Editor = editor;
         _preview = preview;
-        _currentPane = editor;
+        _context = context;
+        _dialog = dialog;
+        // A child region owned by this document: it closes when the document retires,
+        // and keeps the open pane while another page covers the document.
+        CurrentPane = navigator.CreateRegion<IDocumentPaneViewModel>(this, NavigationTarget.Borrow<IDocumentPaneViewModel>(editor),
+            new NavigationRegionOptions(NavigationChildRetention.Keep));
+        CurrentPane.PropertyChanged += OnPaneChanged;
     }
 
     internal EditorViewModel Editor { get; }
 
-    public IDocumentPaneViewModel CurrentPane
-    {
-        get => _currentPane;
-        private set
-        {
-            if (SetProperty(ref _currentPane, value)) OnPropertyChanged(nameof(ActivePane));
-        }
-    }
+    public NavigationRegion<IDocumentPaneViewModel> CurrentPane { get; }
 
     /// <summary>The pane the document currently shows.</summary>
-    public DocumentPane ActivePane => ReferenceEquals(CurrentPane, Editor) ? DocumentPane.Editor : DocumentPane.Preview;
+    public DocumentPane ActivePane => ReferenceEquals(CurrentPane.Current, _preview) ? DocumentPane.Preview : DocumentPane.Editor;
 
     [RelayCommand]
-    private void ShowEditor() => CurrentPane = Editor;
+    private Task ShowEditor() => CurrentPane.CanGoBack ? CurrentPane.BackAsync().AsTask() : Task.CompletedTask;
 
     [RelayCommand]
-    private void ShowPreview() => CurrentPane = _preview;
+    private Task ShowPreview() => CurrentPane.Current is PreviewViewModel
+        ? Task.CompletedTask
+        : CurrentPane.PushAsync(NavigationTarget.Borrow<IDocumentPaneViewModel>(_preview),
+            new NavigationRequestOptions(CurrentPane.CurrentEntry?.Id)).AsTask();
+
+    // Leaving with unsaved edits asks in the dialog region. The guard's token
+    // dismisses the dialog when a later navigation supersedes this one or the
+    // window closes.
+    async ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken)
+    {
+        if (departure.Kind != NavigationDepartureKind.Retire || !Editor.IsDirty) return true;
+        var confirm = _dialog.PushForResult<bool>(
+            NavigationTarget.Own<IDialogViewModel>(new ConfirmNavigationViewModel("Discard the unsaved edits and return Home?")),
+            cancellationToken: cancellationToken);
+        if (await confirm.Completion is not NavigationCompletion<bool>.Completed { Value: true }) return false;
+        await _context.InvokeAsync(Editor.DiscardChanges);
+        return true;
+    }
+
+    private void OnPaneChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(NavigationRegion<IDocumentPaneViewModel>.Current)) OnPropertyChanged(nameof(ActivePane));
+    }
+
+    public void Dispose() => CurrentPane.PropertyChanged -= OnPaneChanged;
 }
 
 public partial class EditorViewModel(INotesStorage storage, NotesLibrary library) : ObservableObject, IDocumentPaneViewModel
@@ -265,14 +271,25 @@ public partial class PreviewViewModel : ObservableObject, IDocumentPaneViewModel
     public void Dispose() => _editor.PropertyChanged -= OnEditorChanged;
 }
 
-public partial class ConfirmNavigationViewModel(
-    string message, Action confirm, Action cancel) : ObservableObject, IDialogViewModel
+// An owned dialog entry pushed for a result: confirming or cancelling completes
+// the request and leaves the dialog region empty.
+public partial class ConfirmNavigationViewModel(string message) : ObservableObject, IDialogViewModel, INavigationInitialize
 {
+    private NavigationEntryContext? _entry;
+
     public string Message => message;
 
-    [RelayCommand]
-    private void Confirm() => confirm();
+    ValueTask INavigationInitialize.InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken)
+    {
+        _entry = entry;
+        return ValueTask.CompletedTask;
+    }
 
     [RelayCommand]
-    private void Cancel() => cancel();
+    private Task Confirm() => CompleteAsync(true);
+
+    [RelayCommand]
+    private Task Cancel() => CompleteAsync(false);
+
+    private Task CompleteAsync(bool confirmed) => _entry is { } entry ? entry.CompleteAsync(confirmed).AsTask() : Task.CompletedTask;
 }

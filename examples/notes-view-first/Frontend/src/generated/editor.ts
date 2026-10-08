@@ -63,7 +63,7 @@ function hydrate(wire: WireState): EditorState {
     body: bridgeWire.string(wire.body),
   };
 }
-const bridgeContract = "NotesWindowViews.EditorViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05";
+const bridgeContract = "NotesWindowViews.EditorViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3";
 const checkedFieldNames = ["title", "body"];
 
 export function connectEditor(): Promise<EditorClient> { return connectEditorAt("editor", false); }

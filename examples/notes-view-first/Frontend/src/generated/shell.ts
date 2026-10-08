@@ -8,7 +8,7 @@ import { pageConfirmNavigation, type ConfirmNavigationPageReference } from "./co
 
 export interface ShellState {
   readonly sidebar: SidebarPageReference;
-  readonly main: DocumentPageReference | HomePageReference;
+  readonly main: DocumentPageReference | HomePageReference | null;
   readonly dialog: ConfirmNavigationPageReference | null;
 }
 
@@ -26,7 +26,7 @@ export function pageShell(id: string): ShellPageReference { return pageShellRefe
 type WireState = Omit<ShellState, "sidebar" | "main" | "dialog"> & {
   readonly revision: number;
   readonly sidebar: { readonly kind: "sidebar"; readonly id: string };
-  readonly main: { readonly kind: "document"; readonly id: string } | { readonly kind: "home"; readonly id: string };
+  readonly main: { readonly kind: "document"; readonly id: string } | { readonly kind: "home"; readonly id: string } | null;
   readonly dialog: { readonly kind: "confirmNavigation"; readonly id: string } | null;
 };
 function hydrate(wire: WireState): ShellState {
@@ -34,11 +34,11 @@ function hydrate(wire: WireState): ShellState {
   return {
     ...state,
     sidebar: wire.sidebar.kind === "sidebar" ? pageSidebar(wire.sidebar.id) : (() => { throw new BridgeError("failed", "Unknown sidebar kind."); })(),
-    main: wire.main.kind === "document" ? pageDocument(wire.main.id) : wire.main.kind === "home" ? pageHome(wire.main.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(),
+    main: wire.main === null ? null : wire.main.kind === "document" ? pageDocument(wire.main.id) : wire.main.kind === "home" ? pageHome(wire.main.id) : (() => { throw new BridgeError("failed", "Unknown main kind."); })(),
     dialog: wire.dialog === null ? null : wire.dialog.kind === "confirmNavigation" ? pageConfirmNavigation(wire.dialog.id) : (() => { throw new BridgeError("failed", "Unknown dialog kind."); })(),
   };
 }
-const bridgeContract = "NotesWindowViews.ShellViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05";
+const bridgeContract = "NotesWindowViews.ShellViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3";
 
 export function connectShell(): Promise<ShellClient> { return connectShellAt("shell", false); }
 async function connectShellAt(route: string, mount = false): Promise<ShellClient> {

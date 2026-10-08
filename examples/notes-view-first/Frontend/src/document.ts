@@ -6,7 +6,7 @@ import { mountPreview } from "./preview.js";
 const paneViews = {
   editor: mountEditor,
   preview: mountPreview,
-} satisfies ViewTemplates<DocumentState["currentPane"]>;
+} satisfies ViewTemplates<NonNullable<DocumentState["currentPane"]>>;
 
 export function mountDocument(host: HTMLElement, documentView: DocumentClient): () => void {
   host.innerHTML = `<h1>Document</h1><p class="muted">This area has its own ViewModel and a nested Editor/Preview outlet.</p><div class="tabs"><button data-pane="editor">Editor</button><button data-pane="preview">Preview</button></div><section id="document-pane" class="card"></section>`;

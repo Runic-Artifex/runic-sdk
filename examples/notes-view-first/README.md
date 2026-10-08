@@ -66,6 +66,34 @@ need no install of their own:
 (cd examples/notes-view-first/Vue && bun run --bun build)
 ```
 
+## Navigation
+
+`AddNotes` calls `AddRunicNavigation()`, so each window scope has one
+`RunicNavigator`. `WorkspaceNavigation` creates two regions on it: `Main`
+starts with the window's Home, and `Dialog` starts empty. `ShellViewModel`
+exposes both regions as content slots. The generated `main` and `dialog`
+references are `| null`, so every frontend handles an empty region.
+
+- **Notes** pushes a new owned `DocumentViewModel` on each visit. Leaving the
+  document retires it and its `CurrentPane` child region. The editor and
+  preview are window-scoped and borrowed, so the draft survives the visit.
+- `CurrentPane` keeps the editor entry when the preview is pushed. **Editor**
+  goes back to that same entry, with its draft.
+- **Home** goes back. When the editor has unsaved edits, the document's
+  departure guard awaits `Dialog.PushForResult<bool>(…)` for
+  `ConfirmNavigationViewModel`. A confirm discards the edits and lets the Back
+  commit. Cancelling, or a dismissal, keeps the document entry. The confirm
+  calls `CompleteAsync`, which returns from its entry and leaves `Dialog`
+  empty.
+- The sidebar commands await the navigation, so a command started during the
+  guard's wait completes after the dialog answers. The navigator orders
+  overlapping requests, so the buttons stay enabled meanwhile. The Angular
+  frontend's ordered window queue dispatches them without waiting for them to
+  complete; otherwise the dialog's answer would queue behind them.
+
+The navigation types are experimental, and the projects suppress
+`RUNICNAV001`.
+
 ## Declared failures
 
 `EditorViewModel.Save` declares `[RunicFailure(typeof(SaveFailure))]`, a
@@ -121,6 +149,7 @@ RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
+RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
 ```
 
 On Linux with Nix, prefix the commands with `direnv exec .`.

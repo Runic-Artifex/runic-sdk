@@ -8,15 +8,16 @@ namespace NotesWindowViews;
 // releases only that presentation as nested content changes.
 internal static class ViewLifetimeCheck
 {
-    public static void Run(bool useSplat)
+    public static async Task RunAsync(bool useSplat)
     {
         using var app = NotesApplication.Create(useSplat);
-        using var scope = app.Services.CreateScope();
+        await using var scope = app.Services.CreateAsyncScope();
         var vm = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
         var native = new ProbeTransport();
         using var transport = new RebindableBridgeTransport(native);
         using var content = new WindowContentSession(transport,
-            scope.ServiceProvider.GetRequiredService<IRunicViewLocator>());
+            scope.ServiceProvider.GetRequiredService<IRunicViewLocator>(),
+            modelContext: scope.ServiceProvider.GetRequiredService<IRunicModelContext>());
         var factory = scope.ServiceProvider.GetRequiredService<
             Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
         using (factory(transport, content, vm))
@@ -25,7 +26,7 @@ internal static class ViewLifetimeCheck
             Require<SidebarView>(1);
             Require<HomeView>(1);
 
-            using (var secondScope = app.Services.CreateScope())
+            await using (var secondScope = app.Services.CreateAsyncScope())
             {
                 var secondVm = secondScope.ServiceProvider.GetRequiredService<ShellViewModel>();
                 if (ReferenceEquals(vm, secondVm))
@@ -33,7 +34,8 @@ internal static class ViewLifetimeCheck
                 var secondNative = new ProbeTransport();
                 using var secondTransport = new RebindableBridgeTransport(secondNative);
                 using var secondContent = new WindowContentSession(secondTransport,
-                    secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>());
+                    secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>(),
+                    modelContext: secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>());
                 var secondFactory = secondScope.ServiceProvider.GetRequiredService<
                     Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
                 using (secondFactory(secondTransport, secondContent, secondVm))
@@ -47,7 +49,7 @@ internal static class ViewLifetimeCheck
             Require<HomeView>(1);
 
             Unmount(native, initial.Main);
-            vm.Sidebar.OpenNotesCommand.Execute(null);
+            await vm.Sidebar.OpenNotesCommand.ExecuteAsync(null);
             using var documentShellState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
             var document = Mount(native, ReferenceId(documentShellState, "main"));
             using var editorState = System.Text.Json.JsonDocument.Parse(native.Call($"content{document.Id}Snapshot"));
@@ -57,9 +59,9 @@ internal static class ViewLifetimeCheck
             Require<EditorView>(1);
             Require<SidebarView>(1);
 
-            var documentModel = (DocumentViewModel)vm.Main;
+            var documentModel = (DocumentViewModel)vm.Main.Current!;
             Unmount(native, editor);
-            documentModel.ShowPreviewCommand.Execute(null);
+            await documentModel.ShowPreviewCommand.ExecuteAsync(null);
             using var previewState = System.Text.Json.JsonDocument.Parse(native.Call($"content{document.Id}Snapshot"));
             var preview = Mount(native, ReferenceId(previewState, "currentPane"));
             Require<EditorView>(0);
@@ -75,7 +77,7 @@ internal static class ViewLifetimeCheck
             for (var cycle = 0; cycle < 20; cycle++)
             {
                 Unmount(native, preview);
-                documentModel.ShowEditorCommand.Execute(null);
+                await documentModel.ShowEditorCommand.ExecuteAsync(null);
                 using var editorCycleState = System.Text.Json.JsonDocument.Parse(
                     native.Call($"content{document.Id}Snapshot"));
                 editor = Mount(native, ReferenceId(editorCycleState, "currentPane"));
@@ -83,7 +85,7 @@ internal static class ViewLifetimeCheck
                 Require<PreviewView>(0);
 
                 Unmount(native, editor);
-                documentModel.ShowPreviewCommand.Execute(null);
+                await documentModel.ShowPreviewCommand.ExecuteAsync(null);
                 using var previewCycleState = System.Text.Json.JsonDocument.Parse(
                     native.Call($"content{document.Id}Snapshot"));
                 preview = Mount(native, ReferenceId(previewCycleState, "currentPane"));
@@ -100,25 +102,32 @@ internal static class ViewLifetimeCheck
                 $"active={activeRoutesBeforeCycles}->{native.ActiveRoutes}");
 
             Unmount(native, preview);
-            documentModel.ShowEditorCommand.Execute(null);
+            await documentModel.ShowEditorCommand.ExecuteAsync(null);
             using var remountedEditorState = System.Text.Json.JsonDocument.Parse(native.Call($"content{document.Id}Snapshot"));
             editor = Mount(native, ReferenceId(remountedEditorState, "currentPane"));
             documentModel.Editor.Title = "Unsaved";
-            vm.Sidebar.OpenHomeCommand.Execute(null);
+            // Leaving waits in the document's guard until the dialog answers.
+            var cancelled = vm.Sidebar.OpenHomeCommand.ExecuteAsync(null);
+            await UntilAsync(() => vm.Dialog.Current is not null, "The guard did not open the dialog.");
             using var cancelDialogState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
             var cancelDialog = Mount(native, ReferenceId(cancelDialogState, "dialog"));
             Require<ConfirmNavigationView>(1);
             Unmount(native, cancelDialog);
-            ((ConfirmNavigationViewModel)vm.Dialog!).CancelCommand.Execute(null);
+            await ((ConfirmNavigationViewModel)vm.Dialog.Current!).CancelCommand.ExecuteAsync(null);
+            await cancelled;
+            if (vm.Main.Current != documentModel || vm.Dialog.Current is not null)
+                throw new InvalidOperationException("Cancelling the dialog did not keep the document.");
             native.Call("shellSnapshot");
             Require<ConfirmNavigationView>(0);
 
-            vm.Sidebar.OpenHomeCommand.Execute(null);
+            var confirmed = vm.Sidebar.OpenHomeCommand.ExecuteAsync(null);
+            await UntilAsync(() => vm.Dialog.Current is not null, "The guard did not open the dialog again.");
             using var confirmDialogState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
             _ = Mount(native, ReferenceId(confirmDialogState, "dialog"));
             Unmount(native, editor);
             Unmount(native, document);
-            ((ConfirmNavigationViewModel)vm.Dialog!).ConfirmCommand.Execute(null);
+            await ((ConfirmNavigationViewModel)vm.Dialog.Current!).ConfirmCommand.ExecuteAsync(null);
+            await confirmed;
             using var homeState = System.Text.Json.JsonDocument.Parse(native.Call("shellSnapshot"));
             _ = Mount(native, ReferenceId(homeState, "main"));
             Require<DocumentView>(0);
@@ -129,6 +138,16 @@ internal static class ViewLifetimeCheck
         Require<SidebarView>(0);
         Require<HomeView>(0);
         Console.WriteLine($"VIEW_LIFETIME_OK|{(useSplat ? "splat" : "microsoft-di")}|two-scopes|mounted-presentations|nested|dialog|detached");
+    }
+
+    private static async Task UntilAsync(Func<bool> condition, string message)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline) throw new InvalidOperationException(message);
+            await Task.Delay(10);
+        }
     }
 
     private static ShellMounts MountShell(ProbeTransport transport)
