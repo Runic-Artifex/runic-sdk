@@ -64,4 +64,8 @@ internal static partial class NavigationLog
     [LoggerMessage(EventId = 1071, EventName = "NavigationResultDropped", Level = LogLevel.Debug,
         Message = "An entry of navigation region {Region} ({RegionId}) completed a PushForResult request that was already dismissed; it went back and the result was dropped.")]
     internal static partial void NavigationResultDropped(ILogger logger, Exception? exception, string region, int regionId);
+
+    [LoggerMessage(EventId = 1073, EventName = "NavigatorDisposeFailed", Level = LogLevel.Error,
+        Message = "Disposing the navigator failed with {ErrorType}; entries may not have retired.")]
+    internal static partial void NavigatorDisposeFailed(ILogger logger, Exception? exception, string errorType);
 }

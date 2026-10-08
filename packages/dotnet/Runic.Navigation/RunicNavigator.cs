@@ -36,13 +36,21 @@ public sealed class RunicNavigatorOptions
 /// <see cref="RunicNavigationServiceCollectionExtensions.AddRunicNavigation"/>.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Each region admits one transition at a time: a later request supersedes earlier ones that have not
 /// started committing. Guards, initialize and resume run outside model turns; a commit re-checks the
 /// region and applies the new state in one turn. Disposing the navigator cancels in-flight transitions
 /// and retires every entry; owned content is disposed outside model turns.
+/// </para>
+/// <para>
+/// When the model context implements <see cref="IRunicModelHookScheduler"/>, factories, guards, initialize and resume
+/// hooks and the disposal of owned content each run as a separate operation on the model's thread, never inline in the
+/// caller's frame or in a commit turn. Otherwise they run outside turns, on the caller's thread until its first await or
+/// on the thread pool. The navigator's own work between hooks always continues on the thread pool.
+/// </para>
 /// </remarks>
 [Experimental(DiagnosticId)]
-public sealed class RunicNavigator : IAsyncDisposable
+public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 {
     /// <summary>The diagnostic ID of the experimental navigation API.</summary>
     public const string DiagnosticId = "RUNICNAV001";
@@ -80,6 +88,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     private long _nextEntryId;
     private int _nextRegionId;
     private bool _closing;
+    // Set when the model context reported itself closed (ObjectDisposedException before a turn or hook started).
+    private bool _contextClosed;
     private TaskCompletionSource? _disposal;
     // The attached presentations: the sinks that forget owned content when it retires.
     private readonly List<PresentationAttachment> _presentations = [];
@@ -230,7 +240,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     // Best-effort disposal of an instance the factory created and no region took, then
     // release of its lease (content first, like retirement). User disposal code never runs
     // under the gate or inside a model turn: inside a turn, and for asynchronous-only
-    // disposal, it runs on the thread pool. That work is tracked like a retirement, so
+    // disposal, it runs on the thread pool; with a hook scheduler it runs as its own
+    // scheduled operation (RunCleanupAsync). That work is tracked like a retirement, so
     // WhenIdleAsync and DisposeAsync wait for it.
     private void DisposeUnclaimed(object? content, IRunicModelContextLease? lease)
     {
@@ -239,7 +250,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             ReleaseUnclaimedLease(lease);
             return;
         }
-        if (!ModelContext.IsExecuting && content is IDisposable disposable)
+        if (ModelContext is not IRunicModelHookScheduler && !ModelContext.IsExecuting && content is IDisposable disposable)
         {
             try { disposable.Dispose(); }
             catch { }
@@ -248,18 +259,23 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate) _retirements.Add(done.Task);
-        _ = Task.Run(async () =>
+        _ = DisposeUnclaimedAsync(content, lease, done);
+    }
+
+    private async Task DisposeUnclaimedAsync(object content, IRunicModelContextLease? lease, TaskCompletionSource done)
+    {
+        try
         {
-            try
-            {
-                if (content is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-                else (content as IDisposable)?.Dispose();
-            }
+            await NavigationAwait.Hop();
+            try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
             catch { }
             ReleaseUnclaimedLease(lease);
+        }
+        finally
+        {
             lock (Gate) _retirements.Remove(done.Task);
             done.TrySetResult();
-        });
+        }
     }
 
     private static void ReleaseUnclaimedLease(IRunicModelContextLease? lease)
@@ -323,7 +339,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             lock (Gate)
                 pending = [.. _running.Select(transition => transition.Finished.Task), .. _retirements];
             if (pending.Length == 0) return;
-            await Task.WhenAll(pending).WaitAsync(cancellationToken).ConfigureAwait(false);
+            await this.AfterUserCode(Task.WhenAll(pending).WaitAsync(cancellationToken));
         }
     }
 
@@ -344,56 +360,94 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// An initialize hook never starts on content that retirement already claimed. The worst case of a disposal is about twice
     /// <see cref="RunicNavigatorOptions.CloseTimeout"/> (transition wait plus clearing turns), plus content disposal.
     /// </remarks>
-    public ValueTask DisposeAsync()
+    public ValueTask DisposeAsync() => new(StartDisposal());
+
+    /// <summary>
+    /// Starts <see cref="DisposeAsync"/> and returns without waiting for it, so a synchronous container disposal on the
+    /// model's thread can't deadlock against a commit that needs that thread. Prefer <see cref="DisposeAsync"/>: after
+    /// this method returns, owned content may still be disposing in the background.
+    /// </summary>
+    /// <remarks>It is idempotent and shares one disposal with <see cref="DisposeAsync"/>. Failures are logged (1073).</remarks>
+    public void Dispose() => _ = StartDisposal();
+
+    private Task StartDisposal()
     {
         var disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var existing = Interlocked.CompareExchange(ref _disposal, disposal, null);
-        if (existing is not null) return new(existing.Task);
-        _ = DisposeCoreAsync(disposal);
-        return new(disposal.Task);
+        if (existing is not null) return existing.Task;
+        // New requests are refused at once, and the wait for running transitions is bounded from
+        // here; the rest of the disposal runs on the thread pool.
+        lock (Gate) _closing = true;
+        _ = DisposeCoreAsync(disposal, new CancellationTokenSource(_closeTimeout, _time));
+        return disposal.Task;
     }
 
-    private async Task DisposeCoreAsync(TaskCompletionSource disposal)
+    private async Task DisposeCoreAsync(TaskCompletionSource disposal, CancellationTokenSource transitionWait)
     {
         try
         {
-            if (ModelContext.IsExecuting) await Task.Yield();
-            List<NavigationTransition> cancel = [];
+            // Never inline in the caller: it may be on the model's thread.
+            await NavigationAwait.Hop();
+            BeginClosing();
             Task[] running;
-            NavigationResultRequestCore[] requests;
-            lock (Gate)
-            {
-                _closing = true;
-                foreach (var region in _regions)
-                    foreach (var transition in region.InFlight)
-                        if (transition.TrySetCancelReason(NavigationCancelReason.Closed)) cancel.Add(transition);
-                requests = [.. _resultRequests];
-            }
-            // Dismiss open PushForResult requests first, so guards awaiting a result unblock.
-            foreach (var request in requests) FinishResult(request, NavigationResultDismissal.Closed);
-            Cancel(cancel);
             lock (Gate) running = [.. _running.Select(transition => transition.Finished.Task), .. _retirements];
             if (running.Length > 0)
             {
-                try { await Task.WhenAll(running).WaitAsync(_closeTimeout, _time).ConfigureAwait(false); }
-                catch (TimeoutException) { lock (Gate) _transitionWaitTimedOut = true; }
+                try { await this.AfterUserCode(Task.WhenAll(running).WaitAsync(transitionWait.Token)); }
+                catch (OperationCanceledException) when (transitionWait.IsCancellationRequested) { lock (Gate) _transitionWaitTimedOut = true; }
             }
 
             NavigationRegionCore[] regions;
             lock (Gate) regions = [.. _regions];
             foreach (var region in regions)
-                foreach (var entry in await CloseRegionAsync(region).ConfigureAwait(false))
-                    await RetireAsync(entry, null).ConfigureAwait(false);
+                foreach (var entry in await this.AfterUserCode(CloseRegionAsync(region)))
+                    await this.AfterUserCode(RetireAsync(entry, null));
             NavigationEntryCore[] remaining;
             lock (Gate) remaining = [.. _tracked];
             foreach (var entry in remaining.OrderBy(entry => entry.Id.Value))
-                await RetireAsync(entry, null).ConfigureAwait(false);
+                await this.AfterUserCode(RetireAsync(entry, null));
             lock (Gate) _presentations.Clear();
+        }
+        catch (Exception error)
+        {
+            NavigationLog.NavigatorDisposeFailed(Logger, error, NavigationTelemetry.ErrorType(error));
         }
         finally
         {
+            transitionWait.Dispose();
             disposal.TrySetResult();
         }
+    }
+
+    // Refuses new requests, dismisses open PushForResult requests (so guards awaiting a result
+    // unblock), then cancels in-flight transitions as closed. Idempotent.
+    private void BeginClosing()
+    {
+        List<NavigationTransition> cancel = [];
+        NavigationResultRequestCore[] requests;
+        lock (Gate)
+        {
+            _closing = true;
+            foreach (var region in _regions)
+                foreach (var transition in region.InFlight)
+                    if (transition.TrySetCancelReason(NavigationCancelReason.Closed)) cancel.Add(transition);
+            requests = [.. _resultRequests];
+        }
+        foreach (var request in requests) FinishResult(request, NavigationResultDismissal.Closed);
+        Cancel(cancel);
+    }
+
+    // The model context threw ObjectDisposedException before a turn or hook started: no commit
+    // can run any more, so the navigator starts closing (amendment A6). DisposeAsync then clears
+    // regions outside turns at once instead of waiting for the close timeout.
+    private void OnModelContextClosed()
+    {
+        lock (Gate)
+        {
+            if (_contextClosed) return;
+            _contextClosed = true;
+        }
+        BeginClosing();
     }
 
     // ---- Admission -------------------------------------------------------
@@ -513,7 +567,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         {
             try
             {
-                (outcome, commit) = await RunPhasesAsync(transition).ConfigureAwait(false);
+                (outcome, commit) = await this.AfterUserCode(RunPhasesAsync(transition));
             }
             catch (Exception error)
             {
@@ -544,7 +598,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 List<NavigationEntryId> retired = [];
                 foreach (var entry in commit.Retire)
                 {
-                    try { await RetireAsync(entry, retired).ConfigureAwait(false); }
+                    try { await this.AfterUserCode(RetireAsync(entry, retired)); }
                     catch (Exception error)
                     {
                         NavigationLog.NavigationEntryCleanupFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
@@ -556,7 +610,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             else if (transition.Pending is { } pending)
             {
                 if (pending.ResultRequest is { } request) FinishResult(request, NavigationResultDismissal.NotCommitted);
-                await RetireAsync(pending, null).ConfigureAwait(false);
+                await this.AfterUserCode(RetireAsync(pending, null));
             }
             LogOutcome(transition.Region, transition.Operation, outcome);
         }
@@ -580,7 +634,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         transition.Phase = NavigationPhase.Guarding;
         if (transition.WaitFor.Length > 0)
         {
-            try { await Task.WhenAll(transition.WaitFor).WaitAsync(token).ConfigureAwait(false); }
+            try { await this.AfterUserCode(Task.WhenAll(transition.WaitFor).WaitAsync(token)); }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 return (CancelledOutcome(transition), null);
@@ -609,7 +663,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (!BasisMatches(plan)) return (NavigationOutcome.Superseded, null);
             bool allowed;
             // Guard hooks of one region never overlap across transitions (see EnterGuardHookAsync).
-            switch (await EnterGuardHookAsync(transition, entry, plan, token).ConfigureAwait(false))
+            switch (await this.AfterUserCode(EnterGuardHookAsync(transition, entry, plan, token)))
             {
                 case GuardSlot.Cancelled: return (CancelledOutcome(transition), null);
                 case GuardSlot.Stale: return (NavigationOutcome.Superseded, null);
@@ -617,7 +671,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             try
             {
                 var departure = new NavigationDeparture(entry.Id, kind, transition.Operation);
-                allowed = await InvokeHook(transition, () => guard.CanDepartAsync(departure, token)).ConfigureAwait(false);
+                allowed = await this.AfterUserCode(StartHook(transition, () => guard.CanDepartAsync(departure, token), token));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -640,7 +694,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
         if (IsClosing(region)) return (NavigationOutcome.Reject(NavigationRejection.Closed), null);
         if (!BasisMatches(plan)) return (NavigationOutcome.Superseded, null);
-        var failure = await PrepareAsync(transition, plan).ConfigureAwait(false);
+        var failure = await this.AfterUserCode(PrepareAsync(transition, plan));
         if (failure is not null) return (failure, null);
         if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
 
@@ -653,12 +707,20 @@ public sealed class RunicNavigator : IAsyncDisposable
             transition.Phase = NavigationPhase.Committing;
         }
         NavigationCommitResult result;
+        // Set when the turn starts, so a closed context (ObjectDisposedException before the turn ran)
+        // is told apart from a turn that threw it.
+        var started = new StrongBox<bool>();
         try
         {
-            result = await ModelContext.InvokeAsync(() => CommitTurn(transition, plan)).ConfigureAwait(false);
+            result = await this.AfterUserCode(ModelContext.InvokeAsync(() =>
+            {
+                Volatile.Write(ref started.Value, true);
+                return CommitTurn(transition, plan);
+            }));
         }
         catch (Exception error)
         {
+            if (error is ObjectDisposedException && !Volatile.Read(ref started.Value)) OnModelContextClosed();
             bool closing;
             lock (Gate) closing = _closing;
             if (closing) return (NavigationOutcome.Reject(NavigationRejection.Closed), null);
@@ -681,7 +743,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 if (entry.Content is null)
                 {
                     var services = Services ?? EmptyServiceProvider.Instance;
-                    var content = InvokeHookSync(transition, () => target.Create(services));
+                    var content = await this.AfterUserCode(StartHook(transition, () => ValueTask.FromResult(target.Create(services)), token));
                     Claim(content);
                     bool retiring;
                     lock (Gate)
@@ -697,8 +759,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                     }
                     if (retiring)
                     {
-                        if (content is IAsyncDisposable late) await late.DisposeAsync().ConfigureAwait(false);
-                        else (content as IDisposable)?.Dispose();
+                        await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content)));
                         return NavigationOutcome.Reject(NavigationRejection.Closed);
                     }
                 }
@@ -716,7 +777,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                     }
                     if (retiringNow)
                     {
-                        await bound.DisposeAsync().ConfigureAwait(false);
+                        await this.AfterUserCode(bound.DisposeAsync());
                         return NavigationOutcome.Reject(NavigationRejection.Closed);
                     }
                 }
@@ -742,9 +803,9 @@ public sealed class RunicNavigator : IAsyncDisposable
                 try
                 {
                     if (target.HasInput)
-                        await InvokeHook(transition, () => target.InitializeWithInputAsync(content_, entry.Context, token)).ConfigureAwait(false);
+                        await this.AfterUserCode(StartHook(transition, () => target.InitializeWithInputAsync(content_, entry.Context, token), token));
                     else if (content_ is INavigationInitialize initialize)
-                        await InvokeHook(transition, () => initialize.InitializeAsync(entry.Context, token)).ConfigureAwait(false);
+                        await this.AfterUserCode(StartHook(transition, () => initialize.InitializeAsync(entry.Context, token), token));
                 }
                 finally { initializing?.TrySetResult(); }
             }
@@ -774,7 +835,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 lock (Gate) retiringResume = resumed.Retiring is not null;
                 if (retiringResume) return NavigationOutcome.Reject(NavigationRejection.Closed);
                 var request = new NavigationResume(resumed.Id, transition.Operation);
-                await InvokeHook(transition, () => resume.ResumeAsync(request, token)).ConfigureAwait(false);
+                await this.AfterUserCode(StartHook(transition, () => resume.ResumeAsync(request, token), token));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -933,7 +994,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                     return GuardSlot.Entered;
                 }
             }
-            try { await blocker.WaitAsync(token).ConfigureAwait(false); }
+            try { await this.AfterUserCode(blocker.WaitAsync(token)); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { return GuardSlot.Cancelled; }
         }
     }
@@ -1175,8 +1236,9 @@ public sealed class RunicNavigator : IAsyncDisposable
     {
         try
         {
-            // Owned disposal never runs inside a model turn.
-            if (ModelContext.IsExecuting) await Task.Yield();
+            // Owned disposal never runs inside a model turn: retirement continues on the thread
+            // pool, and user cleanup runs there or as its own scheduled operation.
+            await NavigationAwait.Hop();
 
             // 1. Cancel the entry's retirement token, then end its result request: completed
             // when a committed return carried a value, dismissed otherwise.
@@ -1196,7 +1258,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                     var wait = InitializeWait();
                     if (wait is { } limit)
                     {
-                        try { await initializing.WaitAsync(limit, _time).ConfigureAwait(false); }
+                        try { await this.AfterUserCode(initializing.WaitAsync(limit, _time)); }
                         catch (TimeoutException) { NavigationLog.NavigationInitializeTimedOut(Logger, null, entry.Region.ContentTypeName, entry.Region.Id, entry.ContentTypeName); }
                     }
                     else NavigationLog.NavigationInitializeTimedOut(Logger, null, entry.Region.ContentTypeName, entry.Region.Id, entry.ContentTypeName);
@@ -1208,9 +1270,9 @@ public sealed class RunicNavigator : IAsyncDisposable
                 lock (Gate) _regionsByOwner.Remove(content, out children);
                 foreach (var child in children ?? [])
                 {
-                    foreach (var descendant in await CloseRegionAsync(child).ConfigureAwait(false))
+                    foreach (var descendant in await this.AfterUserCode(CloseRegionAsync(child)))
                     {
-                        try { await RetireAsync(descendant, retired).ConfigureAwait(false); }
+                        try { await this.AfterUserCode(RetireAsync(descendant, retired)); }
                         catch (Exception error) { LogCleanup(entry, "Children", error); }
                     }
                 }
@@ -1218,12 +1280,9 @@ public sealed class RunicNavigator : IAsyncDisposable
                 // 3. Detach every presentation of the content.
                 ForgetPresentations(entry);
 
-                // 4. Dispose the content outside turns.
-                try
-                {
-                    if (content is IAsyncDisposable asyncDisposable) await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-                    else (content as IDisposable)?.Dispose();
-                }
+                // 4. Dispose the content outside turns: on the thread pool, or as its own
+                // scheduled operation on the model's thread while the context accepts them (A9).
+                try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
                 catch (Exception error) { LogCleanup(entry, "Dispose", error); }
             }
 
@@ -1237,7 +1296,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             }
             if (lease is not null)
             {
-                try { await lease.DisposeAsync().ConfigureAwait(false); }
+                try { await this.AfterUserCode(lease.DisposeAsync()); }
                 catch (Exception error) { LogCleanup(entry, "Lease", error); }
             }
         }
@@ -1328,7 +1387,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             // A turn abandoned after a timeout can still fault later; observe it.
             _ = turn.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            try { await turn.WaitAsync(wait.Value, _time).ConfigureAwait(false); }
+            try { await this.AfterUserCode(turn.WaitAsync(wait.Value, _time)); }
             catch (TimeoutException)
             {
                 // A blocked turn: clear outside a turn rather than hang disposal. A turn that
@@ -1340,6 +1399,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             catch (ObjectDisposedException)
             {
                 // The model context is gone, so no turn can observe the region any more.
+                OnModelContextClosed();
                 fallback = true;
             }
             catch (Exception error)
@@ -1376,6 +1436,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     {
         lock (Gate)
         {
+            // A closed context runs no turn: clear outside a turn at once.
+            if (_contextClosed) return null;
             if (!_closing) return _closeTimeout;
             if (_closeTurnsTimedOut) return null;
             _closeTurnsStart ??= _time.GetTimestamp();
@@ -1508,30 +1570,106 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
     }
 
-    private static T InvokeHookSync<T>(NavigationTransition transition, Func<T> hook)
+    // Starts one hook of a transition: a factory, guard, initialize or resume. Without a hook
+    // scheduler it runs here, outside turns, as before. With one it runs as its own scheduled
+    // operation on the model's thread (W240-001 §4.4); the operation sets the hook marker itself,
+    // so reentrancy checks see it on that thread. An ObjectDisposedException before the operation
+    // started means that the context closed: the navigator starts closing, so the caller's
+    // failure path settles the transition as Rejected(Closed) without logging a failure.
+    private ValueTask<T> StartHook<T>(NavigationTransition transition, Func<ValueTask<T>> hook, CancellationToken token)
     {
-        var previous = HookTransition.Value;
-        HookTransition.Value = transition;
-        try { return hook(); }
-        finally { HookTransition.Value = previous; }
-    }
-
-    private static ValueTask InvokeHook(NavigationTransition transition, Func<ValueTask> hook)
-    {
-        var previous = HookTransition.Value;
-        HookTransition.Value = transition;
-        try { return hook(); }
-        catch (Exception error) { return ValueTask.FromException(error); }
-        finally { HookTransition.Value = previous; }
-    }
-
-    private static ValueTask<T> InvokeHook<T>(NavigationTransition transition, Func<ValueTask<T>> hook)
-    {
+        if (ModelContext is IRunicModelHookScheduler scheduler)
+            return new(ScheduleHookAsync(scheduler, new ScheduledHook<T>(transition, hook), token));
         var previous = HookTransition.Value;
         HookTransition.Value = transition;
         try { return hook(); }
         catch (Exception error) { return ValueTask.FromException<T>(error); }
         finally { HookTransition.Value = previous; }
+    }
+
+    private ValueTask<bool> StartHook(NavigationTransition transition, Func<ValueTask> hook, CancellationToken token) =>
+        StartHook(transition, () => Completion(hook()), token);
+
+    private async Task<T> ScheduleHookAsync<T>(IRunicModelHookScheduler scheduler, ScheduledHook<T> hook, CancellationToken token)
+    {
+        try { return await this.AfterUserCode(Schedule(scheduler, hook.Run, token)); }
+        catch (ObjectDisposedException) when (!hook.Started)
+        {
+            OnModelContextClosed();
+            throw;
+        }
+    }
+
+    // Runs user cleanup (owned Dispose/DisposeAsync) outside model turns. With a hook scheduler it is
+    // its own scheduled operation on the model's thread; once the context is closed it falls back to
+    // the thread pool, so cleanup still runs after shutdown (amendment A9). Without a scheduler it runs
+    // here; callers are already on the thread pool. Failures propagate to the caller, which logs them.
+    private async Task RunCleanupAsync(Func<ValueTask> cleanup)
+    {
+        if (ModelContext is IRunicModelHookScheduler scheduler)
+        {
+            var operation = new ScheduledHook<bool>(null, () => Completion(cleanup()));
+            try
+            {
+                await this.AfterUserCode(Schedule(scheduler, operation.Run, CancellationToken.None));
+                return;
+            }
+            catch (ObjectDisposedException) when (!operation.Started) { }
+            await NavigationAwait.Hop();
+        }
+        await this.AfterUserCode(cleanup());
+    }
+
+    private static ValueTask DisposeContent(object content)
+    {
+        try
+        {
+            if (content is IAsyncDisposable asyncDisposable) return asyncDisposable.DisposeAsync();
+            (content as IDisposable)?.Dispose();
+            return ValueTask.CompletedTask;
+        }
+        catch (Exception error) { return ValueTask.FromException(error); }
+    }
+
+    private static Task<T> Schedule<T>(IRunicModelHookScheduler scheduler, Func<Task<T>> operation, CancellationToken token)
+    {
+        try
+        {
+            return scheduler.RunHookAsync(operation, token)
+                ?? Task.FromException<T>(new InvalidOperationException("IRunicModelHookScheduler.RunHookAsync returned null."));
+        }
+        catch (Exception error) { return Task.FromException<T>(error); }
+    }
+
+    // Adapts a hook without a result, preserving its exception or cancellation, without an await.
+    private static ValueTask<bool> Completion(ValueTask task)
+    {
+        if (task.IsCompletedSuccessfully) return new(true);
+        return new(task.AsTask().ContinueWith(static completed =>
+        {
+            completed.GetAwaiter().GetResult();
+            return true;
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
+    }
+
+    // One scheduled operation: records that it started (to tell a closed context apart from a hook
+    // that threw ObjectDisposedException), sets the hook marker of its transition around the
+    // synchronous part of the hook, and turns a synchronous throw into a faulted task.
+    private sealed class ScheduledHook<T>(NavigationTransition? transition, Func<ValueTask<T>> hook)
+    {
+        private volatile bool _started;
+
+        public bool Started => _started;
+
+        public Task<T> Run()
+        {
+            _started = true;
+            var previous = HookTransition.Value;
+            HookTransition.Value = transition;
+            try { return hook().AsTask(); }
+            catch (Exception error) { return Task.FromException<T>(error); }
+            finally { HookTransition.Value = previous; }
+        }
     }
 
     // Interface checks only: every INavigationInitialize<TInput> is an

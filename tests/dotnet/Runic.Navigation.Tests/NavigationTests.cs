@@ -8,7 +8,7 @@ using Microsoft.Extensions.Time.Testing;
 namespace Runic.Navigation.Tests;
 
 // W230-002 slice 1: the experimental navigator core (design record W230-001 §4-§6, §10, §13).
-internal static class NavigationTests
+internal static partial class NavigationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
@@ -38,6 +38,7 @@ internal static class NavigationTests
         await HookFailuresAsync();
         await GuardsRunForRetainAsync();
         await ContextDisposedDuringCommitAsync();
+        await TurnThrowingObjectDisposedFailsAsync();
         await ReentrantHooksAsync();
         await AdmissionInsideTurnAsync();
         await TransitioningRaisedInTurnsAsync();
@@ -550,12 +551,15 @@ internal static class NavigationTests
     private static async Task SharedClearingDeadlineAsync()
     {
         var context = new GatedContext();
-        var time = new FakeTimeProvider();
+        var time = new CountingTimeProvider();
         var fixture = new Fixture(context, time, TimeSpan.FromSeconds(10));
         var first = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Own(new Page("first")));
         var second = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Own(new Page("second")));
         context.Close();
         var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        // Disposal continues on the thread pool: wait for the deadline of the transition wait
+        // (created by DisposeAsync) and of the first clearing turn before the clock moves.
+        await Until(() => time.Timers >= 2, "Disposal did not reach the first clearing turn.");
         time.Advance(TimeSpan.FromSeconds(11));
         await Wait(disposal);
         Require(first.Current is null && second.Current is null, "A timed-out close left a region populated.");
@@ -761,13 +765,29 @@ internal static class NavigationTests
         await gated.Inner.DisposeAsync();
         gated.Open();
         var result = await Wait(pending);
-        Require(result is NavigationResult<Page>.Failed { Phase: NavigationPhase.Committing, Error: ObjectDisposedException }
+        // A closed context is a close, not a failure (W240-001 amendment A6): no 1062, and the navigator starts closing.
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }
             && Names(region) == "home" && next.Disposed == 1,
             $"A disposed context during commit gave {result}.");
-        Require(fixture.Logs.Single(1062).Exception is ObjectDisposedException, "1062 did not carry the exception.");
+        Require(fixture.Logs.Count(1062) == 0, "A closed context logged a commit failure.");
+        var late = await Wait(region.PushAsync(NavigationTarget.Own(new Page("late"))));
+        Require(late is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed },
+            $"A request after the context closed gave {late}.");
     }
 
-    // ---- Reentrancy and turns ---------------------------------------------
+    // A commit turn that itself throws ObjectDisposedException is a failure, not a closed context.
+    private static async Task TurnThrowingObjectDisposedFailsAsync()
+    {
+        await using var inner = new Fixture();
+        await using var fixture = new Fixture(new ThrowingTurnContext(inner.Context));
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var result = await Wait(region.PushAsync(NavigationTarget.Own(new Page("next"))));
+        Require(result is NavigationResult<Page>.Failed { Phase: NavigationPhase.Committing, Error: ObjectDisposedException }
+            && fixture.Logs.Single(1062).Exception is ObjectDisposedException,
+            $"A turn that threw ObjectDisposedException gave {result}.");
+        Require(!Throws<ObjectDisposedException>(() => fixture.Navigator.CreateRegion<Page>(new object())),
+            "The navigator started closing after a turn threw ObjectDisposedException.");
+    }
 
     private static async Task ReentrantHooksAsync()
     {
@@ -2179,6 +2199,43 @@ internal static class NavigationTests
             var gate = new TaskCompletionSource();
             gate.SetResult();
             return gate;
+        }
+    }
+
+    // Runs turns in an inner context; each turn throws ObjectDisposedException after it started.
+    private sealed class ThrowingTurnContext(IRunicModelContext inner) : IRunicModelContext
+    {
+        public bool IsExecuting => inner.IsExecuting;
+
+        public event Action<Exception>? UnhandledTurnException
+        {
+            add => inner.UnhandledTurnException += value;
+            remove => inner.UnhandledTurnException -= value;
+        }
+
+        public bool TryPost(Action turn) => inner.TryPost(turn);
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) => inner.InvokeAsync(turn, cancellationToken);
+
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) =>
+            inner.InvokeAsync<T>(() =>
+            {
+                turn();
+                throw new ObjectDisposedException("model");
+            }, cancellationToken);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    // Counts the timers created, so a test can advance the clock once the code under test waits.
+    private sealed class CountingTimeProvider : FakeTimeProvider
+    {
+        private int _timers;
+        public int Timers => Volatile.Read(ref _timers);
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            Interlocked.Increment(ref _timers);
+            return base.CreateTimer(callback, state, dueTime, period);
         }
     }
 
