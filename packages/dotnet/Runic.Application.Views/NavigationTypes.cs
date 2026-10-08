@@ -185,6 +185,56 @@ public abstract record NavigationResult<TContent> where TContent : class
     public sealed record Superseded : NavigationResult<TContent>;
 }
 
+/// <summary>How a <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/> request ended.</summary>
+/// <typeparam name="TResult">The result type.</typeparam>
+[Experimental(RunicNavigator.DiagnosticId)]
+public abstract record NavigationCompletion<TResult>
+{
+    private NavigationCompletion()
+    {
+    }
+
+    /// <summary>
+    /// The result entry called <see cref="NavigationEntryContext.CompleteAsync{TResult}"/>, and the
+    /// transition that returned from it with <paramref name="Value"/> committed.
+    /// </summary>
+    /// <param name="Value">The result.</param>
+    public sealed record Completed(TResult Value) : NavigationCompletion<TResult>;
+
+    /// <summary>
+    /// The request ended without a result: its push did not commit, the entry retired without
+    /// completing, the caller's token was cancelled after the commit, or the navigator closed.
+    /// </summary>
+    public sealed record Dismissed : NavigationCompletion<TResult>;
+}
+
+/// <summary>A push that waits for a typed result from the pushed entry.</summary>
+/// <typeparam name="TContent">The region's content type.</typeparam>
+/// <typeparam name="TResult">The result type.</typeparam>
+/// <remarks>
+/// <see cref="Completion"/> ends <see cref="NavigationCompletion{TResult}.Completed"/> only through
+/// <see cref="NavigationEntryContext.CompleteAsync{TResult}"/> on the result entry, and
+/// <see cref="NavigationCompletion{TResult}.Dismissed"/> on every other path. Both tasks complete
+/// asynchronously and are never completed inside a commit turn.
+/// </remarks>
+[Experimental(RunicNavigator.DiagnosticId)]
+public sealed class NavigationResultRequest<TContent, TResult> where TContent : class
+{
+    private readonly Task<NavigationResult<TContent>> _transition;
+
+    internal NavigationResultRequest(Task<NavigationResult<TContent>> transition, Task<NavigationCompletion<TResult>> completion)
+    {
+        _transition = transition;
+        Completion = completion;
+    }
+
+    /// <summary>Gets the outcome of the push. Unlike most value tasks, it can be awaited more than once.</summary>
+    public ValueTask<NavigationResult<TContent>> Transition => new(_transition);
+
+    /// <summary>Gets the request's completion: the entry's result, or a dismissal.</summary>
+    public Task<NavigationCompletion<TResult>> Completion { get; }
+}
+
 /// <summary>A navigation target created by <see cref="NavigationTarget"/>.</summary>
 /// <typeparam name="TContent">The content type.</typeparam>
 /// <remarks>Only targets from <see cref="NavigationTarget"/> are accepted; other implementations are rejected.</remarks>

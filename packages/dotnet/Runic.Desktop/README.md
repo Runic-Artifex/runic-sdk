@@ -11,6 +11,16 @@ single-client admission, scoped-root content access, redacted failures, and
 non-cacheable bootstrap content. Additional origins, multiple clients, missing
 browser origins, or non-loopback exposure are explicit immutable options.
 
+Start an application with `DesktopEventLoop.Run(options, async host => ...)`,
+called directly from `Main` before any await. It returns the application's exit
+code and picks the event loop for the platform and the window host: the
+factory's own loop for an `IDesktopEventLoopWindowHostFactory` (GTK 4 through
+`WithGtk4()` from `Runic.Desktop.Gtk4`), the AppKit main-thread loop on macOS,
+and a plain wait on Windows and Linux GTK 3. The options are validated before
+any loop starts. If the factory cannot run its loop, the reasons go to
+`DiagnosticSink` and the logger, and the plain loop runs so a browser fallback
+can open. One Desktop event loop runs per process.
+
 `DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
 
 | Case | Serves |
@@ -51,12 +61,17 @@ concerns, a `Remediation`, and a `Severity`. Errors make the request fail when i
 opens; warnings mean the presentation ignores or narrows an option.
 `ThrowIfInvalid()` throws a `DesktopConfigurationException` listing every error,
 and each diagnostic is logged through `DesktopHostOptions.LoggerFactory`.
-`GetPresentationPreflight` returns the same checks as `Diagnostic` and
-`OptionDiagnostics` for applications that present them themselves.
+`GetPresentationPreflight` returns the same checks as `Diagnostics` (its first
+entry is `Diagnostic`) and `OptionDiagnostics` for applications that present them
+themselves. An unavailable presentation reports every missing prerequisite at
+once: a GTK4 selection without its provider, for example, lists
+`gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing` and
+`graphical-session-missing` together. A custom `IDesktopWindowHostFactory` can do
+the same by overriding `GetAvailabilityDiagnostics()`.
 
 | Code | Severity | Reported when |
 | --- | --- | --- |
-| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
+| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
 | `browser-unsupported` | Error | `Browser` is Safari or Opera, which Runic Desktop cannot launch. |
 | `window-option-invalid` | Error | An option has an undefined value, or `ConfirmCloseAsync` is set for a browser presentation. |
 | `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |

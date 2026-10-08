@@ -12,4 +12,8 @@ internal static partial class DesktopLog
     [LoggerMessage(EventId = 2001, EventName = "DesktopWindowRegistrationMissing", Level = LogLevel.Error,
         Message = "Desktop Window check {Code} failed: {DiagnosticMessage} {Remediation}")]
     internal static partial void RegistrationMissing(ILogger logger, string code, string diagnosticMessage, string remediation);
+
+    [LoggerMessage(EventId = 2002, EventName = "DesktopWindowCloseAfterOpen", Level = LogLevel.Warning,
+        Message = "{Variable}=1 is set; the Desktop window that just opened is being closed.")]
+    internal static partial void CloseAfterOpen(ILogger logger, string variable);
 }

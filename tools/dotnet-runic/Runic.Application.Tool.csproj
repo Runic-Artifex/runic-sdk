@@ -19,6 +19,7 @@
     <EmbeddedResource Include="metadata/runic.compatibility-set.json"
                       LogicalName="Runic.Application.Tool.runic.compatibility-set.json" />
     <PackageReference Include="Runic.CommandLine" />
+    <Compile Include="../../packages/dotnet/Runic.Desktop/Internal/Gtk4NativeLibraries.cs" Link="Shared/Gtk4NativeLibraries.cs" />
   </ItemGroup>
   <Import Project="../../eng/build/application.targets" />
   <ItemGroup>

@@ -1,5 +1,5 @@
 using Runic.Application.Views;
-#if (host == "desktop")
+#if (desktopHost)
 using Runic.Application.Views.Desktop;
 #else
 using Runic.Application.Views.CsWebUi;
@@ -7,7 +7,7 @@ using Runic.Application.Views.CsWebUi;
 #if (viewModels == "reactiveui")
 using Runic.Application.Views.ReactiveUI;
 #endif
-#if (host == "desktop")
+#if (desktopHost)
 using Runic.Desktop;
 #endif
 
@@ -15,21 +15,43 @@ namespace RunicWindowApp;
 
 // The build generates a typed TypeScript client for each Window and View
 // declared here. AddRunicViews() registers the Views for dependency injection.
-#if (host == "desktop" && viewModels == "reactiveui")
+#if (desktopHost && viewModels == "reactiveui")
 public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
     : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
     public DesktopWindow Presentation => host.Presentation;
+#if (gtk4)
+    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
+    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 4,
+    // PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)).
+    // Do not use LinuxPlatformProvider here: it parents dialogs through GTK 3.
+#else
+    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
+    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 3,
+    // LinuxPlatformProvider.CreateFileDialogs(NativeOwner).
+#endif
+    public DesktopNativeOwner NativeOwner => host.NativeOwner;
     public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 
 public sealed partial class WelcomeView : ReactiveRunicView<WelcomeViewModel>;
 public sealed partial class CounterView : ReactiveRunicView<CounterViewModel>;
-#elif (host == "desktop")
+#elif (desktopHost)
 public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
     : RunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
     public DesktopWindow Presentation => host.Presentation;
+#if (gtk4)
+    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
+    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 4,
+    // PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)).
+    // Do not use LinuxPlatformProvider here: it parents dialogs through GTK 3.
+#else
+    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
+    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 3,
+    // LinuxPlatformProvider.CreateFileDialogs(NativeOwner).
+#endif
+    public DesktopNativeOwner NativeOwner => host.NativeOwner;
     public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 

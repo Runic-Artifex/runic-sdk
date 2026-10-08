@@ -57,6 +57,22 @@ internal static class NavigationTests
         await CleanupFailureIsLoggedAsync();
         await OverrunIsLoggedAsync();
         await ServiceRegistrationAsync();
+        await ResultCompletedAsync();
+        await ResultFromEmptyRegionAsync();
+        await ResultDismissedWhenNotCommittedAsync();
+        await ResultDismissedOnRetirementAsync();
+        await ResultTypeChecksAsync();
+        await ResultCompleteRejectedKeepsRequestOpenAsync();
+        await ResultCallerCancelledAfterCommitAsync();
+        await ResultCallerCancelledBackRejectedAsync();
+        await ResultCallerCancelledThenPushRetiresAsync();
+        await ResultCallerCancelledDuringRetirementAsync();
+        await ResultDismissalBackRejectedKeepsEntryAsync();
+        await ResultDismissedOnCloseAsync();
+        await SiblingGuardAwaitsResultAsync(close: false);
+        await SiblingGuardAwaitsResultAsync(close: true);
+        await ResultRaceAsync(seed: 230_003);
+        await ResultRaceAsync(seed: 61, disposeDuringRace: true);
         await RandomizedRaceAsync(seed: 230_002);
         await RandomizedRaceAsync(seed: 61);
         await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true);
@@ -1208,6 +1224,570 @@ internal static class NavigationTests
         Require(Throws<ObjectDisposedException>(() => navigator.CreateRegion<Page>(new object())), "The scope did not dispose the navigator.");
     }
 
+    // ---- PushForResult (W230-003) ------------------------------------------
+
+    private static async Task ResultCompletedAsync()
+    {
+        await using var fixture = new Fixture();
+        var home = new Page("home");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var picker = new InitPage("picker");
+        var request = region.PushForResult<string>(NavigationTarget.Own<Page>(picker));
+        var pushed = await Wait(request.Transition);
+        Require(pushed is NavigationResult<Page>.Committed { Current.Content: var current } && current == picker
+            && await Wait(request.Transition) is NavigationResult<Page>.Committed,
+            $"PushForResult did not commit, or its transition could not be awaited twice: {pushed}");
+        Require(!request.Completion.IsCompleted, "The completion ended before the entry completed.");
+
+        // The completion is set after the commit turn of the return, never inside it.
+        var completedInTurn = false;
+        region.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(region.Current)) completedInTurn |= request.Completion.IsCompleted;
+        };
+        var back = await Wait(picker.Entry!.CompleteAsync("chosen"));
+        Require(back is NavigationResult<object>.Committed { Current.Content: var resumed, Retired: [var retired] } && resumed == home
+            && retired == picker.Entry.Id, $"CompleteAsync did not go back: {back}");
+        var completion = await Wait(request.Completion);
+        Require(completion is NavigationCompletion<string>.Completed { Value: "chosen" } && !completedInTurn,
+            $"The request ended {completion}; completed inside the commit turn: {completedInTurn}.");
+        Require(picker.Disposed == 1 && home.Resumed == 1 && region.Current == home && fixture.Logs.Count(1070) == 0,
+            "Completing did not retire the result entry and resume the previous one.");
+        var again = await Wait(picker.Entry.CompleteAsync("again"));
+        Require(again is NavigationResult<object>.Rejected { Reason: NavigationRejection.NotCurrent } && fixture.Logs.Count(1071) == 0,
+            $"A second CompleteAsync gave {again}.");
+    }
+
+    // A result entry pushed onto an empty region (an in-page dialog) returns to the empty state.
+    private static async Task ResultFromEmptyRegionAsync()
+    {
+        await using var fixture = new Fixture();
+        var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        var confirm = new InitPage("confirm");
+        var request = dialog.PushForResult<bool>(NavigationTarget.Own<Page>(confirm));
+        Require(await Wait(request.Transition) is NavigationResult<Page>.Committed && dialog.Current == confirm && !dialog.CanGoBack,
+            "PushForResult into an empty region did not commit.");
+        var plainBack = await Wait(dialog.BackAsync());
+        Require(plainBack is NavigationResult<Page>.Rejected { Reason: NavigationRejection.NoHistory } && dialog.Current == confirm,
+            $"A plain Back from the only entry gave {plainBack}.");
+        var back = await Wait(confirm.Entry!.CompleteAsync(true));
+        Require(back is NavigationResult<object>.Committed { Current: null } && dialog.Current is null && dialog.CurrentEntry is null,
+            $"Completing the only entry did not empty the region: {back}");
+        Require(await Wait(request.Completion) is NavigationCompletion<bool>.Completed { Value: true } && confirm.Disposed == 1
+            && fixture.Navigator.TrackedEntryCount == 0, "The result was not delivered from the emptied region.");
+    }
+
+    private static async Task ResultDismissedWhenNotCommittedAsync()
+    {
+        await using var fixture = new Fixture();
+        var home = new Page("home");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+
+        var stale = region.PushForResult<int>(NavigationTarget.Own(new Page("stale")), new NavigationRequestOptions(new NavigationEntryId(99)));
+        Require(stale.Completion.IsCompleted && await Wait(stale.Transition) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.NotCurrent }
+            && await Wait(stale.Completion) is NavigationCompletion<int>.Dismissed, "A request rejected at admission was not dismissed.");
+
+        home.Guard = (_, _) => ValueTask.FromResult(false);
+        var vetoedPage = new Page("vetoed");
+        var vetoed = region.PushForResult<int>(NavigationTarget.Own(vetoedPage));
+        Require(await Wait(vetoed.Transition) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Guard }
+            && await Wait(vetoed.Completion) is NavigationCompletion<int>.Dismissed && vetoedPage.Disposed == 1,
+            "A vetoed request was not dismissed.");
+        home.Guard = null;
+
+        var failing = new InitPage("failing") { Initialize = (_, _) => throw new InvalidOperationException("initialize") };
+        var failed = region.PushForResult<int>(NavigationTarget.Own<Page>(failing));
+        Require(await Wait(failed.Transition) is NavigationResult<Page>.Failed { Phase: NavigationPhase.Preparing }
+            && await Wait(failed.Completion) is NavigationCompletion<int>.Dismissed && failing.Disposed == 1,
+            "A failed request was not dismissed.");
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var never = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slow = new InitPage("slow")
+        {
+            Initialize = async (_, token) =>
+            {
+                started.TrySetResult();
+                await never.Task.WaitAsync(token);
+            },
+        };
+        var superseded = region.PushForResult<int>(NavigationTarget.Own<Page>(slow));
+        await Wait(started.Task);
+        var later = await Wait(region.PushAsync(NavigationTarget.Own(new Page("later"))));
+        Require(later is NavigationResult<Page>.Committed && await Wait(superseded.Transition) is NavigationResult<Page>.Superseded
+            && await Wait(superseded.Completion) is NavigationCompletion<int>.Dismissed && slow.Disposed == 1,
+            $"A superseded request was not dismissed: {later}.");
+
+        var cancelStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var blocking = new InitPage("blocking")
+        {
+            Initialize = async (_, token) =>
+            {
+                cancelStarted.TrySetResult();
+                await never.Task.WaitAsync(token);
+            },
+        };
+        using var cancel = new CancellationTokenSource();
+        var cancelled = region.PushForResult<int>(NavigationTarget.Own<Page>(blocking), cancellationToken: cancel.Token);
+        await Wait(cancelStarted.Task);
+        await cancel.CancelAsync();
+        Require(await Wait(cancelled.Transition) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled }
+            && await Wait(cancelled.Completion) is NavigationCompletion<int>.Dismissed && blocking.Disposed == 1,
+            "A request cancelled before its commit was not dismissed.");
+
+        var dismissals = fixture.Logs.All(1070).ToArray();
+        Require(dismissals.Length == 5 && dismissals.All(entry => entry.Level == LogLevel.Debug
+            && entry.State["Reason"]?.ToString() == "NotCommitted" && entry.State["Region"] as string == "Page" && entry.State["RegionId"] is 1),
+            $"Expected five 1070 NotCommitted entries, got {dismissals.Length}.");
+    }
+
+    private static async Task ResultDismissedOnRetirementAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+
+        // A plain Back retires the entry without completing it.
+        var first = new InitPage("first");
+        var request = region.PushForResult<string>(NavigationTarget.Own<Page>(first));
+        await Wait(request.Transition);
+        Require(await Wait(region.BackAsync()) is NavigationResult<Page>.Committed
+            && await Wait(request.Completion) is NavigationCompletion<string>.Dismissed && first.Disposed == 1,
+            "An entry that retired without completing did not dismiss its request.");
+        Require(fixture.Logs.Single(1070).State["Reason"]?.ToString() == "Retired", "1070 did not report the retirement.");
+
+        // A retained result entry can't complete, and dismisses when it retires.
+        var retained = new InitPage("retained");
+        var kept = region.PushForResult<string>(NavigationTarget.Own<Page>(retained));
+        await Wait(kept.Transition);
+        await Wait(region.PushAsync(NavigationTarget.Own(new Page("top"))));
+        var notCurrent = await Wait(retained.Entry!.CompleteAsync("x"));
+        Require(notCurrent is NavigationResult<object>.Rejected { Reason: NavigationRejection.NotCurrent } && !kept.Completion.IsCompleted,
+            $"A retained result entry completed: {notCurrent}.");
+        Require(await Wait(region.ClearHistoryAsync()) is NavigationResult<Page>.Committed
+            && await Wait(kept.Completion) is NavigationCompletion<string>.Dismissed && retained.Disposed == 1,
+            "ClearHistory did not dismiss the retained result entry's request.");
+    }
+
+    private static async Task ResultTypeChecksAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var plain = new InitPage("plain");
+        await Wait(region.PushAsync(NavigationTarget.Own<Page>(plain)));
+        Require(Throws<InvalidOperationException>(() => _ = plain.Entry!.CompleteAsync(1).AsTask()) && region.Current == plain,
+            "CompleteAsync on an entry pushed without PushForResult did not throw.");
+
+        var typed = new InitPage("typed");
+        var request = region.PushForResult<string>(NavigationTarget.Own<Page>(typed));
+        await Wait(request.Transition);
+        Require(Throws<InvalidOperationException>(() => _ = typed.Entry!.CompleteAsync(42).AsTask()) && region.Current == typed && !request.Completion.IsCompleted,
+            "CompleteAsync with the wrong result type did not throw.");
+
+        // A request for a base type takes a derived result.
+        var general = new InitPage("general");
+        var any = region.PushForResult<object>(NavigationTarget.Own<Page>(general));
+        await Wait(any.Transition);
+        Require(await Wait(general.Entry!.CompleteAsync("text")) is NavigationResult<object>.Committed
+            && await Wait(any.Completion) is NavigationCompletion<object>.Completed { Value: "text" },
+            "A request for object did not take a string result.");
+
+        // Value types are checked at run time: bool completes bool?, and a boxed int completes object.
+        var optional = new InitPage("optional");
+        var maybe = region.PushForResult<bool?>(NavigationTarget.Own<Page>(optional));
+        await Wait(maybe.Transition);
+        Require(await Wait(optional.Entry!.CompleteAsync(true)) is NavigationResult<object>.Committed
+            && await Wait(maybe.Completion) is NavigationCompletion<bool?>.Completed { Value: true },
+            "A request for bool? did not take a bool result.");
+        var boxed = new InitPage("boxed");
+        var number = region.PushForResult<object>(NavigationTarget.Own<Page>(boxed));
+        await Wait(number.Transition);
+        Require(await Wait(boxed.Entry!.CompleteAsync(5)) is NavigationResult<object>.Committed
+            && await Wait(number.Completion) is NavigationCompletion<object>.Completed { Value: 5 },
+            "A request for object did not take an int result.");
+        var counted = new InitPage("counted");
+        var count = region.PushForResult<int>(NavigationTarget.Own<Page>(counted));
+        await Wait(count.Transition);
+        Require(Throws<InvalidOperationException>(() => _ = counted.Entry!.CompleteAsync<object>("five").AsTask())
+            && Throws<InvalidOperationException>(() => _ = counted.Entry!.CompleteAsync<object?>(null).AsTask())
+            && region.Current == counted && !count.Completion.IsCompleted,
+            "A request for int took a value that is not an int.");
+        Require(await Wait(counted.Entry!.CompleteAsync<object>(7)) is NavigationResult<object>.Committed
+            && await Wait(count.Completion) is NavigationCompletion<int>.Completed { Value: 7 },
+            "A request for int did not take a boxed int.");
+
+        Require(await Wait(typed.Entry!.CompleteAsync("ok")) is NavigationResult<object>.Committed
+            && await Wait(request.Completion) is NavigationCompletion<string>.Completed { Value: "ok" } && region.Current == plain,
+            "The typed request did not complete after the type error.");
+    }
+
+    // A vetoed return leaves the entry current and the request open, so CompleteAsync can be repeated.
+    private static async Task ResultCompleteRejectedKeepsRequestOpenAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var veto = true;
+        var picker = new InitPage("picker");
+        picker.Guard = (departure, _) => ValueTask.FromResult(!(veto && departure.Kind == NavigationDepartureKind.Retire));
+        var request = region.PushForResult<int>(NavigationTarget.Own<Page>(picker));
+        await Wait(request.Transition);
+        var rejected = await Wait(picker.Entry!.CompleteAsync(1));
+        Require(rejected is NavigationResult<object>.Rejected { Reason: NavigationRejection.Guard } && region.Current == picker
+            && !request.Completion.IsCompleted && picker.Disposed == 0,
+            $"A vetoed CompleteAsync gave {rejected} or ended the request.");
+        veto = false;
+        Require(await Wait(picker.Entry.CompleteAsync(2)) is NavigationResult<object>.Committed
+            && await Wait(request.Completion) is NavigationCompletion<int>.Completed { Value: 2 },
+            "A repeated CompleteAsync did not deliver its value.");
+    }
+
+    private static async Task ResultCallerCancelledAfterCommitAsync()
+    {
+        await using var fixture = new Fixture();
+        var home = new Page("home");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var guarding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var picker = new InitPage("picker");
+        picker.Guard = async (departure, _) =>
+        {
+            if (departure.Kind != NavigationDepartureKind.Retire) return true;
+            guarding.TrySetResult();
+            return await release.Task;
+        };
+        using var cancel = new CancellationTokenSource();
+        var request = region.PushForResult<int>(NavigationTarget.Own<Page>(picker), cancellationToken: cancel.Token);
+        Require(await Wait(request.Transition) is NavigationResult<Page>.Committed, "The result push did not commit.");
+
+        await cancel.CancelAsync();
+        // Dismissed at once, while the back transition it issued is still guarding.
+        Require(request.Completion is { IsCompletedSuccessfully: true, Result: NavigationCompletion<int>.Dismissed },
+            "Cancelling the caller's token after the commit did not dismiss the request at once.");
+        await Wait(guarding.Task);
+        Require(region.Current == picker && region.IsTransitioning, "The issued back transition did not run the entry's guard.");
+        release.SetResult(true);
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(region.Current == home && picker.Disposed == 1
+            && picker.Departures is [{ Kind: NavigationDepartureKind.Retire, Operation: NavigationOperation.Back }],
+            "Cancelling the caller's token did not go back from the result entry.");
+        Require(fixture.Logs.Single(1070).State["Reason"]?.ToString() == "Cancelled", "1070 did not report the cancellation.");
+    }
+
+    // When the issued back is rejected, the entry stays; a later CompleteAsync still goes back and drops its value.
+    private static async Task ResultCallerCancelledBackRejectedAsync()
+    {
+        await using var fixture = new Fixture();
+        var home = new Page("home");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var veto = true;
+        var picker = new InitPage("picker");
+        picker.Guard = (departure, _) => ValueTask.FromResult(!(veto && departure.Kind == NavigationDepartureKind.Retire));
+        using var cancel = new CancellationTokenSource();
+        var request = region.PushForResult<int>(NavigationTarget.Own<Page>(picker), cancellationToken: cancel.Token);
+        await Wait(request.Transition);
+        await cancel.CancelAsync();
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(await Wait(request.Completion) is NavigationCompletion<int>.Dismissed && region.Current == picker && picker.Disposed == 0,
+            "A rejected back after cancellation did not leave the entry current.");
+        Require(fixture.Logs.All(1065).Any(entry => Equals(entry.State["Operation"], NavigationOperation.Back)
+            && Equals(entry.State["Reason"], NavigationRejection.Guard)), "The rejected back was not logged as 1065.");
+
+        veto = false;
+        var late = await Wait(picker.Entry!.CompleteAsync(7));
+        Require(late is NavigationResult<object>.Committed && region.Current == home && picker.Disposed == 1
+            && request.Completion.Result is NavigationCompletion<int>.Dismissed && fixture.Logs.Count(1071) == 1,
+            $"A late CompleteAsync after dismissal gave {late}; the value was not dropped.");
+    }
+
+    // The caller cancels, then at once pushes into the same region, as a superseded guard that
+    // runs again does. The return Back is admitted before the dismissal is observable, so the
+    // push supersedes it or follows it; either way the dismissed entry is not retained.
+    private static async Task ResultCallerCancelledThenPushRetiresAsync()
+    {
+        for (var round = 0; round < 50; round++)
+        {
+            await using var fixture = new Fixture();
+            var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+            var first = new InitPage("first");
+            using var cancel = new CancellationTokenSource();
+            var request = dialog.PushForResult<bool>(NavigationTarget.Own<Page>(first), cancellationToken: cancel.Token);
+            await Wait(request.Transition);
+            var observed = request.Completion.ContinueWith(_ =>
+                dialog.PushForResult<bool>(NavigationTarget.Own<Page>(new InitPage("second"))), TaskScheduler.Default);
+            await cancel.CancelAsync();
+            var second = await Wait(observed);
+            Require(await Wait(second.Transition) is NavigationResult<Page>.Committed, "The second push did not commit.");
+            await Wait(fixture.Navigator.WhenIdleAsync());
+            Require(dialog.Current is InitPage { Name: "second" } && dialog.History.Count == 0 && first.Disposed == 1,
+                $"Round {round}: the dismissed entry was retained ({dialog.History.Count} below the current entry).");
+        }
+    }
+
+    // Caller cancellation is watched before the commit's departing entries retire, so a slow
+    // retirement does not delay the dismissal.
+    private static async Task ResultCallerCancelledDuringRetirementAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        ParentPage? parent = null;
+        await Wait(region.PushAsync(NavigationTarget.Create<Page>(_ => parent = new ParentPage("parent", fixture.Navigator, NavigationChildRetention.ResetToRoot))));
+        var slow = new Page("slow");
+        await Wait(parent!.Child.PushAsync(NavigationTarget.Own(slow)));
+        var disposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        slow.OnDispose = () => { disposing.TrySetResult(); return release.Task; };
+
+        using var cancel = new CancellationTokenSource();
+        var request = region.PushForResult<bool>(NavigationTarget.Own<Page>(new InitPage("asking")), cancellationToken: cancel.Token);
+        var transition = request.Transition.AsTask();
+        try
+        {
+            await Wait(disposing.Task); // committed; the reset child entry is retiring
+            await cancel.CancelAsync();
+            Require(await Wait(request.Completion) is NavigationCompletion<bool>.Dismissed && !transition.IsCompleted,
+                "Caller cancellation waited for the commit's retirement.");
+        }
+        finally { release.TrySetResult(); } // a failure must not leave disposal blocked
+        Require(await Wait(transition) is NavigationResult<Page>.Committed, "The push did not commit.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(region.Current == parent && slow.Disposed == 1, $"The cancelled request did not go back ({Names(region)}).");
+    }
+
+    // The accepted edge: the caller cancels while a push over the entry is already in its commit
+    // turn. The return Back is admitted but rejected as NotCurrent once the push commits, so the
+    // dismissed entry stays retained. A later Back resumes it, and its CompleteAsync empties the
+    // region and drops the value (1071).
+    private static async Task ResultDismissalBackRejectedKeepsEntryAsync()
+    {
+        await using var gated = new GatedContext();
+        await using var fixture = new Fixture(gated);
+        var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        var asking = new InitPage("asking");
+        using var cancel = new CancellationTokenSource();
+        var request = dialog.PushForResult<bool>(NavigationTarget.Own<Page>(asking), cancellationToken: cancel.Token);
+        await Wait(request.Transition);
+
+        gated.Close();
+        var over = new Page("over");
+        var push = dialog.PushAsync(NavigationTarget.Own(over)).AsTask();
+        await Wait(gated.Waiting.Task); // the push holds at its commit turn and retains the entry
+        await cancel.CancelAsync();
+        Require(await Wait(request.Completion) is NavigationCompletion<bool>.Dismissed, "Cancelling did not dismiss the request.");
+        gated.Open();
+        Require(await Wait(push) is NavigationResult<Page>.Committed, "The push in its commit turn did not commit.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(dialog.Current == over && dialog.History is [{ State: NavigationEntryState.Retained } kept] && kept.Content == asking
+            && asking.Disposed == 0, $"The dismissed entry was not retained under the push ({Names(dialog)}).");
+        Require(fixture.Logs.All(1065).Any(entry => Equals(entry.State["Operation"], NavigationOperation.Back)
+            && Equals(entry.State["Reason"], NavigationRejection.NotCurrent)), "The rejected return Back was not logged as NotCurrent.");
+
+        Require(await Wait(dialog.BackAsync()) is NavigationResult<Page>.Committed && dialog.Current == asking
+            && dialog.CurrentEntry!.State == NavigationEntryState.Active, "Back did not resume the dismissed entry.");
+        var late = await Wait(asking.Entry!.CompleteAsync(true));
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(late is NavigationResult<object>.Committed { Current: null } && dialog.Current is null && asking.Disposed == 1
+            && request.Completion.Result is NavigationCompletion<bool>.Dismissed && fixture.Logs.Count(1071) == 1,
+            $"CompleteAsync on the resumed dismissed entry gave {late}; it did not empty the region and drop the value.");
+    }
+
+    private static async Task ResultDismissedOnCloseAsync()
+    {
+        var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var active = new InitPage("active");
+        var committed = region.PushForResult<int>(NavigationTarget.Own<Page>(active));
+        await Wait(committed.Transition);
+        var other = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var never = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var preparing = new InitPage("preparing")
+        {
+            Initialize = async (_, token) =>
+            {
+                started.TrySetResult();
+                await never.Task.WaitAsync(token);
+            },
+        };
+        var pending = other.PushForResult<int>(NavigationTarget.Own<Page>(preparing));
+        await Wait(started.Task);
+
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        Require(committed.Completion.Result is NavigationCompletion<int>.Dismissed && pending.Completion.Result is NavigationCompletion<int>.Dismissed
+            && await Wait(pending.Transition) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed },
+            "Closing the navigator did not dismiss its open requests.");
+        Require(active.Disposed == 1 && preparing.Disposed == 1 && fixture.Navigator.TrackedEntryCount == 0
+            && fixture.Logs.All(1070).Count(entry => entry.State["Reason"]?.ToString() == "Closed") == 2,
+            "Closing did not retire the result entries.");
+        var late = region.PushForResult<int>(NavigationTarget.Own(new Page("late")));
+        Require(await Wait(late.Transition) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }
+            && await Wait(late.Completion) is NavigationCompletion<int>.Dismissed, "A closed navigator did not dismiss a new request.");
+        await fixture.Context.DisposeAsync();
+    }
+
+    // The Notes pattern: a departure guard awaits a confirm pushed for a result into a sibling
+    // region, passing its own token. Supersession and window close unblock it.
+    private static async Task SiblingGuardAwaitsResultAsync(bool close)
+    {
+        var fixture = new Fixture();
+        var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        var document = new Page("document");
+        await Wait(main.PushAsync(NavigationTarget.Own(document)));
+        NavigationResultRequest<Page, bool>? confirm = null;
+        InitPage? confirmPage = null;
+        var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answered = new TaskCompletionSource<NavigationCompletion<bool>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        document.Guard = async (departure, token) =>
+        {
+            if (departure.Kind != NavigationDepartureKind.Retire) return true;
+            confirmPage = new InitPage("confirm");
+            confirm = dialog.PushForResult<bool>(NavigationTarget.Own<Page>(confirmPage), cancellationToken: token);
+            shown.TrySetResult();
+            var answer = await confirm.Completion;
+            answered.TrySetResult(answer);
+            return answer is NavigationCompletion<bool>.Completed { Value: true };
+        };
+        var back = main.BackAsync().AsTask();
+        await Wait(shown.Task);
+        Require(await Wait(confirm!.Transition) is NavigationResult<Page>.Committed && dialog.Current == confirmPage,
+            "The guard's confirm was not pushed into the sibling region.");
+
+        if (close)
+        {
+            var disposal = fixture.Navigator.DisposeAsync().AsTask();
+            Require(await Wait(answered.Task) is NavigationCompletion<bool>.Dismissed, "Closing did not unblock the guard.");
+            await Wait(disposal);
+            Require(await Wait(back) is not NavigationResult<Page>.Committed && document.Disposed == 1 && confirmPage!.Disposed == 1
+                && fixture.Navigator.TrackedEntryCount == 0, "Closing during the guard did not retire everything.");
+            await fixture.Context.DisposeAsync();
+            return;
+        }
+
+        // A later request supersedes the guarded Back; the guard's token dismisses the confirm.
+        var other = new Page("other");
+        var push = main.PushAsync(NavigationTarget.Own(other)).AsTask();
+        Require(await Wait(answered.Task) is NavigationCompletion<bool>.Dismissed, "Supersession did not unblock the guard.");
+        var backResult = await Wait(back);
+        Require(backResult is not NavigationResult<Page>.Committed, $"The superseded Back gave {backResult}.");
+        Require(await Wait(push) is NavigationResult<Page>.Committed && main.Current == other && document.Disposed == 0,
+            "The superseding push did not commit.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(dialog.Current is null && confirmPage!.Disposed == 1, "The dismissed confirm did not leave the dialog region.");
+        await fixture.DisposeAsync();
+    }
+
+    // Seeded race of result pushes, completions, caller cancellations, plain backs, pushes and
+    // clears. Every completion ends; Completed only with the value of a CompleteAsync whose return
+    // committed, which wins unless the caller cancelled; at most one return commits per entry;
+    // result pages are disposed at most once; closing ends every request and retires every entry.
+    private static async Task ResultRaceAsync(int seed, bool disposeDuringRace = false)
+    {
+        var master = new Random(seed);
+        var violations = new ConcurrentQueue<string>();
+        var fixture = new Fixture();
+        var home = new Page("home");
+        NavigationRegion<Page>[] regions =
+        [
+            fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home)),
+            fixture.Navigator.CreateRegion<Page>(fixture.Root),
+        ];
+        var requests = new ConcurrentQueue<(InitPage Page, NavigationResultRequest<Page, int> Request, CancellationTokenSource Cancel)>();
+        var returned = new ConcurrentDictionary<InitPage, ConcurrentQueue<int>>();
+        var workerSeeds = Enumerable.Range(0, 4).Select(_ => master.Next()).ToArray();
+        var committed = 0;
+
+        async Task WorkerAsync(int worker)
+        {
+            var random = new Random(workerSeeds[worker]);
+            for (var step = 0; step < 120; step++)
+            {
+                var region = regions[random.Next(regions.Length)];
+                var choice = random.Next(10);
+                if (choice < 4)
+                {
+                    var page = new InitPage($"result{worker}.{step}");
+                    var cancel = new CancellationTokenSource();
+                    if (random.Next(3) == 0) cancel.CancelAfter(random.Next(3));
+                    var request = region.PushForResult<int>(NavigationTarget.Own<Page>(page), cancellationToken: cancel.Token);
+                    requests.Enqueue((page, request, cancel));
+                    if (random.Next(2) == 0 && await Wait(request.Transition) is NavigationResult<Page>.Committed)
+                        Interlocked.Increment(ref committed);
+                }
+                else if (choice < 7)
+                {
+                    var open = requests.ToArray();
+                    if (open.Length == 0) continue;
+                    // Mostly recent requests, whose entries are likely still current.
+                    var (page, _, _) = open[Math.Max(0, open.Length - 1 - random.Next(Math.Min(open.Length, 4)))];
+                    if (page.Entry is not { } entry) continue;
+                    var value = random.Next();
+                    if (await Wait(entry.CompleteAsync(value)) is NavigationResult<object>.Committed)
+                        returned.GetOrAdd(page, _ => new()).Enqueue(value);
+                }
+                else if (choice < 8) await Wait(region.BackAsync());
+                else if (choice < 9) await Wait(region.PushAsync(NavigationTarget.Own(new Page("plain"))));
+                else await Wait(region.ClearAsync());
+                var pause = random.Next(6);
+                if (pause == 0) await Task.Yield();
+                else if (pause == 1) await Task.Delay(1);
+            }
+        }
+
+        var workers = Enumerable.Range(0, 4).Select(worker => Task.Run(() => WorkerAsync(worker))).ToList();
+        if (disposeDuringRace)
+        {
+            workers.Add(Task.Run(async () =>
+            {
+                for (var waited = 0; Volatile.Read(ref committed) < 4 && waited < 5000; waited++) await Task.Delay(1);
+                await fixture.Navigator.DisposeAsync().AsTask();
+            }));
+        }
+        await Wait(Task.WhenAll(workers));
+        if (!disposeDuringRace)
+        {
+            // After the race the navigator still delivers a result.
+            await Wait(fixture.Navigator.WhenIdleAsync());
+            var last = new InitPage("last");
+            var final = regions[1].PushForResult<int>(NavigationTarget.Own<Page>(last));
+            await Wait(final.Transition);
+            Require(await Wait(last.Entry!.CompleteAsync(-1)) is NavigationResult<object>.Committed
+                && await Wait(final.Completion) is NavigationCompletion<int>.Completed { Value: -1 },
+                $"seed {seed}: a result after the race was not delivered.");
+        }
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        await fixture.Context.DisposeAsync();
+
+        foreach (var (page, request, cancel) in requests)
+        {
+            if (!request.Completion.IsCompleted)
+            {
+                violations.Enqueue($"seed {seed}: {page.Name}'s request was still open after the navigator closed");
+                continue;
+            }
+            var values = returned.TryGetValue(page, out var queue) ? queue.ToArray() : [];
+            if (values.Length > 1) violations.Enqueue($"seed {seed}: {values.Length} returns committed from {page.Name}");
+            var transition = await Wait(request.Transition);
+            switch (request.Completion.Result)
+            {
+                case NavigationCompletion<int>.Completed { Value: var value } when !values.Contains(value):
+                    violations.Enqueue($"seed {seed}: {page.Name} completed with {value}, which no committed return carried");
+                    break;
+                case NavigationCompletion<int>.Completed when transition is not NavigationResult<Page>.Committed:
+                    violations.Enqueue($"seed {seed}: {page.Name} completed although its push gave {transition}");
+                    break;
+                case NavigationCompletion<int>.Dismissed when values.Length == 1 && !cancel.IsCancellationRequested && !disposeDuringRace:
+                    violations.Enqueue($"seed {seed}: {page.Name}'s committed return was dropped without a cancellation");
+                    break;
+            }
+            if (page.Disposed > 1 || (transition is NavigationResult<Page>.Committed && page.Disposed != 1))
+                violations.Enqueue($"seed {seed}: {page.Name} was disposed {page.Disposed} times");
+            cancel.Dispose();
+        }
+        if (fixture.Navigator.TrackedEntryCount != 0)
+            violations.Enqueue($"seed {seed}: {fixture.Navigator.TrackedEntryCount} entries were left unretired");
+        if (home.Disposed != 0) violations.Enqueue($"seed {seed}: the borrowed home was disposed");
+        Require(violations.IsEmpty, string.Join(Environment.NewLine, violations.Take(10)));
+    }
+
     // ---- Randomized race -------------------------------------------------
 
     // disposeDuringRace disposes the navigator while the workers are still running,
@@ -1682,6 +2262,7 @@ internal static class NavigationTests
 
         public bool Has(int id, LogLevel level) => _entries.Any(entry => entry.EventId.Id == id && entry.Level == level);
         public int Count(int id) => _entries.Count(entry => entry.EventId.Id == id);
+        public IEnumerable<LogEntry> All(int id) => _entries.Where(entry => entry.EventId.Id == id);
         public LogEntry Single(int id) => _entries.SingleOrDefault(entry => entry.EventId.Id == id)
             ?? throw new InvalidOperationException($"Expected one {id} entry: {string.Join(", ", _entries.Select(entry => entry.EventId.Id))}");
 

@@ -406,6 +406,22 @@ await main.BackAsync(); // the document retires and is disposed; home resumes
   window session to the navigator (one window per navigator, with the same model
   context), so retiring owned content forgets its routes. Nothing is forwarded by
   hand; `ViewOutlet`s and test drivers (`View<T>(vm => vm.Main)`) work unchanged.
+- `PushForResult<TResult>(target)` pushes an entry and returns a
+  `NavigationResultRequest`: `Transition` is the push's result and `Completion`
+  ends `Completed(value)` only when the entry calls
+  `NavigationEntryContext.CompleteAsync(value)` and the Back it issues commits,
+  or `Dismissed` when the push does not commit, the entry retires another way,
+  the caller's token is cancelled after the commit (which also goes back from
+  the entry) or the navigator closes. A Back from `CompleteAsync` or caller
+  cancellation may leave the region empty, so a dialog region can start empty.
+  A push onto an entry whose caller cancelled retires that entry instead of
+  retaining it. That Back can still be rejected, for example when a push over
+  the entry is already committing or the entry is no longer on top. Then the
+  dismissed entry stays in the history: a later Back resumes it, and its
+  `CompleteAsync` goes back, possibly emptying the region, and drops the value
+  (event 1071). Completions run their continuations asynchronously, after the
+  commit turn. A completion is set when the entry starts retiring, so it can be
+  observed while the entry's owned content is still being disposed.
 - Going back presents the same `PageReference` id with the retained model; the
   outlet mounts a fresh View.
 - **Stale-route window.** A commit retires and forgets departing owned content
@@ -462,9 +478,12 @@ output accordingly. The message properties are listed per event.
 | 1067 | `NavigationSupersededTransitionOverrun` | Warning | A superseded navigation request is still running 5 seconds after supersession. | `Region`, `RegionId`, `Operation` |
 | 1068 | `NavigationCloseTimedOut` | Warning | Closing a navigation region timed out waiting for a model turn; its state was cleared outside a turn. The clearing turns of one disposal share one close timeout, so a disposal takes about twice `CloseTimeout` at most. | `Region`, `RegionId` |
 | 1069 | `NavigationInitializeTimedOut` | Warning | Retiring an entry stopped waiting for its running initialize hook after the close timeout and disposed the content while the hook runs. During disposal the wait is skipped once the wait for cancelled transitions timed out. | `Region`, `RegionId`, `EntryType` |
+| 1070 | `NavigationResultDismissed` | Debug | A `PushForResult` request ends `Dismissed`. `Reason` is `NotCommitted` (its push did not commit), `Retired` (its entry retired without `CompleteAsync`), `Cancelled` (the caller's token was cancelled after the commit) or `Closed` (the navigator closed). | `Region`, `RegionId`, `Reason` |
+| 1071 | `NavigationResultDropped` | Debug | `CompleteAsync` went back from an entry whose request had already ended, so its value was dropped. | `Region`, `RegionId` |
 | 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
+| 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
 | 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |
 | 3002 | `DesktopConfigurationInvalid` | Error | `DesktopHost.Validate` finds a check that fails the window request. | `Code`, `Option`, `DiagnosticMessage`, `Remediation` |
@@ -477,12 +496,17 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1021, 1050 and 1060-1069 use the category `Runic.Application.Views`
+Events 1000-1021, 1050 and 1060-1071 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
 `RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
 `WindowContentSession` with a logger factory created it, and otherwise the
-`Trace` output. Events 2000-2001 use `Runic.Application.Desktop`. Events 3000-3005
+`Trace` output. Events 2000-2002 use `Runic.Application.Desktop`. Events 3000-3005
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
+
+Navigation reserves events 1060-1079: 1060-1069 for transitions and cleanup,
+and 1070-1079 for results and later navigation events, of which 1072-1079 are
+not used yet. Events 1043-1049 are reserved for the ReactiveUI navigation
+adapter.
 
 Events 1040-1042 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
 flavor) and also use `Runic.Application.Views`. They need the

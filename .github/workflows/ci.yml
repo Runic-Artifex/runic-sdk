@@ -320,9 +320,12 @@ jobs:
       matrix:
         framework: [react, vue, svelte, angular]
         # The guided creator check is framework-independent; run it once.
+        # The vue lane owns the desktop-gtk4 variant and runs it under Xvfb.
         include:
           - framework: react
             creator: "1"
+          - framework: vue
+            desktop-smoke: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -334,11 +337,18 @@ jobs:
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
+      - name: Install the GTK 4 Desktop template runtime
+        if: matrix.desktop-smoke == '1'
+        run: eng/ci/apt-install.sh libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
+      - name: Permit the WebKit sandbox on Ubuntu
+        if: matrix.desktop-smoke == '1'
+        run: eng/ci/permit-webkit-sandbox.sh
       - name: Verify generated template applications
         run: bun run verify:templates
         env:
           RUNIC_TEMPLATE_FRAMEWORKS: ${{ matrix.framework }}
           RUNIC_TEMPLATE_CREATOR: ${{ matrix.creator || '0' }}
+          RUNIC_TEMPLATE_DESKTOP_SMOKE: ${{ matrix.desktop-smoke || '0' }}
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   native:
@@ -403,40 +413,41 @@ jobs:
         run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
-        run: |
-          # Ubuntu restricts capabilities inside unprivileged user namespaces.
-          # Permit the distribution's bwrap helper without disabling AppArmor or WebKit's sandbox.
-          test "$(command -v bwrap)" = /usr/bin/bwrap
-          sudo tee /etc/apparmor.d/runic-ci-bwrap > /dev/null <<'PROFILE'
-          abi <abi/4.0>,
-          include <tunables/global>
-          profile runic-ci-bwrap /usr/bin/bwrap flags=(unconfined) {
-            userns,
-          }
-          PROFILE
-          sudo apparmor_parser -r /etc/apparmor.d/runic-ci-bwrap
-          bwrap --unshare-user --unshare-net --ro-bind / / --proc /proc --dev /dev true
+        run: eng/ci/permit-webkit-sandbox.sh
       - name: Build native window smoke
         run: dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release
       - name: Exercise native window close interception on Linux
         if: runner.os == 'Linux'
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+      - name: Exercise the Desktop event-loop entry point on Linux
+        if: runner.os == 'Linux'
+        run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
       - name: Exercise direct portal protocol
         if: runner.os == 'Linux'
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --dbus
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
-        run: GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
+          # The GTK runner has one lifetime per process; the entry-point check runs separately.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
+          # Without a display the entry point must fall back instead of letting gtk_init exit the process.
+          env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --no-display
       - name: Verify GTK4 and portal NativeAOT consumers
         if: runner.os == 'Linux'
         run: |
           dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
+          env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --dbus
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+      - name: Exercise the Desktop event-loop entry point on Windows and macOS
+        if: runner.os != 'Linux'
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
       - name: Verify Windows administration native inspection
         if: runner.os == 'Windows'
         timeout-minutes: 5

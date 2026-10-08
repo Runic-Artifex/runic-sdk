@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.ExceptionServices;
 
 using Gtk;
+using Runic.Desktop.Internal;
 using WebKit;
 
 namespace Runic.Desktop.Gtk4;
@@ -14,32 +15,35 @@ public static partial class Gtk4Application
     private static readonly object Gate = new();
     private static readonly HashSet<Gtk4WindowHost> Hosts = [];
     private static int _state;
+    // 0: not probed, 1: a display opened, 2: no display could be opened.
+    private static int _display;
 
     /// <summary>Runs an application's asynchronous workload while GTK owns the calling main thread.</summary>
     /// <remarks>
     /// Call this directly from <c>Main</c>, before top-level awaits. The GTK 4
     /// provider does not support re-entering or restarting its native runtime.
     /// </remarks>
-    public static int Run(Func<Task<int>> application) => RunCore(application, null);
+    public static int Run(Func<Task<int>> application) => RunCore(application, null, "Gtk4Application.Run");
 
     /// <summary>Runs GTK with the application's installed reverse-DNS identity.</summary>
     /// <remarks>Inside Flatpak this must match the package ID. The overload without an ID uses the Flatpak ID automatically.</remarks>
     public static int Run(Func<Task<int>> application, string applicationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
-        return RunCore(application, applicationId);
+        return RunCore(application, applicationId, "Gtk4Application.Run");
     }
 
-    private static int RunCore(Func<Task<int>> application, string? applicationId)
+    // entryPoint names the API the application called, for the error messages.
+    internal static int RunCore(Func<Task<int>> application, string? applicationId, string entryPoint)
     {
         ArgumentNullException.ThrowIfNull(application);
         if (!OperatingSystem.IsLinux())
         {
             throw new PlatformNotSupportedException("GTK 4 and WebKitGTK 6 are available only on Linux.");
         }
-        if (GetThreadId() != GetProcessId())
+        if (!IsMainThread)
         {
-            throw new InvalidOperationException("Call Gtk4Application.Run directly from the Linux process main thread, before awaiting application work.");
+            throw new InvalidOperationException($"Call {entryPoint} directly from the Linux process main thread, before awaiting application work.");
         }
         if (!Gtk4Runtime.IsAvailable)
         {
@@ -55,12 +59,17 @@ public static partial class Gtk4Application
         {
             if (_state != 0)
             {
-                throw new InvalidOperationException("Gtk4Application.Run supports one non-reentrant GTK 4 application lifetime per process.");
+                throw new InvalidOperationException($"{entryPoint} supports one non-reentrant GTK 4 application lifetime per process.");
             }
             _state = 1;
         }
 
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);
+        if (!TryOpenDisplay())
+        {
+            lock (Gate) _state = 3;
+            throw new PlatformNotSupportedException(NoDisplayMessage);
+        }
         var nativeApplication = Gtk.Application.New(applicationId, Gio.ApplicationFlags.NonUnique);
         nativeApplication.Hold();
         Exception? failure = null;
@@ -128,6 +137,25 @@ public static partial class Gtk4Application
 
     internal static bool IsRunning => Volatile.Read(ref _state) == 1;
 
+    internal static bool IsMainThread => GetThreadId() == GetProcessId();
+
+    internal static bool DisplayUnavailable => Volatile.Read(ref _display) == 2;
+
+    internal const string NoDisplayMessage = "GTK 4 could not open a display.";
+
+    // gtk_init exits the process when no display can be opened; gtk_init_check reports the failure instead.
+    // GirCore's Gtk.Module.Initialize calls gtk_init, so probe through the C entry point before GirCore runs;
+    // after a successful check, gtk_init is a no-op. Call on the process main thread before GTK starts; the
+    // result is kept for the process lifetime.
+    internal static bool TryOpenDisplay()
+    {
+        var state = Volatile.Read(ref _display);
+        if (state != 0) return state == 1;
+        var opened = GtkInitCheck() != 0;
+        Volatile.Write(ref _display, opened ? 1 : 2);
+        return opened;
+    }
+
     internal static void Register(Gtk4WindowHost host)
     {
         lock (Gate)
@@ -184,6 +212,8 @@ public static partial class Gtk4Application
         }
     }
 
+    [LibraryImport("libgtk-4.so.1", EntryPoint = "gtk_init_check")]
+    private static partial int GtkInitCheck();
     [LibraryImport("libc", EntryPoint = "getpid")]
     private static partial int GetProcessId();
     [LibraryImport("libc", EntryPoint = "gettid")]
@@ -192,14 +222,62 @@ public static partial class Gtk4Application
 
 /// <summary>Creates explicitly selected GTK 4 and WebKitGTK 6 window hosts.</summary>
 [SupportedOSPlatform("linux")]
-public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
+public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDesktopEventLoopWindowHostFactory
 {
+    private readonly string? _applicationId;
+
     /// <inheritdoc />
     public LinuxEmbeddedBackend Backend => LinuxEmbeddedBackend.Gtk4WebKit6;
 
+    /// <summary>Gets the reverse-DNS GTK application ID <see cref="RunEventLoop"/> uses, or <see langword="null"/> for the default.</summary>
+    /// <remarks>Inside Flatpak the default is the package ID, and an explicit ID must match it.</remarks>
+    public string? ApplicationId
+    {
+        get => _applicationId;
+        init
+        {
+            if (value is not null) Gtk4DesktopHostOptionsExtensions.ValidateApplicationId(value);
+            _applicationId = value;
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Runs the GTK 4 application lifetime of <see cref="Gtk4Application"/> with <see cref="ApplicationId"/>.</remarks>
+    public int RunEventLoop(Func<Task<int>> application)
+    {
+        ArgumentNullException.ThrowIfNull(application);
+        if (!OperatingSystem.IsLinux())
+        {
+            throw new PlatformNotSupportedException("GTK 4 and WebKitGTK 6 are available only on Linux.");
+        }
+        return Gtk4Application.RunCore(application, ApplicationId, "DesktopEventLoop.Run(options, application)");
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Opens the GTK display with <c>gtk_init_check</c> on the main thread, because <c>gtk_init</c> would end the
+    /// process when no display is available (an SSH session, a headless machine, or WSL without WSLg). When no
+    /// display opens it returns <c>gtk4-display-unavailable</c>, and the factory is unsupported from then on.
+    /// </remarks>
+    public IReadOnlyList<DesktopDiagnostic> PrepareEventLoop()
+    {
+        if (!OperatingSystem.IsLinux() || !Gtk4Application.IsMainThread)
+        {
+            // RunEventLoop reports these with the entry point the application called.
+            return [];
+        }
+        LinuxDesktopRuntime.ClaimBackend(Backend);
+        return Gtk4Application.TryOpenDisplay() ? [] : [DisplayUnavailable()];
+    }
+
+    private static DesktopDiagnostic DisplayUnavailable() => Gtk4Runtime.Missing(
+        "gtk4-display-unavailable",
+        Gtk4Application.NoDisplayMessage,
+        "Run inside a graphical session with DISPLAY or WAYLAND_DISPLAY set (on WSL, enable WSLg), or use an installed browser.");
+
     /// <inheritdoc />
     public bool IsSupported => OperatingSystem.IsLinux() &&
-        LinuxDesktopRuntime.CanUse(Backend) && Gtk4Runtime.IsAvailable;
+        LinuxDesktopRuntime.CanUse(Backend) && Gtk4Runtime.IsAvailable && !Gtk4Application.DisplayUnavailable;
 
     /// <inheritdoc />
     public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities;
@@ -208,6 +286,26 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
     /// <remarks>GTK 4 windows reject X, Y, Centered, Transparent, HighContrast, ProfilePath, BrowserArguments and IconFile.</remarks>
     public IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) =>
         Gtk4WindowHost.GetUnsupportedOptions(options);
+
+    /// <inheritdoc />
+    /// <remarks>Reports <c>linux-embedded-backend-conflict</c>, <c>gtk4-runtime-missing</c> and <c>webkitgtk6-runtime-missing</c> together.</remarks>
+    public IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return [Gtk4Runtime.Missing("embedded-platform-unsupported", "GTK 4 and WebKitGTK 6 are available only on Linux.",
+                "Configure Gtk4WindowHostFactory only on Linux; DesktopHostOptions.WithGtk4() does this automatically.")];
+        }
+        List<DesktopDiagnostic> diagnostics = [];
+        if (!LinuxDesktopRuntime.CanUse(Backend))
+        {
+            diagnostics.Add(Gtk4Runtime.Missing("linux-embedded-backend-conflict", "Another Linux toolkit is already initialized.",
+                "Start a new process to select a different toolkit."));
+        }
+        diagnostics.AddRange(Gtk4Runtime.GetMissingLibraries());
+        if (Gtk4Application.DisplayUnavailable) diagnostics.Add(DisplayUnavailable());
+        return diagnostics;
+    }
 
     /// <inheritdoc />
     public IDesktopWindowHost Create()
@@ -233,10 +331,28 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
 
 internal static class Gtk4Runtime
 {
-    private static readonly string[] GtkNames = ["libgtk-4.so.1"];
-    private static readonly string[] WebKitNames = ["libwebkitgtk-6.0.so.4", "libwebkitgtk-6.0.so.0"];
+    private static readonly string[] GtkNames = [Gtk4NativeLibraries.Gtk];
+    private static readonly string[] WebKitNames = Gtk4NativeLibraries.WebKit;
 
     internal static bool IsAvailable => CanFind(GtkNames) && CanFind(WebKitNames);
+
+    // Uses the same codes as DesktopPlatform's GTK4 checks so tools can match them.
+    internal static IEnumerable<DesktopDiagnostic> GetMissingLibraries()
+    {
+        if (!CanFind(GtkNames))
+        {
+            yield return Missing("gtk4-runtime-missing", "The GTK 4 library libgtk-4.so.1 was not discovered.",
+                "Install GTK 4.12 or newer (for example libgtk-4-1) in the native loader search path.");
+        }
+        if (!CanFind(WebKitNames))
+        {
+            yield return Missing("webkitgtk6-runtime-missing", "The WebKitGTK 6.0 library libwebkitgtk-6.0.so.4 was not discovered.",
+                "Install WebKitGTK 6.0 (for example libwebkitgtk-6.0-4) in the native loader search path.");
+        }
+    }
+
+    internal static DesktopDiagnostic Missing(string code, string message, string remediation) =>
+        new(DesktopErrorCategory.Unavailable, code, message, Retryable: false, CorrelationId: string.Empty, Remediation: remediation);
 
     private static bool CanFind(IEnumerable<string> names)
     {

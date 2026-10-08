@@ -31,7 +31,7 @@ commands in the browser.
 | --- | --- | --- |
 | `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
-| `--host` | `cswebui`, `desktop` | `cswebui` |
+| `--host` | `cswebui`, `desktop`, `desktop-gtk4` | `cswebui` |
 | `--view-models` | `toolkit`, `reactiveui` | `toolkit` |
 | `--output`, `-o` | A directory | The project name |
 | `--template-source` | An additional NuGet source for the template | |

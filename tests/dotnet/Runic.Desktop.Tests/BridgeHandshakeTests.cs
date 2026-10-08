@@ -75,12 +75,22 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         var retrying = ConnectWithRetriesAsync(fixture.Url, fixture.Timeout, fixture.Showing);
         var timeout = await Assert.ThrowsAsync<TimeoutException>(() => fixture.Showing);
         output.WriteLine(timeout.Message);
-        await Assert.ThrowsAnyAsync<Exception>(() => retrying);
+
+        // The failed show frees the slot, so a retry already in flight may connect
+        // instead of being rejected. Only the message below is under test.
+        try
+        {
+            (await retrying).Dispose();
+        }
+        catch (WebSocketException)
+        {
+        }
 
         Assert.Contains("the Bridge WebSocket opened, but authentication did not complete", timeout.Message);
         Assert.Matches(@"\+\d+\.\d{3}s WebSocket 1 opened", timeout.Message);
         Assert.Contains("WebSocket rejected: another WebSocket holds the only connection", timeout.Message);
         Assert.DoesNotContain("WebSocket 1: first message", timeout.Message);
+        Assert.DoesNotContain("WebSocket 2 opened", timeout.Message);
     }
 
     [Fact]

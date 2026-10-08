@@ -71,6 +71,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     private readonly HashSet<NavigationEntryCore> _tracked = [];
     private readonly HashSet<NavigationTransition> _running = [];
     private readonly HashSet<Task> _retirements = [];
+    // PushForResult requests that have not completed or been dismissed.
+    private readonly HashSet<NavigationResultRequestCore> _resultRequests = [];
     private long _nextEntryId;
     private int _nextRegionId;
     private bool _closing;
@@ -287,8 +289,11 @@ public sealed class RunicNavigator : IAsyncDisposable
     }
 
     /// <summary>
-    /// Refuses new requests, cancels in-flight transitions and waits for them up to the close
-    /// timeout, then closes and retires every entry region by region in creation order. Does not run guards.
+    /// Refuses new requests and ends every open <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/>
+    /// request as <see cref="NavigationCompletion{TResult}.Dismissed"/> (or <see cref="NavigationCompletion{TResult}.Completed"/>
+    /// when its return already committed), so guards awaiting a result unblock. Then cancels in-flight transitions and
+    /// waits for them up to the close timeout, and closes and retires every entry region by region in creation order.
+    /// Does not run guards.
     /// </summary>
     /// <remarks>
     /// Each region is cleared in a model turn so the change is serialized with its commit. The wait for those
@@ -316,15 +321,19 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (ModelContext.IsExecuting) await Task.Yield();
             List<NavigationTransition> cancel = [];
             Task[] running;
+            NavigationResultRequestCore[] requests;
             lock (Gate)
             {
                 _closing = true;
                 foreach (var region in _regions)
                     foreach (var transition in region.InFlight)
                         if (transition.TrySetCancelReason(NavigationCancelReason.Closed)) cancel.Add(transition);
-                running = [.. _running.Select(transition => transition.Finished.Task), .. _retirements];
+                requests = [.. _resultRequests];
             }
+            // Dismiss open PushForResult requests first, so guards awaiting a result unblock.
+            foreach (var request in requests) FinishResult(request, NavigationResultDismissal.Closed);
             Cancel(cancel);
+            lock (Gate) running = [.. _running.Select(transition => transition.Finished.Task), .. _retirements];
             if (running.Length > 0)
             {
                 try { await Task.WhenAll(running).WaitAsync(_closeTimeout, _time).ConfigureAwait(false); }
@@ -353,9 +362,19 @@ public sealed class RunicNavigator : IAsyncDisposable
     // Test seam: runs between the cancellation check and the initialize claim.
     internal Action? BeforeInitializeClaim { get; set; }
 
-        internal Task<NavigationOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
+    internal NavigationResultRequest<TContent, TResult> PushForResult<TContent, TResult>(NavigationRegionCore region,
+        NavigationTargetCore target, NavigationRequestOptions? options, CancellationToken cancellationToken) where TContent : class
+    {
+        var request = new NavigationResultRequestCore<TResult>(region, cancellationToken);
+        var outcome = Start(region, NavigationOperation.Push, target, null, options?.ExpectedCurrent, cancellationToken,
+            @return: null, request);
+        return new(NavigationResults.MapTask<TContent>(outcome), request.Completion);
+    }
+
+    internal Task<NavigationOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
+        bool runDetached = false)
     {
         NavigationOutcome? rejected = null;
         NavigationTransition? transition = null;
@@ -375,7 +394,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 rejected = NavigationOutcome.Reject(NavigationRejection.Reentrant);
             else if (expected is { } expectedId && region.CurrentEntry?.Id != expectedId)
                 rejected = NavigationOutcome.Reject(NavigationRejection.NotCurrent);
-            else if (operation == NavigationOperation.Back && region.Stack.Length < 2)
+            else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
                 rejected = NavigationOutcome.Reject(NavigationRejection.NoHistory);
             else
             {
@@ -386,9 +405,15 @@ public sealed class RunicNavigator : IAsyncDisposable
                     pending = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance)
                     {
                         Phase = NavigationEntryPhase.Pending,
+                        ResultRequest = request,
                     };
                     _tracked.Add(pending);
                     if (pending.Owned && pending.Content is { } claimed) _ownedEntries[claimed] = pending;
+                    if (request is not null)
+                    {
+                        request.Entry = pending;
+                        _resultRequests.Add(request);
+                    }
                 }
 
                 List<Task> waitFor = [];
@@ -399,7 +424,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 }
                 // The provisional plan: the child regions this request would
                 // reset or close. Their transitions are superseded the same way.
-                var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected);
+                var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null);
                 foreach (var child in plan.Regions)
                 {
                     if (ReferenceEquals(child, region)) continue;
@@ -413,7 +438,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], cancellationToken);
+                    [.. waitFor], cancellationToken) { Return = @return };
                 region.InFlight.Add(transition);
                 transitioningChanged = region.InFlight.Count == 1;
                 _running.Add(transition);
@@ -423,6 +448,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         if (rejected is not null)
         {
             LogOutcome(region, operation, rejected);
+            if (request is not null) FinishResult(request, NavigationResultDismissal.NotCommitted);
             return Task.FromResult(rejected);
         }
 
@@ -430,7 +456,10 @@ public sealed class RunicNavigator : IAsyncDisposable
         Cancel(superseded);
         if (transitioningChanged) Notify(region, NavigationRegionChanges.Transitioning);
         // No hook ever runs in the caller's turn.
-        if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
+        if (runDetached)
+            // Admitted here; the phases run on the thread pool without this thread's execution context.
+            ThreadPool.UnsafeQueueUserWorkItem(static transition => _ = transition.Region.Navigator.RunAsync(transition), transition!, preferLocal: false);
+        else if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
         else _ = RunAsync(transition!);
         return transition!.Result.Task;
     }
@@ -460,6 +489,19 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (commit is not null)
             {
                 Cancel(commit.Cancel);
+                if (transition.ResultDropped)
+                    NavigationLog.NavigationResultDropped(Logger, null, transition.Region.ContentTypeName, transition.Region.Id);
+                // Before retirement, so caller cancellation takes effect at once. Guarded,
+                // so a cancellation callback that throws can't skip retirement.
+                if (transition.Pending?.ResultRequest is { } request)
+                {
+                    try { WatchCaller(request); }
+                    catch (Exception error)
+                    {
+                        NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
+                            "None", "Cancel", BridgeTelemetry.ErrorType(error));
+                    }
+                }
                 List<NavigationEntryId> retired = [];
                 foreach (var entry in commit.Retire)
                 {
@@ -474,6 +516,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             }
             else if (transition.Pending is { } pending)
             {
+                if (pending.ResultRequest is { } request) FinishResult(request, NavigationResultDismissal.NotCommitted);
                 await RetireAsync(pending, null).ConfigureAwait(false);
             }
             LogOutcome(transition.Region, transition.Operation, outcome);
@@ -512,7 +555,8 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed
                 || transition.CallerToken.IsCancellationRequested)
                 return (CancelledOutcome(transition), null);
-            plan = ComputePlanLocked(region, transition.Operation, transition.Pending, transition.BackTo, transition.Expected);
+            plan = ComputePlanLocked(region, transition.Operation, transition.Pending, transition.BackTo, transition.Expected,
+                transition.Return is not null);
         }
         if (plan.Rejection is { } rejection) return (NavigationOutcome.Reject(rejection), null);
         if (plan.Unchanged) return (NavigationOutcome.Commit(region.CurrentEntry, []), null);
@@ -745,6 +789,13 @@ public sealed class RunicNavigator : IAsyncDisposable
                 foreach (var closing in plan.Closing)
                     MarkClosedLocked(closing, commit.Cancel);
                 foreach (var affected in plan.Regions) affected.Version++;
+                // A committed PushForResult can now complete; a committed return takes the
+                // value it carries, unless the request was already dismissed (the value is dropped).
+                if (transition.Pending?.ResultRequest is { State: NavigationResultState.Pending } pushed)
+                    pushed.State = NavigationResultState.Active;
+                if (transition.Return?.Result is { } staged
+                    && !(staged.Request.Entry is { } returning && plan.Removed.Contains(returning) && staged.TryAccept()))
+                    transition.ResultDropped = true;
                 commit.Current = region.CurrentEntry;
                 changed.Add((region, Changes(regionBefore, region)));
             }
@@ -879,7 +930,7 @@ public sealed class RunicNavigator : IAsyncDisposable
     }
 
     private NavigationPlan ComputePlanLocked(NavigationRegionCore region, NavigationOperation operation,
-        NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected)
+        NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected, bool popToEmpty = false)
     {
         var plan = new NavigationPlan();
         plan.Regions.Add(region);
@@ -891,6 +942,14 @@ public sealed class RunicNavigator : IAsyncDisposable
         switch (operation)
         {
             case NavigationOperation.Push:
+                // A result entry whose caller cancelled is on its way out: a push retires it rather
+                // than retaining it under the new entry (OnCallerCancelled).
+                if (current?.ResultRequest is { State: NavigationResultState.Dismissed })
+                {
+                    plan.Removed.Add(current);
+                    plan.NewStack = pending is null ? stack : [.. stack.AsSpan(0, stack.Length - 1), pending];
+                    break;
+                }
                 plan.NewStack = pending is null ? stack : [.. stack, pending];
                 if (current is not null)
                 {
@@ -911,9 +970,10 @@ public sealed class RunicNavigator : IAsyncDisposable
                 }
                 break;
             case NavigationOperation.Back:
-                if (stack.Length < 2) return plan.Reject(NavigationRejection.NoHistory);
+                // A return from a result entry may leave the region empty.
+                if (stack.Length < (popToEmpty ? 1 : 2)) return plan.Reject(NavigationRejection.NoHistory);
                 plan.Removed.Add(current!);
-                plan.Resume = stack[^2];
+                plan.Resume = stack.Length > 1 ? stack[^2] : null;
                 plan.NewStack = stack[..^1];
                 break;
             case NavigationOperation.BackTo:
@@ -973,6 +1033,86 @@ public sealed class RunicNavigator : IAsyncDisposable
         plan.Guards.Add((entry, NavigationDepartureKind.Retire));
     }
 
+    // ---- Results ---------------------------------------------------------
+
+    private static readonly Action<object?> CallerCancelled = static state =>
+    {
+        var request = (NavigationResultRequestCore)state!;
+        request.Region.Navigator.OnCallerCancelled(request);
+    };
+
+    // Ends a result request once. A request whose return already committed with a value
+    // (Completing) completes on every path; any other open request is dismissed. With
+    // onlyActive, only a committed request that has not completed is dismissed. The
+    // sources are set outside the gate, never inside a commit turn; beforeEnd runs after the
+    // state became terminal and before the source is set.
+    private bool FinishResult(NavigationResultRequestCore request, NavigationResultDismissal reason, bool onlyActive = false,
+        Action? beforeEnd = null)
+    {
+        bool completed;
+        CancellationTokenRegistration registration;
+        lock (Gate)
+        {
+            if (request.State is NavigationResultState.Completed or NavigationResultState.Dismissed) return false;
+            if (onlyActive && request.State != NavigationResultState.Active) return false;
+            completed = request.State == NavigationResultState.Completing;
+            request.State = completed ? NavigationResultState.Completed : NavigationResultState.Dismissed;
+            registration = request.Registration;
+            request.Registration = default;
+            _resultRequests.Remove(request);
+        }
+        // Unregister does not wait for a running callback, so this is safe from the callback itself.
+        registration.Unregister();
+        beforeEnd?.Invoke();
+        if (completed) request.Complete();
+        else
+        {
+            request.Dismiss();
+            NavigationLog.NavigationResultDismissed(Logger, null, request.Region.ContentTypeName, request.Region.Id, reason);
+        }
+        return true;
+    }
+
+    // After the push committed, cancelling the caller's token dismisses the request.
+    private void WatchCaller(NavigationResultRequestCore request)
+    {
+        if (!request.CallerToken.CanBeCanceled) return;
+        // No execution context is captured: the callback must not inherit a hook marker.
+        // An already cancelled token runs the callback here, which dismisses the request.
+        var registration = request.CallerToken.UnsafeRegister(CallerCancelled, request);
+        bool keep;
+        lock (Gate)
+        {
+            keep = request.State == NavigationResultState.Active;
+            if (keep) request.Registration = registration;
+        }
+        if (!keep) registration.Unregister();
+    }
+
+    // Dismisses at once and goes back from the entry if it is still current. The Back is
+    // admitted before the completion is set, so a request the caller makes after observing
+    // the dismissal supersedes it; a Push over the dismissed entry then retires it
+    // (ComputePlanLocked). The Back runs on the thread pool and is not awaited; its rejection
+    // or supersession is logged (1065/1066). The callback may run on a thread inside a hook,
+    // so the hook marker is cleared for the admission.
+    private void OnCallerCancelled(NavigationResultRequestCore request)
+    {
+        NavigationEntryCore? entry;
+        lock (Gate) entry = request.Entry;
+        if (entry is null) return;
+        FinishResult(request, NavigationResultDismissal.Cancelled, onlyActive: true, beforeEnd: () =>
+        {
+            var hook = HookTransition.Value;
+            HookTransition.Value = null;
+            try
+            {
+                _ = Start(entry.Region, NavigationOperation.Back, null, null, entry.Id, CancellationToken.None,
+                    new NavigationReturn(null), runDetached: true);
+            }
+            finally { HookTransition.Value = hook; }
+        });
+    }
+
     // ---- Retirement ------------------------------------------------------
 
     // The move to Retiring happens once per entry, whichever path gets here first.
@@ -999,8 +1139,10 @@ public sealed class RunicNavigator : IAsyncDisposable
             // Owned disposal never runs inside a model turn.
             if (ModelContext.IsExecuting) await Task.Yield();
 
-            // 1. Cancel the entry's retirement token.
+            // 1. Cancel the entry's retirement token, then end its result request: completed
+            // when a committed return carried a value, dismissed otherwise.
             Step(entry, "Retirement", static entry => entry.Retirement.Cancel());
+            if (entry.ResultRequest is { } request) FinishResult(request, NavigationResultDismissal.Retired);
 
             var content = entry.Content;
             if (entry.Owned && content is not null)
@@ -1420,6 +1562,12 @@ internal sealed class NavigationTransition : IDisposable
     public bool CommitStarted { get; set; }
     public bool Released { get; set; }
 
+    // Set for a return from a result entry (CompleteAsync, or a cancelled PushForResult caller).
+    public NavigationReturn? Return { get; init; }
+
+    // Set in the commit turn when a returned value found its request already dismissed.
+    public bool ResultDropped { get; set; }
+
     // The entry whose departure guard hook this transition is running, and the
     // signal that the hook has returned. Set and cleared under the navigator's gate.
     public NavigationEntryCore? GuardingEntry { get; set; }
@@ -1553,6 +1701,12 @@ internal static class NavigationResults
 {
     public static ValueTask<NavigationResult<T>> MapAsync<T>(Task<NavigationOutcome> outcome) where T : class =>
         outcome.IsCompletedSuccessfully ? new(Map<T>(outcome.Result)) : AwaitAsync<T>(outcome);
+
+    public static Task<NavigationResult<T>> MapTask<T>(Task<NavigationOutcome> outcome) where T : class =>
+        outcome.IsCompletedSuccessfully ? Task.FromResult(Map<T>(outcome.Result)) : AwaitTaskAsync<T>(outcome);
+
+    private static async Task<NavigationResult<T>> AwaitTaskAsync<T>(Task<NavigationOutcome> outcome) where T : class =>
+        Map<T>(await outcome.ConfigureAwait(false));
 
     private static async ValueTask<NavigationResult<T>> AwaitAsync<T>(Task<NavigationOutcome> outcome) where T : class =>
         Map<T>(await outcome.ConfigureAwait(false));

@@ -205,10 +205,33 @@ test('the Windows native job scales the example smoke timeouts (#70)', () => {
 test('template lanes cover every framework once and run the creator check in one lane', () => {
   const { strategy, steps } = workflow.jobs.templates;
   assert.deepEqual(strategy.matrix.framework, ['react', 'vue', 'svelte', 'angular']);
-  assert.deepEqual(strategy.matrix.include, [{ framework: 'react', creator: '1' }]);
+  assert.deepEqual(strategy.matrix.include, [{ framework: 'react', creator: '1' }, { framework: 'vue', 'desktop-smoke': '1' }]);
   const step = steps.find(item => item.run === 'bun run verify:templates');
   assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.framework }}');
   assert.equal(step?.env.RUNIC_TEMPLATE_CREATOR, "${{ matrix.creator || '0' }}");
+  // The vue lane owns the desktop-gtk4 variant; its GTK 4 smoke needs the runtime installed first.
+  assert.equal(step?.env.RUNIC_TEMPLATE_DESKTOP_SMOKE, "${{ matrix.desktop-smoke || '0' }}");
+  const install = steps.findIndex(item => item.run?.includes('libwebkitgtk-6.0-4'));
+  assert.ok(install >= 0 && install < steps.indexOf(step));
+  assert.equal(steps[install].if, "matrix.desktop-smoke == '1'");
+  const sandbox = steps.findIndex(item => item.run === 'eng/ci/permit-webkit-sandbox.sh');
+  assert.ok(sandbox > install && sandbox < steps.indexOf(step));
+  assert.equal(steps[sandbox].if, "matrix.desktop-smoke == '1'");
+  // Each lane verifies only the variants of its framework, so the desktop-gtk4 variants must belong to the
+  // smoke lane's framework, or their smoke would be skipped silently.
+  const smokeFrameworks = strategy.matrix.include.filter(item => item['desktop-smoke'] === '1').map(item => item.framework);
+  const variants = [...readFileSync(resolve(root, 'tests/templates/Test-Templates.sh'), 'utf8')
+    .matchAll(/^\s*"(\w+) (\w+) desktop-gtk4 (\w+)"$/gm)];
+  assert.ok(variants.length > 0, 'Test-Templates.sh has no desktop-gtk4 variant.');
+  for (const [, framework] of variants) assert.deepEqual(smokeFrameworks, [framework]);
+});
+
+test('native and template jobs share the WebKit sandbox permission script', () => {
+  const users = Object.entries(workflow.jobs)
+    .filter(([, job]) => job.steps?.some(item => item.run === 'eng/ci/permit-webkit-sandbox.sh'))
+    .map(([id]) => id);
+  assert.deepEqual(users.sort(), ['native', 'templates']);
+  assert.ok(!readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8').includes('apparmor_parser'));
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {

@@ -72,6 +72,25 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
   stops new operations and waits for accepted ones before releasing the scope.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
+- `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
+  presentation's `INativePickerOwner`. Pass it to the platform provider that
+  matches the window's backend; no custom adapter is needed:
+  - Windows: `WindowsPlatformProvider.CreateFileDialogs(owner)`.
+  - macOS: `MacOSPlatformProvider.CreateFileDialogs(owner)`.
+  - Linux with GTK 3:
+    `LinuxPlatformProvider.CreateFileDialogs(owner)`.
+  - Linux with GTK 4:
+    `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`.
+    `LinuxPlatformProvider` parents dialogs through GTK 3, so do not use it
+    with a GTK 4 window.
+
+  The owner runs provider callbacks on the window's native thread and becomes
+  unavailable when the window closes or the surface replaces it. A presentation
+  without native dispatch still has an owner, but it reports
+  `IsAvailable == false`. Examples are an installed browser after an
+  embedded-window fallback, or a custom host without a native handle.
+  Applications that open a `DesktopWindow` themselves create one with
+  `new DesktopNativeOwner(window)`.
 - `DesktopBridgeTransport` connects a `DesktopSurface` to a
   `WindowContentSession` directly, for applications that compose a surface
   themselves.
@@ -93,3 +112,22 @@ The [First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/t
 example is a complete application. See the
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/)
 to choose between this host and CS-WebUI.
+
+## Automation
+
+Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped
+application without a user. With it set, `OpenDesktopWindowAsync` closes every
+window it opens, as soon as the presentation has opened and, with
+`DesktopHostOptions.WaitForConnection`, its bridge has connected. Before
+closing, it writes:
+
+- a warning to standard error, and event 2002 through a registered
+  `ILoggerFactory`, so an inherited setting is visible;
+- `RUNIC_APPLICATION_OPENED=<presentation>` (for example `Embedded`, or the
+  browser it fell back to) to standard output.
+
+An application shaped like the `runic-app` template then sees `WaitForClose`
+return and exits normally. Applications that keep running after a window
+closes, or that open further windows, are not meant to use it. This is the
+Desktop counterpart of CS-WebUI's `RUNIC_APPLICATION_SERVE_ONLY`. The template
+acceptance check uses it to run the GTK 4 template under Xvfb.

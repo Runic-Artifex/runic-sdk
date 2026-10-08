@@ -27,6 +27,11 @@ try
     {
         await RunWindowsUiAutomationSmokeAsync();
     }
+    else if (args.Contains("--event-loop", StringComparer.Ordinal))
+    {
+        // Must run before the first await: on macOS the entry point picks the main-thread AppKit loop.
+        RunEventLoopSmoke();
+    }
     else if (OperatingSystem.IsMacOS())
     {
         RunMacOsSmoke();
@@ -205,6 +210,53 @@ static string JavaScriptString(string value) => "'" + value
     .Replace("\n", "\\n", StringComparison.Ordinal)
     .Replace("<", "\\u003c", StringComparison.Ordinal)
     + "'";
+
+// The single entry point picks the event loop for this platform and host: AppKit on macOS, a plain wait on
+// Windows and Linux GTK 3. The GTK 4 smoke covers the Gtk4Application branch.
+static void RunEventLoopSmoke()
+{
+    Console.WriteLine("Event loop: opening an embedded window through DesktopEventLoop.Run(options, application).");
+    DesktopHost? started = null;
+    int exitCode = DesktopEventLoop.Run(CreateHostOptions(), async host =>
+    {
+        started = host;
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Html(
+                "<!doctype html><html><head><script src=\"webui.js\"></script><title>Runic event loop</title></head><body>loop</body></html>"),
+        });
+        await using var window = await surface.OpenWindowAsync(FirstWindowOptions());
+        string? title = await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(30));
+        if (title != "Runic event loop")
+        {
+            throw new InvalidOperationException($"The event-loop window reported title '{title}'.");
+        }
+        await window.CloseAsync();
+        return 42;
+    });
+    if (exitCode != 42)
+    {
+        throw new InvalidOperationException($"DesktopEventLoop.Run returned {exitCode} instead of the application's result.");
+    }
+    if (started is null || !IsDisposed(started))
+    {
+        throw new InvalidOperationException("DesktopEventLoop.Run did not dispose the host it started.");
+    }
+    Console.WriteLine("Event loop: the application result was returned and the host was disposed.");
+
+    static bool IsDisposed(DesktopHost host)
+    {
+        try
+        {
+            host.Validate();
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return true;
+        }
+    }
+}
 
 static void RunMacOsSmoke()
 {

@@ -6,7 +6,61 @@ public sealed record DesktopPresentationAvailability(
     bool IsAvailable,
     string? ExecutablePath,
     DesktopWindowCapabilities Capabilities,
-    DesktopDiagnostic? Diagnostic);
+    DesktopDiagnostic? Diagnostic)
+{
+    private readonly DesktopDiagnostic[] _diagnostics = Diagnostic is null ? [] : [Diagnostic];
+
+    /// <summary>Gets the first missing prerequisite of an unavailable presentation, or <see langword="null"/>.</summary>
+    /// <remarks>
+    /// Always the first entry of <see cref="Diagnostics"/>. Setting it, including through a <see langword="with"/>
+    /// expression, replaces <see cref="Diagnostics"/> with this diagnostic alone, or with none.
+    /// </remarks>
+    public DesktopDiagnostic? Diagnostic
+    {
+        get => _diagnostics.Length == 0 ? null : _diagnostics[0];
+        init => _diagnostics = value is null ? [] : [value];
+    }
+
+    /// <summary>Gets every missing prerequisite of an unavailable presentation, not only the first.</summary>
+    /// <remarks>
+    /// For example, a GTK4 selection without its provider reports the provider and each missing native library.
+    /// <see cref="Diagnostic"/> is the first entry; setting this list after it replaces it.
+    /// </remarks>
+    public IReadOnlyList<DesktopDiagnostic> Diagnostics
+    {
+        // A read-only view: callers cannot cast it back to the array and change the record.
+        get => Array.AsReadOnly(_diagnostics);
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            DesktopDiagnostic[] diagnostics = [.. value];
+            if (Array.IndexOf(diagnostics, null) >= 0) throw new ArgumentException("Diagnostics cannot contain null.", nameof(value));
+            _diagnostics = diagnostics;
+        }
+    }
+
+    /// <summary>Compares every member, and the diagnostics by value and order.</summary>
+    public bool Equals(DesktopPresentationAvailability? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        Browser == other.Browser &&
+        IsAvailable == other.IsAvailable &&
+        string.Equals(ExecutablePath, other.ExecutablePath, StringComparison.Ordinal) &&
+        Capabilities == other.Capabilities &&
+        _diagnostics.AsSpan().SequenceEqual(other._diagnostics);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        HashCode hash = new();
+        hash.Add(Browser);
+        hash.Add(IsAvailable);
+        hash.Add(ExecutablePath, StringComparer.Ordinal);
+        hash.Add(Capabilities);
+        foreach (var diagnostic in _diagnostics) hash.Add(diagnostic);
+        return hash.ToHashCode();
+    }
+}
 
 /// <summary>Describes whether a requested presentation can be opened without changing its declared fallback policy.</summary>
 public sealed record DesktopPresentationPreflight(
@@ -28,6 +82,14 @@ public sealed record DesktopPresentationPreflight(
     public DesktopDiagnostic? Diagnostic => IsAvailable
         ? null
         : Preferred.Diagnostic ?? Fallback?.Diagnostic;
+
+    /// <summary>
+    /// Gets every missing prerequisite of the preferred presentation and its declared fallback when no declared
+    /// presentation path is available. <see cref="Diagnostic"/> is the first entry.
+    /// </summary>
+    public IReadOnlyList<DesktopDiagnostic> Diagnostics => IsAvailable
+        ? []
+        : Preferred.Diagnostics.Concat(Fallback?.Diagnostics ?? []).Distinct().ToArray();
 
     /// <summary>
     /// Gets one diagnostic per requested window option or permission grant that the preferred presentation, or its
@@ -73,8 +135,7 @@ public sealed record DesktopAvailabilityResult(
 
     /// <summary>Gets every actionable missing-prerequisite diagnostic.</summary>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics => Presentations
-        .Where(static presentation => presentation.Diagnostic is not null)
-        .Select(static presentation => presentation.Diagnostic!)
+        .SelectMany(static presentation => presentation.Diagnostics)
         .ToArray();
 }
 

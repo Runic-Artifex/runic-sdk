@@ -23,6 +23,39 @@ public interface IDesktopWindowHostFactory
     /// when the window ignores it. Keep the check cheap: do not load native libraries. The default reports none.
     /// </remarks>
     IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) => [];
+
+    /// <summary>Reports each missing prerequisite while <see cref="IsSupported"/> is <see langword="false"/>.</summary>
+    /// <remarks>
+    /// <see cref="DesktopHost.GetAvailability"/> and <see cref="DesktopHost.Validate"/> list these instead of a generic
+    /// <c>custom-window-host-unavailable</c> diagnostic, so users see every missing native library or service at once.
+    /// Keep the check cheap: do not load native libraries. The default reports none.
+    /// </remarks>
+    IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics() => [];
+}
+
+/// <summary>A window host factory whose windows need it to own the process main thread.</summary>
+/// <remarks>
+/// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> hands the application to
+/// <see cref="RunEventLoop"/> instead of its own loop when <see cref="IDesktopWindowHostFactory.IsSupported"/> is
+/// <see langword="true"/>.
+/// </remarks>
+public interface IDesktopEventLoopWindowHostFactory : IDesktopWindowHostFactory
+{
+    /// <summary>Runs <paramref name="application"/> while the native toolkit owns the calling main thread.</summary>
+    /// <param name="application">The application work. Windows from this factory can open while it runs.</param>
+    /// <returns>The value returned by <paramref name="application"/>.</returns>
+    int RunEventLoop(Func<Task<int>> application);
+
+    /// <summary>Checks, on the thread that will run the loop, whether <see cref="RunEventLoop"/> can start.</summary>
+    /// <remarks>
+    /// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> calls this right before
+    /// <see cref="RunEventLoop"/>. Return the reasons the loop cannot run, for example that no display is available;
+    /// the caller then reports them and runs the plain loop instead, and the factory should report
+    /// <see cref="IDesktopWindowHostFactory.IsSupported"/> as <see langword="false"/> from then on. The default
+    /// reports none.
+    /// </remarks>
+    /// <returns>The reasons the loop cannot run, or an empty list when it can.</returns>
+    IReadOnlyList<DesktopDiagnostic> PrepareEventLoop() => [];
 }
 
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
