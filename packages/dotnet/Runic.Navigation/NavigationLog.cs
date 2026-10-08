@@ -65,6 +65,11 @@ internal static partial class NavigationLog
         Message = "An entry of navigation region {Region} ({RegionId}) completed a PushForResult request that was already dismissed; it went back and the result was dropped.")]
     internal static partial void NavigationResultDropped(ILogger logger, Exception? exception, string region, int regionId);
 
+    [LoggerMessage(EventId = 1072, EventName = "NavigationDepartureActionFailed", Level = LogLevel.Error,
+        Message = "An OnCommitted action of {EntryType} in navigation region {Region} ({RegionId}) failed during {Operation} with {ErrorType}; the commit stands.")]
+    internal static partial void NavigationDepartureActionFailed(ILogger logger, Exception? exception, string region, int regionId,
+        string operation, string entryType, string errorType);
+
     [LoggerMessage(EventId = 1073, EventName = "NavigatorDisposeFailed", Level = LogLevel.Error,
         Message = "Disposing the navigator failed with {ErrorType}; entries may not have retired.")]
     internal static partial void NavigatorDisposeFailed(ILogger logger, Exception? exception, string errorType);

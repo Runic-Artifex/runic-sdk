@@ -306,35 +306,40 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.True(Navigation.CanNavigate);
     }
 
-    // A confirmed departure discards the draft in the turn that commits the Back. A guard
-    // that says yes for a Back that never commits, as a superseded one would, keeps it.
+    // A confirmed departure discards the draft in the turn that commits the Back, before the
+    // regions raise their changes: a handler of Main's Current already sees the discarded draft.
     [Fact]
-    public async Task A_confirmed_departure_discards_the_draft_only_when_the_back_commits()
+    public async Task A_confirmed_departure_discards_the_draft_in_the_commit_turn()
     {
         var editor = await OpenEditorAsync();
         editor.Set(vm => vm.Title, "Draft").EnsureOk();
-        var document = (DocumentViewModel)Navigation.Main.Current!;
-        var asking = ((INavigationDepartureGuard)document).CanDepartAsync(
-            new NavigationDeparture(Navigation.Main.CurrentEntry!.Id, NavigationDepartureKind.Retire, NavigationOperation.Back),
-            CancellationToken.None).AsTask();
-        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
-        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
-        Assert.True(await asking);
-        Assert.True(Editor.IsDirty);
-        Assert.Equal("Draft", Editor.Title);
+        var draft = Editor;
+        bool? dirtyWhenHomeShows = null;
+        void OnMainChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(NavigationRegion<IMainViewModel>.Current) && Navigation.Main.Current is HomeViewModel)
+                dirtyWhenHomeShows ??= draft.IsDirty;
+        }
 
-        var leaving = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Start(vm => vm.OpenHomeCommand);
-        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
-        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
-        Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
+        Navigation.Main.PropertyChanged += OnMainChanged;
+        try
+        {
+            var leaving = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Start(vm => vm.OpenHomeCommand);
+            await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
+            (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
+            Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
+        }
+        finally { Navigation.Main.PropertyChanged -= OnMainChanged; }
         Assert.IsType<HomeViewModel>(Navigation.Main.Current);
-        Assert.False(Editor.IsDirty);
-        Assert.Equal("Untitled", Editor.Title);
+        Assert.False(dirtyWhenHomeShows);
+        Assert.False(draft.IsDirty);
+        Assert.Equal("Untitled", draft.Title);
     }
 
-    // A confirmed guard whose Back is then superseded keeps the document and its draft, and
-    // the document forgets the confirmation: closing the window afterwards, which clears Main
-    // without asking guards, doesn't discard the draft.
+    // A confirmed guard whose Back is then superseded keeps the document and its draft. The
+    // yes ends with the Back, and the discard runs only in a commit turn of a departure the
+    // guard allowed: closing the window afterwards, which clears Main without asking guards,
+    // does not discard the draft.
     [Fact]
     public async Task A_superseded_confirmed_back_keeps_the_draft_through_window_close()
     {

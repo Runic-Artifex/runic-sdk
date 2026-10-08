@@ -32,6 +32,14 @@ internal static class NavigationSourceScanTests
             "Observe: only reads the exception of a task that nobody awaits any more"),
         ("RunicNavigator.cs", "return new(task.AsTask().ContinueWith(static completed =>", 1,
             "Completion: adapts a hook's ValueTask to ValueTask<bool>; the engine awaits that through the helper"),
+        // LeaveConfirmation is a guard: user code the engine calls, not engine code. It keeps the
+        // caller's context so that a confirm delegate started on the UI thread stays on it.
+        ("LeaveConfirmation.cs", "await dialogs.PushForResult<bool>(dialog(), cancellationToken: cancellationToken).Completion", 1,
+            "LeaveConfirmation is user guard code, not engine code; it keeps the caller's context so UI-thread confirm delegates stay on the UI thread"),
+        ("LeaveConfirmation.cs", "if (!await departure.ModelContext.InvokeAsync(_hasUnsavedChanges, cancellationToken)) return true;", 1,
+            "LeaveConfirmation is user guard code, not engine code; it keeps the caller's context so UI-thread confirm delegates stay on the UI thread"),
+        ("LeaveConfirmation.cs", "if (!await _confirm(departure, cancellationToken)) return false;", 1,
+            "LeaveConfirmation is user guard code, not engine code; it keeps the caller's context so UI-thread confirm delegates stay on the UI thread"),
     ];
 
     private static readonly Regex Await = new(@"\bawait\b", RegexOptions.CultureInvariant);

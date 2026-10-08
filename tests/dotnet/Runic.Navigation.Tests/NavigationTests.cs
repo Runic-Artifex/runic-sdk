@@ -82,6 +82,7 @@ internal static partial class NavigationTests
         await RandomizedRaceAsync(seed: 61, disposeDuringRace: true);
         await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true, patient: true);
         await RandomizedRaceAsync(seed: 61, disposeDuringRace: true, patient: true);
+        await RunStandaloneAsync();
     }
 
     // ---- Basic operations ------------------------------------------------
@@ -2119,7 +2120,8 @@ internal static partial class NavigationTests
 
     private sealed class Fixture : IAsyncDisposable
     {
-        public Fixture(IRunicModelContext? context = null, TimeProvider? time = null, TimeSpan? closeTimeout = null)
+        public Fixture(IRunicModelContext? context = null, TimeProvider? time = null, TimeSpan? closeTimeout = null,
+            IServiceProvider? services = null, bool entryScopes = false)
         {
             Context = context ?? new RunicModelContext();
             Navigator = new RunicNavigator(new RunicNavigatorOptions
@@ -2128,6 +2130,8 @@ internal static partial class NavigationTests
                 LoggerFactory = Logs,
                 TimeProvider = time,
                 CloseTimeout = closeTimeout ?? TimeSpan.FromSeconds(10),
+                Services = services,
+                CreateEntryScopes = entryScopes,
             });
         }
 

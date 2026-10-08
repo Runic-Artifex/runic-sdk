@@ -25,6 +25,8 @@ internal enum NavigationResultDismissal
     Retired,
     Cancelled,
     Closed,
+    // The entry called NavigationEntryContext.DismissAsync.
+    Dismissed,
 }
 
 // Marks a Back that returns from a result entry: it may leave the region empty, and

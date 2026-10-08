@@ -14,5 +14,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Runic.Navigation" Version="$(RunicPackageVersion)" />
+    <!-- The container that builds container-resolved targets (W240-004). package-smoke.mjs passes
+         the version from the repository's Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(RunicDependencyInjectionVersion)" />
   </ItemGroup>
 </Project>
