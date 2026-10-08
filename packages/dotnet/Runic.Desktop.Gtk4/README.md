@@ -16,15 +16,23 @@ using Runic.Desktop.Gtk4;
 
 return Gtk4Application.Run(async () =>
 {
-    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
-    {
-        Linux = new LinuxDesktopOptions { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 },
-        WindowHostFactory = new Gtk4WindowHostFactory(),
-    });
+    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions().WithGtk4());
     // Create surfaces and windows here.
     return 0;
 });
 ```
+
+`WithGtk4()` applies the GTK 4 profile in one step: it selects
+`LinuxEmbeddedBackend.Gtk4WebKit6` and sets `WindowHostFactory` to a
+`Gtk4WindowHostFactory`, so the two cannot disagree. On Windows and macOS it
+keeps the platform's own embedded host. It throws `ArgumentException` when the
+options already carry another factory. When the profile cannot run,
+`DesktopHost.Validate` and `GetAvailability` list every missing library
+(`gtk4-runtime-missing`, `webkitgtk6-runtime-missing`) rather than only the
+first. `dotnet runic doctor` adds a `gtk4-profile` check that also names the
+missing `Runic.Platform.Linux.Gtk4` and `Runic.Platform.Linux.Portal` packages,
+and warns when the project restores `Runic.Platform.Linux`, whose GTK 3 portal
+parent would load GTK 3 into the GTK 4 process.
 
 Pass an installed application identity with `Gtk4Application.Run(callback,
 "org.example.MyApp")`. Inside Flatpak the runner automatically uses `FLATPAK_ID`;

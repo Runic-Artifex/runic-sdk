@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Runic.Desktop.Internal;
 
 namespace Runic.Application.Tool;
 
@@ -62,9 +63,7 @@ internal static class DoctorTargetChecks
 
     private const string Gtk3Library = "libgtk-3.so.0";
     private const string WebKit41Library = "libwebkit2gtk-4.1.so.0";
-    private const string Gtk4Library = "libgtk-4.so.1";
-    private const string WebKit6Library = "libwebkitgtk-6.0.so.4";
-    private static readonly Version MinimumGtk4 =
+    internal static readonly Version MinimumGtk4 =
         Version.TryParse(Support.Requirement("gtk4")?.Minimum, out Version? minimum) ? minimum : new(4, 12);
 
     internal static async Task InspectAsync(
@@ -302,18 +301,24 @@ internal static class DoctorTargetChecks
             case "osx":
                 return new(DoctorStatus.Pass, $"WKWebView is part of macOS; this machine runs macOS {runtime.Platform.OsVersion}.");
             default:
-                string gtk = project.UsesGtk4 ? Gtk4Library : Gtk3Library;
-                string webkit = project.UsesGtk4 ? WebKit6Library : WebKit41Library;
+                string[] gtk = project.UsesGtk4 ? [Gtk4NativeLibraries.Gtk] : [Gtk3Library];
+                string[] webkit = project.UsesGtk4 ? Gtk4NativeLibraries.WebKit : [WebKit41Library];
                 var missing = new List<string>();
-                foreach (string library in new[] { gtk, webkit })
+                foreach (string[] names in new[] { gtk, webkit })
                 {
-                    if (!await runtime.IsNativeLibraryAvailableAsync(library, cancellationToken).ConfigureAwait(false)) missing.Add(library);
+                    bool found = false;
+                    foreach (string library in names)
+                    {
+                        if (found = await runtime.IsNativeLibraryAvailableAsync(library, cancellationToken).ConfigureAwait(false)) break;
+                    }
+                    if (!found) missing.Add(names[0]);
                 }
                 if (missing.Count != 0)
                 {
                     return new(DoctorStatus.Warning, $"This machine is missing {string.Join(" and ", missing)}.",
                         project.UsesGtk4
-                            ? $"Install GTK {MinimumGtk4} or newer and WebKitGTK 6.0 (for example libgtk-4-1 and libwebkitgtk-6.0-4) on this machine and on target machines."
+                            ? Capitalize(DoctorGtk4Packages.Remediation(DoctorGtk4Packages.FromOsRelease(runtime.OsReleasePaths), MinimumGtk4,
+                                gtk4: missing.Contains(gtk[0]), webKit6: missing.Contains(webkit[0]))) + " on this machine and on target machines."
                             : "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0) on this machine and on target machines.");
                 }
                 if (project.UsesGtk4)
@@ -332,7 +337,9 @@ internal static class DoctorTargetChecks
         }
     }
 
-    private static async Task<Version?> ReadPkgConfigVersionAsync(DoctorProjectConfiguration project,
+    private static string Capitalize(string text) => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
+
+    internal static async Task<Version?> ReadPkgConfigVersionAsync(DoctorProjectConfiguration project,
         IDoctorRuntime runtime, string module, CancellationToken cancellationToken)
     {
         // pkg-config is optional: a machine with only the runtime libraries has none.

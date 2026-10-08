@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions
+Runic.Desktop.Gtk4.Gtk4WindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+static Runic.Desktop.Gtk4.Gtk4DesktopHostOptionsExtensions.WithGtk4(this Runic.Desktop.DesktopHostOptions! options) -> Runic.Desktop.DesktopHostOptions!

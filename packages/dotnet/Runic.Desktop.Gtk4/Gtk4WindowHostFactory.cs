@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.ExceptionServices;
 
 using Gtk;
+using Runic.Desktop.Internal;
 using WebKit;
 
 namespace Runic.Desktop.Gtk4;
@@ -210,6 +211,25 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
         Gtk4WindowHost.GetUnsupportedOptions(options);
 
     /// <inheritdoc />
+    /// <remarks>Reports <c>linux-embedded-backend-conflict</c>, <c>gtk4-runtime-missing</c> and <c>webkitgtk6-runtime-missing</c> together.</remarks>
+    public IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return [Gtk4Runtime.Missing("embedded-platform-unsupported", "GTK 4 and WebKitGTK 6 are available only on Linux.",
+                "Configure Gtk4WindowHostFactory only on Linux; DesktopHostOptions.WithGtk4() does this automatically.")];
+        }
+        List<DesktopDiagnostic> diagnostics = [];
+        if (!LinuxDesktopRuntime.CanUse(Backend))
+        {
+            diagnostics.Add(Gtk4Runtime.Missing("linux-embedded-backend-conflict", "Another Linux toolkit is already initialized.",
+                "Start a new process to select a different toolkit."));
+        }
+        diagnostics.AddRange(Gtk4Runtime.GetMissingLibraries());
+        return diagnostics;
+    }
+
+    /// <inheritdoc />
     public IDesktopWindowHost Create()
     {
         if (!OperatingSystem.IsLinux())
@@ -233,10 +253,28 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
 
 internal static class Gtk4Runtime
 {
-    private static readonly string[] GtkNames = ["libgtk-4.so.1"];
-    private static readonly string[] WebKitNames = ["libwebkitgtk-6.0.so.4", "libwebkitgtk-6.0.so.0"];
+    private static readonly string[] GtkNames = [Gtk4NativeLibraries.Gtk];
+    private static readonly string[] WebKitNames = Gtk4NativeLibraries.WebKit;
 
     internal static bool IsAvailable => CanFind(GtkNames) && CanFind(WebKitNames);
+
+    // Uses the same codes as DesktopPlatform's GTK4 checks so tools can match them.
+    internal static IEnumerable<DesktopDiagnostic> GetMissingLibraries()
+    {
+        if (!CanFind(GtkNames))
+        {
+            yield return Missing("gtk4-runtime-missing", "The GTK 4 library libgtk-4.so.1 was not discovered.",
+                "Install GTK 4.12 or newer (for example libgtk-4-1) in the native loader search path.");
+        }
+        if (!CanFind(WebKitNames))
+        {
+            yield return Missing("webkitgtk6-runtime-missing", "The WebKitGTK 6.0 library libwebkitgtk-6.0.so.4 was not discovered.",
+                "Install WebKitGTK 6.0 (for example libwebkitgtk-6.0-4) in the native loader search path.");
+        }
+    }
+
+    internal static DesktopDiagnostic Missing(string code, string message, string remediation) =>
+        new(DesktopErrorCategory.Unavailable, code, message, Retryable: false, CorrelationId: string.Empty, Remediation: remediation);
 
     private static bool CanFind(IEnumerable<string> names)
     {

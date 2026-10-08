@@ -23,6 +23,14 @@ public interface IDesktopWindowHostFactory
     /// when the window ignores it. Keep the check cheap: do not load native libraries. The default reports none.
     /// </remarks>
     IReadOnlyList<DesktopDiagnostic> ValidateOptions(DesktopWindowHostOptions options) => [];
+
+    /// <summary>Reports each missing prerequisite while <see cref="IsSupported"/> is <see langword="false"/>.</summary>
+    /// <remarks>
+    /// <see cref="DesktopHost.GetAvailability"/> and <see cref="DesktopHost.Validate"/> list these instead of a generic
+    /// <c>custom-window-host-unavailable</c> diagnostic, so users see every missing native library or service at once.
+    /// Keep the check cheap: do not load native libraries. The default reports none.
+    /// </remarks>
+    IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics() => [];
 }
 
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>

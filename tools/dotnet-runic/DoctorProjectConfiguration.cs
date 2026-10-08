@@ -48,6 +48,9 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>True when the project references the optional GTK 4 Desktop provider.</summary>
     internal bool UsesGtk4 { get; init; }
 
+    /// <summary>The package and project references the project declares directly, by package identity.</summary>
+    internal IReadOnlyList<string> DirectReferences { get; init; } = [];
+
     /// <summary>
     /// The global properties 'dotnet publish -r rid' sets, plus PublishAot and
     /// SelfContained for the --aot and --self-contained switches.
@@ -98,6 +101,7 @@ internal sealed record DoctorProjectConfiguration(
             SelfContained = IsTrue(Value("SelfContained")),
             StripSymbols = !Value("StripSymbols").Equals("false", StringComparison.OrdinalIgnoreCase),
             UsesGtk4 = References(document.RootElement, DesktopGtk4Package),
+            DirectReferences = ReferenceIdentities(document.RootElement),
         };
     }
 
@@ -116,9 +120,14 @@ internal sealed record DoctorProjectConfiguration(
     }
 
     /// <summary>Whether the evaluation has a package or project reference to <paramref name="name"/>.</summary>
-    internal static bool References(JsonElement evaluation, string name)
+    internal static bool References(JsonElement evaluation, string name) =>
+        ReferenceIdentities(evaluation).Contains(name, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The package identities of the evaluation's package references and referenced project names.</summary>
+    internal static IReadOnlyList<string> ReferenceIdentities(JsonElement evaluation)
     {
-        if (!evaluation.TryGetProperty("Items", out JsonElement items) || items.ValueKind != JsonValueKind.Object) return false;
+        List<string> identities = [];
+        if (!evaluation.TryGetProperty("Items", out JsonElement items) || items.ValueKind != JsonValueKind.Object) return identities;
         foreach (string itemType in new[] { "PackageReference", "ProjectReference" })
         {
             if (!items.TryGetProperty(itemType, out JsonElement references) || references.ValueKind != JsonValueKind.Array) continue;
@@ -130,10 +139,10 @@ internal sealed record DoctorProjectConfiguration(
                 {
                     identity = Path.GetFileNameWithoutExtension(identity.Replace('\\', '/').Split('/')[^1]);
                 }
-                if (identity.Equals(name, StringComparison.OrdinalIgnoreCase)) return true;
+                if (identity.Length != 0) identities.Add(identity);
             }
         }
-        return false;
+        return identities;
     }
 
     private static async Task<string> ReadProjectPropertiesAsync(

@@ -39,6 +39,18 @@ tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
+A project that references `Runic.Desktop.Gtk4` also gets a `gtk4-profile` check.
+It warns once and lists every missing piece: `Runic.Platform.Linux.Gtk4`, which
+creates the portal parent window and the GTK 4 clipboard;
+`Runic.Platform.Linux.Portal`, which can also come transitively, for example
+through `Runic.Platform.Linux`, once restored; and, on a Linux machine,
+`libgtk-4.so.1`, `libwebkitgtk-6.0.so.4` (or `.so.0`) and a GTK older than
+4.12. The remediation names the distribution's packages for Debian/Ubuntu,
+Fedora, Arch, openSUSE and NixOS, read from `/etc/os-release`, and the library
+file names on other distributions. The check also warns when the project
+restores `Runic.Platform.Linux`: its GTK 3 portal parent loads `libgtk-3`, and a
+GTK 4 process must not load GTK 3. With `--rid`, `target-presentation` reports
+the native libraries instead.
 
 ### Deployment checks for a target
 

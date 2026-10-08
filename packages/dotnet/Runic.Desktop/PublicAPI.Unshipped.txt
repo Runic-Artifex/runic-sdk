@@ -1,1 +1,5 @@
 #nullable enable
+Runic.Desktop.DesktopPresentationAvailability.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.DesktopPresentationAvailability.Diagnostics.init -> void
+Runic.Desktop.DesktopPresentationPreflight.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
+Runic.Desktop.IDesktopWindowHostFactory.GetAvailabilityDiagnostics() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!

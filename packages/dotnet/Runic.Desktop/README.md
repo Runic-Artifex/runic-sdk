@@ -51,12 +51,17 @@ concerns, a `Remediation`, and a `Severity`. Errors make the request fail when i
 opens; warnings mean the presentation ignores or narrows an option.
 `ThrowIfInvalid()` throws a `DesktopConfigurationException` listing every error,
 and each diagnostic is logged through `DesktopHostOptions.LoggerFactory`.
-`GetPresentationPreflight` returns the same checks as `Diagnostic` and
-`OptionDiagnostics` for applications that present them themselves.
+`GetPresentationPreflight` returns the same checks as `Diagnostics` (its first
+entry is `Diagnostic`) and `OptionDiagnostics` for applications that present them
+themselves. An unavailable presentation reports every missing prerequisite at
+once: a GTK4 selection without its provider, for example, lists
+`gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing` and
+`graphical-session-missing` together. A custom `IDesktopWindowHostFactory` can do
+the same by overriding `GetAvailabilityDiagnostics()`.
 
 | Code | Severity | Reported when |
 | --- | --- | --- |
-| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
+| `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
 | `browser-unsupported` | Error | `Browser` is Safari or Opera, which Runic Desktop cannot launch. |
 | `window-option-invalid` | Error | An option has an undefined value, or `ConfirmCloseAsync` is set for a browser presentation. |
 | `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |

@@ -226,6 +226,20 @@ static async Task ExerciseCancelledQueuedOpenAsync(Gtk4WindowHostFactory factory
 static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
 {
     Console.WriteLine("GTK4 smoke: exercising explicit DesktopHost integration and bridge.");
+    var profile = new DesktopHostOptions().WithGtk4();
+    if (profile.WindowHostFactory is not Gtk4WindowHostFactory || profile.Linux.EmbeddedBackend != LinuxEmbeddedBackend.Gtk4WebKit6)
+    {
+        throw new InvalidOperationException("WithGtk4 did not select the GTK 4 backend and factory together.");
+    }
+    await using (var profiled = await DesktopHost.StartAsync(profile))
+    {
+        var validation = profiled.Validate(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException(
+                $"The GTK 4 profile reported missing pieces: {string.Join(", ", validation.Errors.Select(static item => item.Code))}.");
+        }
+    }
     await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
     {
         Linux = new LinuxDesktopOptions { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 },

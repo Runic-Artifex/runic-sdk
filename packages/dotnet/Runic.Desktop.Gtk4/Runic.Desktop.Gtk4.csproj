@@ -15,5 +15,6 @@
     <PackageReference Include="GirCore.Gtk-4.0" />
     <PackageReference Include="GirCore.WebKit-6.0" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <Compile Include="../Runic.Desktop/Internal/Gtk4NativeLibraries.cs" Link="Shared/Gtk4NativeLibraries.cs" />
   </ItemGroup>
 </Project>
