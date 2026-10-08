@@ -25,6 +25,20 @@ try
     {
         throw new PlatformNotSupportedException("The GTK 4 native smoke runs on Linux only.");
     }
+    if (args.Contains("--event-loop", StringComparer.Ordinal))
+    {
+        // The GTK runner has one lifetime per process, so the entry-point check runs in its own process.
+        RunEventLoopSmoke();
+        Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run entry point.");
+        return 0;
+    }
+    if (args.Contains("--no-display", StringComparer.Ordinal))
+    {
+        // Run with no reachable display: gtk_init would end the process with exit(1).
+        RunNoDisplaySmoke();
+        Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run without a display falls back and reports why.");
+        return 0;
+    }
     AssertRunnerContract();
     Environment.ExitCode = RunSmoke();
     Console.WriteLine("PASS GTK 4 / WebKitGTK 6 native window lifecycle and capability contract.");
@@ -64,6 +78,97 @@ static void AssertRunnerContract()
     if (!rejectedWorker)
     {
         throw new InvalidOperationException("GTK4 runner accepted a worker-thread initialization.");
+    }
+}
+
+// Without a display DesktopEventLoop.Run must not start GTK: it reports gtk4-display-unavailable, runs the plain
+// loop, and the GTK 4 factory is unsupported from then on, so a browser fallback can take over.
+[SupportedOSPlatform("linux")]
+static void RunNoDisplaySmoke()
+{
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY"))
+        || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+    {
+        throw new InvalidOperationException("Run --no-display with DISPLAY and WAYLAND_DISPLAY unset and GDK_BACKEND=x11.");
+    }
+    List<DesktopDiagnostic> reported = [];
+    var options = new DesktopHostOptions { DiagnosticSink = reported.Add }.WithGtk4("dev.runic.desktop.gtk4.NoDisplaySmoke");
+    var factory = (Gtk4WindowHostFactory)options.WindowHostFactory!;
+    int result = DesktopEventLoop.Run(options, host =>
+    {
+        if (host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Embedded }).IsValid)
+        {
+            throw new InvalidOperationException("The embedded GTK 4 presentation validated without a display.");
+        }
+        return Task.FromResult(7);
+    });
+    if (result != 7)
+    {
+        throw new InvalidOperationException($"DesktopEventLoop.Run returned {result} instead of the application's result.");
+    }
+    var codes = reported.Select(static diagnostic => diagnostic.Code).ToArray();
+    if (!codes.Contains("event-loop-unavailable") || !codes.Contains("gtk4-display-unavailable"))
+    {
+        throw new InvalidOperationException($"The no-display fallback reported [{string.Join(", ", codes)}].");
+    }
+    if (factory.IsSupported || !factory.GetAvailabilityDiagnostics().Any(static d => d.Code == "gtk4-display-unavailable"))
+    {
+        throw new InvalidOperationException("The GTK 4 factory stayed supported after no display could be opened.");
+    }
+    // The application continues on the plain loop, so every forwarded reason is a warning.
+    if (reported.Any(static diagnostic => diagnostic.Severity != DesktopDiagnosticSeverity.Warning))
+    {
+        throw new InvalidOperationException("The no-display fallback reported an error although the application continued.");
+    }
+
+    // A direct Gtk4Application.Run without a display throws instead of letting gtk_init end the process.
+    try
+    {
+        Gtk4Application.Run(static () => Task.FromResult(0), "dev.runic.desktop.gtk4.NoDisplaySmoke");
+        throw new InvalidOperationException("Gtk4Application.Run started without a display.");
+    }
+    catch (PlatformNotSupportedException)
+    {
+    }
+}
+
+// DesktopEventLoop.Run must hand WithGtk4() options to Gtk4Application.Run: otherwise opening the window
+// fails because the GTK 4 factory only creates hosts inside the runner.
+[SupportedOSPlatform("linux")]
+static void RunEventLoopSmoke()
+{
+    var options = new DesktopHostOptions().WithGtk4("dev.runic.desktop.gtk4.EventLoopSmoke");
+    if (options.WindowHostFactory is not Gtk4WindowHostFactory { ApplicationId: "dev.runic.desktop.gtk4.EventLoopSmoke" })
+    {
+        throw new InvalidOperationException("WithGtk4(applicationId) did not configure the factory's application ID.");
+    }
+    DesktopHost? started = null;
+    int result = DesktopEventLoop.Run(options, async host =>
+    {
+        started = host;
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Html("<!doctype html><title>GTK4 event loop</title><script src=\"webui.js\"></script>"),
+        });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true });
+        if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "GTK4 event loop")
+        {
+            throw new InvalidOperationException("The GTK 4 event-loop window did not load its page.");
+        }
+        await window.CloseAsync();
+        return 42;
+    });
+    if (result != 42)
+    {
+        throw new InvalidOperationException($"DesktopEventLoop.Run returned {result} instead of the application's result.");
+    }
+    try
+    {
+        started?.Validate();
+        throw new InvalidOperationException("DesktopEventLoop.Run did not dispose the host it started.");
+    }
+    catch (ObjectDisposedException)
+    {
     }
 }
 
