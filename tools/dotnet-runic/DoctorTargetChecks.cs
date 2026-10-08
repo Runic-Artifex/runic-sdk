@@ -62,9 +62,9 @@ internal static class DoctorTargetChecks
 
     private const string Gtk3Library = "libgtk-3.so.0";
     private const string WebKit41Library = "libwebkit2gtk-4.1.so.0";
-    private const string Gtk4Library = "libgtk-4.so.1";
-    private const string WebKit6Library = "libwebkitgtk-6.0.so.4";
-    private static readonly Version MinimumGtk4 =
+    internal const string Gtk4Library = "libgtk-4.so.1";
+    internal const string WebKit6Library = "libwebkitgtk-6.0.so.4";
+    internal static readonly Version MinimumGtk4 =
         Version.TryParse(Support.Requirement("gtk4")?.Minimum, out Version? minimum) ? minimum : new(4, 12);
 
     internal static async Task InspectAsync(
@@ -332,7 +332,7 @@ internal static class DoctorTargetChecks
         }
     }
 
-    private static async Task<Version?> ReadPkgConfigVersionAsync(DoctorProjectConfiguration project,
+    internal static async Task<Version?> ReadPkgConfigVersionAsync(DoctorProjectConfiguration project,
         IDoctorRuntime runtime, string module, CancellationToken cancellationToken)
     {
         // pkg-config is optional: a machine with only the runtime libraries has none.

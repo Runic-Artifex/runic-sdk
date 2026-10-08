@@ -6,7 +6,21 @@ public sealed record DesktopPresentationAvailability(
     bool IsAvailable,
     string? ExecutablePath,
     DesktopWindowCapabilities Capabilities,
-    DesktopDiagnostic? Diagnostic);
+    DesktopDiagnostic? Diagnostic)
+{
+    private readonly IReadOnlyList<DesktopDiagnostic>? _diagnostics;
+
+    /// <summary>Gets every missing prerequisite of an unavailable presentation, not only the first.</summary>
+    /// <remarks>
+    /// For example, a GTK4 selection without its provider reports the provider and each missing native library.
+    /// <see cref="Diagnostic"/> is the first entry. When not set, the list holds <see cref="Diagnostic"/>, if any.
+    /// </remarks>
+    public IReadOnlyList<DesktopDiagnostic> Diagnostics
+    {
+        get => _diagnostics ?? (Diagnostic is null ? [] : [Diagnostic]);
+        init => _diagnostics = value ?? throw new ArgumentNullException(nameof(value));
+    }
+}
 
 /// <summary>Describes whether a requested presentation can be opened without changing its declared fallback policy.</summary>
 public sealed record DesktopPresentationPreflight(
@@ -28,6 +42,14 @@ public sealed record DesktopPresentationPreflight(
     public DesktopDiagnostic? Diagnostic => IsAvailable
         ? null
         : Preferred.Diagnostic ?? Fallback?.Diagnostic;
+
+    /// <summary>
+    /// Gets every missing prerequisite of the preferred presentation and its declared fallback when no declared
+    /// presentation path is available. <see cref="Diagnostic"/> is the first entry.
+    /// </summary>
+    public IReadOnlyList<DesktopDiagnostic> Diagnostics => IsAvailable
+        ? []
+        : Preferred.Diagnostics.Concat(Fallback?.Diagnostics ?? []).Distinct().ToArray();
 
     /// <summary>
     /// Gets one diagnostic per requested window option or permission grant that the preferred presentation, or its
@@ -73,8 +95,7 @@ public sealed record DesktopAvailabilityResult(
 
     /// <summary>Gets every actionable missing-prerequisite diagnostic.</summary>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics => Presentations
-        .Where(static presentation => presentation.Diagnostic is not null)
-        .Select(static presentation => presentation.Diagnostic!)
+        .SelectMany(static presentation => presentation.Diagnostics)
         .ToArray();
 }
 

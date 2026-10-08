@@ -338,7 +338,7 @@ public sealed class DesktopSurface : IAsyncDisposable
             "linux-embedded-backend-not-selected" =>
                 "Select a Linux toolkit with DesktopHostOptions.Linux.EmbeddedBackend to restore the preferred presentation.",
             "gtk4-provider-missing" =>
-                "Set DesktopHostOptions.WindowHostFactory to Gtk4WindowHostFactory to restore the GTK4 presentation.",
+                "Call DesktopHostOptions.WithGtk4() from Runic.Desktop.Gtk4 to restore the GTK4 presentation.",
             _ => "Install the platform WebView prerequisite to restore the preferred presentation.",
         }
         : "Install the platform WebView prerequisite to restore the preferred presentation.";

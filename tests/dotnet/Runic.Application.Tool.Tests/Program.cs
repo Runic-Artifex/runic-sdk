@@ -43,6 +43,7 @@ internal static class Program
             ("doctor --rid refuses cross-OS Native AOT", DoctorRidRefusesCrossOsAot),
             ("doctor --rid checks framework-dependent and RuntimeIdentifiers", DoctorRidChecksFrameworkDependent),
             ("doctor --rid checks GTK 4 and WebKitGTK 6", DoctorRidChecksGtk4),
+            ("doctor lists every missing GTK 4 profile piece", DoctorGtk4ProfileListsEveryMissingPiece),
             ("doctor --rid checks Windows WebView2 and C++ tools", DoctorRidChecksWindows),
             ("doctor --rid checks CS-WebUI presentation", DoctorRidChecksCsWebUi),
             ("doctor --rid reports its target through the CLI", DoctorRidThroughCli),
@@ -1026,6 +1027,60 @@ internal static class Program
         using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Desktop"},{"Identity":"Runic.Desktop.Gtk4"}]}}""");
         True(DoctorProjectConfiguration.References(evaluation.RootElement, DoctorProjectConfiguration.DesktopGtk4Package),
             "A Runic.Desktop.Gtk4 package reference selects the GTK 4 checks.");
+    }
+
+    private static void DoctorGtk4ProfileListsEveryMissingPiece()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+            with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4"] };
+        DoctorReport Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
+            DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult();
+
+        DoctorCheck bare = Check(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain)), "gtk4-profile");
+        Equal(DoctorStatus.Warning, bare.Status);
+        foreach (string piece in new[] { "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal", "libgtk-4.so.1", "libwebkitgtk-6.0.so.4" })
+        {
+            Contains(bare.Message, piece);
+        }
+        Contains(bare.Message, "4 piece(s)");
+        Contains(bare.Remediation ?? string.Empty, "WithGtk4()");
+        Contains(bare.Remediation ?? string.Empty, "CreatePortalWindowOwner");
+
+        // Runic.Platform.Linux brings the portal transitively; the restore graph shows it.
+        Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
+        {
+            libraries = new Dictionary<string, object>
+            {
+                ["Runic.Application.Desktop/1.0.0"] = new { type = "package" },
+                ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
+            },
+        }));
+        string[] gtk4 = ["libgtk-4.so.1", "libwebkitgtk-6.0.so.4"];
+        DoctorCheck old = Check(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain)
+        {
+            Libraries = [.. gtk4], Executables = ["pkg-config"], Gtk4Version = "4.10.1",
+        }), "gtk4-profile");
+        Equal(DoctorStatus.Warning, old.Status);
+        Contains(old.Message, "2 piece(s)");
+        Contains(old.Message, "Runic.Platform.Linux.Gtk4");
+        Contains(old.Message, "GTK 4.10.1");
+        DoesNotContain(old.Message, "Runic.Platform.Linux.Portal");
+
+        DoctorProjectConfiguration complete = desktop with { DirectReferences = [.. desktop.DirectReferences, "Runic.Platform.Linux.Gtk4"] };
+        Equal(DoctorStatus.Pass, Check(Inspect(complete, new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4] }), "gtk4-profile").Status);
+
+        // Native libraries are not checked on other machines, and --rid reports them under target-presentation.
+        DoctorHostPlatform windows = new("win", "x64", false, "10.0.26100");
+        Equal(DoctorStatus.Pass, Check(Inspect(complete, new FakeDoctorRuntime(authority.Toolchain) { Platform = windows }), "gtk4-profile").Status);
+        DoctorCheck target = Check(InspectTarget(complete, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)), "gtk4-profile");
+        Equal(DoctorStatus.Pass, target.Status);
+
+        False(Inspect(desktop with { UsesGtk4 = false }, new FakeDoctorRuntime(authority.Toolchain)).Checks.Any(static check => check.Name == "gtk4-profile"),
+            "Projects without Runic.Desktop.Gtk4 get no GTK 4 profile check.");
+
+        using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"}]}}""");
+        SequenceEqual(["Runic.Platform.Linux.Gtk4"], DoctorProjectConfiguration.ReferenceIdentities(evaluation.RootElement));
     }
 
     private static void DoctorRidChecksWindows()

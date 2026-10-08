@@ -42,27 +42,33 @@ public sealed class DesktopHost : IAsyncDisposable
             return availability;
         }
 
-        var selectionDiagnostic = OperatingSystem.IsLinux() && _options.WindowHostFactory is ILinuxDesktopWindowHostFactory
-            ? DesktopPlatform.GetLinuxSelectionDiagnostic(_options.Linux, _options.WindowHostFactory)
-            : null;
-        var customHostAvailable = selectionDiagnostic is null && _options.WindowHostFactory.IsSupported;
+        var factory = _options.WindowHostFactory;
+        List<DesktopDiagnostic> diagnostics = OperatingSystem.IsLinux() && factory is ILinuxDesktopWindowHostFactory
+            ? DesktopPlatform.GetLinuxSelectionDiagnostics(_options.Linux, factory)
+            : [];
+        var customHostAvailable = diagnostics.Count == 0 && factory.IsSupported;
+        if (!customHostAvailable)
+        {
+            if (!factory.IsSupported) diagnostics.AddRange(factory.GetAvailabilityDiagnostics());
+            if (diagnostics.Count == 0)
+                diagnostics.Add(new DesktopDiagnostic(
+                    DesktopErrorCategory.Unavailable,
+                    "custom-window-host-unavailable",
+                    "The configured embedded-window host is unavailable.",
+                    Retryable: false,
+                    Remediation: "Install its platform prerequisites or select an installed browser."));
+        }
         var presentations = availability.Presentations
             .Where(static presentation => presentation.Browser != BrowserKind.Embedded)
             .Append(new DesktopPresentationAvailability(
                 BrowserKind.Embedded,
                 customHostAvailable,
                 ExecutablePath: null,
-                customHostAvailable
-                    ? _options.WindowHostFactory.Capabilities
-                    : DesktopWindowCapabilities.None,
-                customHostAvailable
-                    ? null
-                    : selectionDiagnostic ?? new DesktopDiagnostic(
-                        DesktopErrorCategory.Unavailable,
-                        "custom-window-host-unavailable",
-                        "The configured embedded-window host is unavailable.",
-                        Retryable: false,
-                        Remediation: "Install its platform prerequisites or select an installed browser.")))
+                customHostAvailable ? factory.Capabilities : DesktopWindowCapabilities.None,
+                customHostAvailable ? null : diagnostics[0])
+            {
+                Diagnostics = diagnostics,
+            })
             .ToArray();
         return availability with { Presentations = presentations };
     }
@@ -132,10 +138,7 @@ public sealed class DesktopHost : IAsyncDisposable
         try
         {
             var preflight = GetPresentationPreflight(options);
-            if (preflight.Diagnostic is { } unavailable)
-            {
-                diagnostics.Add(unavailable);
-            }
+            diagnostics.AddRange(preflight.Diagnostics);
             diagnostics.AddRange(preflight.OptionDiagnostics);
         }
         catch (ArgumentException error)

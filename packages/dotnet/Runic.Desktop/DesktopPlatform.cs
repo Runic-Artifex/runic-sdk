@@ -48,8 +48,8 @@ public static class DesktopPlatform
                 installation is null ? MissingBrowser(browser) : null));
         }
 
-        var embeddedDiagnostic = GetEmbeddedDiagnostic(linux);
-        var embeddedAvailable = embeddedDiagnostic is null;
+        var embeddedDiagnostics = GetEmbeddedDiagnostics(linux);
+        var embeddedAvailable = embeddedDiagnostics.Count == 0;
         presentations.Add(new DesktopPresentationAvailability(
             BrowserKind.Embedded,
             embeddedAvailable,
@@ -62,7 +62,10 @@ public static class DesktopPlatform
                   DesktopWindowCapabilities.Resize |
                   DesktopWindowCapabilities.Move
                 : DesktopWindowCapabilities.None,
-            embeddedDiagnostic));
+            embeddedAvailable ? null : embeddedDiagnostics[0])
+        {
+            Diagnostics = embeddedDiagnostics,
+        });
         return new DesktopAvailabilityResult(GetPlatformName(), presentations);
     }
 
@@ -91,6 +94,32 @@ public static class DesktopPlatform
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
+    // Every missing embedded prerequisite, in the order a user can act on them. Linux reports each one
+    // (selection, provider, libraries, session); other platforms have a single prerequisite chain.
+    internal static IReadOnlyList<DesktopDiagnostic> GetEmbeddedDiagnostics(LinuxDesktopOptions? linux = null)
+    {
+        if (OperatingSystem.IsLinux()) return GetLinuxEmbeddedDiagnostics(linux ?? new LinuxDesktopOptions());
+        return GetEmbeddedDiagnostic(linux) is { } diagnostic ? [diagnostic] : [];
+    }
+
+    private static List<DesktopDiagnostic> GetLinuxEmbeddedDiagnostics(LinuxDesktopOptions linux)
+    {
+        var diagnostics = GetLinuxSelectionDiagnostics(linux, null);
+        if (linux.EmbeddedBackend is not { } backend || !Enum.IsDefined(backend)) return diagnostics;
+        if (backend == LinuxEmbeddedBackend.Gtk3WebKit41 && !LinuxWebKitGtkHost.IsSupported)
+            diagnostics.Add(Missing("webkitgtk-runtime-missing", "GTK 3 and WebKitGTK 4.1 are unavailable.",
+                "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0), or select an installed browser. dotnet runic doctor --rid <rid> checks a deployment target."));
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY")) &&
+            string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+        {
+            diagnostics.Add(Missing(
+                "graphical-session-missing",
+                "No graphical Linux session is available to host a WebView.",
+                "Run inside an X11 or Wayland session, or select an installed browser in a graphical session."));
+        }
+        return diagnostics;
+    }
+
     internal static DesktopDiagnostic? GetEmbeddedDiagnostic(LinuxDesktopOptions? linux = null)
     {
         if (OperatingSystem.IsWindows())
@@ -113,19 +142,8 @@ public static class DesktopPlatform
         }
         if (OperatingSystem.IsLinux())
         {
-            var selection = GetLinuxSelectionDiagnostic(linux ?? new LinuxDesktopOptions(), null);
-            if (selection is not null) return selection;
-            if (!LinuxWebKitGtkHost.IsSupported)
-                return Missing("webkitgtk-runtime-missing", "GTK 3 and WebKitGTK 4.1 are unavailable.",
-                    "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0), or select an installed browser. dotnet runic doctor --rid <rid> checks a deployment target.");
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY")) &&
-                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
-            {
-                return Missing(
-                    "graphical-session-missing",
-                    "No graphical Linux session is available to host a WebView.",
-                    "Run inside an X11 or Wayland session, or select an installed browser in a graphical session.");
-            }
+            var diagnostics = GetLinuxEmbeddedDiagnostics(linux ?? new LinuxDesktopOptions());
+            return diagnostics.Count == 0 ? null : diagnostics[0];
         }
         if (OperatingSystem.IsMacOS())
         {
@@ -144,24 +162,46 @@ public static class DesktopPlatform
         return null;
     }
 
-    internal static DesktopDiagnostic? GetLinuxSelectionDiagnostic(LinuxDesktopOptions linux, IDesktopWindowHostFactory? factory)
+    internal static DesktopDiagnostic? GetLinuxSelectionDiagnostic(LinuxDesktopOptions linux, IDesktopWindowHostFactory? factory) =>
+        GetLinuxSelectionDiagnostics(linux, factory) is [var first, ..] ? first : null;
+
+    // Reports every selection problem at once. An unselected or undefined backend stops the list: nothing
+    // after it can be checked. A selected GTK4 backend without its provider also reports its missing libraries,
+    // because the provider that would check them is absent.
+    internal static List<DesktopDiagnostic> GetLinuxSelectionDiagnostics(LinuxDesktopOptions linux, IDesktopWindowHostFactory? factory)
     {
         if (linux.EmbeddedBackend is not { } backend)
-            return Missing("linux-embedded-backend-not-selected", "No Linux embedded backend is selected.",
-                "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6 (GTK4 also needs WindowHostFactory = new Gtk4WindowHostFactory()), " +
-                "or keep an installed browser with DesktopWindowOptions.Browser = BrowserKind.Any or PresentationPolicy = EmbeddedThenBrowser.");
+            return [Missing("linux-embedded-backend-not-selected", "No Linux embedded backend is selected.",
+                "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6 (for GTK4, call DesktopHostOptions.WithGtk4() from Runic.Desktop.Gtk4), " +
+                "or keep an installed browser with DesktopWindowOptions.Browser = BrowserKind.Any or PresentationPolicy = EmbeddedThenBrowser.")];
         if (!Enum.IsDefined(backend))
-            return new DesktopDiagnostic(DesktopErrorCategory.InvalidArgument, "linux-embedded-backend-invalid",
+            return [new DesktopDiagnostic(DesktopErrorCategory.InvalidArgument, "linux-embedded-backend-invalid",
                 $"Linux.EmbeddedBackend has the undefined value {(int)backend}.", Retryable: false, CorrelationId: string.Empty,
                 Remediation: "Set DesktopHostOptions.Linux.EmbeddedBackend to Gtk3WebKit41 or Gtk4WebKit6.")
             {
                 Option = "DesktopHostOptions.Linux.EmbeddedBackend",
-            };
+            }];
+        List<DesktopDiagnostic> diagnostics = [];
         if (!LinuxDesktopRuntime.CanUse(backend))
-            return Missing("linux-embedded-backend-conflict", "Another Linux toolkit is already initialized.", "Start a new process to select a different toolkit.");
+            diagnostics.Add(Missing("linux-embedded-backend-conflict", "Another Linux toolkit is already initialized.", "Start a new process to select a different toolkit."));
         if (backend == LinuxEmbeddedBackend.Gtk4WebKit6 && factory is not ILinuxDesktopWindowHostFactory { Backend: LinuxEmbeddedBackend.Gtk4WebKit6 })
-            return Missing("gtk4-provider-missing", "The optional GTK4 window provider is not configured.", "Reference Runic.Desktop.Gtk4 and set WindowHostFactory to Gtk4WindowHostFactory.");
-        return null;
+        {
+            diagnostics.Add(Missing("gtk4-provider-missing", "The optional GTK4 window provider is not configured.",
+                "Reference Runic.Desktop.Gtk4 and call DesktopHostOptions.WithGtk4(), which selects Gtk4WebKit6 and sets WindowHostFactory to Gtk4WindowHostFactory."));
+            diagnostics.AddRange(GetGtk4LibraryDiagnostics());
+        }
+        return diagnostics;
+    }
+
+    /// <summary>Reports each GTK 4 or WebKitGTK 6 library the native loader cannot find.</summary>
+    internal static IEnumerable<DesktopDiagnostic> GetGtk4LibraryDiagnostics()
+    {
+        if (!LinuxDesktopRuntime.IsLibraryAvailable("libgtk-4.so.1"))
+            yield return Missing("gtk4-runtime-missing", "The GTK 4 library libgtk-4.so.1 was not discovered.",
+                "Install GTK 4.12 or newer (for example libgtk-4-1) in the native loader search path.");
+        if (!LinuxDesktopRuntime.IsLibraryAvailable("libwebkitgtk-6.0.so.4") && !LinuxDesktopRuntime.IsLibraryAvailable("libwebkitgtk-6.0.so.0"))
+            yield return Missing("webkitgtk6-runtime-missing", "The WebKitGTK 6.0 library libwebkitgtk-6.0.so.4 was not discovered.",
+                "Install WebKitGTK 6.0 (for example libwebkitgtk-6.0-4) in the native loader search path.");
     }
 
     // Availability must accept the same worker-to-main dispatch path as
