@@ -578,6 +578,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     {
         NavigationOutcome? rejected = null;
         NavigationTransition? transition = null;
+        NavigationTransition? joined = null;
         List<NavigationTransition> superseded = [];
         var transitioningChanged = false;
         lock (Gate)
@@ -596,6 +597,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 rejected = NavigationOutcome.Reject(NavigationRejection.NotCurrent);
             else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
                 rejected = NavigationOutcome.Reject(NavigationRejection.NoHistory);
+            else if (operation == NavigationOperation.Back && @return is null && !cancellationToken.CanBeCanceled
+                && JoinableBackLocked(region) is { } pendingBack)
+                // A second Back to the same destination (a double click, or Back while its guard asks)
+                // joins the pending Back instead of superseding it, so the guard asks once.
+                joined = pendingBack;
             else
             {
                 NavigationEntryCore? pending = null;
@@ -626,6 +632,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // The provisional plan: the child regions this request would
                 // reset or close. Their transitions are superseded the same way.
                 var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null);
+                // Only a plain Back can be joined (JoinableBackLocked); no other transition keeps its plan.
+                var joinable = operation == NavigationOperation.Back && @return is null && !cancellationToken.CanBeCanceled;
                 foreach (var child in plan.Regions)
                 {
                     if (ReferenceEquals(child, region)) continue;
@@ -639,7 +647,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], settlement, cancellationToken) { Return = @return };
+                    [.. waitFor], settlement, cancellationToken) { Return = @return, AdmittedPlan = joinable ? plan : null };
                 if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
                 transitioningChanged = region.InFlight.Count == 1;
@@ -653,6 +661,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (request is not null) FinishResult(request, NavigationResultDismissal.NotCommitted);
             return Task.FromResult(rejected);
         }
+        if (joined is not null)
+        {
+            if (Logger.IsEnabled(LogLevel.Debug)) NavigationLog.NavigationBackJoined(Logger, null, region.ContentTypeName, region.Id);
+            return joined.Result.Task;
+        }
 
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
@@ -664,6 +677,23 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         else if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
         else _ = RunAsync(transition!);
         return transition!.Result.Task;
+    }
+
+    // The region's latest admitted transition when it is a plain Back that is still live and nothing its plan
+    // covers has changed since its admission: neither the region nor the child regions the departing entry
+    // owns. A Back admitted now would then make the same plan. A return from a result entry (CompleteAsync,
+    // DismissAsync) never is joined: its outcome carries a result. A Back with a cancellable token never joins,
+    // and never is joined, so cancelling one caller's Back never cancels another's. A superseded, cancelled or
+    // closed Back is never joined. (A released transition has left InFlight already.) Call under the gate.
+    private static NavigationTransition? JoinableBackLocked(NavigationRegionCore region)
+    {
+        if (region.InFlight.Count == 0) return null;
+        var latest = region.InFlight[^1];
+        return latest is { Operation: NavigationOperation.Back, Return: null, CancelReason: NavigationCancelReason.None,
+                AdmittedPlan: { } plan }
+            && !latest.CallerToken.CanBeCanceled && plan.BasisMatches()
+            ? latest
+            : null;
     }
 
     // ---- Transition ------------------------------------------------------
@@ -1049,6 +1079,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 commit.Current = region.CurrentEntry;
                 changed.Add((region, Changes(regionBefore, region)));
                 committed = [.. transition.CommitActions];
+                // The live entry must not keep its push transition: its commit actions hold the departed
+                // entries, and only a Pending entry needs the link (Dismiss).
+                transition.CommitActions.Clear();
+                if (transition.Pending is { } pushedEntry) pushedEntry.Transition = null;
             }
             // Admission is released in the commit turn, so IsTransitioning
             // changes together with the committed state.
@@ -1703,6 +1737,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     {
         if (transition.Released) return false;
         transition.Released = true;
+        // The plan holds the departing entries; a released Back is never joined.
+        transition.AdmittedPlan = null;
         var region = transition.Region;
         region.InFlight.Remove(transition);
         return region.InFlight.Count == 0;
@@ -2020,6 +2056,10 @@ internal sealed class NavigationTransition : IDisposable
 
     // Set for a return from a result entry (CompleteAsync, or a cancelled PushForResult caller).
     public NavigationReturn? Return { get; init; }
+
+    // The provisional plan at admission. Its basis (the versions of the region and the child regions it
+    // would close) tells whether a later Back would make the same plan, and so may join this one.
+    public NavigationPlan? AdmittedPlan { get; set; }
 
     // Set in the commit turn when a returned value found its request already dismissed.
     public bool ResultDropped { get; set; }

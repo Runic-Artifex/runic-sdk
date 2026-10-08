@@ -73,4 +73,8 @@ internal static partial class NavigationLog
     [LoggerMessage(EventId = 1073, EventName = "NavigatorDisposeFailed", Level = LogLevel.Error,
         Message = "Disposing the navigator failed with {ErrorType}; entries may not have retired.")]
     internal static partial void NavigatorDisposeFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 1074, EventName = "NavigationBackJoined", Level = LogLevel.Debug,
+        Message = "Back in navigation region {Region} ({RegionId}) joined the pending Back.")]
+    internal static partial void NavigationBackJoined(ILogger logger, Exception? exception, string region, int regionId);
 }

@@ -176,6 +176,44 @@ internal static class HostTests
         finally { window.Close(); }
     }
 
+    // W240-007: a double click on Back, then a Back from code. The second click is ignored because BrowseBack can't
+    // execute from the moment the first Back is admitted, before any dispatcher work runs: that is the host's
+    // CanExecute, not the engine's join. Only the programmatic BackAsync while the guard is pending exercises the join.
+    public static void DoubleBrowseBackThenBackFromCode()
+    {
+        using var fixture = new NavFixture();
+        var home = new Page("home");
+        var region = fixture.Region(NavigationTarget.Own<object>(home));
+        var host = new NavigationHost { Region = region };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(Page), typeof(GuardedPage)));
+        try
+        {
+            var middle = new Page("middle");
+            Pump(region.PushAsync(NavigationTarget.Own<object>(middle)));
+            var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var guards = 0;
+            Pump(region.PushAsync(NavigationTarget.Own<object>(new GuardedPage("held", () =>
+            {
+                guards++;
+                return new ValueTask<bool>(release.Task);
+            }))));
+
+            NavigationCommands.BrowseBack.Execute(null, host);
+            Require(region.IsTransitioning && !NavigationCommands.BrowseBack.CanExecute(null, host),
+                "BrowseBack can still execute right after a Back was admitted.");
+            NavigationCommands.BrowseBack.Execute(null, host);
+            var joined = region.BackAsync().AsTask();
+            PumpUntil(() => guards > 0, "the guard");
+            release.SetResult(true);
+            Require(Pump(joined) is NavigationResult<object>.Committed { Current.Content: var current } && ReferenceEquals(current, middle),
+                "The programmatic Back did not join the pending Back.");
+            PumpUntil(() => !region.IsTransitioning, "the end of the Back");
+            Require(ReferenceEquals(region.Current, middle) && region.History.Count == 1 && guards == 1,
+                $"A double Back popped to {region.Current} after {guards} guard call(s).");
+        }
+        finally { window.Close(); }
+    }
+
     public static void UnloadedHostIsCollectable()
     {
         using var fixture = new NavFixture();

@@ -482,7 +482,7 @@ Debug, still with its exception; `FailureType` is the failure value's type.
 Events 1000-1021 and 1050 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
-Navigation (1060-1073) and the model context (1030-1033) log under
+Navigation (1060-1074) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
 section. Events 2000-2002 use `Runic.Application.Desktop`. Events 3000-3005

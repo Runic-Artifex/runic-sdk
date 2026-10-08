@@ -135,12 +135,37 @@ A failed step is logged as event 1064.
 
 | Phase | Where | What happens |
 | --- | --- | --- |
-| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing. It also supersedes those of the child regions its plan affects. |
+| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a plain Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
 | Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies and raises `PropertyChanged`. A handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released, and departing entries retire. The returned `ValueTask` completes after that cleanup. |
 
+- A plain `BackAsync()` (no cancellable token) that arrives while the region's
+  latest request is another plain Back that hasn't committed, and neither the
+  region nor the child regions the departing entry owns have changed since
+  that Back was admitted, **joins** it instead of superseding it: both callers
+  get the same result, the departure guard runs once, and a confirm dialog
+  stays open (event 1074). Back from code while the guard asks therefore pops
+  once and asks once. A Back that starts after the first one committed is a
+  new request and pops again; that is stack semantics. A Back with a
+  cancellable token never joins and is never joined, so cancelling it never
+  cancels another caller's Back; it supersedes as above. A return from a
+  result entry (`CompleteAsync`, `DismissAsync`) is never joined either.
+- `IsTransitioning` is `true` from admission, synchronously. A command that
+  reads it in `CanExecute`, such as `NavigationHost`'s `BrowseBack` in
+  Runic.Navigation.Wpf, is disabled before the Back call returns, so a double
+  click pops once.
+- Known limitation: the ReactiveUI adapter's Back command passes a cancellable
+  token and updates `CanExecute` through its output scheduler, so a second
+  Back through it while a guard asks supersedes the first: the first confirm
+  closes and a second one opens. History and edits stay intact. Joining such
+  Backs is tracked in
+  [#147](https://github.com/Runic-Artifex/runic-sdk/issues/147).
+- A dialog answers its guard with `CompleteAsync` or `DismissAsync`. Code run
+  from the confirm dialog that awaits `BackAsync()` on the guarded region
+  before answering joins the Back that waits for that answer, so it doesn't
+  complete until the dialog closes another way.
 - A request is superseded only before it commits, never after. A cancelled
   token gives `Rejected(Cancelled)` and navigator disposal gives
   `Rejected(Closed)`, in any phase before the commit.
@@ -494,15 +519,16 @@ retiring. After `DisposeAsync`, it is 0 when every entry retired.
 | 1071 | `NavigationResultDropped` | Debug | `CompleteAsync` went back from an entry whose request had already ended, so its value was dropped. | `Region`, `RegionId` |
 | 1072 | `NavigationDepartureActionFailed` | Error | A `NavigationDeparture.OnCommitted` action throws; later actions still run, and the commit stands. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1073 | `NavigatorDisposeFailed` | Error | Disposing the navigator fails unexpectedly, for example started by `Dispose`, which does not wait; entries may not have retired. | `ErrorType` |
+| 1074 | `NavigationBackJoined` | Debug | A plain Back joins the pending Back of its region instead of superseding it. | `Region`, `RegionId` |
 
-Errors and warnings carry the exception. Rejections, supersessions and
+Errors and warnings carry the exception. Rejections, supersessions, joined Backs and
 dismissed results log at Debug. The properties are `Region` (the `TContent`
 type name), `RegionId` (a per-navigator number that tells apart regions with
 the same `TContent`), `Operation`, `EntryType`, `Step`, `Reason`, `Property`
 (event 1063, the region property whose handler threw) and `ErrorType`, never
 values.
 
-- Events 1060-1073 use the category `Runic.Navigation`
+- Events 1060-1074 use the category `Runic.Navigation`
   (`RunicNavigator.LogCategory`), from `RunicNavigatorOptions.LoggerFactory`
   or the scope's `ILoggerFactory` with `AddRunicNavigation()`.
 - Events 1030-1033 use the logger of the `RunicModelContext`:
@@ -515,6 +541,6 @@ values.
   its formatted message followed by the exception.
 
 Navigation reserves events 1060-1079: 1060-1069 for transitions and cleanup,
-and 1070-1079 for results and later navigation events, of which 1074-1079 are
+and 1070-1079 for results and later navigation events, of which 1075-1079 are
 not used yet. Events 1043-1049 are reserved for the ReactiveUI navigation
 adapter.
