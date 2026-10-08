@@ -151,6 +151,52 @@ var home = host.Root.View<HomeViewModel>(vm => vm.Main); // the resumed entry
 - Pass a `FakeTimeProvider` as `RunicNavigatorOptions.TimeProvider` to drive the
   close timeout and the overrun warning (event 1067) without waiting.
 
+With `AddRunicNavigation()`, create the window scope with `CreateAsyncScope()`,
+because the navigator is only `IAsyncDisposable`. Pass the scope's
+`IRunicModelContext` as `RunicWindowTestHostOptions.ModelContext`:
+
+```csharp
+await using var scope = services.CreateAsyncScope();
+var shell = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
+using var host = new RunicWindowTestHost<ShellViewModel>(shell, attach, new RunicWindowTestHostOptions
+{
+    ModelContext = scope.ServiceProvider.GetRequiredService<IRunicModelContext>(),
+    TimeProvider = clock,
+});
+```
+
+Write navigation tests so they are deterministic:
+
+- Hold a transition in a phase with a `TaskCompletionSource` that a guard,
+  `InitializeAsync` or `ResumeAsync` awaits. Signal a second one from the hook
+  when the test must know that the hook started. Then the test decides when
+  the hook continues, instead of racing it.
+- Don't await a request whose guard waits for the test. Start it, wait for the
+  observable effect, answer, then await it. For example, start the Back, wait
+  until the dialog region's `Current` is set, execute the dialog's command
+  through its driver, and then await the Back. A command driver's `Start`
+  returns at admission, which suits a command that navigates.
+- Wait for region changes with `PropertyChanged`, not with delays. Every
+  change is raised inside a model turn.
+- `await navigator.WhenIdleAsync()` before you assert on retirement:
+  departing entries retire after the commit turn, and owned content is
+  disposed then.
+- Assert lifetimes through the counters. `UnretiredEntryCount()` falls as
+  entries retire, and is zero after `DisposeAsync`. `RetainedContentModelCount()`
+  falls when owned content's leases are released. Assert `Retired` states and
+  disposal counts of your own test content too.
+- Make overruns and timeouts happen by advancing the `FakeTimeProvider`:
+  5 seconds for event 1067, and `CloseTimeout` for disposal.
+- To provoke a race, drive overlapping requests from a seeded `Random`, and
+  assert invariants that don't depend on timing. For example, every request
+  ends, an entry retires at most once, and nothing is left unretired after
+  `DisposeAsync`.
+
+The [Notes tests](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Tests)
+cover a guard that asks in a dialog region with `PushForResult`, resuming a
+retained entry, retirement of a parent's child regions, racing navigation and
+closing the window while the dialog asks.
+
 ### Collections and deltas
 
 `Track()` follows a route from a snapshot through its frames, as the generated
