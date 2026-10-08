@@ -33,6 +33,20 @@ public interface IDesktopWindowHostFactory
     IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics() => [];
 }
 
+/// <summary>A window host factory whose windows need it to own the process main thread.</summary>
+/// <remarks>
+/// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> hands the application to
+/// <see cref="RunEventLoop"/> instead of its own loop when <see cref="IDesktopWindowHostFactory.IsSupported"/> is
+/// <see langword="true"/>.
+/// </remarks>
+public interface IDesktopEventLoopWindowHostFactory : IDesktopWindowHostFactory
+{
+    /// <summary>Runs <paramref name="application"/> while the native toolkit owns the calling main thread.</summary>
+    /// <param name="application">The application work. Windows from this factory can open while it runs.</param>
+    /// <returns>The value returned by <paramref name="application"/>.</returns>
+    int RunEventLoop(Func<Task<int>> application);
+}
+
 /// <summary>An optional native host exposing its owning dispatcher to platform services.</summary>
 public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
 {

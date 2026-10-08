@@ -6,21 +6,29 @@ selected automatically. The provider is pinned to `GirCore.Gtk-4.0` and
 `GirCore.WebKit-6.0` 0.8.1 (MIT). At runtime it needs GTK 4.12+ and WebKitGTK 6;
 the package contains no native runtime.
 
-WebKitGTK must be initialized on the Linux process main thread. Call the runner
-directly from `Main`, before an await, and keep every GTK4 desktop operation in
-the callback:
+WebKitGTK must be initialized on the Linux process main thread. Start the
+application with `DesktopEventLoop.Run` directly from `Main`, before an await,
+and keep every Desktop operation in the callback:
 
 ```csharp
 using Runic.Desktop;
 using Runic.Desktop.Gtk4;
 
-return Gtk4Application.Run(async () =>
+return DesktopEventLoop.Run(new DesktopHostOptions().WithGtk4(), async host =>
 {
-    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions().WithGtk4());
     // Create surfaces and windows here.
     return 0;
 });
 ```
+
+`DesktopEventLoop.Run(options, application)` picks the loop for the platform
+and the host. On Linux with `WithGtk4()` it runs `Gtk4Application.Run`. On
+macOS it runs the AppKit loop. On Windows and Linux GTK 3 it waits for the work.
+The same `Main` therefore works on every platform. When the GTK 4 libraries are
+missing, it does not start GTK: the host still runs, so `Validate` can explain
+the problem and a browser fallback can open. The host is disposed before the
+loop ends. `Gtk4Application.Run` remains available for applications that start
+hosts themselves.
 
 `WithGtk4()` applies the GTK 4 profile in one step: it selects
 `LinuxEmbeddedBackend.Gtk4WebKit6` and sets `WindowHostFactory` to a
@@ -34,8 +42,8 @@ missing `Runic.Platform.Linux.Gtk4` and `Runic.Platform.Linux.Portal` packages,
 and warns when the project restores `Runic.Platform.Linux`, whose GTK 3 portal
 parent would load GTK 3 into the GTK 4 process.
 
-Pass an installed application identity with `Gtk4Application.Run(callback,
-"org.example.MyApp")`. Inside Flatpak the runner automatically uses `FLATPAK_ID`;
+Pass an installed application identity with `WithGtk4("org.example.MyApp")`
+or `Gtk4Application.Run(callback, "org.example.MyApp")`. Inside Flatpak the runner automatically uses `FLATPAK_ID`;
 an explicit ID must match it. Outside Flatpak the existing overload retains its
 default identity.
 

@@ -193,10 +193,30 @@ public static partial class Gtk4Application
 
 /// <summary>Creates explicitly selected GTK 4 and WebKitGTK 6 window hosts.</summary>
 [SupportedOSPlatform("linux")]
-public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
+public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDesktopEventLoopWindowHostFactory
 {
+    private readonly string? _applicationId;
+
     /// <inheritdoc />
     public LinuxEmbeddedBackend Backend => LinuxEmbeddedBackend.Gtk4WebKit6;
+
+    /// <summary>Gets the reverse-DNS GTK application ID <see cref="RunEventLoop"/> uses, or <see langword="null"/> for the default.</summary>
+    /// <remarks>Inside Flatpak the default is the package ID, and an explicit ID must match it.</remarks>
+    public string? ApplicationId
+    {
+        get => _applicationId;
+        init
+        {
+            if (value is not null) ArgumentException.ThrowIfNullOrWhiteSpace(value);
+            _applicationId = value;
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Runs <see cref="Gtk4Application.Run(Func{Task{int}}, string)"/> with <see cref="ApplicationId"/>.</remarks>
+    public int RunEventLoop(Func<Task<int>> application) => ApplicationId is { } applicationId
+        ? Gtk4Application.Run(application, applicationId)
+        : Gtk4Application.Run(application);
 
     /// <inheritdoc />
     public bool IsSupported => OperatingSystem.IsLinux() &&

@@ -5,10 +5,11 @@ public static class Gtk4DesktopHostOptionsExtensions
 {
     /// <summary>Selects GTK 4 and WebKitGTK 6 for embedded Linux windows.</summary>
     /// <remarks>
-    /// Sets <see cref="LinuxDesktopOptions.EmbeddedBackend"/> to <see cref="LinuxEmbeddedBackend.Gtk4WebKit6"/> and,
+    /// Start the host with <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>, which
+    /// runs GTK on the Linux main thread. Sets <see cref="LinuxDesktopOptions.EmbeddedBackend"/> to <see cref="LinuxEmbeddedBackend.Gtk4WebKit6"/> and,
     /// on Linux, <see cref="DesktopHostOptions.WindowHostFactory"/> to a <see cref="Gtk4WindowHostFactory"/>, so the
     /// two can no longer disagree. On Windows and macOS the platform's own embedded host stays in use; only the Linux
-    /// selection is recorded. Run the host inside <see cref="Gtk4Application.Run(Func{Task{int}})"/> on Linux.
+    /// selection is recorded.
     /// </remarks>
     /// <param name="options">The host options to copy.</param>
     /// <returns>A copy of <paramref name="options"/> with the GTK 4 profile applied.</returns>
@@ -30,5 +31,20 @@ public static class Gtk4DesktopHostOptionsExtensions
             configured = configured with { WindowHostFactory = new Gtk4WindowHostFactory() };
         }
         return configured;
+    }
+
+    /// <summary>Selects GTK 4 and WebKitGTK 6 for embedded Linux windows with an installed GTK application ID.</summary>
+    /// <remarks>Like <see cref="WithGtk4(DesktopHostOptions)"/>; the factory runs GTK with <paramref name="applicationId"/>.</remarks>
+    /// <param name="options">The host options to copy.</param>
+    /// <param name="applicationId">The reverse-DNS application ID. Inside Flatpak it must match the package ID.</param>
+    /// <returns>A copy of <paramref name="options"/> with the GTK 4 profile applied.</returns>
+    /// <exception cref="ArgumentException"><paramref name="options"/> already has a different window host factory.</exception>
+    public static DesktopHostOptions WithGtk4(this DesktopHostOptions options, string applicationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        var configured = options.WithGtk4();
+        return OperatingSystem.IsLinux()
+            ? configured with { WindowHostFactory = new Gtk4WindowHostFactory { ApplicationId = applicationId } }
+            : configured;
     }
 }

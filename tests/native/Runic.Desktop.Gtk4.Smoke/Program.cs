@@ -25,6 +25,13 @@ try
     {
         throw new PlatformNotSupportedException("The GTK 4 native smoke runs on Linux only.");
     }
+    if (args.Contains("--event-loop", StringComparer.Ordinal))
+    {
+        // The GTK runner has one lifetime per process, so the entry-point check runs in its own process.
+        RunEventLoopSmoke();
+        Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run entry point.");
+        return 0;
+    }
     AssertRunnerContract();
     Environment.ExitCode = RunSmoke();
     Console.WriteLine("PASS GTK 4 / WebKitGTK 6 native window lifecycle and capability contract.");
@@ -64,6 +71,46 @@ static void AssertRunnerContract()
     if (!rejectedWorker)
     {
         throw new InvalidOperationException("GTK4 runner accepted a worker-thread initialization.");
+    }
+}
+
+// DesktopEventLoop.Run must hand WithGtk4() options to Gtk4Application.Run: otherwise opening the window
+// fails because the GTK 4 factory only creates hosts inside the runner.
+[SupportedOSPlatform("linux")]
+static void RunEventLoopSmoke()
+{
+    var options = new DesktopHostOptions().WithGtk4("dev.runic.desktop.gtk4.EventLoopSmoke");
+    if (options.WindowHostFactory is not Gtk4WindowHostFactory { ApplicationId: "dev.runic.desktop.gtk4.EventLoopSmoke" })
+    {
+        throw new InvalidOperationException("WithGtk4(applicationId) did not configure the factory's application ID.");
+    }
+    DesktopHost? started = null;
+    int result = DesktopEventLoop.Run(options, async host =>
+    {
+        started = host;
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Html("<!doctype html><title>GTK4 event loop</title><script src=\"webui.js\"></script>"),
+        });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true });
+        if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "GTK4 event loop")
+        {
+            throw new InvalidOperationException("The GTK 4 event-loop window did not load its page.");
+        }
+        await window.CloseAsync();
+        return 42;
+    });
+    if (result != 42)
+    {
+        throw new InvalidOperationException($"DesktopEventLoop.Run returned {result} instead of the application's result.");
+    }
+    try
+    {
+        started?.Validate();
+        throw new InvalidOperationException("DesktopEventLoop.Run did not dispose the host it started.");
+    }
+    catch (ObjectDisposedException)
+    {
     }
 }
 

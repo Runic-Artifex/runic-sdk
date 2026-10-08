@@ -11,6 +11,13 @@ single-client admission, scoped-root content access, redacted failures, and
 non-cacheable bootstrap content. Additional origins, multiple clients, missing
 browser origins, or non-loopback exposure are explicit immutable options.
 
+Start an application with `DesktopEventLoop.Run(options, async host => ...)`,
+called directly from `Main` before any await. It returns the application's exit
+code and picks the event loop for the platform and the window host: the
+factory's own loop for an `IDesktopEventLoopWindowHostFactory` (GTK 4 through
+`WithGtk4()` from `Runic.Desktop.Gtk4`), the AppKit main-thread loop on macOS,
+and a plain wait on Windows and Linux GTK 3.
+
 `DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
 
 | Case | Serves |
