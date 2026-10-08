@@ -331,6 +331,45 @@ public sealed class NotesWindowTests : IAsyncLifetime
         Assert.Equal("Untitled", Editor.Title);
     }
 
+    // A confirmed guard whose Back is then superseded keeps the document and its draft, and
+    // the document forgets the confirmation: closing the window afterwards, which clears Main
+    // without asking guards, doesn't discard the draft.
+    [Fact]
+    public async Task A_superseded_confirmed_back_keeps_the_draft_through_window_close()
+    {
+        var editor = await OpenEditorAsync();
+        editor.Set(vm => vm.Title, "Draft").EnsureOk();
+        var document = Navigation.Main.Current;
+        var draft = Editor; // the window scope resolves nothing after it closes
+
+        // When the confirmed dialog leaves, a request that bypasses CanNavigate supersedes the
+        // Back after its guard said yes, and is cancelled before it asks the guard itself.
+        var supersede = new CancellationTokenSource();
+        var superseding = new TaskCompletionSource<NavigationResult<IMainViewModel>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Supersede(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(NavigationRegion<IDialogViewModel>.Current) || Navigation.Dialog.Current is not null) return;
+            Navigation.Dialog.PropertyChanged -= Supersede;
+            var push = Navigation.Main.PushAsync(NavigationTarget.Create<IMainViewModel>(
+                _ => throw new InvalidOperationException("The superseding push must not prepare.")), cancellationToken: supersede.Token);
+            supersede.Cancel();
+            _ = push.AsTask().ContinueWith(task => superseding.SetResult(task.Result), TaskScheduler.Default);
+        }
+
+        var leaving = Host.Root.View<SidebarViewModel>(vm => vm.Sidebar).Start(vm => vm.OpenHomeCommand);
+        await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
+        Navigation.Dialog.PropertyChanged += Supersede;
+        (await Host.Root.View<ConfirmNavigationViewModel>(vm => vm.Dialog).ExecuteAsync(vm => vm.ConfirmCommand)).EnsureOk();
+        Assert.Equal("succeeded", (await leaving.WaitAsync()).Kind);
+        Assert.IsType<NavigationResult<IMainViewModel>.Rejected>(await superseding.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Same(document, Navigation.Main.Current);
+        Assert.True(Editor.IsDirty);
+
+        await _window.DisposeAsync();
+        Assert.Equal("Draft", draft.Title);
+        Assert.True(draft.IsDirty);
+    }
+
     // #61: a document that fails to prepare leaves Home current and nothing tracked, and
     // the next visit works. Notes has no reset path, so a guard-rejected reset has no Notes test.
     [Fact]
@@ -412,6 +451,7 @@ public sealed class NotesWindowTests : IAsyncLifetime
 internal sealed class TestWindow : IAsyncDisposable
 {
     private readonly ServiceProvider _services;
+    private bool _disposed;
 
     public TestWindow(FakeTimeProvider clock, Action<IServiceCollection>? configure = null)
     {
@@ -440,6 +480,8 @@ internal sealed class TestWindow : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return; // a test may close its window before the class disposes it
+        _disposed = true;
         Host.Dispose();
         // The window scope disposes its navigator, which retires the entries it owns.
         await Scope.DisposeAsync();

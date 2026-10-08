@@ -50,8 +50,16 @@ public sealed class WorkspaceNavigation
                 window.GetRequiredService<RunicNavigator>(), window.GetRequiredService<IRunicModelContext>(), this)),
             new NavigationRequestOptions(Main.CurrentEntry?.Id)).AsTask();
 
-    // The document's departure guard asks before unsaved edits are discarded.
-    public Task OpenHomeAsync() => CanNavigate && Main.CanGoBack ? Main.BackAsync().AsTask() : Task.CompletedTask;
+    // The document's departure guard asks before unsaved edits are discarded. A guard's yes
+    // is not a commit, so the document forgets it when the Back ends another way: superseded,
+    // rejected or failed. Otherwise a later departure without guards, such as the window
+    // closing, would discard the draft.
+    public async Task OpenHomeAsync()
+    {
+        if (!CanNavigate || !Main.CanGoBack) return;
+        var leaving = Main.Current as DocumentViewModel;
+        if (await Main.BackAsync() is not NavigationResult<IMainViewModel>.Committed) leaving?.ForgetConfirmedDeparture();
+    }
 }
 
 // The generator presents each region's Current as a content slot; nothing is forwarded.
@@ -226,6 +234,9 @@ public partial class DocumentViewModel : ObservableObject, IMainViewModel, INavi
         return true;
     }
 
+    // Called when the Back that this guard allowed ends without committing.
+    internal void ForgetConfirmedDeparture() => _discardOnDeparture = false;
+
     private void OnPaneChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(NavigationRegion<IDocumentPaneViewModel>.Current)) OnPropertyChanged(nameof(ActivePane));
@@ -355,6 +366,12 @@ public partial class ConfirmNavigationViewModel(string message) : ObservableObje
     // commit turn failed. A rejected Confirm leaves the dialog open to answer again. Cancel
     // must always work, so it then dismisses the request: the guard keeps the document, and
     // the navigator goes back from the dialog.
+    //
+    // Overlapping Confirm and Cancel always keep the document. The later answer's Back
+    // supersedes the earlier one, so a Cancel after a Confirm wins. A Confirm after a Cancel
+    // supersedes the Cancel's Back, but then the Cancel dismisses the request, and the
+    // dismissal's Back supersedes the Confirm. Only a Confirm whose Back has already started
+    // committing is final; a Cancel after that is rejected, and the dialog is gone.
     private async Task AnswerAsync(bool confirmed)
     {
         if (_entry is not { } entry) return;

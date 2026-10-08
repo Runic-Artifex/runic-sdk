@@ -82,11 +82,12 @@ references are `| null`, so every frontend handles an empty region.
 - **Home** goes back. When the editor has unsaved edits, the document's
   departure guard awaits `Dialog.PushForResult<bool>(…)` for
   `ConfirmNavigationViewModel`. Confirming lets the Back commit, and the edits
-  are discarded in the commit turn, so a request that supersedes the Back
-  keeps the draft. Cancelling, or a dismissal, keeps the document entry. The
-  confirm calls `CompleteAsync`, which returns from its entry and leaves
-  `Dialog` empty. If that answer can't commit, Cancel dismisses the request
-  instead, so Cancel and Escape always end the question.
+  are discarded in the commit turn. A Back that is superseded, rejected or
+  fails keeps the draft, and the document forgets the confirmation.
+  Cancelling, or a dismissal, keeps the document entry. The confirm calls
+  `CompleteAsync`, which returns from its entry and leaves `Dialog` empty. If
+  that answer can't commit, Cancel dismisses the request instead, so Cancel
+  and Escape always end the question.
 - The confirm is modal. While it asks, or while a page navigation is in
   flight, `WorkspaceNavigation.CanNavigate` is false. The sidebar's Home and
   Notes commands and the document's Editor and Preview commands are
@@ -95,7 +96,8 @@ references are `| null`, so every frontend handles an empty region.
   that asks and dismiss the dialog without an answer.
 - The sidebar commands await the navigation, so a command started during the
   guard's wait completes after the dialog answers. Its button stays disabled
-  until then, and the dialog returns focus to it once it is enabled again.
+  until then. [focus.ts](Frontend/src/focus.ts) returns focus to any button
+  that lost it by being disabled, once it is enabled again.
 
 **Command ordering and guards.** A client that runs the window's commands one
 after another, waiting for each to complete, deadlocks with a guard that
