@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
 namespace Runic.Navigation.Tests;
@@ -44,6 +45,10 @@ internal static partial class NavigationTests
         }
         await CommitContinuationsNeverRunInlineAsync();
         await SyncDisposeDoesNotBlockTheModelThreadAsync();
+        await ScheduledScopedDisposalOrderAsync();
+        await BlockedModelThreadScopedDisposalCompletesAsync();
+        await ScopedFactoryCancelledBeforeStartAsync();
+        await ContextClosedBeforeScopedFactoryStartsAsync();
     }
 
     // Factories, guards, initialize and resume run on the model thread, each as its own operation:
@@ -729,6 +734,195 @@ internal static partial class NavigationTests
             await Task.Yield();
             Probe.Record($"dispose-resumed:{Name}");
         }
+    }
+
+    // Counts the entry scopes a navigator creates and disposes. Each scope is its own provider, so a
+    // factory can link its scope to the content it creates, and the scope's disposal is recorded.
+    private sealed class ScopeCountingServices(Probe? probe = null) : IServiceProvider, IServiceScopeFactory
+    {
+        private int _created;
+        private int _disposed;
+
+        public int Created => Volatile.Read(ref _created);
+        public int Disposed => Volatile.Read(ref _disposed);
+        public ConcurrentQueue<CountingScope> Scopes { get; } = new();
+
+        public object? GetService(Type serviceType) => serviceType == typeof(IServiceScopeFactory) ? this : null;
+
+        public IServiceScope CreateScope()
+        {
+            Interlocked.Increment(ref _created);
+            var scope = new CountingScope(this);
+            Scopes.Enqueue(scope);
+            return scope;
+        }
+
+        public sealed class CountingScope(ScopeCountingServices owner) : IServiceScope, IServiceProvider
+        {
+            private int _disposed;
+
+            public object? Content { get; set; }
+            public int Disposed => Volatile.Read(ref _disposed);
+            public bool LeaseHeldAtDispose { get; private set; }
+            public IServiceProvider ServiceProvider => this;
+
+            public object? GetService(Type serviceType) => owner.GetService(serviceType);
+
+            public void Dispose()
+            {
+                owner.Probe?.Record("dispose:scope");
+                LeaseHeldAtDispose = Content is not null && RunicModelContextRegistry.Shared.TryGet(Content, out _);
+                Interlocked.Increment(ref _disposed);
+                Interlocked.Increment(ref owner._disposed);
+            }
+        }
+
+        private Probe? Probe => probe;
+
+        // A factory target whose content is linked to its entry scope.
+        public static INavigationTarget<ProbePage> Target(string name, Probe probe) => NavigationTarget.Create<ProbePage>(services =>
+        {
+            var page = new ProbePage(name, probe);
+            ((CountingScope)services).Content = page;
+            return page;
+        });
+    }
+
+    private static int SiteIndex(Probe probe, string hook) =>
+        probe.Sites.Select((site, index) => (site, index)).Single(pair => pair.site.Hook == hook).index;
+
+    // Under a scheduler, retirement disposes the content, then its entry scope, then releases the
+    // lease: the content and the scope each as their own operation on the model's thread, outside turns.
+    private static async Task ScheduledScopedDisposalOrderAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        var probe = new Probe(context);
+        var services = new ScopeCountingServices(probe);
+        await using var fixture = new Fixture(context, services: services, entryScopes: true);
+        var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
+        Require(await Wait(region.PushAsync(ScopeCountingServices.Target("owned", probe))) is NavigationResult<ProbePage>.Committed,
+            "The scoped push did not commit.");
+        var owned = (ProbePage)region.Current!;
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+
+        var content = probe.Single("dispose:owned");
+        var scope = probe.Single("dispose:scope");
+        var counted = services.Scopes.Single();
+        Require(services is { Created: 1, Disposed: 1 } && owned.Disposed == 1 && counted.Disposed == 1,
+            $"{services.Created} scopes were created and {services.Disposed} disposed; the content was disposed {owned.Disposed} times.");
+        Require(SiteIndex(probe, "dispose:owned") < SiteIndex(probe, "dispose:scope")
+            && owned.LeaseHeldAtDispose && counted.LeaseHeldAtDispose && !RunicModelContextRegistry.Shared.TryGet(owned, out _),
+            $"Disposal order was not content, scope, lease (lease held: content {owned.LeaseHeldAtDispose}, scope {counted.LeaseHeldAtDispose}).");
+        Require(content is { OnModelThread: true, TurnDepth: 0 } && scope is { OnModelThread: true, TurnDepth: 0 }
+            && content.Operation != 0 && scope.Operation != 0 && content.Operation != scope.Operation,
+            $"The content was disposed at {content} and the scope at {scope}.");
+    }
+
+    // A host that blocks the model's thread on DisposeAsync while a scoped entry is live: disposal
+    // completes within about twice the close timeout, and the content and then its scope are each
+    // disposed once on the pool.
+    private static async Task BlockedModelThreadScopedDisposalCompletesAsync()
+    {
+        var closeTimeout = TimeSpan.FromMilliseconds(300);
+        using var context = new SchedulingSyncContextModelContext();
+        var probe = new Probe(context);
+        var services = new ScopeCountingServices(probe);
+        await using var fixture = new Fixture(context, closeTimeout: closeTimeout, services: services, entryScopes: true);
+        var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
+        Require(await Wait(region.PushAsync(ScopeCountingServices.Target("owned", probe))) is NavigationResult<ProbePage>.Committed,
+            "The scoped push did not commit.");
+        var owned = (ProbePage)region.Current!;
+        var (completed, elapsed) = await context.RunOnThreadAsync(() =>
+        {
+            var watch = Stopwatch.StartNew();
+            // Like GetAwaiter().GetResult(), but a hang fails the test instead of blocking it forever.
+            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            return (completed, watch.Elapsed);
+        }).WaitAsync(Timeout);
+        // The queued clearing turn and the abandoned disposal operations run now.
+        await Wait(context.RunOnThreadAsync(() => true));
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+
+        var content = probe.Single("dispose:owned");
+        var scope = probe.Single("dispose:scope");
+        Require(completed && elapsed < 2 * closeTimeout + TimeSpan.FromMilliseconds(500),
+            $"Disposal with a blocked model thread took {elapsed} (completed: {completed}).");
+        Require(owned.Disposed == 1 && services is { Created: 1, Disposed: 1 } && !content.OnModelThread && !scope.OnModelThread
+            && SiteIndex(probe, "dispose:owned") < SiteIndex(probe, "dispose:scope") && fixture.Navigator.UnretiredEntryCount == 0,
+            $"The content was disposed {owned.Disposed} times at {content}; {services.Disposed} scopes were disposed, at {scope}.");
+    }
+
+    // A factory operation cancelled before it starts: the push is Rejected(Cancelled), the factory never
+    // runs, and the entry scope created for it is disposed once.
+    private static async Task ScopedFactoryCancelledBeforeStartAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        var services = new ScopeCountingServices();
+        await using var fixture = new Fixture(context, services: services, entryScopes: true);
+        using var gate = new ManualResetEventSlim();
+        // The guard blocks the model's thread right after it returns, so the factory operation queues behind it.
+        var home = new Page("home")
+        {
+            Guard = (_, _) =>
+            {
+                context.Post(() => gate.Wait(Timeout));
+                return ValueTask.FromResult(true);
+            },
+        };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        using var cancellation = new CancellationTokenSource();
+        var factoryRuns = 0;
+        var push = region.PushAsync(NavigationTarget.Create<Page>(_ =>
+        {
+            Interlocked.Increment(ref factoryRuns);
+            return new Page("created");
+        }), cancellationToken: cancellation.Token).AsTask();
+        await Until(() => context.HookRequests == 2, "The factory was not scheduled.");
+        cancellation.Cancel();
+        gate.Set();
+        var result = await Wait(push);
+        await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
+        await Until(() => services.Disposed > 0, "The entry scope was not disposed.");
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled } && factoryRuns == 0
+            && services is { Created: 1, Disposed: 1 },
+            $"A factory cancelled before it started gave {result}, ran {factoryRuns} times, and {services.Disposed} of {services.Created} scopes were disposed.");
+    }
+
+    // A6 with an entry scope: the context closes before the factory operation starts. The push is
+    // Rejected(Closed), the factory never runs, and the entry scope is disposed once, on the pool.
+    private static async Task ContextClosedBeforeScopedFactoryStartsAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        var probe = new Probe(context);
+        var services = new ScopeCountingServices(probe);
+        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1), services: services, entryScopes: true);
+        using var gate = new ManualResetEventSlim();
+        // The guard blocks the model's thread right after it returns, so the factory operation queues behind it.
+        var home = new Page("home")
+        {
+            Guard = (_, _) =>
+            {
+                context.Post(() => gate.Wait(Timeout));
+                return ValueTask.FromResult(true);
+            },
+        };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var factoryRuns = 0;
+        var push = region.PushAsync(NavigationTarget.Create<Page>(_ =>
+        {
+            Interlocked.Increment(ref factoryRuns);
+            return new Page("created");
+        })).AsTask();
+        await Until(() => context.HookRequests == 2, "The factory was not scheduled.");
+        await context.DisposeAsync();
+        gate.Set();
+        var result = await Wait(push);
+        await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
+        await Until(() => services.Disposed > 0, "The entry scope was not disposed.");
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && factoryRuns == 0
+            && services is { Created: 1, Disposed: 1 } && !probe.Single("dispose:scope").OnModelThread
+            && fixture.Logs.Count(1061) == 0 && fixture.Logs.Count(1064) == 0,
+            $"A context closed before the factory started gave {result}, ran the factory {factoryRuns} times, and disposed {services.Disposed} of {services.Created} scopes.");
     }
 
     private sealed class ThreadPresentation(SyncContextModelContext context) : INavigationPresentation

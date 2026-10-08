@@ -330,6 +330,13 @@ closes. The dialog region must not be the guarded region, one of its
 ancestors or one of its descendants: that push would be
 `Rejected(Reentrant)`.
 
+`LeaveConfirmation` keeps the caller's context, so its confirm delegate stays
+on the UI thread. Without a hook scheduler the guard can run in the frame of
+the call that started the navigation. If that call blocks a UI thread on the
+navigation's result (for example with `GetAwaiter().GetResult()`), the guard's
+continuation can never run there, and the two deadlock. Await navigation
+results; don't block on them, as with any asynchronous code.
+
 The [Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first)
 asks this way:
 
