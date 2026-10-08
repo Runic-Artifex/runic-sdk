@@ -13,13 +13,13 @@ public sealed class NotesListViewModel : ObservableObject, INavigationResume
         _store = store;
         Notes = new(store.All);
         // The ViewModel type and its typed input are the parameter contract; no string keys.
-        OpenCommand = new AsyncRelayCommand<Note>(note => regions.Main.PushAsync<NoteDetailViewModel, int>(note!.Id).AsTask(),
+        OpenCommand = new AsyncRelayCommand<Note>((note, token) => regions.Main.PushAsync<NoteDetailViewModel, int>(note!.Id, cancellationToken: token).AsTask(),
             note => note is not null);
-        OpenSettingsCommand = new AsyncRelayCommand(() => regions.Main.PushAsync<SettingsViewModel>().AsTask()); // [S3]
-        DeleteCommand = new AsyncRelayCommand<Note>(async note => // [S2]
+        OpenSettingsCommand = new AsyncRelayCommand(token => regions.Main.PushAsync<SettingsViewModel>(cancellationToken: token).AsTask()); // [S3]
+        DeleteCommand = new AsyncRelayCommand<Note>(async (note, token) => // [S2]
         { // [S2]
             var answer = await regions.Dialog.PushForResult<bool>( // [S2]
-                NavigationTarget.Create<ConfirmViewModel, string>($"Delete '{note!.Title}'?")).Completion; // [S2]
+                NavigationTarget.Create<ConfirmViewModel, string>($"Delete '{note!.Title}'?"), cancellationToken: token).Completion; // [S2]
             if (answer is NavigationCompletion<bool>.Completed { Value: true }) // [S2]
             { // [S2]
                 store.Delete(note.Id); // [S2]

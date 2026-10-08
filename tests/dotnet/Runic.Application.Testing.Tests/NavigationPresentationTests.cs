@@ -13,6 +13,7 @@ internal static class NavigationPresentationTests
 
     public static async Task RunAsync()
     {
+        await ReactiveNavigationTests.RunAsync();
         await ReferencesFollowTheRegionAsync();
         await StaleRouteWindowAsync();
         SessionTeardownIsANoOpAfterDispose();

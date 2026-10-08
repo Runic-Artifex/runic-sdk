@@ -43,7 +43,8 @@ windows. Besides the four scenarios, it checks the failure cases the
 comparison found in other libraries: two Backs from code, Back while the
 confirm is open, the guard of a page reached by Back, a page keeping its
 argument and edits when it is shown again, and a superseded Back keeping the
-edits.
+edits. Cancelling the native Toolkit Delete command must close its prompt,
+keep the note, and ignore a late answer.
 
 ```sh
 dotnet run --project examples/wpf-navigation/Tests -c Release
@@ -73,3 +74,26 @@ from 0.7.0-preview.4.
 
 `NotesNavigation/Domain/` is the notes store the comparison apps share; it
 stands in for your own model.
+
+## Native Toolkit commands
+
+Navigation uses one shared engine. Toolkit commands use its task-based API
+directly; presentation hosts and MVVM frameworks are independent choices.
+The list's `AsyncRelayCommand` delegates accept and forward cancellation tokens,
+so `DeleteCommand.Cancel()` dismisses its pending result prompt without deleting.
+The same convention works with Toolkit's source generator:
+
+```csharp
+[RelayCommand(IncludeCancelCommand = true)]
+private async Task OpenSettingsAsync(CancellationToken token)
+{
+    var result = await regions.Main.PushAsync<SettingsViewModel>(cancellationToken: token);
+    HandleNavigationOutcome(result);
+}
+```
+
+`HandleNavigationOutcome` is application policy: handle `Rejected`, `Failed` and
+`Superseded` as well as `Committed`. Navigation cancellation is a core result,
+not an exception. Forward tokens to `PushForResult` too; they dismiss a prompt
+even after its push commits. Toolkit's generated commands remain native Toolkit
+commands when the ViewModel is later presented through Runic's web bridge.

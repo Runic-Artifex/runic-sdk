@@ -32,6 +32,16 @@ The compiler tests require a C++20-capable `clang++`.
 | Build, CI and release tooling | `eng` |
 
 Update `eng/workspace.json` when adding an artifact or changing ownership.
+
+Shared features have one behavior implementation and idiomatic integrations.
+For navigation, keep guards, history, results, cancellation and ownership in
+`Runic.Navigation`. ReactiveUI can expose observable/command/scheduler APIs;
+Toolkit can compose the async core with native commands and source generators.
+WPF/web presentation is a separate integration choice from MVVM framework.
+Verify behavioral conformance through real consumers rather than requiring
+matching API signatures. Add adapters when concrete consumer friction warrants
+them; native framework APIs that already compose well need no symmetry wrapper.
+
 Use `ProjectReference` and `workspace:*` for internal development dependencies.
 Published package names and dependency ranges are public contracts. A package's
 shipped targets and native assets stay with it. Shared .NET build policy lives in
