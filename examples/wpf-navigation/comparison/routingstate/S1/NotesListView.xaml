@@ -7,8 +7,8 @@
                           DataContext="{Binding ViewModel, RelativeSource={RelativeSource Self}}">
   <DockPanel>
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
-      <Button Content="Open" Command="{Binding Open}" CommandParameter="{Binding SelectedItem, ElementName=List}" />
-      <Button Content="Delete" Command="{Binding Delete}" CommandParameter="{Binding SelectedItem, ElementName=List}" /> <!-- [S2] -->
+      <Button Content="Open" Command="{Binding Open}" />
+      <Button Content="Delete" Command="{Binding Delete}" /> <!-- [S2] -->
       <Button Content="Settings" Command="{Binding OpenSettings}" /> <!-- [S3] -->
     </StackPanel>
     <ListBox x:Name="List" ItemsSource="{Binding Notes}" SelectedItem="{Binding Selected}" DisplayMemberPath="Title" />

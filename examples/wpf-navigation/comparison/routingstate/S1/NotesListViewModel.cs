@@ -11,14 +11,15 @@ public sealed class NotesListViewModel : ReactiveObject, IRoutableViewModel, IAc
 {
     public NotesListViewModel(IScreen host, NoteStore store)
     {
-        // ReactiveCommand.CanExecute is an observable, not a function of the parameter: track the selection.
+        // The commands act on the bound selection; ReactiveCommand.CanExecute is an observable of it.
         var hasSelection = this.WhenAnyValue(x => x.Selected, (Note? note) => note is not null);
         HostScreen = host;
-        Open = ReactiveCommand.CreateFromObservable<Note, IRoutableViewModel>(note =>
-            host.Router.Navigate.Execute(new NoteDetailViewModel(host, store, note.Id)), hasSelection);
+        Open = ReactiveCommand.CreateFromObservable(() =>
+            host.Router.Navigate.Execute(new NoteDetailViewModel(host, store, Selected!.Id)), hasSelection);
         OpenSettings = ReactiveCommand.CreateFromObservable(() => host.Router.Navigate.Execute(new SettingsViewModel(host))); // [S3]
-        Delete = ReactiveCommand.CreateFromTask<Note>(async note => // [S2]
+        Delete = ReactiveCommand.CreateFromTask(async () => // [S2]
         { // [S2]
+            var note = Selected!; // [S2]
             if (await Dialogs.Confirm.Handle($"Delete '{note.Title}'?")) // [S2]
             { // [S2]
                 store.Delete(note.Id); // [S2]
@@ -36,7 +37,7 @@ public sealed class NotesListViewModel : ReactiveObject, IRoutableViewModel, IAc
     private Note? _selected;
     public Note? Selected { get => _selected; set => this.RaiseAndSetIfChanged(ref _selected, value); }
     public ObservableCollection<Note> Notes { get; } = [];
-    public ReactiveCommand<Note, IRoutableViewModel> Open { get; }
+    public ReactiveCommand<RxVoid, IRoutableViewModel> Open { get; }
     public ReactiveCommand<RxVoid, IRoutableViewModel> OpenSettings { get; } // [S3]
-    public ReactiveCommand<Note, RxVoid> Delete { get; } // [S2]
+    public ReactiveCommand<RxVoid, RxVoid> Delete { get; } // [S2]
 }

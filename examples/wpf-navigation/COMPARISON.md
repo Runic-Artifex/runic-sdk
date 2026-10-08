@@ -31,7 +31,7 @@ The apps share one domain: the notes and the store in
 3. **S3, nested tabs.** A settings page with General and Advanced tabs; a
    button on General selects Advanced.
 4. **S4, Back.** A shell Back button that is enabled while there is history.
-   Its size barely differs between libraries, so it is compared by behaviour
+   It takes 1 to 7 lines, so it is compared mainly by behaviour
    [below](#scenario-4-pressing-back-twice).
 
 Each app is idiomatic for its library, following its documentation and
@@ -73,10 +73,10 @@ Lines as C# / XAML / **total**:
 | --- | --- | --- | --- | --- |
 | Setup: bootstrap, shell, registrations | 33 / 8 / **41** | 26 / 9 / **35** | 29 / 27 / **56** | 29 / 8 / **37** |
 | S1 master-detail with a guard | 52 / 16 / **68** | 64 / 16 / **80** | 69 / 18 / **87** | 70 / 18 / **88** |
-| S2 confirm with a result | 35 / 12 / **47** | 29 / 11 / **40** | 24 / 11 / **35** | 24 / 11 / **35** |
+| S2 confirm with a result | 35 / 12 / **47** | 29 / 11 / **40** | 25 / 11 / **36** | 25 / 11 / **36** |
 | S3 nested tabs | 48 / 19 / **67** | 30 / 19 / **49** | 43 / 21 / **64** | 41 / 21 / **62** |
 | S4 Back button | 0 / 1 / **1** | 6 / 1 / **7** | 1 / 1 / **2** | 5 / 1 / **6** |
-| **Total** | **224** | **211** | **244** | **228** |
+| **Total** | **224** | **211** | **245** | **229** |
 
 The totals are within about 15% of each other, so size alone doesn't separate
 the libraries. Where the lines go does:
@@ -87,16 +87,21 @@ the libraries. Where the lines go does:
   synchronous, so an async confirm must cancel and re-issue the navigation;
   this app re-issues only Back. RoutingState has no guard, so its app defines
   one that only its own Back command checks. The ReactiveUI-based apps also
-  track the selection in a property, because `ReactiveCommand`'s CanExecute
-  is an observable rather than a function of the parameter.
+  bind the selection to a property that Open and Delete act on, because
+  `ReactiveCommand`'s CanExecute is an observable rather than a function of a
+  command parameter.
 - **S2** is longer in Runic than in the others. The dialog is a ViewModel and
   View in a dialog region, the same as any page, and answers with
   `entry.CompleteAsync(true)`. ReactiveUI's `Interaction<string, bool>` with a
   handler that opens a window is shorter.
 - **S3** is longest in Runic, and Prism's is shortest: its TabControl is a
   region and the tabs are registered views. Runic's page owns a child region;
-  selecting a tab replaces the region's entry, and a rejected selection must
-  re-sync the TabControl. The TabControl's content is a `NavigationHost`.
+  selecting a tab replaces the region's entry, a rejected selection must
+  re-sync the TabControl, and the TabControl's content is a `NavigationHost`.
+  The child region pays off only when the tabs have guards or lifetimes of
+  their own; for plain tabs it is ceremony. Runic has no TabControl or
+  selector adapter, and no host for plain content without navigation, yet;
+  both are planned (W240-015).
 - **S4:** Prism's shell re-queries its Back command on each navigation, so
   that it is disabled without history.
 - **Setup:** Runic's `AppRegions` service, which holds the window's regions,
@@ -107,14 +112,15 @@ the libraries. Where the lines go does:
 
 The API names and conventions a reader meets in the four scenarios, counting
 the property-change base class and command types in every column. This is a
-judgement-based count, not a mechanical one; treat it as ±3.
+judgement-based grouping: each item separated by a semicolon counts once, and
+only what the app uses is listed. Treat the counts as ±3.
 
 | Library | Count | Concepts |
 | --- | --- | --- |
-| Runic | ~16 | `AddRunicWpfNavigation` with `UseViewNamingConvention`, `RunicNavigator.CreateRegion` and its owner, `NavigationRegion<T>` (`PushAsync<T>`, `ResetAsync`, `ReplaceAsync`, `Current`), child regions that close with their page, `NavigationHost` with `NavigationCommands.BrowseBack`, `NavigationDialogHost`, `NavigationTarget.Create` / `Borrow`, `INavigationInitialize<TInput>`, `NavigationEntryContext` (`CompleteAsync`, `DismissAsync`), `INavigationResume`, `INavigationDepartureGuard`, `LeaveConfirmation.InDialog`, `PushForResult<T>` with `NavigationCompletion<T>`, `NavigationResult<T>`, `ValueTask` returns; from outside Runic, Microsoft.Extensions.DependencyInjection, CommunityToolkit's `ObservableObject` with `SetProperty`, and `RelayCommand` / `AsyncRelayCommand` |
-| Prism | ~24 | `PrismApplication` (`CreateShell`, `RegisterTypes`, `OnInitialized`), `IContainerRegistry`, `RegisterForNavigation`, `RegionManager.RegionName`, `IRegionManager`, `RequestNavigate`, `NavigationParameters`, `NavigationContext`, `IRegionAware`, `IConfirmNavigationRequest` with its continuation, `IRegionMemberLifetime` / `KeepAlive`, `IRegionNavigationJournal` (`GoBack`, `CanGoBack`), `IRegionNavigationService.Navigated`, view reuse through `IsNavigationTarget`, `RegisterViewWithRegion`, the TabControl region adapter, `IDialogService`, `RegisterDialog`, `IDialogAware`, `DialogCloseListener`, `IDialogParameters` / `IDialogResult` / `ButtonResult`, `ShowDialogAsync`, `BindableBase` with `SetProperty`, `DelegateCommand` / `AsyncDelegateCommand` with `RaiseCanExecuteChanged`, `ViewModelLocator` conventions |
-| CrissCross, with the ReactiveUI it builds on | ~21 | `RxAppBuilder` with `WithWpf` and `RegisterView`, Splat `AppLocator` and `SetupComplete`, `RxObject` with `RaiseAndSetIfChanged`, `WhenAnyValue`, `NavigationWindow` with its `HostName` template, `ViewModelRoutedViewHost`, `NavigationKeyRequest<T>` and `NavigationRequestOptions.Parameter`, `NavigateToView` / `NavigateBack` / `CanNavigateBack`, `WhenNavigatedTo` / `WhenNavigating` / `WhenNavigatedFrom`, `ViewModelNavigatingEventArgs.Cancel`, ViewModel lifetimes (history stores types), `ReactiveUserControl<T>` and `DataContext` wiring, `WhenActivated` with `MultipleDisposable`, `ReactiveCommand`, `Interaction<TIn, TOut>`, `ViewModelViewHost`, `RxSchedulers.MainThreadScheduler`, `IViewFor`, `RxVoid` |
-| ReactiveUI RoutingState | ~18, plus the app's own guard | `RxAppBuilder` with `WithWpf` and `RegisterView`, `IScreen`, `RoutingState` (`Navigate`, `NavigateBack`, `NavigationStack`), `IRoutableViewModel`, `RoutedViewHost`, `ViewModelViewHost`, `ReactiveObject` with `RaiseAndSetIfChanged`, `WhenAnyValue`, `ReactiveUserControl<T>` and `DataContext` wiring, `IActivatableViewModel` with `WhenActivated`, `ReactiveCommand` and its CanExecute observable, `Interaction<TIn, TOut>`, awaiting an `IObservable` with `FirstAsync`, `MultipleDisposable` / `RxVoid`, and an app-defined leave-guard interface |
+| Runic | 18 | `AddRunicWpfNavigation` with `UseViewNamingConvention`; `RunicNavigator.CreateRegion` and its owner; `NavigationRegion<T>` (`PushAsync<T>`, `ResetAsync`, `ReplaceAsync`, `Current`, `PropertyChanged`); child regions that close with their page; `NavigationHost` with `NavigationCommands.BrowseBack`; `NavigationDialogHost`; `NavigationTarget.Create` / `Borrow`; `INavigationInitialize<TInput>`; `NavigationEntryContext` (`CompleteAsync`, `DismissAsync`); `INavigationResume`; `INavigationDepartureGuard`; `LeaveConfirmation.InDialog`; `PushForResult<T>` with `NavigationCompletion<T>`; `NavigationResult<T>`; `ValueTask` returns; Microsoft.Extensions.DependencyInjection; CommunityToolkit's `ObservableObject` with `SetProperty`; `RelayCommand` / `AsyncRelayCommand` |
+| Prism | 25 | `PrismApplication` (`CreateShell`, `RegisterTypes`, `OnInitialized`); `IContainerRegistry`; `RegisterForNavigation`; `RegionManager.RegionName`; `IRegionManager` (`Regions`, `ContainsRegionWithName`); `RequestNavigate`; `NavigationParameters`; `NavigationContext`; `IRegionAware` (`OnNavigatedTo`, `OnNavigatedFrom`); `IConfirmNavigationRequest` with its continuation; `IRegionMemberLifetime` / `KeepAlive`; `IRegionNavigationJournal` (`GoBack`, `CanGoBack`); `IRegionNavigationService.Navigated`; view reuse through `IsNavigationTarget`; `RegisterViewWithRegion`; the TabControl region adapter with a `TabItem` header bound through `DataContext`; `IDialogService.ShowDialog` with its callback; `ShowDialogAsync`; `RegisterDialog`; `IDialogAware`; `DialogCloseListener`; `DialogParameters` / `IDialogParameters` with `ButtonResult`; `BindableBase` with `SetProperty`; `DelegateCommand` / `AsyncDelegateCommand` with `RaiseCanExecuteChanged`; `ViewModelLocator.AutoWireViewModel` |
+| CrissCross, with the ReactiveUI it builds on | 17 | `RxAppBuilder` with `WithWpf` and `RegisterView`; Splat `AppLocator` and `SetupComplete`; ViewModel lifetimes (`RegisterLazySingleton` vs `Register`, because history stores types); `RxObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `NavigationWindow` with its `HostName` template; `ViewModelRoutedViewHost`; `NavigationKeyRequest<T>` with `NavigationRequestOptions.Parameter`; `NavigateToView` / `NavigateBack` / `CanNavigateBack`; `WhenNavigatedTo` / `WhenNavigating`; `IViewModelNavigatingEventArgs.Cancel`; `ReactiveUserControl<T>` and `DataContext` wiring; `WhenActivated` with `MultipleDisposable`; `ReactiveCommand`; `Interaction<TIn, TOut>` with `RegisterHandler` and `Handle`; `ViewModelViewHost`; `RxVoid` |
+| ReactiveUI RoutingState | 15, plus the app's own guard | `RxAppBuilder` with `WithWpf` and `RegisterView`; `IScreen`; `RoutingState` (`Navigate`, `NavigateBack`, `CanNavigateBack`, `GetCurrentViewModel`); `IRoutableViewModel` (`HostScreen`, `UrlPathSegment`); `RoutedViewHost`; `ViewModelViewHost`; `ReactiveObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `ReactiveUserControl<T>` and `DataContext` wiring; `IActivatableViewModel` with `ViewModelActivator` and `WhenActivated`; `ReactiveCommand` and its CanExecute observable; `Interaction<TIn, TOut>` with `RegisterHandler` and `Handle`; awaiting an `IObservable` with `FirstAsync`; `MultipleDisposable`; `RxVoid`. Plus the app-defined leave-guard interface |
 
 ## Scenario 4: pressing Back twice
 
@@ -130,7 +136,7 @@ the moment a Back is admitted and lets a second plain Back join the first.
 Both are consistent; the table shows the consequences.
 
 Every app shows its confirm modally (Prism's `DialogService` and the
-ReactiveUI apps use `Window.ShowDialog`; Runic's `NavigationDialogHost` is
+ReactiveUI and CrissCross apps use `Window.ShowDialog`; Runic's `NavigationDialogHost` is
 application-modal by default), so a second click can't reach Back while the
 confirm is open. The confirm rows apply to a non-modal or overlay confirm, a
 keyboard or mouse Back button, or code.
@@ -159,7 +165,7 @@ Run the probes with `dotnet run --project comparison/probes`.
 | Back while the unsaved-changes confirm is open | The second Back joins the first: one confirm, and its answer settles both [T] | Two confirms; answering the older one first corrupts the journal: B is lost and A is duplicated, silently [M, P3, P4] (non-modal confirm or code only) | No guard built in. This app's guarded Back command shows 2 confirms and pops twice when both Backs arrive before the dispatcher runs [T, R6] (non-modal confirm or code only) | The guard is synchronous; see S1 |
 | The guard of a page reached by Back | Asked [T] | Asked | App-defined | Not asked: the host keeps the departed ViewModel as active after a Back |
 | A page's arguments and edits when it is shown again | Kept: the history holds the entry, with its ViewModel and input [T] | Arguments kept: the journal stores the URI and parameters. Edits kept only with `KeepAlive = true` and a matching `IsNavigationTarget`; this app uses `KeepAlive = false` | Kept: the history holds ViewModel instances | Arguments lost: the history holds types, and a Back passes no parameter, so `WhenNavigatedTo` must allow for none. Edits survive only because the ViewModel is a singleton |
-| A confirm that is cancelled or superseded | The edits stay: the discard runs only when the departure commits [T] | The edits stay: this app discards in `OnNavigatedFrom`, which runs only after a navigation commits | App-defined | App-defined: this app re-issues only Back |
+| A confirm that is cancelled or superseded | The edits stay: the discard runs only when the departure commits [T] | The edits stay: this app discards in `OnNavigatedFrom`, which runs only once a navigation is confirmed and executes | App-defined | App-defined: this app re-issues only Back |
 
 Sources, at the released versions:
 
@@ -200,18 +206,22 @@ the first has committed is a new request and pops again.
   history, and `KeepAlive` keeps a page's View, so scroll position and
   selection survive Back; Runic keeps the ViewModel and builds a new View, so
   that state must live in the ViewModel. Its dialog service is mature.
-- **ReactiveUI** makes a typed question to the View cheap with
+- **ReactiveUI** is mature and widely used, with a large ecosystem. It makes a typed question to the View cheap with
   `Interaction<TIn, TOut>`, the shortest S2 here. Its VM-first navigation,
   `Navigate.Execute(new NoteDetailViewModel(...))`, makes the constructor the
   parameter contract, and `RoutingState` has no UI dependency, so it is
   testable without a dispatcher.
-- **Cross-platform hosts.** CrissCross has hosts for WPF, Avalonia, MAUI and
-  WinForms, plus page transitions, WebView2 integration and a Fluent UI kit.
-  Runic.Navigation's engine is UI-free, but its only desktop host is WPF.
+- **Cross-platform reach.** Prism also targets .NET MAUI and Uno Platform.
+  ReactiveUI runs on WinUI, MAUI, Avalonia, Blazor and more. CrissCross has
+  hosts for WPF, Avalonia, MAUI and WinForms, plus page transitions, WebView2
+  integration and a Fluent UI kit. Runic.Navigation's engine is UI-free, but
+  its only desktop host is WPF.
 - **Runic's constraints.** Runic is a preview: its navigation API is
   experimental (`RUNICNAV001`). It requires Microsoft.Extensions.DependencyInjection.
   Its navigation is asynchronous, so a Back commits after the click returns,
-  where Prism and RoutingState commit synchronously.
+  where Prism and RoutingState commit synchronously. It is a new project with
+  a small user base and little third-party material: answers, samples and
+  articles.
 
 ## Licences and status
 
@@ -226,7 +236,8 @@ the first has committed is a new request and pops again.
   paid Commercial Plus feed.
 - **CrissCross** is MIT. 5.0.0 was released on 2026-10-05.
 - **ReactiveUI** is MIT. 26.0.1 was released on 2026-10-04. Version 24.0.0
-  moved it to ReactiveUI.Primitives, where `Unit` became `RxVoid`.
+  moved it to ReactiveUI.Primitives, where `Unit` became `RxVoid` in the
+  default packages; the `.Reactive` family keeps `Unit`.
 - **Sextant** is MIT and built against ReactiveUI 22.3.1.
 - **Runic** is MIT.
 
