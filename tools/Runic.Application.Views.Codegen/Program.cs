@@ -17,6 +17,7 @@ try
     else if (args.Length >= 1 && args[0] == "--generate")
     {
         var aot = false;
+        var optional = false;
         string? compositionType = null;
         var values = new List<string> { args[0] };
         for (var i = 1; i < args.Length; i++)
@@ -24,6 +25,7 @@ try
             switch (args[i])
             {
                 case "--aot": aot = true; break;
+                case "--optional": optional = true; break;
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
@@ -40,7 +42,7 @@ try
         }
         var positional = values.ToArray();
         if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--di-composition <namespace.type>]");
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>]");
 
         string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}",
             $"reactiveui={CodegenOptions.ReactiveUiFlavor}"];
@@ -76,6 +78,23 @@ try
         }
         if (Diagnostics.HasErrors) return;
         var models = viewTypes.Keys.Select(type => (Model: type, Name: PublicName(type))).ToArray();
+        if (models.Length == 0 && optional)
+        {
+            // Bridge generation was on by default, not requested: an assembly
+            // without Windows or Views (for example one that only uses the
+            // navigator) builds without bridge output. Remove stale generated C# and
+            // TypeScript (never creating the TypeScript directory) and leave a marker
+            // so the build skips the frontend steps.
+            Directory.CreateDirectory(positional[2]);
+            foreach (var path in Directory.GetFiles(positional[2], "*.g.cs"))
+                if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
+            if (Directory.Exists(positional[3]))
+                foreach (var path in Directory.GetFiles(positional[3], "*.ts"))
+                    if (GeneratedOutput.IsGenerated(path)) File.Delete(path);
+            File.WriteAllText(Path.Combine(positional[2], "RunicBridge.NoViews.marker"), "");
+            Console.WriteLine($"{assembly.GetName().Name}: no Runic Window/View classes found; skipping Bridge generation.");
+            return;
+        }
         if (models.Length == 0)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.View,
                 $"{assembly.GetName().Name}: no Runic Window/View classes found.");

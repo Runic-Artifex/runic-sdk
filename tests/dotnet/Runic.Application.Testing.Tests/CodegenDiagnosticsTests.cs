@@ -353,6 +353,44 @@ internal static class CodegenDiagnosticsTests
                 && registration.Contains("Func<IBridgeTransport, WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),
                 $"DI composition registered a transport-only factory for an interaction ViewModel.\n{registration}");
+
+            // Bridge generation that the build turned on by default is
+            // optional: an assembly with no Window or View (a navigator-only
+            // application) succeeds, writes nothing and leaves a marker the
+            // targets use to skip the frontend steps. Without --optional the
+            // project asked for generation, so the same assembly is an error.
+            const string NoViews = "public sealed class PlainService { public int Value => 1; }";
+            var skippedOutput = await GenerateValidAsync(generator, temporaryRoot, "OptionalNoViews", Preamble + NoViews,
+                "--optional").ConfigureAwait(false);
+            Require(File.Exists(Path.Combine(skippedOutput, "RunicBridge.NoViews.marker"))
+                    && Directory.GetFiles(skippedOutput, "*.g.cs").Length == 0,
+                "An optional generation without Windows or Views did not skip cleanly.");
+            // Views that were removed leave no stale generated C# or TypeScript.
+            var staleCs = await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + """
+                public sealed class StaleViewModel : FixtureModel { public string Title { get; } = ""; }
+                public sealed partial class StaleWindow(StaleViewModel model) : RunicWindow<StaleViewModel>(model);
+                """).ConfigureAwait(false);
+            var staleTs = Path.Combine(Path.GetDirectoryName(staleCs)!, "ts");
+            Require(Directory.GetFiles(staleCs, "*.g.cs").Length > 0 && Directory.GetFiles(staleTs, "*.ts").Length > 0,
+                "The stale-output fixture generated nothing to remove.");
+            await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + NoViews, "--optional").ConfigureAwait(false);
+            Require(Directory.GetFiles(staleCs, "*.g.cs").Length == 0 && Directory.GetFiles(staleTs, "*.ts").Length == 0
+                    && File.Exists(Path.Combine(staleCs, "RunicBridge.NoViews.marker")),
+                "Optional generation without Views left stale generated output.");
+            // Optional does not hide a model assembly that cannot be loaded.
+            var (optionalLoadExit, optionalLoadOutput) = await RunProcessAsync(generator, invalidAssembly, invalidDirectory, "--optional")
+                .ConfigureAwait(false);
+            Require(optionalLoadExit != 0 && optionalLoadOutput.Contains("error RUNICBRIDGE005:", StringComparison.Ordinal),
+                $"Optional generation hid an unloadable model assembly.\n{optionalLoadOutput}");
+            await Reject("RequiredNoViews", NoViews, "error RUNICBRIDGE006:", "no Runic Window/View classes found")
+                .ConfigureAwait(false);
+            // Optional only forgives a missing Window: an invalid View still fails.
+            var (optionalViewExit, invalidViewOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "OptionalInvalidView", Preamble + """
+                public sealed class HiddenViewModel : FixtureModel { public string Title { get; } = ""; }
+                internal sealed partial class HiddenWindow(HiddenViewModel model) : RunicWindow<HiddenViewModel>(model);
+                """, "--optional").ConfigureAwait(false);
+            Require(optionalViewExit != 0 && invalidViewOutput.Contains("error RUNICBRIDGE006:", StringComparison.Ordinal),
+                $"Optional generation accepted an invalid View.\n{invalidViewOutput}");
         }
         finally
         {

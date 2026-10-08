@@ -3,6 +3,7 @@
        buildTransitive when consumed as a package. -->
   <PropertyGroup>
     <RunicBridgeGeneratedDir>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge/</RunicBridgeGeneratedDir>
+    <RunicBridgeNoViewsMarker>RunicBridge.NoViews.marker</RunicBridgeNoViewsMarker>
     <RunicBridgeTypescriptDir Condition="'$(RunicBridgeTypescriptDir)' == ''">$(MSBuildProjectDirectory)/Frontend/src/generated</RunicBridgeTypescriptDir>
     <RunicBridgeFrontendDir Condition="'$(RunicBridgeFrontendDir)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir>
   </PropertyGroup>
@@ -47,7 +48,14 @@
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
         Condition="'%(PackageReference.Identity)' == 'Runic.Application' or '%(PackageReference.Identity)' == 'Runic.Application.CsWebUi' or '%(PackageReference.Identity)' == 'Runic.Application.Desktop'" />
     </ItemGroup>
+    <!-- Generation that this file turns on by default is optional: a project
+         that declares no Window or View (for example one that only uses the
+         navigator) builds without bridge output. A project that sets
+         RunicBridgeBuildEnabled=true, or visibly expects output (a frontend
+         package.json, RunicBridgeFrontendInput items, a composition type or a
+         model assembly), still gets RUNICBRIDGE006 when it has no Window. -->
     <PropertyGroup>
+      <_RunicBridgeOptional Condition="'$(RunicBridgeBuildEnabled)' == '' and '$(RunicBridgeCompositionType)' == '' and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeOptional>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and Exists('$(RunicBridgeCodegenProject)')">true</RunicBridgeBuildEnabled>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and '@(_RunicBridgeDirectPackage)' != ''">true</RunicBridgeBuildEnabled>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == ''">false</RunicBridgeBuildEnabled>
@@ -125,9 +133,20 @@
     <Error Condition="!Exists('$(RunicBridgeCodegenDll)')"
            Text="Runic Bridge code generator was not found at $(RunicBridgeCodegenDll)." />
     <PropertyGroup>
+      <RunicBridgeOptionalArgument Condition="'$(_RunicBridgeOptional)' == 'true'">--optional</RunicBridgeOptionalArgument>
+      <_RunicBridgeSkipped>false</_RunicBridgeSkipped>
       <RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicBridgeReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicBridgeReactiveUiFlavor)&quot;</RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
-    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument)" />
+    <Delete Files="$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)" />
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument) $(RunicBridgeOptionalArgument)" />
+    <PropertyGroup>
+      <_RunicBridgeSkipped Condition="Exists('$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
+    </PropertyGroup>
+    <Message Importance="normal" Condition="'$(_RunicBridgeSkipped)' == 'true'"
+             Text="Runic Bridge: $(AssemblyName) declares no Runic Window or View, so no bridge code or frontend build is generated. Set RunicBridgeBuildEnabled=true to require them, or false to skip the bootstrap build entirely." />
+    <ItemGroup Condition="'$(_RunicBridgeSkipped)' == 'true'">
+      <FileWrites Include="$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)" />
+    </ItemGroup>
     <ItemGroup>
       <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />
@@ -143,7 +162,7 @@
        RunicBridgeFrontendInput items, or set RunicBridgeBuildFrontend=false
        when another tool owns the frontend build. -->
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
     <ItemGroup>
       <RunicBridgeFrontendInput Include="$(RunicBridgeFrontendDir)/**/*"
           Exclude="$(RunicBridgeFrontendDir)/node_modules/**;$(RunicBridgeFrontendDir)/dist/**;$(RunicBridgeFrontendDir)/build/**;$(RunicBridgeFrontendDir)/bin/**;$(RunicBridgeFrontendDir)/obj/**;$(RunicBridgeFrontendDir)/.*/**" />
@@ -159,7 +178,7 @@
        plain dotnet build and dotnet run work. Set
        RunicBridgeInstallFrontend=false when a workspace install owns it. -->
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json') and !Exists('$(RunicBridgeFrontendDir)/node_modules')">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json') and !Exists('$(RunicBridgeFrontendDir)/node_modules')">
     <Message Importance="high"
              Text="Installing frontend dependencies in $(RunicBridgeFrontendDir) with $(RunicBridgeFrontendPackageManager). Set RunicBridgeInstallFrontend=false to install them yourself." />
     <Exec Command="$(RunicBridgeFrontendInstallCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
@@ -169,7 +188,7 @@
 
   <Target Name="RunicViewsBuildFrontend" AfterTargets="RunicViewsCollectFrontendInputs"
           Inputs="@(RunicBridgeFrontendInput)" Outputs="$(RunicBridgeFrontendStamp)"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
     <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
     <Touch Files="$(RunicBridgeFrontendStamp)" AlwaysCreate="true" />
   </Target>
@@ -178,7 +197,7 @@
        dotnet runic dev wrote into www/ from being replaced by dist/. -->
   <Target Name="RunicViewsCopyFrontend" AfterTargets="Build"
           DependsOnTargets="RunicViewsDetectBridgeUse"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeCopyFrontend)' != 'false'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeCopyFrontend)' != 'false'">
     <ItemGroup>
       <RunicBridgeFrontendFile Include="$(RunicBridgeFrontendDir)/dist/**/*" />
     </ItemGroup>
@@ -189,7 +208,7 @@
 
   <Target Name="RunicViewsCopyFrontendForPublish" AfterTargets="Publish"
           DependsOnTargets="RunicViewsDetectBridgeUse"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicBridgeBootstrap)' != 'true'">
     <ItemGroup>
       <RunicBridgePublishedFrontendFile Include="$(RunicBridgeFrontendDir)/dist/**/*" />
     </ItemGroup>

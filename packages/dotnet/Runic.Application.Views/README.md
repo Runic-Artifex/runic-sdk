@@ -228,7 +228,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. |
 | `RUNICBRIDGE004` | Two generated names collide: ViewModel names, presentation kinds, state wire names, the reserved `revision` and `validation` fields, interactions, routes, client members, or generated files (including a hand-written `types.ts`). | Rename one member, or set a wire name with `[RunicAlias]`. |
 | `RUNICBRIDGE005` | The model assembly or one of its dependencies could not be loaded. | Check the bootstrap output and package versions. |
-| `RUNICBRIDGE006` | The assembly has no Window or View class, one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
+| `RUNICBRIDGE006` | The assembly has no Window or View class (an error only when generation is required, see [Build properties](#build-properties)), one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
 | `RUNICBRIDGE007` | A ViewModel does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction. | Change the ViewModel declaration. |
 | `RUNICBRIDGE008` | A state property has no public getter or an empty wire name, ViewModel content or a `NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's item type has no registered View, or a region slot is a `NavigationRegion<object>` or has no ViewModel with a registered View that is a `TContent`. | Add a getter, make content read-only to the web view, register a View for the item or content type, or give the region a specific content interface or base class. |
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
@@ -262,6 +262,24 @@ departs from the conventional `Frontend` folder.
 development server serves the frontend. The
 [`dotnet runic` README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)
 lists the development-server properties it reads.
+
+Bridge generation turns on by default for a project that references
+`Runic.Application` or builds in this repository. That default is optional:
+when the assembly declares no Runic Window or View, for example an application
+that only uses the navigator, the build generates nothing (and removes stale
+generated C# and TypeScript), skips the frontend install, build and copy steps,
+and succeeds with a normal-importance message. A publish that reuses an earlier
+build (`--no-build`) still copies an existing `<frontend>/dist` to `www/`.
+Generation is required, and `RUNICBRIDGE006` stays an error for an assembly
+without a Window, when the project sets `RunicBridgeBuildEnabled` to `true`, or
+when it shows that it expects output: a `package.json` in
+`RunicBridgeFrontendDir`, `RunicBridgeFrontendInput` items,
+`RunicBridgeCompositionType` or `RunicBridgeModelAssembly`. Projects that
+reference a host adapter (`Runic.Application.CsWebUi` or
+`Runic.Application.Desktop`) always require generation, because the adapter
+sets `RunicBridgeCompositionType`. A navigator-only application should set
+`RunicBridgeBuildEnabled` to `false`: that also skips the nested bootstrap
+build, which optional mode still pays for.
 
 A single-project application is compiled twice: a bootstrap pass with an empty
 generated composition, which the generator inspects, then the real build with
