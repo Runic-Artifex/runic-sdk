@@ -141,12 +141,18 @@ next. It looks for a View in this order:
 
 When none presents the content, the host logs event 1082 once per type.
 
-- A locator View is created with `ActivatorUtilities` from the entry's
-  services. A constructor parameter that the content can be assigned to gets
-  **the entry's content**, never another instance from the container, so
-  `DocumentView(DocumentViewModel model)` binds to the pushed ViewModel. Other
-  parameters come from the entry's services. The View's `DataContext` is the
-  content unless the View sets one.
+- A locator View is created from the entry's services. The first constructor
+  parameter whose type is a class the content can be assigned to, meaning the
+  content's own type or one of its base classes but never `object`, gets
+  **the entry's content**, never another instance from the container. So
+  `DocumentView(DocumentViewModel model)` binds to the pushed ViewModel.
+  Interface and `object` parameters, such as `INotifyPropertyChanged` or
+  `IDisposable`, and all other parameters come from the entry's services, also
+  when the content implements them. When several constructors take the
+  content, the one marked `[ActivatorUtilitiesConstructor]` wins, then the
+  longest. A View without such a parameter is created with
+  `ActivatorUtilities`. The View's `DataContext` is the content unless the View
+  sets one.
 - `UseViewNamingConvention()` maps `FooViewModel` to `FooView`, then `FooPage`,
   in the same assembly, also from a `.ViewModels` namespace to `.Views`. When
   the ViewModels live in a separate assembly, pass the View assemblies:

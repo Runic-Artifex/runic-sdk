@@ -397,7 +397,10 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
 
     // The SynchronizationContext hooks run under: the dispatcher while it runs, and the thread pool once it shuts
     // down (A9), so a hook awaiting past shutdown still finishes and navigator disposal doesn't wait for it in vain.
-    // WPF drops BeginInvoke after shutdown started, and aborts operations still queued when it starts.
+    // WPF drops BeginInvoke after shutdown started, and aborts operations still queued when it starts. A posted
+    // callback that moves to the pool runs in the ExecutionContext captured when it was posted, not in the context of
+    // the thread that shuts the dispatcher down. Send runs the callback inline on the calling thread once shutdown
+    // has started, also when shutdown aborts a Send that was waiting for the dispatcher.
     private sealed class HookContext : SynchronizationContext
     {
         private readonly Dispatcher _dispatcher;
@@ -412,7 +415,22 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
             if (_inner.IsWaitNotificationRequired()) SetWaitNotificationRequired();
         }
 
-        public override void Send(SendOrPostCallback d, object? state) => _inner.Send(d, state);
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            ArgumentNullException.ThrowIfNull(d);
+            if (_dispatcher.HasShutdownStarted)
+            {
+                d(state);
+                return;
+            }
+            var ran = false;
+            _inner.Send(value =>
+            {
+                ran = true;
+                d(value);
+            }, state);
+            if (!ran && _dispatcher.HasShutdownStarted) d(state);
+        }
 
         public override int Wait(IntPtr[] waitHandles, bool waitAll, int millisecondsTimeout) =>
             _inner.Wait(waitHandles, waitAll, millisecondsTimeout);
@@ -426,7 +444,7 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
         public override void Post(SendOrPostCallback d, object? state)
         {
             ArgumentNullException.ThrowIfNull(d);
-            var continuation = new Continuation(d, state);
+            var continuation = new Continuation(d, state, ExecutionContext.Capture());
             if (_dispatcher.HasShutdownStarted)
             {
                 continuation.RunOnPool();
@@ -445,8 +463,10 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
 
         public override SynchronizationContext CreateCopy() => new HookContext(_dispatcher, _priority);
 
-        private sealed class Continuation(SendOrPostCallback callback, object? state)
+        // context is null when the poster suppressed the flow: the callback then runs in the pool's default context.
+        private sealed class Continuation(SendOrPostCallback callback, object? state, ExecutionContext? context)
         {
+            private static readonly ContextCallback InvokeInContext = static self => ((Continuation)self!).Invoke();
             private int _ran;
 
             public void Run()
@@ -457,7 +477,13 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
             public void RunOnPool()
             {
                 if (Interlocked.Exchange(ref _ran, 1) == 0)
-                    ThreadPool.QueueUserWorkItem(static self => self.Invoke(), this, preferLocal: false);
+                    ThreadPool.UnsafeQueueUserWorkItem(static self => self.InvokeOnPool(), this, preferLocal: false);
+            }
+
+            private void InvokeOnPool()
+            {
+                if (context is null) Invoke();
+                else ExecutionContext.Run(context, InvokeInContext, this);
             }
 
             private void Invoke() => callback(state);

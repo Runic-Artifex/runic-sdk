@@ -26,17 +26,53 @@ internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map,
         return (FrameworkElement)factory(entry.Services, [entry.Content]);
     }
 
-    // A view whose constructor takes the content's type gets the entry's content, never another instance from the
-    // container; other parameters come from the entry's services.
+    // The content goes to the first constructor parameter whose type is a class the content can be assigned to: the
+    // content's own type or one of its base classes, never object. Interface and object parameters, such as
+    // INotifyPropertyChanged or IDisposable, come from the entry's services like every other parameter. A view
+    // without such a parameter is created by ActivatorUtilities. Among constructors with a content parameter, the one
+    // marked [ActivatorUtilitiesConstructor] wins, then the one with the most parameters.
     [UnconditionalSuppressMessage("Trimming", "IL2067",
         Justification = "View types come from MapView, whose type parameter keeps public constructors, or the convention.")]
-    private static ObjectFactory CreateFactory(Type viewType, Type contentType)
+    [UnconditionalSuppressMessage("Trimming", "IL2070",
+        Justification = "View types come from MapView, whose type parameter keeps public constructors, or the convention.")]
+    internal static ObjectFactory CreateFactory(Type viewType, Type contentType)
     {
-        var takesContent = viewType.GetConstructors().Any(constructor =>
-            constructor.GetParameters().Any(parameter => parameter.ParameterType.IsAssignableFrom(contentType)));
-        if (takesContent) return ActivatorUtilities.CreateFactory(viewType, [contentType]);
-        var factory = ActivatorUtilities.CreateFactory(viewType, Type.EmptyTypes);
-        return (services, _) => factory(services, []);
+        var candidates = viewType.GetConstructors()
+            .Select(constructor => (Constructor: constructor, Parameters: constructor.GetParameters()))
+            .Select(candidate => (candidate.Constructor, candidate.Parameters,
+                Index: Array.FindIndex(candidate.Parameters, parameter => TakesContent(parameter.ParameterType, contentType))))
+            .Where(candidate => candidate.Index >= 0)
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            var factory = ActivatorUtilities.CreateFactory(viewType, Type.EmptyTypes);
+            return (services, _) => factory(services, []);
+        }
+        var chosen = candidates.FirstOrDefault(candidate => candidate.Constructor.IsDefined(typeof(ActivatorUtilitiesConstructorAttribute), false));
+        if (chosen.Constructor is null) chosen = candidates.MaxBy(candidate => candidate.Parameters.Length);
+        var (selected, parameters, contentIndex) = chosen;
+        return (services, arguments) =>
+        {
+            var values = new object?[parameters.Length];
+            for (var i = 0; i < parameters.Length; i++)
+                values[i] = i == contentIndex ? arguments![0] : Resolve(services, viewType, parameters[i]);
+            return selected.Invoke(BindingFlags.DoNotWrapExceptions, binder: null, values, culture: null);
+        };
+    }
+
+    internal static bool TakesContent(Type parameterType, Type contentType) =>
+        parameterType.IsClass && parameterType != typeof(object) && parameterType.IsAssignableFrom(contentType);
+
+    private static object? Resolve(IServiceProvider services, Type viewType, ParameterInfo parameter)
+    {
+        var keyed = parameter.GetCustomAttribute<FromKeyedServicesAttribute>();
+        var service = keyed is not null && services is IKeyedServiceProvider keyedServices
+            ? keyedServices.GetKeyedService(parameter.ParameterType, keyed.Key)
+            : services.GetService(parameter.ParameterType);
+        if (service is not null) return service;
+        if (parameter.HasDefaultValue) return parameter.DefaultValue;
+        throw new InvalidOperationException(
+            $"Unable to resolve service for type '{parameter.ParameterType}' while creating the view '{viewType}'.");
     }
 
     [UnconditionalSuppressMessage("Trimming", "IL2026",

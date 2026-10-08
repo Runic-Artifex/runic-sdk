@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -202,9 +203,12 @@ internal static class HostTests
     // A view whose constructor takes the content's type gets the entry's content, never a container instance.
     public static void LocatorPassesTheContent()
     {
+        var serviceNotifier = new ServiceNotifier();
         var provider = new ServiceCollection()
             .AddTransient<ContentViewModel>()
-            .AddRunicWpfNavigation(options => options.MapView<ContentViewModel, ContentView>().MapView<PlainContentViewModel, PlainContentView>())
+            .AddSingleton<INotifyPropertyChanged>(serviceNotifier)
+            .AddRunicWpfNavigation(options => options.MapView<ContentViewModel, ContentView>().MapView<PlainContentViewModel, PlainContentView>()
+                .MapView<NotifyingViewModel, NotifyingView>().MapView<InterfaceOnlyViewModel, InterfaceOnlyView>())
             .BuildServiceProvider();
         try
         {
@@ -222,6 +226,19 @@ internal static class HostTests
                     "A container-built entry's view got another instance.");
                 Pump(region.PushAsync(NavigationTarget.Own<object>(new PlainContentViewModel())));
                 Require(ViewOf(host) is PlainContentView { DataContext: PlainContentViewModel }, "A view without a content parameter was not created.");
+
+                var notifying = new NotifyingViewModel();
+                Pump(region.PushAsync(NavigationTarget.Own<object>(notifying)));
+                Require(ViewOf(host) is NotifyingView { Notifier: var notifier, Model: var baseModel, Tag2: null, Disposable: null }
+                        && ReferenceEquals(notifier, serviceNotifier) && ReferenceEquals(baseModel, notifying),
+                    "The content went to an interface or object parameter, or not to its base-class parameter.");
+                Pump(region.PushAsync(NavigationTarget.Own<object>(new InterfaceOnlyViewModel())));
+                Require(ViewOf(host) is InterfaceOnlyView { Notifier: var only } && ReferenceEquals(only, serviceNotifier),
+                    "An interface parameter got the content.");
+                Require(!NavigationViewLocator.TakesContent(typeof(object), typeof(NotifyingViewModel))
+                        && !NavigationViewLocator.TakesContent(typeof(IDisposable), typeof(NotifyingViewModel))
+                        && NavigationViewLocator.TakesContent(typeof(NotifyingBase), typeof(NotifyingViewModel)),
+                    "The content parameter rule changed.");
             }
             finally { window.Close(); }
         }
@@ -323,3 +340,35 @@ internal sealed class ContentView(ContentViewModel model, ILoggerFactory? logs =
 internal sealed class PlainContentViewModel;
 
 internal sealed class PlainContentView : Border;
+
+internal abstract class NotifyingBase : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+internal sealed class NotifyingViewModel : NotifyingBase, IDisposable
+{
+    public void Dispose() { }
+}
+
+internal sealed class ServiceNotifier : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}
+
+// Interface and object parameters come from the container even when the content implements them; the base-class
+// parameter gets the content.
+internal sealed class NotifyingView(INotifyPropertyChanged notifier, NotifyingBase model, object? tag = null, IDisposable? disposable = null) : Border
+{
+    public INotifyPropertyChanged Notifier { get; } = notifier;
+    public NotifyingBase Model { get; } = model;
+    public object? Tag2 { get; } = tag;
+    public IDisposable? Disposable { get; } = disposable;
+}
+
+internal sealed class InterfaceOnlyViewModel : NotifyingBase;
+
+internal sealed class InterfaceOnlyView(INotifyPropertyChanged? notifier = null) : Border
+{
+    public INotifyPropertyChanged? Notifier { get; } = notifier;
+}
