@@ -32,7 +32,7 @@ function hydrate(wire: WireState): PreviewState {
     excerpt: bridgeWire.string(wire.excerpt),
   };
 }
-const bridgeContract = "NotesWindowViews.PreviewViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05";
+const bridgeContract = "NotesWindowViews.PreviewViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3";
 
 export function connectPreview(): Promise<PreviewClient> { return connectPreviewAt("preview", false); }
 async function connectPreviewAt(route: string, mount = false): Promise<PreviewClient> {

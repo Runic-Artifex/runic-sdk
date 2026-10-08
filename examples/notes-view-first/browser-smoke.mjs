@@ -24,14 +24,37 @@ try {
   const click = selector => evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
   const change = (selector, value) => evaluate(`(() => { const field = document.querySelector(${JSON.stringify(selector)}); field.value = ${JSON.stringify(value)}; field.dispatchEvent(new Event("input", { bubbles: true })); field.dispatchEvent(new Event("change", { bubbles: true })); return true; })()`);
   const snapshot = route => evaluate(`(async () => JSON.parse(await window.__runicBridge.call(${JSON.stringify(route + "Snapshot")})))()`);
+  // Clicks a button that has focus, as a keyboard or pointer activation leaves it.
+  const press = selector => evaluate(`(() => { const button = document.querySelector(${JSON.stringify(selector)}); button.focus(); button.click(); return true; })()`);
+  const focusReturnsTo = (selector, label) => waitFor(async () => await query(`document.activeElement === document.querySelector(${JSON.stringify(selector)})`) === true,
+    { label: `focus returning to ${label} after its command`, detail });
 
   await retry(async () => await query('document.querySelector("#main h1")?.textContent') === "Welcome to composed Notes");
   const firstShell = await snapshot("shell");
   const sidebarId = firstShell.state.sidebar.id;
   if (!sidebarId || firstShell.state.dialog !== null) throw new Error("Wrong initial shell state.");
 
-  await click("[data-go=notes]");
+  // The command disables its button while the navigation runs; focus comes back afterwards.
+  await press("[data-go=notes]");
   await retry(async () => await query('document.querySelector("#document-pane h2")?.textContent') === "Editor");
+  await focusReturnsTo("[data-go=notes]", "Notes");
+  // The same for a control that stays disabled across a frame, as a slower navigation leaves it.
+  // Browsers that move focus off a disabled control do it at the next rendering update;
+  // blur() does the same here, so the check holds in every browser.
+  const disabledAcrossFrame = await query(`(async () => {
+    const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    const button = document.querySelector("[data-go=notes]");
+    button.focus();
+    button.disabled = true;
+    button.blur();
+    await frame();
+    const lost = document.activeElement !== button;
+    button.disabled = false;
+    await frame();
+    return { lost, returned: document.activeElement === button };
+  })()`);
+  if (!disabledAcrossFrame.returned)
+    throw new Error(`Focus did not return to a re-enabled button: ${JSON.stringify(disabledAcrossFrame)}`);
   const documentId = (await snapshot("shell")).state.main.id;
   const editorId = (await snapshot(`content${documentId}`)).state.currentPane.id;
   await change("#document-pane input", "Draft");
@@ -51,8 +74,9 @@ try {
   await change("#document-pane input", "Draft");
   await retry(async () => (await snapshot(`content${editorId}`)).state?.title === "Draft");
 
-  await click("[data-pane=preview]");
+  await press("[data-pane=preview]");
   await retry(async () => await query('document.querySelector("#document-pane h2")?.textContent') === "Draft");
+  await focusReturnsTo("[data-pane=preview]", "Preview");
   if (await query('document.querySelector("#document-pane p")?.textContent') !== "Line one")
     throw new Error("Preview did not observe Editor state.");
   const detachedEditor = await snapshot(`content${editorId}`);
@@ -82,8 +106,9 @@ try {
   await retry(async () => await query('document.querySelector("#modal [role=dialog]") === null'));
   if (await query('document.querySelector("#main h1")?.textContent') !== "Document")
     throw new Error("Cancel unexpectedly left the document.");
-  if (await query('document.activeElement?.getAttribute("data-go")') !== "home")
-    throw new Error("Dialog did not return focus to the sidebar.");
+  // Home is unavailable until its Back ends, so focus returns once it is enabled again.
+  await waitFor(async () => await query('document.activeElement?.getAttribute("data-go")') === "home",
+    { label: "the dialog returning focus to the sidebar", detail });
   if ((await snapshot(`content${dialogId}`)).error?.kind !== "disconnected")
     throw new Error("Closed dialog endpoint stayed active.");
 

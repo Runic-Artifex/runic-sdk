@@ -21,9 +21,9 @@
   </div>
   <section id="document-pane" class="card">
     {#key document.state.currentPane}
-      {#if document.state.currentPane.kind === "editor"}
+      {#if document.state.currentPane?.kind === "editor"}
         <Editor page={document.state.currentPane} />
-      {:else}
+      {:else if document.state.currentPane}
         <Preview page={document.state.currentPane} />
       {/if}
     {/key}

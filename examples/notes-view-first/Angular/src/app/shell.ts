@@ -18,10 +18,12 @@ import { ConfirmNavigationComponent } from "./confirm-navigation";
           <notes-sidebar [page]="current.sidebar" />
         </aside>
         <main id="main">
-          @switch (current.main.kind) {
-            @case ("home") { <notes-home [page]="current.main" /> }
-            @case ("document") { <notes-document [page]="current.main" /> }
-            @default never(current.main);
+          @if (current.main; as page) {
+            @switch (page.kind) {
+              @case ("home") { <notes-home [page]="page" /> }
+              @case ("document") { <notes-document [page]="page" /> }
+              @default never(page);
+            }
           }
         </main>
       </div>

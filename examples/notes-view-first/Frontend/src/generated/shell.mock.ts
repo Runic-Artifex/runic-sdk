@@ -5,7 +5,7 @@ import type { ShellClient, ShellState } from "./shell.js";
 /** The state of a mock Shell: the client state, with content as `{ kind, id }` and command state optional. */
 export type ShellMockState = Omit<ShellState, "sidebar" | "main" | "dialog"> & {
   readonly sidebar: MockReference<"sidebar">;
-  readonly main: MockReference<"document"> | MockReference<"home">;
+  readonly main: MockReference<"document"> | MockReference<"home"> | null;
   readonly dialog: MockReference<"confirmNavigation"> | null;
 };
 
@@ -20,7 +20,7 @@ export interface ShellMock extends MockTypedView<ShellMockState, ShellClient, "s
 const spec: MockTypedViewSpec = {
   kind: "shell",
   route: "shell",
-  contract: "NotesWindowViews.ShellViewModel:49AD3EE640AF5E1AF500EF2340E5C61B54F07898362EDD8DE3075EEBF63A6B05",
+  contract: "NotesWindowViews.ShellViewModel:7E66E532FEB7FFF8F3E463213E7A1FACC34E333EBB3B5C9C71E6B8307E1E37C3",
   fields: {},
   defaults: {},
 };

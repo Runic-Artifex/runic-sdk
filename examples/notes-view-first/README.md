@@ -66,6 +66,51 @@ need no install of their own:
 (cd examples/notes-view-first/Vue && bun run --bun build)
 ```
 
+## Navigation
+
+`AddNotes` calls `AddRunicNavigation()`, so each window scope has one
+`RunicNavigator`. `WorkspaceNavigation` creates two regions on it: `Main`
+starts with the window's Home, and `Dialog` starts empty. `ShellViewModel`
+exposes both regions as content slots. The generated `main` and `dialog`
+references are `| null`, so every frontend handles an empty region.
+
+- **Notes** pushes a new owned `DocumentViewModel` on each visit. Leaving the
+  document retires it and its `CurrentPane` child region. The editor and
+  preview are window-scoped and borrowed, so the draft survives the visit.
+- `CurrentPane` keeps the editor entry when the preview is pushed. **Editor**
+  goes back to that same entry, with its draft.
+- **Home** goes back. When the editor has unsaved edits, the document's
+  departure guard awaits `Dialog.PushForResult<bool>(…)` for
+  `ConfirmNavigationViewModel`. Confirming lets the Back commit, and the edits
+  are discarded in the commit turn. A Back that is superseded, rejected or
+  fails keeps the draft, and the document forgets the confirmation.
+  Cancelling, or a dismissal, keeps the document entry. The confirm calls
+  `CompleteAsync`, which returns from its entry and leaves `Dialog` empty. If
+  that answer can't commit, Cancel dismisses the request instead, so Cancel
+  and Escape always end the question.
+- The confirm is modal. While it asks, or while a page navigation is in
+  flight, `WorkspaceNavigation.CanNavigate` is false. The sidebar's Home and
+  Notes commands and the document's Editor and Preview commands are
+  unavailable then, and the Bridge rejects them. The navigation methods check
+  it too. A pane change during the guard would otherwise supersede the Back
+  that asks and dismiss the dialog without an answer.
+- The sidebar commands await the navigation, so a command started during the
+  guard's wait completes after the dialog answers. Its button stays disabled
+  until then. [focus.ts](Frontend/src/focus.ts) returns focus to any button
+  that lost it by being disabled, once it is enabled again.
+
+**Command ordering and guards.** A client that runs the window's commands one
+after another, waiting for each to complete, deadlocks with a guard that
+awaits the UI: the Home command waits for the dialog's answer, and the
+answer waits in the queue behind the Home command. The Angular frontend's
+ordered [`WindowOperations`](Angular/src/app/window-operations.ts) queue
+therefore starts navigation commands with `runDispatched`, which orders them
+by dispatch, not by completion. Use the same pattern for any command whose
+completion depends on a later command.
+
+The navigation types are experimental, and the projects suppress
+`RUNICNAV001`.
+
 ## Declared failures
 
 `EditorViewModel.Save` declares `[RunicFailure(typeof(SaveFailure))]`, a
@@ -121,6 +166,7 @@ RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Svelte/dist" node examples/notes-
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Effect/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/React/dist" node examples/notes-view-first/browser-smoke.mjs
 RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Vue/dist" node examples/notes-view-first/browser-smoke.mjs
+RUNIC_WEB_ROOT="$PWD/examples/notes-view-first/Angular/dist/angular-composed/browser" node examples/notes-view-first/browser-smoke.mjs
 ```
 
 On Linux with Nix, prefix the commands with `direnv exec .`.

@@ -15,6 +15,7 @@ import { pageHome } from "../src/generated/home.js";
 import { mockHome } from "../src/generated/home.mock.js";
 import { connectShell } from "../src/generated/shell.js";
 import { mockShell } from "../src/generated/shell.mock.js";
+import { pageDocument } from "../src/generated/document.js";
 import { mockDocument } from "../src/generated/document.mock.js";
 import { mockSidebar } from "../src/generated/sidebar.mock.js";
 
@@ -109,6 +110,49 @@ test("the main outlet follows the shell's content and disposes the previous View
   // The outlet acknowledged each presentation and released the one it replaced.
   assert.deepEqual(home.calls.map(call => call.name), ["content2Snapshot", "content2Mount", "content2Unmount"]);
   unmount();
+  client.dispose();
+});
+
+test("an empty navigation region clears its outlet until it presents content again", async () => {
+  mockSidebar(bridge, { id: "1", state: { selected: "Home" } });
+  const home = mockHome(bridge, { id: "2", state: { greeting: "Welcome", recentNotes: [] } });
+  mockEditor(bridge, { id: "4", state: draft });
+  const document = mockDocument(bridge, { id: "3", state: { activePane: "Editor", currentPane: null } });
+  const shell = mockShell(bridge, { state: { sidebar: { kind: "sidebar", id: "1" }, main: null, dialog: null } });
+  const client = await connectShell();
+  const mounted: string[] = [];
+  let cleared = 0;
+  const view = (kind: string) => (_host: HTMLElement, content: { dispose(): void }) => {
+    mounted.push(kind);
+    return () => { mounted.push(`-${kind}`); content.dispose(); };
+  };
+  const host = { replaceChildren() { cleared++; } } as unknown as HTMLElement;
+  const unmountMain = mountContent(host, client, "main", { home: view("home"), document: view("document") });
+
+  // A region slot is `| null`: an empty Main mounts nothing.
+  await bridge.flush();
+  assert.deepEqual(mounted, []);
+  shell.update({ main: home.reference });
+  await bridge.flush();
+  assert.deepEqual(mounted, ["home"]);
+  const clearedBefore = cleared;
+  shell.update({ main: null });
+  await bridge.flush();
+  assert.deepEqual(mounted, ["home", "-home"]);
+  assert.equal(cleared, clearedBefore + 1);
+
+  // The document's CurrentPane is a region slot too.
+  const documentClient = await pageDocument("3").connect();
+  const paneHost = { replaceChildren() {} } as unknown as HTMLElement;
+  const unmountPane = mountContent(paneHost, documentClient, "currentPane", { editor: view("editor"), preview: view("preview") });
+  await bridge.flush();
+  assert.deepEqual(mounted, ["home", "-home"]);
+  document.update({ currentPane: { kind: "editor", id: "4" } });
+  await bridge.flush();
+  assert.deepEqual(mounted, ["home", "-home", "editor"]);
+  unmountPane();
+  documentClient.dispose();
+  unmountMain();
   client.dispose();
 });
 

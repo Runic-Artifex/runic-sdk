@@ -4,11 +4,15 @@ import { mountSidebar } from "./sidebar.js";
 import { mountHome } from "./home.js";
 import { mountDocument } from "./document.js";
 import { mountConfirmNavigation } from "./modal.js";
+import { keepFocusAcrossDisabling } from "./focus.js";
 
 const sidebarHost = document.querySelector<HTMLElement>("#sidebar")!;
 const mainHost = document.querySelector<HTMLElement>("#main")!;
 const modalHost = document.querySelector<HTMLElement>("#modal")!;
 const status = document.querySelector<HTMLElement>("#status")!;
+
+// Navigation and running commands disable their buttons; focus returns to them afterwards.
+keepFocusAcrossDisabling();
 
 // Each outlet chooses its own component and connection lifetime. This is a
 // framework-neutral mount contract; Angular/Svelte can supply their own mount
@@ -17,7 +21,7 @@ const sidebarViews = { sidebar: mountSidebar } satisfies ViewTemplates<ShellStat
 const mainViews = {
   home: mountHome,
   document: mountDocument,
-} satisfies ViewTemplates<ShellState["main"]>;
+} satisfies ViewTemplates<NonNullable<ShellState["main"]>>;
 const dialogViews = {
   confirmNavigation: mountConfirmNavigation,
 } satisfies ViewTemplates<NonNullable<ShellState["dialog"]>>;

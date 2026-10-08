@@ -3,6 +3,7 @@
   import type { ConfirmNavigationPageReference } from "../../Frontend/src/generated/confirmNavigation.js";
   import { useView } from "../../../../packages/web/svelte/src/views/use-view.svelte.js";
   import { useCommand } from "../../../../packages/web/svelte/src/views/use-command.svelte.js";
+  import { focusOrigin, restoreFocus } from "../../Frontend/src/focus.js";
 
   let { page }: { page: ConfirmNavigationPageReference } = $props();
   const dialog = useView(() => page);
@@ -25,8 +26,8 @@
     }
   }
   onMount(() => {
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    return () => previousFocus?.focus();
+    const previousFocus = focusOrigin();
+    return () => restoreFocus(previousFocus);
   });
   $effect(() => {
     if (dialog.state?.canCancel && cancelButton && !focused) {
