@@ -787,6 +787,9 @@ internal static partial class NavigationTests
             $"A turn that threw ObjectDisposedException gave {result}.");
         Require(!Throws<ObjectDisposedException>(() => fixture.Navigator.CreateRegion<Page>(new object())),
             "The navigator started closing after a turn threw ObjectDisposedException.");
+        // The context applied the commit before it threw, so the region shows it although the
+        // request reports Failed(Committing): the model context broke the turn contract.
+        Require(region.Current?.Name == "next", $"The region shows {region.Current} after the throwing turn.");
     }
 
     private static async Task ReentrantHooksAsync()

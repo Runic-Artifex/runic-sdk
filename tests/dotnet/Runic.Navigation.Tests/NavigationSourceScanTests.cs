@@ -28,13 +28,19 @@ internal static class NavigationSourceScanTests
             "only logs a candidate context's shutdown failure; not navigator code"),
         ("RunicModelContextRegistry.cs", "if (dispose is not null) await dispose.DisposeAsync().ConfigureAwait(false);", 1,
             "a lease release's last step; no engine work continues after it"),
+        ("RunicNavigator.cs", "_ = task.ContinueWith(static task => _ = task.Exception, CancellationToken.None,", 1,
+            "Observe: only reads the exception of a task that nobody awaits any more"),
+        ("RunicNavigator.cs", "return new(task.AsTask().ContinueWith(static completed =>", 1,
+            "Completion: adapts a hook's ValueTask to ValueTask<bool>; the engine awaits that through the helper"),
     ];
 
     private static readonly Regex Await = new(@"\bawait\b", RegexOptions.CultureInvariant);
     private static readonly Regex Routed = new(
         @"\Gawait\s+(?:this\s*\.\s*AfterUserCode\s*\(|NavigationAwait\s*\.\s*Hop\s*\(\s*\))",
         RegexOptions.CultureInvariant);
-    private static readonly Regex Yield = new(@"\bTask\s*\.\s*Yield\b", RegexOptions.CultureInvariant);
+    // Task.Yield returns to the caller's SynchronizationContext, and hand-made continuations bypass the helper.
+    private static readonly Regex Banned = new(
+        @"\bTask\s*\.\s*Yield\b|\.\s*ContinueWith\s*[<(]|\.\s*(?:Unsafe)?OnCompleted\s*\(", RegexOptions.CultureInvariant);
 
     public static void Run()
     {
@@ -72,7 +78,7 @@ internal static class NavigationSourceScanTests
 
         Require(violations.Count == 0,
             "Awaits in Runic.Navigation must use 'await this.AfterUserCode(...)' or 'await NavigationAwait.Hop()' " +
-            "(W240-001 §4.5), and Task.Yield is banned:" + Environment.NewLine + string.Join(Environment.NewLine, violations));
+            "(W240-001 §4.5), and Task.Yield, ContinueWith and OnCompleted are banned:" + Environment.NewLine + string.Join(Environment.NewLine, violations));
         foreach (var entry in Allowed)
         {
             var count = found.GetValueOrDefault((entry.File, entry.Line));
@@ -81,8 +87,8 @@ internal static class NavigationSourceScanTests
         }
     }
 
-    // The scanner ignores comments and literals, and reports bypassing awaits, await using,
-    // await foreach and Task.Yield.
+    // The scanner ignores comments and literals, raw and interpolated raw strings included, and reports
+    // bypassing awaits, await using, await foreach, Task.Yield, ContinueWith and OnCompleted.
     private static void ScannerSeesOnlyCode()
     {
         const string sample = """"
@@ -97,9 +103,15 @@ internal static class NavigationSourceScanTests
             await foreach (var item in items) { }
             await Task.Yield();
             await this.Other(task);
+            var c = $$"""
+                await {{a}} "await"
+                """;
+            _ = task.ContinueWith(_ => { });
+            awaiter.OnCompleted(next);
+            awaiter.UnsafeOnCompleted(next);
             """";
         var hits = Scan(sample).Select(hit => hit.Line).ToArray();
-        Require(hits.SequenceEqual([7, 8, 9, 10, 11]), $"The source scanner reported lines [{string.Join(", ", hits)}].");
+        Require(hits.SequenceEqual([7, 8, 9, 10, 11, 15, 16, 17]), $"The source scanner reported lines [{string.Join(", ", hits)}].");
     }
 
     private static IEnumerable<(int Line, string Text)> Scan(string source)
@@ -113,7 +125,7 @@ internal static class NavigationSourceScanTests
             var line = LineOf(code, match.Index);
             if (reported.Add(line)) yield return (line, lines[line - 1].Trim());
         }
-        foreach (Match match in Yield.Matches(code))
+        foreach (Match match in Banned.Matches(code))
         {
             var line = LineOf(code, match.Index);
             if (reported.Add(line)) yield return (line, lines[line - 1].Trim());
@@ -161,7 +173,7 @@ internal static class NavigationSourceScanTests
                 while (end < source.Length && source[end] != '\'') end += source[end] == '\\' ? 2 : 1;
                 Blank(end + 1);
             }
-            else if (c == '"' || ((c is '@' or '$') && (next == '"' || (next is '@' or '$') && i + 2 < source.Length && source[i + 2] == '"')))
+            else if (c == '"' || (c is '@' or '$' && StringPrefixEnd(source, i) is var quote && quote < source.Length && source[quote] == '"'))
             {
                 Blank(EndOfString(source, i));
             }
@@ -172,6 +184,14 @@ internal static class NavigationSourceScanTests
             }
         }
         return output.ToString();
+    }
+
+    // The index after a run of string prefixes ($, $$, @, $@, @$ and so on).
+    private static int StringPrefixEnd(string source, int start)
+    {
+        var i = start;
+        while (i < source.Length && source[i] is '@' or '$') i++;
+        return i;
     }
 
     private static int EndOfString(string source, int start)

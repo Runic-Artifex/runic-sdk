@@ -91,6 +91,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // Set when the model context reported itself closed (ObjectDisposedException before a turn or hook started).
     private bool _contextClosed;
     private TaskCompletionSource? _disposal;
+    // Completed when disposal starts, so scheduled owned disposal that is still queued becomes bounded.
+    private readonly TaskCompletionSource _disposalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // The attached presentations: the sinks that forget owned content when it retires.
     private readonly List<PresentationAttachment> _presentations = [];
 
@@ -359,6 +361,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// content; once the wait for cancelled transitions timed out the hook is not awaited again and a warning (1069) is logged.
     /// An initialize hook never starts on content that retirement already claimed. The worst case of a disposal is about twice
     /// <see cref="RunicNavigatorOptions.CloseTimeout"/> (transition wait plus clearing turns), plus content disposal.
+    /// <para>
+    /// With a model context that implements <see cref="IRunicModelHookScheduler"/>, owned content is disposed as scheduled
+    /// operations on the model's thread. Those that haven't started by the clearing turns' deadline run on the thread pool
+    /// instead, so disposal still completes when the model's thread is blocked. Never block the model's thread on this task
+    /// (for example with <c>GetAwaiter().GetResult()</c> in a WPF <c>OnExit</c>): content would then be disposed off that
+    /// thread after the timeout. Call <see cref="Dispose"/> there, which doesn't wait.
+    /// </para>
     /// </remarks>
     public ValueTask DisposeAsync() => new(StartDisposal());
 
@@ -378,6 +387,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         // New requests are refused at once, and the wait for running transitions is bounded from
         // here; the rest of the disposal runs on the thread pool.
         lock (Gate) _closing = true;
+        _disposalStarted.TrySetResult();
         _ = DisposeCoreAsync(disposal, new CancellationTokenSource(_closeTimeout, _time));
         return disposal.Task;
     }
@@ -1385,8 +1395,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (ClearOnce() is { } changes) region.RaiseChanges(changes);
             }).AsTask();
             // A turn abandoned after a timeout can still fault later; observe it.
-            _ = turn.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            Observe(turn);
             try { await this.AfterUserCode(turn.WaitAsync(wait.Value, _time)); }
             catch (TimeoutException)
             {
@@ -1419,9 +1428,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // waits share one deadline. The worst case of a disposal is therefore about twice the close timeout.
     private TimeSpan? InitializeWait()
     {
+        // Based on disposal, not _closing: a closed model context starts closing long before disposal,
+        // and must not start the disposal's shared deadline early.
+        if (Volatile.Read(ref _disposal) is null) return _closeTimeout;
         lock (Gate)
         {
-            if (!_closing) return _closeTimeout;
             if (_transitionWaitTimedOut) return null;
             _initializeStart ??= _time.GetTimestamp();
             var remaining = _closeTimeout - _time.GetElapsedTime(_initializeStart.Value);
@@ -1593,32 +1604,77 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private async Task<T> ScheduleHookAsync<T>(IRunicModelHookScheduler scheduler, ScheduledHook<T> hook, CancellationToken token)
     {
         try { return await this.AfterUserCode(Schedule(scheduler, hook.Run, token)); }
-        catch (ObjectDisposedException) when (!hook.Started)
+        // The claim decides whether the hook ran, not the scheduler's word: an ObjectDisposedException
+        // or OperationCanceledException that the hook threw itself is that hook's failure, and an
+        // operation the scheduler reported as not run can no longer start late.
+        catch (ObjectDisposedException) when (hook.TryAbandon())
         {
             OnModelContextClosed();
             throw;
         }
+        catch (OperationCanceledException) when (hook.TryAbandon()) { throw; }
     }
 
     // Runs user cleanup (owned Dispose/DisposeAsync) outside model turns. With a hook scheduler it is
     // its own scheduled operation on the model's thread; once the context is closed it falls back to
     // the thread pool, so cleanup still runs after shutdown (amendment A9). Without a scheduler it runs
     // here; callers are already on the thread pool. Failures propagate to the caller, which logs them.
+    //
+    // While the navigator disposes, an operation that hasn't started by the clearing turns' deadline
+    // (CleanupWait) is abandoned and the cleanup runs on the pool instead: a host that blocks the model's
+    // thread on DisposeAsync would otherwise never let it start. The operation's claim makes sure the
+    // cleanup runs exactly once, whichever way. An operation that started is awaited without bound.
     private async Task RunCleanupAsync(Func<ValueTask> cleanup)
     {
         if (ModelContext is IRunicModelHookScheduler scheduler)
         {
             var operation = new ScheduledHook<bool>(null, () => Completion(cleanup()));
+            var scheduled = Schedule(scheduler, operation.Run, CancellationToken.None);
             try
             {
-                await this.AfterUserCode(Schedule(scheduler, operation.Run, CancellationToken.None));
+                // Outside disposal, wait however long the model's thread is busy.
+                await this.AfterUserCode(Task.WhenAny(scheduled, _disposalStarted.Task));
+                if (!scheduled.IsCompleted && Volatile.Read(ref _disposal) is { Task.IsCompleted: false })
+                    await this.AfterUserCode(scheduled.WaitAsync(CleanupWait(), _time));
+                await this.AfterUserCode(scheduled);
                 return;
             }
-            catch (ObjectDisposedException) when (!operation.Started) { }
+            catch (Exception error) when (error is TimeoutException or ObjectDisposedException or OperationCanceledException
+                && operation.TryAbandon())
+            {
+                // It never ran, and now never will.
+                Observe(scheduled);
+            }
+            catch (TimeoutException)
+            {
+                // It started in time; the cleanup itself is not bounded. This rethrows a TimeoutException
+                // that the cleanup threw.
+                await this.AfterUserCode(scheduled);
+                return;
+            }
             await NavigationAwait.Hop();
         }
         await this.AfterUserCode(cleanup());
     }
+
+    // How long disposal waits for a scheduled cleanup to finish once it is past the start of disposal.
+    // It shares the clearing turns' deadline, which a blocked model thread also exhausts, so the
+    // worst case of a disposal stays about twice the close timeout.
+    private TimeSpan CleanupWait()
+    {
+        lock (Gate)
+        {
+            if (_closeTurnsTimedOut) return TimeSpan.Zero;
+            _closeTurnsStart ??= _time.GetTimestamp();
+            var remaining = _closeTimeout - _time.GetElapsedTime(_closeTurnsStart.Value);
+            return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
+        }
+    }
+
+    // Observes a task that is no longer awaited, so a late fault isn't reported as unobserved.
+    private static void Observe(Task task) =>
+        _ = task.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     private static ValueTask DisposeContent(object content)
     {
@@ -1641,7 +1697,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         catch (Exception error) { return Task.FromException<T>(error); }
     }
 
-    // Adapts a hook without a result, preserving its exception or cancellation, without an await.
+    // Adapts a hook without a result, preserving its exception, without an await. A cancelled hook
+    // becomes Faulted(TaskCanceledException) rather than Canceled, on purpose: callers only look at the
+    // exception (an OperationCanceledException either way), and every outcome stays an exception.
     private static ValueTask<bool> Completion(ValueTask task)
     {
         if (task.IsCompletedSuccessfully) return new(true);
@@ -1652,18 +1710,22 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default));
     }
 
-    // One scheduled operation: records that it started (to tell a closed context apart from a hook
-    // that threw ObjectDisposedException), sets the hook marker of its transition around the
-    // synchronous part of the hook, and turns a synchronous throw into a faulted task.
+    // One scheduled operation. Its claim is taken once: by Run (started) or by the navigator (abandoned,
+    // when the scheduler reported that it didn't run, or disposal stopped waiting for it to start), so the
+    // operation runs at most once and the navigator knows whether it ran. Run sets the hook marker of its
+    // transition around the synchronous part of the hook and turns a synchronous throw into a faulted task.
     private sealed class ScheduledHook<T>(NavigationTransition? transition, Func<ValueTask<T>> hook)
     {
-        private volatile bool _started;
+        private const int NotStarted = 0, Started = 1, Abandoned = 2;
+        private int _state;
 
-        public bool Started => _started;
+        // True when the operation hasn't started; it then never will.
+        public bool TryAbandon() => Interlocked.CompareExchange(ref _state, Abandoned, NotStarted) != Started;
 
         public Task<T> Run()
         {
-            _started = true;
+            // Abandoned: the navigator no longer waits for this result.
+            if (Interlocked.CompareExchange(ref _state, Started, NotStarted) != NotStarted) return Task.FromResult(default(T)!);
             var previous = HookTransition.Value;
             HookTransition.Value = transition;
             try { return hook().AsTask(); }

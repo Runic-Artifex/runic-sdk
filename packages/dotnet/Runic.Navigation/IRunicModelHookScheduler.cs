@@ -43,6 +43,11 @@ public interface IRunicModelHookScheduler
     /// <item><paramref name="cancellationToken"/> is cancelled before the operation starts: <see cref="OperationCanceledException"/>;</item>
     /// <item><paramref name="hook"/> throws synchronously, or its task faults or is cancelled: that exception, unchanged.</item>
     /// </list>
+    /// <para>
+    /// The outcomes are exclusive. A task that ends with one of the first two means that <paramref name="hook"/> was not
+    /// invoked and never will be; once <paramref name="hook"/> was invoked, the task ends only with its outcome. The navigator
+    /// relies on this to run owned content disposal exactly once, falling back to the thread pool when the operation didn't run.
+    /// </para>
     /// </remarks>
     /// <typeparam name="T">The hook's result type.</typeparam>
     /// <param name="hook">The hook to run on the model's thread.</param>

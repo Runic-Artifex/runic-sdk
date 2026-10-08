@@ -23,7 +23,16 @@ internal static partial class NavigationTests
         await ScheduledHookFailuresAsync(synchronous: false);
         await ScheduledHookCancelledBeforeStartAsync();
         await ContextClosedBeforeHookStartsAsync();
-        await ContextClosedBeforeCommitTurnAsync();
+        foreach (var hook in new[] { "factory", "initialize", "resume" })
+            await ContextClosedBeforeLaterHookStartsAsync(hook);
+        await ContextClosedBeforeCommitTurnAsync(scheduling: false);
+        await ContextClosedBeforeCommitTurnAsync(scheduling: true);
+        await ScheduledHookThrowingObjectDisposedFailsAsync(guard: true);
+        await ScheduledHookThrowingObjectDisposedFailsAsync(guard: false);
+        await ScheduledDisposeThrowingObjectDisposedRunsOnceAsync();
+        await SupersededWhileHookQueuedAsync();
+        await BlockedModelThreadDisposalCompletesAsync();
+        await LateFactoryContentDisposedThroughSchedulerAsync();
         await AfterUserCodeLeavesTheModelThreadAsync();
         foreach (var scheduling in new[] { false, true })
         {
@@ -271,14 +280,64 @@ internal static partial class NavigationTests
             $"Disposal after the context closed took {watch.Elapsed}.");
     }
 
-    // A6 without a scheduler: the commit turn can't start because the context closed.
-    private static async Task ContextClosedBeforeCommitTurnAsync()
+    // A6 for the later hooks of a transition: the guard passed, then the context closes while the
+    // factory, initialize or resume operation is queued. The hook never runs.
+    private static async Task ContextClosedBeforeLaterHookStartsAsync(string hook)
     {
-        using var context = new SyncContextModelContext();
-        await using var fixture = new Fixture(context);
-        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        using var context = new SchedulingSyncContextModelContext();
+        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
+        var home = new Page("home");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        if (hook == "resume")
+            Require(await Wait(region.PushAsync(NavigationTarget.Own(new Page("detail")))) is NavigationResult<Page>.Committed, "The setup push did not commit.");
         using var gate = new ManualResetEventSlim();
-        context.Post(() => gate.Wait(Timeout));
+        // The departing guard blocks the model's thread right after it returns, so the next hook queues behind it.
+        region.Current!.Guard = (_, _) =>
+        {
+            context.Post(() => gate.Wait(Timeout));
+            return ValueTask.FromResult(true);
+        };
+        var factoryRuns = 0;
+        var init = new InitPage("init");
+        var before = context.HookRequests;
+        var request = hook switch
+        {
+            "factory" => region.PushAsync(NavigationTarget.Create<Page>(_ =>
+            {
+                Interlocked.Increment(ref factoryRuns);
+                return new Page("created");
+            })).AsTask(),
+            "initialize" => region.PushAsync(NavigationTarget.Own<Page>(init)).AsTask(),
+            _ => region.BackAsync().AsTask(),
+        };
+        await Until(() => context.HookRequests == before + 2, $"The {hook} was not scheduled.");
+        await context.DisposeAsync();
+        gate.Set();
+        var result = await Wait(request);
+        await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
+        var ran = hook switch { "factory" => factoryRuns, "initialize" => init.Initialized, _ => home.Resumed };
+        Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && ran == 0
+            && fixture.Logs.Count(1061) == 0 && fixture.Navigator.IsClosed,
+            $"A context closed before the {hook} started gave {result}; the {hook} ran {ran} times.");
+        if (hook == "initialize") Require(init.Disposed == 1, $"The uninitialized content was disposed {init.Disposed} times.");
+    }
+
+    // A6: the commit turn can't start because the context closed, with or without a scheduler.
+    private static async Task ContextClosedBeforeCommitTurnAsync(bool scheduling)
+    {
+        using var context = scheduling ? new SchedulingSyncContextModelContext() : new SyncContextModelContext();
+        await using var fixture = new Fixture(context);
+        using var gate = new ManualResetEventSlim();
+        // The guard blocks the model's thread once it returned, so the commit turn queues behind it.
+        var home = new Page("home")
+        {
+            Guard = (_, _) =>
+            {
+                context.Post(() => gate.Wait(Timeout));
+                return ValueTask.FromResult(true);
+            },
+        };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
         var next = new Page("next");
         var push = region.PushAsync(NavigationTarget.Own(next)).AsTask();
         await Until(() => context.InvokeRequests == 1, "The commit turn was not requested.");
@@ -289,6 +348,127 @@ internal static partial class NavigationTests
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && fixture.Logs.Count(1062) == 0
             && region.Current?.Name == "home" && next.Disposed == 1,
             $"A context closed before the commit turn gave {result} and logged {fixture.Logs.Count(1062)} commit failures.");
+    }
+
+    // A scheduled guard or initialize that throws ObjectDisposedException itself fails the transition
+    // like any other exception: the operation started, so the context is not taken as closed.
+    private static async Task ScheduledHookThrowingObjectDisposedFailsAsync(bool guard)
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        await using var fixture = new Fixture(context);
+        var home = new Page("home");
+        if (guard) home.Guard = (_, _) => throw new ObjectDisposedException("guard");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        var next = new InitPage("next");
+        if (!guard) next.Initialize = (_, _) => throw new ObjectDisposedException("initialize");
+        var result = await Wait(region.PushAsync(NavigationTarget.Own<Page>(next)));
+        var (phase, eventId) = guard ? (NavigationPhase.Guarding, 1060) : (NavigationPhase.Preparing, 1061);
+        Require(result is NavigationResult<Page>.Failed { Error: ObjectDisposedException } failed && failed.Phase == phase
+            && fixture.Logs.Single(eventId).Exception is ObjectDisposedException,
+            $"A scheduled {(guard ? "guard" : "initialize")} that threw ObjectDisposedException gave {result}.");
+        Require(!fixture.Navigator.IsClosed, "The navigator started closing after a hook threw ObjectDisposedException.");
+    }
+
+    // With a scheduler, an owned Dispose that throws ObjectDisposedException ran: it is logged (1064)
+    // and not retried on the thread pool.
+    private static async Task ScheduledDisposeThrowingObjectDisposedRunsOnceAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        await using var fixture = new Fixture(context);
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var owned = new Page("owned") { OnDispose = () => throw new ObjectDisposedException("content") };
+        await Wait(region.PushAsync(NavigationTarget.Own(owned)));
+        await Wait(region.BackAsync());
+        await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        Require(owned.Disposed == 1 && fixture.Logs.Single(1064).Exception is ObjectDisposedException && !context.Closed,
+            $"An owned Dispose that threw ObjectDisposedException ran {owned.Disposed} times and logged {fixture.Logs.Count(1064)} failures.");
+    }
+
+    // A request superseded while its guard operation is still queued ends Superseded; the queued
+    // guard never runs, and the next request's guard runs once.
+    private static async Task SupersededWhileHookQueuedAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        await using var fixture = new Fixture(context);
+        var guardRuns = 0;
+        var home = new Page("home") { Guard = (_, _) => { Interlocked.Increment(ref guardRuns); return ValueTask.FromResult(true); } };
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        using var gate = new ManualResetEventSlim();
+        context.Post(() => gate.Wait(Timeout));
+        var first = new Page("first");
+        var second = new Page("second");
+        var superseded = region.PushAsync(NavigationTarget.Own(first)).AsTask();
+        await Until(() => context.HookRequests == 1, "The first guard was not scheduled.");
+        var winner = region.PushAsync(NavigationTarget.Own(second)).AsTask();
+        gate.Set();
+        var (lost, won) = (await Wait(superseded), await Wait(winner));
+        await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
+        Require(lost is NavigationResult<Page>.Superseded && won is NavigationResult<Page>.Committed && region.Current == second
+            && guardRuns == 1 && first.Disposed == 1 && second.Disposed == 0,
+            $"Superseding a queued guard gave {lost} and {won}; the guard ran {guardRuns} times.");
+    }
+
+    // A host that blocks the model's thread on DisposeAsync (WPF OnExit calling GetResult) still gets
+    // a completed disposal, bounded by the close timeout: owned disposal that can't start on the model's
+    // thread runs on the pool instead, once. The abandoned operation does nothing when the thread frees.
+    private static async Task BlockedModelThreadDisposalCompletesAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMilliseconds(300));
+        var probe = new Probe(context);
+        var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
+        var owned = new ProbePage("owned", probe);
+        Require(await Wait(region.PushAsync(NavigationTarget.Own(owned))) is NavigationResult<ProbePage>.Committed, "The push did not commit.");
+        var (completed, elapsed) = await context.RunOnThreadAsync(() =>
+        {
+            var watch = Stopwatch.StartNew();
+            // Like GetAwaiter().GetResult(), but a hang fails the test instead of blocking it forever.
+            var completed = fixture.Navigator.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            return (completed, watch.Elapsed);
+        }).WaitAsync(Timeout);
+        // The queued clearing turn and the abandoned disposal operation run now.
+        await Wait(context.RunOnThreadAsync(() => true));
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        var site = probe.Single("dispose:owned");
+        Require(completed && owned.Disposed == 1 && !site.OnModelThread && fixture.Navigator.UnretiredEntryCount == 0,
+            $"Disposal with a blocked model thread took {elapsed}; owned content was disposed {owned.Disposed} times, at {site}.");
+    }
+
+    // Content that a factory returns after disposal already retired its pending entry is disposed
+    // through the scheduler on the model's thread: disposal is over, so nothing bounds the wait.
+    private static async Task LateFactoryContentDisposedThroughSchedulerAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext();
+        await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMilliseconds(200));
+        var probe = new Probe(context);
+        var region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(new ProbePage("home", probe)));
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        using var hold = new ManualResetEventSlim();
+        ProbePage? late = null;
+        var push = region.PushAsync(NavigationTarget.Create<ProbePage>(_ =>
+        {
+            entered.TrySetResult();
+            release.Wait(Timeout);
+            // Keeps the model's thread busy until the disposal operation is queued, so the navigator
+            // decides how long to wait for it while it hasn't started.
+            context.Post(() => hold.Wait(Timeout));
+            return late = new ProbePage("late", probe);
+        })).AsTask();
+        await Wait(entered.Task);
+        var requests = context.HookRequests;
+        await Wait(fixture.Navigator.DisposeAsync().AsTask());
+        release.Set();
+        await Until(() => context.HookRequests > requests, "The late content's disposal was not scheduled.");
+        await Task.Delay(100);
+        hold.Set();
+        var result = await Wait(push);
+        await Until(() => late is { Disposed: 1 }, "The late factory content was not disposed.");
+        var site = probe.Single("dispose:late");
+        Require(result is NavigationResult<ProbePage>.Rejected { Reason: NavigationRejection.Closed }
+            && site is { OnModelThread: true, TurnDepth: 0 } && site.Operation != 0,
+            $"Late factory content gave {result} and was disposed at {site}.");
     }
 
     // The helper continues on the thread pool when the awaited task completes on the model thread, also on failure.

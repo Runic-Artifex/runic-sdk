@@ -36,6 +36,11 @@ internal static class NavigationAwait
         {
             // Conditional: a pool thread never executes in the context, so contexts without
             // thread affinity (RunicModelContext) pay no extra dispatch.
+            // After the context closes, IsExecuting is false on the model's thread too, so the
+            // helper stops hopping and engine bookkeeping may continue there. That is harmless: a
+            // closed context runs no turns, so no commit can nest in one, and the work that remains
+            // (rejecting the transition, retiring entries) never waits for that thread. Retirement
+            // and owned disposal still hop to the pool explicitly.
             if (context.IsExecuting) await Hop();
         }
     }

@@ -317,6 +317,12 @@ the caller, never inside a turn. Hook operations don't count as turns. Once
 the context is closed, disposal runs on the thread pool. A decorator that
 wraps a scheduling context must implement and forward the interface too.
 
+During `DisposeAsync`, a scheduled disposal that hasn't started by the
+clearing turns' deadline runs on the thread pool instead, exactly once, so
+disposal completes even when the model's thread is blocked. Don't block the
+model's thread on `DisposeAsync` (for example `GetAwaiter().GetResult()` in a
+WPF `OnExit`): call `Dispose()` there, which starts disposal without waiting.
+
 The navigator itself never continues on the model's thread: after awaiting a
 hook, a turn or other user code, it moves to the thread pool when the
 completion ran in the model context. A caller that awaits a navigation result
