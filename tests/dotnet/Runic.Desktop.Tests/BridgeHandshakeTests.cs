@@ -82,7 +82,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         {
             (await retrying).Dispose();
         }
-        catch (Exception)
+        catch (WebSocketException)
         {
         }
 
@@ -90,6 +90,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.Matches(@"\+\d+\.\d{3}s WebSocket 1 opened", timeout.Message);
         Assert.Contains("WebSocket rejected: another WebSocket holds the only connection", timeout.Message);
         Assert.DoesNotContain("WebSocket 1: first message", timeout.Message);
+        Assert.DoesNotContain("WebSocket 2 opened", timeout.Message);
     }
 
     [Fact]
