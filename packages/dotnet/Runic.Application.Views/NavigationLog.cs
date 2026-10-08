@@ -3,8 +3,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
-// Navigation event IDs 1060-1069 (1043-1049 stay reserved for the ReactiveUI
-// navigation adapter). Properties carry type and operation names, never values.
+// Navigation event IDs 1060-1079 (1060-1069 for transitions and cleanup, 1070-1079 for
+// PushForResult and later navigation events); 1043-1049 stay reserved for the ReactiveUI
+// navigation adapter. Properties carry type and operation names, never values.
 [Experimental(RunicNavigator.DiagnosticId)]
 internal static partial class NavigationLog
 {
@@ -55,4 +56,12 @@ internal static partial class NavigationLog
     [LoggerMessage(EventId = 1069, EventName = "NavigationInitializeTimedOut", Level = LogLevel.Warning,
         Message = "Retiring {EntryType} in navigation region {Region} ({RegionId}) stopped waiting for its initialize hook after the close timeout; the content is disposed while the hook runs.")]
     internal static partial void NavigationInitializeTimedOut(ILogger logger, Exception? exception, string region, int regionId, string entryType);
+
+    [LoggerMessage(EventId = 1070, EventName = "NavigationResultDismissed", Level = LogLevel.Debug,
+        Message = "A PushForResult request in navigation region {Region} ({RegionId}) was dismissed: {Reason}.")]
+    internal static partial void NavigationResultDismissed(ILogger logger, Exception? exception, string region, int regionId, NavigationResultDismissal reason);
+
+    [LoggerMessage(EventId = 1071, EventName = "NavigationResultDropped", Level = LogLevel.Debug,
+        Message = "An entry of navigation region {Region} ({RegionId}) completed a PushForResult request that was already dismissed; it went back and the result was dropped.")]
+    internal static partial void NavigationResultDropped(ILogger logger, Exception? exception, string region, int regionId);
 }

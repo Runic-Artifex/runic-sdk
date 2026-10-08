@@ -229,3 +229,42 @@
 [RUNICNAV001]virtual Runic.Application.Views.NavigationResult<TContent>.PrintMembers(System.Text.StringBuilder! builder) -> bool
 [RUNICNAV001]Runic.Application.Views.INavigationInputInitialize
 [RUNICNAV001]Runic.Application.Views.PropertyDescriptor<T>.PropertyDescriptor(string! name, System.Func<T, object?>! getter, System.Action<T, Runic.Application.Views.IBridgeArguments!>? setter, System.Func<T, object?>! observe) -> void
+[RUNICNAV001]abstract Runic.Application.Views.NavigationCompletion<TResult>.<Clone>$() -> Runic.Application.Views.NavigationCompletion<TResult>!
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Completed.<Clone>$() -> Runic.Application.Views.NavigationCompletion<TResult>.Completed!
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Completed.Equals(object? obj) -> bool
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Completed.GetHashCode() -> int
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Completed.ToString() -> string!
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.<Clone>$() -> Runic.Application.Views.NavigationCompletion<TResult>.Dismissed!
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.Equals(object? obj) -> bool
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.GetHashCode() -> int
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.ToString() -> string!
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.Equals(object? obj) -> bool
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.GetHashCode() -> int
+[RUNICNAV001]override Runic.Application.Views.NavigationCompletion<TResult>.ToString() -> string!
+[RUNICNAV001]override sealed Runic.Application.Views.NavigationCompletion<TResult>.Completed.Equals(Runic.Application.Views.NavigationCompletion<TResult>? other) -> bool
+[RUNICNAV001]override sealed Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.Equals(Runic.Application.Views.NavigationCompletion<TResult>? other) -> bool
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Completed
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Completed.Completed(TResult Value) -> void
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Completed.Deconstruct(out TResult Value) -> void
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Completed.Equals(Runic.Application.Views.NavigationCompletion<TResult>.Completed? other) -> bool
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Completed.Value.get -> TResult
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Completed.Value.init -> void
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Dismissed
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.Dismissed() -> void
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.Equals(Runic.Application.Views.NavigationCompletion<TResult>.Dismissed? other) -> bool
+[RUNICNAV001]Runic.Application.Views.NavigationCompletion<TResult>.NavigationCompletion(Runic.Application.Views.NavigationCompletion<TResult>! original) -> void
+[RUNICNAV001]Runic.Application.Views.NavigationEntryContext.CompleteAsync<TResult>(TResult result, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.NavigationResult<object!>!>
+[RUNICNAV001]Runic.Application.Views.NavigationRegion<TContent>.PushForResult<TResult>(Runic.Application.Views.INavigationTarget<TContent!>! target, Runic.Application.Views.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Runic.Application.Views.NavigationResultRequest<TContent!, TResult>!
+[RUNICNAV001]Runic.Application.Views.NavigationResultRequest<TContent, TResult>
+[RUNICNAV001]Runic.Application.Views.NavigationResultRequest<TContent, TResult>.Completion.get -> System.Threading.Tasks.Task<Runic.Application.Views.NavigationCompletion<TResult>!>!
+[RUNICNAV001]Runic.Application.Views.NavigationResultRequest<TContent, TResult>.Transition.get -> System.Threading.Tasks.ValueTask<Runic.Application.Views.NavigationResult<TContent!>!>
+[RUNICNAV001]static Runic.Application.Views.NavigationCompletion<TResult>.Completed.operator !=(Runic.Application.Views.NavigationCompletion<TResult>.Completed? left, Runic.Application.Views.NavigationCompletion<TResult>.Completed? right) -> bool
+[RUNICNAV001]static Runic.Application.Views.NavigationCompletion<TResult>.Completed.operator ==(Runic.Application.Views.NavigationCompletion<TResult>.Completed? left, Runic.Application.Views.NavigationCompletion<TResult>.Completed? right) -> bool
+[RUNICNAV001]static Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.operator !=(Runic.Application.Views.NavigationCompletion<TResult>.Dismissed? left, Runic.Application.Views.NavigationCompletion<TResult>.Dismissed? right) -> bool
+[RUNICNAV001]static Runic.Application.Views.NavigationCompletion<TResult>.Dismissed.operator ==(Runic.Application.Views.NavigationCompletion<TResult>.Dismissed? left, Runic.Application.Views.NavigationCompletion<TResult>.Dismissed? right) -> bool
+[RUNICNAV001]static Runic.Application.Views.NavigationCompletion<TResult>.operator !=(Runic.Application.Views.NavigationCompletion<TResult>? left, Runic.Application.Views.NavigationCompletion<TResult>? right) -> bool
+[RUNICNAV001]static Runic.Application.Views.NavigationCompletion<TResult>.operator ==(Runic.Application.Views.NavigationCompletion<TResult>? left, Runic.Application.Views.NavigationCompletion<TResult>? right) -> bool
+[RUNICNAV001]virtual Runic.Application.Views.NavigationCompletion<TResult>.EqualityContract.get -> System.Type!
+[RUNICNAV001]virtual Runic.Application.Views.NavigationCompletion<TResult>.Equals(Runic.Application.Views.NavigationCompletion<TResult>? other) -> bool
+[RUNICNAV001]virtual Runic.Application.Views.NavigationCompletion<TResult>.PrintMembers(System.Text.StringBuilder! builder) -> bool
