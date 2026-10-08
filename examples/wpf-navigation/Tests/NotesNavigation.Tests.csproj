@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Drives the example on a real WPF dispatcher with off-screen windows. Windows only: CI runs it
+       against the packed packages (../package-smoke.mjs); other platforms only build it. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Runic.Navigation.Examples.Notes.Tests</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Runic.Navigation is experimental. -->
+    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../NotesNavigation/NotesNavigation.csproj" />
+  </ItemGroup>
+</Project>

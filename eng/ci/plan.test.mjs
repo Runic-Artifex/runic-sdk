@@ -267,6 +267,7 @@ test('navigation changes run the Windows WPF lane and other components skip it',
     'packages/dotnet/Runic.Navigation.Wpf/NavigationHost.cs',
     'tests/dotnet/Runic.Navigation.Wpf.Tests/Program.cs',
     'tests/fixtures/navigation/wpf-consumer/package-smoke.mjs',
+    'examples/wpf-navigation/NotesNavigation/Notes/NoteDetailViewModel.cs',
     'packages/dotnet/Runic.Navigation/RunicNavigator.cs',
   ]) {
     const result = plan([file]);
@@ -282,4 +283,11 @@ test('the WPF test runner is Windows-only and outside the Linux managed groups',
   const path = 'tests/dotnet/Runic.Navigation.Wpf.Tests/Runic.Navigation.Wpf.Tests.csproj';
   assert.ok(!managedTests(root, 'linux').some(test => test.path === path));
   assert.ok(managedTests(root, 'win32').some(test => test.path === path && test.group === 'navigation'));
+});
+
+test('the WPF navigation example builds from the packed packages in the WPF lane', () => {
+  const path = 'examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj';
+  assert.ok(!managedTests(root, 'linux').some(test => test.path === path));
+  assert.ok(managedTests(root, 'win32').some(test => test.path === path && test.group === 'navigation'));
+  assert.ok(workflow.jobs.wpf.steps.some(step => step.run === 'bun examples/wpf-navigation/package-smoke.mjs'));
 });

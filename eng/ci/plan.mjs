@@ -13,7 +13,7 @@ export function managedTests(base = root, platform = process.platform) {
       return /<OutputType>Exe<\/OutputType>/.test(project)
         && (platform === "win32" || !/<TargetFramework>[^<]*-windows<\/TargetFramework>/.test(project));
     })
-    .map(path => ({ path, group: path.includes("Runic.Navigation.") ? "navigation"
+    .map(path => ({ path, group: path.includes("Runic.Navigation.") || path.startsWith("examples/wpf-navigation/") ? "navigation"
       : path.includes("Runic.Application.") ? "application"
       : path.includes("Runic.Assets") ? "assets"
       : "platform" }));

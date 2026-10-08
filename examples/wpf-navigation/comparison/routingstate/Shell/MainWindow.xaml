@@ -1,0 +1,10 @@
+<Window x:Class="Comparison.RoutingStateApp.Shell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:rxui="http://reactiveui.net"
+        Title="RoutingState" Width="640" Height="420">
+  <DockPanel>
+    <Button DockPanel.Dock="Top" Content="Back" Command="{Binding GoBack}" /> <!-- [S4] -->
+    <rxui:RoutedViewHost Router="{Binding Router}" />
+  </DockPanel>
+</Window>

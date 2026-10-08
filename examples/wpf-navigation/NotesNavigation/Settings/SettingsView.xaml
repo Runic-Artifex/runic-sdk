@@ -1,0 +1,12 @@
+<UserControl x:Class="Runic.Navigation.Examples.Notes.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:rn="https://runic-artifex.eu/xaml/navigation">
+  <TabControl ItemsSource="{Binding Tabs}" SelectedItem="{Binding SelectedTab}" DisplayMemberPath="Title">
+    <TabControl.ContentTemplate>
+      <DataTemplate>
+        <rn:NavigationHost Region="{Binding DataContext.Tab, RelativeSource={RelativeSource AncestorType=TabControl}}" />
+      </DataTemplate>
+    </TabControl.ContentTemplate>
+  </TabControl>
+</UserControl>

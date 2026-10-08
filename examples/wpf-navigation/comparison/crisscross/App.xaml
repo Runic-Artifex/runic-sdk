@@ -1,0 +1,27 @@
+<Application x:Class="Comparison.CrissCrossApp.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:rxNav="https://github.com/reactivemarbles/CrissCross"
+             StartupUri="Shell/MainWindow.xaml">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <rxNav:CrissCrossWpfDictionary />
+      </ResourceDictionary.MergedDictionaries>
+      <!-- NavigationWindow's default template is only the host; add room for a Back button. -->
+      <Style x:Key="ShellStyle" TargetType="rxNav:NavigationWindow">
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="rxNav:NavigationWindow">
+              <DockPanel>
+                <ContentPresenter DockPanel.Dock="Top" />
+                <rxNav:ViewModelRoutedViewHost x:Name="NavigationFrame" HostName="{TemplateBinding Name}"
+                                               NavigateBackIsEnabled="{TemplateBinding NavigateBackIsEnabled}" />
+              </DockPanel>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

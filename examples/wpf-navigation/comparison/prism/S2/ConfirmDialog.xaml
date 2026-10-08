@@ -1,0 +1,11 @@
+<UserControl x:Class="Comparison.PrismApp.S2.ConfirmDialog"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Margin="12">
+    <TextBlock Text="{Binding Message}" />
+    <StackPanel Orientation="Horizontal">
+      <Button Content="OK" IsDefault="True" Command="{Binding CloseCommand}" CommandParameter="OK" />
+      <Button Content="Cancel" IsCancel="True" Command="{Binding CloseCommand}" CommandParameter="Cancel" />
+    </StackPanel>
+  </StackPanel>
+</UserControl>
