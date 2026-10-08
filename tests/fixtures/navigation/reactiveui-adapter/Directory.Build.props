@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <!-- Both flavor projects share this directory. -->
+    <NuGetLockFilePath>packages.$(MSBuildProjectName).lock.json</NuGetLockFilePath>
+    <!-- The navigation adapter is experimental. -->
+    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)bin/$(MSBuildProjectName)/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

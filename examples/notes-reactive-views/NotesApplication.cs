@@ -4,6 +4,7 @@ using ReactiveUI;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation.ReactiveUI;
 using Microsoft.Extensions.Logging;
 using Splat;
 

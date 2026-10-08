@@ -9,7 +9,7 @@ import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveM
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 23);
+  assert.equal(workspace.nuget.length, 25);
   assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
@@ -212,5 +212,17 @@ test("validation baseline opt-outs are only on packages newer than the baseline"
     assert.ok(first, `${p.name} sets RunicPackageValidationBaselineMissing without RunicPackageFirstReleaseVersion`);
     assert.ok(compareVersions(first, baseline) > 0,
       `${p.name} was first released in ${first}, at or below the validation baseline ${baseline}; remove RunicPackageValidationBaselineMissing and RunicPackageFirstReleaseVersion`);
+  }
+});
+
+test("the ReactiveUI navigation adapters ship without Runic.Application", () => {
+  for (const [name, reactive] of [["Runic.Navigation.ReactiveUI", false], ["Runic.Navigation.ReactiveUI.Reactive", true]]) {
+    const layout = packageLayouts[name];
+    assert.ok(layout.files.includes(`lib/net10.0/${name}.dll`), name);
+    assert.ok(layout.requires.includes("Runic.Navigation"), name);
+    assert.ok(layout.forbidden.some(pattern => pattern.test("Runic.Application")), name);
+    assert.ok(layout.requires.includes(reactive ? "ReactiveUI.Reactive" : "ReactiveUI"), name);
+    const project = readFileSync(resolve(root, `packages/dotnet/${name}/${name}.csproj`), "utf8");
+    assert.doesNotMatch(project, /Runic\.Application/, name);
   }
 });

@@ -26,11 +26,35 @@ const nativeProviders = new Set([
 // the slice that creates it. `files` lists the complete layout, `includes` files
 // that must be present, `dependencies` the complete nuspec dependency list, and
 // `exactDependencies` the dependencies pinned to exactly the workspace version.
+// `requires`/`forbidden` dependencies that must or must not appear in it.
 export const packageLayouts = {
   // Navigation is a plain library: no build targets, tools or content (W240-001 D3).
   "Runic.Navigation": {
     files: ["README.md", "Runic.Navigation.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.dll", "lib/net10.0/Runic.Navigation.xml"],
     dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions"],
+  },
+  // The ReactiveUI navigation adapters depend on Runic.Navigation and ReactiveUI, never on
+  // Runic.Application (W240-001 §9). `requires` lists dependencies that must be present and
+  // `forbidden` patterns that no dependency may match.
+  "Runic.Navigation.ReactiveUI": {
+    files: ["README.md", "Runic.Navigation.ReactiveUI.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.xml"],
+    requires: ["Runic.Navigation", "ReactiveUI"],
+    exactDependencies: ["Runic.Navigation"],
+    forbidden: [/^Runic\.Application/i, /^ReactiveUI\.Reactive$/i],
+  },
+  "Runic.Navigation.ReactiveUI.Reactive": {
+    files: ["README.md", "Runic.Navigation.ReactiveUI.Reactive.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.Reactive.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.Reactive.xml"],
+    requires: ["Runic.Navigation", "ReactiveUI.Reactive"],
+    exactDependencies: ["Runic.Navigation"],
+    forbidden: [/^Runic\.Application/i, /^ReactiveUI$/i],
+  },
+  // Each Application adapter brings the navigation adapter of its own flavor.
+  "Runic.Application.ReactiveUI": { requires: ["Runic.Navigation.ReactiveUI"], exactDependencies: ["Runic.Navigation.ReactiveUI"], forbidden: [/^Runic\.Navigation\.ReactiveUI\.Reactive$/i] },
+  "Runic.Application.ReactiveUI.Reactive": {
+    includes: ["buildTransitive/Runic.Application.ReactiveUI.Reactive.targets"],
+    requires: ["Runic.Navigation.ReactiveUI.Reactive"],
+    exactDependencies: ["Runic.Navigation.ReactiveUI.Reactive"],
+    forbidden: [/^Runic\.Navigation\.ReactiveUI$/i],
   },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application": {
@@ -52,6 +76,10 @@ export function verifyPackageLayout(nupkg, name, version, layout = packageLayout
     for (const id of layout.exactDependencies)
       assert.deepEqual(versions.get(id), [`[${version}]`], `${name} does not depend on exactly ${id} ${version}`);
   }
+  const dependencies = nupkgDependencies(nupkg);
+  for (const id of layout.requires ?? []) assert.ok(dependencies.includes(id), `${name} does not depend on ${id}`);
+  for (const pattern of layout.forbidden ?? [])
+    assert.ok(!dependencies.some(id => pattern.test(id)), `${name} depends on ${dependencies.filter(id => pattern.test(id)).join(", ")}`);
 }
 export function dotnetBuildArguments(projectFile, selectedConfiguration = configuration, additional = []) {
   return ["build", projectFile, "--configuration", selectedConfiguration, ...additional];

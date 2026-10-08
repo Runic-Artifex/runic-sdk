@@ -11,10 +11,11 @@ CommunityToolkit dependency. It provides:
 - `ReactiveRoutedRegion<T>`, projecting `RoutingState.CurrentViewModel` into
   a generated content property, logging an incompatible route or failed
   router through an optional `ILoggerFactory` (Views events 1040-1041);
-- experimental observables and a back command for `RunicNavigator` regions
+- experimental observables and a back command for `RunicNavigator` regions,
+  provided by `Runic.Navigation.ReactiveUI`
   (see [Navigation](#navigation-experimental));
 - mount-owned `IActivatableViewModel` leases; and
-- typed command, interaction, and model-context scheduler adapters used by
+- typed command and interaction adapters used by
   the compiled-model generator.
 
 One browser presentation gets one logical Runic View and activation lease. A
@@ -94,13 +95,17 @@ does not consume the interaction, preserving normal ReactiveUI .NET handler
 precedence and unhandled behavior.
 
 `RunicReactiveSchedulerProvider.For(context)` returns a context-backed
-`ISequencer`. It serializes scheduled notifications with short Runic model
-turns and deliberately does not set ReactiveUI's process-global scheduler.
-Use normal host dispatchers for native UI and explicitly marshal background
-state changes through the model context.
+`ISequencer`, one per context. It serializes scheduled notifications with short
+Runic model turns and deliberately does not set ReactiveUI's process-global
+scheduler. The provider, `AddRunicReactiveModelContext()` and the navigation
+adapter are in the `Runic.Navigation.ReactiveUI` namespace of the
+[Runic.Navigation.ReactiveUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
+package, which this package references, so add
+`using Runic.Navigation.ReactiveUI;`. Use normal host dispatchers for native UI
+and explicitly marshal background state changes through the model context.
 
 Call `AddRunicReactiveModelContext()` before the ViewModel creates its commands
-and inject the scoped sequencer. Bind the root and every independently
+and inject the sequencer. Bind the root and every independently
 presented child to that same context. `IRunicModelContext` and
 `RunicModelContextRegistry` are in the `Runic.Navigation` namespace:
 
@@ -129,7 +134,8 @@ Bind dynamically created or independently presented children to the same
 context and retain their leases until their presentation is removed.
 
 The extension uses `TryAdd` for the scoped `IRunicModelContext`, singleton
-`IRunicReactiveSchedulerProvider`, and scoped `ISequencer`, preserving custom
+`IRunicReactiveSchedulerProvider`, and transient `ISequencer` (which returns
+the provider's scheduler for the resolved context), preserving custom
 application registrations. Dispose a scope asynchronously to drain its default
 owned context. Each queued context/scheduler item captures its own
 `ExecutionContext`, so a trusted interaction scope follows its own deferred
@@ -171,55 +177,29 @@ also logged by the Views runtime (event 1000 or 1004). The helper works on any
 
 ## Navigation (experimental)
 
-`RunicNavigator` regions replace `RoutingState` rather than wrap it: a region
-has awaited departure guards, stable entry ids, owned content and supersession,
-which `RoutingState`'s mutable stack and synchronous `Navigate` cannot enforce.
-Use a `NavigationRegion<TContent>` for new navigation, and keep
-`ReactiveRoutedRegion<T>` for existing `RoutingState` code. Expose the
-region as a get-only property and the generator presents its `Current` like
-any content slot.
+The observables and back command for `RunicNavigator` regions
+(`WhenCurrentChanged`, `WhenEntryChanged` and `CreateBackCommand`) are in the
+`Runic.Navigation.ReactiveUI` namespace of the
+[Runic.Navigation.ReactiveUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
+package, which this package references. It depends on `Runic.Navigation` and
+`ReactiveUI` only. Use a `NavigationRegion<TContent>` for new navigation, and
+keep `ReactiveRoutedRegion<T>` for existing `RoutingState` code. Expose the
+region as a get-only property and the generator presents its `Current` like any
+content slot. Suppress `RUNICNAV001` to use the adapter.
 
-The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
-The navigator and region types are in the `Runic.Navigation` namespace of the
-[Runic.Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md) package.
+In a Views app, observe the back command's `ThrownExceptions` with
+`ObserveBridgeExceptions` (see above):
 
 ```csharp
-var scheduler = new RunicReactiveSchedulerProvider().For(context);
-BackCommand = Main.CreateBackCommand(scheduler).DisposeWith(disposables); // holds a region handler
-BackCommand.ObserveBridgeExceptions(logger).DisposeWith(disposables);
+using Runic.Navigation.ReactiveUI;
 
-Main.WhenCurrentChanged()          // TContent?, distinct by instance
-    .Select(current => current is DocumentViewModel)
-    .ObserveOn(scheduler)
-    .Subscribe(isDocument => IsDocumentOpen = isDocument)
-    .DisposeWith(disposables);
+var scheduler = new RunicReactiveSchedulerProvider().For(context);
+BackCommand = Main.CreateBackCommand(scheduler).DisposeWith(disposables);
+BackCommand.ObserveBridgeExceptions(logger).DisposeWith(disposables);
 ```
 
-- `WhenCurrentChanged()` emits the current content (`null` when the region is
-  empty) on subscription and then each different instance.
-  `WhenEntryChanged()` emits each `NavigationEntry<TContent>`, also when two
-  entries present the same borrowed instance.
-- Both emit the initial value on the subscribing thread, inside `Subscribe`,
-  and later values on the model turn that raises the change: the commit turn
-  for a navigation. Use `ObserveOn` to deliver elsewhere. They never
-  complete, and stop when the subscription is disposed.
-- `CreateBackCommand(scheduler)` returns a
-  `ReactiveCommand<RxVoid, NavigationResult<TContent>>`
-  (`ReactiveCommand<Unit, NavigationResult<TContent>>` in the System.Reactive flavor). It can execute
-  while `CanGoBack` is true and `IsTransitioning` is false, including
-  transitions it did not start. It reflects this region only: a transition of
-  an ancestor region does not disable it. The command observes the region
-  until it is disposed, so dispose it with its owner. A rejected, superseded
-  or failed Back is its output, not an exception, so `ThrownExceptions`
-  carries only defects and cancellation.
-- **Activation is not entry lifetime.** ReactiveUI activation follows a mounted
-  View. A navigation entry lives from its push until it retires: a retained
-  entry stays alive and keeps its state while nothing presents it, and its View
-  deactivates and activates again when the entry returns. Put per-presentation
-  subscriptions in `WhenActivated`. Use the navigator's hooks
-  (`INavigationInitialize`, `INavigationResume`, `INavigationDepartureGuard`) and
-  the entry's `Retirement` token for per-entry work, and `Dispose` for owned
-  content.
+ReactiveUI activation follows a mounted View, not a navigation entry's lifetime:
+put per-presentation subscriptions in `WhenActivated`.
 
 ## System.Reactive flavor
 

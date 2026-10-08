@@ -2,7 +2,7 @@ using DynamicDataExample;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
-using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation.ReactiveUI;
 using Runic.Desktop;
 
 if (args.Contains("--benchmark", StringComparer.Ordinal))

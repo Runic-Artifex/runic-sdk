@@ -4,7 +4,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ReactiveUI;
 using Runic.Application.Views;
-using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation.ReactiveUI;
 using Runic.Navigation;
 
 namespace ReactiveUi25AotProof;

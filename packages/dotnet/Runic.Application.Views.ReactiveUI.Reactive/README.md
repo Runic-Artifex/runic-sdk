@@ -24,7 +24,10 @@ Runic adapters.
 
 `RunicReactiveSchedulerProvider` adapts a supplied `IRunicModelContext`
 (namespace `Runic.Navigation`) to an
-`IScheduler`. Pass it to ReactiveUI.Reactive command factories as their
+`IScheduler`. It and `AddRunicReactiveModelContext()` are in the
+`Runic.Navigation.ReactiveUI.Reactive` namespace of
+[`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md),
+which this package references (add `using Runic.Navigation.ReactiveUI.Reactive;`). Pass the scheduler to ReactiveUI.Reactive command factories as their
 `outputScheduler` when command state must be delivered in that model context:
 
 ```csharp
@@ -49,9 +52,8 @@ normal `ReactiveUI.SourceGenerators` attributes with
 source-generator package.
 
 The navigation adapter (`WhenCurrentChanged`, `WhenEntryChanged` and
-`CreateBackCommand(IScheduler)`) is also available, with `System.Reactive.Unit`
-as the back command's input; see
-[Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#navigation-experimental).
+`CreateBackCommand(IScheduler)`) is also in `Runic.Navigation.ReactiveUI.Reactive`, with
+`System.Reactive.Unit` as the back command's input.
 `BatchBridgeSnapshots(model)` and `ObserveBridgeExceptions` are also available in
 this adapter's namespace; this flavor's commands implement the same
 `IHandleObservableErrors`. See

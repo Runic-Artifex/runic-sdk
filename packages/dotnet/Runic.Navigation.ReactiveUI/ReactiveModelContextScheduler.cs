@@ -1,16 +1,15 @@
+using System.Runtime.CompilerServices;
 using ReactiveUI.Primitives.Advanced;
 using ReactiveUI.Primitives.Concurrency;
-using Runic.Application.Views;
-using Runic.Navigation;
 
-namespace Runic.Application.Views.ReactiveUI;
+namespace Runic.Navigation.ReactiveUI;
 
 /// <summary>Provides ReactiveUI schedulers bound to Runic model contexts.</summary>
 public interface IRunicReactiveSchedulerProvider
 {
     /// <summary>Returns a sequencer that runs work on <paramref name="context"/>.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
-        Justification = "Published member name shared with Runic.Application.ReactiveUI.Reactive.")]
+        Justification = "Published member name shared with Runic.Navigation.ReactiveUI.Reactive.")]
     ISequencer For(IRunicModelContext context);
 }
 
@@ -18,13 +17,19 @@ public interface IRunicReactiveSchedulerProvider
 /// Creates an <see cref="ISequencer"/> that delivers scheduled work through a model context.
 /// It intentionally does not alter process-global ReactiveUI scheduler configuration.
 /// </summary>
+/// <remarks>
+/// A sequencer keeps its ordering state, so the provider returns one sequencer per context for
+/// as long as the context is alive.
+/// </remarks>
 public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProvider
 {
+    private readonly ConditionalWeakTable<IRunicModelContext, RunicModelContextSequencer> _sequencers = new();
+
     /// <inheritdoc />
     public ISequencer For(IRunicModelContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        return new RunicModelContextSequencer(context);
+        return _sequencers.GetValue(context, static context => new RunicModelContextSequencer(context));
     }
 }
 

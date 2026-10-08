@@ -1,16 +1,15 @@
+using System.Runtime.CompilerServices;
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
-using Runic.Application.Views;
-using Runic.Navigation;
 
-namespace Runic.Application.Views.ReactiveUI.Reactive;
+namespace Runic.Navigation.ReactiveUI.Reactive;
 
 /// <summary>Provides System.Reactive schedulers bound to Runic model contexts.</summary>
 public interface IRunicReactiveSchedulerProvider
 {
     /// <summary>Returns a scheduler that runs work on <paramref name="context"/>.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
-        Justification = "Published member name shared with Runic.Application.ReactiveUI.")]
+        Justification = "Published member name shared with Runic.Navigation.ReactiveUI.")]
     IScheduler For(IRunicModelContext context);
 }
 
@@ -18,13 +17,16 @@ public interface IRunicReactiveSchedulerProvider
 /// Creates schedulers that deliver work through a model context. The provider
 /// does not change ReactiveUI's process-global scheduler configuration.
 /// </summary>
+/// <remarks>The provider returns one scheduler per context for as long as the context is alive.</remarks>
 public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProvider
 {
+    private readonly ConditionalWeakTable<IRunicModelContext, RunicModelContextScheduler> _schedulers = new();
+
     /// <inheritdoc />
     public IScheduler For(IRunicModelContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        return new RunicModelContextScheduler(context);
+        return _schedulers.GetValue(context, static context => new RunicModelContextScheduler(context));
     }
 }
 
