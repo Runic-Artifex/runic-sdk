@@ -313,7 +313,9 @@ internal static partial class NavigationTests
         };
         var first = region.BackAsync().AsTask();
         await Wait(started.Task);
-        var second = region.BackAsync().AsTask();
+        // A Back with a cancellable token supersedes a pending Back; a plain one would join it.
+        using var superseding = new CancellationTokenSource();
+        var second = region.BackAsync(cancellationToken: superseding.Token).AsTask();
         Require(await Wait(first) is NavigationResult<Page>.Superseded && await Wait(second) is NavigationResult<Page>.Committed,
             "The second Back did not supersede the first.");
         var superseded = document.Departures[^2];
@@ -510,7 +512,8 @@ internal static partial class NavigationTests
             $"The rerun asked {prompts} times and discarded {discards} times over {document.Departures.Count} departures.");
     }
 
-    // Competing departures of one entry: whichever transition commits discards exactly once.
+    // Competing departures of one entry: whichever transition commits discards exactly once. Backs admitted while
+    // another is pending join it, so every committed result reports the same pop.
     private static async Task LeaveConfirmationRaceAsync(int seed)
     {
         await using var fixture = new Fixture();
@@ -535,7 +538,9 @@ internal static partial class NavigationTests
             return await region.BackAsync(new NavigationRequestOptions(id));
         })).ToArray();
         var results = await Wait(Task.WhenAll(backs));
-        Require(results.Count(result => result is NavigationResult<Page>.Committed) == 1 && region.Current is { Name: "home" }
+        var committed = results.OfType<NavigationResult<Page>.Committed>().ToArray();
+        Require(committed.Length >= 1 && committed.All(result => result.Retired.SequenceEqual([id])) && region.Current is { Name: "home" }
+            && document.Disposed == 1
             && Volatile.Read(ref discards) == 1 && Volatile.Read(ref prompts) is >= 1 and <= 5,
             $"seed {seed}: {string.Join(", ", results.Select(result => result.GetType().Name))}, {prompts} prompts, {discards} discards.");
     }
@@ -710,7 +715,9 @@ internal static partial class NavigationTests
         };
         var first = region.BackAsync().AsTask();
         await Wait(resuming.Task);
-        var second = await Wait(region.BackAsync());
+        // A Back with a cancellable token supersedes a pending Back; a plain one would join it.
+        using var superseding = new CancellationTokenSource();
+        var second = await Wait(region.BackAsync(cancellationToken: superseding.Token));
         Require(second is NavigationResult<Page>.Committed && await Wait(first) is NavigationResult<Page>.Superseded,
             $"The second Back gave {second}.");
         Require(prompts == 1 && discards == 1 && document.Departures.Count == 2,

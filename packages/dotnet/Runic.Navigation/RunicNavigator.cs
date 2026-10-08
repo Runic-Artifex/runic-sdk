@@ -578,6 +578,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     {
         NavigationOutcome? rejected = null;
         NavigationTransition? transition = null;
+        NavigationTransition? joined = null;
         List<NavigationTransition> superseded = [];
         var transitioningChanged = false;
         lock (Gate)
@@ -596,6 +597,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 rejected = NavigationOutcome.Reject(NavigationRejection.NotCurrent);
             else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
                 rejected = NavigationOutcome.Reject(NavigationRejection.NoHistory);
+            else if (operation == NavigationOperation.Back && @return is null && !cancellationToken.CanBeCanceled
+                && JoinableBackLocked(region) is { } pendingBack)
+                // A second Back to the same destination (a double click, or Back while its guard asks)
+                // joins the pending Back instead of superseding it, so the guard asks once.
+                joined = pendingBack;
             else
             {
                 NavigationEntryCore? pending = null;
@@ -639,7 +645,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], settlement, cancellationToken) { Return = @return };
+                    [.. waitFor], settlement, cancellationToken) { Return = @return, AdmittedVersion = region.Version };
                 if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
                 transitioningChanged = region.InFlight.Count == 1;
@@ -653,6 +659,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (request is not null) FinishResult(request, NavigationResultDismissal.NotCommitted);
             return Task.FromResult(rejected);
         }
+        if (joined is not null) return joined.Result.Task;
 
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
@@ -664,6 +671,20 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         else if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
         else _ = RunAsync(transition!);
         return transition!.Result.Task;
+    }
+
+    // The region's latest admitted transition when it is a plain Back that is still live and the region has not
+    // changed since its admission: a Back admitted now would retire the same entry and resume the same one.
+    // A Back with a cancellable token never joins, and never is joined, so cancelling one caller's Back never
+    // cancels another's. Call under the gate.
+    private static NavigationTransition? JoinableBackLocked(NavigationRegionCore region)
+    {
+        if (region.InFlight.Count == 0) return null;
+        var latest = region.InFlight[^1];
+        return latest is { Operation: NavigationOperation.Back, Return: null, CancelReason: NavigationCancelReason.None, Released: false }
+            && !latest.CallerToken.CanBeCanceled && latest.AdmittedVersion == region.Version
+            ? latest
+            : null;
     }
 
     // ---- Transition ------------------------------------------------------
@@ -2020,6 +2041,9 @@ internal sealed class NavigationTransition : IDisposable
 
     // Set for a return from a result entry (CompleteAsync, or a cancelled PushForResult caller).
     public NavigationReturn? Return { get; init; }
+
+    // The region's version at admission, to tell whether a later Back would go to the same entry.
+    public long AdmittedVersion { get; init; }
 
     // Set in the commit turn when a returned value found its request already dismissed.
     public bool ResultDropped { get; set; }

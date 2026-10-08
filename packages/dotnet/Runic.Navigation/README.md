@@ -135,12 +135,23 @@ A failed step is logged as event 1064.
 
 | Phase | Where | What happens |
 | --- | --- | --- |
-| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing. It also supersedes those of the child regions its plan affects. |
+| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a plain Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
 | Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies and raises `PropertyChanged`. A handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released, and departing entries retire. The returned `ValueTask` completes after that cleanup. |
 
+- A plain `BackAsync()` (no cancellable token) that arrives while the region's
+  latest request is another plain Back that hasn't committed, and the region
+  hasn't changed since that Back was admitted, **joins** it instead of
+  superseding it: both callers get the same result, the departure guard runs
+  once, and a confirm dialog stays open. A double click, or Back while the
+  guard asks, therefore pops once and asks once. A Back that starts after the
+  first one committed is a new request and pops again; that is stack
+  semantics. A Back with a cancellable token never joins and is never joined,
+  so cancelling it never cancels another caller's Back; it supersedes as
+  above. `IsTransitioning` is `true` from admission, synchronously, so a Back
+  command's `CanExecute` is `false` before the call returns.
 - A request is superseded only before it commits, never after. A cancelled
   token gives `Rejected(Cancelled)` and navigator disposal gives
   `Rejected(Closed)`, in any phase before the commit.
