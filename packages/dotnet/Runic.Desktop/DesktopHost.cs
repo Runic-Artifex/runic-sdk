@@ -49,7 +49,14 @@ public sealed class DesktopHost : IAsyncDisposable
         var customHostAvailable = diagnostics.Count == 0 && factory.IsSupported;
         if (!customHostAvailable)
         {
-            if (!factory.IsSupported) diagnostics.AddRange(factory.GetAvailabilityDiagnostics());
+            // The selection and the factory can both report a prerequisite, such as a toolkit conflict; list each code once.
+            if (!factory.IsSupported)
+            {
+                foreach (var diagnostic in factory.GetAvailabilityDiagnostics())
+                {
+                    if (!diagnostics.Exists(existing => existing.Code == diagnostic.Code)) diagnostics.Add(diagnostic);
+                }
+            }
             if (diagnostics.Count == 0)
                 diagnostics.Add(new DesktopDiagnostic(
                     DesktopErrorCategory.Unavailable,

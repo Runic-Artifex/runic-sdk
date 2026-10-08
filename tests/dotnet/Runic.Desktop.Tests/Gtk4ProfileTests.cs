@@ -39,38 +39,72 @@ public sealed class Gtk4ProfileTests
     [Fact]
     public async Task WithGtk4HostReportsEveryMissingLibrary()
     {
-        if (!OperatingSystem.IsLinux()) return;
+        if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
+        using var scope = new LinuxProbeScope(static _ => false);
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions().WithGtk4());
 
         var embedded = Assert.Single(host.GetAvailability().Presentations, static item => item.Browser == BrowserKind.Embedded);
 
-        string[] expected = ExpectedMissingGtk4Libraries();
-        if (expected.Length == 0)
-        {
-            Assert.DoesNotContain(embedded.Diagnostics, static item => item.Code.EndsWith("-runtime-missing", StringComparison.Ordinal));
-            return;
-        }
         Assert.False(embedded.IsAvailable);
-        Assert.Equal(expected, embedded.Diagnostics.Select(static item => item.Code).Where(static code => code.EndsWith("-runtime-missing", StringComparison.Ordinal)));
+        Assert.Equal(["gtk4-runtime-missing", "webkitgtk6-runtime-missing"], embedded.Diagnostics.Select(static item => item.Code));
         Assert.Same(embedded.Diagnostics[0], embedded.Diagnostic);
+    }
+
+    [Fact]
+    public async Task WithGtk4HostAcceptsEitherWebKitSoname()
+    {
+        if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
+        using var scope = new LinuxProbeScope(static name => name is "libgtk-4.so.1" or "libwebkitgtk-6.0.so.0");
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions().WithGtk4());
+
+        var embedded = Assert.Single(host.GetAvailability().Presentations, static item => item.Browser == BrowserKind.Embedded);
+
+        Assert.True(embedded.IsAvailable);
+        Assert.Empty(embedded.Diagnostics);
     }
 
     [Fact]
     public async Task Gtk4SelectionWithoutItsProviderReportsTheProviderAndEachMissingPrerequisite()
     {
-        if (!OperatingSystem.IsLinux()) return;
-        await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 } });
+        if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
+        using var scope = new LinuxProbeScope(static _ => false, graphicalSession: false);
+        LinuxDesktopOptions linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 };
+        await using var host = await DesktopHost.StartAsync(new() { Linux = linux });
+        string[] expected = ["gtk4-provider-missing", "gtk4-runtime-missing", "webkitgtk6-runtime-missing", "graphical-session-missing"];
 
         var validation = host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-        var codes = validation.Errors.Select(static item => item.Code).ToArray();
+        var embedded = Assert.Single(DesktopPlatform.GetAvailability(browserFolder: null, linux).Presentations, static item => item.Browser == BrowserKind.Embedded);
 
-        Assert.Equal("gtk4-provider-missing", codes[0]);
+        Assert.Equal(expected, validation.Errors.Select(static item => item.Code));
         Assert.Contains("WithGtk4()", validation.Errors[0].Remediation, StringComparison.Ordinal);
-        foreach (var library in ExpectedMissingGtk4Libraries())
+        Assert.Equal(expected, embedded.Diagnostics.Select(static item => item.Code));
+        Assert.Equal("gtk4-provider-missing", embedded.Diagnostic?.Code);
+    }
+
+    [Fact]
+    public async Task WithGtk4AfterGtk3ReportsTheToolkitConflictOnce()
+    {
+        if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
+        bool claimed = LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk3WebKit41);
+        LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk3WebKit41);
+        try
         {
-            Assert.Contains(library, codes);
+            using var scope = new LinuxProbeScope(static _ => false);
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions().WithGtk4());
+
+            var embedded = Assert.Single(host.GetAvailability().Presentations, static item => item.Browser == BrowserKind.Embedded);
+            var validation = host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+
+            string[] expected = ["linux-embedded-backend-conflict", "gtk4-runtime-missing", "webkitgtk6-runtime-missing"];
+            Assert.False(embedded.IsAvailable);
+            Assert.Equal(expected, embedded.Diagnostics.Select(static item => item.Code));
+            Assert.Equal(expected, validation.Errors.Select(static item => item.Code));
         }
-        Assert.Equal(codes.Length, codes.Distinct().Count());
+        finally
+        {
+            // Only release a claim this test made; GTK 3 may really be running in this process.
+            if (claimed) LinuxDesktopRuntime.ReleaseBackendClaim();
+        }
     }
 
     [Fact]
@@ -113,13 +147,83 @@ public sealed class Gtk4ProfileTests
         Assert.Empty(new DesktopPresentationAvailability(BrowserKind.Chrome, true, "/bin/chrome", DesktopWindowCapabilities.None, null).Diagnostics);
     }
 
-    private static string[] ExpectedMissingGtk4Libraries() =>
-    [
-        .. LinuxDesktopRuntime.IsLibraryAvailable("libgtk-4.so.1") ? Array.Empty<string>() : ["gtk4-runtime-missing"],
-        .. LinuxDesktopRuntime.IsLibraryAvailable("libwebkitgtk-6.0.so.4") || LinuxDesktopRuntime.IsLibraryAvailable("libwebkitgtk-6.0.so.0")
-            ? Array.Empty<string>()
-            : ["webkitgtk6-runtime-missing"],
-    ];
+    [Fact]
+    public void PresentationAvailabilityComparesDiagnosticsByValue()
+    {
+        DesktopPresentationAvailability Create() => new(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, Missing("first"))
+        {
+            Diagnostics = [Missing("first"), Missing("second")],
+        };
+
+        var left = Create();
+        var right = Create();
+
+        Assert.NotSame(left.Diagnostics, right.Diagnostics);
+        Assert.Equal(left, right);
+        Assert.Equal(left.GetHashCode(), right.GetHashCode());
+        Assert.NotEqual(left, right with { Diagnostics = [Missing("first")] });
+        Assert.NotEqual(left, right with { Diagnostics = [Missing("second"), Missing("first")] });
+    }
+
+    [Fact]
+    public async Task RepeatedAvailabilityIsEqual()
+    {
+        await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new UnavailableFactory([Missing("first"), Missing("second")]) });
+
+        Assert.Equal(host.GetAvailability().Presentations, host.GetAvailability().Presentations);
+    }
+
+    [Fact]
+    public void PresentationDiagnosticIsAlwaysTheFirstOfDiagnostics()
+    {
+        var availability = new DesktopPresentationAvailability(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, Missing("first"))
+        {
+            Diagnostics = [Missing("first"), Missing("second")],
+        };
+
+        var replaced = availability with { Diagnostic = Missing("other") };
+        var cleared = availability with { Diagnostic = null };
+        var relisted = availability with { Diagnostics = [Missing("third")] };
+
+        Assert.Equal([Missing("other")], replaced.Diagnostics);
+        Assert.Same(replaced.Diagnostics[0], replaced.Diagnostic);
+        Assert.Empty(cleared.Diagnostics);
+        Assert.Null(cleared.Diagnostic);
+        Assert.Equal(Missing("third"), relisted.Diagnostic);
+        Assert.Equal(["first", "second"], availability.Diagnostics.Select(static item => item.Code));
+        Assert.Throws<ArgumentException>(() => availability with { Diagnostics = [null!] });
+    }
+
+    private static DesktopDiagnostic Missing(string code) => new(DesktopErrorCategory.Unavailable, code, "Missing.", Retryable: false);
+
+    // Decides which native libraries exist and, optionally, hides the graphical session for one test.
+    private sealed class LinuxProbeScope : IDisposable
+    {
+        private readonly string? _display = Environment.GetEnvironmentVariable("DISPLAY");
+        private readonly string? _waylandDisplay = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
+        private readonly bool _graphicalSession;
+
+        public LinuxProbeScope(Func<string, bool> probe, bool graphicalSession = true)
+        {
+            _graphicalSession = graphicalSession;
+            LinuxDesktopRuntime.LibraryProbeOverride = probe;
+            if (!graphicalSession)
+            {
+                Environment.SetEnvironmentVariable("DISPLAY", null);
+                Environment.SetEnvironmentVariable("WAYLAND_DISPLAY", null);
+            }
+        }
+
+        public void Dispose()
+        {
+            LinuxDesktopRuntime.LibraryProbeOverride = null;
+            if (!_graphicalSession)
+            {
+                Environment.SetEnvironmentVariable("DISPLAY", _display);
+                Environment.SetEnvironmentVariable("WAYLAND_DISPLAY", _waylandDisplay);
+            }
+        }
+    }
 
     private sealed class UnavailableFactory(IReadOnlyList<DesktopDiagnostic> diagnostics) : IDesktopWindowHostFactory
     {

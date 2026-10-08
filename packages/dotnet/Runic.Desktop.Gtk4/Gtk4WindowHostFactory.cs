@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.ExceptionServices;
 
 using Gtk;
+using Runic.Desktop.Internal;
 using WebKit;
 
 namespace Runic.Desktop.Gtk4;
@@ -252,8 +253,8 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory
 
 internal static class Gtk4Runtime
 {
-    private static readonly string[] GtkNames = ["libgtk-4.so.1"];
-    private static readonly string[] WebKitNames = ["libwebkitgtk-6.0.so.4", "libwebkitgtk-6.0.so.0"];
+    private static readonly string[] GtkNames = [Gtk4NativeLibraries.Gtk];
+    private static readonly string[] WebKitNames = Gtk4NativeLibraries.WebKit;
 
     internal static bool IsAvailable => CanFind(GtkNames) && CanFind(WebKitNames);
 

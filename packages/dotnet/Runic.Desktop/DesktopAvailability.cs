@@ -8,17 +8,56 @@ public sealed record DesktopPresentationAvailability(
     DesktopWindowCapabilities Capabilities,
     DesktopDiagnostic? Diagnostic)
 {
-    private readonly IReadOnlyList<DesktopDiagnostic>? _diagnostics;
+    private readonly DesktopDiagnostic[] _diagnostics = Diagnostic is null ? [] : [Diagnostic];
+
+    /// <summary>Gets the first missing prerequisite of an unavailable presentation, or <see langword="null"/>.</summary>
+    /// <remarks>
+    /// Always the first entry of <see cref="Diagnostics"/>. Setting it, including through a <see langword="with"/>
+    /// expression, replaces <see cref="Diagnostics"/> with this diagnostic alone, or with none.
+    /// </remarks>
+    public DesktopDiagnostic? Diagnostic
+    {
+        get => _diagnostics.Length == 0 ? null : _diagnostics[0];
+        init => _diagnostics = value is null ? [] : [value];
+    }
 
     /// <summary>Gets every missing prerequisite of an unavailable presentation, not only the first.</summary>
     /// <remarks>
     /// For example, a GTK4 selection without its provider reports the provider and each missing native library.
-    /// <see cref="Diagnostic"/> is the first entry. When not set, the list holds <see cref="Diagnostic"/>, if any.
+    /// <see cref="Diagnostic"/> is the first entry; setting this list after it replaces it.
     /// </remarks>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics
     {
-        get => _diagnostics ?? (Diagnostic is null ? [] : [Diagnostic]);
-        init => _diagnostics = value ?? throw new ArgumentNullException(nameof(value));
+        get => _diagnostics;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            DesktopDiagnostic[] diagnostics = [.. value];
+            if (Array.IndexOf(diagnostics, null) >= 0) throw new ArgumentException("Diagnostics cannot contain null.", nameof(value));
+            _diagnostics = diagnostics;
+        }
+    }
+
+    /// <summary>Compares every member, and the diagnostics by value and order.</summary>
+    public bool Equals(DesktopPresentationAvailability? other) =>
+        ReferenceEquals(this, other) ||
+        other is not null &&
+        Browser == other.Browser &&
+        IsAvailable == other.IsAvailable &&
+        string.Equals(ExecutablePath, other.ExecutablePath, StringComparison.Ordinal) &&
+        Capabilities == other.Capabilities &&
+        _diagnostics.AsSpan().SequenceEqual(other._diagnostics);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        HashCode hash = new();
+        hash.Add(Browser);
+        hash.Add(IsAvailable);
+        hash.Add(ExecutablePath, StringComparer.Ordinal);
+        hash.Add(Capabilities);
+        foreach (var diagnostic in _diagnostics) hash.Add(diagnostic);
+        return hash.ToHashCode();
     }
 }
 

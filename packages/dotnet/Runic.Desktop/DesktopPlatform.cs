@@ -196,10 +196,10 @@ public static class DesktopPlatform
     /// <summary>Reports each GTK 4 or WebKitGTK 6 library the native loader cannot find.</summary>
     internal static IEnumerable<DesktopDiagnostic> GetGtk4LibraryDiagnostics()
     {
-        if (!LinuxDesktopRuntime.IsLibraryAvailable("libgtk-4.so.1"))
+        if (!LinuxDesktopRuntime.IsLibraryAvailable(Gtk4NativeLibraries.Gtk))
             yield return Missing("gtk4-runtime-missing", "The GTK 4 library libgtk-4.so.1 was not discovered.",
                 "Install GTK 4.12 or newer (for example libgtk-4-1) in the native loader search path.");
-        if (!LinuxDesktopRuntime.IsLibraryAvailable("libwebkitgtk-6.0.so.4") && !LinuxDesktopRuntime.IsLibraryAvailable("libwebkitgtk-6.0.so.0"))
+        if (!Gtk4NativeLibraries.WebKit.Any(LinuxDesktopRuntime.IsLibraryAvailable))
             yield return Missing("webkitgtk6-runtime-missing", "The WebKitGTK 6.0 library libwebkitgtk-6.0.so.4 was not discovered.",
                 "Install WebKitGTK 6.0 (for example libwebkitgtk-6.0-4) in the native loader search path.");
     }
