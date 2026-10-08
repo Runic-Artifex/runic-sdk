@@ -436,8 +436,21 @@ window's session.
 
 ### Entry lifecycle
 
-An entry goes `Pending → Active ⇄ Retained → Retired`. A push that never
-commits goes `Pending → Retired`.
+An entry starts `Pending` and becomes `Active` when its push commits. It then
+moves between `Active` and `Retained` as pushes and Backs commit, and ends
+`Retired`. Every state can retire:
+
+```text
+Pending ──commit──▶ Active ◀──Push / Back(To)──▶ Retained
+   │                  │                              │
+   │ not committed    │ Back, Replace,               │ BackTo, Reset,
+   │                  │ Reset, Clear                 │ ClearHistory, Clear
+   ▼                  ▼                              ▼
+                    Retired
+```
+
+A closing parent region or navigator disposal also retires entries in any
+state.
 
 | State | Meaning |
 | --- | --- |
@@ -463,10 +476,10 @@ A failed step is logged as event 1064.
 
 | Phase | Where | What happens |
 | --- | --- | --- |
-| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of this region or an ancestor; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing. It also supersedes those of the child regions its plan affects. |
+| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing. It also supersedes those of the child regions its plan affects. |
 | Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
-| Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies and raises `PropertyChanged`. A handler that throws is logged (event 1063), and the commit stands. |
+| Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies and raises `PropertyChanged`. A handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. |
 | Committed | Outside model turns | Admission is released, and departing entries retire. The returned `ValueTask` completes after that cleanup. |
 
 - A request is superseded only before it commits, never after. A cancelled
@@ -573,20 +586,49 @@ asynchronously, after the commit turn. A completion is set when the entry
 starts retiring, so it can be observed while the entry's owned content is
 still being disposed.
 
+The confirm example below follows the
+[Notes example](../../../examples/notes-view-first/README.md). Its guard
+only decides. Guards can run again for the same departure, and a guard's
+`true` is not a commit, because a later request can still supersede the Back.
+So the guard reads the draft on a model turn and asks again on each run, and
+the draft is discarded only when `Main` leaves the document, in the commit
+turn. Cancel must always end the question. If its `CompleteAsync` is
+rejected, for example because something was pushed over the confirm, the
+confirm cancels a token that the guard linked into the request. That dismisses
+the request instead.
+
 ```csharp
 // The document's departure guard asks in a sibling Dialog region.
 public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken token)
 {
-    if (departure.Kind == NavigationDepartureKind.Retain || !Editor.IsDirty) return true;
-    var request = dialog.PushForResult<bool>(NavigationTarget.Own<IDialogViewModel>(
-        new ConfirmNavigationViewModel("Discard the unsaved edits?")), cancellationToken: token);
-    return await request.Completion is NavigationCompletion<bool>.Completed { Value: true };
+    _discardOnDeparture = false;
+    if (departure.Kind != NavigationDepartureKind.Retire) return true;
+    if (!await _context.InvokeAsync(() => Editor.IsDirty)) return true; // guards run outside model turns
+    var confirm = new ConfirmNavigationViewModel("Discard the unsaved edits?");
+    using var answer = CancellationTokenSource.CreateLinkedTokenSource(token, confirm.Dismissal);
+    var request = dialog.PushForResult<bool>(NavigationTarget.Own<IDialogViewModel>(confirm),
+        cancellationToken: answer.Token);
+    if (await request.Completion is not NavigationCompletion<bool>.Completed { Value: true }) return false;
+    _discardOnDeparture = true; // discard when the Back commits, not here
+    return true;
+}
+
+// Main's PropertyChanged handler runs in the commit turn.
+private void OnMainChanged(object? sender, PropertyChangedEventArgs e)
+{
+    if (e.PropertyName == nameof(main.Current) && _discardOnDeparture && !ReferenceEquals(main.Current, this))
+    { _discardOnDeparture = false; Editor.DiscardChanges(); }
 }
 
 // The confirm captures its entry in InitializeAsync and answers with it.
 public ValueTask InitializeAsync(NavigationEntryContext entry, CancellationToken token)
 { _entry = entry; return ValueTask.CompletedTask; }
 private Task Confirm() => _entry.CompleteAsync(true).AsTask();
+private async Task Cancel()
+{
+    if (await _entry.CompleteAsync(false) is not NavigationResult<object>.Committed)
+        await _dismissal.CancelAsync(); // _dismissal.Token is Dismissal
+}
 ```
 
 ### Window close and disposal
@@ -619,9 +661,11 @@ operations that its owned content started, and then disposes that content.
 - A child guard that commits a change in its own region supersedes the
   parent's transition, because the parent's commit sees the child's version
   change.
-- A request from a hook into the same region, or into one of its descendants,
-  is `Rejected(Reentrant)`. For example, a parent's `InitializeAsync` cannot
-  push into its own child region; push after the transition commits.
+- A request from a hook into the same region, one of its descendants or one of
+  its ancestors is `Rejected(Reentrant)`. For example, a parent's
+  `InitializeAsync` cannot push into its own child region, and a `CurrentPane`
+  guard cannot call `Main.BackAsync()` on the region that holds its document.
+  Issue the request after the transition commits.
 
 ### Logging
 
@@ -630,7 +674,8 @@ Navigation logs events 1060-1071 under `Runic.Application.Views` (see
 the exception. Rejections, supersessions and dismissed results log at Debug.
 The properties are `Region` (the `TContent` type name), `RegionId` (a
 per-navigator number that tells apart regions with the same `TContent`),
-`Operation`, `EntryType`, `Step`, `Reason` and `ErrorType`, never values.
+`Operation`, `EntryType`, `Step`, `Reason`, `Property` (event 1063, the region
+property whose handler threw) and `ErrorType`, never values.
 The reserved ranges are listed under [Logging and telemetry](#logging-and-telemetry).
 
 ## Logging and telemetry

@@ -146,8 +146,9 @@ var home = host.Root.View<HomeViewModel>(vm => vm.Main); // the resumed entry
   running.
 - `navigator.UnretiredEntryCount()` counts entries that have not finished
   retiring (zero after `DisposeAsync`), and
-  `host.Content.RetainedContentModelCount()` counts the content models whose
-  model-context leases the window holds.
+  `host.Content.RetainedContentModelCount()`, an extension on the window's
+  `WindowContentSession`, counts the content models whose model-context leases
+  the window holds.
 - Pass a `FakeTimeProvider` as `RunicNavigatorOptions.TimeProvider` to drive the
   close timeout and the overrun warning (event 1067) without waiting.
 
