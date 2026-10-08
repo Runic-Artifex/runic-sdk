@@ -26,9 +26,13 @@ export function keepFocusAcrossDisabling(): void {
     returnTo = null; // focus moved on; nothing to return to
   }, true);
   // Focus that leaves a control still enabled, such as a click on a blank area, is not
-  // lost to disabling, so a later disable and enable must not take it back.
+  // lost to disabling, so a later disable and enable must not take it back. A focusout
+  // also fires when the whole window loses focus, for example to another application or a
+  // native dialog. The control then still holds focus and nothing took it, so it stays
+  // remembered: a navigation may disable it while the window is in the background.
   document.addEventListener("focusout", event => {
     if (!(event.target instanceof HTMLElement) || isDisabled(event.target)) return;
+    if (!document.hasFocus() || (event.relatedTarget === null && document.activeElement === event.target)) return;
     if (event.target === lastFocused) lastFocused = null;
     if (event.target === returnTo) returnTo = null;
   }, true);

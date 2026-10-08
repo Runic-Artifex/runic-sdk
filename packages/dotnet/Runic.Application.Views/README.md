@@ -615,15 +615,17 @@ public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, Cance
     return true;
 }
 
-// The caller of the Back forgets the yes when the Back is superseded, rejected or fails.
-// in the workspace
+// In the workspace: the caller of the Back forgets the yes when the Back is superseded,
+// rejected or fails.
 public async Task OpenHomeAsync()
 {
     var leaving = main.Current as DocumentViewModel;
-    if (await main.BackAsync() is not NavigationResult<IMainViewModel>.Committed) leaving?.ForgetConfirmedDeparture();
+    var committed = false;
+    try { committed = await main.BackAsync() is NavigationResult<IMainViewModel>.Committed; }
+    finally { if (!committed) leaving?.ForgetConfirmedDeparture(); } // also when Back throws
 }
 
-// in the document
+// In the document:
 internal void ForgetConfirmedDeparture() => _discardOnDeparture = false;
 
 // Main's PropertyChanged handler runs in the commit turn.

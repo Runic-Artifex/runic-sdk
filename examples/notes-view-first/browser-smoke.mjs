@@ -68,6 +68,30 @@ try {
     return document.activeElement !== button;
   })()`);
   if (!blankAreaKept) throw new Error("Focus returned to a button it had left while enabled.");
+  // A window that loses focus fires focusout while the button still holds it, so the button stays
+  // remembered and is restored when disabled and enabled in the background. Both signals are
+  // simulated: the focused button, and a window that reports no focus.
+  const windowBlurKept = await query(`(async () => {
+    const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    const button = document.querySelector("[data-go=notes]");
+    const results = [];
+    for (const noFocus of [false, true]) {
+      const hasFocus = document.hasFocus;
+      if (noFocus) document.hasFocus = () => false;
+      button.focus();
+      button.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: noFocus ? document.body : null }));
+      button.disabled = true;
+      button.blur();
+      await frame();
+      button.disabled = false;
+      await frame();
+      results.push(document.activeElement === button);
+      document.hasFocus = hasFocus;
+      button.blur();
+    }
+    return results;
+  })()`);
+  if (!windowBlurKept.every(Boolean)) throw new Error(`Focus did not return after a window-level blur: ${JSON.stringify(windowBlurKept)}`);
   const documentId = (await snapshot("shell")).state.main.id;
   const editorId = (await snapshot(`content${documentId}`)).state.currentPane.id;
   await change("#document-pane input", "Draft");
