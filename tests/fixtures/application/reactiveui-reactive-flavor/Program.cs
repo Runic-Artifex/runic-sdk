@@ -8,6 +8,7 @@ using ReactiveUI.Reactive;
 using ReactiveUiReactiveFlavorProof;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI.Reactive;
+using Runic.Navigation.ReactiveUI.Reactive;
 using Runic.Application.Testing;
 using Splat;
 using Runic.Navigation;

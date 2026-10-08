@@ -21,6 +21,8 @@
     <Project Path="packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <Project Path="packages/dotnet/Runic.Navigation/Runic.Navigation.csproj" />
+    <Project Path="packages/dotnet/Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj" />
+    <Project Path="packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/Runic.Application.Views.ReactiveUI.Reactive.csproj" />
@@ -48,6 +50,8 @@
     <Project Path="tests/dotnet/Runic.Application.Desktop.Tests/Runic.Application.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Testing.Tests/Runic.Application.Testing.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Navigation.Tests/Runic.Navigation.Tests.csproj" />
+    <Project Path="tests/fixtures/navigation/reactiveui-adapter/Runic.Navigation.ReactiveUI.Tests.csproj" />
+    <Project Path="tests/fixtures/navigation/reactiveui-adapter/Runic.Navigation.ReactiveUI.Reactive.Tests.csproj" />
     <Project Path="tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.ReactiveUI.Conformance.Tests.csproj" />
     <Project Path="tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.ReactiveUI.Reactive.Conformance.Tests.csproj" />
   </Folder>

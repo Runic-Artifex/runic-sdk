@@ -11,21 +11,19 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
         }
       },
-      "ReactiveUI.Reactive": {
+      "ReactiveUI": {
         "type": "Direct",
         "requested": "[26.0.1, )",
         "resolved": "26.0.1",
-        "contentHash": "+JsAEyZnLCm1xluXsyHBrHF94vezbwCgnHHhwCGjO3OoAOuBSmj9hCOz9wJMDhLEHoP0A8+6bFiz/SMye5++/w==",
+        "contentHash": "/TTrqJ++MkBdNqDNZqOWDFfsOfVCSik3sTmXPqrYnIp7lMspXqXwL7dQEWcycqWSxkPdYt6UxXYLJfGRObB06g==",
         "dependencies": {
-          "ReactiveUI.Binding.Reactive": "9.1.0",
+          "ReactiveUI.Binding": "9.1.0",
           "ReactiveUI.Core": "26.0.1",
           "ReactiveUI.Disposables": "9.0.0",
           "ReactiveUI.Primitives": "9.0.0",
           "ReactiveUI.Primitives.Core": "9.0.0",
-          "ReactiveUI.Primitives.Reactive": "9.0.0",
           "ReactiveUI.SourceGenerators": "4.2.0",
-          "Splat": "21.0.0",
-          "System.Reactive": "7.0.0"
+          "Splat": "21.0.0"
         }
       },
       "ReactiveUI.Core": {
@@ -62,15 +60,6 @@
           "ReactiveUI.Disposables": "9.0.0"
         }
       },
-      "ReactiveUI.Primitives.Reactive": {
-        "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "npVaR5VkmgyLGmgElVdZuLiQcI7iIe58QaR3qaqmhtPrdnKzlKhIHrLDGoSgt2NdGbGBY6IOJqZzhv51GIhDgg==",
-        "dependencies": {
-          "ReactiveUI.Primitives.Core": "9.0.0",
-          "System.Reactive": "7.0.0"
-        }
-      },
       "Splat.Builder": {
         "type": "Transitive",
         "resolved": "21.0.0",
@@ -97,35 +86,6 @@
           "Splat.Core": "21.0.0"
         }
       },
-      "System.Reactive": {
-        "type": "Transitive",
-        "resolved": "7.0.0",
-        "contentHash": "VYaSP2Kt+45GFnr3q7c/b4awT48VvueOJV4jPjdUXi5MxC9mSUy+HkJYtm8rGZ6fC3tNHG9gBu/YwNAR/FYqhg=="
-      },
-      "Runic.Application": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
-        }
-      },
-      "Runic.Application.ReactiveUI.Reactive": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "ReactiveUI.Reactive": "[26.0.1, )",
-          "Runic.Application": "[0.7.0-preview.4, )",
-          "Runic.Navigation.ReactiveUI.Reactive": "[0.7.0-preview.4, )"
-        }
-      },
-      "runic.application.testing": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, )",
-          "Runic.Application": "[0.7.0-preview.4, )"
-        }
-      },
       "runic.navigation": {
         "type": "Project",
         "dependencies": {
@@ -133,16 +93,13 @@
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
         }
       },
-      "runic.navigation.reactiveui.reactive": {
+      "runic.navigation.reactiveui": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "ReactiveUI.Reactive": "[26.0.1, )",
+          "ReactiveUI": "[26.0.1, )",
           "Runic.Navigation": "[0.7.0-preview.4, )"
         }
-      },
-      "runic.platform": {
-        "type": "Project"
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "CentralTransitive",
@@ -159,21 +116,14 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
         }
       },
-      "Microsoft.Extensions.TimeProvider.Testing": {
-        "type": "CentralTransitive",
-        "requested": "[10.10.0, )",
-        "resolved": "10.10.0",
-        "contentHash": "8duZdxuO3Oo8tlyQXVq1drXee6GJC9DjUU97Pq3YaIqf92jrAHsWxbbRKwvjQI48Mer3IANwUKF0elqvHeY4Rw=="
-      },
-      "ReactiveUI.Binding.Reactive": {
+      "ReactiveUI.Binding": {
         "type": "CentralTransitive",
         "requested": "[9.1.0, )",
         "resolved": "9.1.0",
-        "contentHash": "NBFC53cWyTE1OEzHgXPqKB4+uHMOP9WVPm+3eHxN2gRU1x89xOYhRnu5jBDP8Anu3DrYhtdonhqs+lOxLac2cA==",
+        "contentHash": "uij1S1MQxQCG1zJTpxepsc7yt7NBTfxK24niyi9EGapneCulvjaArSy4DT3te/kuln9IubexhDo23QBt3VslZQ==",
         "dependencies": {
-          "ReactiveUI.Primitives.Reactive": "9.0.0",
-          "Splat": "21.0.0",
-          "System.Reactive": "7.0.0"
+          "ReactiveUI.Primitives": "9.0.0",
+          "Splat": "21.0.0"
         }
       },
       "ReactiveUI.SourceGenerators": {

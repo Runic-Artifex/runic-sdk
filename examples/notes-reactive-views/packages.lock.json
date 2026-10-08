@@ -197,7 +197,8 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "ReactiveUI": "[26.0.1, )",
-          "Runic.Application": "[0.7.0-preview.4, )"
+          "Runic.Application": "[0.7.0-preview.4, )",
+          "Runic.Navigation.ReactiveUI": "[0.7.0-preview.4, )"
         }
       },
       "runic.navigation": {
@@ -205,6 +206,14 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
+        }
+      },
+      "runic.navigation.reactiveui": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "ReactiveUI": "[26.0.1, )",
+          "Runic.Navigation": "[0.7.0-preview.4, )"
         }
       },
       "CsWebUi": {

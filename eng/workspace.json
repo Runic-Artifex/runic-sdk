@@ -65,6 +65,14 @@
       "project": "packages/dotnet/Runic.Navigation/Runic.Navigation.csproj"
     },
     {
+      "name": "Runic.Navigation.ReactiveUI",
+      "project": "packages/dotnet/Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj"
+    },
+    {
+      "name": "Runic.Navigation.ReactiveUI.Reactive",
+      "project": "packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj"
+    },
+    {
       "name": "Runic.Application",
       "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
@@ -181,7 +189,10 @@
       "dependsOn": [],
       "paths": [
         "packages/dotnet/Runic.Navigation",
+        "packages/dotnet/Runic.Navigation.ReactiveUI",
+        "packages/dotnet/Runic.Navigation.ReactiveUI.Reactive",
         "tests/dotnet/Runic.Navigation.Tests",
+        "tests/fixtures/navigation",
         "tests/fixtures/navigation"
       ]
     },

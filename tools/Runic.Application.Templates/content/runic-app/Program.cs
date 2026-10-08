@@ -2,7 +2,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views.Desktop;
 #if (viewModels == "reactiveui")
-using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation.ReactiveUI;
 #endif
 using Runic.Desktop;
 #if (gtk4)
@@ -63,7 +63,7 @@ using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views.CsWebUi;
 #if (viewModels == "reactiveui")
-using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation.ReactiveUI;
 #endif
 using RunicWindowApp;
 

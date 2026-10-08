@@ -4,7 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
-import { plan, skippableJobs, managedGroups, webTests, outputs, affected, parseAffected } from './plan.mjs';
+import { plan, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected } from './plan.mjs';
 import { incomplete } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -239,4 +239,25 @@ test('the standalone navigation consumer belongs to the navigation component', (
   const result = plan(['tests/fixtures/navigation/standalone-consumer/Program.cs']);
   assert.ok(result.managed.includes('navigation'));
   assert.ok(runs(result, 'package-consumers'));
+});
+
+test('the ReactiveUI navigation adapters belong to the navigation component', () => {
+  for (const file of [
+    'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigation.cs',
+    'packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/ReactiveModelContextScheduler.cs',
+    'tests/fixtures/navigation/reactiveui-adapter/Program.cs',
+    'tests/fixtures/navigation/reactiveui-consumer/Program.cs',
+  ]) {
+    const result = plan([file]);
+    assert.ok(result.managed.includes('navigation'), file);
+    assert.ok(result.managed.includes('application'), file);
+    assert.ok(!result.managed.includes('assets'), file);
+    assert.ok(runs(result, 'package-consumers'), file);
+  }
+});
+
+test('the navigation group runs the adapter tests of both ReactiveUI flavors', () => {
+  const tests = managedTests().filter(test => test.group === 'navigation').map(test => test.path);
+  assert.ok(tests.some(path => path.endsWith('Runic.Navigation.ReactiveUI.Tests.csproj')));
+  assert.ok(tests.some(path => path.endsWith('Runic.Navigation.ReactiveUI.Reactive.Tests.csproj')));
 });

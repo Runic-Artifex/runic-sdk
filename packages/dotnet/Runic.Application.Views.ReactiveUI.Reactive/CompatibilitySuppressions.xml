@@ -2,43 +2,29 @@
 <!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
 <Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider.For(Runic.Application.Views.IRunicModelContext)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider</Target>
     <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation.CreateBackCommand``1(Runic.Application.Views.NavigationRegion{``0},System.Reactive.Concurrency.IScheduler)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation</Target>
     <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation.WhenCurrentChanged``1(Runic.Application.Views.NavigationRegion{``0})</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions</Target>
     <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
   <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Application.Views.ReactiveUI.Reactive.ReactiveNavigation.WhenEntryChanged``1(Runic.Application.Views.NavigationRegion{``0})</Target>
-    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Left>
-    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0002</DiagnosticId>
-    <Target>M:Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.For(Runic.Application.Views.IRunicModelContext)</Target>
-    <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Left>
-    <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Right>
-    <IsBaselineSuppression>true</IsBaselineSuppression>
-  </Suppression>
-  <Suppression>
-    <DiagnosticId>CP0006</DiagnosticId>
-    <Target>M:Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext)</Target>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider</Target>
     <Left>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Left>
     <Right>lib/net10.0/Runic.Application.Views.ReactiveUI.Reactive.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>

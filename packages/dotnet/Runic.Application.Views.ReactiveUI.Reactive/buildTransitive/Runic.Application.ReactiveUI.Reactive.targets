@@ -10,8 +10,12 @@
     <ItemGroup>
       <_RunicDefaultReactiveUiPackage Include="@(PackageReference)" Condition="'%(Identity)' == 'Runic.Application.ReactiveUI'" />
       <_RunicDefaultReactiveUiProject Include="@(ProjectReference)" Condition="'%(Filename)' == 'Runic.Application.Views.ReactiveUI'" />
+      <_RunicDefaultNavigationReactiveUiPackage Include="@(PackageReference)" Condition="'%(Identity)' == 'Runic.Navigation.ReactiveUI'" />
+      <_RunicDefaultNavigationReactiveUiProject Include="@(ProjectReference)" Condition="'%(Filename)' == 'Runic.Navigation.ReactiveUI'" />
     </ItemGroup>
     <Error Condition="'@(_RunicDefaultReactiveUiPackage)' != '' Or '@(_RunicDefaultReactiveUiProject)' != ''"
            Text="Runic.Application.ReactiveUI.Reactive uses ReactiveUI's System.Reactive flavor and cannot be referenced with Runic.Application.ReactiveUI. Select one ReactiveUI flavor for the application." />
+    <Error Condition="'@(_RunicDefaultNavigationReactiveUiPackage)' != '' Or '@(_RunicDefaultNavigationReactiveUiProject)' != ''"
+           Text="Runic.Application.ReactiveUI.Reactive uses ReactiveUI's System.Reactive flavor and cannot be referenced with Runic.Navigation.ReactiveUI. Reference Runic.Navigation.ReactiveUI.Reactive instead and select one ReactiveUI flavor for the application." />
   </Target>
 </Project>

@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Navigation.ReactiveUI.Reactive</PackageId>
+    <Description>System.Reactive-flavor observables, a back command and model-context schedulers for Runic.Navigation regions.</Description>
+    <PackageTags>runic-artifex;navigation;reactiveui;system-reactive;mvvm;dotnet</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- First published in 0.7.0-preview.4; remove after that release (eng/release/README.md). -->
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <!-- Selects the System.Reactive namespaces in the source shared with
+         Runic.Navigation.ReactiveUI. Only the scheduler adapter differs. -->
+    <DefineConstants>$(DefineConstants);SYSTEM_REACTIVE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="ReactiveUI.Reactive" />
+    <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigation.cs" Link="Shared/ReactiveNavigation.cs" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

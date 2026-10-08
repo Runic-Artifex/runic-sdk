@@ -1,8 +1,7 @@
-// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
-// Runic.Application.ReactiveUI.Reactive.
+// Shared by Runic.Navigation.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Navigation.ReactiveUI.Reactive.
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using Runic.Navigation;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
@@ -12,12 +11,11 @@ using ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 using FlavorScheduler = ReactiveUI.Primitives.Concurrency.ISequencer;
 #endif
-using Runic.Application.Views;
 
 #if SYSTEM_REACTIVE
-namespace Runic.Application.Views.ReactiveUI.Reactive;
+namespace Runic.Navigation.ReactiveUI.Reactive;
 #else
-namespace Runic.Application.Views.ReactiveUI;
+namespace Runic.Navigation.ReactiveUI;
 #endif
 
 /// <summary>
@@ -72,8 +70,9 @@ public static class ReactiveNavigation
     /// </summary>
     /// <remarks>
     /// A rejected, superseded or failed Back is a result, not an exception, so <c>ThrownExceptions</c>
-    /// reports only defects and cancellation. Observe it, for example with
-    /// <c>RunicReactiveExceptions.ObserveBridgeExceptions</c>.
+    /// reports only defects and cancellation. Subscribe to the command's <c>ThrownExceptions</c>; without a
+    /// subscriber ReactiveUI routes them to its default exception handler. Apps that use Runic Views
+    /// can use <c>RunicReactiveExceptions.ObserveBridgeExceptions</c> from <c>Runic.Application.ReactiveUI</c>.
     /// Cancelling an execution cancels the Back until it commits.
     /// The command observes the region through a <c>PropertyChanged</c> handler until the command is disposed,
     /// so dispose it with its owner, for example with <c>DisposeWith</c>.
