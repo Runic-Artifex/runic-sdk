@@ -42,6 +42,16 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Navigation.ReactiveUI",
+      "version": "0.7.0-preview.4"
+    },
+    {
+      "ecosystem": "nuget",
+      "identity": "Runic.Navigation.ReactiveUI.Reactive",
+      "version": "0.7.0-preview.4"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Application",
       "version": "0.7.0-preview.4"
     },
