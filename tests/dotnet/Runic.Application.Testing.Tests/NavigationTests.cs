@@ -28,6 +28,9 @@ internal static class NavigationTests
         await CloseChangesStateInsideTurnsAsync();
         await CloseTimeoutBoundsDisposalAsync();
         await CancellationCallbackFailureDoesNotAbortDisposalAsync();
+        await RetirementWaitsForInitializeAsync(timeOut: false);
+        await RetirementWaitsForInitializeAsync(timeOut: true);
+        await RetiredEntryNeverInitializesAsync();
         await GuardFailureDuringCloseIsRejectedAsync();
         await CreateRegionDisposesFactoryInstanceAsync();
         await SupersessionBeforeCommitAsync();
@@ -57,6 +60,8 @@ internal static class NavigationTests
         await RandomizedRaceAsync(seed: 61);
         await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true);
         await RandomizedRaceAsync(seed: 61, disposeDuringRace: true);
+        await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true, patient: true);
+        await RandomizedRaceAsync(seed: 61, disposeDuringRace: true, patient: true);
     }
 
     // ---- Basic operations ------------------------------------------------
@@ -423,6 +428,79 @@ internal static class NavigationTests
             // The notification owed for the cleared stack is raised once the turn is free.
             await Until(() => blocked.Seen.Contains(null), "The cleared region never raised its Current change.");
         }
+    }
+
+    // Retirement must not dispose content under a running initialize hook until
+    // CloseTimeout has passed; a hook that ignores cancellation holds it back.
+    private static async Task RetirementWaitsForInitializeAsync(bool timeOut)
+    {
+        var time = new FakeTimeProvider();
+        var fixture = new Fixture(null, time, TimeSpan.FromSeconds(10));
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var initDone = 0;
+        var disposedDuringInit = 0;
+        var page = new InitPage("slow")
+        {
+            Initialize = async (_, _) =>
+            {
+                started.SetResult();
+                await gate.Task;
+                Volatile.Write(ref initDone, 1);
+            },
+            OnDispose = () =>
+            {
+                if (Volatile.Read(ref initDone) == 0) Interlocked.Increment(ref disposedDuringInit);
+                return Task.CompletedTask;
+            },
+        };
+        var push = region.PushAsync(NavigationTarget.Own<Page>(page)).AsTask();
+        await Wait(started.Task);
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        // Expire the wait for the running transition; retirement then waits for the hook.
+        time.Advance(TimeSpan.FromSeconds(11));
+        await Task.Delay(300);
+        Require(page.Disposed == 0 && !disposal.IsCompleted, "Retirement disposed content under a running initialize hook.");
+        if (timeOut)
+        {
+            time.Advance(TimeSpan.FromSeconds(11));
+            await Wait(disposal);
+            Require(page.Disposed == 1, "The initialize wait did not respect the close timeout.");
+            gate.SetResult();
+        }
+        else
+        {
+            gate.SetResult();
+            await Wait(disposal);
+            Require(page.Disposed == 1 && disposedDuringInit == 0, "Content was disposed before its initialize hook returned.");
+        }
+        Require(await Wait(push) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, "The pending push was not rejected.");
+        await fixture.Context.DisposeAsync();
+    }
+
+    // A retirement that wins the claim keeps initialize from ever starting.
+    private static async Task RetiredEntryNeverInitializesAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var page = new InitPage("late");
+        var created = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The factory runs inline in the request, so issue it from another thread.
+        var push = Task.Run(async () => await region.PushAsync(NavigationTarget.Create<Page>(_ =>
+        {
+            created.SetResult();
+            proceed.Task.GetAwaiter().GetResult();
+            return page;
+        })));
+        await Wait(created.Task);
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        await Task.Delay(100);
+        proceed.SetResult();
+        await Wait(disposal);
+        await Wait(push);
+        Require(page.Initialized == 0 && page.Disposed == 1, $"Initialize ran {page.Initialized} times on content retired before it started.");
     }
 
     private static async Task CancellationCallbackFailureDoesNotAbortDisposalAsync()
@@ -1091,15 +1169,17 @@ internal static class NavigationTests
 
     // disposeDuringRace disposes the navigator while the workers are still running,
     // with a zero CloseTimeout, so retirement overlaps admitted transitions.
-    private static async Task RandomizedRaceAsync(int seed, bool disposeDuringRace = false)
+    private static async Task RandomizedRaceAsync(int seed, bool disposeDuringRace = false, bool patient = false)
     {
         RacePage.Calm = false;
         var master = new Random(seed);
-        var state = new RaceState(seed);
+        // A zero CloseTimeout lets disposal overrun an initialize hook that already started, by design;
+        // only the patient and non-disposing variants require that initialize never overlaps disposal.
+        var state = new RaceState(seed) { StrictInit = !disposeDuringRace || patient };
         var violations = state.Violations;
         var created = new ConcurrentQueue<RacePage>();
         var pool = Enumerable.Range(0, 4).Select(index => new RacePage($"borrowed{index}", state)).ToArray();
-        var fixture = new Fixture(closeTimeout: disposeDuringRace ? TimeSpan.Zero : null);
+        var fixture = new Fixture(closeTimeout: disposeDuringRace && !patient ? TimeSpan.Zero : null);
         var region = fixture.Navigator.CreateRegion<RacePage>(fixture.Root, NavigationTarget.Borrow(pool[0]));
         var childRegions = new ConcurrentQueue<NavigationRegion<RacePage>>();
         var checking = true;
@@ -1479,6 +1559,7 @@ internal static class NavigationTests
         private readonly Dictionary<NavigationRegion<RacePage>, List<string>> _guardsInRegion = [];
         private int _guardsRun;
 
+        public bool StrictInit { get; init; } = true;
         public ConcurrentQueue<string> Violations { get; } = new();
         public int GuardsRun => Volatile.Read(ref _guardsRun);
 
@@ -1539,7 +1620,7 @@ internal static class NavigationTests
         // never awaits guards), so only initialize is checked.
         protected async ValueTask Hook(int failure, CancellationToken cancellationToken)
         {
-            if (failure == 1 && Disposed > 0) state.Violations.Enqueue($"{Name} was initialized after disposal");
+            if (failure == 1 && Disposed > 0 && state.StrictInit) state.Violations.Enqueue($"{Name} was initialized after disposal");
             if (Delay == 1) await Task.Yield();
             else if (Delay == 2) await Task.Delay(1, cancellationToken);
             if (!Calm && Behavior == failure) throw new RaceException();

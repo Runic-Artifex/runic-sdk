@@ -106,6 +106,10 @@ internal sealed class NavigationEntryCore
     // Set once by the path that starts retirement (the atomic move to Retiring).
     public Task? Retiring { get; set; }
 
+    // Set under the navigator gate while the initialize hook runs. Retirement of
+    // owned content waits for it (bounded by CloseTimeout) before disposing.
+    public Task? Initializing { get; set; }
+
     public NavigationEntryState State => Phase switch
     {
         NavigationEntryPhase.Pending => NavigationEntryState.Pending,

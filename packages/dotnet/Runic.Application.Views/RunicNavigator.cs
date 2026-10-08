@@ -261,6 +261,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// turns is bounded by <see cref="RunicNavigatorOptions.CloseTimeout"/> for the whole disposal: when a turn stays blocked,
     /// that region is cleared outside a turn after the timeout and a warning (1068) is logged, the notifications it owes
     /// are posted, and the remaining regions are cleared without waiting. Disposal always completes; content disposal itself is not bounded.
+    /// Retiring an entry whose initialize hook is running waits for the hook, up to the close timeout, before it disposes the content;
+    /// an initialize hook never starts on content that retirement already claimed.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
@@ -597,10 +599,30 @@ public sealed class RunicNavigator : IAsyncDisposable
                 }
                 if (token.IsCancellationRequested) return CancelledOutcome(transition);
                 var content_ = entry.Content!;
-                if (target.HasInput)
-                    await InvokeHook(transition, () => target.InitializeWithInputAsync(content_, entry.Context, token)).ConfigureAwait(false);
-                else if (content_ is INavigationInitialize initialize)
-                    await InvokeHook(transition, () => initialize.InitializeAsync(entry.Context, token)).ConfigureAwait(false);
+                TaskCompletionSource? initializing = null;
+                if (target.HasInput || entry.Content is INavigationInitialize)
+                {
+                    // Claim "initializing" under the gate retirement uses: either
+                    // retirement already won and initialize never starts, or
+                    // retirement waits for this hook before disposing the content.
+                    lock (Gate)
+                    {
+                        if (entry.Retiring is null)
+                        {
+                            initializing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                            entry.Initializing = initializing.Task;
+                        }
+                    }
+                    if (initializing is null) return NavigationOutcome.Reject(NavigationRejection.Closed);
+                }
+                try
+                {
+                    if (target.HasInput)
+                        await InvokeHook(transition, () => target.InitializeWithInputAsync(content_, entry.Context, token)).ConfigureAwait(false);
+                    else if (content_ is INavigationInitialize initialize)
+                        await InvokeHook(transition, () => initialize.InitializeAsync(entry.Context, token)).ConfigureAwait(false);
+                }
+                finally { initializing?.TrySetResult(); }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -935,6 +957,17 @@ public sealed class RunicNavigator : IAsyncDisposable
             var content = entry.Content;
             if (entry.Owned && content is not null)
             {
+                // An initialize hook that already started owns the content until it
+                // returns; wait for it, bounded by CloseTimeout. A hook that never
+                // returns is abandoned after the timeout.
+                Task? initializing;
+                lock (Gate) initializing = entry.Initializing;
+                if (initializing is { IsCompleted: false })
+                {
+                    try { await initializing.WaitAsync(_closeTimeout, _time).ConfigureAwait(false); }
+                    catch (Exception error) { LogCleanup(entry, "Initialize", error); }
+                }
+
                 // 2. Close child regions without awaiting their transitions,
                 // then retire their entries depth-first.
                 List<NavigationRegionCore>? children;
