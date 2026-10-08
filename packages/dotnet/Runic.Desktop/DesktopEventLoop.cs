@@ -33,7 +33,7 @@ public static class DesktopEventLoop
     /// <para>
     /// An event-loop factory that is not supported, or whose <see cref="IDesktopEventLoopWindowHostFactory.PrepareEventLoop"/>
     /// reports that it cannot run (for example because no display is available), is not started. The reasons are
-    /// reported to <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger, and the host runs on the
+    /// reported as warnings to <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger, and the host runs on the
     /// plain loop so a browser fallback can open. The host is disposed before the loop ends.
     /// </para>
     /// </remarks>
@@ -152,6 +152,8 @@ public static class DesktopEventLoop
         {
             Severity = DesktopDiagnosticSeverity.Warning,
         });
-        foreach (var reason in reasons) host.ReportConfiguration(reason);
+        // The application continues on the plain loop, so the reasons are warnings, not errors.
+        foreach (var reason in reasons)
+            host.ReportConfiguration(reason with { Severity = DesktopDiagnosticSeverity.Warning });
     }
 }

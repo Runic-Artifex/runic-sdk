@@ -81,8 +81,6 @@ static void AssertRunnerContract()
     }
 }
 
-// DesktopEventLoop.Run must hand WithGtk4() options to Gtk4Application.Run: otherwise opening the window
-// fails because the GTK 4 factory only creates hosts inside the runner.
 // Without a display DesktopEventLoop.Run must not start GTK: it reports gtk4-display-unavailable, runs the plain
 // loop, and the GTK 4 factory is unsupported from then on, so a browser fallback can take over.
 [SupportedOSPlatform("linux")]
@@ -117,8 +115,25 @@ static void RunNoDisplaySmoke()
     {
         throw new InvalidOperationException("The GTK 4 factory stayed supported after no display could be opened.");
     }
+    // The application continues on the plain loop, so every forwarded reason is a warning.
+    if (reported.Any(static diagnostic => diagnostic.Severity != DesktopDiagnosticSeverity.Warning))
+    {
+        throw new InvalidOperationException("The no-display fallback reported an error although the application continued.");
+    }
+
+    // A direct Gtk4Application.Run without a display throws instead of letting gtk_init end the process.
+    try
+    {
+        Gtk4Application.Run(static () => Task.FromResult(0), "dev.runic.desktop.gtk4.NoDisplaySmoke");
+        throw new InvalidOperationException("Gtk4Application.Run started without a display.");
+    }
+    catch (PlatformNotSupportedException)
+    {
+    }
 }
 
+// DesktopEventLoop.Run must hand WithGtk4() options to Gtk4Application.Run: otherwise opening the window
+// fails because the GTK 4 factory only creates hosts inside the runner.
 [SupportedOSPlatform("linux")]
 static void RunEventLoopSmoke()
 {

@@ -40,6 +40,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Equal(0, factory.Runs);
         Assert.Equal(0, factory.Prepares);
         Assert.Equal(["event-loop-unavailable", "loop-runtime-missing"], reported.Select(static d => d.Code));
+        Assert.All(reported, static d => Assert.Equal(DesktopDiagnosticSeverity.Warning, d.Severity));
         Assert.Contains("loop-runtime-missing", reported[0].Message, StringComparison.Ordinal);
     }
 
@@ -65,7 +66,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Equal(1, factory.Prepares);
         Assert.Equal(0, factory.Runs);
         Assert.Equal(["event-loop-unavailable", "loop-display-unavailable"], reported.Select(static d => d.Code));
-        Assert.Equal(DesktopDiagnosticSeverity.Warning, reported[0].Severity);
+        Assert.All(reported, static d => Assert.Equal(DesktopDiagnosticSeverity.Warning, d.Severity));
         Assert.Throws<ObjectDisposedException>(() => started!.Validate());
     }
 
