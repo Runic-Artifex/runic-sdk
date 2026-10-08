@@ -47,6 +47,10 @@ internal abstract class NavigationResultRequestCore(NavigationRegionCore region,
 
     public abstract string ResultTypeName { get; }
 
+    // Stages a value of another static type (a value type, which the contravariant sink can't
+    // take) when it is a TResult at run time, or null for a nullable TResult; otherwise null.
+    public abstract NavigationStagedResult? TryStageBoxed(object? value);
+
     // Completes the source with the staged value.
     public abstract void Complete();
 
@@ -91,6 +95,13 @@ internal sealed class NavigationResultRequestCore<TResult>(NavigationRegionCore 
     public override string ResultTypeName => typeof(TResult).Name;
 
     public NavigationStagedResult Stage(TResult value) => new Staged(this, value);
+
+    public override NavigationStagedResult? TryStageBoxed(object? value) => value switch
+    {
+        TResult typed => Stage(typed),
+        null when default(TResult) is null => Stage(default!),
+        _ => null,
+    };
 
     public override void Complete() => _completion.TrySetResult(new NavigationCompletion<TResult>.Completed(_value));
 

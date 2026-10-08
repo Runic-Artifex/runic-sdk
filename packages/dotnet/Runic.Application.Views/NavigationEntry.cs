@@ -68,21 +68,26 @@ public sealed class NavigationEntryContext
     /// can be repeated. When the request was already dismissed, the entry still goes back and the
     /// result is dropped.
     /// </summary>
-    /// <typeparam name="TResult">The request's result type, or a type assignable to it.</typeparam>
+    /// <typeparam name="TResult">
+    /// The request's result type, or any type whose value is a result-type value at run time, such
+    /// as <see cref="bool"/> for a <c>bool?</c> request or <see cref="int"/> for an <see cref="object"/> request.
+    /// </typeparam>
     /// <param name="result">The result.</param>
     /// <param name="cancellationToken">Cancels the back transition before it commits.</param>
     /// <exception cref="InvalidOperationException">
-    /// The entry was not pushed with <c>PushForResult</c>, or its result type does not accept a <typeparamref name="TResult"/>.
+    /// The entry was not pushed with <c>PushForResult</c>, or <paramref name="result"/> is not a value of its result type.
     /// </exception>
     public ValueTask<NavigationResult<object>> CompleteAsync<TResult>(TResult result, CancellationToken cancellationToken = default)
     {
         var request = _entry.ResultRequest
             ?? throw new InvalidOperationException("This navigation entry was not pushed with PushForResult, so it has no result to complete.");
-        if (request is not INavigationResultSink<TResult> sink)
-            throw new InvalidOperationException(
-                $"This navigation entry's result is a {request.ResultTypeName}; a {typeof(TResult).Name} can't complete it.");
+        // A reference type assignable to the result type takes the contravariant sink without
+        // boxing; anything else (value types, wider static types) takes the boxed run-time check.
+        var staged = request is INavigationResultSink<TResult> sink ? sink.Stage(result) : request.TryStageBoxed(result)
+            ?? throw new InvalidOperationException(
+                $"This navigation entry's result is a {request.ResultTypeName}; this {typeof(TResult).Name} value can't complete it.");
         var pending = _entry.Region.Start(NavigationOperation.Back, target: null, backTo: null,
-            new NavigationRequestOptions(_entry.Id), cancellationToken, new NavigationReturn(sink.Stage(result)));
+            new NavigationRequestOptions(_entry.Id), cancellationToken, new NavigationReturn(staged));
         return NavigationResults.MapAsync<object>(pending);
     }
 }

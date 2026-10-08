@@ -289,8 +289,11 @@ public sealed class RunicNavigator : IAsyncDisposable
     }
 
     /// <summary>
-    /// Refuses new requests, cancels in-flight transitions and waits for them up to the close
-    /// timeout, then closes and retires every entry region by region in creation order. Does not run guards.
+    /// Refuses new requests and ends every open <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/>
+    /// request as <see cref="NavigationCompletion{TResult}.Dismissed"/> (or <see cref="NavigationCompletion{TResult}.Completed"/>
+    /// when its return already committed), so guards awaiting a result unblock. Then cancels in-flight transitions and
+    /// waits for them up to the close timeout, and closes and retires every entry region by region in creation order.
+    /// Does not run guards.
     /// </summary>
     /// <remarks>
     /// Each region is cleared in a model turn so the change is serialized with its commit. The wait for those
@@ -486,7 +489,6 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (commit is not null)
             {
                 Cancel(commit.Cancel);
-                if (transition.Pending?.ResultRequest is { } request) WatchCaller(request);
                 if (transition.ResultDropped)
                     NavigationLog.NavigationResultDropped(Logger, null, transition.Region.ContentTypeName, transition.Region.Id);
                 List<NavigationEntryId> retired = [];
@@ -500,6 +502,16 @@ public sealed class RunicNavigator : IAsyncDisposable
                     }
                 }
                 outcome = NavigationOutcome.Commit(commit.Current, retired);
+                // After retirement, so a cancellation callback that throws can't skip it.
+                if (transition.Pending?.ResultRequest is { } request)
+                {
+                    try { WatchCaller(request); }
+                    catch (Exception error)
+                    {
+                        NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
+                            "None", "Cancel", BridgeTelemetry.ErrorType(error));
+                    }
+                }
             }
             else if (transition.Pending is { } pending)
             {

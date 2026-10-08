@@ -66,6 +66,7 @@ internal static class NavigationTests
         await ResultCallerCancelledAfterCommitAsync();
         await ResultCallerCancelledBackRejectedAsync();
         await ResultCallerCancelledThenPushRetiresAsync();
+        await ResultDismissalBackRejectedKeepsEntryAsync();
         await ResultDismissedOnCloseAsync();
         await SiblingGuardAwaitsResultAsync(close: false);
         await SiblingGuardAwaitsResultAsync(close: true);
@@ -1388,6 +1389,31 @@ internal static class NavigationTests
         Require(await Wait(general.Entry!.CompleteAsync("text")) is NavigationResult<object>.Committed
             && await Wait(any.Completion) is NavigationCompletion<object>.Completed { Value: "text" },
             "A request for object did not take a string result.");
+
+        // Value types are checked at run time: bool completes bool?, and a boxed int completes object.
+        var optional = new InitPage("optional");
+        var maybe = region.PushForResult<bool?>(NavigationTarget.Own<Page>(optional));
+        await Wait(maybe.Transition);
+        Require(await Wait(optional.Entry!.CompleteAsync(true)) is NavigationResult<object>.Committed
+            && await Wait(maybe.Completion) is NavigationCompletion<bool?>.Completed { Value: true },
+            "A request for bool? did not take a bool result.");
+        var boxed = new InitPage("boxed");
+        var number = region.PushForResult<object>(NavigationTarget.Own<Page>(boxed));
+        await Wait(number.Transition);
+        Require(await Wait(boxed.Entry!.CompleteAsync(5)) is NavigationResult<object>.Committed
+            && await Wait(number.Completion) is NavigationCompletion<object>.Completed { Value: 5 },
+            "A request for object did not take an int result.");
+        var counted = new InitPage("counted");
+        var count = region.PushForResult<int>(NavigationTarget.Own<Page>(counted));
+        await Wait(count.Transition);
+        Require(Throws<InvalidOperationException>(() => _ = counted.Entry!.CompleteAsync<object>("five").AsTask())
+            && Throws<InvalidOperationException>(() => _ = counted.Entry!.CompleteAsync<object?>(null).AsTask())
+            && region.Current == counted && !count.Completion.IsCompleted,
+            "A request for int took a value that is not an int.");
+        Require(await Wait(counted.Entry!.CompleteAsync<object>(7)) is NavigationResult<object>.Committed
+            && await Wait(count.Completion) is NavigationCompletion<int>.Completed { Value: 7 },
+            "A request for int did not take a boxed int.");
+
         Require(await Wait(typed.Entry!.CompleteAsync("ok")) is NavigationResult<object>.Committed
             && await Wait(request.Completion) is NavigationCompletion<string>.Completed { Value: "ok" } && region.Current == plain,
             "The typed request did not complete after the type error.");
@@ -1493,6 +1519,43 @@ internal static class NavigationTests
             Require(dialog.Current is InitPage { Name: "second" } && dialog.History.Count == 0 && first.Disposed == 1,
                 $"Round {round}: the dismissed entry was retained ({dialog.History.Count} below the current entry).");
         }
+    }
+
+    // The accepted edge: the caller cancels while a push over the entry is already in its commit
+    // turn. The return Back is admitted but rejected as NotCurrent once the push commits, so the
+    // dismissed entry stays retained. A later Back resumes it, and its CompleteAsync empties the
+    // region and drops the value (1071).
+    private static async Task ResultDismissalBackRejectedKeepsEntryAsync()
+    {
+        await using var gated = new GatedContext();
+        await using var fixture = new Fixture(gated);
+        var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        var asking = new InitPage("asking");
+        using var cancel = new CancellationTokenSource();
+        var request = dialog.PushForResult<bool>(NavigationTarget.Own<Page>(asking), cancellationToken: cancel.Token);
+        await Wait(request.Transition);
+
+        gated.Close();
+        var over = new Page("over");
+        var push = dialog.PushAsync(NavigationTarget.Own(over)).AsTask();
+        await Wait(gated.Waiting.Task); // the push holds at its commit turn and retains the entry
+        await cancel.CancelAsync();
+        Require(await Wait(request.Completion) is NavigationCompletion<bool>.Dismissed, "Cancelling did not dismiss the request.");
+        gated.Open();
+        Require(await Wait(push) is NavigationResult<Page>.Committed, "The push in its commit turn did not commit.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(dialog.Current == over && dialog.History is [{ State: NavigationEntryState.Retained } kept] && kept.Content == asking
+            && asking.Disposed == 0, $"The dismissed entry was not retained under the push ({Names(dialog)}).");
+        Require(fixture.Logs.All(1065).Any(entry => Equals(entry.State["Operation"], NavigationOperation.Back)
+            && Equals(entry.State["Reason"], NavigationRejection.NotCurrent)), "The rejected return Back was not logged as NotCurrent.");
+
+        Require(await Wait(dialog.BackAsync()) is NavigationResult<Page>.Committed && dialog.Current == asking
+            && dialog.CurrentEntry!.State == NavigationEntryState.Active, "Back did not resume the dismissed entry.");
+        var late = await Wait(asking.Entry!.CompleteAsync(true));
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(late is NavigationResult<object>.Committed { Current: null } && dialog.Current is null && asking.Disposed == 1
+            && request.Completion.Result is NavigationCompletion<bool>.Dismissed && fixture.Logs.Count(1071) == 1,
+            $"CompleteAsync on the resumed dismissed entry gave {late}; it did not empty the region and drop the value.");
     }
 
     private static async Task ResultDismissedOnCloseAsync()

@@ -415,8 +415,13 @@ await main.BackAsync(); // the document retires and is disposed; home resumes
   the entry) or the navigator closes. A Back from `CompleteAsync` or caller
   cancellation may leave the region empty, so a dialog region can start empty.
   A push onto an entry whose caller cancelled retires that entry instead of
-  retaining it, so a dismissed dialog never reappears.
-  Completions run their continuations asynchronously, after the commit turn.
+  retaining it. That Back can still be rejected, for example when a push over
+  the entry is already committing or the entry is no longer on top. Then the
+  dismissed entry stays in the history: a later Back resumes it, and its
+  `CompleteAsync` goes back, possibly emptying the region, and drops the value
+  (event 1071). Completions run their continuations asynchronously, after the
+  commit turn. A completion is set when the entry starts retiring, so it can be
+  observed while the entry's owned content is still being disposed.
 - Going back presents the same `PageReference` id with the retained model; the
   outlet mounts a fresh View.
 - **Stale-route window.** A commit retires and forgets departing owned content
@@ -496,6 +501,11 @@ Events 1000-1021, 1050 and 1060-1071 use the category `Runic.Application.Views`
 `WindowContentSession` with a logger factory created it, and otherwise the
 `Trace` output. Events 2000-2001 use `Runic.Application.Desktop`. Events 3000-3005
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
+
+Navigation reserves events 1060-1079: 1060-1069 for transitions and cleanup,
+and 1070-1079 for results and later navigation events, of which 1072-1079 are
+not used yet. Events 1043-1049 are reserved for the ReactiveUI navigation
+adapter.
 
 Events 1040-1042 come from `Runic.Application.ReactiveUI` (and its `.Reactive`
 flavor) and also use `Runic.Application.Views`. They need the
