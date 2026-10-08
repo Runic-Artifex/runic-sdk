@@ -72,6 +72,17 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
   stops new operations and waits for accepted ones before releasing the scope.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
+- `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
+  presentation's `INativePickerOwner`. Pass it to a platform provider, such as
+  `WindowsPlatformProvider.CreateFileDialogs(owner)`,
+  `LinuxPlatformProvider.CreateFileDialogs(owner)`,
+  `Gtk4PlatformProvider.CreatePortalWindowOwner(owner)` or
+  `MacOSPlatformProvider.CreateTextClipboard(owner)`; no custom adapter is
+  needed. It runs provider callbacks on the window's native thread and becomes
+  unavailable when the window closes or the surface replaces it. An
+  installed-browser presentation has no native owner, so it reports
+  `IsAvailable == false`. Applications that open a `DesktopWindow` themselves
+  create one with `new DesktopNativeOwner(window)`.
 - `DesktopBridgeTransport` connects a `DesktopSurface` to a
   `WindowContentSession` directly, for applications that compose a surface
   themselves.

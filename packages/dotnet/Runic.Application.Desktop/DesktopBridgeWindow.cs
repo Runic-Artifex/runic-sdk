@@ -17,6 +17,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private readonly IDisposable _connectionBinding;
     private IDisposable? _attachment;
     private DesktopWindow? _presentation;
+    private DesktopNativeOwner? _nativeOwner;
     private Task<BridgeWindowCloseResult>? _close;
     private Task? _completion;
     private bool _finalized;
@@ -40,6 +41,14 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
     public DesktopWindow Presentation => _presentation ??
         throw new InvalidOperationException("The Desktop presentation has not opened.");
+    /// <summary>The native platform-service owner of the opened presentation.</summary>
+    /// <remarks>
+    /// Pass it to platform providers for file dialogs, file launchers and clipboard access. It is available
+    /// while the embedded window is open; an installed-browser presentation reports it as unavailable.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
+    public DesktopNativeOwner NativeOwner => _nativeOwner ??
+        throw new InvalidOperationException("The Desktop presentation has not opened.");
 
     internal void Attach(IDisposable attachment)
     {
@@ -57,6 +66,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         {
             if (_presentation is not null || _close is not null)
                 throw new InvalidOperationException("The Desktop presentation is already open or closing.");
+            _nativeOwner = new DesktopNativeOwner(presentation);
             _presentation = presentation;
         }
     }

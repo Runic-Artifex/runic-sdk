@@ -1,1 +1,9 @@
 #nullable enable
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.NativeOwner.get -> Runic.Application.Views.Desktop.DesktopNativeOwner!
+Runic.Application.Views.Desktop.DesktopNativeOwner
+Runic.Application.Views.Desktop.DesktopNativeOwner.CheckAccess() -> bool
+Runic.Application.Views.Desktop.DesktopNativeOwner.DesktopNativeOwner(Runic.Desktop.DesktopWindow! window) -> void
+Runic.Application.Views.Desktop.DesktopNativeOwner.Generation.get -> System.Guid
+Runic.Application.Views.Desktop.DesktopNativeOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopNativeOwner.IsAvailable.get -> bool
+Runic.Application.Views.Desktop.DesktopNativeOwner.Window.get -> Runic.Desktop.DesktopWindow!

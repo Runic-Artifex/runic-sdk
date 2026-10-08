@@ -20,6 +20,8 @@ public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewMod
     : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
     public DesktopWindow Presentation => host.Presentation;
+    // Pass to Runic.Platform providers for native file dialogs and the clipboard.
+    public DesktopNativeOwner NativeOwner => host.NativeOwner;
     public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 
@@ -30,6 +32,8 @@ public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewMod
     : RunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
     public DesktopWindow Presentation => host.Presentation;
+    // Pass to Runic.Platform providers for native file dialogs and the clipboard.
+    public DesktopNativeOwner NativeOwner => host.NativeOwner;
     public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 
