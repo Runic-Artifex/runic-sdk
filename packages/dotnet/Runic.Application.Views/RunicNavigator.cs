@@ -70,7 +70,6 @@ public sealed class RunicNavigator : IAsyncDisposable
     // Pending, committed, and removed entries that have not finished retiring.
     private readonly HashSet<NavigationEntryCore> _tracked = [];
     private readonly HashSet<NavigationTransition> _running = [];
-    // Retirements and other background cleanup that WhenIdleAsync and DisposeAsync wait for.
     private readonly HashSet<Task> _retirements = [];
     // PushForResult requests that have not completed or been dismissed.
     private readonly HashSet<NavigationResultRequestCore> _resultRequests = [];
@@ -371,7 +370,8 @@ public sealed class RunicNavigator : IAsyncDisposable
 
     internal Task<NavigationOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
-        CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null)
+        CancellationToken cancellationToken, NavigationReturn? @return = null, NavigationResultRequestCore? request = null,
+        bool runDetached = false)
     {
         NavigationOutcome? rejected = null;
         NavigationTransition? transition = null;
@@ -453,7 +453,10 @@ public sealed class RunicNavigator : IAsyncDisposable
         Cancel(superseded);
         if (transitioningChanged) Notify(region, NavigationRegionChanges.Transitioning);
         // No hook ever runs in the caller's turn.
-        if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
+        if (runDetached)
+            // Admitted here; the phases run on the thread pool without this thread's execution context.
+            ThreadPool.UnsafeQueueUserWorkItem(static transition => _ = transition.Region.Navigator.RunAsync(transition), transition!, preferLocal: false);
+        else if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
         else _ = RunAsync(transition!);
         return transition!.Result.Task;
     }
@@ -926,6 +929,14 @@ public sealed class RunicNavigator : IAsyncDisposable
         switch (operation)
         {
             case NavigationOperation.Push:
+                // A result entry whose caller cancelled is on its way out: a push retires it rather
+                // than retaining it under the new entry (OnCallerCancelled).
+                if (current?.ResultRequest is { State: NavigationResultState.Dismissed })
+                {
+                    plan.Removed.Add(current);
+                    plan.NewStack = pending is null ? stack : [.. stack.AsSpan(0, stack.Length - 1), pending];
+                    break;
+                }
                 plan.NewStack = pending is null ? stack : [.. stack, pending];
                 if (current is not null)
                 {
@@ -1020,8 +1031,10 @@ public sealed class RunicNavigator : IAsyncDisposable
     // Ends a result request once. A request whose return already committed with a value
     // (Completing) completes on every path; any other open request is dismissed. With
     // onlyActive, only a committed request that has not completed is dismissed. The
-    // sources are set outside the gate, never inside a commit turn.
-    private bool FinishResult(NavigationResultRequestCore request, NavigationResultDismissal reason, bool onlyActive = false)
+    // sources are set outside the gate, never inside a commit turn; beforeEnd runs after the
+    // state became terminal and before the source is set.
+    private bool FinishResult(NavigationResultRequestCore request, NavigationResultDismissal reason, bool onlyActive = false,
+        Action? beforeEnd = null)
     {
         bool completed;
         CancellationTokenRegistration registration;
@@ -1037,6 +1050,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
         // Unregister does not wait for a running callback, so this is safe from the callback itself.
         registration.Unregister();
+        beforeEnd?.Invoke();
         if (completed) request.Complete();
         else
         {
@@ -1062,40 +1076,28 @@ public sealed class RunicNavigator : IAsyncDisposable
         if (!keep) registration.Unregister();
     }
 
-    // Dismisses at once, then goes back from the entry if it is still current. The caller
-    // does not await that transition; its rejection or supersession is logged (1065/1066).
+    // Dismisses at once and goes back from the entry if it is still current. The Back is
+    // admitted before the completion is set, so a request the caller makes after observing
+    // the dismissal supersedes it; a Push over the dismissed entry then retires it
+    // (ComputePlanLocked). The Back runs on the thread pool and is not awaited; its rejection
+    // or supersession is logged (1065/1066). The callback may run on a thread inside a hook,
+    // so the hook marker is cleared for the admission.
     private void OnCallerCancelled(NavigationResultRequestCore request)
     {
         NavigationEntryCore? entry;
         lock (Gate) entry = request.Entry;
-        if (entry is null || !FinishResult(request, NavigationResultDismissal.Cancelled, onlyActive: true)) return;
-        RunDetached(entry.Region, () => Start(entry.Region, NavigationOperation.Back, null, null, entry.Id, CancellationToken.None,
-            new NavigationReturn(null)));
-    }
-
-    // Runs navigator work on the thread pool without the caller's execution context (so no
-    // hook marker or turn flows into it), tracked like a retirement for WhenIdleAsync and DisposeAsync.
-    private void RunDetached(NavigationRegionCore region, Func<Task> work)
-    {
-        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        lock (Gate) _retirements.Add(done.Task);
-        ThreadPool.UnsafeQueueUserWorkItem(static state => _ = state.Navigator.RunDetachedAsync(state.Region, state.Work, state.Done),
-            (Navigator: this, Region: region, Work: work, Done: done), preferLocal: false);
-    }
-
-    private async Task RunDetachedAsync(NavigationRegionCore region, Func<Task> work, TaskCompletionSource done)
-    {
-        try { await work().ConfigureAwait(false); }
-        catch (Exception error)
+        if (entry is null) return;
+        FinishResult(request, NavigationResultDismissal.Cancelled, onlyActive: true, beforeEnd: () =>
         {
-            // Navigation outcomes are returned; this only guards against a defect.
-            NavigationLog.NavigationEntryCleanupFailed(Logger, error, region.ContentTypeName, region.Id, "None", "Detached", BridgeTelemetry.ErrorType(error));
-        }
-        finally
-        {
-            lock (Gate) _retirements.Remove(done.Task);
-            done.TrySetResult();
-        }
+            var hook = HookTransition.Value;
+            HookTransition.Value = null;
+            try
+            {
+                _ = Start(entry.Region, NavigationOperation.Back, null, null, entry.Id, CancellationToken.None,
+                    new NavigationReturn(null), runDetached: true);
+            }
+            finally { HookTransition.Value = hook; }
+        });
     }
 
     // ---- Retirement ------------------------------------------------------

@@ -65,6 +65,7 @@ internal static class NavigationTests
         await ResultCompleteRejectedKeepsRequestOpenAsync();
         await ResultCallerCancelledAfterCommitAsync();
         await ResultCallerCancelledBackRejectedAsync();
+        await ResultCallerCancelledThenPushRetiresAsync();
         await ResultDismissedOnCloseAsync();
         await SiblingGuardAwaitsResultAsync(close: false);
         await SiblingGuardAwaitsResultAsync(close: true);
@@ -1468,6 +1469,30 @@ internal static class NavigationTests
         Require(late is NavigationResult<object>.Committed && region.Current == home && picker.Disposed == 1
             && request.Completion.Result is NavigationCompletion<int>.Dismissed && fixture.Logs.Count(1071) == 1,
             $"A late CompleteAsync after dismissal gave {late}; the value was not dropped.");
+    }
+
+    // The caller cancels, then at once pushes into the same region, as a superseded guard that
+    // runs again does. The return Back is admitted before the dismissal is observable, so the
+    // push supersedes it or follows it; either way the dismissed entry is not retained.
+    private static async Task ResultCallerCancelledThenPushRetiresAsync()
+    {
+        for (var round = 0; round < 50; round++)
+        {
+            await using var fixture = new Fixture();
+            var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+            var first = new InitPage("first");
+            using var cancel = new CancellationTokenSource();
+            var request = dialog.PushForResult<bool>(NavigationTarget.Own<Page>(first), cancellationToken: cancel.Token);
+            await Wait(request.Transition);
+            var observed = request.Completion.ContinueWith(_ =>
+                dialog.PushForResult<bool>(NavigationTarget.Own<Page>(new InitPage("second"))), TaskScheduler.Default);
+            await cancel.CancelAsync();
+            var second = await Wait(observed);
+            Require(await Wait(second.Transition) is NavigationResult<Page>.Committed, "The second push did not commit.");
+            await Wait(fixture.Navigator.WhenIdleAsync());
+            Require(dialog.Current is InitPage { Name: "second" } && dialog.History.Count == 0 && first.Disposed == 1,
+                $"Round {round}: the dismissed entry was retained ({dialog.History.Count} below the current entry).");
+        }
     }
 
     private static async Task ResultDismissedOnCloseAsync()

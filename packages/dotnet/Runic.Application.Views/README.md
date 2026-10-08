@@ -414,6 +414,8 @@ await main.BackAsync(); // the document retires and is disposed; home resumes
   the caller's token is cancelled after the commit (which also goes back from
   the entry) or the navigator closes. A Back from `CompleteAsync` or caller
   cancellation may leave the region empty, so a dialog region can start empty.
+  A push onto an entry whose caller cancelled retires that entry instead of
+  retaining it, so a dismissed dialog never reappears.
   Completions run their continuations asynchronously, after the commit turn.
 - Going back presents the same `PageReference` id with the retained model; the
   outlet mounts a fresh View.
@@ -465,7 +467,7 @@ output accordingly. The message properties are listed per event.
 | 1061 | `NavigationPreparationFailed` | Error | A navigation factory, the ownership check, binding, initialize or resume throws. A close of the navigator or region is rejected as `Closed` and does not log it. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1062 | `NavigationCommitFailed` | Error | A navigation commit turn cannot run. | `Region`, `RegionId`, `Operation`, `ErrorType` |
 | 1063 | `NavigationNotificationFailed` | Error | A navigation region `PropertyChanged` handler throws; the commit stands. | `Region`, `RegionId`, `Property`, `ErrorType` |
-| 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (`Retirement`, `Children`, `Forget`, `Dispose`, `Lease`), the clearing of a closed region (`Close`), the cancellation of transitions (`Cancel`, a throwing cancellation callback) or background navigator work (`Detached`, such as the Back issued when a `PushForResult` caller cancels) fails; later steps still run. `EntryType` is `None` for `Close`, `Cancel` and `Detached`. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
+| 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (`Retirement`, `Children`, `Forget`, `Dispose`, `Lease`), the clearing of a closed region (`Close`) or the cancellation of transitions (`Cancel`, a throwing cancellation callback) fails; later steps still run. `EntryType` is `None` for `Close` and `Cancel`. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
 | 1065 | `NavigationTransitionRejected` | Debug | A navigation request is rejected. | `Region`, `RegionId`, `Operation`, `Reason` |
 | 1066 | `NavigationTransitionSuperseded` | Debug | A later request supersedes a navigation request. | `Region`, `RegionId`, `Operation` |
 | 1067 | `NavigationSupersededTransitionOverrun` | Warning | A superseded navigation request is still running 5 seconds after supersession. | `Region`, `RegionId`, `Operation` |
