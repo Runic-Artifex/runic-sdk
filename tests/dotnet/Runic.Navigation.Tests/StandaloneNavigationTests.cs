@@ -313,11 +313,10 @@ internal static partial class NavigationTests
         };
         var first = region.BackAsync().AsTask();
         await Wait(started.Task);
-        // A Back with a cancellable token supersedes a pending Back; a plain one would join it.
-        using var superseding = new CancellationTokenSource();
-        var second = region.BackAsync(cancellationToken: superseding.Token).AsTask();
+        // BackTo is a distinct operation and supersedes Back even when it chooses the same destination.
+        var second = region.BackToAsync(region.History[0].Id).AsTask();
         Require(await Wait(first) is NavigationResult<Page>.Superseded && await Wait(second) is NavigationResult<Page>.Committed,
-            "The second Back did not supersede the first.");
+            "BackTo did not supersede Back.");
         var superseded = document.Departures[^2];
         var winner = document.Departures[^1];
         var settlement = await Wait(superseded.Settled);
@@ -715,11 +714,10 @@ internal static partial class NavigationTests
         };
         var first = region.BackAsync().AsTask();
         await Wait(resuming.Task);
-        // A Back with a cancellable token supersedes a pending Back; a plain one would join it.
-        using var superseding = new CancellationTokenSource();
-        var second = await Wait(region.BackAsync(cancellationToken: superseding.Token));
+        // BackTo supersedes; another Back, including one carrying a token, would join.
+        var second = await Wait(region.BackToAsync(region.History[0].Id));
         Require(second is NavigationResult<Page>.Committed && await Wait(first) is NavigationResult<Page>.Superseded,
-            $"The second Back gave {second}.");
+            $"The superseding BackTo gave {second}.");
         Require(prompts == 1 && discards == 1 && document.Departures.Count == 2,
             $"The superseder asked {prompts} times and discarded {discards} times over {document.Departures.Count} departures.");
     }

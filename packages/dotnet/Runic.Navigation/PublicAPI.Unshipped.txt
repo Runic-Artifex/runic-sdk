@@ -8,6 +8,7 @@ Runic.Navigation.IRunicModelContext.UnhandledTurnException -> System.Action<Syst
 Runic.Navigation.IRunicModelContextLease
 Runic.Navigation.IRunicModelContextLease.Context.get -> Runic.Navigation.IRunicModelContext!
 Runic.Navigation.RunicModelContext
+Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
 Runic.Navigation.RunicModelContext.DisposeAsync() -> System.Threading.Tasks.ValueTask
 Runic.Navigation.RunicModelContext.InvokeAsync(System.Action! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Navigation.RunicModelContext.InvokeAsync<T>(System.Func<T>! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>

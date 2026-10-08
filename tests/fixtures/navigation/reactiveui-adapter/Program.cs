@@ -2,6 +2,7 @@
 // only the navigation adapter package, so it also proves the adapter needs no Runic.Application.
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Navigation;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Reactive;
@@ -22,6 +23,7 @@ await SchedulerSemanticsAsync();
 await DependencyInjectionSemanticsAsync();
 await SchedulerLifetimeSemanticsAsync();
 await NavigationAdapterSemanticsAsync();
+await DuplicateBackCommandKeepsOneConfirmationAsync();
 Console.WriteLine("NAVIGATION_REACTIVEUI_ADAPTER_OK");
 
 static async Task SchedulerSemanticsAsync()
@@ -216,6 +218,52 @@ static async Task WaitUntilAsync(Func<bool> condition, string message)
     Require(condition(), message);
 }
 
+// Hold output delivery as a dispatcher would while two already-dispatched command executions start.
+// CanExecute is advisory for programmatic Execute; both actual executions carry ReactiveUI's tokens.
+static async Task DuplicateBackCommandKeepsOneConfirmationAsync()
+{
+    await using var context = new RunicModelContext();
+    await using var outputContext = new RunicModelContext();
+    using var logs = new BackJoinLog();
+    await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context, LoggerFactory = logs });
+    var home = new NavigationPage("home");
+    var main = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(home));
+    var dialogs = navigator.CreateRegion<ConfirmPage>(new object());
+    var document = new NavigationPage("document");
+    var prompts = 0;
+    var discards = 0;
+    document.DepartureGuard = LeaveConfirmation.InDialog(dialogs, () =>
+    {
+        Interlocked.Increment(ref prompts);
+        return NavigationTarget.Own(new ConfirmPage());
+    }, () => true, () => discards++).CanDepartAsync;
+    await main.PushAsync(NavigationTarget.Own(document));
+    using var back = main.CreateBackCommand(new RunicReactiveSchedulerProvider().For(outputContext));
+    await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "Back was not enabled.");
+    using var held = new ManualResetEventSlim();
+    using var release = new ManualResetEventSlim();
+    Require(outputContext.TryPost(() => { held.Set(); release.Wait(); }), "Could not hold the output scheduler.");
+    Require(held.Wait(TimeSpan.FromSeconds(5)), "The output scheduler did not pause.");
+    try
+    {
+        var first = ReactiveCommandExecution.Execute(back, UnitValue(), CancellationToken.None);
+        var second = ReactiveCommandExecution.Execute(back, UnitValue(), CancellationToken.None);
+        await WaitUntilAsync(() => dialogs.Current?.Entry is not null, "The confirmation did not open.");
+        var prompt = dialogs.Current!;
+        await WaitUntilAsync(() => logs.Joins == 1, "The token-bearing second command did not join the first Back.");
+        Require(prompts == 1 && dialogs.Current == prompt && !prompt.Entry!.Retirement.IsCancellationRequested,
+            "The second command execution retired the existing confirmation.");
+        await prompt.Entry!.CompleteAsync(true);
+        await WaitUntilAsync(() => !main.IsTransitioning, "The confirmed Back did not commit.");
+        release.Set();
+        var results = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
+        Require(results.All(result => result is NavigationResult<NavigationPage>.Committed) && main.Current == home
+            && prompts == 1 && discards == 1 && dialogs.Current is null,
+            "Duplicate Back commands did not share one confirmation and one commit.");
+    }
+    finally { release.Set(); }
+}
+
 static FlavorUnit UnitValue() => FlavorUnit.Default;
 
 
@@ -290,8 +338,33 @@ sealed class NavigationPage(string name) : INavigationDepartureGuard
 {
     public string Name { get; } = name;
     public Func<Task<bool>>? Guard { get; set; }
+    public Func<NavigationDeparture, CancellationToken, ValueTask<bool>>? DepartureGuard { get; set; }
     public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
-        Guard is not { } guard || await guard();
+        DepartureGuard is { } departureGuard ? await departureGuard(departure, cancellationToken)
+        : Guard is not { } guard || await guard();
+}
+sealed class ConfirmPage : INavigationInitialize
+{
+    public NavigationEntryContext? Entry { get; private set; }
+    public ValueTask InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken)
+    {
+        Entry = entry;
+        return ValueTask.CompletedTask;
+    }
+}
+sealed class BackJoinLog : ILoggerFactory, ILogger
+{
+    private int _joins;
+    public int Joins => Volatile.Read(ref _joins);
+    public ILogger CreateLogger(string categoryName) => this;
+    public void AddProvider(ILoggerProvider provider) => throw new NotSupportedException();
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel level) => true;
+    public void Log<TState>(LogLevel level, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        if (eventId.Id == 1074) Interlocked.Increment(ref _joins);
+    }
+    public void Dispose() { }
 }
 sealed class RecordingProvider : FlavorSchedulerProvider
 {

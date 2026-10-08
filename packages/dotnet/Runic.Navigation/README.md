@@ -135,23 +135,25 @@ A failed step is logged as event 1064.
 
 | Phase | Where | What happens |
 | --- | --- | --- |
-| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a plain Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
+| Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
 | Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies and raises `PropertyChanged`. A handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released, and departing entries retire. The returned `ValueTask` completes after that cleanup. |
 
-- A plain `BackAsync()` (no cancellable token) that arrives while the region's
-  latest request is another plain Back that hasn't committed, and neither the
+- A `BackAsync()` that arrives while the region's
+  latest request is another Back that hasn't committed, and neither the
   region nor the child regions the departing entry owns have changed since
-  that Back was admitted, **joins** it instead of superseding it: both callers
+  that Back was admitted, **joins** it instead of superseding it: interested callers
   get the same result, the departure guard runs once, and a confirm dialog
   stays open (event 1074). Back from code while the guard asks therefore pops
   once and asks once. A Back that starts after the first one committed is a
-  new request and pops again; that is stack semantics. A Back with a
-  cancellable token never joins and is never joined, so cancelling it never
-  cancels another caller's Back; it supersedes as above. A return from a
-  result entry (`CompleteAsync`, `DismissAsync`) is never joined either.
+  new request and pops again; that is stack semantics. Token-bearing Backs
+  join too: cancelling one caller before commit returns `Rejected(Cancelled)`
+  for that caller immediately. The shared Back is cancelled only when every
+  caller has cancelled; a caller without a cancellable token keeps it alive.
+  Cancellation after commit does not change the outcome. A return from a
+  result entry (`CompleteAsync`, `DismissAsync`) is never joined.
 - `IsTransitioning` is `true` from admission, synchronously. A command that
   reads it in `CanExecute`, such as `NavigationHost`'s `BrowseBack` in
   Runic.Navigation.Wpf, is disabled before the Back call returns, so a double
@@ -490,7 +492,11 @@ the same graph, and disposes it after the last lease is released. A second
 context for an object that is already bound is rejected.
 
 Disposing a `RunicModelContext` rejects queued turns and waits for the running
-turn. A posted turn that disposal drops is logged (event 1031).
+turn. It implements `IRunicModelContextLifetime`: its `Closed` token is cancelled
+after admission stops and before queued turns are rejected, so navigators close
+immediately, like those using the WPF dispatcher context. A posted turn that
+disposal drops is logged (event 1031). Exceptions from close callbacks are reported
+through `UnhandledTurnException` (event 1030) and do not interrupt shutdown.
 
 ## Testing
 
@@ -519,7 +525,7 @@ retiring. After `DisposeAsync`, it is 0 when every entry retired.
 | 1071 | `NavigationResultDropped` | Debug | `CompleteAsync` went back from an entry whose request had already ended, so its value was dropped. | `Region`, `RegionId` |
 | 1072 | `NavigationDepartureActionFailed` | Error | A `NavigationDeparture.OnCommitted` action throws; later actions still run, and the commit stands. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1073 | `NavigatorDisposeFailed` | Error | Disposing the navigator fails unexpectedly, for example started by `Dispose`, which does not wait; entries may not have retired. | `ErrorType` |
-| 1074 | `NavigationBackJoined` | Debug | A plain Back joins the pending Back of its region instead of superseding it. | `Region`, `RegionId` |
+| 1074 | `NavigationBackJoined` | Debug | A Back joins the pending Back of its region instead of superseding it. | `Region`, `RegionId` |
 
 Errors and warnings carry the exception. Rejections, supersessions, joined Backs and
 dismissed results log at Debug. The properties are `Region` (the `TContent`

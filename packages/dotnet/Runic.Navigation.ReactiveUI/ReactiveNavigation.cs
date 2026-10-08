@@ -73,7 +73,8 @@ public static class ReactiveNavigation
     /// reports only defects and cancellation. Subscribe to the command's <c>ThrownExceptions</c>; without a
     /// subscriber ReactiveUI routes them to its default exception handler. Apps that use Runic Views
     /// can use <c>RunicReactiveExceptions.ObserveBridgeExceptions</c> from <c>Runic.Application.ReactiveUI</c>.
-    /// Cancelling an execution cancels the Back until it commits.
+    /// Overlapping executions to the same destination share one Back and confirmation. Cancelling one execution
+    /// cancels that caller; the shared Back is cancelled only when every caller cancels before commit.
     /// The command observes the region through a <c>PropertyChanged</c> handler until the command is disposed,
     /// so dispose it with its owner, for example with <c>DisposeWith</c>.
     /// </remarks>

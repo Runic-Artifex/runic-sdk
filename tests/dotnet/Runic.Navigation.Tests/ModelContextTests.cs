@@ -17,6 +17,69 @@ internal static class ModelContextTests
         await PostedTurnDroppedByDisposalIsReported();
         await ContextLogsUnderItsOwnCategory();
         await LosingCandidateShutdownFailureIsLogged();
+        await CloseSignalPrecedesQueuedRejection();
+        await CloseCallbackFailureDoesNotInterruptShutdown();
+        await ConcurrentDisposalWaitsForCloseNotification();
+    }
+
+    private static async Task CloseSignalPrecedesQueuedRejection()
+    {
+        await using var context = new RunicModelContext();
+        using var running = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        Require(context.TryPost(() => { running.Set(); release.Wait(); }), "The blocking turn was rejected.");
+        Require(running.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        try
+        {
+            var closed = ((IRunicModelContextLifetime)context).Closed;
+            var acceptingAtClose = true;
+            var closedAtRejection = false;
+            using var registration = closed.Register(() => acceptingAtClose = context.TryPost(() => { }));
+            context.UnhandledTurnException += _ => closedAtRejection = closed.IsCancellationRequested;
+            var queued = context.InvokeAsync(() => throw new InvalidOperationException("The queued turn ran.")).AsTask();
+            Require(context.TryPost(() => throw new InvalidOperationException("The queued post ran.")), "The post was rejected early.");
+            var disposal = context.DisposeAsync().AsTask();
+            Require(closed.IsCancellationRequested && !acceptingAtClose && closedAtRejection,
+                "Close was not signalled between admission stopping and queued work rejection.");
+            Require(!disposal.IsCompleted, "Disposal did not wait for the running turn.");
+            await ThrowsAsync<ObjectDisposedException>(queued);
+            release.Set();
+            await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+            var lateCalls = 0;
+            using var late = context.Closed.Register(() => lateCalls++);
+            Require(lateCalls == 1 && context.Closed == closed, "A late observer could not use the closed token.");
+        }
+        finally { release.Set(); }
+    }
+
+    private static async Task CloseCallbackFailureDoesNotInterruptShutdown()
+    {
+        await using var context = new RunicModelContext();
+        var failures = new List<Exception>();
+        context.UnhandledTurnException += failures.Add;
+        using var registration = context.Closed.Register(() => throw new IOException("close callback"));
+        await context.DisposeAsync();
+        Require(failures is [IOException] && context.Closed.IsCancellationRequested && !context.TryPost(() => { }),
+            "A throwing close callback interrupted shutdown or was not reported.");
+        await ThrowsAsync<ObjectDisposedException>(context.InvokeAsync(() => { }).AsTask());
+    }
+
+    private static async Task ConcurrentDisposalWaitsForCloseNotification()
+    {
+        await using var context = new RunicModelContext();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var registration = context.Closed.Register(() => { entered.Set(); release.Wait(); });
+        var first = Task.Run(async () => await context.DisposeAsync());
+        try
+        {
+            Require(entered.Wait(TimeSpan.FromSeconds(5)), "The close callback did not start.");
+            var second = context.DisposeAsync().AsTask();
+            Require(!second.IsCompleted, "Concurrent disposal completed before close notification finished.");
+            release.Set();
+            await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { release.Set(); }
     }
 
     // RunicModelContext logs 1030-1033 through ILogger<RunicModelContext>, whose category

@@ -94,6 +94,9 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance
   carries only defects and cancellation. Subscribe to `ThrownExceptions`;
   Runic Views apps can use `ObserveBridgeExceptions` from
   `Runic.Application.ReactiveUI`.
+  Overlapping executions to the same destination share one Back and confirmation.
+  Each caller cancels independently; the shared Back cancels only after every
+  caller cancels before commit.
 - **Activation is not entry lifetime.** ReactiveUI activation follows a mounted
   View. A navigation entry lives from its push until it retires: a retained
   entry stays alive and keeps its state while nothing presents it, and its View
