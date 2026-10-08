@@ -4,6 +4,7 @@ using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using System.Windows.Input;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests;
 

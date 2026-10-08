@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>
 /// A presentation of a navigator's content, attached with <see cref="RunicNavigator.AttachPresentation"/>.

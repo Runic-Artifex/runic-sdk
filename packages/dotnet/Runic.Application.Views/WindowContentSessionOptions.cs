@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 

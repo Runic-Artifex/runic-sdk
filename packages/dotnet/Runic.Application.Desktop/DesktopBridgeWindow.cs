@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Desktop;
+using Runic.Navigation;
 
 namespace Runic.Application.Views.Desktop;
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using NavigationConsumer;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
+using Runic.Navigation;
 
 // A minimal consumer of the packed packages: AddRunicNavigation, a generated
 // region slot, a guard and Back through a CS-WebUI Bridge window. The same

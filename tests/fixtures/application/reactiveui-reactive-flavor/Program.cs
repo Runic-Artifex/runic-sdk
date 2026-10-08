@@ -10,6 +10,7 @@ using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI.Reactive;
 using Runic.Application.Testing;
 using Splat;
+using Runic.Navigation;
 
 AppLocator.CurrentMutable.RegisterConstant(new NullLogger(), typeof(ILogger));
 AppLocator.CurrentMutable.RegisterConstant(new DefaultLogManager(AppLocator.Current), typeof(ILogManager));

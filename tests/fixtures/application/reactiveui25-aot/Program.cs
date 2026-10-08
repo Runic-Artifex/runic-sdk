@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ReactiveUi25AotProof;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 await using var context = new RunicModelContext();
 var model = new AotProofViewModel(context);

@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>Represents one ownership claim over a model graph's execution context.</summary>
 public interface IRunicModelContextLease : IDisposable, IAsyncDisposable
@@ -114,7 +114,7 @@ public sealed class RunicModelContextRegistry
     {
         try { await release.ConfigureAwait(false); }
         catch (Exception error)
-        { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
+        { ModelContextLog.ModelContextReleaseFailed(logger, error, NavigationTelemetry.ErrorType(error)); }
     }
 
     /// <summary>Gets the registered context for a model identity.</summary>

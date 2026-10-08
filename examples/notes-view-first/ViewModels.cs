@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace NotesWindowViews;
 

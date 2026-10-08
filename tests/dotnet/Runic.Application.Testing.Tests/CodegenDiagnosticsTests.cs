@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -18,6 +19,7 @@ internal static class CodegenDiagnosticsTests
         using System.Text;
         using CommunityToolkit.Mvvm.Input;
         using Runic.Application.Views;
+        using Runic.Navigation;
 
         namespace Fixture;
 

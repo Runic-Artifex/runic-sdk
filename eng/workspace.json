@@ -61,6 +61,10 @@
       "project": "packages/dotnet/Runic.Desktop/Runic.Desktop.csproj"
     },
     {
+      "name": "Runic.Navigation",
+      "project": "packages/dotnet/Runic.Navigation/Runic.Navigation.csproj"
+    },
+    {
       "name": "Runic.Application",
       "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
@@ -173,10 +177,18 @@
         "specs/assets"
       ]
     },
+    "navigation": {
+      "dependsOn": [],
+      "paths": [
+        "packages/dotnet/Runic.Navigation",
+        "tests/dotnet/Runic.Navigation.Tests"
+      ]
+    },
     "application": {
       "dependsOn": [
         "desktop",
-        "platform"
+        "platform",
+        "navigation"
       ],
       "paths": [
         "packages/dotnet/Runic.Application.Views",

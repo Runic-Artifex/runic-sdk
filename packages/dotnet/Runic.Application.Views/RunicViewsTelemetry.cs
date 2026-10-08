@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 
@@ -271,18 +272,8 @@ internal static partial class ViewsLog
         Message = "Runic View remount on route {Route} failed with {ErrorType}.")]
     internal static partial void RemountFailed(ILogger logger, Exception? exception, string route, string errorType);
 
-    [LoggerMessage(EventId = 1030, EventName = "ModelTurnFailed", Level = LogLevel.Error,
-        Message = "A model context turn failed with {ErrorType}.")]
-    internal static partial void ModelTurnFailed(ILogger logger, Exception? exception, string errorType);
-
-    [LoggerMessage(EventId = 1031, EventName = "ModelTurnDropped", Level = LogLevel.Warning,
-        Message = "A model context dropped a posted turn at shutdown: {ErrorType}.")]
-    internal static partial void ModelTurnDropped(ILogger logger, Exception? exception, string errorType);
-
-    [LoggerMessage(EventId = 1032, EventName = "UnhandledTurnHandlerFailed", Level = LogLevel.Error,
-        Message = "An UnhandledTurnException handler failed with {ErrorType}.")]
-    internal static partial void UnhandledTurnHandlerFailed(ILogger logger, Exception? exception, string errorType);
-
+    // A window session's own model context failed to shut down in the background.
+    // Runic.Navigation logs the same event for RunicModelContext and the registry.
     [LoggerMessage(EventId = 1033, EventName = "ModelContextReleaseFailed", Level = LogLevel.Error,
         Message = "Releasing a model context failed with {ErrorType}.")]
     internal static partial void ModelContextReleaseFailed(ILogger logger, Exception? exception, string errorType);

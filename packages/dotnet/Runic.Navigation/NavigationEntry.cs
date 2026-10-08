@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>
 /// The content-type-independent view of a <see cref="NavigationEntry{TContent}"/>, for hosts that present

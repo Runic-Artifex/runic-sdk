@@ -4,6 +4,7 @@ using NotesWindowViews;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Xunit;
+using Runic.Navigation;
 
 namespace NotesViewFirst.Tests;
 

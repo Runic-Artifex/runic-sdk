@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>
 /// The content-type-independent view of a <see cref="NavigationRegion{TContent}"/>, for hosts that present
@@ -200,7 +200,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
             catch (Exception error)
             {
                 NavigationLog.NavigationNotificationFailed(Core.Navigator.Logger, error, Core.ContentTypeName, Core.Id,
-                    args.PropertyName ?? string.Empty, BridgeTelemetry.ErrorType(error));
+                    args.PropertyName ?? string.Empty, NavigationTelemetry.ErrorType(error));
             }
         }
     }

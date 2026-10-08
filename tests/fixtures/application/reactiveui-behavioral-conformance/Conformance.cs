@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 #if SYSTEM_REACTIVE
 using System.Reactive;

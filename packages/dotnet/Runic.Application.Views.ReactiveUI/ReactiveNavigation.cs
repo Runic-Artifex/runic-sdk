@@ -2,6 +2,7 @@
 // Runic.Application.ReactiveUI.Reactive.
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using Runic.Navigation;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;

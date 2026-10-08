@@ -1,6 +1,7 @@
 using System.Reactive.Concurrency;
 using System.Reactive.Disposables;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Views.ReactiveUI.Reactive;
 

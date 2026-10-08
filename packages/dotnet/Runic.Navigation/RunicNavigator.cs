@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>Configures a <see cref="RunicNavigator"/>.</summary>
 [Experimental(RunicNavigator.DiagnosticId)]
@@ -521,7 +521,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                     catch (Exception error)
                     {
                         NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
-                            "None", "Cancel", BridgeTelemetry.ErrorType(error));
+                            "None", "Cancel", NavigationTelemetry.ErrorType(error));
                     }
                 }
                 List<NavigationEntryId> retired = [];
@@ -531,7 +531,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                     catch (Exception error)
                     {
                         NavigationLog.NavigationEntryCleanupFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
-                            entry.ContentTypeName, "Retire", BridgeTelemetry.ErrorType(error));
+                            entry.ContentTypeName, "Retire", NavigationTelemetry.ErrorType(error));
                     }
                 }
                 outcome = NavigationOutcome.Commit(commit.Current, retired);
@@ -611,7 +611,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 // A guard that fails because the navigator or region is closing is a close, not a failure.
                 if (IsClosing(region)) return (NavigationOutcome.Reject(NavigationRejection.Closed), null);
                 NavigationLog.NavigationGuardFailed(Logger, error, region.ContentTypeName, region.Id,
-                    OperationName(transition.Operation), entry.ContentTypeName, BridgeTelemetry.ErrorType(error));
+                    OperationName(transition.Operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
                 return (NavigationOutcome.Fail(error, NavigationPhase.Guarding), null);
             }
             finally { ExitGuardHook(transition); }
@@ -646,7 +646,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             lock (Gate) closing = _closing;
             if (closing) return (NavigationOutcome.Reject(NavigationRejection.Closed), null);
             NavigationLog.NavigationCommitFailed(Logger, error, region.ContentTypeName, region.Id,
-                OperationName(transition.Operation), BridgeTelemetry.ErrorType(error));
+                OperationName(transition.Operation), NavigationTelemetry.ErrorType(error));
             return (NavigationOutcome.Fail(error, NavigationPhase.Committing), null);
         }
         return (result.Outcome, result.Commit);
@@ -741,7 +741,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 // CreateRegion) fails because of the close, not on its own.
                 if (IsClosing(region)) return NavigationOutcome.Reject(NavigationRejection.Closed);
                 NavigationLog.NavigationPreparationFailed(Logger, error, region.ContentTypeName, region.Id,
-                    OperationName(transition.Operation), entry.ContentTypeName, BridgeTelemetry.ErrorType(error));
+                    OperationName(transition.Operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
                 return NavigationOutcome.Fail(error, NavigationPhase.Preparing);
             }
         }
@@ -767,7 +767,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             {
                 if (IsClosing(region)) return NavigationOutcome.Reject(NavigationRejection.Closed);
                 NavigationLog.NavigationPreparationFailed(Logger, error, region.ContentTypeName, region.Id,
-                    OperationName(transition.Operation), resumed.ContentTypeName, BridgeTelemetry.ErrorType(error));
+                    OperationName(transition.Operation), resumed.ContentTypeName, NavigationTelemetry.ErrorType(error));
                 return NavigationOutcome.Fail(error, NavigationPhase.Preparing);
             }
         }
@@ -1261,7 +1261,7 @@ public sealed class RunicNavigator : IAsyncDisposable
 
     private void LogCleanup(NavigationEntryCore entry, string step, Exception error) =>
         NavigationLog.NavigationEntryCleanupFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
-            entry.ContentTypeName, step, BridgeTelemetry.ErrorType(error));
+            entry.ContentTypeName, step, NavigationTelemetry.ErrorType(error));
 
     // Marks a region closed, cancels its in-flight transitions and takes its
     // committed entries (current first, then history from top to bottom). The
@@ -1328,7 +1328,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             catch (Exception error)
             {
                 NavigationLog.NavigationEntryCleanupFailed(Logger, error, region.ContentTypeName, region.Id,
-                    "None", "Close", BridgeTelemetry.ErrorType(error));
+                    "None", "Close", NavigationTelemetry.ErrorType(error));
                 fallback = true;
             }
         }
@@ -1437,7 +1437,7 @@ public sealed class RunicNavigator : IAsyncDisposable
         {
             if (transition.Cancel() is not { } error) continue;
             NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
-                "None", "Cancel", BridgeTelemetry.ErrorType(error));
+                "None", "Cancel", NavigationTelemetry.ErrorType(error));
         }
     }
 

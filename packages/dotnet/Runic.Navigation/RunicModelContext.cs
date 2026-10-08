@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>
 /// Owns short, serialized mutations and reads for one mutable application-model graph.
@@ -34,47 +34,14 @@ public interface IRunicModelContext : IAsyncDisposable
     bool TryPost(Action turn);
 
     /// <summary>Runs a short synchronous turn in this context.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity.")]
     ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default);
 
     /// <summary>Runs a short synchronous turn in this context and returns its result.</summary>
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity.")]
     ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default);
-}
-
-// Synchronous entry points for transport routes. They follow the blocking
-// contract documented on IRunicModelContext.
-internal static class RunicModelTurns
-{
-    public static void Run(IRunicModelContext context, Action work)
-    {
-        if (context.IsExecuting) work();
-        else context.InvokeAsync(work).AsTask().GetAwaiter().GetResult();
-    }
-
-    public static T Run<T>(IRunicModelContext context, Func<T> work) =>
-        context.IsExecuting ? work() : context.InvokeAsync(work).AsTask().GetAwaiter().GetResult();
-
-    // Teardown must still release subscriptions and lifetimes when an
-    // application-owned context was disposed first. If the context rejected
-    // the turn before it started, run it inline under the supplied gate.
-    public static void RunForTeardown(IRunicModelContext? context, Action work, object? gate = null)
-    {
-        if (context is not null)
-        {
-            var started = 0;
-            try
-            {
-                Run(context, () =>
-                {
-                    Volatile.Write(ref started, 1);
-                    work();
-                });
-                return;
-            }
-            catch (ObjectDisposedException) when (Volatile.Read(ref started) == 0) { }
-        }
-        if (gate is null) work();
-        else lock (gate) work();
-    }
 }
 
 /// <summary>
@@ -118,6 +85,8 @@ public sealed class RunicModelContext : IRunicModelContext
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity.")]
     public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(turn);
@@ -135,6 +104,8 @@ public sealed class RunicModelContext : IRunicModelContext
     }
 
     /// <inheritdoc />
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity.")]
     public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(turn);
@@ -261,10 +232,10 @@ public sealed class RunicModelContext : IRunicModelContext
         }
         catch (Exception reportError)
         {
-            ViewsLog.UnhandledTurnHandlerFailed(_logger, reportError, BridgeTelemetry.ErrorType(reportError));
+            ModelContextLog.UnhandledTurnHandlerFailed(_logger, reportError, NavigationTelemetry.ErrorType(reportError));
         }
-        if (dropped) ViewsLog.ModelTurnDropped(_logger, error, BridgeTelemetry.ErrorType(error));
-        else ViewsLog.ModelTurnFailed(_logger, error, BridgeTelemetry.ErrorType(error));
+        if (dropped) ModelContextLog.ModelTurnDropped(_logger, error, NavigationTelemetry.ErrorType(error));
+        else ModelContextLog.ModelTurnFailed(_logger, error, NavigationTelemetry.ErrorType(error));
     }
 
     // A posted turn has no completion to fault. Dropping it at shutdown is
@@ -384,33 +355,5 @@ public sealed class RunicModelContext : IRunicModelContext
             if (Interlocked.CompareExchange(ref _state, 1, 0) != 0) return;
             _completion.TrySetCanceled();
         }
-    }
-}
-
-// An IDisposable host can be closed by a view callback, which itself runs in a
-// model turn. Waiting for that same turn to leave the queue would deadlock.
-// Keep the normal synchronous disposal contract for external callers, but let
-// the owner turn initiate shutdown and finish naturally when it returns.
-internal static class RunicModelContextDisposal
-{
-    // A shutdown that fails later in the background is logged (1033) to the caller's logger.
-    public static void DisposeSynchronously(IRunicModelContext context, ILogger logger)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        var shutdown = context.DisposeAsync();
-        if (shutdown.IsCompletedSuccessfully) return;
-        if (context.IsExecuting)
-        {
-            _ = ObserveAsync(shutdown, logger);
-            return;
-        }
-        shutdown.AsTask().GetAwaiter().GetResult();
-    }
-
-    private static async Task ObserveAsync(ValueTask shutdown, ILogger logger)
-    {
-        try { await shutdown.ConfigureAwait(false); }
-        catch (Exception error)
-        { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
     }
 }

@@ -4,12 +4,12 @@ import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { root, workspace, affectedComponents } from "./run.mjs";
-import { dotnetBuildArguments, packageConsumerStrategy, resolveMsbuildPathValue } from "./verify-packages.mjs";
+import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveMsbuildPathValue } from "./verify-packages.mjs";
 
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 22);
+  assert.equal(workspace.nuget.length, 23);
   assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
@@ -160,4 +160,10 @@ test("solution projects use the maintained SDK layout", () => {
       path,
     );
   }
+});
+test("package layouts describe shipped NuGet packages", () => {
+  const shipped = new Set(workspace.nuget.map(p => p.name));
+  for (const name of Object.keys(packageLayouts)) assert.ok(shipped.has(name), name);
+  assert.ok(packageLayouts["Runic.Navigation"].files.includes("lib/net10.0/Runic.Navigation.dll"));
+  assert.ok(packageLayouts["Runic.Application"].includes.includes("tools/net10.0/Runic.Navigation.dll"));
 });

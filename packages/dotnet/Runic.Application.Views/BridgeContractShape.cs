@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Windows.Input;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 

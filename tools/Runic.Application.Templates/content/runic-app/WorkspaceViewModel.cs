@@ -4,6 +4,7 @@ using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation;
 
 namespace RunicWindowApp;
 

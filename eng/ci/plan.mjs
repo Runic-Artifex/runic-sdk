@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
 
-export const managedGroups = ["platform", "assets", "application"];
+export const managedGroups = ["platform", "assets", "navigation", "application"];
 export function managedTests(base = root, platform = process.platform) {
   return [...readFileSync(resolve(base, "RunicSdk.Core.slnx"), "utf8").matchAll(/<Project Path="([^"]+)"/g)]
     .map(([, path]) => path)
@@ -13,7 +13,8 @@ export function managedTests(base = root, platform = process.platform) {
       return /<OutputType>Exe<\/OutputType>/.test(project)
         && (platform === "win32" || !/<TargetFramework>[^<]*-windows<\/TargetFramework>/.test(project));
     })
-    .map(path => ({ path, group: path.includes("Runic.Application.") ? "application"
+    .map(path => ({ path, group: path.includes("Runic.Navigation.") ? "navigation"
+      : path.includes("Runic.Application.") ? "application"
       : path.includes("Runic.Assets") ? "assets"
       : "platform" }));
 }

@@ -101,7 +101,8 @@ state changes through the model context.
 
 Call `AddRunicReactiveModelContext()` before the ViewModel creates its commands
 and inject the scoped sequencer. Bind the root and every independently
-presented child to that same context:
+presented child to that same context. `IRunicModelContext` and
+`RunicModelContextRegistry` are in the `Runic.Navigation` namespace:
 
 ```csharp
 services.AddRunicReactiveModelContext();
@@ -179,6 +180,8 @@ region as a get-only property and the generator presents its `Current` like
 any content slot.
 
 The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
+The navigator and region types are in the `Runic.Navigation` namespace of the
+[Runic.Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md) package.
 
 ```csharp
 var scheduler = new RunicReactiveSchedulerProvider().For(context);

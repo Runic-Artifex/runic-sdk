@@ -8,7 +8,8 @@
   <PropertyGroup Condition="'$(RunicIsShippingProject)' == 'true' and '$(OutputType)' != 'Exe' and '$(IncludeBuildOutput)' != 'false'">
     <RunicTrackPublicApi>true</RunicTrackPublicApi>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <PackageValidationBaselineVersion Condition="'$(PackageValidationBaselineVersion)' == ''">$(RunicPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
+    <!-- A package that was never published has no baseline; it sets RunicPackageValidationBaselineMissing until its first release. -->
+    <PackageValidationBaselineVersion Condition="'$(PackageValidationBaselineVersion)' == '' and '$(RunicPackageValidationBaselineMissing)' != 'true'">$(RunicPackageValidationBaselineVersion)</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <ItemGroup Condition="'$(RunicTrackPublicApi)' == 'true'">

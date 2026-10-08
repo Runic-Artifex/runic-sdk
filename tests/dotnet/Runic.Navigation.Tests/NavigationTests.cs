@@ -4,9 +4,8 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
-using Runic.Application.Views;
 
-namespace Runic.Application.Testing.Tests;
+namespace Runic.Navigation.Tests;
 
 // W230-002 slice 1: the experimental navigator core (design record W230-001 §4-§6, §10, §13).
 internal static class NavigationTests
