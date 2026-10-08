@@ -22,7 +22,10 @@ public sealed class RunicNavigatorOptions
 
     /// <summary>
     /// How long <see cref="RunicNavigator.DisposeAsync"/> waits for cancelled transitions, and then for the
-    /// regions to be cleared in model turns (one deadline shared by all regions). Defaults to 10 seconds.
+    /// regions to be cleared in model turns (one deadline shared by all regions). A retiring entry whose initialize hook
+    /// ignored cancellation is not awaited again after the first wait timed out, so disposal takes about twice this
+    /// value in the worst case, independent of the number of regions, plus the disposal of the content itself.
+    /// Defaults to 10 seconds.
     /// </summary>
     public TimeSpan CloseTimeout { get; init; } = TimeSpan.FromSeconds(10);
 }
@@ -58,6 +61,9 @@ public sealed class RunicNavigator : IAsyncDisposable
     // The shared deadline of the clearing turns of one disposal (guarded by Gate).
     private long? _closeTurnsStart;
     private bool _closeTurnsTimedOut;
+    // Set when the disposal's wait for cancelled transitions timed out: their initialize hooks already had the close timeout.
+    private bool _transitionWaitTimedOut;
+    private long? _initializeStart;
     private readonly List<NavigationRegionCore> _regions = [];
     private readonly Dictionary<object, List<NavigationRegionCore>> _regionsByOwner = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<object, NavigationEntryCore> _ownedEntries = new(ReferenceEqualityComparer.Instance);
@@ -261,8 +267,10 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// turns is bounded by <see cref="RunicNavigatorOptions.CloseTimeout"/> for the whole disposal: when a turn stays blocked,
     /// that region is cleared outside a turn after the timeout and a warning (1068) is logged, the notifications it owes
     /// are posted, and the remaining regions are cleared without waiting. Disposal always completes; content disposal itself is not bounded.
-    /// Retiring an entry whose initialize hook is running waits for the hook, up to the close timeout, before it disposes the content;
-    /// an initialize hook never starts on content that retirement already claimed.
+    /// Retiring an entry whose initialize hook is running waits for the hook, within the same close timeout, before it disposes the
+    /// content; once the wait for cancelled transitions timed out the hook is not awaited again and a warning (1069) is logged.
+    /// An initialize hook never starts on content that retirement already claimed. The worst case of a disposal is about twice
+    /// <see cref="RunicNavigatorOptions.CloseTimeout"/> (transition wait plus clearing turns), plus content disposal.
     /// </remarks>
     public ValueTask DisposeAsync()
     {
@@ -292,7 +300,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             if (running.Length > 0)
             {
                 try { await Task.WhenAll(running).WaitAsync(_closeTimeout, _time).ConfigureAwait(false); }
-                catch (TimeoutException) { }
+                catch (TimeoutException) { lock (Gate) _transitionWaitTimedOut = true; }
             }
 
             NavigationRegionCore[] regions;
@@ -313,7 +321,10 @@ public sealed class RunicNavigator : IAsyncDisposable
 
     // ---- Admission -------------------------------------------------------
 
-    internal Task<NavigationOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
+    // Test seam: runs between the cancellation check and the initialize claim.
+    internal Action? BeforeInitializeClaim { get; set; }
+
+        internal Task<NavigationOutcome> Start(NavigationRegionCore region, NavigationOperation operation,
         NavigationTargetCore? target, NavigationEntryId? backTo, NavigationEntryId? expected,
         CancellationToken cancellationToken)
     {
@@ -599,6 +610,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 }
                 if (token.IsCancellationRequested) return CancelledOutcome(transition);
                 var content_ = entry.Content!;
+                BeforeInitializeClaim?.Invoke();
                 TaskCompletionSource? initializing = null;
                 if (target.HasInput || entry.Content is INavigationInitialize)
                 {
@@ -642,6 +654,13 @@ public sealed class RunicNavigator : IAsyncDisposable
         {
             try
             {
+                // Skip a resume that is cancelled or whose entry retirement already claimed. A resume
+                // that started before retirement may still overrun disposal once the close timeout
+                // passed; that is the accepted overrun.
+                if (token.IsCancellationRequested) return CancelledOutcome(transition);
+                bool retiringResume;
+                lock (Gate) retiringResume = resumed.Retiring is not null;
+                if (retiringResume) return NavigationOutcome.Reject(NavigationRejection.Closed);
                 var request = new NavigationResume(resumed.Id, transition.Operation);
                 await InvokeHook(transition, () => resume.ResumeAsync(request, token)).ConfigureAwait(false);
             }
@@ -964,8 +983,13 @@ public sealed class RunicNavigator : IAsyncDisposable
                 lock (Gate) initializing = entry.Initializing;
                 if (initializing is { IsCompleted: false })
                 {
-                    try { await initializing.WaitAsync(_closeTimeout, _time).ConfigureAwait(false); }
-                    catch (Exception error) { LogCleanup(entry, "Initialize", error); }
+                    var wait = InitializeWait();
+                    if (wait is { } limit)
+                    {
+                        try { await initializing.WaitAsync(limit, _time).ConfigureAwait(false); }
+                        catch (TimeoutException) { NavigationLog.NavigationInitializeTimedOut(Logger, null, entry.Region.ContentTypeName, entry.Region.Id, entry.ContentTypeName); }
+                    }
+                    else NavigationLog.NavigationInitializeTimedOut(Logger, null, entry.Region.ContentTypeName, entry.Region.Id, entry.ContentTypeName);
                 }
 
                 // 2. Close child regions without awaiting their transitions,
@@ -1108,6 +1132,22 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
         if (fallback && ClearOnce() is { } owed && owed != NavigationRegionChanges.None) Notify(region, owed);
         return entries;
+    }
+
+    // How long retirement may wait for a running initialize hook, or null to skip the wait. Outside
+    // disposal that is the close timeout. During disposal a hook already had the close timeout in the
+    // wait for cancelled transitions, so once that timed out no hook is awaited again; otherwise the
+    // waits share one deadline. The worst case of a disposal is therefore about twice the close timeout.
+    private TimeSpan? InitializeWait()
+    {
+        lock (Gate)
+        {
+            if (!_closing) return _closeTimeout;
+            if (_transitionWaitTimedOut) return null;
+            _initializeStart ??= _time.GetTimestamp();
+            var remaining = _closeTimeout - _time.GetElapsedTime(_initializeStart.Value);
+            return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
+        }
     }
 
     // How long a close may wait for its clearing turn, or null to skip the wait. A region

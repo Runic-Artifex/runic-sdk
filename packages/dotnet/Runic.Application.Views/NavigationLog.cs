@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
-// Navigation event IDs 1060-1068 (1043-1049 stay reserved for the ReactiveUI
+// Navigation event IDs 1060-1069 (1043-1049 stay reserved for the ReactiveUI
 // navigation adapter). Properties carry type and operation names, never values.
 [Experimental(RunicNavigator.DiagnosticId)]
 internal static partial class NavigationLog
@@ -51,4 +51,8 @@ internal static partial class NavigationLog
     [LoggerMessage(EventId = 1068, EventName = "NavigationCloseTimedOut", Level = LogLevel.Warning,
         Message = "Closing navigation region {Region} ({RegionId}) timed out waiting for a model turn; its state was cleared outside a turn.")]
     internal static partial void NavigationCloseTimedOut(ILogger logger, Exception? exception, string region, int regionId);
+
+    [LoggerMessage(EventId = 1069, EventName = "NavigationInitializeTimedOut", Level = LogLevel.Warning,
+        Message = "Retiring {EntryType} in navigation region {Region} ({RegionId}) stopped waiting for its initialize hook after the close timeout; the content is disposed while the hook runs.")]
+    internal static partial void NavigationInitializeTimedOut(ILogger logger, Exception? exception, string region, int regionId, string entryType);
 }

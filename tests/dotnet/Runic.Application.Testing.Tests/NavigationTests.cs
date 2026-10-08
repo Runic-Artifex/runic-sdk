@@ -28,8 +28,9 @@ internal static class NavigationTests
         await CloseChangesStateInsideTurnsAsync();
         await CloseTimeoutBoundsDisposalAsync();
         await CancellationCallbackFailureDoesNotAbortDisposalAsync();
-        await RetirementWaitsForInitializeAsync(timeOut: false);
-        await RetirementWaitsForInitializeAsync(timeOut: true);
+        await RetirementWaitsForInitializeAsync();
+        await InitializeWaitsShareOneDeadlineAsync();
+        await SharedClearingDeadlineAsync();
         await RetiredEntryNeverInitializesAsync();
         await GuardFailureDuringCloseIsRejectedAsync();
         await CreateRegionDisposesFactoryInstanceAsync();
@@ -430,9 +431,9 @@ internal static class NavigationTests
         }
     }
 
-    // Retirement must not dispose content under a running initialize hook until
-    // CloseTimeout has passed; a hook that ignores cancellation holds it back.
-    private static async Task RetirementWaitsForInitializeAsync(bool timeOut)
+    // Disposal waits for an initialize hook that returns within the close timeout before it
+    // disposes the content, and does not dispose under the hook while it runs.
+    private static async Task RetirementWaitsForInitializeAsync()
     {
         var time = new FakeTimeProvider();
         var fixture = new Fixture(null, time, TimeSpan.FromSeconds(10));
@@ -458,49 +459,91 @@ internal static class NavigationTests
         var push = region.PushAsync(NavigationTarget.Own<Page>(page)).AsTask();
         await Wait(started.Task);
         var disposal = fixture.Navigator.DisposeAsync().AsTask();
-        // Expire the wait for the running transition; retirement then waits for the hook.
-        time.Advance(TimeSpan.FromSeconds(11));
-        await Task.Delay(300);
-        Require(page.Disposed == 0 && !disposal.IsCompleted, "Retirement disposed content under a running initialize hook.");
-        if (timeOut)
-        {
-            time.Advance(TimeSpan.FromSeconds(11));
-            await Wait(disposal);
-            Require(page.Disposed == 1, "The initialize wait did not respect the close timeout.");
-            gate.SetResult();
-        }
-        else
-        {
-            gate.SetResult();
-            await Wait(disposal);
-            Require(page.Disposed == 1 && disposedDuringInit == 0, "Content was disposed before its initialize hook returned.");
-        }
+        await Task.Delay(100);
+        Require(page.Disposed == 0 && !disposal.IsCompleted, "Disposal disposed content under a running initialize hook.");
+        gate.SetResult();
+        await Wait(disposal);
+        Require(page.Disposed == 1 && disposedDuringInit == 0, "Content was disposed before its initialize hook returned.");
         Require(await Wait(push) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, "The pending push was not rejected.");
+        Require(fixture.Logs.Count(1069) == 0, "A hook that returned in time logged a timeout.");
         await fixture.Context.DisposeAsync();
     }
 
-    // A retirement that wins the claim keeps initialize from ever starting.
+    // K regions whose initialize hooks ignore cancellation: disposal ends after one close timeout
+    // for the transitions (no per-region re-wait), without any further advance of the clock.
+    private static async Task InitializeWaitsShareOneDeadlineAsync()
+    {
+        const int regions = 3;
+        var time = new FakeTimeProvider();
+        var fixture = new Fixture(null, time, TimeSpan.FromSeconds(10));
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pages = new List<InitPage>();
+        var pushes = new List<Task>();
+        for (var index = 0; index < regions; index++)
+        {
+            var region = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Borrow(new Page($"home{index}")));
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var page = new InitPage($"blocked{index}") { Initialize = async (_, _) => { started.SetResult(); await gate.Task; } };
+            pages.Add(page);
+            pushes.Add(region.PushAsync(NavigationTarget.Own<Page>(page)).AsTask());
+            await Wait(started.Task);
+        }
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        // One advance expires the wait for the transitions; the hooks are not awaited again.
+        time.Advance(TimeSpan.FromSeconds(11));
+        await Wait(disposal);
+        Require(pages.All(page => page.Disposed == 1), "Disposal did not retire every blocked entry within one close timeout.");
+        Require(fixture.Logs.Count(1069) == regions && fixture.Logs.Has(1069, LogLevel.Warning),
+            $"Expected {regions} initialize timeout warnings, got {fixture.Logs.Count(1069)}.");
+        gate.SetResult();
+        await Wait(Task.WhenAll(pushes));
+        await fixture.Context.DisposeAsync();
+    }
+
+    // Retirement that wins the claim keeps initialize from ever starting. The stall between the
+    // cancellation check and the claim is held by a test seam while disposal retires the entry.
     private static async Task RetiredEntryNeverInitializesAsync()
     {
-        await using var fixture = new Fixture();
+        var time = new FakeTimeProvider();
+        var fixture = new Fixture(null, time, TimeSpan.FromSeconds(10));
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
         var page = new InitPage("late");
-        var created = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        // The factory runs inline in the request, so issue it from another thread.
-        var push = Task.Run(async () => await region.PushAsync(NavigationTarget.Create<Page>(_ =>
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var proceed = new ManualResetEventSlim();
+        fixture.Navigator.BeforeInitializeClaim = () =>
         {
-            created.SetResult();
-            proceed.Task.GetAwaiter().GetResult();
-            return page;
-        })));
-        await Wait(created.Task);
+            reached.TrySetResult();
+            proceed.Wait(Timeout);
+        };
+        var push = Task.Run(async () => await region.PushAsync(NavigationTarget.Own<Page>(page)));
+        await Wait(reached.Task);
         var disposal = fixture.Navigator.DisposeAsync().AsTask();
-        await Task.Delay(100);
-        proceed.SetResult();
+        // The stalled transition keeps the first wait running; expire it so retirement runs.
+        time.Advance(TimeSpan.FromSeconds(11));
+        await Until(() => page.Disposed == 1, "Disposal did not retire the stalled entry.");
+        proceed.Set();
         await Wait(disposal);
         await Wait(push);
-        Require(page.Initialized == 0 && page.Disposed == 1, $"Initialize ran {page.Initialized} times on content retired before it started.");
+        Require(page.Initialized == 0, $"Initialize ran {page.Initialized} times on content retired before it was claimed.");
+        await fixture.Context.DisposeAsync();
+    }
+
+    // The clearing turns of two blocked regions share one deadline: one advance, one warning.
+    private static async Task SharedClearingDeadlineAsync()
+    {
+        var context = new GatedContext();
+        var time = new FakeTimeProvider();
+        var fixture = new Fixture(context, time, TimeSpan.FromSeconds(10));
+        var first = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Own(new Page("first")));
+        var second = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Own(new Page("second")));
+        context.Close();
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        time.Advance(TimeSpan.FromSeconds(11));
+        await Wait(disposal);
+        Require(first.Current is null && second.Current is null, "A timed-out close left a region populated.");
+        Require(fixture.Logs.Count(1068) == 1, $"Expected one close timeout warning, got {fixture.Logs.Count(1068)}.");
+        context.Open();
+        await fixture.Context.DisposeAsync();
     }
 
     private static async Task CancellationCallbackFailureDoesNotAbortDisposalAsync()
