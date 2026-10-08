@@ -1,0 +1,8 @@
+<rxNav:NavigationWindow x:Class="Comparison.CrissCrossApp.Shell.MainWindow"
+                        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                        xmlns:rxNav="https://github.com/reactivemarbles/CrissCross"
+                        x:Name="Main" Title="CrissCross" Width="640" Height="420"
+                        Style="{DynamicResource ShellStyle}">
+  <Button x:Name="NavBack" Content="Back" /> <!-- [S4] -->
+</rxNav:NavigationWindow>

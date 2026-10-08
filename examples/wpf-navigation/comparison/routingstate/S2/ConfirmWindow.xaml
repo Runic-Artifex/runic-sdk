@@ -1,0 +1,12 @@
+<Window x:Class="Comparison.RoutingStateApp.S2.ConfirmWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        SizeToContent="WidthAndHeight" WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="12">
+    <TextBlock Text="{Binding}" />
+    <StackPanel Orientation="Horizontal">
+      <Button Content="OK" IsDefault="True" Click="OnOk" />
+      <Button Content="Cancel" IsCancel="True" />
+    </StackPanel>
+  </StackPanel>
+</Window>

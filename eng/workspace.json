@@ -198,7 +198,8 @@
         "packages/dotnet/Runic.Navigation.Wpf",
         "tests/dotnet/Runic.Navigation.Tests",
         "tests/dotnet/Runic.Navigation.Wpf.Tests",
-        "tests/fixtures/navigation"
+        "tests/fixtures/navigation",
+        "examples/wpf-navigation"
       ]
     },
     "application": {

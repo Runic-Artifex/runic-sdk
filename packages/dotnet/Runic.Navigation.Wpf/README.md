@@ -22,7 +22,17 @@ dotnet add package Runic.Navigation.Wpf --prerelease
 
 ## Quick start
 
-Register the navigator, a holder service per region and the shell:
+This page builds the core of the
+[WPF navigation example](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-navigation/README.md):
+a notes list, a detail page that asks before losing edits, and a confirm
+dialog with a typed result. The example adds nested tabs and headless tests,
+and its
+[comparison](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-navigation/COMPARISON.md)
+sets the same app against Prism, ReactiveUI and CrissCross.
+
+**1. Install and register.** Add this package and
+`Microsoft.Extensions.DependencyInjection`, and suppress `RUNICNAV001`. Then
+register the navigator and one service that holds the window's regions:
 
 ```csharp
 public partial class App : Application
@@ -33,17 +43,13 @@ public partial class App : Application
     {
         base.OnStartup(e);
         _services = new ServiceCollection()
-            .AddRunicWpfNavigation(options => options.UseViewNamingConvention())
-            .AddSingleton<MainNavigation>()
-            .AddSingleton<DialogNavigation>()
-            .AddSingleton<ShellViewModel>()
-            .AddTransient<HomeViewModel>()
-            .AddTransient<DocumentViewModel>()
+            .AddRunicWpfNavigation(options => options.UseViewNamingConvention()) // NotesViewModel -> NotesView
+            .AddSingleton<NoteStore>()
+            .AddSingleton<AppRegions>()
             .BuildServiceProvider();
-
-        var shell = _services.GetRequiredService<ShellViewModel>();
-        new MainWindow { DataContext = shell }.Show();
-        await shell.StartAsync();
+        var regions = _services.GetRequiredService<AppRegions>();
+        new MainWindow { DataContext = regions }.Show();
+        await regions.Main.ResetAsync<NotesViewModel>();
     }
 
     protected override void OnExit(ExitEventArgs e)
@@ -54,59 +60,114 @@ public partial class App : Application
 }
 ```
 
-A region lives in a small injected **holder service**, so nested ViewModels
-reach it without depending on the shell:
+**2. A region and its host.** A region is a navigation stack. ViewModels
+inject `AppRegions` to navigate, and the window binds to it. The regions start
+empty, because an initial ViewModel that injects `AppRegions` would be a DI
+cycle; `App` resets `Main` instead.
 
 ```csharp
-public sealed class MainNavigation
+public sealed class AppRegions
 {
-    public MainNavigation(RunicNavigator navigator) => Region = navigator.CreateRegion<object>(this);
-    public NavigationRegion<object> Region { get; }
-}
-// DialogNavigation is the same holder for the dialog region.
+    public AppRegions(RunicNavigator navigator)
+    {
+        Main = navigator.CreateRegion<object>(this);
+        Dialog = navigator.CreateRegion<object>(this);
+    }
 
-public sealed class ShellViewModel(MainNavigation main, DialogNavigation dialogs)
-{
-    public NavigationRegion<object> Main => main.Region;
-    public NavigationRegion<object> Dialog => dialogs.Region;
-
-    // Start empty and reset after construction: an initial target whose
-    // constructor needs MainNavigation would be a DI cycle.
-    public Task StartAsync() => Main.ResetAsync<HomeViewModel>().AsTask();
-}
-
-public sealed class HomeViewModel(MainNavigation navigation)
-{
-    public Task OpenAsync() => navigation.Region.PushAsync<DocumentViewModel>().AsTask();
+    public NavigationRegion<object> Main { get; }
+    public NavigationRegion<object> Dialog { get; }
 }
 ```
-
-`PushAsync<T>()` creates the ViewModel with `ActivatorUtilities`. With the
-default singleton navigator, each container-built entry gets its own service
-scope, which is disposed when the entry retires.
-
-To pass parameters, push a target you build, or pass an input that the
-ViewModel receives in `InitializeAsync`:
-
-```csharp
-await Main.PushAsync(NavigationTarget.Own<object>(new DocumentViewModel(documentId)));
-await Main.PushAsync(NavigationTarget.Create<object>(services =>
-    new DocumentViewModel(documentId, services.GetRequiredService<IDocumentStore>())));
-
-// DocumentViewModel : INavigationInitialize<DocumentId>, created from the container
-await Main.PushAsync<DocumentViewModel, DocumentId>(documentId);
-```
-
-Bind the hosts in the shell window:
 
 ```xml
 <Window xmlns:rn="https://runic-artifex.eu/xaml/navigation" ...>
-  <Grid>
-    <rn:NavigationHost Region="{Binding Main}" EmptyContent="Nothing open" />
+  <DockPanel>
+    <Button DockPanel.Dock="Top" Content="Back"
+            Command="NavigationCommands.BrowseBack" CommandTarget="{Binding ElementName=Host}" />
     <rn:NavigationDialogHost Region="{Binding Dialog}" />
-  </Grid>
+    <rn:NavigationHost x:Name="Host" Region="{Binding Main}" />
+  </DockPanel>
 </Window>
 ```
+
+`NavigationHost` shows the current entry with its View, `NotesView` for
+`NotesViewModel`. Back can't execute while a Back is in flight, so a double
+click pops once. `NavigationDialogHost` shows each entry of `Dialog` in a
+window owned by this one.
+
+**3. Push a page with a typed input, and ask before losing its edits.**
+`PushAsync<T>()` creates the ViewModel from the container. One that
+implements `INavigationInitialize<TInput>` receives its input before it's
+shown. `INavigationDepartureGuard` is asked on every exit: Back, a push from
+code, or a parent closing. `LeaveConfirmation.InDialog` asks in the dialog
+region and runs the discard only when the departure commits, so a cancelled or
+superseded Back keeps the edits:
+
+```csharp
+// In NotesViewModel
+await regions.Main.PushAsync<NoteViewModel, int>(note.Id);
+
+public sealed class NoteViewModel : ObservableObject, INavigationInitialize<int>, INavigationDepartureGuard
+{
+    private readonly NoteStore _store;
+    private readonly LeaveConfirmation _leave;
+    private Note _note = new(0, "");
+    private string _title = "";
+
+    public NoteViewModel(NoteStore store, AppRegions regions)
+    {
+        _store = store;
+        _leave = LeaveConfirmation.InDialog(regions.Dialog,
+            () => NavigationTarget.Create<ConfirmViewModel, string>("Discard unsaved changes?"),
+            hasUnsavedChanges: () => Title != _note.Title,
+            discard: () => Title = _note.Title);
+    }
+
+    public string Title { get => _title; set => SetProperty(ref _title, value); }
+
+    public ValueTask InitializeAsync(NavigationEntryContext entry, int id, CancellationToken token)
+    {
+        _note = _store.Get(id);
+        Title = _note.Title;
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken token) =>
+        _leave.CanDepartAsync(departure, token);
+}
+```
+
+**4. A dialog with a result.** Push the dialog with `PushForResult<TResult>`
+and await its completion. The dialog answers through the entry it received:
+
+```csharp
+// In NotesViewModel
+var answer = await regions.Dialog.PushForResult<bool>(
+    NavigationTarget.Create<ConfirmViewModel, string>($"Delete '{note.Title}'?")).Completion;
+if (answer is NavigationCompletion<bool>.Completed { Value: true })
+    store.Delete(note.Id);
+
+public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<string>
+{
+    private NavigationEntryContext? _entry;
+
+    public string Message { get; private set; } = "";
+    public Task YesAsync() => _entry!.CompleteAsync(true).AsTask(); // the OK button
+    public Task NoAsync() => _entry!.DismissAsync().AsTask();       // Cancel; Esc and the close button dismiss too
+
+    public ValueTask InitializeAsync(NavigationEntryContext entry, string message, CancellationToken token)
+    {
+        (_entry, Message) = (entry, message);
+        return ValueTask.CompletedTask;
+    }
+}
+```
+
+The same `ConfirmViewModel` serves the guard in step 3: only `Completed(true)`
+leaves. To push a ViewModel you built, use `NavigationTarget.Own<object>(instance)`;
+for a factory, `NavigationTarget.Create<object>(services => ...)`. With the
+default singleton navigator, each container-built entry gets its own service
+scope, which is disposed when the entry retires.
 
 ## Registration
 
@@ -230,8 +291,8 @@ public sealed class DocumentViewModel : INavigationDepartureGuard
 {
     private readonly LeaveConfirmation _leave;
 
-    public DocumentViewModel(DialogNavigation dialogs) =>
-        _leave = LeaveConfirmation.InDialog(dialogs.Region,
+    public DocumentViewModel(AppRegions regions) =>
+        _leave = LeaveConfirmation.InDialog(regions.Dialog,
             () => NavigationTarget.Own<object>(new ConfirmViewModel("Discard the unsaved edits?")),
             () => IsDirty, DiscardChanges);
 

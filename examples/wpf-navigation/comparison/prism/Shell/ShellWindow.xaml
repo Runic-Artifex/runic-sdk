@@ -1,0 +1,11 @@
+<Window x:Class="Comparison.PrismApp.Shell.ShellWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:prism="http://prismlibrary.com/"
+        prism:ViewModelLocator.AutoWireViewModel="True"
+        Title="Prism" Width="640" Height="420">
+  <DockPanel>
+    <Button DockPanel.Dock="Top" Content="Back" Command="{Binding GoBackCommand}" /> <!-- [S4] -->
+    <ContentControl prism:RegionManager.RegionName="Main" />
+  </DockPanel>
+</Window>

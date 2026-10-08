@@ -10,6 +10,7 @@ TypeScript clients. To start a new application, use the
 - [CommunityToolkit Notes](notes-view-first/README.md) shows nested content, View scopes, and typed writes.
 - [Reactive Notes](notes-reactive-views/README.md) demonstrates ReactiveUI routing and multiple Views over a model.
 - [DynamicData](dynamicdata/README.md) presents a 100,000-row cache through independent, keyed viewports.
+- [WPF navigation](wpf-navigation/README.md) navigates a plain WPF app with Runic.Navigation.Wpf alone, and [compares it](wpf-navigation/COMPARISON.md) with Prism, ReactiveUI and CrissCross.
 
 The examples build the Runic packages from source with `ProjectReference` and
 `Import` lines, so they run only inside this repository. To copy one into your

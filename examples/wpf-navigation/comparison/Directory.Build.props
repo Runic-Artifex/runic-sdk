@@ -1,0 +1,13 @@
+<Project>
+  <!-- The competitor apps of the W240-007 comparison. Standalone: no repository build policy, no
+       central package versions, not in any solution and not built by CI. Each targets net10.0-windows
+       and builds on Linux with EnableWindowsTargeting. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+</Project>

@@ -335,6 +335,9 @@ jobs:
         run: dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release
       - name: Verify the packed WPF consumer pulls in only Runic.Navigation
         run: bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs
+      # W240-007: the reference app and its scenario tests, built from the packed packages only.
+      - name: Test the WPF navigation example from the packed packages
+        run: bun examples/wpf-navigation/package-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:

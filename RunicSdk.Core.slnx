@@ -5,6 +5,8 @@
     <Project Path="examples/notes-view-first/NotesViewFirst.csproj" />
     <Project Path="examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj" />
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
+    <Project Path="examples/wpf-navigation/NotesNavigation/NotesNavigation.csproj" />
+    <Project Path="examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj" />
   </Folder>
   <Folder Name="/packages/dotnet/">
     <Project Path="packages/dotnet/Runic.Platform/Runic.Platform.csproj" />

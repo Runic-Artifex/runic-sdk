@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <!-- Builds on Linux and macOS too; it runs on Windows only. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>Runic.Navigation.Examples.Notes</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- Runic.Navigation is experimental. -->
+    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+  <!-- Inside the SDK repository the example builds Runic.Navigation.Wpf from source. CI builds it
+       from the packed package instead (package-smoke.mjs sets RunicPackageVersion). A copied-out
+       project keeps only <PackageReference Include="Runic.Navigation.Wpf" Version="..." />. -->
+  <ItemGroup Condition="'$(RunicPackageVersion)' == ''">
+    <ProjectReference Include="../../../packages/dotnet/Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicPackageVersion)' != ''">
+    <PackageReference Include="Runic.Navigation.Wpf" />
+  </ItemGroup>
+</Project>
