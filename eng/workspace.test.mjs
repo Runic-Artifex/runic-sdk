@@ -203,12 +203,12 @@ test("compareVersions orders releases and prereleases", () => {
 // compatibility checks, so it must be removed (eng/release/README.md step 6).
 test("validation baseline opt-outs are only on packages newer than the baseline", () => {
   const baseline = readFileSync(resolve(root, "eng/Versions.props"), "utf8")
-    .match(/<RunicPackageValidationBaselineVersion>([^<]+)</)?.[1];
+    .match(/<RunicPackageValidationBaselineVersion>([^<]+)</)?.[1]?.trim();
   assert.ok(baseline, "RunicPackageValidationBaselineVersion was not found");
   for (const p of workspace.nuget) {
     const project = readFileSync(resolve(root, p.project), "utf8");
     if (!/<RunicPackageValidationBaselineMissing>\s*true\s*</i.test(project)) continue;
-    const first = project.match(/<RunicPackageFirstReleaseVersion>([^<]+)</)?.[1];
+    const first = project.match(/<RunicPackageFirstReleaseVersion>([^<]+)</)?.[1]?.trim();
     assert.ok(first, `${p.name} sets RunicPackageValidationBaselineMissing without RunicPackageFirstReleaseVersion`);
     assert.ok(compareVersions(first, baseline) > 0,
       `${p.name} was first released in ${first}, at or below the validation baseline ${baseline}; remove RunicPackageValidationBaselineMissing and RunicPackageFirstReleaseVersion`);

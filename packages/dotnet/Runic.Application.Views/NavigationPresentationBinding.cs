@@ -8,8 +8,10 @@ namespace Runic.Application.Views;
 // content forgets its routes. Bridges bind when they first observe a region slot.
 // One session per navigator: binding is idempotent for the same session. Disposing
 // the session detaches it and removes it from the table, so neither the table nor
-// the navigator keeps a closed window's session reachable. A closed navigator
-// binds nothing and never throws for a second session.
+// the navigator keeps a closed window's session reachable. The session links the
+// binding only weakly, so a live session does not keep a navigator reachable either:
+// the table entry, and with it the binding, dies with the navigator. A closed
+// navigator binds nothing and never throws for a second session.
 #pragma warning disable RUNICNAV001 // Binds sessions to the experimental navigator.
 internal static class NavigationPresentationBinding
 {
@@ -55,6 +57,7 @@ internal static class NavigationPresentationBinding
                         "This navigator is already presented by another window session. Use one navigator per window.");
                 slot.Binding = null;
                 bound.Detach();
+                bound.Session.UnlinkDisposal(bound);
             }
             if (navigator.IsClosed) return;
             var binding = new Binding(slot, session);
@@ -70,26 +73,44 @@ internal static class NavigationPresentationBinding
         public Binding? Binding { get; set; }
     }
 
+    // The session bound to a navigator, or null; for tests.
+    internal static WindowContentSession? BoundSession(RunicNavigator navigator)
+    {
+        if (!Slots.TryGetValue(navigator, out var slot)) return null;
+        lock (slot) return slot.Binding?.Session;
+    }
+
     // Forget is a no-op once the session is disposed. Disposing the binding, which the
     // session does when it is disposed, detaches it from the navigator and the table.
     private sealed class Binding(Slot slot, WindowContentSession session) : INavigationPresentation, IDisposable
     {
         public WindowContentSession Session { get; } = session;
 
-        public IDisposable? Attachment { get; set; }
+        private IDisposable? _attachment;
+
+        public IDisposable? Attachment
+        {
+            get => Volatile.Read(ref _attachment);
+            set => Volatile.Write(ref _attachment, value);
+        }
 
         public void Forget(object content) => Session.Forget(content);
 
-        public void Detach() => Attachment?.Dispose();
+        // Drops the attachment too, since it references the navigator.
+        public void Detach() => Interlocked.Exchange(ref _attachment, null)?.Dispose();
 
         public void Dispose()
         {
             lock (slot)
             {
+                // A binding that is no longer the slot's was replaced in Bind, which already
+                // detached it; detaching again would be harmless but must not clear the
+                // replacement's slot.
                 if (!ReferenceEquals(slot.Binding, this)) return;
                 slot.Binding = null;
             }
             Detach();
+            Session.UnlinkDisposal(this);
         }
     }
 

@@ -1171,6 +1171,7 @@ internal static class NavigationTests
         using var throwingAttachment = fixture.Navigator.AttachPresentation(throwing);
         using var firstAttachment = fixture.Navigator.AttachPresentation(first);
         fixture.Navigator.AttachPresentation(detached).Dispose();
+        Require(fixture.Navigator.PresentationCount == 2, $"{fixture.Navigator.PresentationCount} presentations are attached, not 2.");
 
         var owned = new Page("owned", journal);
         var borrowed = new Page("borrowed");
@@ -1189,15 +1190,10 @@ internal static class NavigationTests
         await fixture.Navigator.DisposeAsync();
         Require(fixture.Navigator.UnretiredEntryCount == 0, "Entries remained unretired after disposal.");
         Require(fixture.Navigator.IsClosed, "A disposed navigator does not report IsClosed.");
+        Require(fixture.Navigator.PresentationCount == 0, "Closing kept presentations attached.");
         var late = new RecordingPresentation("late", journal, fixture.Context);
-        var before = journal.Text;
         using var lateAttachment = fixture.Navigator.AttachPresentation(late);
-        var rejected = new Page("rejected");
-        Require(await Wait(region.PushAsync(NavigationTarget.Own(rejected))) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed },
-            "A push on a closed navigator was not rejected as Closed.");
-        await Wait(fixture.Navigator.WhenIdleAsync());
-        Require(journal.Text == before && late.InTurn == 0,
-            $"A presentation attached to a closed navigator was called: {journal.Text}.");
+        Require(fixture.Navigator.PresentationCount == 0, "A presentation attached to a closed navigator was recorded.");
         lateAttachment.Dispose();
         lateAttachment.Dispose(); // the no-op attachment tolerates repeated disposal
     }

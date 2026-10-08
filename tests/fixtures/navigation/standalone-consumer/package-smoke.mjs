@@ -39,9 +39,10 @@ assert.ok(hostDotnet, "dotnet is not on PATH.");
 const directory = mkdtempSync(join(tmpdir(), "runic-navigation-standalone-"));
 const properties = [`-p:RunicPackageVersion=${version}`];
 
-// Off Windows, dotnet is linked into its own directory, so a bin directory that it
+// On Linux and macOS, dotnet is linked into its own directory, so a bin directory that it
 // shares with Node (a Nix profile, /usr/bin) need not appear on the consumer's PATH.
-// The muxer resolves the link to find its SDKs.
+// The muxer resolves the link to find its SDKs. Windows keeps dotnet's own directory,
+// since creating symlinks there needs extra privileges.
 let dotnet = hostDotnet;
 if (process.platform !== "win32") {
   const dotnetDirectory = join(directory, "dotnet-bin");

@@ -294,6 +294,12 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
     }
 
+    // The number of attached presentations; for tests.
+    internal int PresentationCount
+    {
+        get { lock (Gate) return _presentations.Count; }
+    }
+
     // One attachment of a presentation; detaching removes only this attachment.
     private sealed class PresentationAttachment(RunicNavigator? navigator, INavigationPresentation? presentation) : IDisposable
     {
