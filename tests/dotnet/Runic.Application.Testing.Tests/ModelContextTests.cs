@@ -2,6 +2,7 @@ using System.ComponentModel;
 using ReactiveUI.Primitives.Concurrency;
 using ReactiveUI.Binding;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
@@ -24,6 +25,68 @@ public static class ModelContextTests
         await SessionBindsTheSuppliedApplicationContext();
         await DisposedApplicationContextStillReleasesBridgesAndViews();
         await ThirdPartyContextRunsNestedWorkInline();
+        await SessionContextShutdownFailureIsLoggedToTheSession();
+    }
+
+    // A window session that owns its context closes it from inside one of its turns without
+    // waiting, and observes the shutdown in the background. A failure is logged as 1033 with
+    // the session's own logger (category Runic.Application.Views), not the context's. The
+    // session only owns a RunicModelContext, whose shutdown does not fault, so the test drives
+    // the session's disposal helper with a context whose shutdown it controls.
+    private static async Task SessionContextShutdownFailureIsLoggedToTheSession()
+    {
+        var logs = new CategoryLog();
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport, loggerFactory: logs);
+        var shutdown = new TaskCompletionSource();
+        var context = new ManualShutdownContext(shutdown.Task);
+        RunicModelContextDisposal.DisposeSynchronously(context, session.Logger);
+        Require(context.Disposed, "The session's disposal helper did not start the shutdown.");
+        shutdown.SetException(new IOException("shutdown"));
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!logs.Has(1033) && DateTime.UtcNow < deadline) await Task.Delay(10);
+        var entry = logs.Entries.SingleOrDefault(entry => entry.Id == 1033);
+        Require(entry is { Category: RunicViewsTelemetry.LogCategory } && entry.Error is IOException,
+            $"The context shutdown failure was not logged under {RunicViewsTelemetry.LogCategory}: {string.Join(", ", logs.Entries)}");
+    }
+
+    private sealed record LogEntry(string Category, int Id, Exception? Error);
+
+    private sealed class CategoryLog : ILoggerFactory
+    {
+        private readonly List<LogEntry> _entries = [];
+        public IReadOnlyList<LogEntry> Entries { get { lock (_entries) return [.. _entries]; } }
+        public bool Has(int id) => Entries.Any(entry => entry.Id == id);
+        public void AddProvider(ILoggerProvider provider) => throw new NotSupportedException();
+        public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+        public void Dispose() { }
+
+        private sealed class Logger(CategoryLog owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                lock (owner._entries) owner._entries.Add(new(category, eventId.Id, exception));
+            }
+        }
+    }
+
+    // A context inside one of its own turns, whose shutdown completes when the test decides.
+    private sealed class ManualShutdownContext(Task shutdown) : IRunicModelContext
+    {
+        public bool IsExecuting => true;
+        public bool Disposed { get; private set; }
+        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+        public bool TryPost(Action turn) => false;
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return new(shutdown);
+        }
     }
 
     private static async Task SessionBindsTheSuppliedApplicationContext()

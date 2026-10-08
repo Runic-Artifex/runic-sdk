@@ -21,7 +21,7 @@ const nupkg = join(feed, `Runic.Navigation.${version}.nupkg`);
 assert.ok(existsSync(nupkg), `Pack Runic.Navigation ${version} into ${feed} first.`);
 
 // 1. The package is a plain library with only the two abstractions as dependencies.
-verifyPackageLayout(nupkg, "Runic.Navigation");
+verifyPackageLayout(nupkg, "Runic.Navigation", version);
 
 function onPath(command) {
   for (const directory of (process.env.PATH ?? "").split(delimiter).filter(Boolean)) {
@@ -31,13 +31,24 @@ function onPath(command) {
   return undefined;
 }
 
-const dotnet = onPath(process.platform === "win32" ? "dotnet.exe" : "dotnet");
-assert.ok(dotnet, "dotnet is not on PATH.");
+const hostDotnet = onPath(process.platform === "win32" ? "dotnet.exe" : "dotnet");
+assert.ok(hostDotnet, "dotnet is not on PATH.");
 
 // The temporary tree has no parent workspace and its own package cache, so only
 // the packed Runic.Navigation can satisfy the reference.
 const directory = mkdtempSync(join(tmpdir(), "runic-navigation-standalone-"));
 const properties = [`-p:RunicPackageVersion=${version}`];
+
+// Off Windows, dotnet is linked into its own directory, so a bin directory that it
+// shares with Node (a Nix profile, /usr/bin) need not appear on the consumer's PATH.
+// The muxer resolves the link to find its SDKs.
+let dotnet = hostDotnet;
+if (process.platform !== "win32") {
+  const dotnetDirectory = join(directory, "dotnet-bin");
+  mkdirSync(dotnetDirectory);
+  dotnet = join(dotnetDirectory, "dotnet");
+  symlinkSync(hostDotnet, dotnet);
+}
 
 // 4. Restore, build and the JIT run see only the dotnet directory on PATH, so no
 // Node, npm or bun can take part. The NativeAOT publish also needs a shell and the
@@ -68,6 +79,11 @@ try {
     copyFileSync(join(fixture, file), join(directory, file));
   // The repository's global.json pins the SDK; the temporary tree must use it too.
   copyFileSync(join(root, "global.json"), join(directory, "global.json"));
+  // Empty MSBuild and central package files stop the import search at the temporary
+  // tree, so files in a parent of the temporary directory cannot take part.
+  writeFileSync(join(directory, "Directory.Build.props"), "<Project />\n");
+  writeFileSync(join(directory, "Directory.Build.targets"), "<Project />\n");
+  writeFileSync(join(directory, "Directory.Packages.props"), "<Project />\n");
   writeFileSync(join(directory, "NuGet.config"), `<?xml version="1.0" encoding="utf-8"?>
 <configuration><packageSources><clear/><add key="candidate" value="${feed}"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources>
 <packageSourceMapping><clear/><packageSource key="candidate"><package pattern="Runic.*"/></packageSource><packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping>
@@ -94,7 +110,7 @@ try {
   assert.ok(jit.includes("STANDALONE_NAVIGATION_OK"), "The JIT standalone navigation consumer did not pass.");
   if (process.platform === "linux") {
     const native = (process.env.PATH ?? "").split(delimiter).filter(Boolean)
-      .filter(entry => entry !== dirname(dotnet) && !scripting.some(tool => existsSync(join(entry, tool))));
+      .filter(entry => entry !== dirname(hostDotnet) && !scripting.some(tool => existsSync(join(entry, tool))));
     // When the shell or compiler shares a directory with Node, link it into its own.
     const toolchain = join(directory, "toolchain");
     mkdirSync(toolchain);

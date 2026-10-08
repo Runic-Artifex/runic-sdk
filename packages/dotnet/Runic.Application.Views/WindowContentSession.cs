@@ -55,6 +55,8 @@ public sealed class WindowContentSession : IDisposable
     // Ids from a custom source, checked for uniqueness. Random ids are not retained.
     private readonly HashSet<string>? _issuedIds;
     private bool _disposed;
+    // Released when the session is disposed, such as its navigator presentation binding.
+    private readonly List<IDisposable> _disposalLinks = [];
 
     /// <summary>Creates the content session for one window.</summary>
     /// <param name="transport">The window's host transport.</param>
@@ -244,6 +246,18 @@ public sealed class WindowContentSession : IDisposable
     internal bool IsDisposed
     {
         get { lock (_gate) return _disposed; }
+    }
+
+    // Registers a release to run when the session is disposed. Returns false, and
+    // registers nothing, when the session is already disposed.
+    internal bool TryLinkDisposal(IDisposable link)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return false;
+            _disposalLinks.Add(link);
+            return true;
+        }
     }
 
     internal int DormantAttachmentCount
@@ -653,10 +667,13 @@ public sealed class WindowContentSession : IDisposable
     {
         IDisposable[] attachments;
         InteractionMountAttachment[] rootMounts;
+        IDisposable[] links;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
+            links = [.. _disposalLinks];
+            _disposalLinks.Clear();
             attachments = _activeEntries.Select(entry => entry.Attachment).OfType<IDisposable>()
                 .Concat(_dormantAttachments).ToArray();
             _activeEntries.Clear();
@@ -678,6 +695,7 @@ public sealed class WindowContentSession : IDisposable
         // Attachments release Views on the graph's context, so the context
         // leases are released only after every attachment has been disposed.
         var errors = new List<Exception>();
+        foreach (var link in links) Capture(link.Dispose, errors);
         foreach (var attachment in attachments) Capture(attachment.Dispose, errors);
         foreach (var attachment in rootMounts) Capture(attachment.Dispose, errors);
         // The operation router is window-owned, rather than presentation-owned:

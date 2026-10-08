@@ -55,6 +55,7 @@ internal static class NavigationTests
         await DisposeWaitsForRunningCleanupAsync();
         await CleanupFailureIsLoggedAsync();
         await PresentationsForgetOwnedContentAsync();
+        await DetachDuringRetirementStillForgetsAsync();
         await NonGenericRegionViewAsync();
         await OverrunIsLoggedAsync();
         await ServiceRegistrationAsync();
@@ -1161,7 +1162,7 @@ internal static class NavigationTests
     private static async Task PresentationsForgetOwnedContentAsync()
     {
         await using var fixture = new Fixture();
-        Require(ReferenceEquals(fixture.Navigator.ModelContext, fixture.Context), "ModelContext is not the configured context.");
+        Require(ReferenceEquals(fixture.Navigator.ModelContext, fixture.Context) && !fixture.Navigator.IsClosed, "ModelContext is not the configured context, or the new navigator reports IsClosed.");
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
         var journal = new Journal();
         var throwing = new RecordingPresentation("throwing", journal, fixture.Context, fail: true);
@@ -1187,9 +1188,49 @@ internal static class NavigationTests
 
         await fixture.Navigator.DisposeAsync();
         Require(fixture.Navigator.UnretiredEntryCount == 0, "Entries remained unretired after disposal.");
+        Require(fixture.Navigator.IsClosed, "A disposed navigator does not report IsClosed.");
         var late = new RecordingPresentation("late", journal, fixture.Context);
+        var before = journal.Text;
         using var lateAttachment = fixture.Navigator.AttachPresentation(late);
+        var rejected = new Page("rejected");
+        Require(await Wait(region.PushAsync(NavigationTarget.Own(rejected))) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed },
+            "A push on a closed navigator was not rejected as Closed.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(journal.Text == before && late.InTurn == 0,
+            $"A presentation attached to a closed navigator was called: {journal.Text}.");
         lateAttachment.Dispose();
+        lateAttachment.Dispose(); // the no-op attachment tolerates repeated disposal
+    }
+
+    // Retirement snapshots the attached presentations before calling Forget, so a
+    // presentation detached while that runs (here by an earlier presentation) is still called.
+    private static async Task DetachDuringRetirementStillForgetsAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var journal = new Journal();
+        IDisposable? secondAttachment = null;
+        var detaching = new CallbackPresentation(content => { journal.Add($"detaching:{content}"); secondAttachment!.Dispose(); });
+        var second = new RecordingPresentation("second", journal, fixture.Context);
+        using var detachingAttachment = fixture.Navigator.AttachPresentation(detaching);
+        secondAttachment = fixture.Navigator.AttachPresentation(second);
+
+        await Wait(region.PushAsync(NavigationTarget.Own(new Page("first"))));
+        await Wait(region.BackAsync());
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(journal.Text == "detaching:first,second:first",
+            $"A presentation detached during retirement missed the snapshot's Forget: {journal.Text}.");
+
+        await Wait(region.PushAsync(NavigationTarget.Own(new Page("again"))));
+        await Wait(region.BackAsync());
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(journal.Text == "detaching:first,second:first,detaching:again",
+            $"A detached presentation was called by a later retirement: {journal.Text}.");
+    }
+
+    private sealed class CallbackPresentation(Action<object> forget) : INavigationPresentation
+    {
+        public void Forget(object content) => forget(content);
     }
 
     private static async Task NonGenericRegionViewAsync()
@@ -1250,6 +1291,8 @@ internal static class NavigationTests
         var entry = fixture.Logs.Single(1064);
         Require(entry.Exception is IOException && entry.State["Step"] as string == "Dispose" && entry.State["EntryType"] as string == "Page",
             "1064 did not carry the disposal failure.");
+        Require(entry.Category == "Runic.Navigation" && entry.Category == RunicNavigator.LogCategory,
+            $"1064 was logged under {entry.Category}, not Runic.Navigation.");
     }
 
     private static async Task OverrunIsLoggedAsync()
@@ -2332,14 +2375,14 @@ internal static class NavigationTests
         }
     }
 
-    private sealed record LogEntry(LogLevel Level, EventId EventId, Exception? Exception, string Message,
+    private sealed record LogEntry(string Category, LogLevel Level, EventId EventId, Exception? Exception, string Message,
         IReadOnlyDictionary<string, object?> State);
 
     private sealed class LogCapture : ILoggerFactory
     {
         private readonly ConcurrentQueue<LogEntry> _entries = new();
         public void AddProvider(ILoggerProvider provider) => throw new NotSupportedException();
-        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
         public void Dispose() { }
 
         public bool Has(int id, LogLevel level) => _entries.Any(entry => entry.EventId.Id == id && entry.Level == level);
@@ -2348,7 +2391,7 @@ internal static class NavigationTests
         public LogEntry Single(int id) => _entries.SingleOrDefault(entry => entry.EventId.Id == id)
             ?? throw new InvalidOperationException($"Expected one {id} entry: {string.Join(", ", _entries.Select(entry => entry.EventId.Id))}");
 
-        private sealed class Logger(LogCapture owner) : ILogger
+        private sealed class Logger(LogCapture owner, string category) : ILogger
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(LogLevel logLevel) => true;
@@ -2356,7 +2399,7 @@ internal static class NavigationTests
                 Func<TState, Exception?, string> formatter)
             {
                 var values = state as IEnumerable<KeyValuePair<string, object?>> ?? [];
-                owner._entries.Enqueue(new(logLevel, eventId, exception, formatter(state, exception),
+                owner._entries.Enqueue(new(category, logLevel, eventId, exception, formatter(state, exception),
                     values.ToDictionary(pair => pair.Key, pair => pair.Value)));
             }
         }

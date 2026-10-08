@@ -55,6 +55,7 @@ from `eng/Versions.props`, the last published release. An intentional binary bre
 is recorded in the project's `CompatibilitySuppressions.xml`; regenerate it with
 `dotnet pack <project> -p:ApiCompatGenerateSuppressionFile=true`.
 A package that has never been published sets `<RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>`,
-which skips the baseline comparison until its first release.
+which skips the baseline comparison, and `<RunicPackageFirstReleaseVersion>` to its first release.
+`eng/workspace.test.mjs` fails once the baseline reaches that release, so the opt-out cannot outlive it.
 
 Use root commands and the artifact/component inventory in `eng/workspace.json`.

@@ -6,8 +6,10 @@ namespace Runic.Application.Views;
 
 // Binds the window session that presents a navigator's regions, so retiring owned
 // content forgets its routes. Bridges bind when they first observe a region slot.
-// One session per navigator: binding is idempotent for the same session and ends
-// when either side is disposed; a disposed session's binding is replaced.
+// One session per navigator: binding is idempotent for the same session. Disposing
+// the session detaches it and removes it from the table, so neither the table nor
+// the navigator keeps a closed window's session reachable. A closed navigator
+// binds nothing and never throws for a second session.
 #pragma warning disable RUNICNAV001 // Binds sessions to the experimental navigator.
 internal static class NavigationPresentationBinding
 {
@@ -45,14 +47,21 @@ internal static class NavigationPresentationBinding
             if (slot.Binding is { } bound)
             {
                 if (ReferenceEquals(bound.Session, session)) return;
-                if (!bound.Session.IsDisposed)
+                // Disposing a session unbinds it, so a bound session is live here unless its
+                // disposal is still running. A closed navigator presents nothing, so a second
+                // session is not a conflict.
+                if (!bound.Session.IsDisposed && !navigator.IsClosed)
                     throw new InvalidOperationException(
                         "This navigator is already presented by another window session. Use one navigator per window.");
-                bound.Attachment?.Dispose();
+                slot.Binding = null;
+                bound.Detach();
             }
-            var binding = new Binding(session);
+            if (navigator.IsClosed) return;
+            var binding = new Binding(slot, session);
             binding.Attachment = navigator.AttachPresentation(binding);
             slot.Binding = binding;
+            // A session disposed after the IsDisposed check above unbinds at once.
+            if (!session.TryLinkDisposal(binding)) binding.Dispose();
         }
     }
 
@@ -61,14 +70,27 @@ internal static class NavigationPresentationBinding
         public Binding? Binding { get; set; }
     }
 
-    // Forget is a no-op once the session is disposed.
-    private sealed class Binding(WindowContentSession session) : INavigationPresentation
+    // Forget is a no-op once the session is disposed. Disposing the binding, which the
+    // session does when it is disposed, detaches it from the navigator and the table.
+    private sealed class Binding(Slot slot, WindowContentSession session) : INavigationPresentation, IDisposable
     {
         public WindowContentSession Session { get; } = session;
 
         public IDisposable? Attachment { get; set; }
 
         public void Forget(object content) => Session.Forget(content);
+
+        public void Detach() => Attachment?.Dispose();
+
+        public void Dispose()
+        {
+            lock (slot)
+            {
+                if (!ReferenceEquals(slot.Binding, this)) return;
+                slot.Binding = null;
+            }
+            Detach();
+        }
     }
 
     private sealed class Subscription(INavigationRegion region, PropertyChangedEventHandler handler) : IDisposable
