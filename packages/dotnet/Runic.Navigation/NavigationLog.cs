@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 // Navigation event IDs 1060-1079 (1060-1069 for transitions and cleanup, 1070-1079 for
 // PushForResult and later navigation events); 1043-1049 stay reserved for the ReactiveUI

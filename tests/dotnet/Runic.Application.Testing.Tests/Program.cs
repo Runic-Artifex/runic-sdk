@@ -9,10 +9,10 @@ if (args is ["--export-generated-client-fixture", var fixturePath])
     return;
 }
 
-// A focused run of the navigator suite while iterating.
+// A focused run of the presentation of navigation regions while iterating (the engine
+// suite is tests/dotnet/Runic.Navigation.Tests).
 if (args is ["--navigation"])
 {
-    await NavigationTests.RunAsync();
     await NavigationPresentationTests.RunAsync();
     Console.WriteLine("Navigation tests passed.");
     return;
@@ -150,7 +150,6 @@ await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();
 await HostDriverTests.RunAsync();
 TrackerConformanceTests.Run();
-await NavigationTests.RunAsync();
 await NavigationPresentationTests.RunAsync();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();

@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using ReactiveUI;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
+using Runic.Navigation;
 using Splat;
 
 namespace NotesWindowViews;

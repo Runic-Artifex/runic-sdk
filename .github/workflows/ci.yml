@@ -307,6 +307,8 @@ jobs:
           node examples/first-window-desktop/package-smoke.mjs
       - name: Verify the packaged navigation consumer with JIT and NativeAOT
         run: bun tests/fixtures/application/navigation-consumer/package-smoke.mjs
+      - name: Verify standalone Runic.Navigation without Runic.Application, Node or a host
+        run: bun tests/fixtures/navigation/standalone-consumer/package-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:

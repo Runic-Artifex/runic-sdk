@@ -54,5 +54,7 @@ Packing also runs package validation against `RunicPackageValidationBaselineVers
 from `eng/Versions.props`, the last published release. An intentional binary break
 is recorded in the project's `CompatibilitySuppressions.xml`; regenerate it with
 `dotnet pack <project> -p:ApiCompatGenerateSuppressionFile=true`.
+A package that has never been published sets `<RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>`,
+which skips the baseline comparison until its first release.
 
 Use root commands and the artifact/component inventory in `eng/workspace.json`.

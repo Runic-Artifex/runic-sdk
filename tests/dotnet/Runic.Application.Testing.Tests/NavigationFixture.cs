@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests;
 

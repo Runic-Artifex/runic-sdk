@@ -69,7 +69,8 @@ need no install of their own:
 ## Navigation
 
 `AddNotes` calls `AddRunicNavigation()`, so each window scope has one
-`RunicNavigator`. `WorkspaceNavigation` creates two regions on it: `Main`
+`RunicNavigator` from the `Runic.Navigation` package and namespace.
+`WorkspaceNavigation` creates two regions on it: `Main`
 starts with the window's Home, and `Dialog` starts empty. `ShellViewModel`
 exposes both regions as content slots. The generated `main` and `dialog`
 references are `| null`, so every frontend handles an empty region.

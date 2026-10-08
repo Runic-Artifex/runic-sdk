@@ -22,7 +22,8 @@ identities, so ViewModels and generated clients must be built for the selected
 pair. The package includes a build-time guard for a direct reference to both
 Runic adapters.
 
-`RunicReactiveSchedulerProvider` adapts a supplied `IRunicModelContext` to an
+`RunicReactiveSchedulerProvider` adapts a supplied `IRunicModelContext`
+(namespace `Runic.Navigation`) to an
 `IScheduler`. Pass it to ReactiveUI.Reactive command factories as their
 `outputScheduler` when command state must be delivered in that model context:
 

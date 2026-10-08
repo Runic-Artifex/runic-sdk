@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests;
 

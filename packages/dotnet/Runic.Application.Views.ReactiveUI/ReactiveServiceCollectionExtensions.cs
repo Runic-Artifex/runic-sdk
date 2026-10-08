@@ -2,6 +2,7 @@
 // Runic.Application.ReactiveUI.Reactive.
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Runic.Navigation;
 #if SYSTEM_REACTIVE
 using ModelScheduler = System.Reactive.Concurrency.IScheduler;
 #else

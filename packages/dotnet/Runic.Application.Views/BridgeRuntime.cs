@@ -6,6 +6,7 @@ using System.Text;
 using System.Windows.Input;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Runic.Navigation;
 namespace Runic.Application.Views;
 
 // A model can be exposed through more than one Bridge. The gate must follow

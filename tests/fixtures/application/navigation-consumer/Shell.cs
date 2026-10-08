@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
+using Runic.Navigation;
 
 namespace NavigationConsumer;
 

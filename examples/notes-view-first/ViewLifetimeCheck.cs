@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
+using Runic.Navigation;
 
 namespace NotesWindowViews;
 

@@ -124,6 +124,7 @@ that context as `RunicWindowTestHostOptions.ModelContext`; a generated Bridge
 rejects a session whose context is not the navigator's.
 
 ```csharp
+using Runic.Navigation; // RunicNavigator and RunicModelContext
 #pragma warning disable RUNICNAV001
 await using var context = new RunicModelContext();
 await using var navigator = new RunicNavigator(new() { ModelContext = context, TimeProvider = clock });

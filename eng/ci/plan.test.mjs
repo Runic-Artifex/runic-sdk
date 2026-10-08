@@ -75,7 +75,8 @@ test('a Views runtime change runs its consumers, packages, templates and native 
 test('a desktop change runs native checks and every dependent component', () => {
   const result = plan(['packages/dotnet/Runic.Desktop/DesktopSurface.cs']);
   assert.deepEqual(result.skip, []);
-  assert.deepEqual(result.managed, managedGroups);
+  // The navigation engine depends on nothing in the SDK, so a desktop change leaves it out.
+  assert.deepEqual(result.managed, managedGroups.filter(group => group !== 'navigation'));
 });
 
 test('template and Svelte changes run their lanes without unrelated suites', () => {
@@ -224,4 +225,18 @@ test('every core solution project commits a NuGet lock file and no other lock fi
     : `${dirname(path)}/packages.lock.json`).sort();
   for (const path of expected) assert.ok(existsSync(resolve(root, path)), `${path} is missing; run bun run lock:nuget`);
   assert.deepEqual(tracked('*packages.lock.json', '*packages.*.lock.json').sort(), expected);
+});
+
+test('a navigation engine change runs its own group and the application group that depends on it', () => {
+  const result = plan(['packages/dotnet/Runic.Navigation/RunicNavigator.cs']);
+  assert.ok(result.managed.includes('navigation'));
+  assert.ok(result.managed.includes('application'));
+  assert.ok(!result.managed.includes('assets'));
+  assert.ok(runs(result, 'package-consumers'));
+});
+
+test('the standalone navigation consumer belongs to the navigation component', () => {
+  const result = plan(['tests/fixtures/navigation/standalone-consumer/Program.cs']);
+  assert.ok(result.managed.includes('navigation'));
+  assert.ok(runs(result, 'package-consumers'));
 });

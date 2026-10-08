@@ -37,6 +37,11 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Navigation",
+      "version": "0.7.0-preview.4"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Application",
       "version": "0.7.0-preview.4"
     },

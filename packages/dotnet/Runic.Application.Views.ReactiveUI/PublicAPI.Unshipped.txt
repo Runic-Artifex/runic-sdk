@@ -1,1 +1,11 @@
 #nullable enable
+*REMOVED*Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider.For(Runic.Application.Views.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+*REMOVED*Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.For(Runic.Application.Views.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+*REMOVED*[RUNICNAV001]static Runic.Application.Views.ReactiveUI.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Application.Views.NavigationRegion<TContent!>! region, ReactiveUI.Primitives.Concurrency.ISequencer! scheduler) -> ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, Runic.Application.Views.NavigationResult<TContent!>!>!
+*REMOVED*[RUNICNAV001]static Runic.Application.Views.ReactiveUI.ReactiveNavigation.WhenCurrentChanged<TContent>(this Runic.Application.Views.NavigationRegion<TContent!>! region) -> System.IObservable<TContent?>!
+*REMOVED*[RUNICNAV001]static Runic.Application.Views.ReactiveUI.ReactiveNavigation.WhenEntryChanged<TContent>(this Runic.Application.Views.NavigationRegion<TContent!>! region) -> System.IObservable<Runic.Application.Views.NavigationEntry<TContent!>?>!
+Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+[RUNICNAV001]static Runic.Application.Views.ReactiveUI.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region, ReactiveUI.Primitives.Concurrency.ISequencer! scheduler) -> ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, Runic.Navigation.NavigationResult<TContent!>!>!
+[RUNICNAV001]static Runic.Application.Views.ReactiveUI.ReactiveNavigation.WhenCurrentChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<TContent?>!
+[RUNICNAV001]static Runic.Application.Views.ReactiveUI.ReactiveNavigation.WhenEntryChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<Runic.Navigation.NavigationEntry<TContent!>?>!

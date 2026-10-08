@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -85,8 +86,10 @@ internal static class DomainFailureCodegenTests
             $"The stream values were not kept: {page.RootElement}");
     }
 
-    // The generated modules and bridge for the failure fixtures, checked in under
-    // golden/. Set RUNIC_UPDATE_GOLDEN=1 to rewrite them after an intended change.
+    // The generated modules and bridges for the failure fixtures and the navigation
+    // region slot (W240-003: NavigationRegion<T> now comes from Runic.Navigation),
+    // checked in under golden/. Set RUNIC_UPDATE_GOLDEN=1 to rewrite them after an
+    // intended change.
     private static void GoldenOutput()
     {
         var root = FindWorkspaceRoot();
@@ -105,11 +108,21 @@ internal static class DomainFailureCodegenTests
             ("FailureToolkitViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.FailureToolkitViewModel.Bridge.g.cs")),
             ("FailureReactiveViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.FailureReactiveViewModel.Bridge.g.cs")),
         };
+        CompareGolden(project, "domain-failures", outputs);
+        CompareGolden(project, "navigation-region",
+        [
+            ("navShell.ts", Path.Combine(generated, "navShell.ts")),
+            ("NavShellViewModel.Bridge.g.cs", Path.Combine(bridges, "Runic.Application.Testing.Tests.NavShellViewModel.Bridge.g.cs")),
+        ]);
+    }
+
+    private static void CompareGolden(string project, string set, (string Golden, string Actual)[] outputs)
+    {
         var update = Environment.GetEnvironmentVariable("RUNIC_UPDATE_GOLDEN") == "1";
         foreach (var (golden, actualPath) in outputs)
         {
             // A .golden suffix keeps the files out of the C# and TypeScript builds.
-            var goldenPath = Path.Combine(project, "golden", "domain-failures", golden + ".golden");
+            var goldenPath = Path.Combine(project, "golden", set, golden + ".golden");
             // The contract fingerprint covers every View model of the test assembly, so
             // an unrelated fixture would change it; the fingerprint tests cover it.
             var actual = System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(actualPath).ReplaceLineEndings("\n"),

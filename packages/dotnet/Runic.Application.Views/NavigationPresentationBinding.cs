@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using Runic.Navigation;
 
 namespace Runic.Application.Views;
 

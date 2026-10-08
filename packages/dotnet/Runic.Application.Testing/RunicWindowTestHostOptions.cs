@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing;
 

@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>Registers the experimental window navigator.</summary>
 [Experimental(RunicNavigator.DiagnosticId)]

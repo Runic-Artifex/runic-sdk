@@ -15,7 +15,8 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
+          "Runic.Navigation": "[0.7.0-preview.4, )"
         }
       },
       "runic.application.desktop": {
@@ -38,6 +39,13 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Web.WebView2": "[1.0.4258.31, )"
+        }
+      },
+      "runic.navigation": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
         }
       },
       "runic.platform": {

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 using System.Globalization;
 using System.Text.Json;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 namespace Runic.Application.Testing;
 

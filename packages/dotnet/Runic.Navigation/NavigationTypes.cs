@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 /// <summary>Configures what happens to a child region while the entry that owns it is retained.</summary>
 /// <param name="WhileParentRetained">The policy applied when a push retains the owning entry.</param>

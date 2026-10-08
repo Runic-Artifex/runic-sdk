@@ -1,6 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace Runic.Application.Views;
+namespace Runic.Navigation;
 
 // The life of a PushForResult request. Changed only under the navigator's gate.
 internal enum NavigationResultState

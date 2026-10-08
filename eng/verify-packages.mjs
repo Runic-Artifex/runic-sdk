@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { basename, extname, resolve, join } from "node:path";
 import { root, workspace, run, configuration } from "./run.mjs";
+import { nupkgFiles, nupkgDependencies } from "./nupkg.mjs";
 
 const nativeProviders = new Set([
   "runic.platform.windows",
@@ -20,6 +21,30 @@ const nativeProviders = new Set([
   "runic.platform.macos",
 ]);
 
+
+// Expected nupkg layouts. Every package added after W240-003 gets an entry here in
+// the slice that creates it. `files` lists the complete layout, `includes` files
+// that must be present, and `dependencies` the complete nuspec dependency list.
+export const packageLayouts = {
+  // Navigation is a plain library: no build targets, tools or content (W240-001 D3).
+  "Runic.Navigation": {
+    files: ["README.md", "Runic.Navigation.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.dll", "lib/net10.0/Runic.Navigation.xml"],
+    dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions"],
+  },
+  // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
+  "Runic.Application": {
+    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll"],
+  },
+};
+
+export function verifyPackageLayout(nupkg, name, layout = packageLayouts[name]) {
+  if (!layout) return;
+  const files = nupkgFiles(nupkg);
+  if (layout.files) assert.deepEqual(files, [...layout.files].sort(), `${name} has an unexpected nupkg layout`);
+  for (const file of layout.includes ?? []) assert.ok(files.includes(file), `${name} does not pack ${file}`);
+  if (layout.dependencies)
+    assert.deepEqual(nupkgDependencies(nupkg), [...layout.dependencies].sort(), `${name} has unexpected dependencies`);
+}
 export function dotnetBuildArguments(projectFile, selectedConfiguration = configuration, additional = []) {
   return ["build", projectFile, "--configuration", selectedConfiguration, ...additional];
 }
@@ -144,6 +169,8 @@ async function verifyConsumers(directory, packageName) {
       `Pack ${p.name} first`,
     );
   }
+  for (const p of packageName ? libraries : workspace.nuget)
+    verifyPackageLayout(join(nuget, `${p.name}.${workspace.version}.nupkg`), p.name);
   const archives = (packageName ? [] : workspace.npm).map((p) => {
     const file = `${p.name.replace("@", "").replace("/", "-")}-${workspace.version}.tgz`;
     assert.ok(readdirSync(npm).includes(file), `Pack ${p.name} first`);

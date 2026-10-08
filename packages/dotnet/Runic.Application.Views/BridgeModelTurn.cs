@@ -1,3 +1,5 @@
+using Runic.Navigation;
+
 namespace Runic.Application.Views;
 
 // A short, re-entrant synchronous turn over one actual ViewModel. It shares
