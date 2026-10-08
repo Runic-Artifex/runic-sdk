@@ -1,0 +1,12 @@
+<Window x:Class="HybridNotes.Wpf.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:rn="https://runic-artifex.eu/xaml/navigation"
+ Title="Hybrid notes" Width="760" Height="560">
+  <DockPanel Margin="12">
+    <Button DockPanel.Dock="Top" Content="Back to notes" HorizontalAlignment="Left" Margin="0,0,0,12"
+      Command="NavigationCommands.BrowseBack" CommandTarget="{Binding ElementName=Main}" />
+    <rn:NavigationDialogHost Region="{Binding Dialog}" />
+    <rn:NavigationHost x:Name="Main" Region="{Binding Main}" />
+  </DockPanel>
+</Window>

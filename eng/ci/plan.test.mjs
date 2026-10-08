@@ -74,8 +74,8 @@ test('a Views runtime change runs its consumers, packages, templates and native 
 
 test('a desktop change runs native checks and every dependent component', () => {
   const result = plan(['packages/dotnet/Runic.Desktop/DesktopSurface.cs']);
-  // The navigation engine depends on nothing in the SDK, so a desktop change leaves it and its WPF lane out.
-  assert.deepEqual(result.skip, ['wpf']);
+  // The navigation engine stays independent, but the hybrid WPF host consumes Desktop.
+  assert.deepEqual(result.skip, []);
   assert.deepEqual(result.managed, managedGroups.filter(group => group !== 'navigation'));
 });
 
@@ -262,7 +262,7 @@ test('the navigation group runs the adapter tests of both ReactiveUI flavors', (
   assert.ok(tests.some(path => path.endsWith('Runic.Navigation.ReactiveUI.Reactive.Tests.csproj')));
 });
 
-test('navigation changes run the Windows WPF lane and other components skip it', () => {
+test('navigation changes run the Windows WPF lane', () => {
   for (const file of [
     'packages/dotnet/Runic.Navigation.Wpf/NavigationHost.cs',
     'tests/dotnet/Runic.Navigation.Wpf.Tests/Program.cs',
@@ -275,14 +275,33 @@ test('navigation changes run the Windows WPF lane and other components skip it',
     assert.ok(runs(result, 'packages'), file);
     assert.ok(result.managed.includes('navigation'), file);
   }
-  for (const file of ['packages/dotnet/Runic.Desktop/DesktopSurface.cs', 'packages/web/views/src/index.ts', 'tests/templates/Test-Templates.sh'])
-    assert.ok(!runs(plan([file]), 'wpf'), file);
+  assert.ok(!runs(plan(['tests/templates/Test-Templates.sh']), 'wpf'));
+});
+
+test('hybrid WPF consumers run when their host or shared runtime changes', () => {
+  for (const file of [
+    'packages/dotnet/Runic.Application.Wpf/RunicWebView.cs',
+    'tests/dotnet/Runic.Application.Wpf.Tests/Program.cs',
+    'examples/wpf-hybrid-editor/Model/EditorViewModel.cs',
+    'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
+    'packages/dotnet/Runic.Application.Views/WindowContentSession.cs',
+    'packages/web/views/src/index.ts',
+  ]) assert.ok(runs(plan([file]), 'wpf'), file);
 });
 
 test('the WPF test runner is Windows-only and outside the Linux managed groups', () => {
   const path = 'tests/dotnet/Runic.Navigation.Wpf.Tests/Runic.Navigation.Wpf.Tests.csproj';
   assert.ok(!managedTests(root, 'linux').some(test => test.path === path));
   assert.ok(managedTests(root, 'win32').some(test => test.path === path && test.group === 'navigation'));
+});
+
+test('the hybrid host has portable session checks and a Windows native runner', () => {
+  const portable = 'tests/dotnet/Runic.Application.Wpf.Tests/Runic.Application.Wpf.Tests.csproj';
+  const windows = 'tests/dotnet/Runic.Application.Wpf.Windows.Tests/Runic.Application.Wpf.Windows.Tests.csproj';
+  assert.ok(managedTests(root, 'linux').some(test => test.path === portable && test.group === 'application'));
+  assert.ok(!managedTests(root, 'linux').some(test => test.path === windows));
+  assert.ok(managedTests(root, 'win32').some(test => test.path === windows && test.group === 'application'));
+  assert.ok(workflow.jobs.wpf.steps.some(step => step.run === 'dotnet run --project tests/dotnet/Runic.Application.Wpf.Windows.Tests -c Release'));
 });
 
 test('the WPF navigation example builds from the packed packages in the WPF lane', () => {

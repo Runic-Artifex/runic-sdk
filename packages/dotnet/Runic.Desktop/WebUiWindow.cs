@@ -1450,10 +1450,13 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         };
     }
 
+    internal event EventHandler? PresentationClosed;
+
     private void EmbeddedHostClosed(object? sender, EventArgs eventArgs)
     {
         if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host))
         {
+            PresentationClosed?.Invoke(this, EventArgs.Empty);
             _ = HandleEmbeddedHostClosedAsync(host);
         }
     }

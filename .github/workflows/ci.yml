@@ -333,6 +333,12 @@ jobs:
       # STA hosts, dialogs and dispatcher contexts need a real Windows desktop session.
       - name: Test the WPF navigation hosts
         run: dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release
+      - name: Test the WPF embedded Runic View host
+        run: dotnet run --project tests/dotnet/Runic.Application.Wpf.Windows.Tests -c Release
+      - name: Test the hybrid WPF editor migration example
+        run: |
+          bun run --cwd packages/web/views --bun build
+          dotnet run --project examples/wpf-hybrid-editor/WindowsSmoke/HybridNotes.WindowsSmoke.csproj -c Release
       - name: Verify the packed WPF consumer pulls in only Runic.Navigation
         run: bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs
       # W240-007: the reference app and its scenario tests, built from the packed packages only.

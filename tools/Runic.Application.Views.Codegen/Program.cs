@@ -1342,6 +1342,8 @@ static string TsAccess(string target, string name) => IsTypeScriptIdentifier(nam
 
 static void WriteIfChanged(string path, string content)
 {
+    // Generated sources are shared between Windows and Unix checkouts.
+    content = content.ReplaceLineEndings("\n");
     var fullPath = Path.GetFullPath(path);
     Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
     if (File.Exists(fullPath) && File.ReadAllText(fullPath) == content) return;
@@ -1500,6 +1502,8 @@ static class TypeScriptModules
 
     private static void WriteFile(string path, string content)
     {
+        // Match the repository and generated-client LF contract on every host.
+        content = content.ReplaceLineEndings("\n");
         var fullPath = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
         if (File.Exists(fullPath) && File.ReadAllText(fullPath) == content) return;

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);RUNICWPF001;RUNICNAV001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Wpf/Runic.Application.Wpf.csproj" />
+    <Compile Include="../Runic.Application.Wpf.Tests/Program.cs" Link="Program.cs" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

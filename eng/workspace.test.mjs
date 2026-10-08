@@ -9,7 +9,7 @@ import { dotnetBuildArguments, packageConsumerStrategy, packageLayouts, resolveM
 const json = (path) => JSON.parse(readFileSync(resolve(root, path), "utf8"));
 test("workspace defines the complete public SDK package inventory", () => {
   const names = [...workspace.npm, ...workspace.nuget].map(p => p.name);
-  assert.equal(workspace.nuget.length, 26);
+  assert.equal(workspace.nuget.length, 27);
   assert.equal(workspace.npm.length, 8);
   assert.equal(new Set(names).size, names.length);
   for (const p of workspace.npm) assert.ok(p.name.startsWith("@runic-artifex/"), p.name);
@@ -31,7 +31,7 @@ test("workspace defines the complete public SDK package inventory", () => {
     assert.ok(existsSync(resolve(root, p.project)));
 });
 test("SDK package consumers use cross-platform target and execution strategies", () => {
-  for (const packageEntry of workspace.nuget.filter(entry => entry.name !== "Runic.Navigation.Wpf")) {
+  for (const packageEntry of workspace.nuget.filter(entry => !entry.name.endsWith(".Wpf"))) {
     for (const platform of ["linux", "win32"]) {
       assert.deepEqual(packageConsumerStrategy(packageEntry, platform), {
         targetFramework: "net10.0",
@@ -52,6 +52,18 @@ test("the WPF navigation consumer builds everywhere and runs on Windows", () => 
       enableWindowsTargeting: true,
       useWpf: true,
       canaryType: "Runic.Navigation.Wpf.NavigationHost",
+    }, platform);
+  }
+});
+test("the embedded WPF View consumer builds everywhere and runs on Windows", () => {
+  const packageEntry = workspace.nuget.find(entry => entry.name === "Runic.Application.Wpf");
+  for (const platform of ["linux", "win32"]) {
+    assert.deepEqual(packageConsumerStrategy(packageEntry, platform), {
+      targetFramework: "net10.0-windows",
+      execute: platform === "win32",
+      enableWindowsTargeting: true,
+      useWpf: true,
+      canaryType: "Runic.Application.Views.Wpf.RunicWebView",
     }, platform);
   }
 });
@@ -115,7 +127,7 @@ test("affected detection follows component code and its dependents", () => {
     affectedComponents([
       "packages/dotnet/Runic.Desktop/DesktopSurface.cs",
     ]).sort(),
-    ["desktop", "assets", "platform", "application", "views-effect", "vite", "svelte", "templates", "examples"].sort(),
+    ["desktop", "assets", "platform", "application", "application-wpf", "views-effect", "vite", "svelte", "templates", "examples"].sort(),
   );
   assert.deepEqual(
     affectedComponents(["packages/web/svelte/src/index.ts"]).sort(),

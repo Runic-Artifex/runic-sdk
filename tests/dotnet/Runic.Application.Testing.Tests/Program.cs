@@ -139,6 +139,7 @@ await OperationResultTests.RunAsync();
 await ModelContextTests.RunAsync();
 await TypedReactiveTests.RunAsync();
 await ToolkitTypedTests.RunAsync();
+await ToolkitCancelTests.RunAsync();
 await ValidationTests.RunAsync();
 await SnapshotDeliveryTests.RunAsync();
 await SnapshotBatchTests.RunAsync();

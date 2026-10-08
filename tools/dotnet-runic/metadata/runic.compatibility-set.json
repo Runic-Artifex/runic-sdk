@@ -87,6 +87,11 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Application.Wpf",
+      "version": "0.7.0-preview.4"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Application.Templates",
       "version": "0.7.0-preview.4"
     },

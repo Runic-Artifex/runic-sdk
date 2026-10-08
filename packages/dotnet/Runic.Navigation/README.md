@@ -227,6 +227,9 @@ A failed step is logged as event 1064.
   A `Create` factory that returns one gives `Failed(Preparing)`.
 - Present owned content only through its region's slot. Retirement forgets
   every presentation of the instance.
+- Borrowed selection hosts use caller/container-owned models. Do not re-borrow
+  content from a navigator-owned entry into another entry; retirement of its
+  owning entry still disposes that content.
 - Owned content is disposed outside model turns, on the model's thread when the
   context schedules hooks (see Threading). A `Dispose` that touches
   shared model state uses `ModelContext.InvokeAsync`, and it must not await

@@ -1,0 +1,19 @@
+<UserControl x:Class="HybridNotes.Wpf.NativeEditorView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Margin="24">
+    <TextBlock Text="Native editor" FontSize="22" />
+    <TextBlock Text="Title" Margin="0,12,0,4" />
+    <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
+    <TextBlock Text="Body" Margin="0,12,0,4" />
+    <TextBox Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" Height="150" />
+    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+      <Button Content="Save" Command="{Binding SaveCommand}" MinWidth="90" Margin="0,0,8,0" />
+      <Button Content="Cancel save" Command="{Binding SaveCancelCommand}" />
+    </StackPanel>
+    <TextBlock Text="{Binding ValidationMessage}" Foreground="Firebrick" Margin="0,8,0,0" />
+    <TextBlock Text="{Binding Error}" Foreground="Firebrick" />
+    <TextBlock Text="{Binding Status}" />
+    <TextBlock Text="{Binding IsDirty, StringFormat='Unsaved changes: {0}'}" />
+  </StackPanel>
+</UserControl>

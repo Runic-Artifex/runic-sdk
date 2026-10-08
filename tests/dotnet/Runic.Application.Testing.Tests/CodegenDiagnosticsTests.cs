@@ -294,6 +294,40 @@ internal static class CodegenDiagnosticsTests
                 """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
 
             // Toolkit commands have no result, so a result cardinality is a mistake.
+            // A cancel-like name alone cannot establish a plain ICommand's
+            // input contract, even when it wraps an async Toolkit command.
+            await RejectAt("ManualToolkitCancel", """
+                public sealed class ManualCancelViewModel : FixtureModel
+                {
+                    public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
+                    public System.Windows.Input.ICommand SaveCancelCommand => SaveCommand.CreateCancelCommand();
+                }
+                public sealed partial class ManualCancelWindow(ManualCancelViewModel model) : RunicWindow<ManualCancelViewModel>(model);
+                """, "RUNICBRIDGE009", "public System.Windows.Input.ICommand SaveCancelCommand",
+                "ManualCancelViewModel.SaveCancelCommand: unsupported command shape").ConfigureAwait(false);
+            // GeneratedCode alone is insufficient: the source method must
+            // opt into cancellation and have a matching cancellable async pair.
+            foreach (var (name, flag, asyncType, parameters) in new[]
+            {
+                ("MissingCancelFlag", "false", "IAsyncRelayCommand", "System.Threading.CancellationToken token"),
+                ("NonCancellableSource", "true", "IAsyncRelayCommand", ""),
+                ("NonAsyncCancelPair", "true", "IRelayCommand", "System.Threading.CancellationToken token"),
+                ("MismatchedCancelInput", "true", "IAsyncRelayCommand<string>", "int input, System.Threading.CancellationToken token"),
+            })
+                await RejectAt(name, $$"""
+                    public sealed class InvalidCancelViewModel : FixtureModel
+                    {
+                        [RelayCommand(IncludeCancelCommand = {{flag}})]
+                        private System.Threading.Tasks.Task SaveAsync({{parameters}}) => System.Threading.Tasks.Task.CompletedTask;
+                        [System.CodeDom.Compiler.GeneratedCode("CommunityToolkit.Mvvm.SourceGenerators.RelayCommandGenerator", "8.4.0.0")]
+                        public {{asyncType}} SaveCommand { get; } = null!;
+                        [System.CodeDom.Compiler.GeneratedCode("CommunityToolkit.Mvvm.SourceGenerators.RelayCommandGenerator", "8.4.0.0")]
+                        public System.Windows.Input.ICommand SaveCancelCommand { get; } = null!;
+                    }
+                    public sealed partial class InvalidCancelWindow(InvalidCancelViewModel model) : RunicWindow<InvalidCancelViewModel>(model);
+                    """, "RUNICBRIDGE009", "public System.Windows.Input.ICommand SaveCancelCommand",
+                    "InvalidCancelViewModel.SaveCancelCommand: unsupported command shape").ConfigureAwait(false);
+
             await RejectAt("ToolkitResult", """
                 public sealed class ResultViewModel : FixtureModel
                 {

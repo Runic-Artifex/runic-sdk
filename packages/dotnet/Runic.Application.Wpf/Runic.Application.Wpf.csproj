@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RunicTrimmable>false</RunicTrimmable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Wpf</PackageId>
+    <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
+    <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <RunicPackageFirstReleaseVersion>0.7.0-preview.4</RunicPackageFirstReleaseVersion>
+    <NoWarn>$(NoWarn);RUNICWPF001;RUNICNAV001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Desktop/Runic.Application.Desktop.csproj" />
+    <InternalsVisibleTo Include="Runic.Application.Wpf.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.Wpf.Windows.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

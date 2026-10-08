@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);RUNICNAV001;RUNICWPF001</NoWarn>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../App/HybridNotes.Wpf.csproj" />
+  </ItemGroup>
+  <Import Project="../../../packages/dotnet/Runic.Application.Desktop/build/Runic.Application.Desktop.targets" />
+  <Target Name="CopySmokeFrontend" AfterTargets="Build">
+    <ItemGroup><SmokeFrontend Include="../Frontend/dist/**/*" /></ItemGroup>
+    <Copy SourceFiles="@(SmokeFrontend)" DestinationFiles="@(SmokeFrontend->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

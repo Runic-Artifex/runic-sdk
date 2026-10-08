@@ -185,7 +185,7 @@ internal sealed class WindowsWebView2Controller : IDisposable
 
     internal Rectangle Bounds { set => WindowsWebView2Interop.SetBounds(_controller, value); }
     internal bool IsVisible { set => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerVisibleSlot, value ? 1 : 0); }
-    internal void MoveFocus() => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerFocusSlot, 0);
+    internal void MoveFocus(int reason = 0) => WindowsWebView2Interop.SetInteger(_controller, WindowsWebView2Interop.ControllerFocusSlot, reason);
     internal void Navigate(string url) => WindowsWebView2Interop.Navigate(_webView, url);
 
     // WebView2 injects the script only once this asynchronous registration completes,

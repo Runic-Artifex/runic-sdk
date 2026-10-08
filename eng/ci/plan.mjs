@@ -14,24 +14,26 @@ export function managedTests(base = root, platform = process.platform) {
         && (platform === "win32" || !/<TargetFramework>[^<]*-windows<\/TargetFramework>/.test(project));
     })
     .map(path => ({ path, group: path.includes("Runic.Navigation.") || path.startsWith("examples/wpf-navigation/") ? "navigation"
-      : path.includes("Runic.Application.") ? "application"
+      : path.includes("Runic.Application.") || path.startsWith("examples/wpf-hybrid-editor/") ? "application"
       : path.includes("Runic.Assets") ? "assets"
       : "platform" }));
 }
 
-// Application fixtures outside RunicSdk.Core.slnx. The application suite builds and
+// Application fixtures and library test consumers. The application suite builds and
 // runs them after its test executables; each one exits non-zero when its proof fails.
 // An `aot` fixture pins linux-x64, so it is published with NativeAOT and run on Linux only.
 export const applicationFixtures = [
   { path: "tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj" },
   { path: "tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj" },
   { path: "tests/fixtures/application/reactiveui25-aot/ReactiveUi25AotProof.csproj", aot: true },
+  { path: "examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj", test: true },
 ];
 
 // The commands that build and run the application fixtures on `platform`.
 export function applicationFixtureCommands(configuration, base = root, platform = process.platform) {
-  return applicationFixtures.flatMap(({ path, aot }) => {
+  return applicationFixtures.flatMap(({ path, aot, test }) => {
     const project = resolve(base, path);
+    if (test) return [["dotnet", ["test", project, "-c", configuration]]];
     if (!aot) return [["dotnet", ["run", "--project", project, "-c", configuration]]];
     if (platform !== "linux") return [];
     const name = path.split("/").at(-1).replace(/\.csproj$/, "");
@@ -82,7 +84,7 @@ export function planFor({ full, components }) {
     packages,
     "package-consumers": packages,
     // The WPF hosts and their packed consumer run on Windows only.
-    wpf: full || has("navigation"),
+    wpf: full || has("navigation", "application-wpf"),
     templates: packages,
     // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration.
     native: full || has("desktop", "platform", "application", "examples", "administration-windows"),

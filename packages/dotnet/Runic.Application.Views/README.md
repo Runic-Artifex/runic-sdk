@@ -296,6 +296,16 @@ Toolkit cancellation calls the command's `Cancel()` and therefore targets its
 current execution; it does not isolate concurrent invocations of the same
 command instance.
 
+`[RelayCommand(IncludeCancelCommand = true)]` is supported too. Toolkit's
+generated `SaveCancelCommand` exposes parameterless `saveCancel()` and
+`canSaveCancel` state in the web client. It executes the actual generated cancel
+command, so availability follows Toolkit's `CanBeCanceled` and cancellation
+targets the same native `SaveCommand`. The existing `startSave` operation still
+owns admission, completion, recovery, and View lifetime cancellation. Recognition
+requires Toolkit's generator metadata, the paired async command, and its
+cancellation-token method with `IncludeCancelCommand = true`; other plain
+`ICommand` properties still require `[RunicCommandInput]`.
+
 Checked-write receipts decode their values just like state: for example, an
 `Int64` receipt's `snapshot.value` or conflict's `incoming.value` is a `bigint`.
 An identical request ID and payload replays its receipt. Reusing an ID with a
