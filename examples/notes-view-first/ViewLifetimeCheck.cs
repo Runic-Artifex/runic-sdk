@@ -15,8 +15,12 @@ internal static class ViewLifetimeCheck
         var vm = scope.ServiceProvider.GetRequiredService<ShellViewModel>();
         var native = new ProbeTransport();
         using var transport = new RebindableBridgeTransport(native);
+        // Like a real window, the session binds the shell to the window's model context. A
+        // shell without one serializes its bridge with a lock instead of model turns, and a
+        // navigation commit that publishes the shell could then deadlock with a snapshot.
         using var content = new WindowContentSession(transport,
             scope.ServiceProvider.GetRequiredService<IRunicViewLocator>(),
+            rootModel: vm,
             modelContext: scope.ServiceProvider.GetRequiredService<IRunicModelContext>());
         var factory = scope.ServiceProvider.GetRequiredService<
             Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
@@ -35,6 +39,7 @@ internal static class ViewLifetimeCheck
                 using var secondTransport = new RebindableBridgeTransport(secondNative);
                 using var secondContent = new WindowContentSession(secondTransport,
                     secondScope.ServiceProvider.GetRequiredService<IRunicViewLocator>(),
+                    rootModel: secondVm,
                     modelContext: secondScope.ServiceProvider.GetRequiredService<IRunicModelContext>());
                 var secondFactory = secondScope.ServiceProvider.GetRequiredService<
                     Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>();
