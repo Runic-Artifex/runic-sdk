@@ -353,6 +353,28 @@ internal static class CodegenDiagnosticsTests
                 && registration.Contains("Func<IBridgeTransport, WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),
                 $"DI composition registered a transport-only factory for an interaction ViewModel.\n{registration}");
+
+            // Bridge generation that the build turned on by default is
+            // optional: an assembly with no Window or View (a navigator-only
+            // application) succeeds, writes nothing and leaves a marker the
+            // targets use to skip the frontend steps. Without --optional the
+            // project asked for generation, so the same assembly is an error.
+            const string NoViews = "public sealed class PlainService { public int Value => 1; }";
+            var skippedOutput = await GenerateValidAsync(generator, temporaryRoot, "OptionalNoViews", Preamble + NoViews,
+                "--optional").ConfigureAwait(false);
+            Require(File.Exists(Path.Combine(skippedOutput, "RunicBridge.NoViews.marker"))
+                    && Directory.GetFiles(skippedOutput, "*.g.cs").Length == 0
+                    && !Directory.Exists(Path.Combine(Path.GetDirectoryName(skippedOutput)!, "ts")),
+                "An optional generation without Windows or Views did not skip cleanly.");
+            await Reject("RequiredNoViews", NoViews, "error RUNICBRIDGE006:", "no Runic Window/View classes found")
+                .ConfigureAwait(false);
+            // Optional only forgives a missing Window: an invalid View still fails.
+            var (optionalViewExit, invalidViewOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "OptionalInvalidView", Preamble + """
+                public sealed class HiddenViewModel : FixtureModel { public string Title { get; } = ""; }
+                internal sealed partial class HiddenWindow(HiddenViewModel model) : RunicWindow<HiddenViewModel>(model);
+                """, "--optional").ConfigureAwait(false);
+            Require(optionalViewExit != 0 && invalidViewOutput.Contains("error RUNICBRIDGE006:", StringComparison.Ordinal),
+                $"Optional generation accepted an invalid View.\n{invalidViewOutput}");
         }
         finally
         {
