@@ -719,7 +719,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
     }
 
-    // Completes the transition's settlement once its outcome is known, after admission was released
+    // Completes the transition's settlement once its outcome is known, before admission is released
     // and before retirement. A supersession names its superseder only when a later request superseded
     // this one; a basis change leaves it unknown (W240-001 §6.1).
     private void Settle(NavigationTransition transition, NavigationOutcome outcome)
