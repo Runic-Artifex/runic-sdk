@@ -47,6 +47,9 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// <summary>The diagnostic ID of the experimental navigation API.</summary>
     public const string DiagnosticId = "RUNICNAV001";
 
+    /// <summary>The category of the navigator's log entries (events 1060-1079).</summary>
+    public const string LogCategory = "Runic.Navigation";
+
     internal static readonly TimeSpan OverrunWarningDelay = TimeSpan.FromSeconds(5);
 
     // Every instance any navigator has ever owned, live or retired.
@@ -90,13 +93,14 @@ public sealed class RunicNavigator : IAsyncDisposable
         Services = options.Services;
         _time = options.TimeProvider ?? TimeProvider.System;
         _closeTimeout = options.CloseTimeout;
-        Logger = options.LoggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+        Logger = options.LoggerFactory?.CreateLogger(LogCategory) ?? TraceFallbackLogger.Instance;
     }
 
     /// <summary>Gets the model context whose turns commit this navigator's state. Owned content is bound to it.</summary>
     public IRunicModelContext ModelContext { get; }
 
-    internal IServiceProvider? Services { get; }
+    /// <summary>Gets the service provider passed to target factories, or <see langword="null"/> when none was configured.</summary>
+    public IServiceProvider? Services { get; }
 
     internal ILogger Logger { get; }
 

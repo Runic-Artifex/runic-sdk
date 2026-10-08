@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views;
 
@@ -86,13 +87,34 @@ public sealed class RunicModelContextRegistry
 
         // A racing acquire claimed this graph first. Its context remains the owner and
         // the unused candidate can be shut down before returning that shared owner.
-        try { RunicModelContextDisposal.DisposeSynchronously(created); }
+        try { DisposeCandidate(created); }
         catch
         {
             sharedLease!.Dispose();
             throw;
         }
         return sharedLease!;
+    }
+
+    // Shuts down a losing candidate context. Like a window session closing its own context,
+    // it never waits for the shutdown from inside that context's turn, which would deadlock.
+    private static void DisposeCandidate(IRunicModelContext context)
+    {
+        var shutdown = context.DisposeAsync();
+        if (shutdown.IsCompletedSuccessfully) return;
+        if (context.IsExecuting)
+        {
+            _ = ObserveReleaseAsync(shutdown, RunicModelContext.LoggerOf(context));
+            return;
+        }
+        shutdown.AsTask().GetAwaiter().GetResult();
+    }
+
+    private static async Task ObserveReleaseAsync(ValueTask release, ILogger logger)
+    {
+        try { await release.ConfigureAwait(false); }
+        catch (Exception error)
+        { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
     }
 
     /// <summary>Gets the registered context for a model identity.</summary>
@@ -238,13 +260,6 @@ public sealed class RunicModelContextRegistry
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return ValueTask.CompletedTask;
             return owner.ReleaseAsync(registration, models);
-        }
-
-        private static async Task ObserveReleaseAsync(ValueTask release, Microsoft.Extensions.Logging.ILogger logger)
-        {
-            try { await release.ConfigureAwait(false); }
-            catch (Exception error)
-            { ViewsLog.ModelContextReleaseFailed(logger, error, BridgeTelemetry.ErrorType(error)); }
         }
     }
 }

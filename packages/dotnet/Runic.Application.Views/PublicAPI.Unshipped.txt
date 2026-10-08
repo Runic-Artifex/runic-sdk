@@ -20,3 +20,5 @@
 [RUNICNAV001]Runic.Application.Views.RunicNavigator.AttachPresentation(Runic.Application.Views.INavigationPresentation! presentation) -> System.IDisposable!
 [RUNICNAV001]Runic.Application.Views.RunicNavigator.ModelContext.get -> Runic.Application.Views.IRunicModelContext!
 [RUNICNAV001]Runic.Application.Views.RunicNavigator.UnretiredEntryCount.get -> int
+[RUNICNAV001]Runic.Application.Views.RunicNavigator.Services.get -> System.IServiceProvider?
+[RUNICNAV001]const Runic.Application.Views.RunicNavigator.LogCategory = "Runic.Navigation" -> string!
