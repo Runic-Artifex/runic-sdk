@@ -1,0 +1,10 @@
+<Window x:Class="WpfConsumer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:rn="https://runic-artifex.eu/xaml/navigation"
+        Title="Runic.Navigation.Wpf consumer" Width="480" Height="320">
+  <Grid>
+    <rn:NavigationHost x:Name="Host" x:FieldModifier="public" Region="{Binding Main}" EmptyContent="Nothing open" />
+    <rn:NavigationDialogHost Region="{Binding Dialog}" />
+  </Grid>
+</Window>

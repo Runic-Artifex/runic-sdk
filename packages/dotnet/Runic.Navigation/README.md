@@ -31,7 +31,8 @@ experimental: every type is marked `[Experimental("RUNICNAV001")]`. Suppress
 context types are not experimental. The navigator replaces ReactiveUI's
 `RoutingState`; it does not wrap one. See the
 [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
-for observables and a back command.
+for observables and a back command. WPF apps present regions with
+[Runic.Navigation.Wpf](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.Wpf/README.md).
 
 ```csharp
 using Runic.Navigation;
@@ -247,7 +248,8 @@ A host presents a region's `Current`. In Runic.Application, a get-only
 the generated Bridge presents in the window's web View; see
 [Content slots](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#content-slots).
 Other hosts bind `INavigationRegion`, the non-generic view of a region, and
-`INavigationEntry`. `RunicNavigator.AttachPresentation` is for presentation
+`INavigationEntry`. `Runic.Navigation.Wpf` provides WPF hosts and a dispatcher
+model context. `RunicNavigator.AttachPresentation` is for presentation
 integrations only: retirement calls `INavigationPresentation.Forget` once for
 each attached presentation and owned entry.
 
@@ -389,6 +391,15 @@ the caller, never inside a turn. Hook operations don't count as turns. Once
 the context is closed, disposal runs on the thread pool. A decorator that
 wraps a scheduling context must implement and forward the interface too.
 
+A context that can close on its own, for example when its UI thread shuts
+down, can also implement `IRunicModelContextLifetime`. The navigator subscribes
+to its `Closed` token and starts closing when it fires: later requests are
+`Rejected(Closed)` at once, and transitions in flight are cancelled as closed.
+Without it, the navigator learns about the close only when a turn or hook
+fails with `ObjectDisposedException`, so a request can wait behind a
+transition whose hook ignores its cancellation. Decorators forward this
+interface too.
+
 During `DisposeAsync`, a scheduled disposal that hasn't started by the
 clearing turns' deadline runs on the thread pool instead, exactly once, so
 disposal completes even when the model's thread is blocked. Don't block the
@@ -418,7 +429,14 @@ resumes on its own context as usual.
   its ancestors is `Rejected(Reentrant)`. For example, a parent's
   `InitializeAsync` cannot push into its own child region, and a `CurrentPane`
   guard cannot call `Main.BackAsync()` on the region that holds its document.
-  Issue the request after the transition commits.
+  Issue the request after the transition commits. A hook's code is the hook's
+  own frame and its continuations, including `await Task.Yield()` and awaits
+  that resume through the `SynchronizationContext` the hook started with:
+  requests from there stay `Rejected(Reentrant)`. Input handlers that a hook's
+  nested message loop dispatches, for example while a guard shows a modal
+  window, are not the hook. One gap fails safe: a handler that the nested loop
+  dispatched and that awaits past the loop's end, while the transition is
+  still in flight, may continue as the hook and get `Rejected(Reentrant)`.
 - A service that creates a region with a container-built initial target whose
   constructor needs that service is a dependency cycle. For example,
   `MainNavigation` creates its region with `Create<HomeViewModel>()`, and

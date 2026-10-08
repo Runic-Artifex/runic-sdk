@@ -51,7 +51,7 @@ export function webTests() {
 // Jobs that always run: `plan`, `build` (which also checks generated files) and
 // `engineering` (workflow lint, contracts, Markdown links). `verify` accepts a
 // skipped job only when it is listed here and the plan skipped it.
-export const skippableJobs = ["managed", "web", "framework-consumers", "views", "packages", "package-consumers", "templates", "native"];
+export const skippableJobs = ["managed", "web", "framework-consumers", "views", "packages", "package-consumers", "wpf", "templates", "native"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -81,6 +81,8 @@ export function planFor({ full, components }) {
     views: full || has("examples"),
     packages,
     "package-consumers": packages,
+    // The WPF hosts and their packed consumer run on Windows only.
+    wpf: full || has("navigation"),
     templates: packages,
     // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration.
     native: full || has("desktop", "platform", "application", "examples", "administration-windows"),

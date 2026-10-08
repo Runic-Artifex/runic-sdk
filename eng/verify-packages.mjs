@@ -48,6 +48,13 @@ export const packageLayouts = {
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.Application/i, /^ReactiveUI$/i],
   },
+  // The WPF hosts depend on Runic.Navigation and the WPF framework only (W240-001 §8).
+  "Runic.Navigation.Wpf": {
+    files: ["README.md", "Runic.Navigation.Wpf.nuspec", "icon.png", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.xml"],
+    requires: ["Runic.Navigation"],
+    exactDependencies: ["Runic.Navigation"],
+    forbidden: [/^Runic\.(?!Navigation$)/i],
+  },
   // Each Application adapter brings the navigation adapter of its own flavor.
   "Runic.Application.ReactiveUI": { requires: ["Runic.Navigation.ReactiveUI"], exactDependencies: ["Runic.Navigation.ReactiveUI"], forbidden: [/^Runic\.Navigation\.ReactiveUI\.Reactive$/i] },
   "Runic.Application.ReactiveUI.Reactive": {
@@ -108,7 +115,22 @@ function msbuildProjectPath(
   return resolveMsbuildPathValue(projectDirectory, value);
 }
 
-export function packageConsumerStrategy(packageEntry) {
+// Windows-only packages declare how a packed consumer uses them: it builds on every
+// platform and runs only on Windows.
+const windowsConsumerStrategies = {
+  "Runic.Navigation.Wpf": { useWpf: true, canaryType: "Runic.Navigation.Wpf.NavigationHost" },
+};
+
+export function packageConsumerStrategy(packageEntry, platform = process.platform) {
+  const windows = windowsConsumerStrategies[packageEntry.name];
+  if (windows)
+    return {
+      targetFramework: "net10.0-windows",
+      execute: platform === "win32",
+      enableWindowsTargeting: true,
+      useWpf: windows.useWpf,
+      canaryType: windows.canaryType,
+    };
   const project = readFileSync(resolve(root, packageEntry.project), "utf8");
   const frameworks = [
     ...[...project.matchAll(/<TargetFramework>([^<]+)<\/TargetFramework>/g)].flatMap(([, value]) => value.split(";")),
@@ -265,7 +287,7 @@ for (var attempt = 0; attempt < 100 && !published; attempt++)
 if (!published) throw new Exception("The packaged generated publication failed.");
 Console.WriteLine("Packaged Window/View test host passed.");`
       : strategy.canaryType
-        ? `Console.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
+        ? `#pragma warning disable RUNICNAV001\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : `Console.WriteLine(System.Reflection.Assembly.Load("${assemblyName}").GetName().Name);`,
     );
     if (viewTestConsumer)

@@ -73,6 +73,10 @@
       "project": "packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj"
     },
     {
+      "name": "Runic.Navigation.Wpf",
+      "project": "packages/dotnet/Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj"
+    },
+    {
       "name": "Runic.Application",
       "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
@@ -191,7 +195,9 @@
         "packages/dotnet/Runic.Navigation",
         "packages/dotnet/Runic.Navigation.ReactiveUI",
         "packages/dotnet/Runic.Navigation.ReactiveUI.Reactive",
+        "packages/dotnet/Runic.Navigation.Wpf",
         "tests/dotnet/Runic.Navigation.Tests",
+        "tests/dotnet/Runic.Navigation.Wpf.Tests",
         "tests/fixtures/navigation"
       ]
     },

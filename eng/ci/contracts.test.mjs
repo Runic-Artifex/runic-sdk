@@ -146,7 +146,7 @@ test('verification gate includes all jobs and candidates are independent of test
   assert.deepEqual([...workflow.jobs.verify.needs].sort(), Object.keys(workflow.jobs).filter(key => key !== 'verify').sort());
   assert.equal(workflow.jobs.verify.if, 'always()');
   assert.deepEqual(workflow.jobs.packages.needs, ['plan', 'build']);
-  for (const id of ['templates', 'package-consumers']) assert.deepEqual(workflow.jobs[id].needs, ['plan', 'packages']);
+  for (const id of ['templates', 'package-consumers', 'wpf']) assert.deepEqual(workflow.jobs[id].needs, ['plan', 'packages']);
   for (const job of Object.values(workflow.jobs))
     if (job.strategy) assert.equal(job.strategy['fail-fast'], false);
 });
@@ -249,4 +249,16 @@ test('remote actions are pinned to a commit with their release tag', () => {
   assert.ok(references.length > 0);
   for (const item of references)
     assert.match(`${item.action} ${item.comment}`, /^[\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/, `${item.path}: ${item.action}`);
+});
+
+// W240-005: the WPF hosts run in a Windows desktop session, then their packed consumer.
+test('the WPF lane runs the STA tests and the packed consumer on Windows', () => {
+  const job = workflow.jobs.wpf;
+  assert.equal(job['runs-on'], 'windows-2025');
+  assert.equal(job['timeout-minutes'], 20);
+  const runs = job.steps.map(step => step.run).filter(Boolean);
+  const tests = runs.indexOf('dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release');
+  const consumer = runs.indexOf('bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs');
+  assert.ok(tests >= 0 && consumer > tests, runs.join('\n'));
+  assert.ok(job.steps.some(step => step.uses?.startsWith('actions/download-artifact@') && step.with?.path === 'artifacts/packages'));
 });
