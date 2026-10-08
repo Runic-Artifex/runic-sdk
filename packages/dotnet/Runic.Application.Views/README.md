@@ -406,6 +406,15 @@ await main.BackAsync(); // the document retires and is disposed; home resumes
   window session to the navigator (one window per navigator, with the same model
   context), so retiring owned content forgets its routes. Nothing is forwarded by
   hand; `ViewOutlet`s and test drivers (`View<T>(vm => vm.Main)`) work unchanged.
+- `PushForResult<TResult>(target)` pushes an entry and returns a
+  `NavigationResultRequest`: `Transition` is the push's result and `Completion`
+  ends `Completed(value)` only when the entry calls
+  `NavigationEntryContext.CompleteAsync(value)` and the Back it issues commits,
+  or `Dismissed` when the push does not commit, the entry retires another way,
+  the caller's token is cancelled after the commit (which also goes back from
+  the entry) or the navigator closes. A Back from `CompleteAsync` or caller
+  cancellation may leave the region empty, so a dialog region can start empty.
+  Completions run their continuations asynchronously, after the commit turn.
 - Going back presents the same `PageReference` id with the retained model; the
   outlet mounts a fresh View.
 - **Stale-route window.** A commit retires and forgets departing owned content
@@ -456,12 +465,14 @@ output accordingly. The message properties are listed per event.
 | 1061 | `NavigationPreparationFailed` | Error | A navigation factory, the ownership check, binding, initialize or resume throws. A close of the navigator or region is rejected as `Closed` and does not log it. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1062 | `NavigationCommitFailed` | Error | A navigation commit turn cannot run. | `Region`, `RegionId`, `Operation`, `ErrorType` |
 | 1063 | `NavigationNotificationFailed` | Error | A navigation region `PropertyChanged` handler throws; the commit stands. | `Region`, `RegionId`, `Property`, `ErrorType` |
-| 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (`Retirement`, `Children`, `Forget`, `Dispose`, `Lease`), the clearing of a closed region (`Close`) or the cancellation of transitions (`Cancel`, a throwing cancellation callback) fails; later steps still run. `EntryType` is `None` for `Close` and `Cancel`. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
+| 1064 | `NavigationEntryCleanupFailed` | Error | A retirement step (`Retirement`, `Children`, `Forget`, `Dispose`, `Lease`), the clearing of a closed region (`Close`), the cancellation of transitions (`Cancel`, a throwing cancellation callback) or background navigator work (`Detached`, such as the Back issued when a `PushForResult` caller cancels) fails; later steps still run. `EntryType` is `None` for `Close`, `Cancel` and `Detached`. | `Region`, `RegionId`, `EntryType`, `Step`, `ErrorType` |
 | 1065 | `NavigationTransitionRejected` | Debug | A navigation request is rejected. | `Region`, `RegionId`, `Operation`, `Reason` |
 | 1066 | `NavigationTransitionSuperseded` | Debug | A later request supersedes a navigation request. | `Region`, `RegionId`, `Operation` |
 | 1067 | `NavigationSupersededTransitionOverrun` | Warning | A superseded navigation request is still running 5 seconds after supersession. | `Region`, `RegionId`, `Operation` |
 | 1068 | `NavigationCloseTimedOut` | Warning | Closing a navigation region timed out waiting for a model turn; its state was cleared outside a turn. The clearing turns of one disposal share one close timeout, so a disposal takes about twice `CloseTimeout` at most. | `Region`, `RegionId` |
 | 1069 | `NavigationInitializeTimedOut` | Warning | Retiring an entry stopped waiting for its running initialize hook after the close timeout and disposed the content while the hook runs. During disposal the wait is skipped once the wait for cancelled transitions timed out. | `Region`, `RegionId`, `EntryType` |
+| 1070 | `NavigationResultDismissed` | Debug | A `PushForResult` request ends `Dismissed`. `Reason` is `NotCommitted` (its push did not commit), `Retired` (its entry retired without `CompleteAsync`), `Cancelled` (the caller's token was cancelled after the commit) or `Closed` (the navigator closed). | `Region`, `RegionId`, `Reason` |
+| 1071 | `NavigationResultDropped` | Debug | `CompleteAsync` went back from an entry whose request had already ended, so its value was dropped. | `Region`, `RegionId` |
 | 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -477,7 +488,7 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1021, 1050 and 1060-1069 use the category `Runic.Application.Views`
+Events 1000-1021, 1050 and 1060-1071 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Events 1030-1033 use the logger of the
 `RunicModelContext`: `ILogger<RunicModelContext>` when DI or a
 `WindowContentSession` with a logger factory created it, and otherwise the

@@ -58,6 +58,33 @@ public sealed class NavigationEntryContext
             new NavigationRequestOptions(_entry.Id), cancellationToken);
         return NavigationResults.MapAsync<object>(pending);
     }
+
+    /// <summary>
+    /// Completes the <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/> request that pushed
+    /// this entry and goes back from it, like <see cref="BackAsync"/>. When this entry is the region's
+    /// only entry, going back leaves the region empty. The request's completion becomes
+    /// <see cref="NavigationCompletion{TResult}.Completed"/> with <paramref name="result"/> only if that
+    /// back transition commits; otherwise the entry stays current, the request stays open, and the call
+    /// can be repeated. When the request was already dismissed, the entry still goes back and the
+    /// result is dropped.
+    /// </summary>
+    /// <typeparam name="TResult">The request's result type, or a type assignable to it.</typeparam>
+    /// <param name="result">The result.</param>
+    /// <param name="cancellationToken">Cancels the back transition before it commits.</param>
+    /// <exception cref="InvalidOperationException">
+    /// The entry was not pushed with <c>PushForResult</c>, or its result type does not accept a <typeparamref name="TResult"/>.
+    /// </exception>
+    public ValueTask<NavigationResult<object>> CompleteAsync<TResult>(TResult result, CancellationToken cancellationToken = default)
+    {
+        var request = _entry.ResultRequest
+            ?? throw new InvalidOperationException("This navigation entry was not pushed with PushForResult, so it has no result to complete.");
+        if (request is not INavigationResultSink<TResult> sink)
+            throw new InvalidOperationException(
+                $"This navigation entry's result is a {request.ResultTypeName}; a {typeof(TResult).Name} can't complete it.");
+        var pending = _entry.Region.Start(NavigationOperation.Back, target: null, backTo: null,
+            new NavigationRequestOptions(_entry.Id), cancellationToken, new NavigationReturn(sink.Stage(result)));
+        return NavigationResults.MapAsync<object>(pending);
+    }
 }
 
 internal enum NavigationEntryPhase
@@ -109,6 +136,9 @@ internal sealed class NavigationEntryCore
     // Set under the navigator gate while the initialize hook runs. Retirement of
     // owned content waits for it (bounded by CloseTimeout) before disposing.
     public Task? Initializing { get; set; }
+
+    // The PushForResult request that pushed this entry; set at admission, before any hook runs.
+    public NavigationResultRequestCore? ResultRequest { get; set; }
 
     public NavigationEntryState State => Phase switch
     {

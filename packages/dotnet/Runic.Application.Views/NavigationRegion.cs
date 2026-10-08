@@ -59,6 +59,25 @@ public sealed class NavigationRegion<TContent> : INotifyPropertyChanged, INaviga
         NavigationRequestOptions? options = null, CancellationToken cancellationToken = default) =>
         Run(NavigationOperation.Push, Target(target), null, options, cancellationToken);
 
+    /// <summary>
+    /// Pushes a new entry like <see cref="PushAsync"/> and waits for a typed result from it. The entry
+    /// returns its result with <see cref="NavigationEntryContext.CompleteAsync{TResult}"/>, which goes
+    /// back from it; when it was pushed onto an empty region, the region becomes empty again.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="NavigationResultRequest{TContent, TResult}.Completion"/> is dismissed when the push does
+    /// not commit, when the entry retires without completing, and when the navigator closes. Cancelling
+    /// <paramref name="cancellationToken"/> before the commit gives the usual
+    /// <see cref="NavigationRejection.Cancelled"/> outcome. After the commit it dismisses the request at once
+    /// and goes back from the entry if it is still current; that back transition is not awaited, and a
+    /// rejection or supersession of it is logged (1065, 1066). A departure guard that awaits a result in
+    /// another region should pass its own token, so supersession and window close dismiss the request.
+    /// </remarks>
+    /// <typeparam name="TResult">The result type.</typeparam>
+    public NavigationResultRequest<TContent, TResult> PushForResult<TResult>(INavigationTarget<TContent> target,
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default) =>
+        Core.Navigator.PushForResult<TContent, TResult>(Core, Target(target), options, cancellationToken);
+
     /// <summary>Retires the current entry and resumes the top retained entry.</summary>
     public ValueTask<NavigationResult<TContent>> BackAsync(NavigationRequestOptions? options = null,
         CancellationToken cancellationToken = default) =>
@@ -233,8 +252,9 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     }
 
     public Task<NavigationOutcome> Start(NavigationOperation operation, NavigationTargetCore? target,
-        NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken) =>
-        Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken);
+        NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken,
+        NavigationReturn? @return = null) =>
+        Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken, @return);
 
     // Runs inside a model turn. IsTransitioning is raised only when its value
     // differs from the last value raised, so admission and release on
