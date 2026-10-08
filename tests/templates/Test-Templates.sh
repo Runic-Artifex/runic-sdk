@@ -257,6 +257,16 @@ verify_template() {
       ;;
   esac
   # Only the GTK 4 variant selects GTK 4 and references its provider and portal packages.
+  # The NativeOwner comment names the provider for the selected Linux toolkit.
+  if [[ "$host" == desktop-gtk4 ]]; then
+    grep -Fq 'Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)' "$output/Views.cs"
+    if grep -n 'LinuxPlatformProvider.CreateFileDialogs' "$output/Views.cs"; then
+      echo "The GTK 4 project points NativeOwner at the GTK 3 provider." >&2
+      exit 1
+    fi
+  elif [[ "$host" == desktop ]]; then
+    grep -Fq 'LinuxPlatformProvider.CreateFileDialogs(NativeOwner)' "$output/Views.cs"
+  fi
   if [[ "$host" == desktop-gtk4 ]]; then
     grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4();' "$output/Program.cs"
     for package in Runic.Desktop.Gtk4 Runic.Platform.Linux.Gtk4 Runic.Platform.Linux.Portal; do
