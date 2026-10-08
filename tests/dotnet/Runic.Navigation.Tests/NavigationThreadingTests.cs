@@ -49,6 +49,7 @@ internal static partial class NavigationTests
         await BlockedModelThreadScopedDisposalCompletesAsync();
         await ScopedFactoryCancelledBeforeStartAsync();
         await ContextClosedBeforeScopedFactoryStartsAsync();
+        await NestedPumpHandlersAreNotTheHookAsync();
     }
 
     // Factories, guards, initialize and resume run on the model thread, each as its own operation:
@@ -648,6 +649,60 @@ internal static partial class NavigationTests
         Require(owned.Disposed == 1 && region.Current is null, "Repeated disposal disposed content twice.");
     }
 
+    // A guard that pumps messages, like one showing a modal dialog, dispatches input handlers nested
+    // in its frame and on its ExecutionContext. Those handlers are not the hook's code: their requests
+    // are admitted. The hook's own code, before and after the pump, after an await on the model
+    // thread and on the pool, is still rejected as Reentrant.
+    private static async Task NestedPumpHandlersAreNotTheHookAsync()
+    {
+        using var context = new SchedulingSyncContextModelContext(freshContexts: true);
+        await using var fixture = new Fixture(context);
+        var probe = new Probe(context);
+        NavigationRegion<ProbePage>? region = null;
+        Task<NavigationResult<ProbePage>>? fromHandler = null;
+        var own = new List<Task<NavigationResult<ProbePage>>>();
+        Task<NavigationResult<ProbePage>> Push(string name) => region!.PushAsync(NavigationTarget.Own(new ProbePage(name, probe))).AsTask();
+        var guards = 0;
+        var home = new PumpingGuardPage(probe, async () =>
+        {
+            // The handler's push departs home too; only the first departure pumps.
+            if (Interlocked.Increment(ref guards) > 1) return true;
+            own.Add(Push("before-pump"));
+            // A posted window message, dispatched by the nested pump below.
+            context.Post(() => fromHandler = Push("from-handler"));
+            context.PumpUntil(() => fromHandler is not null);
+            own.Add(Push("after-pump"));
+            await Task.Yield();
+            Require(context.IsOnThread, "The guard did not resume on the model thread.");
+            own.Add(Push("after-await"));
+            await Task.Delay(1).ConfigureAwait(false);
+            own.Add(Push("on-pool"));
+            return true;
+        });
+        region = fixture.Navigator.CreateRegion<ProbePage>(fixture.Root, NavigationTarget.Borrow(home));
+        var detail = await Wait(context.RunOnThreadAsync(() => Push("detail")));
+        Require(fromHandler is not null, "The nested handler did not run.");
+        var handled = await Wait(fromHandler!);
+        Require(handled is not NavigationResult<ProbePage>.Rejected { Reason: NavigationRejection.Reentrant },
+            $"A request from an input handler dispatched by a hook's nested pump gave {handled}.");
+        foreach (var task in own)
+        {
+            var result = await Wait(task);
+            Require(result is NavigationResult<ProbePage>.Rejected { Reason: NavigationRejection.Reentrant },
+                $"A request from the guard's own code gave {result}.");
+        }
+        Require(own.Count == 4, $"The guard made {own.Count} requests.");
+        Require(detail is NavigationResult<ProbePage>.Committed or NavigationResult<ProbePage>.Superseded,
+            $"The guarded push gave {detail}.");
+        await Wait(fixture.Navigator.WhenIdleAsync().AsTask());
+        Require(region.Current is ProbePage { Name: "from-handler" }, $"The region shows {region.Current}.");
+    }
+
+    private sealed class PumpingGuardPage(Probe probe, Func<ValueTask<bool>> guard) : ProbePage("home", probe), INavigationDepartureGuard
+    {
+        ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) => guard();
+    }
+
     // ---- Threading fixtures -------------------------------------------
 
     // Completes a task source so that awaiting continuations run inline in this frame. The runtime
@@ -959,15 +1014,17 @@ internal static partial class NavigationTests
         private readonly BlockingCollection<Action> _queue = new();
         private readonly Thread _thread;
         private readonly bool _inlineCompletions;
+        private readonly bool _freshContexts;
         private int _nextOperation;
         private int _turnDepth;
         private int _maxTurnDepth;
         private int _invokeRequests;
         private volatile bool _closed;
 
-        public SyncContextModelContext(bool inlineCompletions = false)
+        public SyncContextModelContext(bool inlineCompletions = false, bool freshContexts = false)
         {
             _inlineCompletions = inlineCompletions;
+            _freshContexts = freshContexts;
             _thread = new Thread(Run) { IsBackground = true, Name = "Model thread" };
             _thread.Start();
         }
@@ -988,6 +1045,24 @@ internal static partial class NavigationTests
             foreach (var operation in _queue.GetConsumingEnumerable()) operation();
         }
 
+        // A nested message pump on the model thread, like a modal dialog shown by a hook: dispatches
+        // queued operations inside the caller's frame, on its ExecutionContext, until done.
+        public void PumpUntil(Func<bool> done)
+        {
+            if (!IsOnThread) throw new InvalidOperationException("Pump on the model thread.");
+            var caller = SynchronizationContext.Current;
+            var deadline = DateTime.UtcNow + Timeout;
+            try
+            {
+                while (!done())
+                {
+                    if (DateTime.UtcNow > deadline) throw new TimeoutException("The nested pump timed out.");
+                    if (_queue.TryTake(out var operation, TimeSpan.FromMilliseconds(10))) operation();
+                }
+            }
+            finally { SynchronizationContext.SetSynchronizationContext(caller); }
+        }
+
         // Queues one operation (not a turn).
         public void Post(Action action)
         {
@@ -995,6 +1070,8 @@ internal static partial class NavigationTests
             {
                 _queue.Add(() =>
                 {
+                    // Like a UI dispatcher, which installs a fresh context for every message it dispatches.
+                    if (_freshContexts) SynchronizationContext.SetSynchronizationContext(new ThreadContext(this));
                     CurrentOperationId = Interlocked.Increment(ref _nextOperation);
                     try { action(); }
                     catch (Exception error) { UnhandledTurnException?.Invoke(error); }
@@ -1091,7 +1168,8 @@ internal static partial class NavigationTests
     }
 
     // The scheduling variant: each hook is its own posted operation, never inline, never a turn.
-    private sealed class SchedulingSyncContextModelContext : SyncContextModelContext, IRunicModelHookScheduler
+    private sealed class SchedulingSyncContextModelContext(bool freshContexts = false)
+        : SyncContextModelContext(freshContexts: freshContexts), IRunicModelHookScheduler
     {
         private int _hookRequests;
 

@@ -87,9 +87,6 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private static readonly object EverOwnedGate = new();
     private static readonly object OwnedMarker = new();
 
-    // Set only around a hook invocation, to the transition that runs it.
-    private static readonly AsyncLocal<NavigationTransition?> HookTransition = new();
-
     // The initial-target creations in progress on this thread (CreateRegion's cycle guard).
     [ThreadStatic] private static List<(Type Owner, Type Target)>? s_initialCreations;
 
@@ -568,7 +565,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             else if (cancellationToken.IsCancellationRequested)
                 // Rejected before admission, so a dead request never supersedes its predecessors.
                 rejected = NavigationOutcome.Reject(NavigationRejection.Cancelled);
-            else if (HookTransition.Value is { } hook && !hook.Released
+            else if (NavigationHookMarker.Active is { } hook && !hook.Released
                 && (ReferenceEquals(hook.Region, region) || related.Contains(hook)))
                 // A hook never waits on a transition that waits on it. This also rejects requests to
                 // ancestor and descendant regions of the hook's region (deviation 15): conservative.
@@ -1345,14 +1342,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         if (entry is null) return;
         FinishResult(request, NavigationResultDismissal.Cancelled, onlyActive: true, beforeEnd: () =>
         {
-            var hook = HookTransition.Value;
-            HookTransition.Value = null;
-            try
-            {
+            using (NavigationHookMarker.Enter(null))
                 _ = Start(entry.Region, NavigationOperation.Back, null, null, entry.Id, CancellationToken.None,
                     new NavigationReturn(null), runDetached: true);
-            }
-            finally { HookTransition.Value = hook; }
         });
     }
 
@@ -1790,11 +1782,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     {
         if (ModelContext is IRunicModelHookScheduler scheduler)
             return new(ScheduleHookAsync(scheduler, new ScheduledHook<T>(transition, hook), token));
-        var previous = HookTransition.Value;
-        HookTransition.Value = transition;
+        using var marker = NavigationHookMarker.Enter(transition);
         try { return hook(); }
         catch (Exception error) { return ValueTask.FromException<T>(error); }
-        finally { HookTransition.Value = previous; }
     }
 
     private ValueTask<bool> StartHook(NavigationTransition transition, Func<ValueTask> hook, CancellationToken token) =>
@@ -1930,11 +1920,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             // Abandoned: the navigator no longer waits for this result.
             if (Interlocked.CompareExchange(ref _state, Started, NotStarted) != NotStarted) return Task.FromResult(default(T)!);
-            var previous = HookTransition.Value;
-            HookTransition.Value = transition;
+            using var marker = NavigationHookMarker.Enter(transition);
             try { return hook().AsTask(); }
             catch (Exception error) { return Task.FromException<T>(error); }
-            finally { HookTransition.Value = previous; }
         }
     }
 

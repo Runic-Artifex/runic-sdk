@@ -35,6 +35,9 @@ public interface IRunicModelHookScheduler
     /// <para>
     /// An implementation never runs <paramref name="hook"/> inline in the calling frame, even when the caller is
     /// already on the model's thread. When the hook's own awaits capture a context, they resume on the model's thread.
+    /// The scheduler should install the model thread's <see cref="SynchronizationContext"/> for the operation, as a UI
+    /// dispatcher does for every operation it dispatches. The navigator wraps that context while the hook runs, to tell
+    /// the hook's own code from other work dispatched inside its frame by a nested message pump.
     /// It runs the hook inside a wrapper that catches a synchronous throw, so an exception never escapes into the host's
     /// message loop. The outcomes are distinguishable:
     /// </para>

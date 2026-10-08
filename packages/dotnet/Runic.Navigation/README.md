@@ -418,7 +418,11 @@ resumes on its own context as usual.
   its ancestors is `Rejected(Reentrant)`. For example, a parent's
   `InitializeAsync` cannot push into its own child region, and a `CurrentPane`
   guard cannot call `Main.BackAsync()` on the region that holds its document.
-  Issue the request after the transition commits.
+  Issue the request after the transition commits. The hook's code is what
+  runs under the `SynchronizationContext` the hook started with, including its
+  continuations, or with none. Input handlers that a hook's nested message
+  pump dispatches, for example while a guard shows a modal window, run under
+  the UI framework's own context and are not part of the hook.
 - A service that creates a region with a container-built initial target whose
   constructor needs that service is a dependency cycle. For example,
   `MainNavigation` creates its region with `Create<HomeViewModel>()`, and
