@@ -58,7 +58,9 @@ public sealed class WorkspaceNavigation
     {
         if (!CanNavigate || !Main.CanGoBack) return;
         var leaving = Main.Current as DocumentViewModel;
-        if (await Main.BackAsync() is not NavigationResult<IMainViewModel>.Committed) leaving?.ForgetConfirmedDeparture();
+        var committed = false;
+        try { committed = await Main.BackAsync() is NavigationResult<IMainViewModel>.Committed; }
+        finally { if (!committed) leaving?.ForgetConfirmedDeparture(); } // also when Back throws
     }
 }
 
@@ -367,11 +369,12 @@ public partial class ConfirmNavigationViewModel(string message) : ObservableObje
     // must always work, so it then dismisses the request: the guard keeps the document, and
     // the navigator goes back from the dialog.
     //
-    // Overlapping Confirm and Cancel always keep the document. The later answer's Back
-    // supersedes the earlier one, so a Cancel after a Confirm wins. A Confirm after a Cancel
-    // supersedes the Cancel's Back, but then the Cancel dismisses the request, and the
-    // dismissal's Back supersedes the Confirm. Only a Confirm whose Back has already started
-    // committing is final; a Cancel after that is rejected, and the dialog is gone.
+    // Overlapping Confirm and Cancel keep the document unless the Confirm's Back commits first.
+    // The later answer's Back supersedes the earlier one, so a Cancel after a Confirm wins. A
+    // Confirm after a Cancel supersedes the Cancel's Back, and then the Cancel dismisses the
+    // request, whose Back supersedes the Confirm, unless the Confirm's Back commits before the
+    // dismissal. A Confirm whose Back has started committing is final; a Cancel after that is
+    // rejected, and the dialog is gone.
     private async Task AnswerAsync(bool confirmed)
     {
         if (_entry is not { } entry) return;

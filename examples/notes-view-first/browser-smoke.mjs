@@ -53,8 +53,21 @@ try {
     await frame();
     return { lost, returned: document.activeElement === button };
   })()`);
-  if (!disabledAcrossFrame.returned)
-    throw new Error(`Focus did not return to a re-enabled button: ${JSON.stringify(disabledAcrossFrame)}`);
+  if (!disabledAcrossFrame.lost || !disabledAcrossFrame.returned)
+    throw new Error(`Focus did not leave a disabled button and return to it once enabled: ${JSON.stringify(disabledAcrossFrame)}`);
+  // Focus that leaves an enabled button, as a click on a blank area does, is not given back.
+  const blankAreaKept = await query(`(async () => {
+    const frame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    const button = document.querySelector("[data-go=notes]");
+    button.focus();
+    button.blur(); // focus moves to the body without a focusin
+    button.disabled = true;
+    await frame();
+    button.disabled = false;
+    await frame();
+    return document.activeElement !== button;
+  })()`);
+  if (!blankAreaKept) throw new Error("Focus returned to a button it had left while enabled.");
   const documentId = (await snapshot("shell")).state.main.id;
   const editorId = (await snapshot(`content${documentId}`)).state.currentPane.id;
   await change("#document-pane input", "Draft");

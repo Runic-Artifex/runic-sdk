@@ -25,6 +25,13 @@ export function keepFocusAcrossDisabling(): void {
     lastFocused = event.target;
     returnTo = null; // focus moved on; nothing to return to
   }, true);
+  // Focus that leaves a control still enabled, such as a click on a blank area, is not
+  // lost to disabling, so a later disable and enable must not take it back.
+  document.addEventListener("focusout", event => {
+    if (!(event.target instanceof HTMLElement) || isDisabled(event.target)) return;
+    if (event.target === lastFocused) lastFocused = null;
+    if (event.target === returnTo) returnTo = null;
+  }, true);
   // One observer for the whole document, so nothing outlives the elements it watched.
   new MutationObserver(records => {
     for (const { target } of records) {
