@@ -3,7 +3,7 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { runic } from "@runic-artifex/vite-plugin-runic";
 
 export default defineConfig({
-//#if (host == "desktop")
+//#if (desktopHost)
   // runic({ desktop: true }) loads the Runic Desktop bootstrap and builds with
   // relative asset URLs, because Runic Desktop serves each window below its own path.
   plugins: [svelte(), runic({ desktop: true })],

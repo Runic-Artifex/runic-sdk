@@ -1,10 +1,13 @@
-#if (host == "desktop")
+#if (desktopHost)
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views.Desktop;
 #if (viewModels == "reactiveui")
 using Runic.Application.Views.ReactiveUI;
 #endif
 using Runic.Desktop;
+#if (gtk4)
+using Runic.Desktop.Gtk4;
+#endif
 using RunicWindowApp;
 
 var services = new ServiceCollection();
@@ -16,30 +19,37 @@ services.AddScoped<WelcomeViewModel>();
 services.AddScoped<CounterViewModel>();
 services.AddRunicViews();
 
-await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
-{
-    ValidateScopes = true,
-    ValidateOnBuild = true
-});
+#if (gtk4)
+// Linux embeds WebKitGTK 6 through GTK 4. Windows uses WebView2 and macOS WKWebView.
+var options = new DesktopHostOptions().WithGtk4();
+#else
+// Linux embeds WebKitGTK 4.1 through GTK 3. Windows uses WebView2 and macOS WKWebView.
+var options = new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } };
+#endif
 
-await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+// Runs the application on the event loop this platform and backend need. Call it before any await.
+return DesktopEventLoop.Run(options, async desktop =>
 {
-    // Linux embeds WebKitGTK 4.1 through GTK 3. Windows uses WebView2 and macOS WKWebView.
-    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
-});
-await using var window = await provider.OpenDesktopWindowAsync<WorkspaceWindow, WorkspaceViewModel>(
-    desktop,
-    new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") },
-    host => new WorkspaceWindow(host),
-    new DesktopWindowOptions
+    await using var provider = services.BuildServiceProvider(new ServiceProviderOptions
     {
-        // Prefer a native window with the embedded WebView; fall back to an installed browser.
-        Browser = BrowserKind.Embedded,
-        PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
-        Width = 1000,
-        Height = 700,
+        ValidateScopes = true,
+        ValidateOnBuild = true
     });
-window.Presentation.WaitForClose();
+    await using var window = await provider.OpenDesktopWindowAsync<WorkspaceWindow, WorkspaceViewModel>(
+        desktop,
+        new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") },
+        host => new WorkspaceWindow(host),
+        new DesktopWindowOptions
+        {
+            // Prefer a native window with the embedded WebView; fall back to an installed browser.
+            Browser = BrowserKind.Embedded,
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            Width = 1000,
+            Height = 700,
+        });
+    window.Presentation.WaitForClose();
+    return 0;
+});
 #else
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;

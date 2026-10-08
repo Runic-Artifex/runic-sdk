@@ -83,9 +83,9 @@ internal static class Program
         CreatePlan plan = new("MyApp", null, "1.2.3-preview.4",
             model.Options.Select(option => new OptionSelection(option, option.Choices[^1])).ToArray(), null);
         Equal("dotnet new install Runic.Application.Templates@1.2.3-preview.4", plan.InstallCommand);
-        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host desktop --view-models reactiveui", plan.CreateCommand);
-        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host desktop --view-models reactiveui", plan.CreatorCommand);
-        Equal("Angular · Bun · Runic Desktop · ReactiveUI", plan.Summary);
+        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host desktop-gtk4 --view-models reactiveui", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host desktop-gtk4 --view-models reactiveui", plan.CreatorCommand);
+        Equal("Angular · Bun · Runic Desktop with GTK 4 · ReactiveUI", plan.Summary);
         Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', plan.NextSteps));
     }
 

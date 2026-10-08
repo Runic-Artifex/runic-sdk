@@ -106,8 +106,17 @@
       "description": "How the application presents its Window.",
       "choices": [
         { "choice": "cswebui", "displayName": "CS-WebUI", "description": "An installed browser in app mode, then the platform WebView" },
-        { "choice": "desktop", "displayName": "Runic Desktop", "description": "A native window with the embedded WebView and Runic platform services" }
+        { "choice": "desktop", "displayName": "Runic Desktop", "description": "A native window with the embedded WebView and Runic platform services" },
+        { "choice": "desktop-gtk4", "displayName": "Runic Desktop with GTK 4", "description": "Runic Desktop that uses GTK 4, WebKitGTK 6 and portal pickers on Linux" }
       ]
+    },
+    "desktopHost": {
+      "type": "computed",
+      "value": "(host == 'desktop' || host == 'desktop-gtk4')"
+    },
+    "gtk4": {
+      "type": "computed",
+      "value": "(host == 'desktop-gtk4')"
     },
     "viewModels": {
       "type": "parameter",

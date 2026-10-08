@@ -1,5 +1,5 @@
 using Runic.Application.Views;
-#if (host == "desktop")
+#if (desktopHost)
 using Runic.Application.Views.Desktop;
 #else
 using Runic.Application.Views.CsWebUi;
@@ -7,7 +7,7 @@ using Runic.Application.Views.CsWebUi;
 #if (viewModels == "reactiveui")
 using Runic.Application.Views.ReactiveUI;
 #endif
-#if (host == "desktop")
+#if (desktopHost)
 using Runic.Desktop;
 #endif
 
@@ -15,7 +15,7 @@ namespace RunicWindowApp;
 
 // The build generates a typed TypeScript client for each Window and View
 // declared here. AddRunicViews() registers the Views for dependency injection.
-#if (host == "desktop" && viewModels == "reactiveui")
+#if (desktopHost && viewModels == "reactiveui")
 public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
     : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
@@ -29,7 +29,7 @@ public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewMod
 
 public sealed partial class WelcomeView : ReactiveRunicView<WelcomeViewModel>;
 public sealed partial class CounterView : ReactiveRunicView<CounterViewModel>;
-#elif (host == "desktop")
+#elif (desktopHost)
 public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
     : RunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {

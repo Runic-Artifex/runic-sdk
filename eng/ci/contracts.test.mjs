@@ -205,10 +205,15 @@ test('the Windows native job scales the example smoke timeouts (#70)', () => {
 test('template lanes cover every framework once and run the creator check in one lane', () => {
   const { strategy, steps } = workflow.jobs.templates;
   assert.deepEqual(strategy.matrix.framework, ['react', 'vue', 'svelte', 'angular']);
-  assert.deepEqual(strategy.matrix.include, [{ framework: 'react', creator: '1' }]);
+  assert.deepEqual(strategy.matrix.include, [{ framework: 'react', creator: '1' }, { framework: 'vue', 'desktop-smoke': '1' }]);
   const step = steps.find(item => item.run === 'bun run verify:templates');
   assert.equal(step?.env.RUNIC_TEMPLATE_FRAMEWORKS, '${{ matrix.framework }}');
   assert.equal(step?.env.RUNIC_TEMPLATE_CREATOR, "${{ matrix.creator || '0' }}");
+  // The vue lane owns the desktop-gtk4 variant; its GTK 4 smoke needs the runtime installed first.
+  assert.equal(step?.env.RUNIC_TEMPLATE_DESKTOP_SMOKE, "${{ matrix.desktop-smoke || '0' }}");
+  const install = steps.findIndex(item => item.run?.includes('libwebkitgtk-6.0-4'));
+  assert.ok(install >= 0 && install < steps.indexOf(step));
+  assert.equal(steps[install].if, "matrix.desktop-smoke == '1'");
 });
 
 test('remote actions are pinned to a commit with their release tag', () => {
