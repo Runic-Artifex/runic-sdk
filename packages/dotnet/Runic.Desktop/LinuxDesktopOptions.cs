@@ -38,16 +38,19 @@ public static class LinuxDesktopRuntime
 {
     private static int _backend;
     private static readonly ConcurrentDictionary<string, bool> LibraryAvailability = new(StringComparer.Ordinal);
-    private static readonly Lazy<string[]> LoaderCache = new(ReadLoaderCache, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly object LoaderCacheGate = new();
+    // Set only by a complete ldconfig read; a read that failed or timed out is retried by a later probe.
+    private static string[]? _loaderCache;
 
     // Lets tests decide which libraries exist; consulted before the process-lifetime cache.
     internal static Func<string, bool>? LibraryProbeOverride { get; set; }
 
     /// <summary>Inspects Linux loader paths without loading a toolkit into this process.</summary>
     /// <remarks>
-    /// Checks the process search path and the system ldconfig cache, which is read at most once. Each result is cached
-    /// for the process lifetime, so a library installed later is seen by a new process. Native initialization remains
-    /// the final runtime check.
+    /// Checks the process search path and the system ldconfig cache, which is read once it has been read completely.
+    /// Each definite result is cached for the process lifetime, so a library installed later is seen by a new process;
+    /// a miss while the ldconfig cache could not be read is not cached. Native initialization remains the final
+    /// runtime check.
     /// </remarks>
     public static bool IsLibraryAvailable(string libraryName)
     {
@@ -55,21 +58,35 @@ public static class LinuxDesktopRuntime
         if (libraryName != Path.GetFileName(libraryName)) throw new ArgumentException("Use a library filename.", nameof(libraryName));
         if (!OperatingSystem.IsLinux()) return false;
         if (LibraryProbeOverride is { } probe) return probe(libraryName);
-        return LibraryAvailability.GetOrAdd(libraryName, static name => Probe(name));
+        if (LibraryAvailability.TryGetValue(libraryName, out var known)) return known;
+        var (available, definite) = Probe(libraryName);
+        if (definite) LibraryAvailability.TryAdd(libraryName, available);
+        return available;
     }
 
-    private static bool Probe(string libraryName)
+    private static (bool Available, bool Definite) Probe(string libraryName)
     {
         string architecture = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "aarch64" : "x86_64";
         string[] standard = [AppContext.BaseDirectory, "/lib", "/usr/lib", "/lib64", "/usr/lib64", $"/lib/{architecture}-linux-gnu", $"/usr/lib/{architecture}-linux-gnu"];
         var paths = (Environment.GetEnvironmentVariable("LD_LIBRARY_PATH") ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries).Concat(standard);
-        if (paths.Any(path => File.Exists(Path.Combine(path, libraryName)))) return true;
-        return LoaderCache.Value.Any(line =>
+        if (paths.Any(path => File.Exists(Path.Combine(path, libraryName)))) return (true, true);
+        var cache = GetLoaderCache();
+        if (cache is null) return (false, false);
+        return (cache.Any(line =>
             line.TrimStart().StartsWith(libraryName + " ", StringComparison.Ordinal)
-            && line.Split("=>", StringSplitOptions.TrimEntries) is [_, var path] && File.Exists(path));
+            && line.Split("=>", StringSplitOptions.TrimEntries) is [_, var path] && File.Exists(path)), true);
     }
 
-    private static string[] ReadLoaderCache()
+    private static string[]? GetLoaderCache()
+    {
+        lock (LoaderCacheGate)
+        {
+            return _loaderCache ??= ReadLoaderCache();
+        }
+    }
+
+    // Returns null when ldconfig could not be run or did not finish in time.
+    private static string[]? ReadLoaderCache()
     {
         try
         {
@@ -77,14 +94,14 @@ public static class LinuxDesktopRuntime
             {
                 ArgumentList = { "-p" }, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
             });
-            if (cache is null) return [];
+            if (cache is null) return null;
             var output = cache.StandardOutput.ReadToEndAsync();
             var error = cache.StandardError.ReadToEndAsync();
-            if (!cache.WaitForExit(1000)) { cache.Kill(); cache.WaitForExit(); return []; }
+            if (!cache.WaitForExit(1000)) { cache.Kill(); cache.WaitForExit(); return null; }
             _ = error.GetAwaiter().GetResult();
             return output.GetAwaiter().GetResult().Split('\n');
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) { return []; }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException or InvalidOperationException) { return null; }
     }
 
     /// <summary>Claims the toolkit before native initialization. A process cannot switch toolkits.</summary>

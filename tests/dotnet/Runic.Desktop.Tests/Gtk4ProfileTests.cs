@@ -192,6 +192,11 @@ public sealed class Gtk4ProfileTests
         Assert.Equal(Missing("third"), relisted.Diagnostic);
         Assert.Equal(["first", "second"], availability.Diagnostics.Select(static item => item.Code));
         Assert.Throws<ArgumentException>(() => availability with { Diagnostics = [null!] });
+
+        // The list is a read-only view; the record's storage cannot be reached through it.
+        Assert.IsNotType<DesktopDiagnostic[]>(availability.Diagnostics);
+        Assert.Throws<NotSupportedException>(() => ((IList<DesktopDiagnostic>)availability.Diagnostics)[0] = Missing("changed"));
+        Assert.Equal("first", availability.Diagnostic!.Code);
     }
 
     private static DesktopDiagnostic Missing(string code) => new(DesktopErrorCategory.Unavailable, code, "Missing.", Retryable: false);

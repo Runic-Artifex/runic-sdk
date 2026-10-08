@@ -317,7 +317,7 @@ internal static class DoctorTargetChecks
                 {
                     return new(DoctorStatus.Warning, $"This machine is missing {string.Join(" and ", missing)}.",
                         project.UsesGtk4
-                            ? Capitalize(DoctorGtk4Packages.Remediation(DoctorGtk4Packages.FromOsRelease(runtime.OsReleasePath), MinimumGtk4,
+                            ? Capitalize(DoctorGtk4Packages.Remediation(DoctorGtk4Packages.FromOsRelease(runtime.OsReleasePaths), MinimumGtk4,
                                 gtk4: missing.Contains(gtk[0]), webKit6: missing.Contains(webkit[0]))) + " on this machine and on target machines."
                             : "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0) on this machine and on target machines.");
                 }

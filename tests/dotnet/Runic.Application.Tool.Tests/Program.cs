@@ -791,6 +791,8 @@ internal static class Program
         public HashSet<string> VisualStudioComponents { get; init; } = [];
         // No os-release by default, so remediation does not depend on the machine running the tests.
         public string OsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
+        public string FallbackOsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
+        public IReadOnlyList<string> OsReleasePaths => [OsReleasePath, FallbackOsReleasePath];
 
         public string? GetEnvironmentVariable(string name) => Environment.GetValueOrDefault(name);
 
@@ -1106,13 +1108,21 @@ internal static class Program
             ("ID=fedora\n", "gtk4 and webkitgtk6.0"),
             ("ID=arch\n", "gtk4 and webkitgtk-6.0"),
             ("ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n", "libgtk-4-1 and libwebkitgtk-6_0-4"),
-            ("ID=nixos\n", "gtk4 and webkitgtk_6_0"),
+            ("ID=nixos\n", "gtk4 and webkitgtk_6_0 and put their lib directories on the loader path"),
         })
         {
             DoctorCheck check = Inspect(osRelease);
             Equal(DoctorStatus.Warning, check.Status);
             Contains(check.Remediation ?? string.Empty, packages);
         }
+
+        // /usr/lib/os-release is read when /etc/os-release is absent.
+        DoctorCheck fallback = Check(DoctorChecks.InspectAsync(desktop, "dotnet", new FakeDoctorRuntime(authority.Toolchain)
+        {
+            OsReleasePath = Path.Combine(workspace.Root, "no-os-release"),
+            FallbackOsReleasePath = workspace.Write("usr-lib-os-release", "ID=fedora\n"),
+        }, CancellationToken.None).GetAwaiter().GetResult(), "gtk4-profile");
+        Contains(fallback.Remediation ?? string.Empty, "on Fedora: gtk4 and webkitgtk6.0)");
 
         // Only the missing library's package is named.
         DoctorCheck webKitOnly = Inspect("ID=fedora\n", "libgtk-4.so.1");

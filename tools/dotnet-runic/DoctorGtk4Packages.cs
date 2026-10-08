@@ -10,7 +10,8 @@ namespace Runic.Application.Tool;
 /// <param name="Distribution">The distribution family named in messages, such as Fedora.</param>
 /// <param name="Gtk4">The package that provides libgtk-4.so.1.</param>
 /// <param name="WebKit6">The package that provides libwebkitgtk-6.0.</param>
-internal sealed record DoctorGtk4Packages(string Distribution, string Gtk4, string WebKit6)
+/// <param name="Note">What else the distribution needs before the native loader finds the libraries, if anything.</param>
+internal sealed record DoctorGtk4Packages(string Distribution, string Gtk4, string WebKit6, string? Note = null)
 {
     private static readonly (string Id, DoctorGtk4Packages Packages)[] Known =
     [
@@ -20,19 +21,21 @@ internal sealed record DoctorGtk4Packages(string Distribution, string Gtk4, stri
         ("arch", new("Arch Linux", "gtk4", "webkitgtk-6.0")),
         ("opensuse", new("openSUSE", "libgtk-4-1", "libwebkitgtk-6_0-4")),
         ("suse", new("openSUSE", "libgtk-4-1", "libwebkitgtk-6_0-4")),
-        ("nixos", new("NixOS", "gtk4", "webkitgtk_6_0")),
+        // Nix packages are not on the loader's default search path, so installing them is not enough.
+        ("nixos", new("NixOS", "gtk4", "webkitgtk_6_0",
+            "and put their lib directories on the loader path, for example through the dev shell's LD_LIBRARY_PATH or a wrapper")),
     ];
 
     /// <summary>
-    /// Reads ID, then ID_LIKE, from an os-release file and returns the matching packages, or null for an unknown or
-    /// unreadable distribution. An ID such as opensuse-tumbleweed matches its family prefix.
+    /// Reads ID, then ID_LIKE, from the first existing os-release file and returns the matching packages, or null for
+    /// an unknown or unreadable distribution. An ID such as opensuse-tumbleweed matches its family prefix.
     /// </summary>
-    internal static DoctorGtk4Packages? FromOsRelease(string path)
+    internal static DoctorGtk4Packages? FromOsRelease(IEnumerable<string> paths)
     {
         Dictionary<string, string> values;
         try
         {
-            if (!File.Exists(path)) return null;
+            if (paths.FirstOrDefault(File.Exists) is not { } path) return null;
             values = File.ReadLines(path)
                 .Select(static line => line.Trim())
                 .Where(static line => line.Length != 0 && !line.StartsWith('#') && line.Contains('='))
@@ -71,7 +74,8 @@ internal sealed record DoctorGtk4Packages(string Distribution, string Gtk4, stri
             var names = new List<string>();
             if (gtk4) names.Add(packages.Gtk4);
             if (webKit6) names.Add(packages.WebKit6);
-            return $"install {what} (on {packages.Distribution}: {string.Join(" and ", names)})";
+            string note = packages.Note is null ? string.Empty : $" {packages.Note}";
+            return $"install {what} (on {packages.Distribution}: {string.Join(" and ", names)}{note})";
         }
         var sonames = new List<string>();
         if (gtk4) sonames.Add(Gtk4NativeLibraries.Gtk);

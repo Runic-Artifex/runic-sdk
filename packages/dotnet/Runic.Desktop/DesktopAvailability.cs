@@ -28,7 +28,8 @@ public sealed record DesktopPresentationAvailability(
     /// </remarks>
     public IReadOnlyList<DesktopDiagnostic> Diagnostics
     {
-        get => _diagnostics;
+        // A read-only view: callers cannot cast it back to the array and change the record.
+        get => Array.AsReadOnly(_diagnostics);
         init
         {
             ArgumentNullException.ThrowIfNull(value);

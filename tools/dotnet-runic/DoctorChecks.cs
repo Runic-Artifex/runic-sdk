@@ -45,8 +45,9 @@ internal interface IDoctorRuntime
         string workingDirectory,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken);
-    /// <summary>The os-release file that names the Linux distribution for package remediation.</summary>
-    string OsReleasePath => "/etc/os-release";
+    /// <summary>The os-release files, in order, that name the Linux distribution for package remediation.</summary>
+    /// <remarks>/usr/lib/os-release is the standard fallback when /etc/os-release is absent.</remarks>
+    IReadOnlyList<string> OsReleasePaths => ["/etc/os-release", "/usr/lib/os-release"];
 }
 
 internal sealed class SystemDoctorRuntime : IDoctorRuntime
@@ -439,7 +440,7 @@ internal static class DoctorChecks
             }
             if (!gtk4 || !webKit6 || oldGtk4)
             {
-                remediation.Add(DoctorGtk4Packages.Remediation(DoctorGtk4Packages.FromOsRelease(runtime.OsReleasePath),
+                remediation.Add(DoctorGtk4Packages.Remediation(DoctorGtk4Packages.FromOsRelease(runtime.OsReleasePaths),
                     DoctorTargetChecks.MinimumGtk4, gtk4: !gtk4 || oldGtk4, webKit6: !webKit6));
             }
         }
