@@ -19,11 +19,45 @@ internal static class NavigationPresentationTests
         await ForgetWaitsForDetachmentAsync();
         await PresentationBindsOncePerWindowAsync();
         await ClosedNavigatorBindsNothingAsync();
+        await WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync();
         await DisposedSessionIsNotRetainedAsync();
         await LiveSessionDoesNotRetainNavigatorAsync();
         await ReconnectAndHotReloadLeaveEntriesAsync();
         await RuntimeDescriptorsObserveTheRegionAsync();
         GeneratedSlotContract();
+    }
+
+    private static async Task WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync()
+    {
+        await using var window = new Window();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var guardToken = CancellationToken.None;
+        window.Home.Guard = async token =>
+        {
+            guardToken = token;
+            entered.TrySetResult();
+            await release.Task; // A consumer hook that ignores cancellation must not block later admission.
+            return true;
+        };
+        var pending = window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("pending"))).AsTask();
+        await entered.Task.WaitAsync(Timeout);
+        try
+        {
+            await window.Context.DisposeAsync();
+            Require(window.Navigator.IsClosed, "The Views context did not signal its navigator immediately.");
+            var late = window.Shell.Main.PushAsync(NavigationTarget.Borrow<INavPageViewModel>(new NavEditorViewModel("late"))).AsTask();
+            Require(late.IsCompleted && await late is NavigationResult<INavPageViewModel>.Rejected { Reason: NavigationRejection.Closed },
+                "A navigation on the Views path waited behind an uncancellable guard after context close.");
+            await Until(() => guardToken.IsCancellationRequested, "The in-flight web guard was not cancelled on close.");
+        }
+        finally { release.TrySetResult(); }
+        Require(await pending.WaitAsync(Timeout) is NavigationResult<INavPageViewModel>.Rejected { Reason: NavigationRejection.Closed },
+            "The pending web navigation did not end Closed.");
+        window.Host.Dispose();
+        await window.Navigator.DisposeAsync();
+        Require(window.Host.Transport.Routes.Count == 0 && window.Navigator.UnretiredEntryCount == 0,
+            "Closing the web context leaked navigation entries or bridge routes.");
     }
 
     private static async Task ReferencesFollowTheRegionAsync()

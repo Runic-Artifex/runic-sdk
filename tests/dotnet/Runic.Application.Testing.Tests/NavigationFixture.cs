@@ -29,9 +29,14 @@ public sealed class NavShellViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed class NavHomeViewModel : INavPageViewModel
+public sealed class NavHomeViewModel : INavPageViewModel, INavigationDepartureGuard
 {
     public string Title => "home";
+
+    internal Func<CancellationToken, ValueTask<bool>>? Guard { get; set; }
+
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+        Guard?.Invoke(cancellationToken) ?? ValueTask.FromResult(true);
 
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }

@@ -47,15 +47,20 @@ public interface IRunicModelContext : IAsyncDisposable
 /// <summary>
 /// A host-neutral serial execution context for a ViewModel graph.
 /// </summary>
-public sealed class RunicModelContext : IRunicModelContext
+#pragma warning disable RUNICNAV001 // The context stays stable; only the optional navigator lifetime interface is experimental.
+public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLifetime
+#pragma warning restore RUNICNAV001
 {
     [ThreadStatic]
     private static RunicModelContext? Current;
     private readonly object _gate = new();
     private readonly Queue<IWorkItem> _queued = new();
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    // Keep the token usable by observers registering after disposal, like DispatcherModelContext.
+    private readonly CancellationTokenSource _closedSource = new();
     private bool _draining;
     private bool _disposed;
+    private bool _shutdownNotified;
     private readonly ILogger _logger;
 
     // The logger of a RunicModelContext, or the Trace fallback for another context.
@@ -76,6 +81,13 @@ public sealed class RunicModelContext : IRunicModelContext
 
     /// <inheritdoc />
     public bool IsExecuting => ReferenceEquals(Current, this);
+
+    /// <summary>Gets a token cancelled after the context stops accepting work and before queued work is rejected.</summary>
+    /// <remarks>
+    /// Callbacks run synchronously on the closing thread. Their exceptions are reported through
+    /// <see cref="UnhandledTurnException"/> and do not interrupt shutdown. The token remains usable after disposal.
+    /// </remarks>
+    public CancellationToken Closed => _closedSource.Token;
 
     /// <inheritdoc />
     public bool TryPost(Action turn)
@@ -136,10 +148,19 @@ public sealed class RunicModelContext : IRunicModelContext
             _disposed = true;
             rejected = _queued.ToArray();
             _queued.Clear();
-            if (!_draining) _stopped.TrySetResult();
         }
 
+        try { _closedSource.Cancel(); }
+        catch (AggregateException failures)
+        {
+            foreach (var failure in failures.InnerExceptions) ReportUnhandled(failure);
+        }
         foreach (var item in rejected) item.RejectDisposed();
+        lock (_gate)
+        {
+            _shutdownNotified = true;
+            if (!_draining) _stopped.TrySetResult();
+        }
         return new(_stopped.Task);
     }
 
@@ -185,7 +206,7 @@ public sealed class RunicModelContext : IRunicModelContext
                     if (_queued.Count == 0)
                     {
                         _draining = false;
-                        if (_disposed) _stopped.TrySetResult();
+                        if (_disposed && _shutdownNotified) _stopped.TrySetResult();
                         return;
                     }
                     item = _queued.Dequeue();

@@ -132,7 +132,7 @@ How each library answers this is partly a design choice. Prism's and
 RoutingState's Back commits synchronously inside the click when no guard is
 pending, so there is no "while the first is under way" and each click is a
 complete Back. Runic's navigation is asynchronous, so it disables Back from
-the moment a Back is admitted and lets a second plain Back join the first.
+the moment a Back is admitted and lets a second Back join the first.
 Both are consistent; the table shows the consequences.
 
 Every app shows its confirm modally (Prism's `DialogService` and the
@@ -187,11 +187,11 @@ Sources, at the released versions:
 Runic's guarantees, from the
 [Runic.Navigation README](../../packages/dotnet/Runic.Navigation/README.md):
 a region admits one request at a time and sets `IsTransitioning`
-synchronously, and the WPF host's Back checks it. A plain Back while another
-plain Back is pending joins it. A Back with a cancellation token, such as the
-ReactiveUI adapter's Back command, supersedes the pending one instead, so
-through that command a second Back while the confirm is open still closes the
-first confirm and opens another
+synchronously, and the WPF host's Back checks it. Another Back to the same
+destination joins the pending Back, including one with a cancellation token
+from the ReactiveUI adapter's Back command. Each caller can cancel independently;
+the shared transition cancels only when every caller cancels. Engine tests and
+both ReactiveUI adapter flavors cover token-bearing joins
 ([#147](https://github.com/Runic-Artifex/runic-sdk/issues/147)). A Back after
 the first has committed is a new request and pops again.
 

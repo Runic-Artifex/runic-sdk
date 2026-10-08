@@ -579,6 +579,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationOutcome? rejected = null;
         NavigationTransition? transition = null;
         NavigationTransition? joined = null;
+        NavigationBackCaller? backCaller = null;
         List<NavigationTransition> superseded = [];
         var transitioningChanged = false;
         lock (Gate)
@@ -597,11 +598,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 rejected = NavigationOutcome.Reject(NavigationRejection.NotCurrent);
             else if (operation == NavigationOperation.Back && region.Stack.Length < (@return is null ? 2 : 1))
                 rejected = NavigationOutcome.Reject(NavigationRejection.NoHistory);
-            else if (operation == NavigationOperation.Back && @return is null && !cancellationToken.CanBeCanceled
+            else if (operation == NavigationOperation.Back && @return is null
                 && JoinableBackLocked(region) is { } pendingBack)
+            {
                 // A second Back to the same destination (a double click, or Back while its guard asks)
                 // joins the pending Back instead of superseding it, so the guard asks once.
                 joined = pendingBack;
+                backCaller = pendingBack.AddBackCallerLocked(cancellationToken);
+            }
             else
             {
                 NavigationEntryCore? pending = null;
@@ -632,8 +636,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // The provisional plan: the child regions this request would
                 // reset or close. Their transitions are superseded the same way.
                 var plan = ComputePlanLocked(region, operation, pending: null, backTo, expected, @return is not null);
-                // Only a plain Back can be joined (JoinableBackLocked); no other transition keeps its plan.
-                var joinable = operation == NavigationOperation.Back && @return is null && !cancellationToken.CanBeCanceled;
+                // Only a Back without a result return can be joined; no other transition keeps its plan.
+                var joinable = operation == NavigationOperation.Back && @return is null;
                 foreach (var child in plan.Regions)
                 {
                     if (ReferenceEquals(child, region)) continue;
@@ -647,7 +651,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], settlement, cancellationToken) { Return = @return, AdmittedPlan = joinable ? plan : null };
+                    [.. waitFor], settlement, joinable, cancellationToken) { Return = @return, AdmittedPlan = joinable ? plan : null };
+                if (joinable) backCaller = transition.AddBackCallerLocked(cancellationToken);
                 if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
                 transitioningChanged = region.InFlight.Count == 1;
@@ -664,9 +669,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         if (joined is not null)
         {
             if (Logger.IsEnabled(LogLevel.Debug)) NavigationLog.NavigationBackJoined(Logger, null, region.ContentTypeName, region.Id);
-            return joined.Result.Task;
+            return BackCallerResult(joined, backCaller);
         }
 
+        var result = BackCallerResult(transition!, backCaller);
         foreach (var earlier in superseded) StartOverrunTimer(earlier);
         Cancel(superseded);
         if (transitioningChanged) Notify(region, NavigationRegionChanges.Transitioning);
@@ -676,14 +682,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             ThreadPool.UnsafeQueueUserWorkItem(static transition => _ = transition.Region.Navigator.RunAsync(transition), transition!, preferLocal: false);
         else if (ModelContext.IsExecuting) _ = Task.Run(() => RunAsync(transition!), CancellationToken.None);
         else _ = RunAsync(transition!);
-        return transition!.Result.Task;
+        return result;
     }
 
-    // The region's latest admitted transition when it is a plain Back that is still live and nothing its plan
+    // The region's latest admitted transition when it is a Back without a result return, still live, and nothing its plan
     // covers has changed since its admission: neither the region nor the child regions the departing entry
     // owns. A Back admitted now would then make the same plan. A return from a result entry (CompleteAsync,
-    // DismissAsync) never is joined: its outcome carries a result. A Back with a cancellable token never joins,
-    // and never is joined, so cancelling one caller's Back never cancels another's. A superseded, cancelled or
+    // DismissAsync) never is joined: its outcome carries a result. Callers cancel independently; only cancellation
+    // of all callers cancels the shared transition. A superseded, cancelled or
     // closed Back is never joined. (A released transition has left InFlight already.) Call under the gate.
     private static NavigationTransition? JoinableBackLocked(NavigationRegionCore region)
     {
@@ -691,9 +697,39 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         var latest = region.InFlight[^1];
         return latest is { Operation: NavigationOperation.Back, Return: null, CancelReason: NavigationCancelReason.None,
                 AdmittedPlan: { } plan }
-            && !latest.CallerToken.CanBeCanceled && plan.BasisMatches()
+            && !latest.CancellationRequested && plan.BasisMatches()
             ? latest
             : null;
+    }
+
+    private Task<NavigationOutcome> BackCallerResult(NavigationTransition transition, NavigationBackCaller? caller)
+    {
+        if (caller is null || !caller.Token.CanBeCanceled) return transition.Result.Task;
+        _ = CompleteBackCallerAsync(transition, caller);
+        return caller.Result.Task;
+    }
+
+    // Each token-bearing Back has its own completion. Cancellation may settle that caller before the shared
+    // guard returns, while other callers continue awaiting the same transition. The registration lives only
+    // until the transition finishes, and is installed outside Gate because a cancelled token calls inline.
+    private async Task CompleteBackCallerAsync(NavigationTransition transition, NavigationBackCaller caller)
+    {
+        using var registration = caller.Token.UnsafeRegister(_ => CancelBackCaller(transition, caller), null);
+        caller.Result.TrySetResult(await this.AfterUserCode(transition.Result.Task));
+    }
+
+    private void CancelBackCaller(NavigationTransition transition, NavigationBackCaller caller)
+    {
+        var cancel = false;
+        lock (Gate)
+        {
+            // A commit or terminal outcome already won. Cancellation during retirement cannot change it.
+            if (transition.Released) return;
+            caller.Result.TrySetResult(NavigationOutcome.Reject(NavigationRejection.Cancelled));
+            if (transition.CancellationRequested)
+                cancel = transition.TrySetCancelReason(NavigationCancelReason.Cancelled);
+        }
+        if (cancel) Cancel([transition]);
     }
 
     // ---- Transition ------------------------------------------------------
@@ -805,7 +841,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         lock (Gate)
         {
             if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed
-                || transition.CallerToken.IsCancellationRequested)
+                || transition.CancellationRequested)
                 return (CancelledOutcome(transition), null);
             plan = ComputePlanLocked(region, transition.Operation, transition.Pending, transition.BackTo, transition.Expected,
                 transition.Return is not null);
@@ -1043,7 +1079,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed)
                 stopped = CancelledOutcome(transition);
-            else if (transition.CallerToken.IsCancellationRequested)
+            else if (transition.CancellationRequested)
                 stopped = NavigationOutcome.Reject(NavigationRejection.Cancelled);
             else if (!plan.BasisMatches())
                 stopped = NavigationOutcome.Superseded;
@@ -2011,6 +2047,8 @@ internal enum NavigationCancelReason
     None,
     Superseded,
     Closed,
+    // Every caller of a shared Back cancelled before commit.
+    Cancelled,
     // The pending entry dismissed itself (NavigationEntryContext.DismissAsync); ends as Rejected(Cancelled).
     Dismissed,
 }
@@ -2021,12 +2059,14 @@ internal enum NavigationCancelReason
 internal sealed class NavigationTransition : IDisposable
 {
     private readonly CancellationTokenSource _cancellation;
+    private readonly CancellationToken _callerToken;
+    private readonly List<NavigationBackCaller>? _backCallers;
     private ITimer? _overrun;
     private int _cancelReason;
 
     public NavigationTransition(NavigationRegionCore region, NavigationOperation operation, NavigationTargetCore? target,
         NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected,
-        Task[] waitFor, NavigationSettlementSource settlement, CancellationToken callerToken)
+        Task[] waitFor, NavigationSettlementSource settlement, bool joinableBack, CancellationToken callerToken)
     {
         Region = region;
         Operation = operation;
@@ -2034,10 +2074,11 @@ internal sealed class NavigationTransition : IDisposable
         Pending = pending;
         BackTo = backTo;
         Expected = expected;
-        CallerToken = callerToken;
+        _callerToken = callerToken;
+        if (joinableBack) _backCallers = [];
         WaitFor = waitFor;
         Settlement = settlement;
-        _cancellation = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
+        _cancellation = joinableBack ? new() : CancellationTokenSource.CreateLinkedTokenSource(callerToken);
         Token = _cancellation.Token;
     }
 
@@ -2047,7 +2088,17 @@ internal sealed class NavigationTransition : IDisposable
     public NavigationEntryCore? Pending { get; }
     public NavigationEntryId? BackTo { get; }
     public NavigationEntryId? Expected { get; }
-    public CancellationToken CallerToken { get; }
+    // Read under the navigator's gate, including at commit: token callbacks can be delayed by that gate.
+    public bool CancellationRequested => _backCallers is { } callers
+        ? callers.All(static caller => caller.Token.IsCancellationRequested)
+        : _callerToken.IsCancellationRequested;
+
+    public NavigationBackCaller AddBackCallerLocked(CancellationToken token)
+    {
+        var caller = new NavigationBackCaller(token);
+        _backCallers!.Add(caller);
+        return caller;
+    }
     public CancellationToken Token { get; }
     public Task[] WaitFor { get; }
     public NavigationPhase Phase { get; set; }
@@ -2134,6 +2185,13 @@ internal sealed class NavigationTransition : IDisposable
         }
         _cancellation.Dispose();
     }
+}
+
+[Experimental(RunicNavigator.DiagnosticId)]
+internal sealed class NavigationBackCaller(CancellationToken token)
+{
+    public CancellationToken Token { get; } = token;
+    public TaskCompletionSource<NavigationOutcome> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
 [Experimental(RunicNavigator.DiagnosticId)]
