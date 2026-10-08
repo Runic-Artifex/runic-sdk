@@ -161,7 +161,7 @@ public sealed class WindowContentSession : IDisposable
                         finally
                         {
                             if (_ownsSessionModelContext && _sessionModelContext is { } context)
-                                RunicModelContextDisposal.DisposeSynchronously(context);
+                                RunicModelContextDisposal.DisposeSynchronously(context, Logger);
                         }
                     }
                 }
@@ -701,7 +701,7 @@ public sealed class WindowContentSession : IDisposable
         foreach (var lease in modelLeases) Capture(lease.Dispose, errors);
         if (rootModelLease is not null) Capture(rootModelLease.Dispose, errors);
         if (_ownsSessionModelContext && sessionModelContext is not null)
-            Capture(() => RunicModelContextDisposal.DisposeSynchronously(sessionModelContext), errors);
+            Capture(() => RunicModelContextDisposal.DisposeSynchronously(sessionModelContext, Logger), errors);
         if (errors.Count == 1) ExceptionDispatchInfo.Capture(errors[0]).Throw();
         if (errors.Count > 1) throw new AggregateException(errors);
     }

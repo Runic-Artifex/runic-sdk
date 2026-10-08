@@ -55,6 +55,8 @@ internal static class NavigationTests
         await DisposeMidTransitionAsync();
         await DisposeWaitsForRunningCleanupAsync();
         await CleanupFailureIsLoggedAsync();
+        await PresentationsForgetOwnedContentAsync();
+        await NonGenericRegionViewAsync();
         await OverrunIsLoggedAsync();
         await ServiceRegistrationAsync();
         await ResultCompletedAsync();
@@ -105,7 +107,7 @@ internal static class NavigationTests
             $"Back did not commit: {back}");
         Require(detail.Disposed == 1 && !detail.DisposedInTurn && home.Resumed == 1 && region.History.Count == 0,
             "Back did not retire the owned entry and resume the retained one.");
-        Require(fixture.Navigator.TrackedEntryCount == 1, $"{fixture.Navigator.TrackedEntryCount} entries are tracked after Back.");
+        Require(fixture.Navigator.UnretiredEntryCount == 1, $"{fixture.Navigator.UnretiredEntryCount} entries are tracked after Back.");
         Require(!RunicModelContextRegistry.Shared.TryGet(detail, out _), "The retired entry's model-context lease was not released.");
     }
 
@@ -153,7 +155,7 @@ internal static class NavigationTests
 
         var empty = await Wait(region.ClearAsync());
         Require(empty is NavigationResult<Page>.Committed { Current: null } && region.Current is null && region.CurrentEntry is null
-            && g.Disposed == 1 && fixture.Navigator.TrackedEntryCount == 0,
+            && g.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0,
             "Clear did not empty the region.");
         var fromEmpty = await Wait(region.PushAsync(NavigationTarget.Own(new Page("h"))));
         Require(fromEmpty is NavigationResult<Page>.Committed && Names(region) == "h", "A push into an empty region failed.");
@@ -240,7 +242,7 @@ internal static class NavigationTests
         Require(superseded is NavigationResult<Page>.Superseded && Names(region) == "home",
             $"The superseded first request gave {superseded}.");
         await Wait(fixture.Navigator.WhenIdleAsync());
-        Require(fixture.Navigator.TrackedEntryCount == 1 && !region.IsTransitioning, "Admission did not recover after cancellation.");
+        Require(fixture.Navigator.UnretiredEntryCount == 1 && !region.IsTransitioning, "Admission did not recover after cancellation.");
     }
 
     private static async Task CancellationWhileGuardingAsync()
@@ -286,7 +288,7 @@ internal static class NavigationTests
         cancel.Cancel();
         var result = await Wait(pending);
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled } && Names(region) == "home"
-            && slow.Disposed == 1 && slow.Entry!.Retirement.IsCancellationRequested && fixture.Navigator.TrackedEntryCount == 1,
+            && slow.Disposed == 1 && slow.Entry!.Retirement.IsCancellationRequested && fixture.Navigator.UnretiredEntryCount == 1,
             $"Cancelling initialize gave {result}; the pending entry was not retired.");
     }
 
@@ -582,7 +584,7 @@ internal static class NavigationTests
         await Wait(entered.Task);
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
         var result = await Wait(push);
-        Require(home.Disposed == 1 && next.Disposed == 1 && region.Current is null && fixture.Navigator.TrackedEntryCount == 0,
+        Require(home.Disposed == 1 && next.Disposed == 1 && region.Current is null && fixture.Navigator.UnretiredEntryCount == 0,
             $"A throwing cancellation callback aborted disposal: {result}, {home.Disposed}, {next.Disposed}.");
         var logged = fixture.Logs.Single(1064);
         Require(logged.State["Step"] as string == "Cancel" && logged.Exception is not null,
@@ -723,7 +725,7 @@ internal static class NavigationTests
 
         var factory = await Wait(region.PushAsync(NavigationTarget.Create<Page>(_ => throw new NotSupportedException("factory"))));
         Require(factory is NavigationResult<Page>.Failed { Phase: NavigationPhase.Preparing, Error: NotSupportedException }
-            && fixture.Navigator.TrackedEntryCount == 1,
+            && fixture.Navigator.UnretiredEntryCount == 1,
             $"A throwing factory gave {factory}.");
         var rejected = await Wait(region.BackAsync());
         Require(rejected is NavigationResult<Page>.Rejected && fixture.Logs.Has(1065, LogLevel.Debug), "Rejected was not logged as 1065.");
@@ -1004,7 +1006,7 @@ internal static class NavigationTests
         Require(child is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && pendingChild.Disposed == 1,
             $"The closed child's transition gave {child} and did not retire its pending entry.");
         await Wait(fixture.Navigator.WhenIdleAsync());
-        Require(fixture.Navigator.TrackedEntryCount == 1, $"{fixture.Navigator.TrackedEntryCount} entries remain tracked.");
+        Require(fixture.Navigator.UnretiredEntryCount == 1, $"{fixture.Navigator.UnretiredEntryCount} entries remain tracked.");
     }
 
     private static async Task RetirementOrderAsync()
@@ -1027,7 +1029,7 @@ internal static class NavigationTests
             "An entry was not disposed once before its lease was released.");
         Require(new object[] { parent, c0, c1, g }.All(page => !RunicModelContextRegistry.Shared.TryGet(page, out _)),
             "A retired entry kept its model-context lease.");
-        Require(fixture.Navigator.TrackedEntryCount == 1, "Retired descendants are still tracked.");
+        Require(fixture.Navigator.UnretiredEntryCount == 1, "Retired descendants are still tracked.");
     }
 
     private static async Task BorrowedContentIsNeverDisposedAsync()
@@ -1121,7 +1123,7 @@ internal static class NavigationTests
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && pendingPage.Disposed == 1
             && committed.Disposed == 1 && region.Current is null,
             $"Disposal mid-transition gave {result}.");
-        Require(fixture.Navigator.TrackedEntryCount == 0 && committed.Disposed == 1 && !committed.DisposedInTurn,
+        Require(fixture.Navigator.UnretiredEntryCount == 0 && committed.Disposed == 1 && !committed.DisposedInTurn,
             "Disposal left entries unretired.");
         var closed = await Wait(region.PushAsync(NavigationTarget.Own(new Page("late"))));
         Require(closed is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }, "A disposed navigator admitted a request.");
@@ -1150,9 +1152,90 @@ internal static class NavigationTests
         await Wait(dispose);
         var result = await Wait(reset);
         Require(result is NavigationResult<Page>.Committed && slow.Disposed == 1 && removed.Disposed == 1
-            && fixture.Navigator.TrackedEntryCount == 0,
+            && fixture.Navigator.UnretiredEntryCount == 0,
             $"Concurrent retirement paths disposed an entry other than once: {result}, {slow.Disposed}, {removed.Disposed}.");
         await fixture.Context.DisposeAsync();
+    }
+
+    // ---- Presentation and content-independent views (W240-001 §4) ------
+
+    private static async Task PresentationsForgetOwnedContentAsync()
+    {
+        await using var fixture = new Fixture();
+        Require(ReferenceEquals(fixture.Navigator.ModelContext, fixture.Context), "ModelContext is not the configured context.");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var journal = new Journal();
+        var throwing = new RecordingPresentation("throwing", journal, fixture.Context, fail: true);
+        var first = new RecordingPresentation("first", journal, fixture.Context);
+        var detached = new RecordingPresentation("detached", journal, fixture.Context);
+        using var throwingAttachment = fixture.Navigator.AttachPresentation(throwing);
+        using var firstAttachment = fixture.Navigator.AttachPresentation(first);
+        fixture.Navigator.AttachPresentation(detached).Dispose();
+
+        var owned = new Page("owned", journal);
+        var borrowed = new Page("borrowed");
+        await Wait(region.PushAsync(NavigationTarget.Own(owned)));
+        await Wait(region.PushAsync(NavigationTarget.Borrow(borrowed)));
+        await Wait(region.BackAsync());
+        await Wait(region.BackAsync());
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(journal.Text == "throwing:owned,first:owned,owned",
+            $"Retirement forgot owned content in the wrong order or forgot borrowed content: {journal.Text}.");
+        Require(first.InTurn == 0 && throwing.InTurn == 0, "Forget ran inside a model turn.");
+        var entry = fixture.Logs.Single(1064);
+        Require(entry.Exception is IOException && entry.State["Step"] as string == "Forget",
+            "A throwing presentation was not logged as a Forget cleanup failure.");
+
+        await fixture.Navigator.DisposeAsync();
+        Require(fixture.Navigator.UnretiredEntryCount == 0, "Entries remained unretired after disposal.");
+        var late = new RecordingPresentation("late", journal, fixture.Context);
+        using var lateAttachment = fixture.Navigator.AttachPresentation(late);
+        lateAttachment.Dispose();
+    }
+
+    private static async Task NonGenericRegionViewAsync()
+    {
+        await using var fixture = new Fixture();
+        var home = new Page("home");
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(home));
+        INavigationRegion view = region;
+        var homeEntry = region.CurrentEntry;
+        Require(ReferenceEquals(view.Navigator, fixture.Navigator) && view.ContentType == typeof(Page)
+            && view.Current == home && view.CurrentEntry is { Content: var content, Ownership: NavigationOwnership.Borrowed } && content == home
+            && view.History.Count == 0 && !view.CanGoBack && !view.IsTransitioning,
+            "The non-generic view did not match the region.");
+        var changed = new List<string>();
+        view.PropertyChanged += (_, args) => { lock (changed) changed.Add(args.PropertyName!); };
+
+        var detail = new Page("detail");
+        await Wait(region.PushAsync(NavigationTarget.Own(detail)));
+        var typedEntry = region.CurrentEntry;
+        Require(view.Current == detail && view.CanGoBack && view.History is [{ Content: var retained }] && retained == home
+            && ReferenceEquals(view.CurrentEntry, typedEntry),
+            "The non-generic view did not follow the push.");
+        var back = await Wait(view.BackAsync());
+        Require(back is NavigationResult<object>.Committed { Current.Content: var resumed, Retired.Count: 1 } && resumed == home
+            && detail.Disposed == 1, $"The non-generic Back gave {back}.");
+        Require(ReferenceEquals(region.CurrentEntry, homeEntry) && ReferenceEquals(view.CurrentEntry, homeEntry),
+            "The object result replaced the region's typed entry view.");
+        var clear = await Wait(view.ClearAsync());
+        Require(clear is NavigationResult<object>.Committed { Current: null } && view.Current is null && view.CurrentEntry is null,
+            $"The non-generic Clear gave {clear}.");
+        lock (changed)
+            Require(changed.Contains(nameof(INavigationRegion.Current)) && changed.Contains(nameof(INavigationRegion.CanGoBack)),
+                $"The non-generic view raised {string.Join(", ", changed)}.");
+    }
+
+    private sealed class RecordingPresentation(string name, Journal journal, IRunicModelContext context, bool fail = false) : INavigationPresentation
+    {
+        public int InTurn;
+
+        public void Forget(object content)
+        {
+            if (context.IsExecuting) Interlocked.Increment(ref InTurn);
+            journal.Add($"{name}:{content}");
+            if (fail) throw new IOException("forget");
+        }
     }
 
     private static async Task CleanupFailureIsLoggedAsync()
@@ -1163,7 +1246,7 @@ internal static class NavigationTests
         await Wait(region.PushAsync(NavigationTarget.Own(failing)));
         var back = await Wait(region.BackAsync());
         Require(back is NavigationResult<Page>.Committed { Retired.Count: 1 } && failing.Disposed == 1
-            && !RunicModelContextRegistry.Shared.TryGet(failing, out _) && fixture.Navigator.TrackedEntryCount == 1,
+            && !RunicModelContextRegistry.Shared.TryGet(failing, out _) && fixture.Navigator.UnretiredEntryCount == 1,
             $"A failing disposal stopped cleanup: {back}.");
         var entry = fixture.Logs.Single(1064);
         Require(entry.Exception is IOException && entry.State["Step"] as string == "Dispose" && entry.State["EntryType"] as string == "Page",
@@ -1274,7 +1357,7 @@ internal static class NavigationTests
         Require(back is NavigationResult<object>.Committed { Current: null } && dialog.Current is null && dialog.CurrentEntry is null,
             $"Completing the only entry did not empty the region: {back}");
         Require(await Wait(request.Completion) is NavigationCompletion<bool>.Completed { Value: true } && confirm.Disposed == 1
-            && fixture.Navigator.TrackedEntryCount == 0, "The result was not delivered from the emptied region.");
+            && fixture.Navigator.UnretiredEntryCount == 0, "The result was not delivered from the emptied region.");
     }
 
     private static async Task ResultDismissedWhenNotCommittedAsync()
@@ -1614,7 +1697,7 @@ internal static class NavigationTests
         Require(committed.Completion.Result is NavigationCompletion<int>.Dismissed && pending.Completion.Result is NavigationCompletion<int>.Dismissed
             && await Wait(pending.Transition) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed },
             "Closing the navigator did not dismiss its open requests.");
-        Require(active.Disposed == 1 && preparing.Disposed == 1 && fixture.Navigator.TrackedEntryCount == 0
+        Require(active.Disposed == 1 && preparing.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 0
             && fixture.Logs.All(1070).Count(entry => entry.State["Reason"]?.ToString() == "Closed") == 2,
             "Closing did not retire the result entries.");
         var late = region.PushForResult<int>(NavigationTarget.Own(new Page("late")));
@@ -1657,7 +1740,7 @@ internal static class NavigationTests
             Require(await Wait(answered.Task) is NavigationCompletion<bool>.Dismissed, "Closing did not unblock the guard.");
             await Wait(disposal);
             Require(await Wait(back) is not NavigationResult<Page>.Committed && document.Disposed == 1 && confirmPage!.Disposed == 1
-                && fixture.Navigator.TrackedEntryCount == 0, "Closing during the guard did not retire everything.");
+                && fixture.Navigator.UnretiredEntryCount == 0, "Closing during the guard did not retire everything.");
             await fixture.Context.DisposeAsync();
             return;
         }
@@ -1782,8 +1865,8 @@ internal static class NavigationTests
                 violations.Enqueue($"seed {seed}: {page.Name} was disposed {page.Disposed} times");
             cancel.Dispose();
         }
-        if (fixture.Navigator.TrackedEntryCount != 0)
-            violations.Enqueue($"seed {seed}: {fixture.Navigator.TrackedEntryCount} entries were left unretired");
+        if (fixture.Navigator.UnretiredEntryCount != 0)
+            violations.Enqueue($"seed {seed}: {fixture.Navigator.UnretiredEntryCount} entries were left unretired");
         if (home.Disposed != 0) violations.Enqueue($"seed {seed}: the borrowed home was disposed");
         Require(violations.IsEmpty, string.Join(Environment.NewLine, violations.Take(10)));
     }
@@ -1922,8 +2005,8 @@ internal static class NavigationTests
         checking = false;
         await Wait(fixture.Navigator.DisposeAsync().AsTask());
         await fixture.Context.DisposeAsync();
-        if (fixture.Navigator.TrackedEntryCount != 0)
-            violations.Enqueue($"seed {seed}: {fixture.Navigator.TrackedEntryCount} entries were left unretired");
+        if (fixture.Navigator.UnretiredEntryCount != 0)
+            violations.Enqueue($"seed {seed}: {fixture.Navigator.UnretiredEntryCount} entries were left unretired");
         foreach (var page in created)
         {
             if (page.Disposed != 1) violations.Enqueue($"seed {seed}: {page.Name} was disposed {page.Disposed} times");

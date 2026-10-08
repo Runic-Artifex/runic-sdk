@@ -1451,7 +1451,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             _observed.Remove(property.Name);
             var subscription = next switch
             {
-                INavigationPresentationSource region => region.ObservePresentation(_content, Publish),
+#pragma warning disable RUNICNAV001 // Region slots present the experimental navigator.
+                INavigationRegion region => NavigationPresentationBinding.Observe(region, _content, Publish),
+#pragma warning restore RUNICNAV001
                 INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, Publish),
                 _ => null,
             };

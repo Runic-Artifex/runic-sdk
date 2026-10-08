@@ -393,14 +393,15 @@ public sealed class RunicModelContext : IRunicModelContext
 // the owner turn initiate shutdown and finish naturally when it returns.
 internal static class RunicModelContextDisposal
 {
-    public static void DisposeSynchronously(IRunicModelContext context)
+    // A shutdown that fails later in the background is logged (1033) to the caller's logger.
+    public static void DisposeSynchronously(IRunicModelContext context, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(context);
         var shutdown = context.DisposeAsync();
         if (shutdown.IsCompletedSuccessfully) return;
         if (context.IsExecuting)
         {
-            _ = ObserveAsync(shutdown, RunicModelContext.LoggerOf(context));
+            _ = ObserveAsync(shutdown, logger);
             return;
         }
         shutdown.AsTask().GetAwaiter().GetResult();

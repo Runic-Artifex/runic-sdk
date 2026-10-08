@@ -144,7 +144,7 @@ var home = host.Root.View<HomeViewModel>(vm => vm.Main); // the resumed entry
 
 - `RunicNavigator.WhenIdleAsync()` waits until no transition or retirement is
   running.
-- `navigator.UnretiredEntryCount()` counts entries that have not finished
+- `navigator.UnretiredEntryCount` counts entries that have not finished
   retiring (zero after `DisposeAsync`), and
   `host.Content.RetainedContentModelCount()`, an extension on the window's
   `WindowContentSession`, counts the content models whose model-context leases
@@ -182,7 +182,7 @@ Write navigation tests so they are deterministic:
 - `await navigator.WhenIdleAsync()` before you assert on retirement:
   departing entries retire after the commit turn, and owned content is
   disposed then.
-- Assert lifetimes through the counters. `UnretiredEntryCount()` falls as
+- Assert lifetimes through the counters. `navigator.UnretiredEntryCount` falls as
   entries retire, and is zero after `DisposeAsync`. `RetainedContentModelCount()`
   falls when owned content's leases are released. Assert `Retired` states and
   disposal counts of your own test content too.

@@ -702,7 +702,7 @@ operations that its owned content started, and then disposes that content.
 
 ### Logging
 
-Navigation logs events 1060-1071 under `Runic.Application.Views` (see
+Navigation logs events 1060-1071 under `Runic.Navigation` (`RunicNavigator.LogCategory`; see
 [Logging and telemetry](#logging-and-telemetry)). Errors and warnings carry
 the exception. Rejections, supersessions and dismissed results log at Debug.
 The properties are `Region` (the `TContent` type name), `RegionId` (a

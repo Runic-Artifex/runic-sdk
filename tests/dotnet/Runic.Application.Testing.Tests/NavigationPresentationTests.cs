@@ -29,7 +29,7 @@ internal static class NavigationPresentationTests
         var home = host.Root.Snapshot().Reference(vm => vm.Main)
             ?? throw new InvalidOperationException("The region's initial content was not presented.");
         Require(home.Kind == "navHome", $"The initial reference was {home}.");
-        Require(window.Navigator.UnretiredEntryCount() == 1, "The initial entry is not tracked.");
+        Require(window.Navigator.UnretiredEntryCount == 1, "The initial entry is not tracked.");
 
         var first = new NavEditorViewModel("first");
         await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(first)));
@@ -129,17 +129,17 @@ internal static class NavigationPresentationTests
     private static async Task PresentationBindsOncePerWindowAsync()
     {
         var window = new Window();
-        window.Navigator.BindPresentation(window.Host.Content);
+        NavigationPresentationBinding.Bind(window.Navigator, window.Host.Content);
 
         using (var otherTransport = new InMemoryViewTransport())
         using (var other = new WindowContentSession(otherTransport, modelContext: window.Context))
-            Require(Throws<InvalidOperationException>(() => window.Navigator.BindPresentation(other)),
+            Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(window.Navigator, other)),
                 "A second window session bound the same navigator.");
         await using (var foreignContext = new RunicModelContext())
         {
             using var foreignTransport = new InMemoryViewTransport();
             using var foreign = new WindowContentSession(foreignTransport, modelContext: foreignContext);
-            Require(Throws<InvalidOperationException>(() => window.Navigator.BindPresentation(foreign)),
+            Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(window.Navigator, foreign)),
                 "A session with a different model context bound the navigator.");
             // The test host checks this through the generated Bridge.
             var mismatched = new NavShellViewModel(window.Navigator);
@@ -180,7 +180,7 @@ internal static class NavigationPresentationTests
         host.Content.ReleaseConnection("first");
         view.Mount(connectionKey: "second");
         Require(window.Shell.Main.CurrentEntry == entry && entry.State == NavigationEntryState.Active && page.Disposed == 0
-            && window.Navigator.UnretiredEntryCount() == 2,
+            && window.Navigator.UnretiredEntryCount == 2,
             "A disconnect or remount changed the region's entries.");
 
         RunicBridgeHotReload.UpdateApplication(null);
@@ -205,7 +205,7 @@ internal static class NavigationPresentationTests
                 "A Bridge built from runtime descriptors did not publish when Current changed.");
             using var otherTransport = new InMemoryViewTransport();
             using var other = new WindowContentSession(otherTransport, modelContext: context);
-            Require(Throws<InvalidOperationException>(() => navigator.BindPresentation(other)),
+            Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(navigator, other)),
                 "The runtime descriptor hook did not bind the window session.");
         }
         // Disposing the Bridge releases its PropertyChanged subscription, so the region

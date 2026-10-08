@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
@@ -46,6 +47,9 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// <summary>The diagnostic ID of the experimental navigation API.</summary>
     public const string DiagnosticId = "RUNICNAV001";
 
+    /// <summary>The category of the navigator's log entries (events 1060-1079).</summary>
+    public const string LogCategory = "Runic.Navigation";
+
     internal static readonly TimeSpan OverrunWarningDelay = TimeSpan.FromSeconds(5);
 
     // Every instance any navigator has ever owned, live or retired.
@@ -77,9 +81,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     private int _nextRegionId;
     private bool _closing;
     private TaskCompletionSource? _disposal;
-    // The window session that presents this navigator's regions; the sink
-    // that forgets owned content when it retires.
-    private WindowContentSession? _presentation;
+    // The attached presentations: the sinks that forget owned content when it retires.
+    private readonly List<PresentationAttachment> _presentations = [];
 
     /// <summary>Creates a navigator for one window.</summary>
     public RunicNavigator(RunicNavigatorOptions options)
@@ -90,19 +93,24 @@ public sealed class RunicNavigator : IAsyncDisposable
         Services = options.Services;
         _time = options.TimeProvider ?? TimeProvider.System;
         _closeTimeout = options.CloseTimeout;
-        Logger = options.LoggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceFallbackLogger.Instance;
+        Logger = options.LoggerFactory?.CreateLogger(LogCategory) ?? TraceFallbackLogger.Instance;
     }
 
-    internal IRunicModelContext ModelContext { get; }
+    /// <summary>Gets the model context whose turns commit this navigator's state. Owned content is bound to it.</summary>
+    public IRunicModelContext ModelContext { get; }
 
-    internal IServiceProvider? Services { get; }
+    /// <summary>Gets the service provider passed to target factories, or <see langword="null"/> when none was configured.</summary>
+    public IServiceProvider? Services { get; }
 
     internal ILogger Logger { get; }
 
     internal object Gate { get; } = new();
 
-    // Test-visible: entries that have not finished retiring.
-    internal int TrackedEntryCount
+    /// <summary>
+    /// Gets the entries that have not finished retiring: pending, committed, and removed entries whose
+    /// cleanup is still running. It is zero after <see cref="DisposeAsync"/>.
+    /// </summary>
+    public int UnretiredEntryCount
     {
         get { lock (Gate) return _tracked.Count; }
     }
@@ -251,27 +259,41 @@ public sealed class RunicNavigator : IAsyncDisposable
     }
 
     /// <summary>
-    /// Binds the window session that presents this navigator's regions. Generated Bridges call it
-    /// when they first observe a region slot; applications do not. The binding is per window: it is
-    /// idempotent for the same session and ends when either side is disposed. Retiring owned content
-    /// is forgotten in the bound session.
+    /// Attaches a presentation that shows this navigator's content. Presentation integrations, such as the
+    /// Runic Views runtime, call it; applications do not.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// The session uses a different model context, or another live session is already bound.
-    /// </exception>
-    internal void BindPresentation(WindowContentSession session)
+    /// <remarks>
+    /// When owned content retires, after its child regions are closed and before the content is disposed,
+    /// the navigator calls <see cref="INavigationPresentation.Forget"/> on each attached presentation,
+    /// outside model turns. A presentation that throws is logged (event 1064, step <c>Forget</c>) and does
+    /// not skip the others. A presentation attached after the navigator started closing is ignored.
+    /// </remarks>
+    /// <param name="presentation">The presentation to attach.</param>
+    /// <returns>An <see cref="IDisposable"/> that detaches the presentation.</returns>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public IDisposable AttachPresentation(INavigationPresentation presentation)
     {
-        ArgumentNullException.ThrowIfNull(session);
-        if (!ReferenceEquals(session.ModelContext, ModelContext))
-            throw new InvalidOperationException(
-                "A navigator can be presented only by a window session that shares its model context. Create the session with the navigator's IRunicModelContext.");
+        ArgumentNullException.ThrowIfNull(presentation);
         lock (Gate)
         {
-            if (_closing || session.IsDisposed) return;
-            if (_presentation is { } bound && !ReferenceEquals(bound, session) && !bound.IsDisposed)
-                throw new InvalidOperationException(
-                    "This navigator is already presented by another window session. Use one navigator per window.");
-            _presentation = session;
+            if (_closing) return PresentationAttachment.None;
+            var attachment = new PresentationAttachment(this, presentation);
+            _presentations.Add(attachment);
+            return attachment;
+        }
+    }
+
+    // One attachment of a presentation; detaching removes only this attachment.
+    private sealed class PresentationAttachment(RunicNavigator? navigator, INavigationPresentation? presentation) : IDisposable
+    {
+        public static readonly PresentationAttachment None = new(null, null);
+
+        public INavigationPresentation Presentation { get; } = presentation!;
+
+        public void Dispose()
+        {
+            if (navigator is null) return;
+            lock (navigator.Gate) navigator._presentations.Remove(this);
         }
     }
 
@@ -349,7 +371,7 @@ public sealed class RunicNavigator : IAsyncDisposable
             lock (Gate) remaining = [.. _tracked];
             foreach (var entry in remaining.OrderBy(entry => entry.Id.Value))
                 await RetireAsync(entry, null).ConfigureAwait(false);
-            lock (Gate) _presentation = null;
+            lock (Gate) _presentations.Clear();
         }
         finally
         {
@@ -1177,7 +1199,7 @@ public sealed class RunicNavigator : IAsyncDisposable
                 }
 
                 // 3. Detach every presentation of the content.
-                Step(entry, "Forget", ForgetPresentation);
+                ForgetPresentations(entry);
 
                 // 4. Dispose the content outside turns.
                 try
@@ -1216,13 +1238,19 @@ public sealed class RunicNavigator : IAsyncDisposable
         }
     }
 
-    // Detaches every presentation of retiring owned content. Forget is a
-    // no-op once the session is disposed.
-    private void ForgetPresentation(NavigationEntryCore entry)
+    // Detaches retiring owned content from every attached presentation, one at a
+    // time, so one failure doesn't skip the others. A presentation detached while
+    // this runs still gets the snapshot's call.
+    private void ForgetPresentations(NavigationEntryCore entry)
     {
-        WindowContentSession? session;
-        lock (Gate) session = _presentation;
-        if (session is not null && entry.Content is { } content) session.Forget(content);
+        if (entry.Content is not { } content) return;
+        PresentationAttachment[] attachments;
+        lock (Gate) attachments = [.. _presentations];
+        foreach (var attachment in attachments)
+        {
+            try { attachment.Presentation.Forget(content); }
+            catch (Exception error) { LogCleanup(entry, "Forget", error); }
+        }
     }
 
     private void Step(NavigationEntryCore entry, string step, Action<NavigationEntryCore> action)
