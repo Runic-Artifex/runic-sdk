@@ -587,15 +587,17 @@ starts retiring, so it can be observed while the entry's owned content is
 still being disposed.
 
 The confirm example below follows the
-[Notes example](../../../examples/notes-view-first/README.md). Its guard
-only decides. Guards can run again for the same departure, and a guard's
-`true` is not a commit, because a later request can still supersede the Back.
-So the guard reads the draft on a model turn and asks again on each run, and
-the draft is discarded only when `Main` leaves the document, in the commit
-turn. Cancel must always end the question. If its `CompleteAsync` is
-rejected, for example because something was pushed over the confirm, the
-confirm cancels a token that the guard linked into the request. That dismisses
-the request instead.
+[Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first).
+Its guard only decides. Guards can run again for the same departure, and a
+guard's `true` is not a commit, because a later request can still supersede
+the Back. So the guard reads the draft on a model turn and asks again on each
+run, and the draft is discarded only when `Main` leaves the document, in the
+commit turn. The code that starts the Back forgets the guard's yes when the
+Back ends without committing, so a later departure that runs no guards, such
+as the window closing, keeps the draft. Cancel must always end the question.
+If its `CompleteAsync` is rejected, for example because something was pushed
+over the confirm, the confirm cancels a token that the guard linked into the
+request. That dismisses the request instead.
 
 ```csharp
 // The document's departure guard asks in a sibling Dialog region.
@@ -612,6 +614,14 @@ public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, Cance
     _discardOnDeparture = true; // discard when the Back commits, not here
     return true;
 }
+
+// The caller of the Back forgets the yes when the Back is superseded, rejected or fails.
+public async Task OpenHomeAsync()
+{
+    var leaving = main.Current as DocumentViewModel;
+    if (await main.BackAsync() is not NavigationResult<IMainViewModel>.Committed) leaving?.ForgetConfirmedDeparture();
+}
+internal void ForgetConfirmedDeparture() => _discardOnDeparture = false;
 
 // Main's PropertyChanged handler runs in the commit turn.
 private void OnMainChanged(object? sender, PropertyChangedEventArgs e)
