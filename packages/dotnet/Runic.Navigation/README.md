@@ -387,6 +387,11 @@ clearing turns' deadline runs on the thread pool instead, exactly once, so
 disposal completes even when the model's thread is blocked. Don't block the
 model's thread on `DisposeAsync` (for example `GetAwaiter().GetResult()` in a
 WPF `OnExit`): call `Dispose()` there, which starts disposal without waiting.
+A cleanup that starts after disposal finished (for example content that a
+factory returns late) waits on the model's thread without a bound. If that
+thread never runs it again and the context never closes, that content and
+its model-context lease are never released. Close the context when the
+application shuts down, for example on `Dispatcher.ShutdownStarted` in WPF.
 
 The navigator itself never continues on the model's thread: after awaiting a
 hook, a turn or other user code, it moves to the thread pool when the
@@ -414,9 +419,10 @@ resumes on its own context as usual.
   which creates another region. `CreateRegion` detects the re-entry for the
   same owner type and initial target type on the same thread, on any
   navigator, and throws `InvalidOperationException` instead of overflowing the
-  stack. One holder type reused at two levels with different targets is fine. Create the region empty and reset it after
-  construction: `await navigation.Region.ResetAsync<HomeViewModel>()`, for
-  example from application startup.
+  stack. One holder type reused at two levels with different targets is fine.
+  Create the region empty and reset it after construction:
+  `await navigation.Region.ResetAsync<HomeViewModel>()`, for example from
+  application startup.
 
 ## Model context
 

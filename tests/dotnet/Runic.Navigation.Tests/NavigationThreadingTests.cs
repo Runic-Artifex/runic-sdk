@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Runic.Navigation.Tests;
 
@@ -27,6 +28,7 @@ internal static partial class NavigationTests
             await ContextClosedBeforeLaterHookStartsAsync(hook);
         await ContextClosedBeforeCommitTurnAsync(scheduling: false);
         await ContextClosedBeforeCommitTurnAsync(scheduling: true);
+        await InitializeWaitStartsWithDisposalAsync();
         await ScheduledHookThrowingObjectDisposedFailsAsync(guard: true);
         await ScheduledHookThrowingObjectDisposedFailsAsync(guard: false);
         await ScheduledDisposeThrowingObjectDisposedRunsOnceAsync();
@@ -348,6 +350,56 @@ internal static partial class NavigationTests
         Require(result is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && fixture.Logs.Count(1062) == 0
             && region.Current?.Name == "home" && next.Disposed == 1,
             $"A context closed before the commit turn gave {result} and logged {fixture.Logs.Count(1062)} commit failures.");
+    }
+
+    // A model context that closed (A6) long before DisposeAsync doesn't shorten disposal's wait for a
+    // running initialize hook: retirement still waits for it, and no initialize timeout is logged.
+    // Today disposal's transition wait covers the hook, so InitializeWait isn't reached here; the
+    // test pins the behavior against a change that starts disposal's waits when the context closes.
+    private static async Task InitializeWaitStartsWithDisposalAsync()
+    {
+        var time = new FakeTimeProvider();
+        using var context = new SyncContextModelContext();
+        await using var fixture = new Fixture(context, time, TimeSpan.FromSeconds(10));
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var other = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Borrow(new Page("other")));
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var initDone = 0;
+        var disposedDuringInit = 0;
+        var page = new InitPage("slow")
+        {
+            Initialize = async (_, _) =>
+            {
+                started.TrySetResult();
+                await gate.Task;
+                Volatile.Write(ref initDone, 1);
+            },
+            OnDispose = () =>
+            {
+                if (Volatile.Read(ref initDone) == 0) Interlocked.Increment(ref disposedDuringInit);
+                return Task.CompletedTask;
+            },
+        };
+        var push = region.PushAsync(NavigationTarget.Own<Page>(page)).AsTask();
+        await Wait(started.Task);
+
+        // The context closes; the next turn finds it closed, so the navigator starts closing (A6).
+        await context.DisposeAsync();
+        var closed = await Wait(other.PushAsync(NavigationTarget.Own(new Page("late"))).AsTask());
+        Require(closed is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed } && fixture.Navigator.IsClosed,
+            $"A push on the closed context gave {closed}.");
+
+        // Long past the close timeout, disposal starts its own deadline.
+        time.Advance(TimeSpan.FromSeconds(30));
+        var disposal = fixture.Navigator.DisposeAsync().AsTask();
+        await Task.Delay(100);
+        Require(page.Disposed == 0 && !disposal.IsCompleted, "Disposal disposed content under a running initialize hook.");
+        gate.SetResult();
+        await Wait(disposal);
+        await Wait(push);
+        Require(page.Disposed == 1 && disposedDuringInit == 0 && fixture.Logs.Count(1069) == 0,
+            $"Content was disposed {page.Disposed} times ({disposedDuringInit} under the hook); {fixture.Logs.Count(1069)} initialize timeouts were logged.");
     }
 
     // A scheduled guard or initialize that throws ObjectDisposedException itself fails the transition
