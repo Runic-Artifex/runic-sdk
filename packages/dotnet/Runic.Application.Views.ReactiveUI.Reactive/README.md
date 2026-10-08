@@ -47,6 +47,10 @@ normal `ReactiveUI.SourceGenerators` attributes with
 `ReactiveUI.Reactive.ReactiveObject`. There is no separate Reactive-flavor
 source-generator package.
 
+The navigation adapter (`WhenCurrentChanged`, `WhenEntryChanged` and
+`CreateBackCommand(IScheduler)`) is also available, with `System.Reactive.Unit`
+as the back command's input; see
+[Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#navigation-experimental).
 `BatchBridgeSnapshots(model)` and `ObserveBridgeExceptions` are also available in
 this adapter's namespace; this flavor's commands implement the same
 `IHandleObservableErrors`. See
