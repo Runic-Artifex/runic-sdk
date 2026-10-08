@@ -193,7 +193,6 @@
         "packages/dotnet/Runic.Navigation.ReactiveUI.Reactive",
         "tests/dotnet/Runic.Navigation.Tests",
         "tests/fixtures/navigation",
-        "tests/fixtures/navigation"
       ]
     },
     "application": {
