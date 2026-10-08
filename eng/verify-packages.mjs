@@ -118,6 +118,7 @@ function msbuildProjectPath(
 // Windows-only packages declare how a packed consumer uses them: it builds on every
 // platform and runs only on Windows.
 const windowsConsumerStrategies = {
+  "Runic.Application.Wpf": { useWpf: true, canaryType: "Runic.Application.Views.Wpf.RunicWebView" },
   "Runic.Navigation.Wpf": { useWpf: true, canaryType: "Runic.Navigation.Wpf.NavigationHost" },
 };
 
@@ -158,7 +159,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
     assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
   }
   // Host adapters use the DI abstractions; the application chooses and references a container.
-  if (["Runic.Application.Desktop", "Runic.Application.CsWebUi"].includes(label)) {
+  if (["Runic.Application.Desktop", "Runic.Application.CsWebUi", "Runic.Application.Wpf"].includes(label)) {
     assert.ok(!libraries.some(library => library.split("/")[0].toLowerCase() === "microsoft.extensions.dependencyinjection"),
       `${label} unexpectedly depends on the Microsoft.Extensions.DependencyInjection container`);
   }
@@ -255,7 +256,7 @@ async function verifyConsumers(directory, packageName) {
     const viewTestConsumer = p.name === "Runic.Application.Testing";
     const bridgeProperties = viewTestConsumer
       ? `<RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled><RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand><RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir><RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir><OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>`
-      : ["Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.ReactiveUI.Reactive", "Runic.Application.Desktop"].includes(p.name)
+      : ["Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.ReactiveUI.Reactive", "Runic.Application.Desktop", "Runic.Application.Wpf"].includes(p.name)
         ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : "";
     mkdirSync(consumer);
     writeFileSync(
@@ -287,7 +288,7 @@ for (var attempt = 0; attempt < 100 && !published; attempt++)
 if (!published) throw new Exception("The packaged generated publication failed.");
 Console.WriteLine("Packaged Window/View test host passed.");`
       : strategy.canaryType
-        ? `#pragma warning disable RUNICNAV001\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
+        ? `#pragma warning disable RUNICNAV001, RUNICWPF001\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : `Console.WriteLine(System.Reflection.Assembly.Load("${assemblyName}").GetName().Name);`,
     );
     if (viewTestConsumer)

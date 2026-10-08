@@ -31,6 +31,7 @@ internal static class Program
 
     private static async Task RunAsync()
     {
+        Console.WriteLine("Hybrid smoke: create WPF shell");
         await using var services = App.AddServices(new ServiceCollection()).BuildServiceProvider();
         await using var scope = services.CreateAsyncScope();
         var regions = scope.ServiceProvider.GetRequiredService<AppRegions>();
@@ -47,12 +48,15 @@ internal static class Program
             await UntilAsync(() => Descendants<EditorView>(window).Any());
             var page = Descendants<EditorView>(window).Single();
             await page.PresentationChange;
+            Console.WriteLine("Hybrid smoke: native editor loaded");
             // Actual native TextBox binding, then the actual presentation toggle button.
             var native = Descendants<NativeEditorView>(page).Single();
             Descendants<TextBox>(native).First().Text = "Native draft";
             Check(model.Title == "Native draft" && model.IsDirty, "Native edit did not reach the existing model.");
             ((Button)page.FindName("Switch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await page.PresentationChange;
+            CheckPresentation(page, "first web mount");
+            Console.WriteLine("Hybrid smoke: first embedded session opened");
             var first = page.WebBinding ?? throw new InvalidOperationException("Embedded editor did not open.");
             Check(ReferenceEquals(first.ViewModel, model) && ReferenceEquals(regions.Main.CurrentEntry, entry), "Presentation switch replaced model or entry.");
             await UntilAsync(async () => await first.Surface.ExecuteJavaScriptAsync("return document.querySelector('#title').value;") == "Native draft");
@@ -65,18 +69,25 @@ internal static class Program
                 document.querySelector('#save').click();
                 """);
             await UntilAsync(() => store.Get(1).Title == "Saved from web" && !model.IsDirty);
+            Console.WriteLine("Hybrid smoke: web edits saved in shared store");
             Check(model.Body == "One shared draft", "Web edits did not reach the native model.");
 
             ((Button)page.FindName("Switch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await page.PresentationChange;
+            CheckPresentation(page, "switch to native");
+            Console.WriteLine("Hybrid smoke: switched to native and released first session");
             Check(page.WebBinding is null && Descendants<NativeEditorView>(page).Single().DataContext == model, "Switch to native retained the web session or replaced the model.");
             await (await first.CloseAsync(TimeSpan.Zero)).Completion;
             ((Button)page.FindName("Switch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await page.PresentationChange;
+            CheckPresentation(page, "second web mount");
+            Console.WriteLine("Hybrid smoke: second embedded session opened");
             var second = page.WebBinding ?? throw new InvalidOperationException("Second embedded session did not open.");
             Check(!ReferenceEquals(first, second), "Switch reused a closed web session.");
             ((Button)page.FindName("Reload")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await page.PresentationChange;
+            CheckPresentation(page, "reload web editor");
+            Console.WriteLine("Hybrid smoke: reloaded embedded session");
             var reloaded = page.WebBinding ?? throw new InvalidOperationException("Reload did not open.");
             Check(!ReferenceEquals(second, reloaded) && ReferenceEquals(reloaded.ViewModel, model), "Reload did not preserve the same model in a fresh session.");
             await UntilAsync(async () => await reloaded.Surface.ExecuteJavaScriptAsync("return document.querySelector('#body').value;") == "One shared draft");
@@ -85,11 +96,14 @@ internal static class Program
             await regions.Main.BackAsync();
             await UntilAsync(() => !page.IsLoaded);
             await page.PresentationChange;
+            CheckPresentation(page, "editor unload");
+            Console.WriteLine("Hybrid smoke: editor unloaded and released web session");
             Check(page.WebBinding is null, "Unload left a web binding attached.");
             await (await reloaded.CloseAsync(TimeSpan.Zero)).Completion;
             await context.InvokeAsync(() => Check(regions.Main.Current is NotesListViewModel, "Presentation unload disposed the borrowed context or navigator."));
         }
         finally { window.Close(); }
+        Console.WriteLine("Hybrid smoke: shell closed, disposing application scope");
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject node) where T : DependencyObject
@@ -116,5 +130,11 @@ internal static class Program
     private static void Check(bool passed, string message)
     {
         if (!passed) throw new InvalidOperationException(message);
+    }
+
+    private static void CheckPresentation(EditorView page, string phase)
+    {
+        if (page.LastPresentationError is { } error)
+            throw new InvalidOperationException($"Hybrid smoke failed during {phase}.", error);
     }
 }
