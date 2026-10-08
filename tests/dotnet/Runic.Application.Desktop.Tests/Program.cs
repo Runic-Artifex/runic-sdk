@@ -11,6 +11,7 @@ using Runic.Platform.Runtime;
 // Headless checks for the Desktop host adapter. A Desktop host serves its
 // surface without opening a native presentation, so these run without a
 // browser or WebView.
+await CloseAfterOpenChecks.RunAsync();
 await using (var host = await DesktopHost.StartAsync())
 {
     await PublishDoesNotBlockAndCoalescesPerRoute(host);

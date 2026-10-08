@@ -112,3 +112,22 @@ The [First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/t
 example is a complete application. See the
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/)
 to choose between this host and CS-WebUI.
+
+## Automation
+
+Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped
+application without a user. With it set, `OpenDesktopWindowAsync` closes every
+window it opens, as soon as the presentation has opened and, with
+`DesktopHostOptions.WaitForConnection`, its bridge has connected. Before
+closing, it writes:
+
+- a warning to standard error, and event 2002 through a registered
+  `ILoggerFactory`, so an inherited setting is visible;
+- `RUNIC_APPLICATION_OPENED=<presentation>` (for example `Embedded`, or the
+  browser it fell back to) to standard output.
+
+An application shaped like the `runic-app` template then sees `WaitForClose`
+return and exits normally. Applications that keep running after a window
+closes, or that open further windows, are not meant to use it. This is the
+Desktop counterpart of CS-WebUI's `RUNIC_APPLICATION_SERVE_ONLY`. The template
+acceptance check uses it to run the GTK 4 template under Xvfb.

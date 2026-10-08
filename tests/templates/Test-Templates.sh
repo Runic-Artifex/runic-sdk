@@ -205,7 +205,12 @@ verify_template() {
   local manager="$2"
   local host="$3"
   local view_models="$4"
-  local project_name="Acceptance${framework^}${manager^}${host^}${view_models^}"
+  # desktop-gtk4 becomes DesktopGtk4.
+  local host_name="" host_part
+  local -a host_parts
+  IFS=- read -ra host_parts <<< "$host"
+  for host_part in "${host_parts[@]}"; do host_name+="${host_part^}"; done
+  local project_name="Acceptance${framework^}${manager^}${host_name}${view_models^}"
   local output="$template_tmp/$framework-$manager-$host-$view_models"
   local expected_manager_version
   local selected_lock
@@ -232,7 +237,7 @@ verify_template() {
   grep -Fq "\"packageManager\": \"$manager@$expected_manager_version\"" "$output/Frontend/package.json"
   # The frontend package is named after the project, not the template.
   local package_name
-  package_name="$(sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
+  package_name="$(sed -E -e 's/([a-z0-9])([A-Z])/\1-\2/g' -e 's/([a-zA-Z])([0-9])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
   grep -Fq "\"name\": \"$package_name\"" "$output/Frontend/package.json"
   grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
   local index_html="$output/Frontend/index.html"
@@ -243,12 +248,34 @@ verify_template() {
       grep -Fq 'runic-cswebui.js' "$index_html"
       [[ "$framework" == angular ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
       ;;
-    desktop)
+    desktop|desktop-gtk4)
       grep -Fq 'Runic.Application.Desktop' "$output/$project_name.csproj"
       grep -Fq 'runic-desktop-views.js' "$index_html"
       [[ "$framework" == angular ]] || grep -Fq 'runic({ desktop: true })' "$output/Frontend/vite.config.ts"
+      grep -Fq 'DesktopEventLoop.Run(options' "$output/Program.cs"
+      grep -Fq 'DiagnosticSink = ReportDiagnostic' "$output/Program.cs"
       ;;
   esac
+  # Only the GTK 4 variant selects GTK 4 and references its provider and portal packages.
+  # The NativeOwner comment names the provider for the selected Linux toolkit.
+  if [[ "$host" == desktop-gtk4 ]]; then
+    grep -Fq 'Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)' "$output/Views.cs"
+    if grep -n 'LinuxPlatformProvider.CreateFileDialogs' "$output/Views.cs"; then
+      echo "The GTK 4 project points NativeOwner at the GTK 3 provider." >&2
+      exit 1
+    fi
+  elif [[ "$host" == desktop ]]; then
+    grep -Fq 'LinuxPlatformProvider.CreateFileDialogs(NativeOwner)' "$output/Views.cs"
+  fi
+  if [[ "$host" == desktop-gtk4 ]]; then
+    grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4();' "$output/Program.cs"
+    for package in Runic.Desktop.Gtk4 Runic.Platform.Linux.Gtk4 Runic.Platform.Linux.Portal; do
+      grep -Fq "\"$package\"" "$output/$project_name.csproj"
+    done
+  elif grep -nE 'Gtk4|Linux\.Portal' "$output/Program.cs" "$output/$project_name.csproj"; then
+    echo "The $host project references the GTK 4 profile." >&2
+    exit 1
+  fi
   case "$view_models" in
     toolkit) grep -Fq 'CommunityToolkit.Mvvm' "$output/$project_name.csproj" ;;
     reactiveui) grep -Fq 'Runic.Application.ReactiveUI' "$output/$project_name.csproj" ;;
@@ -281,7 +308,7 @@ verify_template() {
   grep -Fq 'WARN compatibility-set: The project has not been restored yet' "$output/doctor-unrestored.txt"
   # The browser check follows the host, before restore too; Desktop projects
   # get no CS-WebUI advice.
-  if [[ "$host" == desktop ]]; then
+  if [[ "$host" == desktop* ]]; then
     grep -Fq 'PASS browser: Not required' "$output/doctor-unrestored.txt"
     if grep -Fq 'CS-WebUI' "$output/doctor-unrestored.txt"; then
       cat "$output/doctor-unrestored.txt" >&2
@@ -307,7 +334,7 @@ verify_template() {
   fi
   grep -Fq "PASS package-manager: $manager $expected_manager_version matches certified baseline" "$output/doctor.txt"
   grep -Fq "PASS compatibility-set:" "$output/doctor.txt"
-  if [[ "$host" == desktop ]]; then
+  if [[ "$host" == desktop* ]]; then
     grep -Fq 'PASS browser: Not required' "$output/doctor.txt"
     if grep -Fq 'CS-WebUI' "$output/doctor.txt"; then
       cat "$output/doctor.txt" >&2
@@ -328,7 +355,7 @@ verify_template() {
   test -f "$output/Frontend/src/generated/workspace.ts"
   # runic({ desktop: true }) loads the Runic Desktop bootstrap; CS-WebUI does not serve it.
   if [[ "$framework" != angular ]]; then
-    if [[ "$host" == desktop ]]; then
+    if [[ "$host" == desktop* ]]; then
       grep -Fq '<script src="./runic-desktop.js"></script>' "$output/Frontend/dist/index.html"
     elif grep -Fq 'runic-desktop.js' "$output/Frontend/dist/index.html"; then
       echo "The CS-WebUI frontend loads the Runic Desktop bootstrap." >&2
@@ -357,7 +384,30 @@ verify_template() {
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   fi
+  if [[ "$host" == desktop-gtk4 && "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]]; then
+    run_desktop_smoke "$output" "$project_name"
+  fi
   printf 'TEMPLATE_OK|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models"
+}
+
+# Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:
+# the generated Program must open the embedded GTK 4 window, connect its bridge, and exit 0
+# without manual wiring. Needs GTK 4.12+, WebKitGTK 6, Xvfb and dbus-run-session.
+run_desktop_smoke() {
+  local output="$1"
+  local project_name="$2"
+  local log="$output/desktop-smoke.log"
+  local status=0
+  # The application runs directly, not through dotnet run, so no build server keeps the session open.
+  env -C "$output" RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1 GDK_BACKEND=x11 GSETTINGS_BACKEND=memory \
+    timeout -k 10 180 dbus-run-session -- xvfb-run -a \
+    dotnet "$output/bin/Release/net10.0/$project_name.dll" > "$log" 2>&1 < /dev/null || status=$?
+  if [[ "$status" != 0 ]] || ! grep -Fq 'RUNIC_APPLICATION_OPENED=Embedded' "$log"; then
+    echo "The GTK 4 Desktop application did not open its embedded window and exit (status $status)." >&2
+    tail -n 80 "$log" >&2
+    exit 1
+  fi
+  echo "DESKTOP_SMOKE_OK|$project_name"
 }
 
 # The guided creator must produce exactly what its printed dotnet new command
@@ -424,6 +474,7 @@ variants=(
   "svelte npm desktop reactiveui"
   "angular pnpm desktop reactiveui"
   "svelte bun desktop toolkit"
+  "vue npm desktop-gtk4 toolkit"
   "angular npm cswebui reactiveui"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.

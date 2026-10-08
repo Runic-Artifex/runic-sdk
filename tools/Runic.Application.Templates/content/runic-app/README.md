@@ -28,14 +28,30 @@ commands build the production frontend instead of starting a development server.
 
 ## What opens
 
-<!--#if (host == "desktop") -->
-`Program.cs` starts a Runic Desktop host and opens the Window in a native
-window with the platform's embedded WebView: the Edge WebView2 Runtime on
-Windows, WKWebView on macOS, or GTK 3 with WebKitGTK 4.1 on Linux. Without an
-embedded WebView it falls back to an installed browser. Change
+<!--#if (gtk4) -->
+`Program.cs` runs the application with `DesktopEventLoop.Run`, which starts a
+Runic Desktop host on the event loop each platform needs, and opens the Window
+in a native window with the platform's embedded WebView: the Edge WebView2
+Runtime on Windows, WKWebView on macOS, or GTK 4 with WebKitGTK 6 on Linux.
+`WithGtk4()` selects the GTK 4 backend and its window provider together, and
+on Linux `DesktopEventLoop.Run` runs GTK on the process main thread. Linux needs
+GTK 4.12 or newer and WebKitGTK 6.0 (for example `libgtk-4-1` and
+`libwebkitgtk-6.0-4`); `dotnet runic doctor` lists anything missing. The
+project also references `Runic.Platform.Linux.Gtk4` and
+`Runic.Platform.Linux.Portal` for portal file dialogs and the clipboard. Without
+an embedded WebView it falls back to an installed browser. See the
+[Runic.Desktop.Gtk4 guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop.Gtk4/README.md)
+for the GTK 4 backend and platform services.
+<!--#elif (desktopHost) -->
+`Program.cs` runs the application with `DesktopEventLoop.Run`, which starts a
+Runic Desktop host on the event loop each platform needs, and opens the Window
+in a native window with the platform's embedded WebView: the Edge WebView2
+Runtime on Windows, WKWebView on macOS, or GTK 3 with WebKitGTK 4.1 on Linux.
+Without an embedded WebView it falls back to an installed browser. Change
 `DesktopWindowOptions` to choose another presentation, and see the
 [Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md)
-for native prerequisites, the GTK 4 backend, and platform services.
+for native prerequisites and platform services. Create the project with
+`--host desktop-gtk4` to use GTK 4 and WebKitGTK 6 on Linux.
 <!--#else -->
 `window.Show("index.html")` in `Program.cs` uses CS-WebUI. It opens the app
 in an installed browser in app mode (Chrome, Edge or another Chromium-based
@@ -67,7 +83,7 @@ the Runic Desktop host (`--host desktop` when creating a project); see the
 <!--#else -->
 | `Frontend/src/App.tsx`, `Frontend/src/pages` | Connect generated clients with `useView` from `@runic-artifex/react` and render the page that `WorkspaceViewModel.Main` selects. |
 <!--#endif -->
-<!--#if (frontend != "angular" && host == "desktop") -->
+<!--#if (frontend != "angular" && desktopHost) -->
 | `Frontend/vite.config.ts` | Adds `runic({ desktop: true })` from `@runic-artifex/vite-plugin-runic`, which loads the Runic Desktop bootstrap and builds with relative asset URLs. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
 <!--#elif (frontend != "angular") -->
 | `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
