@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Navigation;
 
@@ -43,26 +42,14 @@ public sealed class WorkspaceNavigation
     // again, so a caller that skips CanExecute can't supersede the Back that asks.
     public bool CanNavigate => Dialog.Current is null && !Main.IsTransitioning;
 
-    // ExpectedCurrent makes a repeated click a no-op instead of a second document.
+    // ExpectedCurrent makes a repeated click a no-op instead of a second document. The navigator
+    // builds the document from the window's services and owns it.
     public Task OpenNotesAsync() => !CanNavigate || Main.Current is DocumentViewModel
         ? Task.CompletedTask
-        : Main.PushAsync(NavigationTarget.Create<IMainViewModel>(window => new DocumentViewModel(
-                window.GetRequiredService<EditorViewModel>(), window.GetRequiredService<PreviewViewModel>(),
-                window.GetRequiredService<RunicNavigator>(), window.GetRequiredService<IRunicModelContext>(), this)),
-            new NavigationRequestOptions(Main.CurrentEntry?.Id)).AsTask();
+        : Main.PushAsync<DocumentViewModel>(new NavigationRequestOptions(Main.CurrentEntry?.Id)).AsTask();
 
-    // The document's departure guard asks before unsaved edits are discarded. A guard's yes
-    // is not a commit, so the document forgets it when the Back ends another way: superseded,
-    // rejected or failed. Otherwise a later departure without guards, such as the window
-    // closing, would discard the draft.
-    public async Task OpenHomeAsync()
-    {
-        if (!CanNavigate || !Main.CanGoBack) return;
-        var leaving = Main.Current as DocumentViewModel;
-        var committed = false;
-        try { committed = await Main.BackAsync() is NavigationResult<IMainViewModel>.Committed; }
-        finally { if (!committed) leaving?.ForgetConfirmedDeparture(); } // also when Back throws
-    }
+    // The document's departure guard asks before unsaved edits are discarded.
+    public Task OpenHomeAsync() => !CanNavigate || !Main.CanGoBack ? Task.CompletedTask : Main.BackAsync().AsTask();
 }
 
 // The generator presents each region's Current as a content slot; nothing is forwarded.
@@ -167,18 +154,19 @@ public partial class HomeViewModel(NotesLibrary library) : ObservableObject, IMa
 public partial class DocumentViewModel : ObservableObject, IMainViewModel, INavigationInitialize, INavigationDepartureGuard, IDisposable
 {
     private readonly PreviewViewModel _preview;
-    private readonly IRunicModelContext _context;
     private readonly WorkspaceNavigation _navigation;
-    // Set by a confirmed departure; the discard runs in the turn that commits it.
-    private volatile bool _discardOnDeparture;
+    private readonly LeaveConfirmation _leave;
 
-    public DocumentViewModel(EditorViewModel editor, PreviewViewModel preview, RunicNavigator navigator,
-        IRunicModelContext context, WorkspaceNavigation navigation)
+    public DocumentViewModel(EditorViewModel editor, PreviewViewModel preview, RunicNavigator navigator, WorkspaceNavigation navigation)
     {
         Editor = editor;
         _preview = preview;
-        _context = context;
         _navigation = navigation;
+        // Leaving with unsaved edits asks in the dialog region, and discards the edits only when
+        // the departure commits. A superseded departure or a closing window dismisses the dialog.
+        _leave = LeaveConfirmation.InDialog(navigation.Dialog,
+            () => NavigationTarget.Own<IDialogViewModel>(new ConfirmNavigationViewModel("Discard the unsaved edits and return Home?")),
+            () => Editor.IsDirty, Editor.DiscardChanges);
         // A child region owned by this document: it closes when the document retires,
         // and keeps the open pane while another page covers the document.
         CurrentPane = navigator.CreateRegion<IDocumentPaneViewModel>(this, NavigationTarget.Borrow<IDocumentPaneViewModel>(editor),
@@ -217,43 +205,17 @@ public partial class DocumentViewModel : ObservableObject, IMainViewModel, INavi
         return ValueTask.CompletedTask;
     }
 
-    // Leaving with unsaved edits asks in the dialog region. The guard's token
-    // dismisses the dialog when a later navigation supersedes this one or the
-    // window closes; the dialog's own token dismisses it when its answer can't commit.
-    async ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken)
-    {
-        _discardOnDeparture = false;
-        if (departure.Kind != NavigationDepartureKind.Retire) return true;
-        // Guards run outside model turns; read the draft on one.
-        if (!await _context.InvokeAsync(() => Editor.IsDirty)) return true;
-        var dialog = new ConfirmNavigationViewModel("Discard the unsaved edits and return Home?");
-        using var answer = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, dialog.Dismissal);
-        var confirm = _navigation.Dialog.PushForResult<bool>(NavigationTarget.Own<IDialogViewModel>(dialog),
-            cancellationToken: answer.Token);
-        if (await confirm.Completion is not NavigationCompletion<bool>.Completed { Value: true }) return false;
-        // Discard only when the Back commits: a request that supersedes it keeps the
-        // document, and the draft with it.
-        _discardOnDeparture = true;
-        return true;
-    }
-
-    // Called when the Back that this guard allowed ends without committing.
-    internal void ForgetConfirmedDeparture() => _discardOnDeparture = false;
+    ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+        _leave.CanDepartAsync(departure, cancellationToken);
 
     private void OnPaneChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(NavigationRegion<IDocumentPaneViewModel>.Current)) OnPropertyChanged(nameof(ActivePane));
     }
 
-    // Raised inside model turns; a change of Main's Current is raised in its commit turn.
+    // Raised inside model turns.
     private void OnWorkspaceChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (ReferenceEquals(sender, _navigation.Main) && e.PropertyName == nameof(NavigationRegion<IMainViewModel>.Current)
-            && _discardOnDeparture && !ReferenceEquals(_navigation.Main.Current, this))
-        {
-            _discardOnDeparture = false;
-            Editor.DiscardChanges();
-        }
         ShowEditorCommand.NotifyCanExecuteChanged();
         ShowPreviewCommand.NotifyCanExecuteChanged();
     }
@@ -341,17 +303,13 @@ public partial class PreviewViewModel : ObservableObject, IDocumentPaneViewModel
     public void Dispose() => _editor.PropertyChanged -= OnEditorChanged;
 }
 
-// An owned dialog entry pushed for a result: confirming or cancelling completes
-// the request and leaves the dialog region empty.
-public partial class ConfirmNavigationViewModel(string message) : ObservableObject, IDialogViewModel, INavigationInitialize, IDisposable
+// An owned dialog entry pushed for a result: confirming completes the request,
+// cancelling dismisses it, and either leaves the dialog region empty.
+public partial class ConfirmNavigationViewModel(string message) : ObservableObject, IDialogViewModel, INavigationInitialize
 {
-    private readonly CancellationTokenSource _dismissal = new();
     private NavigationEntryContext? _entry;
 
     public string Message => message;
-
-    // The asking guard links this into its request, so Cancel can always dismiss it.
-    internal CancellationToken Dismissal => _dismissal.Token;
 
     ValueTask INavigationInitialize.InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken)
     {
@@ -359,30 +317,13 @@ public partial class ConfirmNavigationViewModel(string message) : ObservableObje
         return ValueTask.CompletedTask;
     }
 
+    // A Confirm whose Back is rejected (superseded by a concurrent answer, or its commit turn
+    // failed) leaves the dialog open to answer again. Cancel always works: it ends the request
+    // at once, so the guard keeps the document, and then goes back from the dialog. A Cancel
+    // after a Confirm supersedes the Confirm's Back unless that Back has started committing.
     [RelayCommand]
-    private Task Confirm() => AnswerAsync(true);
+    private Task Confirm() => _entry is { } entry ? entry.CompleteAsync(true).AsTask() : Task.CompletedTask;
 
     [RelayCommand]
-    private Task Cancel() => AnswerAsync(false);
-
-    // An answer's Back can be rejected: superseded by a concurrent answer, not current, or its
-    // commit turn failed. A rejected Confirm leaves the dialog open to answer again. Cancel
-    // must always work, so it then dismisses the request: the guard keeps the document, and
-    // the navigator goes back from the dialog.
-    //
-    // Overlapping Confirm and Cancel keep the document unless the Confirm's Back commits first.
-    // The later answer's Back supersedes the earlier one, so a Cancel after a Confirm wins. A
-    // Confirm after a Cancel supersedes the Cancel's Back, and then the Cancel dismisses the
-    // request, whose Back supersedes the Confirm, unless the Confirm's Back commits before the
-    // dismissal. A Confirm whose Back has started committing is final; a Cancel after that is
-    // rejected, and the dialog is gone.
-    private async Task AnswerAsync(bool confirmed)
-    {
-        if (_entry is not { } entry) return;
-        if (await entry.CompleteAsync(confirmed) is NavigationResult<object>.Committed || confirmed) return;
-        try { await _dismissal.CancelAsync(); }
-        catch (ObjectDisposedException) { } // The dialog retired, so its request already ended.
-    }
-
-    public void Dispose() => _dismissal.Dispose();
+    private Task Cancel() => _entry is { } entry ? entry.DismissAsync().AsTask() : Task.CompletedTask;
 }

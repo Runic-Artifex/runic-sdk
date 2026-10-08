@@ -75,20 +75,22 @@ starts with the window's Home, and `Dialog` starts empty. `ShellViewModel`
 exposes both regions as content slots. The generated `main` and `dialog`
 references are `| null`, so every frontend handles an empty region.
 
-- **Notes** pushes a new owned `DocumentViewModel` on each visit. Leaving the
-  document retires it and its `CurrentPane` child region. The editor and
-  preview are window-scoped and borrowed, so the draft survives the visit.
+- **Notes** pushes a new owned `DocumentViewModel` on each visit with
+  `Main.PushAsync<DocumentViewModel>()`, which builds it from the window's
+  services. Leaving the document retires it and its `CurrentPane` child
+  region. The editor and preview are window-scoped and borrowed, so the draft
+  survives the visit.
 - `CurrentPane` keeps the editor entry when the preview is pushed. **Editor**
   goes back to that same entry, with its draft.
 - **Home** goes back. When the editor has unsaved edits, the document's
-  departure guard awaits `Dialog.PushForResult<bool>(…)` for
-  `ConfirmNavigationViewModel`. Confirming lets the Back commit, and the edits
-  are discarded in the commit turn. A Back that is superseded, rejected or
-  fails keeps the draft, and the document forgets the confirmation.
-  Cancelling, or a dismissal, keeps the document entry. The confirm calls
-  `CompleteAsync`, which returns from its entry and leaves `Dialog` empty. If
-  that answer can't commit, Cancel dismisses the request instead, so Cancel
-  and Escape always end the question.
+  departure guard, a `LeaveConfirmation.InDialog(…)`, pushes
+  `ConfirmNavigationViewModel` into `Dialog` for a `bool` result. Confirming
+  lets the Back commit, and the edits are discarded in the commit turn. A
+  Back that is superseded, rejected or fails keeps the draft. Cancelling, or
+  a dismissal, keeps the document entry. Confirm calls `CompleteAsync`, which
+  returns from its entry and leaves `Dialog` empty. Cancel calls
+  `DismissAsync`, which ends the question at once, also when its Back can't
+  commit, so Cancel and Escape always end the question.
 - The confirm is modal. While it asks, or while a page navigation is in
   flight, `WorkspaceNavigation.CanNavigate` is false. The sidebar's Home and
   Notes commands and the document's Editor and Preview commands are

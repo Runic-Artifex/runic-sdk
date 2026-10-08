@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Navigation;
@@ -12,8 +13,29 @@ public sealed class RunicNavigatorOptions
     /// <summary>The window's model context. Commits run in its turns; owned content is bound to it.</summary>
     public required IRunicModelContext ModelContext { get; init; }
 
-    /// <summary>The window's service provider, passed to <see cref="NavigationTarget.Create{T}(Func{IServiceProvider, T})"/> factories.</summary>
+    /// <summary>
+    /// The service provider that constructs created content: <see cref="NavigationTarget.Create{T}()"/> resolves
+    /// constructor parameters from it, and <see cref="NavigationTarget.Create{T}(Func{IServiceProvider, T})"/>
+    /// factories receive it. With <see cref="CreateEntryScopes"/>, each created entry uses its own scope of it instead.
+    /// </summary>
     public IServiceProvider? Services { get; init; }
+
+    /// <summary>
+    /// Creates one <see cref="IServiceScope"/> from <see cref="Services"/> for each entry built by a
+    /// <see cref="NavigationTarget"/> <c>Create</c> target, including an initial target. The entry's content is
+    /// constructed from the scope, <see cref="INavigationEntry.Services"/> returns it, and the scope is disposed
+    /// after the content when the entry retires. <c>Borrow</c> and <c>Own</c> entries never get one. Requires
+    /// <see cref="Services"/>.
+    /// </summary>
+    /// <remarks>
+    /// Turn it on only when <see cref="Services"/> is the root provider, for example for an application-wide
+    /// navigator registered as a singleton: then constructor dependencies that are scoped, or disposable
+    /// transients, live and die with their entry. Leave it off for a navigator resolved from a scope, such as the
+    /// one <see cref="RunicNavigationServiceCollectionExtensions.AddRunicNavigation"/> registers. Creating a scope from
+    /// a scoped provider makes a sibling scope of the root, so the entry's scoped dependencies would silently differ
+    /// from the navigator's. The navigator can't tell a root provider from a scoped one.
+    /// </remarks>
+    public bool CreateEntryScopes { get; init; }
 
     /// <summary>Creates the navigator's logger. When omitted, failures are written to <see cref="System.Diagnostics.Trace"/>.</summary>
     public ILoggerFactory? LoggerFactory { get; init; }
@@ -68,8 +90,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // Set only around a hook invocation, to the transition that runs it.
     private static readonly AsyncLocal<NavigationTransition?> HookTransition = new();
 
+    // The initial-target creations in progress on this thread (CreateRegion's cycle guard).
+    [ThreadStatic] private static List<(Type Owner, Type Target)>? s_initialCreations;
+
     private readonly TimeProvider _time;
     private readonly TimeSpan _closeTimeout;
+    private readonly bool _createEntryScopes;
+    private long _nextTransitionId;
     // The shared deadline of the clearing turns of one disposal (guarded by Gate).
     private long? _closeTurnsStart;
     private bool _closeTurnsTimedOut;
@@ -103,6 +130,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         ModelContext = options.ModelContext ?? throw new ArgumentException("A model context is required.", nameof(options));
         ArgumentOutOfRangeException.ThrowIfLessThan(options.CloseTimeout, TimeSpan.Zero, nameof(options));
         Services = options.Services;
+        if (options.CreateEntryScopes && options.Services is null)
+            throw new ArgumentException("CreateEntryScopes requires Services, the provider the entry scopes are created from.", nameof(options));
+        _createEntryScopes = options.CreateEntryScopes;
         _time = options.TimeProvider ?? TimeProvider.System;
         _closeTimeout = options.CloseTimeout;
         Logger = options.LoggerFactory?.CreateLogger(LogCategory) ?? TraceFallbackLogger.Instance;
@@ -161,16 +191,27 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 throw new ArgumentException("A target created with input initializes asynchronously and can't be an initial target.", nameof(initial));
             if (target.Instance is { } instance) RejectInitializable(instance, nameof(initial));
         }
+        if (target is { Instance: null }) ThrowIfInitialCreationCycle(owner.GetType(), target.ContentType);
         lock (Gate) ObjectDisposedException.ThrowIf(_closing, this);
 
         object? content = target?.Instance;
+        IServiceScope? scope = null;
         if (target is not null && content is null)
         {
-            content = target.Create(Services ?? EmptyServiceProvider.Instance);
+            scope = CreateEntryScope();
+            var creations = s_initialCreations ??= [];
+            creations.Add((owner.GetType(), target.ContentType));
+            try { content = target.Create(scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance); }
+            catch
+            {
+                DisposeUnclaimed(null, null, scope);
+                throw;
+            }
+            finally { creations.RemoveAt(creations.Count - 1); }
             try { RejectInitializable(content, nameof(initial)); }
             catch
             {
-                DisposeUnclaimed(content, null);
+                DisposeUnclaimed(content, null, scope);
                 throw;
             }
         }
@@ -193,7 +234,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
         catch
         {
-            DisposeUnclaimed(created && (claimed || !owned) ? content : null, lease);
+            DisposeUnclaimed(created && (claimed || !owned) ? content : null, lease, scope);
             throw;
         }
         NavigationEntryCore? retireAtOnce = null;
@@ -218,6 +259,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                         Phase = NavigationEntryPhase.Active,
                         Lease = lease,
                     };
+                    if (scope is not null) entry.PublishScope(scope);
                     _tracked.Add(entry);
                     if (owned) _ownedEntries[content] = entry;
                     if (region.Closed)
@@ -232,27 +274,27 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         catch (ObjectDisposedException)
         {
             // The navigator started closing; user disposal runs outside the gate.
-            DisposeUnclaimed(created ? content : null, lease);
+            DisposeUnclaimed(created ? content : null, lease, scope);
             throw;
         }
         if (retireAtOnce is not null) _ = RetireAsync(retireAtOnce, null);
         return new NavigationRegion<TContent>(region);
     }
 
-    // Best-effort disposal of an instance the factory created and no region took, then
-    // release of its lease (content first, like retirement). User disposal code never runs
-    // under the gate or inside a model turn: inside a turn, and for asynchronous-only
-    // disposal, it runs on the thread pool; with a hook scheduler it runs as its own
-    // scheduled operation (RunCleanupAsync). That work is tracked like a retirement, so
+    // Best-effort disposal of an instance the factory created and no region took, then of its
+    // entry scope, then release of its lease (the order of retirement). User disposal code never
+    // runs under the gate or inside a model turn: inside a turn, for asynchronous-only disposal
+    // and for scopes, it runs on the thread pool; with a hook scheduler each disposal runs as its
+    // own scheduled operation (RunCleanupAsync, A9). That work is tracked like a retirement, so
     // WhenIdleAsync and DisposeAsync wait for it.
-    private void DisposeUnclaimed(object? content, IRunicModelContextLease? lease)
+    private void DisposeUnclaimed(object? content, IRunicModelContextLease? lease, IServiceScope? scope = null)
     {
-        if (content is null)
+        if (content is null && scope is null)
         {
             ReleaseUnclaimedLease(lease);
             return;
         }
-        if (ModelContext is not IRunicModelHookScheduler && !ModelContext.IsExecuting && content is IDisposable disposable)
+        if (ModelContext is not IRunicModelHookScheduler && !ModelContext.IsExecuting && scope is null && content is IDisposable disposable)
         {
             try { disposable.Dispose(); }
             catch { }
@@ -261,22 +303,58 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
         var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (Gate) _retirements.Add(done.Task);
-        _ = DisposeUnclaimedAsync(content, lease, done);
+        _ = DisposeUnclaimedAsync(content, lease, scope, done);
     }
 
-    private async Task DisposeUnclaimedAsync(object content, IRunicModelContextLease? lease, TaskCompletionSource done)
+    private async Task DisposeUnclaimedAsync(object? content, IRunicModelContextLease? lease, IServiceScope? scope, TaskCompletionSource done)
     {
         try
         {
             await NavigationAwait.Hop();
-            try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
-            catch { }
+            if (content is not null)
+            {
+                try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
+                catch { }
+            }
+            if (scope is not null)
+            {
+                try { await this.AfterUserCode(RunCleanupAsync(() => DisposeScopeAsync(scope))); }
+                catch { }
+            }
             ReleaseUnclaimedLease(lease);
         }
         finally
         {
             lock (Gate) _retirements.Remove(done.Task);
             done.TrySetResult();
+        }
+    }
+
+    // Creates the scope of an entry built by a Create target, or null when entry scopes are off.
+    private IServiceScope? CreateEntryScope() => _createEntryScopes ? Services!.GetRequiredService<IServiceScopeFactory>().CreateScope() : null;
+
+    private static ValueTask DisposeScopeAsync(IServiceScope? scope)
+    {
+        if (scope is IAsyncDisposable asyncScope) return asyncScope.DisposeAsync();
+        scope?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    // Creating an initial target of a type for an owner type while the same pair is already being
+    // created on this thread is a dependency cycle: the target's constructor resolved the service
+    // that creates the region. Container resolution would recurse until the stack overflows
+    // (W240-001 §7). The key ignores the navigator, so a cycle through scoped navigators is caught
+    // too, and includes the target type, so one holder type reused at two levels is not a cycle.
+    private static void ThrowIfInitialCreationCycle(Type ownerType, Type target)
+    {
+        if (s_initialCreations is not { Count: > 0 } creations) return;
+        foreach (var (creatingOwner, creatingTarget) in creations)
+        {
+            if (creatingOwner != ownerType || creatingTarget != target) continue;
+            throw new InvalidOperationException(
+                $"Creating {target.Name}, the initial target of a region owned by {ownerType.Name}, created another region owned by a {ownerType.Name} with the same initial target. "
+                + $"This is a dependency cycle: {target.Name}'s constructor depends on the service that creates the region. "
+                + $"Create the region without an initial target and reset it after construction, for example with ResetAsync<{target.Name}>().");
         }
     }
 
@@ -519,10 +597,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     }
                 }
 
+                var settlement = new NavigationSettlementSource(new NavigationTransitionId(++_nextTransitionId));
                 List<Task> waitFor = [];
                 foreach (var earlier in region.InFlight)
                 {
-                    if (earlier.TrySupersede()) superseded.Add(earlier);
+                    if (earlier.TrySupersede(settlement)) superseded.Add(earlier);
                     waitFor.Add(earlier.Terminated.Task);
                 }
                 // The provisional plan: the child regions this request would
@@ -533,7 +612,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     if (ReferenceEquals(child, region)) continue;
                     foreach (var earlier in child.InFlight)
                     {
-                        if (earlier.TrySupersede()) superseded.Add(earlier);
+                        if (earlier.TrySupersede(settlement)) superseded.Add(earlier);
                         waitFor.Add(earlier.Terminated.Task);
                     }
                 }
@@ -541,7 +620,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // on here: their guard sets are only known when they start guarding.
                 // Each guard hook checks for overlap under the gate (EnterGuardHookAsync).
                 transition = new NavigationTransition(region, operation, target, pending, backTo, expected,
-                    [.. waitFor], cancellationToken) { Return = @return };
+                    [.. waitFor], settlement, cancellationToken) { Return = @return };
+                if (pending is not null) pending.Transition = transition;
                 region.InFlight.Add(transition);
                 transitioningChanged = region.InFlight.Count == 1;
                 _running.Add(transition);
@@ -587,6 +667,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
             // One terminal path: release admission (unless the commit turn
             // already did), then let waiting requests proceed.
+            // Settle first, so a request admitted once admission is released never sees a
+            // settlement still open for a transition that already ended (a vetoed standing yes).
+            Settle(transition, outcome);
             Release(transition);
             transition.Terminated.TrySetResult();
             if (commit is not null)
@@ -629,9 +712,26 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             transition.Dispose();
             lock (Gate) _running.Remove(transition);
             transition.Finished.TrySetResult();
+            // The settlement never stays open, even after a defect (a no-op once Settle ran).
+            transition.Settlement.Settle(new(NavigationDepartureOutcome.Ended, null));
             // Asynchronous continuations, set after the commit turn returned.
             transition.Result.TrySetResult(outcome);
         }
+    }
+
+    // Completes the transition's settlement once its outcome is known, after admission was released
+    // and before retirement. A supersession names its superseder only when a later request superseded
+    // this one; a basis change leaves it unknown (W240-001 §6.1).
+    private void Settle(NavigationTransition transition, NavigationOutcome outcome)
+    {
+        NavigationSettlementSource? by;
+        lock (Gate) by = transition.CancelReason == NavigationCancelReason.Superseded ? transition.SupersededBy : null;
+        transition.Settlement.Settle(outcome.Kind switch
+        {
+            NavigationOutcomeKind.Committed => new(NavigationDepartureOutcome.Committed, null),
+            NavigationOutcomeKind.Superseded => new(NavigationDepartureOutcome.Superseded, by?.Id) { Superseder = by?.Task },
+            _ => new(NavigationDepartureOutcome.Ended, null),
+        });
     }
 
     private async Task<(NavigationOutcome Outcome, NavigationCommit? Commit)> RunPhasesAsync(NavigationTransition transition)
@@ -678,9 +778,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 case GuardSlot.Cancelled: return (CancelledOutcome(transition), null);
                 case GuardSlot.Stale: return (NavigationOutcome.Superseded, null);
             }
+            // One departure per guard invocation; OnCommitted closes when the guard's task completes.
+            var departure = new NavigationDeparture(entry, kind, transition);
             try
             {
-                var departure = new NavigationDeparture(entry.Id, kind, transition.Operation);
                 allowed = await this.AfterUserCode(StartHook(transition, () => guard.CanDepartAsync(departure, token), token));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -695,7 +796,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     OperationName(transition.Operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
                 return (NavigationOutcome.Fail(error, NavigationPhase.Guarding), null);
             }
-            finally { ExitGuardHook(transition); }
+            finally
+            {
+                departure.Close();
+                ExitGuardHook(transition);
+            }
             if (!allowed) return (NavigationOutcome.Reject(NavigationRejection.Guard, entry.Id), null);
         }
 
@@ -752,9 +857,21 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             {
                 if (entry.Content is null)
                 {
-                    var services = Services ?? EmptyServiceProvider.Instance;
-                    var content = await this.AfterUserCode(StartHook(transition, () => ValueTask.FromResult(target.Create(services)), token));
-                    Claim(content);
+                    // The entry scope is created just before the factory, and belongs to this path until
+                    // it is published together with the content.
+                    var scope = CreateEntryScope();
+                    object content;
+                    try
+                    {
+                        var services = scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance;
+                        content = await this.AfterUserCode(StartHook(transition, () => ValueTask.FromResult(target.Create(services)), token));
+                        Claim(content);
+                    }
+                    catch
+                    {
+                        await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
+                        throw;
+                    }
                     bool retiring;
                     lock (Gate)
                     {
@@ -764,12 +881,15 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                         if (!retiring)
                         {
                             entry.Content = content;
+                            if (scope is not null) entry.PublishScope(scope);
                             _ownedEntries[content] = entry;
                         }
                     }
                     if (retiring)
                     {
-                        await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content)));
+                        try { await this.AfterUserCode(RunCleanupAsync(() => DisposeContent(content))); }
+                        catch (Exception error) { LogCleanup(entry, "Dispose", error); }
+                        await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
                         return NavigationOutcome.Reject(NavigationRejection.Closed);
                     }
                 }
@@ -869,6 +989,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationOutcome? stopped = null;
         NavigationCommit? commit = null;
         List<(NavigationRegionCore Region, NavigationRegionChanges Changes)> changed = [];
+        (NavigationEntryCore Entry, Action Action)[] committed = [];
         lock (Gate)
         {
             if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed)
@@ -908,12 +1029,24 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     transition.ResultDropped = true;
                 commit.Current = region.CurrentEntry;
                 changed.Add((region, Changes(regionBefore, region)));
+                committed = [.. transition.CommitActions];
             }
             // Admission is released in the commit turn, so IsTransitioning
             // changes together with the committed state.
             ReleaseLocked(transition);
         }
 
+        // OnCommitted actions run in this turn, outside the gate, after the new state is applied and
+        // before the notifications. One that throws is logged; the commit stands (D-13).
+        foreach (var (entry, action) in committed)
+        {
+            try { action(); }
+            catch (Exception error)
+            {
+                NavigationLog.NavigationDepartureActionFailed(Logger, error, region.ContentTypeName, region.Id,
+                    OperationName(transition.Operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
+            }
+        }
         foreach (var (affected, changes) in changed) affected.RaiseChanges(changes);
         if (!changed.Any(item => ReferenceEquals(item.Region, region))) region.RaiseChanges(NavigationRegionChanges.None);
         return new NavigationCommitResult(stopped ?? NavigationOutcome.Commit(commit!.Current, []), commit);
@@ -1223,6 +1356,53 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         });
     }
 
+    // NavigationEntryContext.DismissAsync (W240-001 §6.2). The entry's state decides, under the gate:
+    // a current entry dismisses its open request (the caller-cancellation path) and goes back, which
+    // may leave the region empty; a pending entry dismisses its request and cancels its own push
+    // without awaiting it (the caller may be that push's initialize hook); a retained entry only
+    // dismisses its request; a retiring or retired entry is left alone.
+    internal Task<NavigationOutcome> Dismiss(NavigationEntryCore entry, CancellationToken cancellationToken)
+    {
+        NavigationEntryPhase phase;
+        NavigationResultRequestCore? request;
+        NavigationTransition? pushing = null;
+        lock (Gate)
+        {
+            phase = entry.Phase;
+            request = entry.ResultRequest;
+            if (phase == NavigationEntryPhase.Pending && entry.Transition is { } transition
+                && transition.TrySetCancelReason(NavigationCancelReason.Dismissed))
+                pushing = transition;
+        }
+        switch (phase)
+        {
+            case NavigationEntryPhase.Active:
+                Task<NavigationOutcome>? back = null;
+                var dismissed = request is not null && FinishResult(request, NavigationResultDismissal.Dismissed, onlyActive: true,
+                    beforeEnd: () => back = Start(entry.Region, NavigationOperation.Back, null, null, entry.Id, cancellationToken,
+                        new NavigationReturn(null)));
+                return dismissed
+                    ? back!
+                    : Start(entry.Region, NavigationOperation.Back, null, null, entry.Id, cancellationToken, new NavigationReturn(null));
+            case NavigationEntryPhase.Pending:
+                if (request is not null) FinishResult(request, NavigationResultDismissal.Dismissed);
+                if (pushing is not null)
+                {
+                    Cancel([pushing]);
+                    return Task.FromResult(NavigationOutcome.Reject(NavigationRejection.Cancelled));
+                }
+                // The push already ended another way (superseded, closed): report that, without
+                // awaiting a push that may be awaiting this caller's hook.
+                if (entry.Transition is not { } ended) return Task.FromResult(NavigationOutcome.Reject(NavigationRejection.Cancelled));
+                return ended.Result.Task.IsCompleted ? ended.Result.Task : Task.FromResult(CancelledOutcome(ended));
+            case NavigationEntryPhase.Retained:
+                if (request is not null) FinishResult(request, NavigationResultDismissal.Dismissed, onlyActive: true);
+                return Task.FromResult(NavigationOutcome.Reject(NavigationRejection.NotCurrent));
+            default:
+                return Task.FromResult(NavigationOutcome.Reject(NavigationRejection.NotCurrent));
+        }
+    }
+
     // ---- Retirement ------------------------------------------------------
 
     // The move to Retiring happens once per entry, whichever path gets here first.
@@ -1296,6 +1476,16 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 catch (Exception error) { LogCleanup(entry, "Dispose", error); }
             }
 
+            // 4b. Dispose the entry's service scope, after its content (W240-001 §5.1). A pending
+            // entry whose factory failed has none: preparation disposed it.
+            IServiceScope? scope;
+            lock (Gate)
+            {
+                scope = entry.Scope;
+                entry.Scope = null;
+            }
+            await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
+
             // 5. Release the model-context lease.
             IRunicModelContextLease? lease;
             lock (Gate)
@@ -1337,6 +1527,15 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             try { attachment.Presentation.Forget(content); }
             catch (Exception error) { LogCleanup(entry, "Forget", error); }
         }
+    }
+
+    // Disposes an entry scope outside turns, like content (RunCleanupAsync, A9); a failure is logged
+    // like a content disposal failure.
+    private async ValueTask DisposeEntryScopeAsync(NavigationEntryCore entry, IServiceScope? scope)
+    {
+        if (scope is null) return;
+        try { await this.AfterUserCode(RunCleanupAsync(() => DisposeScopeAsync(scope))); }
+        catch (Exception error) { LogCleanup(entry, "DisposeScope", error); }
     }
 
     private void Step(NavigationEntryCore entry, string step, Action<NavigationEntryCore> action)
@@ -1612,6 +1811,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             OnModelContextClosed();
             throw;
         }
+        // Abandoning on OperationCanceledException only matters for a scheduler that breaks its
+        // contract by cancelling an operation it already accepted: a conforming scheduler either runs
+        // the operation or reports it as not run before it starts.
         catch (OperationCanceledException) when (hook.TryAbandon()) { throw; }
     }
 
@@ -1659,7 +1861,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     // How long disposal waits for a scheduled cleanup to finish once it is past the start of disposal.
     // It shares the clearing turns' deadline, which a blocked model thread also exhausts, so the
-    // worst case of a disposal stays about twice the close timeout.
+    // worst case of a disposal stays about twice the close timeout. A cleanup that waits here during
+    // the transition wait, before the clearing turns begin, starts that shared deadline early; that
+    // only shortens the clearing turns' wait and never extends the worst case.
     private TimeSpan CleanupWait()
     {
         lock (Gate)
@@ -1754,12 +1958,6 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationOperation.ClearHistory => "ClearHistory",
         _ => "Clear",
     };
-
-    private sealed class EmptyServiceProvider : IServiceProvider
-    {
-        public static readonly EmptyServiceProvider Instance = new();
-        public object? GetService(Type serviceType) => null;
-    }
 }
 
 internal enum NavigationCancelReason
@@ -1767,6 +1965,8 @@ internal enum NavigationCancelReason
     None,
     Superseded,
     Closed,
+    // The pending entry dismissed itself (NavigationEntryContext.DismissAsync); ends as Rejected(Cancelled).
+    Dismissed,
 }
 
 // One admitted request. Mutable fields are guarded by the navigator's gate,
@@ -1780,7 +1980,7 @@ internal sealed class NavigationTransition : IDisposable
 
     public NavigationTransition(NavigationRegionCore region, NavigationOperation operation, NavigationTargetCore? target,
         NavigationEntryCore? pending, NavigationEntryId? backTo, NavigationEntryId? expected,
-        Task[] waitFor, CancellationToken callerToken)
+        Task[] waitFor, NavigationSettlementSource settlement, CancellationToken callerToken)
     {
         Region = region;
         Operation = operation;
@@ -1790,6 +1990,7 @@ internal sealed class NavigationTransition : IDisposable
         Expected = expected;
         CallerToken = callerToken;
         WaitFor = waitFor;
+        Settlement = settlement;
         _cancellation = CancellationTokenSource.CreateLinkedTokenSource(callerToken);
         Token = _cancellation.Token;
     }
@@ -1813,6 +2014,16 @@ internal sealed class NavigationTransition : IDisposable
     // Set in the commit turn when a returned value found its request already dismissed.
     public bool ResultDropped { get; set; }
 
+    // The transition's identity and settlement (NavigationDeparture.Settled).
+    public NavigationSettlementSource Settlement { get; }
+
+    // The later transition that superseded this one, if a specific one did. Set under the gate.
+    public NavigationSettlementSource? SupersededBy { get; private set; }
+
+    // NavigationDeparture.OnCommitted actions of this transition's guards, in registration order.
+    // Guarded by the navigator's gate; run only by the commit turn.
+    public List<(NavigationEntryCore Entry, Action Action)> CommitActions { get; } = [];
+
     // The entry whose departure guard hook this transition is running, and the
     // signal that the hook has returned. Set and cleared under the navigator's gate.
     public NavigationEntryCore? GuardingEntry { get; set; }
@@ -1830,7 +2041,12 @@ internal sealed class NavigationTransition : IDisposable
     public NavigationCancelReason CancelReason => (NavigationCancelReason)Volatile.Read(ref _cancelReason);
 
     // Supersession applies only before Committing. Call under the gate.
-    public bool TrySupersede() => !CommitStarted && TrySetCancelReason(NavigationCancelReason.Superseded);
+    public bool TrySupersede(NavigationSettlementSource by)
+    {
+        if (CommitStarted || !TrySetCancelReason(NavigationCancelReason.Superseded)) return false;
+        SupersededBy = by;
+        return true;
+    }
 
     public bool TrySetCancelReason(NavigationCancelReason reason) =>
         !Released && Interlocked.CompareExchange(ref _cancelReason, (int)reason, (int)NavigationCancelReason.None) == 0;

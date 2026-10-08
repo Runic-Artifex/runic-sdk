@@ -37,7 +37,11 @@ assert.ok(hostDotnet, "dotnet is not on PATH.");
 // The temporary tree has no parent workspace and its own package cache, so only
 // the packed Runic.Navigation can satisfy the reference.
 const directory = mkdtempSync(join(tmpdir(), "runic-navigation-standalone-"));
-const properties = [`-p:RunicPackageVersion=${version}`];
+// The consumer is outside central package management; it takes the container's version from it.
+const packages = readFileSync(join(root, "Directory.Packages.props"), "utf8");
+const dependencyInjection = packages.match(/<PackageVersion Include="Microsoft\.Extensions\.DependencyInjection" Version="([^"]+)"/)?.[1];
+assert.ok(dependencyInjection, "Directory.Packages.props has no Microsoft.Extensions.DependencyInjection version.");
+const properties = [`-p:RunicPackageVersion=${version}`, `-p:RunicDependencyInjectionVersion=${dependencyInjection}`];
 
 // On Linux and macOS, dotnet is linked into its own directory, so a bin directory that it
 // shares with Node (a Nix profile, /usr/bin) need not appear on the consumer's PATH.

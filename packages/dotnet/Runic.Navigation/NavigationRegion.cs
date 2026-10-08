@@ -58,6 +58,8 @@ public interface INavigationRegion : INotifyPropertyChanged
 /// operation is admitted without blocking and continues on the thread pool; do not block on it there.
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
+[SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+    Justification = "The target, container-constructed and typed-input forms differ by generic arity and the type of the first parameter (W240-001 §5), so no call is ambiguous.")]
 public sealed class NavigationRegion<TContent> : INavigationRegion where TContent : class
 {
     private static readonly PropertyChangedEventArgs CurrentChanged = new(nameof(Current));
@@ -150,6 +152,93 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     public ValueTask<NavigationResult<TContent>> ResetAsync(INavigationTarget<TContent> target,
         NavigationRequestOptions? options = null, CancellationToken cancellationToken = default) =>
         Run(NavigationOperation.Reset, Target(target), null, options, cancellationToken);
+
+    /// <summary>
+    /// Pushes a new <typeparamref name="TViewModel"/> that the navigator constructs and owns, like
+    /// <see cref="PushAsync(INavigationTarget{TContent}, NavigationRequestOptions?, CancellationToken)"/> with
+    /// <see cref="NavigationTarget.Create{T}()"/>.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    public ValueTask<NavigationResult<TContent>> PushAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel>(
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent =>
+        Run(NavigationOperation.Push, new ActivatedNavigationTarget<TViewModel>(), null, options, cancellationToken);
+
+    /// <summary>
+    /// Pushes a new <typeparamref name="TViewModel"/> that the navigator constructs, owns and initializes with
+    /// <paramref name="input"/>, like <see cref="NavigationTarget.Create{T, TInput}(TInput)"/>.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    /// <typeparam name="TInput">The input type.</typeparam>
+    /// <param name="input">The input passed to <see cref="INavigationInitialize{TInput}.InitializeAsync"/>.</param>
+    /// <param name="options">The request's options.</param>
+    /// <param name="cancellationToken">Cancels the request before it commits.</param>
+    public ValueTask<NavigationResult<TContent>> PushAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
+        TInput input, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent, INavigationInitialize<TInput> =>
+        Run(NavigationOperation.Push, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
+
+    /// <summary>
+    /// Pushes a new <typeparamref name="TViewModel"/> that the navigator constructs and owns, and waits for a typed
+    /// result from it, like <see cref="PushForResult{TResult}"/> with <see cref="NavigationTarget.Create{T}()"/>. For
+    /// a target with input, pass <see cref="NavigationTarget.Create{T, TInput}(TInput)"/> to <see cref="PushForResult{TResult}"/>.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    /// <typeparam name="TResult">The result type.</typeparam>
+    public NavigationResultRequest<TContent, TResult> PushForResult<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TResult>(
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent =>
+        Core.Navigator.PushForResult<TContent, TResult>(Core, new ActivatedNavigationTarget<TViewModel>(), options, cancellationToken);
+
+    /// <summary>
+    /// Replaces the current entry with a new <typeparamref name="TViewModel"/> that the navigator constructs and
+    /// owns, like <see cref="ReplaceAsync(INavigationTarget{TContent}, NavigationRequestOptions?, CancellationToken)"/>
+    /// with <see cref="NavigationTarget.Create{T}()"/>.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    public ValueTask<NavigationResult<TContent>> ReplaceAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel>(
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent =>
+        Run(NavigationOperation.Replace, new ActivatedNavigationTarget<TViewModel>(), null, options, cancellationToken);
+
+    /// <summary>
+    /// Replaces the current entry with a new <typeparamref name="TViewModel"/> that the navigator constructs, owns
+    /// and initializes with <paramref name="input"/>.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    /// <typeparam name="TInput">The input type.</typeparam>
+    /// <param name="input">The input passed to <see cref="INavigationInitialize{TInput}.InitializeAsync"/>.</param>
+    /// <param name="options">The request's options.</param>
+    /// <param name="cancellationToken">Cancels the request before it commits.</param>
+    public ValueTask<NavigationResult<TContent>> ReplaceAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
+        TInput input, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent, INavigationInitialize<TInput> =>
+        Run(NavigationOperation.Replace, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
+
+    /// <summary>
+    /// Retires every entry and makes a new <typeparamref name="TViewModel"/>, which the navigator constructs and
+    /// owns, the root, like <see cref="ResetAsync(INavigationTarget{TContent}, NavigationRequestOptions?, CancellationToken)"/>
+    /// with <see cref="NavigationTarget.Create{T}()"/>.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    public ValueTask<NavigationResult<TContent>> ResetAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel>(
+        NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent =>
+        Run(NavigationOperation.Reset, new ActivatedNavigationTarget<TViewModel>(), null, options, cancellationToken);
+
+    /// <summary>
+    /// Retires every entry and makes a new <typeparamref name="TViewModel"/>, which the navigator constructs, owns
+    /// and initializes with <paramref name="input"/>, the root.
+    /// </summary>
+    /// <typeparam name="TViewModel">The content type to construct; its constructor parameters come from the entry's service provider.</typeparam>
+    /// <typeparam name="TInput">The input type.</typeparam>
+    /// <param name="input">The input passed to <see cref="INavigationInitialize{TInput}.InitializeAsync"/>.</param>
+    /// <param name="options">The request's options.</param>
+    /// <param name="cancellationToken">Cancels the request before it commits.</param>
+    public ValueTask<NavigationResult<TContent>> ResetAsync<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TViewModel, TInput>(
+        TInput input, NavigationRequestOptions? options = null, CancellationToken cancellationToken = default)
+        where TViewModel : class, TContent, INavigationInitialize<TInput> =>
+        Run(NavigationOperation.Reset, new ActivatedInputNavigationTarget<TViewModel, TInput>(input), null, options, cancellationToken);
 
     /// <summary>Retires every retained entry. The current entry stays.</summary>
     public ValueTask<NavigationResult<TContent>> ClearHistoryAsync(NavigationRequestOptions? options = null,

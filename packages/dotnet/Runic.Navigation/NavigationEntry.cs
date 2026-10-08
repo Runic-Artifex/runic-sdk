@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Runic.Navigation;
 
@@ -20,6 +21,14 @@ public interface INavigationEntry
 
     /// <summary>Gets the entry's current state.</summary>
     NavigationEntryState State { get; }
+
+    /// <summary>
+    /// Gets the entry's service provider: its own service scope when the navigator created one
+    /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>), otherwise the navigator's
+    /// <see cref="RunicNavigator.Services"/>, otherwise an empty provider. After an entry with its own scope retires,
+    /// resolving from it throws <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    IServiceProvider Services { get; }
 }
 
 /// <summary>One entry of a navigation region: its stable id, content, ownership and state.</summary>
@@ -45,6 +54,9 @@ public sealed class NavigationEntry<TContent> : INavigationEntry where TContent 
     /// <summary>Gets the entry's current state.</summary>
     public NavigationEntryState State => Core.State;
 
+    /// <inheritdoc cref="INavigationEntry.Services" />
+    public IServiceProvider Services => Core.Services;
+
     /// <inheritdoc />
     public override string ToString() => $"{Id.Value}:{Core.ContentTypeName} ({State})";
 }
@@ -66,8 +78,40 @@ public sealed class NavigationEntryContext
     /// <summary>Gets the model context that commits navigation state.</summary>
     public IRunicModelContext ModelContext => _entry.Region.Navigator.ModelContext;
 
-    /// <summary>Gets the window's service provider, or <see langword="null"/> when the navigator has none.</summary>
-    public IServiceProvider? Services => _entry.Region.Navigator.Services;
+    /// <summary>
+    /// Gets the entry's service provider: its own service scope when the navigator created one
+    /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>), otherwise the navigator's
+    /// <see cref="RunicNavigator.Services"/>, otherwise an empty provider. It is the provider
+    /// <see cref="INavigationEntry.Services"/> returns. After an entry with its own scope retires, resolving from it
+    /// throws <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    public IServiceProvider Services => _entry.Services;
+
+    /// <summary>
+    /// Leaves this entry without a result. What happens depends on the entry's state:
+    /// <list type="bullet">
+    /// <item><description>
+    /// Current, pushed with <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/>: the request ends
+    /// <see cref="NavigationCompletion{TResult}.Dismissed"/> at once, then the entry goes back like
+    /// <see cref="CompleteAsync{TResult}"/>, which may leave the region empty. This is the path of a cancelled
+    /// caller token: if that Back is rejected, the request stays dismissed and the entry stays.
+    /// </description></item>
+    /// <item><description>
+    /// Current, without an open result request: goes back from the entry, which may leave the region empty.
+    /// </description></item>
+    /// <item><description>
+    /// Pending, because the push that creates it has not committed (for example, called from its own
+    /// <see cref="INavigationInitialize.InitializeAsync"/>): dismisses its request, cancels that push, which ends
+    /// <see cref="NavigationRejection.Cancelled"/>, and returns that rejection at once without awaiting the push.
+    /// The hook's token is cancelled.
+    /// </description></item>
+    /// <item><description>Retained: dismisses its request and leaves the entry in place. Returns <see cref="NavigationRejection.NotCurrent"/>.</description></item>
+    /// <item><description>Retiring or retired: does nothing. Returns <see cref="NavigationRejection.NotCurrent"/>.</description></item>
+    /// </list>
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the Back before it commits. The dismissal of the request is not undone.</param>
+    public ValueTask<NavigationResult<object>> DismissAsync(CancellationToken cancellationToken = default) =>
+        NavigationResults.MapAsync<object>(_entry.Region.Navigator.Dismiss(_entry, cancellationToken));
 
     /// <summary>
     /// Goes back from this entry. The request expects this entry to be current, so a retained or
@@ -167,6 +211,25 @@ internal sealed class NavigationEntryCore
     // The PushForResult request that pushed this entry; set at admission, before any hook runs.
     public NavigationResultRequestCore? ResultRequest { get; set; }
 
+    // The transition that pushes this pending entry; set at admission.
+    public NavigationTransition? Transition { get; set; }
+
+    // The entry's service scope (CreateEntryScopes), set under the gate together with the
+    // created content and taken by retirement step 4.
+    public IServiceScope? Scope { get; set; }
+
+    // Read without the gate: the scope is published once, and its provider stays valid
+    // (throwing ObjectDisposedException) after retirement disposed it.
+    private IServiceProvider? _scopeServices;
+
+    public IServiceProvider Services => Volatile.Read(ref _scopeServices) ?? Region.Navigator.Services ?? EmptyServiceProvider.Instance;
+
+    public void PublishScope(IServiceScope scope)
+    {
+        Scope = scope;
+        Volatile.Write(ref _scopeServices, scope.ServiceProvider);
+    }
+
     public NavigationEntryState State => Phase switch
     {
         NavigationEntryPhase.Pending => NavigationEntryState.Pending,
@@ -184,4 +247,11 @@ internal sealed class NavigationEntryCore
         if (_typedView is null || typeof(T) != typeof(object)) _typedView = view;
         return view;
     }
+}
+
+// The provider of a navigator without Services.
+internal sealed class EmptyServiceProvider : IServiceProvider
+{
+    public static readonly EmptyServiceProvider Instance = new();
+    public object? GetService(Type serviceType) => null;
 }
