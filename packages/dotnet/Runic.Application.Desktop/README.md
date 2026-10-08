@@ -73,16 +73,24 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
-  presentation's `INativePickerOwner`. Pass it to a platform provider, such as
-  `WindowsPlatformProvider.CreateFileDialogs(owner)`,
-  `LinuxPlatformProvider.CreateFileDialogs(owner)`,
-  `Gtk4PlatformProvider.CreatePortalWindowOwner(owner)` or
-  `MacOSPlatformProvider.CreateTextClipboard(owner)`; no custom adapter is
-  needed. It runs provider callbacks on the window's native thread and becomes
-  unavailable when the window closes or the surface replaces it. An
-  installed-browser presentation has no native owner, so it reports
-  `IsAvailable == false`. Applications that open a `DesktopWindow` themselves
-  create one with `new DesktopNativeOwner(window)`.
+  presentation's `INativePickerOwner`. Pass it to the platform provider that
+  matches the window's backend; no custom adapter is needed:
+  - Windows: `WindowsPlatformProvider.CreateFileDialogs(owner)`.
+  - macOS: `MacOSPlatformProvider.CreateFileDialogs(owner)`.
+  - Linux with the default GTK 3 backend:
+    `LinuxPlatformProvider.CreateFileDialogs(owner)`.
+  - Linux with GTK 4:
+    `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`.
+    `LinuxPlatformProvider` parents dialogs through GTK 3, so do not use it
+    with a GTK 4 window.
+
+  The owner runs provider callbacks on the window's native thread and becomes
+  unavailable when the window closes or the surface replaces it. A presentation
+  without native dispatch still has an owner, but it reports
+  `IsAvailable == false`. Examples are an installed browser after an
+  embedded-window fallback, or a custom host without a native handle.
+  Applications that open a `DesktopWindow` themselves create one with
+  `new DesktopNativeOwner(window)`.
 - `DesktopBridgeTransport` connects a `DesktopSurface` to a
   `WindowContentSession` directly, for applications that compose a surface
   themselves.

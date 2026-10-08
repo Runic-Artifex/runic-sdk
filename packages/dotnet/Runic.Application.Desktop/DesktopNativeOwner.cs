@@ -6,11 +6,14 @@ namespace Runic.Application.Views.Desktop;
 /// <summary>Binds native platform services to one open embedded Desktop window.</summary>
 /// <remarks>
 /// Pass the owner to a platform provider, for example <c>WindowsPlatformProvider.CreateFileDialogs(owner)</c>,
-/// <c>LinuxPlatformProvider.CreateFileDialogs(owner)</c> or <c>Gtk4PlatformProvider.CreatePortalWindowOwner(owner)</c>.
+/// <c>LinuxPlatformProvider.CreateFileDialogs(owner)</c> with the default GTK 3 backend, or
+/// <c>PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))</c> with GTK 4
+/// (<c>LinuxPlatformProvider</c> parents through GTK 3 and must not be used with a GTK 4 window).
 /// The owner belongs to the <see cref="DesktopWindow"/> it was created for: it becomes unavailable when that window
 /// closes or the surface opens a replacement, and a replacement window needs a new owner. The native handle is
-/// passed only to callbacks running on the window's native thread and must not outlive them. Installed-browser
-/// presentations have no native owner, so <see cref="IsAvailable"/> is <see langword="false"/> for them.
+/// passed only to callbacks running on the window's native thread and must not outlive them.
+/// <see cref="IsAvailable"/> is <see langword="false"/> for any window without native dispatch, for example an
+/// installed-browser presentation or a custom window host without a native handle.
 /// Create and dispose owner-bound services while the window is open.
 /// </remarks>
 public sealed class DesktopNativeOwner : INativePickerOwner

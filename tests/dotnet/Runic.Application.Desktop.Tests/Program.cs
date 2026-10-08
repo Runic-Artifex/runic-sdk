@@ -21,6 +21,8 @@ await using (var host = await DesktopHost.StartAsync())
 }
 await NativeOwnerFollowsOnlyItsOpenEmbeddedWindow();
 await OpenedWindowExposesItsNativeOwner();
+await CancelledQueuedOwnerWorkReportsCancellation();
+await PresentationWithoutNativeDispatchHasAnUnavailableOwner();
 Console.WriteLine("Runic.Application.Desktop host adapter passed.");
 
 static async Task GeneratedCollectionDeliveryPreservesPendingFrames(DesktopHost host)
@@ -248,6 +250,85 @@ static async Task OpenedWindowExposesItsNativeOwner()
         "The opened Desktop window did not expose one available native owner for its presentation.");
 }
 
+static async Task CancelledQueuedOwnerWorkReportsCancellation()
+{
+    var factory = new NativeDispatchFactory();
+    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+    await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") });
+    var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+    var owner = new DesktopNativeOwner(window);
+    var ran = false;
+
+    // Cancelled while queued on an open window: the caller cancelled, the owner did not close.
+    factory.Hosts[^1].HoldDispatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var queued = owner.InvokeAsync(_ => ran = true, cancellation.Token).AsTask();
+        cancellation.Cancel();
+        factory.Hosts[^1].HoldDispatch!.SetResult();
+        await RequireCancelledAsync(queued, "Cancelled queued owner work on an open window");
+    }
+
+    // Cancelled and closed while queued: cancellation still wins over the owner closure.
+    factory.Hosts[^1].HoldDispatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var queued = owner.InvokeAsync(_ => ran = true, cancellation.Token).AsTask();
+        cancellation.Cancel();
+        await window.CloseAsync();
+        factory.Hosts[^1].HoldDispatch!.SetResult();
+        await RequireCancelledAsync(queued, "Cancelled queued owner work on a closed window");
+    }
+    Require(!ran, "Cancelled owner work ran its callback.");
+
+    static async Task RequireCancelledAsync(Task queued, string subject)
+    {
+        try
+        {
+            await queued.WaitAsync(TimeSpan.FromSeconds(5));
+            throw new InvalidOperationException($"{subject} completed.");
+        }
+        catch (OwnerClosedException)
+        {
+            throw new InvalidOperationException($"{subject} reported OwnerClosedException instead of cancellation.");
+        }
+        catch (OperationCanceledException) { }
+    }
+}
+
+// A presentation without native dispatch, such as an installed browser after an embedded-window fallback,
+// still exposes an owner, but the owner is unavailable and refuses native work.
+static async Task PresentationWithoutNativeDispatchHasAnUnavailableOwner()
+{
+    var services = new ServiceCollection();
+    services.AddScoped<OrderedCollectionModel>();
+    services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+        _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+    await using var provider = services.BuildServiceProvider();
+    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+    {
+        WindowHostFactory = new NativeDispatchFactory { SupportsDispatch = false },
+        WaitForConnection = false,
+    });
+    DesktopBridgeWindow<OrderedCollectionModel>? bridge = null;
+    await using var window = await provider.OpenDesktopWindowAsync<ProbeWindow, OrderedCollectionModel>(host,
+        new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+        owner => { bridge = owner; return new ProbeWindow(owner); },
+        new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+    var owner = bridge!.NativeOwner;
+    Require(bridge.Presentation.IsOpen && ReferenceEquals(owner.Window, bridge.Presentation),
+        "A presentation without native dispatch did not expose its owner.");
+    Require(!owner.IsAvailable && !owner.CheckAccess(), "An owner without native dispatch reported itself available.");
+    var ran = false;
+    try
+    {
+        await owner.InvokeAsync(_ => ran = true);
+        throw new InvalidOperationException("An owner without native dispatch ran native work.");
+    }
+    catch (OwnerClosedException) { }
+    Require(!ran, "An owner without native dispatch ran its callback.");
+}
+
 static void Require(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
@@ -322,10 +403,11 @@ sealed class ProbeWindow(DesktopBridgeWindow<OrderedCollectionModel> owner)
 sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 {
     public List<NativeDispatchHost> Hosts { get; } = [];
+    public bool SupportsDispatch { get; init; } = true;
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
-        var host = new NativeDispatchHost();
+        var host = new NativeDispatchHost { SupportsNativeDispatch = SupportsDispatch };
         Hosts.Add(host);
         return host;
     }
@@ -341,7 +423,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost
     public event EventHandler? Closed;
     public bool IsOpen => _open;
     public nint NativeHandle => _open ? Handle : 0;
-    public bool SupportsNativeDispatch => true;
+    public bool SupportsNativeDispatch { get; init; } = true;
     public bool CheckNativeAccess() => _onNativeThread;
     public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
     {
