@@ -1080,10 +1080,11 @@ internal static partial class NavigationTests
         public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => inner.InvokeAsync(turn, cancellationToken);
         public Task<T> RunHookAsync<T>(Func<Task<T>> hook, CancellationToken cancellationToken) => inner.RunHookAsync(hook, cancellationToken);
 
+        // The documented order: the token fires before the inner context rejects its queued work.
         public async ValueTask DisposeAsync()
         {
-            await inner.DisposeAsync();
             await _closed.CancelAsync();
+            await inner.DisposeAsync();
         }
     }
 

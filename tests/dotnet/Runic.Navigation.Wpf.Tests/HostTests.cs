@@ -208,7 +208,7 @@ internal static class HostTests
             .AddTransient<ContentViewModel>()
             .AddSingleton<INotifyPropertyChanged>(serviceNotifier)
             .AddRunicWpfNavigation(options => options.MapView<ContentViewModel, ContentView>().MapView<PlainContentViewModel, PlainContentView>()
-                .MapView<NotifyingViewModel, NotifyingView>().MapView<InterfaceOnlyViewModel, InterfaceOnlyView>())
+                .MapView<NotifyingViewModel, NotifyingView>().MapView<InterfaceOnlyViewModel, InterfaceOnlyView>().MapView<OverloadedViewModel, OverloadedView>())
             .BuildServiceProvider();
         try
         {
@@ -239,6 +239,14 @@ internal static class HostTests
                         && !NavigationViewLocator.TakesContent(typeof(IDisposable), typeof(NotifyingViewModel))
                         && NavigationViewLocator.TakesContent(typeof(NotifyingBase), typeof(NotifyingViewModel)),
                     "The content parameter rule changed.");
+
+                var overloaded = new OverloadedViewModel();
+                Pump(region.PushAsync(NavigationTarget.Own<object>(overloaded)));
+                Require(ViewOf(host) is OverloadedView { Model: var chosen, Service: null } && ReferenceEquals(chosen, overloaded),
+                    "The longest constructor was chosen although its service isn't registered.");
+                var keyedFactory = NavigationViewLocator.CreateFactory(typeof(KeyedView), typeof(ContentViewModel));
+                Require(Throws<InvalidOperationException>(() => keyedFactory(new UnkeyedProvider(serviceNotifier), [new ContentViewModel()])),
+                    "A keyed parameter fell back to the unkeyed service on a provider without keyed services.");
             }
             finally { window.Close(); }
         }
@@ -371,4 +379,37 @@ internal sealed class InterfaceOnlyViewModel : NotifyingBase;
 internal sealed class InterfaceOnlyView(INotifyPropertyChanged? notifier = null) : Border
 {
     public INotifyPropertyChanged? Notifier { get; } = notifier;
+}
+
+internal interface IUnregisteredService;
+
+internal sealed class OverloadedViewModel;
+
+// The longer constructor needs a service nobody registered: the view is created with the shorter one.
+internal sealed class OverloadedView : Border
+{
+    public OverloadedView(OverloadedViewModel model) => Model = model;
+
+    public OverloadedView(OverloadedViewModel model, IUnregisteredService service)
+    {
+        Model = model;
+        Service = service;
+    }
+
+    public OverloadedViewModel Model { get; }
+
+    public IUnregisteredService? Service { get; }
+}
+
+internal sealed class KeyedView(ContentViewModel model, [FromKeyedServices("key")] INotifyPropertyChanged notifier) : Border
+{
+    public ContentViewModel Model { get; } = model;
+
+    public INotifyPropertyChanged Notifier { get; } = notifier;
+}
+
+// A provider without keyed services.
+internal sealed class UnkeyedProvider(object service) : IServiceProvider
+{
+    public object? GetService(Type serviceType) => serviceType.IsInstanceOfType(service) ? service : null;
 }

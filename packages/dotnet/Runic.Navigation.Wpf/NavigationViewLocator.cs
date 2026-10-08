@@ -30,7 +30,9 @@ internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map,
     // content's own type or one of its base classes, never object. Interface and object parameters, such as
     // INotifyPropertyChanged or IDisposable, come from the entry's services like every other parameter. A view
     // without such a parameter is created by ActivatorUtilities. Among constructors with a content parameter, the one
-    // marked [ActivatorUtilitiesConstructor] wins, then the one with the most parameters.
+    // marked [ActivatorUtilitiesConstructor] wins; otherwise, as with ActivatorUtilities, the longest one whose other
+    // parameters can all be satisfied (a registered service, keyed with [FromKeyedServices], or a default value),
+    // checked once against the first provider the view is created from. [ServiceKey] parameters aren't supported.
     [UnconditionalSuppressMessage("Trimming", "IL2067",
         Justification = "View types come from MapView, whose type parameter keeps public constructors, or the convention.")]
     [UnconditionalSuppressMessage("Trimming", "IL2070",
@@ -38,37 +40,74 @@ internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map,
     internal static ObjectFactory CreateFactory(Type viewType, Type contentType)
     {
         var candidates = viewType.GetConstructors()
-            .Select(constructor => (Constructor: constructor, Parameters: constructor.GetParameters()))
-            .Select(candidate => (candidate.Constructor, candidate.Parameters,
-                Index: Array.FindIndex(candidate.Parameters, parameter => TakesContent(parameter.ParameterType, contentType))))
-            .Where(candidate => candidate.Index >= 0)
-            .ToList();
-        if (candidates.Count == 0)
+            .Select(constructor => new Candidate(constructor, constructor.GetParameters(), contentType))
+            .Where(candidate => candidate.ContentIndex >= 0)
+            .OrderByDescending(candidate => candidate.Parameters.Length)
+            .ToArray();
+        if (candidates.Length == 0)
         {
             var factory = ActivatorUtilities.CreateFactory(viewType, Type.EmptyTypes);
             return (services, _) => factory(services, []);
         }
-        var chosen = candidates.FirstOrDefault(candidate => candidate.Constructor.IsDefined(typeof(ActivatorUtilitiesConstructorAttribute), false));
-        if (chosen.Constructor is null) chosen = candidates.MaxBy(candidate => candidate.Parameters.Length);
-        var (selected, parameters, contentIndex) = chosen;
+        Candidate? selected = candidates.FirstOrDefault(candidate =>
+            candidate.Constructor.IsDefined(typeof(ActivatorUtilitiesConstructorAttribute), false));
         return (services, arguments) =>
         {
+            var candidate = selected ??= candidates.FirstOrDefault(candidate => candidate.CanSatisfy(services)) ?? candidates[0];
+            var parameters = candidate.Parameters;
             var values = new object?[parameters.Length];
             for (var i = 0; i < parameters.Length; i++)
-                values[i] = i == contentIndex ? arguments![0] : Resolve(services, viewType, parameters[i]);
-            return selected.Invoke(BindingFlags.DoNotWrapExceptions, binder: null, values, culture: null);
+                values[i] = i == candidate.ContentIndex ? arguments![0] : Resolve(services, viewType, parameters[i]);
+            return candidate.Constructor.Invoke(BindingFlags.DoNotWrapExceptions, binder: null, values, culture: null);
         };
     }
 
     internal static bool TakesContent(Type parameterType, Type contentType) =>
         parameterType.IsClass && parameterType != typeof(object) && parameterType.IsAssignableFrom(contentType);
 
+    private sealed class Candidate(ConstructorInfo constructor, ParameterInfo[] parameters, Type contentType)
+    {
+        public ConstructorInfo Constructor { get; } = constructor;
+
+        public ParameterInfo[] Parameters { get; } = parameters;
+
+        public int ContentIndex { get; } = Array.FindIndex(parameters, parameter => TakesContent(parameter.ParameterType, contentType));
+
+        // Without IServiceProviderIsService the provider can't tell, and the candidate counts as satisfiable.
+        public bool CanSatisfy(IServiceProvider services)
+        {
+            var isService = services.GetService<IServiceProviderIsService>();
+            if (isService is null) return true;
+            var isKeyed = services.GetService<IServiceProviderIsKeyedService>();
+            for (var i = 0; i < Parameters.Length; i++)
+            {
+                var parameter = Parameters[i];
+                if (i == ContentIndex || parameter.HasDefaultValue) continue;
+                if (parameter.IsDefined(typeof(ServiceKeyAttribute), false)) return false;
+                var keyed = parameter.GetCustomAttribute<FromKeyedServicesAttribute>();
+                var available = keyed is null
+                    ? isService.IsService(parameter.ParameterType)
+                    : isKeyed?.IsKeyedService(parameter.ParameterType, keyed.Key) ?? false;
+                if (!available) return false;
+            }
+            return true;
+        }
+    }
+
     private static object? Resolve(IServiceProvider services, Type viewType, ParameterInfo parameter)
     {
-        var keyed = parameter.GetCustomAttribute<FromKeyedServicesAttribute>();
-        var service = keyed is not null && services is IKeyedServiceProvider keyedServices
-            ? keyedServices.GetKeyedService(parameter.ParameterType, keyed.Key)
-            : services.GetService(parameter.ParameterType);
+        if (parameter.IsDefined(typeof(ServiceKeyAttribute), false))
+            throw new NotSupportedException(
+                $"The view '{viewType}' takes a [ServiceKey] parameter '{parameter.Name}', which located views don't support.");
+        object? service;
+        if (parameter.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyed)
+        {
+            if (services is not IKeyedServiceProvider keyedServices)
+                throw new InvalidOperationException(
+                    $"The view '{viewType}' takes the keyed service '{parameter.ParameterType}', but the entry's service provider doesn't support keyed services.");
+            service = keyedServices.GetKeyedService(parameter.ParameterType, keyed.Key);
+        }
+        else service = services.GetService(parameter.ParameterType);
         if (service is not null) return service;
         if (parameter.HasDefaultValue) return parameter.DefaultValue;
         throw new InvalidOperationException(

@@ -149,9 +149,11 @@ When none presents the content, the host logs event 1082 once per type.
   Interface and `object` parameters, such as `INotifyPropertyChanged` or
   `IDisposable`, and all other parameters come from the entry's services, also
   when the content implements them. When several constructors take the
-  content, the one marked `[ActivatorUtilitiesConstructor]` wins, then the
-  longest. A View without such a parameter is created with
-  `ActivatorUtilities`. The View's `DataContext` is the content unless the View
+  content, the one marked `[ActivatorUtilitiesConstructor]` wins, then, as
+  with `ActivatorUtilities`, the longest one whose other parameters are all
+  registered services (keyed with `[FromKeyedServices]`) or have default
+  values. `[ServiceKey]` parameters aren't supported. A View without a content
+  parameter is created with `ActivatorUtilities`. The View's `DataContext` is the content unless the View
   sets one.
 - `UseViewNamingConvention()` maps `FooViewModel` to `FooView`, then `FooPage`,
   in the same assembly, also from a `.ViewModels` namespace to `.Views`. When
