@@ -66,6 +66,7 @@ internal static class NavigationTests
         await ResultCallerCancelledAfterCommitAsync();
         await ResultCallerCancelledBackRejectedAsync();
         await ResultCallerCancelledThenPushRetiresAsync();
+        await ResultCallerCancelledDuringRetirementAsync();
         await ResultDismissalBackRejectedKeepsEntryAsync();
         await ResultDismissedOnCloseAsync();
         await SiblingGuardAwaitsResultAsync(close: false);
@@ -1519,6 +1520,36 @@ internal static class NavigationTests
             Require(dialog.Current is InitPage { Name: "second" } && dialog.History.Count == 0 && first.Disposed == 1,
                 $"Round {round}: the dismissed entry was retained ({dialog.History.Count} below the current entry).");
         }
+    }
+
+    // Caller cancellation is watched before the commit's departing entries retire, so a slow
+    // retirement does not delay the dismissal.
+    private static async Task ResultCallerCancelledDuringRetirementAsync()
+    {
+        await using var fixture = new Fixture();
+        var region = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        ParentPage? parent = null;
+        await Wait(region.PushAsync(NavigationTarget.Create<Page>(_ => parent = new ParentPage("parent", fixture.Navigator, NavigationChildRetention.ResetToRoot))));
+        var slow = new Page("slow");
+        await Wait(parent!.Child.PushAsync(NavigationTarget.Own(slow)));
+        var disposing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        slow.OnDispose = () => { disposing.TrySetResult(); return release.Task; };
+
+        using var cancel = new CancellationTokenSource();
+        var request = region.PushForResult<bool>(NavigationTarget.Own<Page>(new InitPage("asking")), cancellationToken: cancel.Token);
+        var transition = request.Transition.AsTask();
+        try
+        {
+            await Wait(disposing.Task); // committed; the reset child entry is retiring
+            await cancel.CancelAsync();
+            Require(await Wait(request.Completion) is NavigationCompletion<bool>.Dismissed && !transition.IsCompleted,
+                "Caller cancellation waited for the commit's retirement.");
+        }
+        finally { release.TrySetResult(); } // a failure must not leave disposal blocked
+        Require(await Wait(transition) is NavigationResult<Page>.Committed, "The push did not commit.");
+        await Wait(fixture.Navigator.WhenIdleAsync());
+        Require(region.Current == parent && slow.Disposed == 1, $"The cancelled request did not go back ({Names(region)}).");
     }
 
     // The accepted edge: the caller cancels while a push over the entry is already in its commit

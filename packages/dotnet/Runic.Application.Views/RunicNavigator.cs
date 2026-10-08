@@ -491,6 +491,17 @@ public sealed class RunicNavigator : IAsyncDisposable
                 Cancel(commit.Cancel);
                 if (transition.ResultDropped)
                     NavigationLog.NavigationResultDropped(Logger, null, transition.Region.ContentTypeName, transition.Region.Id);
+                // Before retirement, so caller cancellation takes effect at once. Guarded,
+                // so a cancellation callback that throws can't skip retirement.
+                if (transition.Pending?.ResultRequest is { } request)
+                {
+                    try { WatchCaller(request); }
+                    catch (Exception error)
+                    {
+                        NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
+                            "None", "Cancel", BridgeTelemetry.ErrorType(error));
+                    }
+                }
                 List<NavigationEntryId> retired = [];
                 foreach (var entry in commit.Retire)
                 {
@@ -502,16 +513,6 @@ public sealed class RunicNavigator : IAsyncDisposable
                     }
                 }
                 outcome = NavigationOutcome.Commit(commit.Current, retired);
-                // After retirement, so a cancellation callback that throws can't skip it.
-                if (transition.Pending?.ResultRequest is { } request)
-                {
-                    try { WatchCaller(request); }
-                    catch (Exception error)
-                    {
-                        NavigationLog.NavigationEntryCleanupFailed(Logger, error, transition.Region.ContentTypeName, transition.Region.Id,
-                            "None", "Cancel", BridgeTelemetry.ErrorType(error));
-                    }
-                }
             }
             else if (transition.Pending is { } pending)
             {
