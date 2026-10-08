@@ -181,12 +181,6 @@ A failed step is logged as event 1064.
   reads it in `CanExecute`, such as `NavigationHost`'s `BrowseBack` in
   Runic.Navigation.Wpf, is disabled before the Back call returns, so a double
   click pops once.
-- Known limitation: the ReactiveUI adapter's Back command passes a cancellable
-  token and updates `CanExecute` through its output scheduler, so a second
-  Back through it while a guard asks supersedes the first: the first confirm
-  closes and a second one opens. History and edits stay intact. Joining such
-  Backs is tracked in
-  [#147](https://github.com/Runic-Artifex/runic-sdk/issues/147).
 - A dialog answers its guard with `CompleteAsync` or `DismissAsync`. Code run
   from the confirm dialog that awaits `BackAsync()` on the guarded region
   before answering joins the Back that waits for that answer, so it doesn't

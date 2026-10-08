@@ -329,6 +329,8 @@ region's content type:
 
 The committed `Current` selects the initial item. User selection requests a
 borrowed Replace, so it runs departure guards and builds no Back history.
+The core serializes a region's guards: if a cancelled hook ignores its token,
+the next choice waits for that hook to finish.
 Vetoes, failures and cancellation restore the committed selection; a late
 superseded response cannot restore an older choice. Programmatic navigation
 also updates selection. Selecting the current item cancels an outstanding

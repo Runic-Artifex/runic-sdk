@@ -48,6 +48,11 @@ internal static class SelectorTests
         var middle = new Page("middle");
         var last = new Page("last");
         var region = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Borrow<Page>(home));
+        var committed = new List<Page?>();
+        region.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(region.Current)) committed.Add(region.Current);
+        };
         var tabs = new TabControl { ItemsSource = new Page[] { home, middle, last } };
         NavigationSelector.SetRegion(tabs, region);
         var window = ShowWindow(tabs, scope => AddTemplates(scope, typeof(Page)));
@@ -56,11 +61,16 @@ internal static class SelectorTests
             tabs.SelectedItem = middle;
             PumpUntil(() => calls == 1, "the first selection guard");
             tabs.SelectedItem = last;
+            Require(tabs.SelectedItem == last && region.Current == home && calls == 1,
+                "Selecting the latest tab bypassed the still-running guard or lost the user's choice.");
+            // The shared engine serializes a region's guards. A superseded hook can ignore its
+            // token, but the next transition waits for it rather than running another guard concurrently.
+            first.SetResult(true);
             PumpUntil(() => region.Current == last && !region.IsTransitioning, "the latest selected tab");
-            first.SetResult(true); // A superseded consumer hook ignores its token and answers late.
             Pump(fixture.Navigator.WhenIdleAsync().AsTask());
             Require(tabs.SelectedItem == last && region.Current == last && !region.CanGoBack,
                 "A late superseded selection overwrote the latest tab or built history.");
+            Require(committed.SequenceEqual([last]) && calls == 2, "The superseded tab committed or its guard overlapped the next one.");
             Require(fixture.Logs.Count(1087) == 0, "Ordinary selection supersession was logged as an exception.");
         }
         finally { first.TrySetResult(false); window.Close(); }
