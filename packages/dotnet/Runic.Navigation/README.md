@@ -85,6 +85,7 @@ context for the window's session.
 | `BackAsync` | The current entry retires, and the top retained entry resumes. With fewer than two entries the request is `Rejected(NoHistory)`. |
 | `BackToAsync(id)` | Every entry above the target retires, and the target resumes. |
 | `ReplaceAsync` | The current entry retires, and the history is unchanged. |
+| `ReplaceBorrowedAsync` on `INavigationRegion` | A host selects an existing model without knowing the generic content type. The model is type-checked, borrowed, and replaced through the same guards and engine. |
 | `ResetAsync` | Every entry retires, and the new entry becomes the root. |
 | `ClearHistoryAsync` | The retained entries retire, and the current entry stays. |
 | `ClearAsync` | Every entry retires, and the region becomes empty. |
@@ -180,12 +181,6 @@ A failed step is logged as event 1064.
   reads it in `CanExecute`, such as `NavigationHost`'s `BrowseBack` in
   Runic.Navigation.Wpf, is disabled before the Back call returns, so a double
   click pops once.
-- Known limitation: the ReactiveUI adapter's Back command passes a cancellable
-  token and updates `CanExecute` through its output scheduler, so a second
-  Back through it while a guard asks supersedes the first: the first confirm
-  closes and a second one opens. History and edits stay intact. Joining such
-  Backs is tracked in
-  [#147](https://github.com/Runic-Artifex/runic-sdk/issues/147).
 - A dialog answers its guard with `CompleteAsync` or `DismissAsync`. Code run
   from the confirm dialog that awaits `BackAsync()` on the guarded region
   before answering joins the Back that waits for that answer, so it doesn't

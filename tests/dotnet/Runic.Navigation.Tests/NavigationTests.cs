@@ -1281,6 +1281,25 @@ internal static partial class NavigationTests
         var clear = await Wait(view.ClearAsync());
         Require(clear is NavigationResult<object>.Committed { Current: null } && view.Current is null && view.CurrentEntry is null,
             $"The non-generic Clear gave {clear}.");
+        var selected = new Page("selected");
+        Require(await Wait(view.ReplaceBorrowedAsync(home)) is NavigationResult<object>.Committed,
+            "A host could not select borrowed content in a typed region.");
+        home.Guard = (_, _) => ValueTask.FromResult(false);
+        Require(await Wait(view.ReplaceBorrowedAsync(selected)) is NavigationResult<object>.Rejected { Reason: NavigationRejection.Guard }
+            && region.Current == home, "A host selection bypassed the typed region's guard.");
+        home.Guard = null;
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Require(await Wait(view.ReplaceBorrowedAsync(selected, cancellationToken: cancellation.Token))
+            is NavigationResult<object>.Rejected { Reason: NavigationRejection.Cancelled }, "A host selection ignored cancellation.");
+        Require(await Wait(view.ReplaceBorrowedAsync(selected, new() { ExpectedCurrent = homeEntry!.Id }))
+            is NavigationResult<object>.Rejected { Reason: NavigationRejection.NotCurrent }, "A host selection ignored a stale entry expectation.");
+        try { await view.ReplaceBorrowedAsync(new object()); throw new InvalidOperationException("An incompatible host selection was accepted."); }
+        catch (ArgumentException) { }
+        Require(await Wait(view.ReplaceBorrowedAsync(selected)) is NavigationResult<object>.Committed { Current.Ownership: NavigationOwnership.Borrowed }
+            && region.Current == selected && !view.CanGoBack, "A host selection changed borrowing or built history.");
+        await Wait(view.ClearAsync());
+        Require(home.Disposed == 0 && selected.Disposed == 0, "The host-neutral borrow operation disposed its caller's content.");
         lock (changed)
             Require(changed.Contains(nameof(INavigationRegion.Current)) && changed.Contains(nameof(INavigationRegion.CanGoBack)),
                 $"The non-generic view raised {string.Join(", ", changed)}.");

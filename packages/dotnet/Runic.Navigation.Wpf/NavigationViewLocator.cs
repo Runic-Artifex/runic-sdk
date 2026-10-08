@@ -8,7 +8,7 @@ namespace Runic.Navigation.Wpf;
 
 // The locator AddRunicWpfNavigation registers: MapView pairs first, by the content type and then its base
 // types, then the naming convention when enabled. Views are created with ActivatorUtilities from the entry's
-// services, which are the entry scope when the navigator creates one.
+// services, which are the entry scope when the navigator creates one, or the provider supplied by ViewHost.
 [Experimental(RunicNavigator.DiagnosticId)]
 internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map, bool convention, IReadOnlyList<Assembly>? viewAssemblies = null)
     : INavigationViewLocator
@@ -19,11 +19,18 @@ internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map,
     public FrameworkElement? ResolveView(INavigationEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        var contentType = entry.Content.GetType();
+        return ResolveView(entry.Content, entry.Services);
+    }
+
+    public FrameworkElement? ResolveView(object content, IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        ArgumentNullException.ThrowIfNull(services);
+        var contentType = content.GetType();
         var viewType = _resolved.GetOrAdd(contentType, Find);
         if (viewType is null) return null;
         var factory = _factories.GetOrAdd((viewType, contentType), static key => CreateFactory(key.View, key.Content));
-        return (FrameworkElement)factory(entry.Services, [entry.Content]);
+        return (FrameworkElement)factory(services, [content]);
     }
 
     // The content goes to the first constructor parameter whose type is a class the content can be assigned to: the

@@ -38,13 +38,16 @@ internal static class NavigationPresenters
         if (content is UIElement) return presenter;
         var template = FindTemplate(resourceScope, content.GetType());
         if (template is null)
-        {
-            bool first;
-            lock (MissingGate) first = MissingLogged.Add(content.GetType());
-            if (first) WpfNavigationLog.ViewNotFound(WpfNavigationLog.For(services), WpfNavigationLog.TypeName(content.GetType()));
-        }
+            LogMissing(services, content.GetType());
         else if (explicitTemplate) presenter.ContentTemplate = template;
         return presenter;
+    }
+
+    internal static void LogMissing(IServiceProvider? services, Type contentType)
+    {
+        bool first;
+        lock (MissingGate) first = MissingLogged.Add(contentType);
+        if (first) WpfNavigationLog.ViewNotFound(WpfNavigationLog.For(services), WpfNavigationLog.TypeName(contentType));
     }
 
     // The implicit template on the content type's base-type chain, as ContentPresenter looks it up. A template keyed

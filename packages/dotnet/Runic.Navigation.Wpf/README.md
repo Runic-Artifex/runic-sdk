@@ -11,6 +11,8 @@ is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 - `NavigationHost`, a `ContentControl` that presents a region's current entry.
 - `NavigationDialogHost`, which shows each entry of a region in its own owned
   dialog window.
+- `NavigationSelector.Region`, which connects a single-selection control to
+  a region, and `ViewHost`, which presents plain content without navigation.
 - `AddRunicWpfNavigation()`, which registers the navigator on the dispatcher.
 
 The package targets `net10.0-windows` and isn't trimmable, because WPF isn't.
@@ -313,6 +315,64 @@ The guard runs on the UI thread, and so do its awaits. It doesn't pump. A
 guard may also call `MessageBox.Show` and return the answer, but other
 regions can then commit through the message box's nested loop.
 
+## Selecting tabs and other existing models
+
+The optional selector adapter uses the same engine with either Toolkit or
+ReactiveUI ViewModels. Bind a region to a `TabControl`, `ComboBox` or
+single-selection `ListBox` whose items are existing models assignable to the
+region's content type:
+
+```xml
+<TabControl ItemsSource="{Binding Tabs}"
+            rn:NavigationSelector.Region="{Binding Tab}" DisplayMemberPath="Title" />
+```
+
+The committed `Current` selects the initial item. User selection requests a
+borrowed Replace, so it runs departure guards and builds no Back history.
+The core serializes a region's guards: if a cancelled hook ignores its token,
+the next choice waits for that hook to finish.
+Vetoes, failures and cancellation restore the committed selection; a late
+superseded response cannot restore an older choice. Programmatic navigation
+also updates selection. Selecting the current item cancels an outstanding
+choice, and deselection alone does not clear navigation. Clear the region
+explicitly to make it empty. The items collection should contain the current
+model. Multiple selection is not supported.
+
+A `TabControl` with no application content template gets a default template
+containing `NavigationHost`. It retains entry presentation, per-entry services
+and view lifetime semantics. Supplied templates and template selectors are
+preserved. Do not also navigate from a `SelectedItem` property setter: the
+adapter owns that coordination. On unload it detaches handlers and cancels its
+pending request; on reload it reads the committed region again. The adapter
+never owns the items or closes the region.
+
+## Plain content without navigation
+
+For content with no entry, guard or navigation lifetime, use `ViewHost`:
+
+```xml
+<rn:ViewHost Content="{Binding Inspector}" Services="{Binding ViewServices}" />
+```
+
+`ViewServices` is the application's service provider. The host asks its own
+`ViewLocator`, then the registered `INavigationViewLocator`, then implicit WPF
+templates. The registered `MapView`/naming-convention locator also constructs
+plain views, using the supplied provider for dependencies and the content for
+a constructor parameter of its class or a base class. `Services` is optional
+when using an explicit locator or implicit templates.
+
+Custom locators implement `ResolveView(object content, IServiceProvider services)`
+for plain content. Its default returns null, so an existing entry-only locator
+still works with navigation hosts and falls back for plain content. No fake
+entry or entry scope is created. `ViewHost` creates a fresh presentation when
+content changes or it reloads, clears stale content on construction failure,
+and never disposes the model or provider. The host manages its `Child`.
+
+Use `NavigationHost` for a navigation entry's lifecycle and per-entry services;
+use `ViewHost` when the application owns a plain model and its presentation.
+Both are WPF integrations; neither adds a second navigation engine or requires
+a particular MVVM framework.
+
 ## Threading
 
 `DispatcherModelContext` treats all UI-thread code as inside a model turn:
@@ -420,5 +480,6 @@ type name, `Runic.Navigation.Wpf.DispatcherModelContext`. Without an
 | 1084 | Warning | A posted turn was dropped because the context closed, and it has no handler. |
 | 1085 | Error | The `UnhandledTurnException` handler threw. |
 | 1086 | Warning | A dialog host was loaded outside a `Window` (once per host). |
+| 1087 | Error | A selector request or UI reconciliation threw. |
 
 Events up to 1089 are reserved for the package.

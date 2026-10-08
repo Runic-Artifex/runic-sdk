@@ -33,6 +33,10 @@ internal static partial class WpfNavigationLog
         Message = "A NavigationDialogHost was loaded outside a Window, so it can't own dialog windows; its region's entries get no windows. Logged once per host.")]
     internal static partial void DialogHostWithoutWindow(ILogger logger);
 
+    [LoggerMessage(EventId = 1087, EventName = "SelectionFailed", Level = LogLevel.Error,
+        Message = "A selector navigation request or reconciliation threw {ErrorType}.")]
+    internal static partial void SelectionFailed(ILogger logger, Exception? exception, string errorType);
+
     [LoggerMessage(EventId = 1085, EventName = "UnhandledTurnHandlerFailed", Level = LogLevel.Error,
         Message = "An UnhandledTurnException handler failed with {ErrorType}.")]
     internal static partial void UnhandledTurnHandlerFailed(ILogger logger, Exception? exception, string errorType);

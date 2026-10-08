@@ -43,6 +43,13 @@ internal static class Program
             Run("BrowseBack", HostTests.BrowseBack);
             Run("double BrowseBack, then Back from code", HostTests.DoubleBrowseBackThenBackFromCode);
             Run("unloaded host is collectable", HostTests.UnloadedHostIsCollectable);
+            Run("selector guard veto and external navigation", SelectorTests.GuardVetoAndExternalSelection);
+            Run("rapid selection and late guard", SelectorTests.RapidSelectionAndLateGuard);
+            Run("selector unload and remount", SelectorTests.UnloadCancelsAndRemounts);
+            Run("selecting current cancels without replacing", SelectorTests.SelectingCurrentCancelsWithoutReplacing);
+            Run("invalid selection restores and logs", SelectorTests.InvalidSelectionRestoresAndLogs);
+            Run("plain view location and borrowed lifetime", PlainViewHostTests.RegisteredLocationAndBorrowedLifetime);
+            Run("plain view location and failure", PlainViewHostTests.ExplicitLocationAndFailure);
             Run("dialog results", DialogTests.Results);
             Run("dialog guard veto", DialogTests.GuardVetoKeepsTheWindow);
             Run("nested dialogs", DialogTests.NestedDialogsCloseTopDown);
