@@ -55,6 +55,10 @@ public sealed class WindowContentSession : IDisposable
     // Ids from a custom source, checked for uniqueness. Random ids are not retained.
     private readonly HashSet<string>? _issuedIds;
     private bool _disposed;
+    // Released when the session is disposed, such as its navigator presentation binding.
+    // Held weakly: a link's owner keeps it alive, so a live session does not keep a
+    // navigator it once presented reachable.
+    private readonly List<WeakReference<IDisposable>> _disposalLinks = [];
 
     /// <summary>Creates the content session for one window.</summary>
     /// <param name="transport">The window's host transport.</param>
@@ -244,6 +248,33 @@ public sealed class WindowContentSession : IDisposable
     internal bool IsDisposed
     {
         get { lock (_gate) return _disposed; }
+    }
+
+    // Registers a release to run when the session is disposed, if the link is still
+    // alive then. The session holds the link weakly; the caller keeps it reachable for as
+    // long as it matters. Returns false, and registers nothing, when the session is
+    // already disposed.
+    internal bool TryLinkDisposal(IDisposable link)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return false;
+            _disposalLinks.RemoveAll(static reference => !reference.TryGetTarget(out _));
+            _disposalLinks.Add(new WeakReference<IDisposable>(link));
+            return true;
+        }
+    }
+
+    // Removes a link that no longer needs to run at disposal.
+    internal void UnlinkDisposal(IDisposable link)
+    {
+        lock (_gate)
+            _disposalLinks.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, link));
+    }
+
+    internal int DisposalLinkCount
+    {
+        get { lock (_gate) return _disposalLinks.Count; }
     }
 
     internal int DormantAttachmentCount
@@ -653,10 +684,13 @@ public sealed class WindowContentSession : IDisposable
     {
         IDisposable[] attachments;
         InteractionMountAttachment[] rootMounts;
+        IDisposable[] links;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
+            links = [.. _disposalLinks.Select(static reference => reference.TryGetTarget(out var link) ? link : null).OfType<IDisposable>()];
+            _disposalLinks.Clear();
             attachments = _activeEntries.Select(entry => entry.Attachment).OfType<IDisposable>()
                 .Concat(_dormantAttachments).ToArray();
             _activeEntries.Clear();
@@ -678,6 +712,7 @@ public sealed class WindowContentSession : IDisposable
         // Attachments release Views on the graph's context, so the context
         // leases are released only after every attachment has been disposed.
         var errors = new List<Exception>();
+        foreach (var link in links) Capture(link.Dispose, errors);
         foreach (var attachment in attachments) Capture(attachment.Dispose, errors);
         foreach (var attachment in rootMounts) Capture(attachment.Dispose, errors);
         // The operation router is window-owned, rather than presentation-owned:

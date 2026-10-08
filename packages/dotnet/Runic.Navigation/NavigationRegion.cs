@@ -9,6 +9,10 @@ namespace Runic.Navigation;
 /// </summary>
 /// <remarks>
 /// <see cref="INotifyPropertyChanged.PropertyChanged"/> is the region's event, with the same property names.
+/// The entry in a <see cref="NavigationResult{TContent}.Committed"/> returned by <see cref="BackAsync"/> or
+/// <see cref="ClearAsync"/> is a <see cref="NavigationEntry{TContent}"/> of <see cref="object"/>, a different
+/// instance from the typed entry in <see cref="CurrentEntry"/> and <see cref="History"/>. Compare entries by
+/// <see cref="INavigationEntry.Id"/>, not by reference.
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
 public interface INavigationRegion : INotifyPropertyChanged
@@ -35,9 +39,11 @@ public interface INavigationRegion : INotifyPropertyChanged
     bool IsTransitioning { get; }
 
     /// <summary>Retires the current entry and resumes the top retained entry.</summary>
+    /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
     ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
 
     /// <summary>Retires every entry. The region becomes empty.</summary>
+    /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
     ValueTask<NavigationResult<object>> ClearAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
 }
 

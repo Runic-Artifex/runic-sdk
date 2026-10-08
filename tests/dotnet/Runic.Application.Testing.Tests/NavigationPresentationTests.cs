@@ -18,6 +18,9 @@ internal static class NavigationPresentationTests
         SessionTeardownIsANoOpAfterDispose();
         await ForgetWaitsForDetachmentAsync();
         await PresentationBindsOncePerWindowAsync();
+        await ClosedNavigatorBindsNothingAsync();
+        await DisposedSessionIsNotRetainedAsync();
+        await LiveSessionDoesNotRetainNavigatorAsync();
         await ReconnectAndHotReloadLeaveEntriesAsync();
         await RuntimeDescriptorsObserveTheRegionAsync();
         GeneratedSlotContract();
@@ -166,6 +169,113 @@ internal static class NavigationPresentationTests
         next.Dispose();
         await window.Navigator.DisposeAsync();
         await window.Context.DisposeAsync();
+    }
+
+    // A closed navigator presents nothing: binding any session is silent, whether or not
+    // another session bound it before it closed, and no presentation is attached.
+    private static async Task ClosedNavigatorBindsNothingAsync()
+    {
+        await using var context = new RunicModelContext();
+        var closed = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        await closed.DisposeAsync();
+        Require(closed.IsClosed, "A disposed navigator is not closed.");
+        using (var firstTransport = new InMemoryViewTransport())
+        using (var first = new WindowContentSession(firstTransport, modelContext: context))
+        using (var secondTransport = new InMemoryViewTransport())
+        using (var second = new WindowContentSession(secondTransport, modelContext: context))
+        {
+            NavigationPresentationBinding.Bind(closed, first);
+            NavigationPresentationBinding.Bind(closed, second);
+            Require(NavigationPresentationBinding.BoundSession(closed) is null && first.DisposalLinkCount == 0 && second.DisposalLinkCount == 0,
+                "A closed navigator recorded a binding.");
+        }
+
+        var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        Require(!navigator.IsClosed, "A new navigator is closed.");
+        using var boundTransport = new InMemoryViewTransport();
+        using var bound = new WindowContentSession(boundTransport, modelContext: context);
+        NavigationPresentationBinding.Bind(navigator, bound);
+        Require(NavigationPresentationBinding.BoundSession(navigator) == bound && bound.DisposalLinkCount == 1,
+            "The live navigator did not bind the session.");
+        using var otherTransport = new InMemoryViewTransport();
+        using var other = new WindowContentSession(otherTransport, modelContext: context);
+        Require(Throws<InvalidOperationException>(() => NavigationPresentationBinding.Bind(navigator, other)),
+            "A second live session bound a live navigator.");
+        await navigator.DisposeAsync();
+        NavigationPresentationBinding.Bind(navigator, other);
+        NavigationPresentationBinding.Bind(navigator, bound);
+        Require(NavigationPresentationBinding.BoundSession(navigator) is null && bound.DisposalLinkCount == 0 && other.DisposalLinkCount == 0,
+            "Binding a closed navigator kept or recorded a binding.");
+    }
+
+    // Disposing a bound session detaches it, so the static binding table and the navigator
+    // do not keep a closed window's session reachable while the navigator lives on.
+    private static async Task DisposedSessionIsNotRetainedAsync()
+    {
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var session = BindAndDispose(navigator, context);
+        Collect(session);
+        Require(!session.IsAlive, "A disposed window session stayed reachable through its navigator binding.");
+
+        // The next session binds without a conflict.
+        using var transport = new InMemoryViewTransport();
+        using var next = new WindowContentSession(transport, modelContext: context);
+        NavigationPresentationBinding.Bind(navigator, next);
+        GC.KeepAlive(navigator);
+    }
+
+    // The reverse: a live session does not keep a navigator it presented reachable after
+    // the application disposes and drops it.
+    private static async Task LiveSessionDoesNotRetainNavigatorAsync()
+    {
+        await using var context = new RunicModelContext();
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport, modelContext: context);
+        var navigator = BindAndDisposeNavigator(session, context);
+        Collect(navigator);
+        Require(!navigator.IsAlive, "A live window session kept a disposed navigator reachable.");
+        Require(!session.IsDisposed, "The session did not stay live.");
+
+        // A session that presents several navigators in turn keeps no links to dead ones.
+        var second = BindAndDisposeNavigator(session, context);
+        Collect(second);
+        Require(!second.IsAlive, "A live window session kept a second disposed navigator reachable.");
+        var last = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        NavigationPresentationBinding.Bind(last, session);
+        Require(session.DisposalLinkCount == 1, $"The session keeps {session.DisposalLinkCount} disposal links, not 1.");
+        await last.DisposeAsync();
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference BindAndDisposeNavigator(WindowContentSession session, IRunicModelContext context)
+    {
+        var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        NavigationPresentationBinding.Bind(navigator, session);
+        Require(NavigationPresentationBinding.BoundSession(navigator) == session, "The navigator did not bind the session.");
+        navigator.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        return new WeakReference(navigator);
+    }
+
+    private static void Collect(WeakReference reference)
+    {
+        for (var attempt = 0; attempt < 10 && reference.IsAlive; attempt++)
+        {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference BindAndDispose(RunicNavigator navigator, IRunicModelContext context)
+    {
+        var transport = new InMemoryViewTransport();
+        var session = new WindowContentSession(transport, modelContext: context);
+        NavigationPresentationBinding.Bind(navigator, session);
+        session.Dispose();
+        transport.Dispose();
+        return new WeakReference(session);
     }
 
     private static async Task ReconnectAndHotReloadLeaveEntriesAsync()

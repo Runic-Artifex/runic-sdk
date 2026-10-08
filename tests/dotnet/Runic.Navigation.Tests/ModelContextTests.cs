@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+
 namespace Runic.Navigation.Tests;
 
 // The model context and its registry (moved from Runic.Application.Testing.Tests;
@@ -12,6 +15,107 @@ internal static class ModelContextTests
         await ConcurrentAcquisitionUsesOneOwner();
         await ShutdownRejectsQueuedTurnsAndWaitsForCurrentTurn();
         await PostedTurnDroppedByDisposalIsReported();
+        await ContextLogsUnderItsOwnCategory();
+        await LosingCandidateShutdownFailureIsLogged();
+    }
+
+    // RunicModelContext logs 1030-1033 through ILogger<RunicModelContext>, whose category
+    // moved with the type to Runic.Navigation.RunicModelContext.
+    private static async Task ContextLogsUnderItsOwnCategory()
+    {
+        var logs = new CategoryLog();
+        var context = new RunicModelContext(new Logger<RunicModelContext>(logs));
+        var ran = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Require(context.TryPost(() => throw new InvalidOperationException("turn")) && context.TryPost(ran.SetResult),
+            "The turns were rejected.");
+        await ran.Task.WaitAsync(TimeSpan.FromSeconds(10)); // turns run in order, so the failing one has run
+        await context.DisposeAsync();
+        var entry = logs.Entries.SingleOrDefault(entry => entry.Id == 1030);
+        Require(entry is { Category: "Runic.Navigation.RunicModelContext" } && entry.Error is InvalidOperationException,
+            $"1030 was not logged under Runic.Navigation.RunicModelContext: {string.Join(", ", logs.Entries)}");
+    }
+
+    // A racing Acquire that loses disposes its unused candidate. When that happens inside the
+    // candidate's own turn, the shutdown is observed in the background, and a failure is logged
+    // as 1033 to the candidate's logger: the Trace fallback for a context that is not a
+    // RunicModelContext.
+    private static async Task LosingCandidateShutdownFailureIsLogged()
+    {
+        var registry = RunicModelContextRegistry.Shared;
+        await using var winner = new RunicModelContext();
+        var model = new object();
+        var shutdown = new TaskCompletionSource();
+        var candidate = new ManualContext(shutdown.Task) { IsExecuting = true };
+        IRunicModelContextLease? winnerLease = null;
+        var listener = new CaptureListener();
+        Trace.Listeners.Add(listener);
+        try
+        {
+            using var lease = registry.Acquire(() =>
+            {
+                winnerLease = registry.Bind(winner, model);
+                return candidate;
+            }, model);
+            Require(lease.Context == winner && candidate.Disposed, "The losing candidate was not disposed in favour of the winner.");
+            shutdown.SetException(new IOException("shutdown"));
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (!listener.Contains("Releasing a model context failed with System.IO.IOException") && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+            Require(listener.Contains("Releasing a model context failed with System.IO.IOException"),
+                $"The losing candidate's shutdown failure was not logged: {listener.Text}");
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+            winnerLease?.Dispose();
+        }
+    }
+
+    private sealed record LogEntry(string Category, int Id, Exception? Error);
+
+    private sealed class CategoryLog : ILoggerFactory
+    {
+        private readonly List<LogEntry> _entries = [];
+        public IReadOnlyList<LogEntry> Entries { get { lock (_entries) return [.. _entries]; } }
+        public void AddProvider(ILoggerProvider provider) => throw new NotSupportedException();
+        public ILogger CreateLogger(string categoryName) => new Logger(this, categoryName);
+        public void Dispose() { }
+
+        private sealed class Logger(CategoryLog owner, string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                lock (owner._entries) owner._entries.Add(new(category, eventId.Id, exception));
+            }
+        }
+    }
+
+    private sealed class CaptureListener : TraceListener
+    {
+        private readonly System.Text.StringBuilder _text = new();
+        public string Text { get { lock (_text) return _text.ToString(); } }
+        public bool Contains(string value) => Text.Contains(value, StringComparison.Ordinal);
+        public override void Write(string? message) { lock (_text) _text.Append(message); }
+        public override void WriteLine(string? message) { lock (_text) _text.AppendLine(message); }
+    }
+
+    // A context whose shutdown completes when the test decides.
+    private sealed class ManualContext(Task shutdown) : IRunicModelContext
+    {
+        public bool IsExecuting { get; init; }
+        public bool Disposed { get; private set; }
+        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+        public bool TryPost(Action turn) => false;
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return new(shutdown);
+        }
     }
 
     private static async Task PostedTurnDroppedByDisposalIsReported()

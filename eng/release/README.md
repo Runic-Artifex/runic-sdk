@@ -22,9 +22,12 @@ releases and their evidence remain historical records.
    with the Shipped line it names. Then set `RunicPackageValidationBaselineVersion`
    in `eng/Versions.props` to the published version and delete the
    `CompatibilitySuppressions.xml` files, which describe breaks from the old baseline.
-   Remove `<RunicPackageValidationBaselineMissing>` from each package published for
-   the first time (for example `Runic.Navigation` after 0.7.0-preview.4), so its next
-   release is validated against this one.
+   Remove `<RunicPackageValidationBaselineMissing>` and `<RunicPackageFirstReleaseVersion>`
+   from each package published for the first time (for example `Runic.Navigation` after
+   0.7.0-preview.4), so its next release is validated against this one; the engineering
+   tests fail until you do. Also remove the RS0026 `SuppressMessage` attributes on
+   `IRunicModelContext.InvokeAsync` and `RunicModelContext.InvokeAsync` once their lines are in
+   `Runic.Navigation/PublicAPI.Shipped.txt`: the analyzer accepts shipped overloads.
 7. Refresh the docs catalog (see the end of this page).
 
 Full CI includes package/template consumers and native JIT/NativeAOT checks. The

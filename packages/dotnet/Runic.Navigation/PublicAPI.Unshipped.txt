@@ -196,6 +196,7 @@ Runic.Navigation.RunicModelContextRegistry.TryGet(object! model, out Runic.Navig
 [RUNICNAV001]Runic.Navigation.RunicNavigator.AttachPresentation(Runic.Navigation.INavigationPresentation! presentation) -> System.IDisposable!
 [RUNICNAV001]Runic.Navigation.RunicNavigator.CreateRegion<TContent>(object! owner, Runic.Navigation.INavigationTarget<TContent!>? initial = null, Runic.Navigation.NavigationRegionOptions? options = null) -> Runic.Navigation.NavigationRegion<TContent!>!
 [RUNICNAV001]Runic.Navigation.RunicNavigator.DisposeAsync() -> System.Threading.Tasks.ValueTask
+[RUNICNAV001]Runic.Navigation.RunicNavigator.IsClosed.get -> bool
 [RUNICNAV001]Runic.Navigation.RunicNavigator.ModelContext.get -> Runic.Navigation.IRunicModelContext!
 [RUNICNAV001]Runic.Navigation.RunicNavigator.RunicNavigator(Runic.Navigation.RunicNavigatorOptions! options) -> void
 [RUNICNAV001]Runic.Navigation.RunicNavigator.Services.get -> System.IServiceProvider?

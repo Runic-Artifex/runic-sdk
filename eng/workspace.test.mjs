@@ -166,4 +166,51 @@ test("package layouts describe shipped NuGet packages", () => {
   for (const name of Object.keys(packageLayouts)) assert.ok(shipped.has(name), name);
   assert.ok(packageLayouts["Runic.Navigation"].files.includes("lib/net10.0/Runic.Navigation.dll"));
   assert.ok(packageLayouts["Runic.Application"].includes.includes("tools/net10.0/Runic.Navigation.dll"));
+  assert.deepEqual(packageLayouts["Runic.Application"].exactDependencies, ["Runic.Navigation"]);
+});
+
+// SemVer 2 precedence: release > prerelease; prerelease identifiers compare numerically or by text.
+function compareVersions(left, right) {
+  const parse = version => {
+    const [core, prerelease] = version.split("+")[0].split(/-(.*)/s);
+    return { core: core.split(".").map(Number), prerelease: prerelease ? prerelease.split(".") : [] };
+  };
+  const a = parse(left), b = parse(right);
+  for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i];
+  if (!a.prerelease.length || !b.prerelease.length) return b.prerelease.length - a.prerelease.length;
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i++) {
+    const [x, y] = [a.prerelease[i], b.prerelease[i]];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const [nx, ny] = [/^\d+$/.test(x), /^\d+$/.test(y)];
+    if (nx && ny && Number(x) !== Number(y)) return Number(x) - Number(y);
+    if (nx !== ny) return nx ? -1 : 1;
+    if (x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+
+test("compareVersions orders releases and prereleases", () => {
+  assert.ok(compareVersions("0.7.0-preview.4", "0.7.0-preview.3") > 0);
+  assert.ok(compareVersions("0.7.0-preview.10", "0.7.0-preview.9") > 0);
+  assert.ok(compareVersions("0.7.0", "0.7.0-preview.9") > 0);
+  assert.ok(compareVersions("0.6.1", "0.7.0-preview.1") < 0);
+  assert.equal(compareVersions("0.7.0-preview.3", "0.7.0-preview.3"), 0);
+});
+
+// A package opts out of package validation only until its first release. Once the
+// validation baseline reaches that release, the opt-out would silently skip API
+// compatibility checks, so it must be removed (eng/release/README.md step 6).
+test("validation baseline opt-outs are only on packages newer than the baseline", () => {
+  const baseline = readFileSync(resolve(root, "eng/Versions.props"), "utf8")
+    .match(/<RunicPackageValidationBaselineVersion>([^<]+)</)?.[1]?.trim();
+  assert.ok(baseline, "RunicPackageValidationBaselineVersion was not found");
+  for (const p of workspace.nuget) {
+    const project = readFileSync(resolve(root, p.project), "utf8");
+    if (!/<RunicPackageValidationBaselineMissing>\s*true\s*</i.test(project)) continue;
+    const first = project.match(/<RunicPackageFirstReleaseVersion>([^<]+)</)?.[1]?.trim();
+    assert.ok(first, `${p.name} sets RunicPackageValidationBaselineMissing without RunicPackageFirstReleaseVersion`);
+    assert.ok(compareVersions(first, baseline) > 0,
+      `${p.name} was first released in ${first}, at or below the validation baseline ${baseline}; remove RunicPackageValidationBaselineMissing and RunicPackageFirstReleaseVersion`);
+  }
 });

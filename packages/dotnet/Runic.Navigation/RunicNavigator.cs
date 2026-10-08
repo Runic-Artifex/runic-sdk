@@ -116,6 +116,16 @@ public sealed class RunicNavigator : IAsyncDisposable
     }
 
     /// <summary>
+    /// Gets whether <see cref="DisposeAsync"/> has started. A closed navigator rejects requests as
+    /// <see cref="NavigationRejection.Closed"/>, throws <see cref="ObjectDisposedException"/> from <see cref="CreateRegion{TContent}"/>
+    /// and ignores <see cref="AttachPresentation"/>.
+    /// </summary>
+    public bool IsClosed
+    {
+        get { lock (Gate) return _closing; }
+    }
+
+    /// <summary>
     /// Creates a region owned by <paramref name="owner"/>. A region owned by the content of an owned
     /// entry is that entry's child and closes when it retires; other regions close when the navigator
     /// is disposed.
@@ -266,7 +276,8 @@ public sealed class RunicNavigator : IAsyncDisposable
     /// When owned content retires, after its child regions are closed and before the content is disposed,
     /// the navigator calls <see cref="INavigationPresentation.Forget"/> on each attached presentation,
     /// outside model turns. A presentation that throws is logged (event 1064, step <c>Forget</c>) and does
-    /// not skip the others. A presentation attached after the navigator started closing is ignored.
+    /// not skip the others. A presentation attached after the navigator started closing (<see cref="IsClosed"/>)
+    /// is ignored, and the returned <see cref="IDisposable"/> does nothing.
     /// </remarks>
     /// <param name="presentation">The presentation to attach.</param>
     /// <returns>An <see cref="IDisposable"/> that detaches the presentation.</returns>
@@ -281,6 +292,12 @@ public sealed class RunicNavigator : IAsyncDisposable
             _presentations.Add(attachment);
             return attachment;
         }
+    }
+
+    // The number of attached presentations; for tests.
+    internal int PresentationCount
+    {
+        get { lock (Gate) return _presentations.Count; }
     }
 
     // One attachment of a presentation; detaching removes only this attachment.

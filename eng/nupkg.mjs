@@ -42,10 +42,25 @@ export function nupkgFiles(file) {
     .sort();
 }
 
-// The package ids that the nuspec lists as dependencies, across all target frameworks.
-export function nupkgDependencies(file) {
+function nuspecText(file) {
   const nuspec = zipEntries(file).find(entry => !entry.name.includes("/") && entry.name.endsWith(".nuspec"));
   if (!nuspec) throw new Error(`${file} has no nuspec`);
-  const text = nuspec.read().toString("utf8");
-  return [...new Set([...text.matchAll(/<dependency\s+id="([^"]+)"/g)].map(([, id]) => id))].sort();
+  return nuspec.read().toString("utf8");
+}
+
+// The package ids that the nuspec lists as dependencies, across all target frameworks.
+export function nupkgDependencies(file) {
+  return [...new Set([...nuspecText(file).matchAll(/<dependency\s+id="([^"]+)"/g)].map(([, id]) => id))].sort();
+}
+
+// The version ranges of each dependency id, across all target frameworks.
+export function nupkgDependencyVersions(file) {
+  const versions = new Map();
+  for (const [element] of nuspecText(file).matchAll(/<dependency\s[^>]*>/g)) {
+    const id = /\sid="([^"]+)"/.exec(element)?.[1];
+    if (!id) continue;
+    const version = /\sversion="([^"]*)"/.exec(element)?.[1] ?? "";
+    versions.set(id, [...new Set([...(versions.get(id) ?? []), version])].sort());
+  }
+  return versions;
 }
