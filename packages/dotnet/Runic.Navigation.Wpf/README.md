@@ -320,7 +320,7 @@ regions can then commit through the message box's nested loop.
 The optional selector adapter uses the same engine with either Toolkit or
 ReactiveUI ViewModels. Bind a region to a `TabControl`, `ComboBox` or
 single-selection `ListBox` whose items are existing models assignable to the
-region's content type:
+region's content type and owned by the application or its container:
 
 ```xml
 <TabControl ItemsSource="{Binding Tabs}"
@@ -329,6 +329,12 @@ region's content type:
 
 The committed `Current` selects the initial item. User selection requests a
 borrowed Replace, so it runs departure guards and builds no Back history.
+Keep these items borrowed throughout their navigation lifetime. Do not use
+models from navigator-owned entries as selector items: retiring their owning
+entry can dispose the model while another borrowed entry still presents it.
+Each successful replacement creates a fresh entry, so a reusable model's
+`INavigationInitialize` hook runs for each entry. Keep persistent tab state in
+the model and avoid resetting it merely because it was selected again.
 The core serializes a region's guards: if a cancelled hook ignores its token,
 the next choice waits for that hook to finish.
 Vetoes, failures and cancellation restore the committed selection; a late

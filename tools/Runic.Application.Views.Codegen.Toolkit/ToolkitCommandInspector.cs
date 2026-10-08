@@ -1,4 +1,6 @@
+using System.CodeDom.Compiler;
 using System.Reflection;
+using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -40,7 +42,7 @@ public static class ToolkitCommandInspector
 
         return candidates.Any(candidate => candidate == typeof(IRelayCommand))
             ? Create(command, input: null, isAsync: false)
-            : null;
+            : IsGeneratedCancelCommand(command) ? Create(command, input: null, isAsync: false) : null;
     }
 
     /// <summary>
@@ -100,6 +102,52 @@ public static class ToolkitCommandInspector
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
             throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
         return new(command.Name[..^"Command".Length], input, isAsync);
+    }
+
+    // IncludeCancelCommand emits ICommand, not IRelayCommand. Its public
+    // generator metadata plus the attributed source and paired async property
+    // identify the parameterless cancellation contract without accepting an
+    // arbitrary ICommand whose input cannot be inferred. Keep executing the
+    // generated property: Toolkit owns CanBeCanceled and command-wide Cancel.
+    private static bool IsGeneratedCancelCommand(PropertyInfo command)
+    {
+        const string suffix = "CancelCommand";
+        if (command.PropertyType != typeof(ICommand)
+            || !command.Name.EndsWith(suffix, StringComparison.Ordinal)
+            || command.GetMethod is not { IsPublic: true, IsStatic: false }
+            || command.SetMethod is not null
+            || command.DeclaringType is not { } owner
+            || GeneratorVersion(command) is not { } version)
+            return false;
+
+        var name = command.Name[..^suffix.Length];
+        var sibling = owner.GetProperty(name + "Command", BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public);
+        if (sibling is null || GeneratorVersion(sibling) != version
+            || InspectContract(sibling) is not { IsAsync: true } contract)
+            return false;
+
+        return owner.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .Any(method => method.GetCustomAttribute<RelayCommandAttribute>(false) is { IncludeCancelCommand: true }
+                && CommandName(method.Name) == name
+                && typeof(Task).IsAssignableFrom(method.ReturnType)
+                && method.GetParameters() is var parameters
+                && parameters.Length == (contract.HasInput ? 2 : 1)
+                && parameters[^1].ParameterType == typeof(CancellationToken)
+                && (!contract.HasInput || parameters[0].ParameterType == contract.Input));
+    }
+
+    private static string? GeneratorVersion(PropertyInfo property) =>
+        property.GetCustomAttribute<GeneratedCodeAttribute>(false) is
+            { Tool: "CommunityToolkit.Mvvm.SourceGenerators.RelayCommandGenerator", Version.Length: > 0 } generated
+            ? generated.Version : null;
+
+    private static string CommandName(string methodName)
+    {
+        if (methodName.Length > 2 && methodName.StartsWith("On", StringComparison.Ordinal) && char.IsUpper(methodName[2]))
+            methodName = methodName[2..];
+        if (methodName.Length > "Async".Length && methodName.EndsWith("Async", StringComparison.Ordinal))
+            methodName = methodName[..^"Async".Length];
+        return methodName;
     }
 
     private static bool IsGeneric(Type candidate, Type definition) =>

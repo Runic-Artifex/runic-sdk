@@ -126,7 +126,9 @@ test('every executable application fixture runs in CI', () => {
   const linux = applicationFixtureCommands('Release', root, 'linux').map(([command, args]) => [command, ...args].join(' '));
   assert.ok(linux.some(line => line.startsWith('dotnet publish') && line.includes('ReactiveUi25AotProof.csproj')));
   assert.ok(linux.some(line => line.endsWith('/ReactiveUi25AotProof')));
-  assert.ok(applicationFixtureCommands('Release', root, 'win32').every(([, args]) => args[0] === 'run'));
+  const windows = applicationFixtureCommands('Release', root, 'win32');
+  assert.ok(windows.every(([, args]) => args[0] === 'run' || args[0] === 'test'));
+  assert.ok(windows.some(([, args]) => args[0] === 'test' && args[1].endsWith('/examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj')));
   assert.equal(workflow.jobs.managed['runs-on'], 'ubuntu-24.04');
 });
 

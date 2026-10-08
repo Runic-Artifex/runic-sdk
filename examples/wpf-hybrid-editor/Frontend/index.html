@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Note editor</title>
+  <script src="webui.js"></script>
+  <script src="runic-desktop-views.js"></script>
+  <script type="module" src="app.js"></script>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #20242a; }
+    label { display: block; margin: 12px 0; }
+    input, textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; padding: 8px; }
+    textarea { min-height: 150px; }
+    button { font: inherit; padding: 8px 16px; }
+    [role=alert] { color: #a02020; }
+  </style>
+</head>
+<body>
+  <h2>Web editor</h2>
+  <label>Title <input id="title"></label>
+  <label>Body <textarea id="body"></textarea></label>
+  <button id="save" disabled>Save</button>
+  <button id="cancel" disabled>Cancel save</button>
+  <p id="validation" role="alert"></p>
+  <p id="error" role="alert"></p>
+  <p id="status" role="status">Connecting…</p>
+</body>
+</html>

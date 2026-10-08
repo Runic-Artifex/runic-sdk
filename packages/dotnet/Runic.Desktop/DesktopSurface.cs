@@ -198,6 +198,13 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsExecutingCallback => _engine.IsExecutingCallback;
 
+    // Child presentation adapters use this to retire their borrowed-model session on unload.
+    internal event EventHandler? PresentationClosed
+    {
+        add => _engine.PresentationClosed += value;
+        remove => _engine.PresentationClosed -= value;
+    }
+
     internal bool IsCurrentWindow(DesktopWindow window) => ReferenceEquals(Volatile.Read(ref _window), window);
 
     internal async ValueTask RunWindowOperationAsync(DesktopWindow window,

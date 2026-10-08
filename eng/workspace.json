@@ -101,6 +101,10 @@
       "project": "packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
     },
     {
+      "name": "Runic.Application.Wpf",
+      "project": "packages/dotnet/Runic.Application.Wpf/Runic.Application.Wpf.csproj"
+    },
+    {
       "name": "Runic.Application.Templates",
       "project": "tools/Runic.Application.Templates/Runic.Application.Templates.csproj"
     },
@@ -236,6 +240,18 @@
         "tests/fixtures/application/reactiveui25-aot",
         "tests/fixtures/application/reactiveui-behavioral-conformance",
         "tests/fixtures/application/reactiveui-reactive-flavor"
+      ]
+    },
+    "application-wpf": {
+      "dependsOn": [
+        "application",
+        "navigation"
+      ],
+      "paths": [
+        "packages/dotnet/Runic.Application.Wpf",
+        "tests/dotnet/Runic.Application.Wpf.Tests",
+        "tests/dotnet/Runic.Application.Wpf.Windows.Tests",
+        "examples/wpf-hybrid-editor"
       ]
     },
     "views-effect": {

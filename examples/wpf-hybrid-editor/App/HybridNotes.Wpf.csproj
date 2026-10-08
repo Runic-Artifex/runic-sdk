@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);RUNICNAV001;RUNICWPF001</NoWarn>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Model/HybridNotes.Model.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Wpf/Runic.Application.Wpf.csproj" />
+    <InternalsVisibleTo Include="HybridNotes.WindowsSmoke" />
+  </ItemGroup>
+  <Import Project="../../../packages/dotnet/Runic.Application.Desktop/build/Runic.Application.Desktop.targets" />
+  <!-- Collect after the model reference builds the frontend, including on a fresh clone. -->
+  <Target Name="CopyHybridFrontend" AfterTargets="Build">
+    <ItemGroup><HybridFrontend Include="../Frontend/dist/**/*" /></ItemGroup>
+    <Copy SourceFiles="@(HybridFrontend)" DestinationFiles="@(HybridFrontend->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="PublishHybridFrontend" AfterTargets="Publish">
+    <ItemGroup><HybridPublishFrontend Include="../Frontend/dist/**/*" /></ItemGroup>
+    <Copy SourceFiles="@(HybridPublishFrontend)" DestinationFiles="@(HybridPublishFrontend->'$(PublishDir)www/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

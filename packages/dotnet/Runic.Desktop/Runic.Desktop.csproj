@@ -18,6 +18,9 @@
     <PackageReference Include="Microsoft.Web.WebView2" IncludeAssets="native" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Runic.Desktop.Tests" />
+    <!-- The optional WPF presentation reuses our native WebView2 controller. -->
+    <InternalsVisibleTo Include="Runic.Application.Wpf" />
+    <InternalsVisibleTo Include="Runic.Application.Wpf.Tests" />
     <None Include="pack/README.md" Pack="true" PackagePath="" />
     <None Include="NOTICE" Pack="true" PackagePath="" />
     <None Include="licenses/WebUI-LICENSE.txt" Pack="true" PackagePath="licenses/WebUI/" />
