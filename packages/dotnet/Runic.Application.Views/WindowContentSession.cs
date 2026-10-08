@@ -586,6 +586,12 @@ public sealed class WindowContentSession : IDisposable
     /// <see cref="ClearOwner"/>, it is a no-op after the session was disposed, because a
     /// navigator can retire owned content while its window closes.
     /// </summary>
+    /// <remarks>
+    /// Forget does not return while another flow is still detaching one of the content's attachments (for example a
+    /// <c>Present</c> that replaced the slot), so the old routes are gone when it returns. Calling it inside a model turn
+    /// while the same content detaches off-turn and that detachment needs a model turn can therefore deadlock; a navigator
+    /// calls it outside turns.
+    /// </remarks>
     public void Forget(object viewModel)
     {
         ArgumentNullException.ThrowIfNull(viewModel);

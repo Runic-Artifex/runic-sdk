@@ -15,6 +15,7 @@ internal static class NavigationPresentationTests
         await ReferencesFollowTheRegionAsync();
         await StaleRouteWindowAsync();
         SessionTeardownIsANoOpAfterDispose();
+        await ForgetWaitsForDetachmentAsync();
         await PresentationBindsOncePerWindowAsync();
         await ReconnectAndHotReloadLeaveEntriesAsync();
         await RuntimeDescriptorsObserveTheRegionAsync();
@@ -79,6 +80,40 @@ internal static class NavigationPresentationTests
         Require(page.Draft == "" && page.Disposed == 1, "The retired page was changed through its stale route.");
         var current = host.Root.Snapshot().Reference(vm => vm.Main)!;
         Require(current.Kind == "navHome", $"The next capture presented {current}.");
+    }
+
+    // Forget must not return while another flow is still detaching the content's attachment
+    // (a Present replacing the slot), or the old routes stay callable after Back completes.
+    private static async Task ForgetWaitsForDetachmentAsync()
+    {
+        using var transport = new InMemoryViewTransport();
+        using var session = new WindowContentSession(transport);
+        var owner = new object();
+        var first = new object();
+        var second = new object();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        IDisposable Attach(IBridgeTransport _, object model, string route) =>
+            ReferenceEquals(model, first) ? new BlockingDisposable(entered, release) : new BlockingDisposable(null, null);
+
+        session.Present(owner, "Main", "item", first, Attach);
+        var replace = Task.Run(() => session.Present(owner, "Main", "item", second, Attach));
+        await entered.Task.WaitAsync(Timeout);
+        var forget = Task.Run(() => session.Forget(first));
+        await Task.Delay(200);
+        Require(!forget.IsCompleted, "Forget returned while the content was still detaching.");
+        release.Set();
+        await forget.WaitAsync(Timeout);
+        await replace.WaitAsync(Timeout);
+    }
+
+    private sealed class BlockingDisposable(TaskCompletionSource? entered, ManualResetEventSlim? release) : IDisposable
+    {
+        public void Dispose()
+        {
+            entered?.TrySetResult();
+            release?.Wait(TimeSpan.FromSeconds(20));
+        }
     }
 
     private static void SessionTeardownIsANoOpAfterDispose()
