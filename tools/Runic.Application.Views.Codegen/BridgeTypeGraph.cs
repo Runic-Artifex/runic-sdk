@@ -27,11 +27,12 @@ internal sealed class BridgeTypeGraph
     /// <param name="nullability">The declaration's nullable annotations.</param>
     /// <param name="rootPath">The member path named in diagnostics.</param>
     /// <param name="origin">The declaration a diagnostic points at, normally the ViewModel property.</param>
+    /// <param name="honorJsonIgnore">Whether the model assembly opts into unconditional JSON ignores on DTOs.</param>
     internal static BridgeTypeGraph Discover(Type type, NullabilityInfo? nullability = null, string? rootPath = null,
-        MemberInfo? origin = null)
+        MemberInfo? origin = null, bool honorJsonIgnore = false)
     {
         ArgumentNullException.ThrowIfNull(type);
-        var builder = new Builder();
+        var builder = new Builder(honorJsonIgnore);
         var root = builder.Build(type, TypeNullability.From(nullability), rootPath ?? type.Name, [], null, origin: origin);
         return new(root, builder.Nodes);
     }
@@ -536,7 +537,7 @@ internal sealed class BridgeTypeGraph
         return "global::" + generic[..generic.IndexOf('`')].Replace('+', '.');
     }
 
-    private sealed class Builder
+    private sealed class Builder(bool honorJsonIgnore)
     {
         private readonly NullabilityInfoContext _nullability = new();
         private int _nextId;
@@ -827,7 +828,7 @@ internal sealed class BridgeTypeGraph
             && !typeof(Delegate).IsAssignableFrom(type)
             && type.Namespace != "System" && type.Namespace?.StartsWith("System.", StringComparison.Ordinal) != true;
 
-        private static IEnumerable<PropertyInfo> DataProperties(Type type, string path)
+        private IEnumerable<PropertyInfo> DataProperties(Type type, string path)
         {
             var hierarchy = new Stack<Type>();
             for (var current = type; current is not null && current != typeof(object) && !IsFrameworkBase(current); current = current.BaseType)
@@ -836,7 +837,7 @@ internal sealed class BridgeTypeGraph
             foreach (var current in hierarchy)
             foreach (var property in current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public).Where(property => property.GetIndexParameters().Length == 0))
             {
-                if (property.GetMethod is null || property.GetCustomAttribute<RunicIgnoreAttribute>(inherit: true) is not null) continue;
+                if (property.GetMethod is null || BridgeDtoContract.IsIgnored(property, honorJsonIgnore)) continue;
                 var wire = WireName(property);
                 if (names.TryGetValue(wire, out var other))
                     throw new BridgeTypeGraphException(path + "." + wire, $"Wire name collides between {other.DeclaringType?.Name}.{other.Name} and {property.DeclaringType?.Name}.{property.Name}; use RunicAlias or RunicIgnore.");
@@ -861,7 +862,9 @@ internal sealed class BridgeTypeGraph
                 .OrderByDescending(candidate => candidate.GetParameters().Length).FirstOrDefault();
             if (constructor is not null) return constructor;
             if (type.GetConstructor(Type.EmptyTypes) is not null && members.All(member => member.Writable)) return null;
-            throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} needs a public constructor whose parameters map to every required property, or a public parameterless constructor with public setters.");
+            throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} needs a public constructor whose parameters map to every required property, or a public parameterless constructor with public setters. "
+                + "Exclude computed or .NET-only DTO properties with [RunicIgnore]. To reuse unconditional [JsonIgnore] on shared DTOs, add [assembly: RunicBridgeJsonIgnore] to the presentation/ViewModel assembly. "
+                + "Without that opt-in, [JsonIgnore] only affects System.Text.Json serialization. JsonIgnore conditions Never, WhenWritingNull and WhenWritingDefault remain included in the Bridge contract.");
         }
     }
 }

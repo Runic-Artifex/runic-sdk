@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 /// <summary>
@@ -54,11 +55,12 @@ internal static partial class TypeScriptNamedTypes
         return $"{Marker}{entry.Index}{Marker}";
     }
 
-    // The nullability of a named node's members, down to the named types they
-    // contain. Everything else about a declaration follows from the C# type.
+    // A named node's included members and their nullability, down to the named
+    // types they contain. The same DTO can have different exclusions when
+    // ViewModels declared in different assemblies use different policies.
     private static string Shape(BridgeTypeNode node) => node.Kind switch
     {
-        BridgeWireKind.Dto => string.Join(",", node.Members.Select(member => Use(member.Type))),
+        BridgeWireKind.Dto => string.Join(",", node.Members.Select(member => JsonSerializer.Serialize(member.WireName) + ":" + Use(member.Type))),
         BridgeWireKind.Union => string.Join(",", node.Cases.Select(@case => Shape(@case.Type))),
         _ => "",
     };

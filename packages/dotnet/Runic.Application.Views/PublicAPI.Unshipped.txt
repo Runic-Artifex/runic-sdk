@@ -5,3 +5,5 @@ Runic.Application.Views.AcceptedWorkScope.DisposeAsync() -> System.Threading.Tas
 Runic.Application.Views.AcceptedWorkScope.DrainAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Application.Views.AcceptedWorkScope.RunAsync(System.Func<System.Threading.Tasks.Task!>! work) -> System.Threading.Tasks.Task!
 Runic.Application.Views.AcceptedWorkScope.RunAsync<TResult>(System.Func<System.Threading.Tasks.Task<TResult>!>! work) -> System.Threading.Tasks.Task<TResult>!
+Runic.Application.Views.RunicBridgeJsonIgnoreAttribute
+Runic.Application.Views.RunicBridgeJsonIgnoreAttribute.RunicBridgeJsonIgnoreAttribute() -> void

@@ -367,7 +367,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         .OrderBy(property => property.MetadataToken)
         .ToArray();
     var contractFingerprint = BridgeContractShape.Compute(model);
-    var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint);
+    var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
+    var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
         || InspectCommand(model, property, () => ReactiveCommandInspector.InspectContract(property, CodegenOptions.ReactiveUiFlavor)) is not null).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property)).ToArray();
@@ -451,7 +452,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     $"{model.Name}.{property.Name}: a ViewModel collection needs a specific item interface or base class with a registered View.", property);
         }
         valueProperties.Add(property, BridgeTypeGraph.Discover(property.PropertyType,
-            nullability.Create(property), $"{model.Name}.{property.Name}", property));
+            nullability.Create(property), $"{model.Name}.{property.Name}", property, honorJsonIgnore));
     }
     var incrementalCollections = new Dictionary<PropertyInfo, PropertyInfo>();
     foreach (var property in properties)
@@ -493,18 +494,18 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ? new GeneratedCommandPlan(false, existing.IsAsync, ToolkitContract: existing,
                 InputGraph: existing.Input is { } toolkitInput ? BridgeTypeGraph.Discover(toolkitInput,
                     ContractNullability.Argument(command, nullability, [toolkitInput], 0),
-                    $"{model.Name}.{command.Name}.input", source) : null)
+                    $"{model.Name}.{command.Name}.input", source, honorJsonIgnore) : null)
             : reactive is { } contract
                 ? GeneratedCommandPlan.Reactive(contract,
                     contract.HasInput ? BridgeTypeGraph.Discover(contract.Input,
                         ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 0),
-                        $"{model.Name}.{command.Name}.input", source) : null,
+                        $"{model.Name}.{command.Name}.input", source, honorJsonIgnore) : null,
                     contract.HasResult ? BridgeTypeGraph.Discover(contract.Result,
                         ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 1),
-                        $"{model.Name}.{command.Name}.result", source) : null)
+                        $"{model.Name}.{command.Name}.result", source, honorJsonIgnore) : null)
                 : plainInput is not null
                     ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
-                        rootPath: $"{model.Name}.{command.Name}.input", origin: source))
+                        rootPath: $"{model.Name}.{command.Name}.input", origin: source, honorJsonIgnore: honorJsonIgnore))
                 : throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
                     $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput.", source);
         if (plan.ReactiveContract is null && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
@@ -1268,7 +1269,8 @@ static BridgeTypeGraph? FailureGraph(Type model, PropertyInfo command, MemberInf
     if (failure == typeof(object) || typeof(Exception).IsAssignableFrom(failure) || Nullable.GetUnderlyingType(failure) is not null)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
             $"{model.Name}.{command.Name}: the failure type {BridgeTypeGraph.CSharpType(failure).Replace("global::", "", StringComparison.Ordinal)} must be a Bridge value type other than object, an exception or Nullable<T>.", location);
-    return BridgeTypeGraph.Discover(failure, rootPath: $"{model.Name}.{command.Name}.failure", origin: location);
+    return BridgeTypeGraph.Discover(failure, rootPath: $"{model.Name}.{command.Name}.failure", origin: location,
+        honorJsonIgnore: BridgeDtoContract.HonorsJsonIgnore(model.Assembly));
 }
 
 // The command inspectors live in adapter assemblies and report shape errors

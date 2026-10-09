@@ -225,7 +225,7 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | --- | --- | --- |
 | `RUNICBRIDGE001` | Invalid generator invocation or build configuration, such as a malformed `RunicBridgeCompositionType`; also an internal generator error. | Correct the build property. Report an internal error with the ViewModel that triggers it. |
 | `RUNICBRIDGE002` | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish. | Publish framework-dependent until its validation is verified under AOT. |
-| `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. |
+| `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. Exclude computed DTO properties with `[RunicIgnore]`, or opt into unconditional `[JsonIgnore]` as described under [Shared DTO exclusions](#shared-dto-exclusions). |
 | `RUNICBRIDGE004` | Two generated names collide: ViewModel names, presentation kinds, state wire names, the reserved `revision` and `validation` fields, interactions, routes, client members, or generated files (including a hand-written `types.ts`). | Rename one member, or set a wire name with `[RunicAlias]`. |
 | `RUNICBRIDGE005` | The model assembly or one of its dependencies could not be loaded. | Check the bootstrap output and package versions. |
 | `RUNICBRIDGE006` | The assembly has no Window or View class (an error only when generation is required, see [Build properties](#build-properties)), one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
@@ -353,6 +353,51 @@ across model frameworks; it does not run validation rules itself.
 
 Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 `HasErrors`; their values are represented by the validation projection.
+
+## Shared DTO exclusions
+
+Public readable DTO properties are part of the Bridge contract, including
+computed properties. A DTO reader needs a public constructor matching its
+included properties, or public setters with a public parameterless constructor.
+Use `[RunicIgnore]` to leave a property on .NET without exposing it to the Bridge.
+By default, `[JsonIgnore]` affects System.Text.Json serialization only; it does
+not exclude a Bridge property.
+
+For shared DTOs that already use System.Text.Json attributes, opt in from the
+assembly **declaring the ViewModel**:
+
+```csharp
+using Runic.Application.Views;
+
+[assembly: RunicBridgeJsonIgnore]
+```
+
+For example, a separate Core assembly can keep its DTO free of Runic dependencies:
+
+```csharp
+using System.Text.Json.Serialization;
+
+public sealed record HistoryQuery(string Message, string Author)
+{
+    [JsonIgnore]
+    public bool IsFiltered => Message.Length != 0 || Author.Length != 0;
+}
+```
+
+The opt-in excludes `[JsonIgnore]` and `[JsonIgnore(Condition = JsonIgnoreCondition.Always)]`
+throughout that ViewModel's DTO graphs, including nested DTOs, collections,
+command values, interactions and declared failures. Generated codecs, TypeScript,
+validation traversal and the Hot Reload fingerprint use the same exclusions.
+The Core assembly and the assembly declaring only a Window need no marker.
+Each ViewModel uses its own declaring assembly's policy.
+
+`Never`, `WhenWritingNull` and `WhenWritingDefault` remain included; Bridge
+fields have a fixed contract and are emitted even when null or default.
+`[RunicIgnore]` always excludes a property, including one also marked
+`[JsonIgnore(Condition = JsonIgnoreCondition.Never)]`. Root ViewModel properties
+still use `[RunicIgnore]`; this opt-in applies to DTO properties only.
+Adding the marker can change an existing DTO wire contract and requires rebuilding
+the .NET application and generated frontend together.
 
 ## Failure detail in development
 
