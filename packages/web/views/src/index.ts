@@ -33,6 +33,16 @@ export {
   type ViewSource,
 } from "./controller.js";
 export type { FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
+export {
+  createOperationController,
+  createLatestOperationController,
+  type OperationState,
+  type OperationController,
+  type OperationControllerOptions,
+  type LatestOperationIntent,
+  type LatestOperationState,
+  type LatestOperationController,
+} from "./operation-controller.js";
 export type {
   BridgeOperation,
   BridgeOperationCancelKind,

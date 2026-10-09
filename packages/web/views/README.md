@@ -143,7 +143,7 @@ format, fallbacks and recovery rules are specified in
 
 ## Framework bindings
 
-The framework packages share three framework-neutral controllers, so each
+The framework packages share framework-neutral controllers, so each
 binding keeps only its own reactivity glue. Applications normally use the
 bindings; a binding for another framework can use the controllers directly.
 Each controller has a `current` value, replaced by a new object on every
@@ -167,6 +167,104 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   has `attach(element)`, which follows the element's scroll position (once per
   animation frame) and size, and `update(options)`. `current` is the
   `collectionViewport` range and changes only when the range or sizes change.
+- `createOperationController(start, options?)` observes generated `start<Command>()`
+  handles through their public `wait()` and `outcome()`. Its state covers admission,
+  pending work, terminal status/outcome, declared failure, unexpected error and
+  cancellation feedback. `run(...args)` and `cancel()` never reject. `reset()` clears
+  feedback while retaining pending work and its cancellation identity; `dispose()`
+  detaches feedback and settles UI observation promises without cancelling work.
+- `createLatestOperationController<TResult, TFailure>()` serializes superseding
+  read intent. See [Operation feedback and latest selection](#operation-feedback-and-latest-selection).
+
+## Operation feedback and latest selection
+
+An operation Start receipt proves admission; it does not prove completion. A Cancel
+response proves only that the cancellation request was observed. Keep the UI pending
+until the public handle's terminal `wait()` completes. The desktop transport admits
+control callbacks while this wait is active, so short status polling is unnecessary.
+Render domain progress and recovery from the generated View snapshot: the operation
+handle supplies protocol status and outcome, not application progress.
+
+```ts
+import { createOperationController } from "@runic-artifex/views";
+
+const push = createOperationController((remote: string) => workspace.startPush(remote));
+const stop = push.subscribe(() => render(push.current));
+void push.run("origin");
+await push.cancel(); // pending stays true until terminal observation
+// When the UI is released:
+stop();
+push.dispose();
+```
+
+`current` has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`error`, `cancellationRequested`, `cancelling`, `cancellation` and `cancelError`.
+`pending` spans Start admission, terminal wait, any completion barrier and outcome
+delivery. A declared failure is an outcome and `failure`; an unexpected failure is
+`error`. Cancel failures are `cancelError` and do not release pending work. A Cancel
+requested before a delayed Start receipt is sent after that captured run is admitted.
+An absent client may return `undefined` from `start`, ending the run without error.
+Overlapping runs are observed independently, and only the latest publishes feedback
+or receives Cancel. Disable mutation buttons while pending to prevent accidental
+duplicate work; a later run never automatically cancels an earlier mutation.
+
+Cancellation of a generated invocation wrapper can finish before accepted model
+work or recovery has drained. The controller cannot establish that application
+boundary on its own. `options.cancel(operation)` may call a short model control
+command instead of `operation.cancel()`; it may return void or a typed cancellation
+receipt. `options.waitForCompletion(operation, terminalStatus)` can await the
+application's accepted-work drain or command availability after the terminal wait.
+The same typed callbacks are available per latest-selection intent. They must capture
+the original client/session, and must reject when they cannot establish completion.
+If a custom cancellation callback awaits before sending a global control, it must
+recheck that captured session immediately before the side effect; replacement cannot
+revoke a callback already entered.
+Host shutdown still owns and awaits accepted work; UI disposal is not a drain helper.
+
+Read selection often needs a different policy from mutation buttons: remember the
+newest click, cancel the previous read, and await terminal admission before starting
+the newest one. A queue can cover several generated read commands:
+
+```ts
+import { createLatestOperationController } from "@runic-artifex/views";
+
+const selections = createLatestOperationController<void>();
+function selectCommit(oid: string) {
+  const client = currentClient;
+  const session = currentSession;
+  if (!client || !session) return;
+  return selections.run({
+    start: () => client.startSelectCommit(oid),
+    cancel: () => client.cancelRead(),
+    isCurrent: () => currentClient === client && currentSession === session,
+  });
+}
+// Explicit Cancel drops queued input and requests cancellation of the current read.
+selections.clear();
+// After the application establishes replacement admission/session and owns old drain:
+selections.clear("replace");
+```
+
+Only the newest queued intent survives. Supersession before the Start receipt retains
+cancellation until admission; the next Start waits for the previous terminal wait
+and optional application completion barrier. A failed Cancel still waits for that
+boundary. Any pending cancellation callback also settles before the next Start,
+so a delayed global control cannot land on the successor. `isCurrent` is checked before admission, cancellation and publication,
+so departed sessions cannot start queued reads or issue stale global controls.
+`clear("replace")` immediately detaches the old observation, settles its caller and
+suppresses delayed cancellation, allowing fresh intent to start without waiting for
+an old connection. Use it only after the application establishes fresh admission;
+it does not cancel or drain the old work. `dispose()` likewise settles active/queued
+UI callers and consumes late errors without cancelling accepted work.
+
+`current.blocked` signals that admission or completion is uncertain, with the reason
+in `current.error`. A failed Start whose admission is not explicitly `rejected`, a
+lost terminal observation, `unknown`, `expired`, `timedOut`, or a failed completion
+barrier discards queued input and blocks new Starts. Do not retry
+blindly. An explicit `clear("replace")` clears the block only because the application
+has established a new boundary; ordinary Cancel does not. Both controllers consume
+late promise rejections after detachment and isolate subscriber exceptions through
+bridge diagnostics.
 
 ## Developing without .NET
 
