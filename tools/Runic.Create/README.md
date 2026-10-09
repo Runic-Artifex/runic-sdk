@@ -33,11 +33,16 @@ commands in the browser.
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `cswebui`, `desktop`, `desktop-gtk4` | `cswebui` |
 | `--view-models` | `toolkit`, `reactiveui` | `toolkit` |
-| `--output`, `-o` | A directory | The project name |
+| `--directory` | A directory | The project name |
 | `--template-source` | An additional NuGet source for the template | |
 
-The choices come from the template itself, so `dotnet new runic-app --help`
-lists the same options.
+For example, `--directory apps/MyApp` chooses the destination directory. The
+creator's global `--output human|json` option selects the command output format.
+The equivalent `dotnet new runic-app` command uses `--output` or `-o` for its
+destination directory.
+
+The frontend, package manager, host and ViewModel choices come from the template
+itself, so `dotnet new runic-app --help` lists the same choices.
 
 See the [getting-started guide](https://docs.runic-artifex.eu/getting-started/),
 [source](https://github.com/Runic-Artifex/runic-sdk/tree/main/tools/Runic.Create),
