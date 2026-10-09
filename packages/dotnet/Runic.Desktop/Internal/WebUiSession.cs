@@ -20,6 +20,7 @@ internal sealed class WebUiSession : IAsyncDisposable
     private readonly CancellationTokenSource _receiveStop = new();
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly SemaphoreSlim _eventGate = new(1, 1);
+    private readonly HashSet<TaskCompletionSource> _pendingCalls = [];
     private readonly ConcurrentDictionary<ushort, TaskCompletionSource<ScriptResult>> _pendingScripts = new();
     private int _authenticated;
     private int _revoked;
@@ -137,6 +138,11 @@ internal sealed class WebUiSession : IAsyncDisposable
                 RecordHandshake($"ended before authentication: {ending}");
             }
             RevokeAdmission();
+            // Async callbacks release the admission turn before completing. A
+            // disconnect still follows every callback accepted by this session.
+            Task[] pendingCalls;
+            lock (_admissionGate) pendingCalls = _pendingCalls.Select(static call => call.Task).ToArray();
+            await Task.WhenAll(pendingCalls).ConfigureAwait(false);
             if (_everAuthenticated)
             {
                 await DispatchEventAsync(WebUiEventType.Disconnected, string.Empty, [], CancellationToken.None)
@@ -462,7 +468,14 @@ internal sealed class WebUiSession : IAsyncDisposable
                 }
                 break;
             case WebUiProtocol.CallFunction:
-                _ = DispatchCallIgnoringFailureAsync(id, payload, cancellationToken);
+                TaskCompletionSource completion;
+                lock (_admissionGate)
+                {
+                    if (!IsAuthenticated) return;
+                    completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _pendingCalls.Add(completion);
+                }
+                _ = DispatchCallIgnoringFailureAsync(id, payload, completion, cancellationToken);
                 break;
             case WebUiProtocol.WindowDrag:
                 _ = _window.BeginEmbeddedWindowMoveAsync(cancellationToken);
@@ -473,12 +486,14 @@ internal sealed class WebUiSession : IAsyncDisposable
     private async Task DispatchCallIgnoringFailureAsync(
         ushort id,
         ReadOnlyMemory<byte> payload,
+        TaskCompletionSource completion,
         CancellationToken cancellationToken)
     {
         await Task.Yield();
         try
         {
             await _eventGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            ValueTask<WebUiResult> invocation;
             try
             {
                 if (!IsAuthenticated) return;
@@ -488,13 +503,17 @@ internal sealed class WebUiSession : IAsyncDisposable
                     return;
                 }
 
-                var result = await _window.InvokeCallbackAsync(this, element, arguments, cancellationToken).ConfigureAwait(false);
-                await SendCallResultAsync(id, result, cancellationToken).ConfigureAwait(false);
+                // Serialize callback admission and its synchronous prefix, not
+                // the entire async execution. A long command or operation wait
+                // must leave later cancellation/control callbacks available.
+                invocation = _window.InvokeCallbackAsync(this, element, arguments, cancellationToken);
             }
             finally
             {
                 _eventGate.Release();
             }
+            var result = await invocation.ConfigureAwait(false);
+            await SendCallResultAsync(id, result, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -508,6 +527,11 @@ internal sealed class WebUiSession : IAsyncDisposable
             catch (Exception)
             {
             }
+        }
+        finally
+        {
+            lock (_admissionGate) _pendingCalls.Remove(completion);
+            completion.TrySetResult();
         }
     }
 

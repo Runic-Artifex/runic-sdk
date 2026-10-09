@@ -100,6 +100,41 @@ public sealed class ManagedWindowTests
     }
 
     [Fact]
+    public async Task AwaitedCallbackAllowsAnotherCallbackBeforeCompletion()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.BindAsync("held", async (e, _) =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            // Arguments and callback lifetime remain local while another call runs.
+            return e.GetString();
+        });
+        window.Bind("cancel", static e => $"requested:{e.GetString()}");
+
+        var url = await window.StartServerAsync("bridge");
+        var token = await GetTokenAsync(url);
+        using var socket = await ConnectAsync(url, timeout.Token);
+        await AuthenticateAsync(socket, token, ["__webui_core_api__", "held", "cancel"], timeout.Token);
+        try
+        {
+            await SendBinaryAsync(socket, CreateCallPacket(token, 1, "held", "first"u8.ToArray()), timeout.Token);
+            await entered.Task.WaitAsync(timeout.Token);
+            await SendBinaryAsync(socket, CreateCallPacket(token, 2, "cancel", "second"u8.ToArray()), timeout.Token);
+            AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 2, "requested:second");
+            release.TrySetResult();
+            AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 1, "first");
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [Fact]
     public async Task RejectsAnInvalidProtocolToken()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
