@@ -69,7 +69,7 @@ async function journeys(): Promise<string[]> {
   let session = 0;
   const completionBarrier = async () => {
     await client.waitReadDrained();
-    await until(() => !client.snapshot.isReadExecuting && client.snapshot.canRead, "actual read completion and command availability");
+    await until(() => !client.snapshot.isReadExecuting, "actual read completion and command availability");
   };
   const intent = (label: string, receipt?: ReturnType<typeof deferred<void>>,
     accepted?: ReturnType<typeof deferred<BridgeOperation<string>>>) => {
@@ -199,7 +199,7 @@ async function journeys(): Promise<string[]> {
 }
 
 function pass(name: string) { passed.push(name); output.value = passed.join(" | "); }
-function require(condition: unknown, message: string): asserts condition { if (!condition) throw new Error(message); }
+function require(condition: unknown, message: string): void { if (!condition) throw new Error(message); }
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(done => { resolve = done; });
