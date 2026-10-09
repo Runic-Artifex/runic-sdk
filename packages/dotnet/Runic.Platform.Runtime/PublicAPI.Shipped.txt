@@ -83,3 +83,23 @@ virtual Runic.Platform.Runtime.DesktopSettingsSource.NextChange() -> System.Thre
 virtual Runic.Platform.Runtime.PortalParentLease.OwnerClosed.get -> System.Threading.CancellationToken
 Runic.Platform.Runtime.PresentationClipboard.WriteTextAsync(string! text, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.Runtime.PresentationFileLauncher.LaunchAsync(string! path, Runic.Platform.DesktopFileOperation operation = Runic.Platform.DesktopFileOperation.Open, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+override Runic.Platform.Runtime.NativeDirectorySelection.Equals(object? obj) -> bool
+override Runic.Platform.Runtime.NativeDirectorySelection.GetHashCode() -> int
+override Runic.Platform.Runtime.NativeDirectorySelection.ToString() -> string!
+Runic.Platform.Runtime.NativeDirectorySelection
+Runic.Platform.Runtime.NativeDirectorySelection.<Clone>$() -> Runic.Platform.Runtime.NativeDirectorySelection!
+Runic.Platform.Runtime.NativeDirectorySelection.Access.get -> System.IAsyncDisposable?
+Runic.Platform.Runtime.NativeDirectorySelection.Access.init -> void
+Runic.Platform.Runtime.NativeDirectorySelection.Deconstruct(out string! Path, out System.IAsyncDisposable? Access) -> void
+Runic.Platform.Runtime.NativeDirectorySelection.Equals(Runic.Platform.Runtime.NativeDirectorySelection? other) -> bool
+Runic.Platform.Runtime.NativeDirectorySelection.NativeDirectorySelection(string! Path, System.IAsyncDisposable? Access) -> void
+Runic.Platform.Runtime.NativeDirectorySelection.Path.get -> string!
+Runic.Platform.Runtime.NativeDirectorySelection.Path.init -> void
+static Runic.Platform.Runtime.NativeDirectorySelection.operator !=(Runic.Platform.Runtime.NativeDirectorySelection? left, Runic.Platform.Runtime.NativeDirectorySelection? right) -> bool
+static Runic.Platform.Runtime.NativeDirectorySelection.operator ==(Runic.Platform.Runtime.NativeDirectorySelection? left, Runic.Platform.Runtime.NativeDirectorySelection? right) -> bool
+Runic.Platform.Runtime.INativeDirectoryPicker
+Runic.Platform.Runtime.INativeDirectoryPicker.SelectDirectoryAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Platform.Runtime.NativeDirectorySelection?>
+Runic.Platform.Runtime.IPickerBackend.SupportsDirectorySelection.get -> bool
+Runic.Platform.Runtime.NativePickerBackend.SupportsDirectorySelection.get -> bool
+Runic.Platform.Runtime.NativePickerBackend.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>
+Runic.Platform.Runtime.PresentationFiles.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>
