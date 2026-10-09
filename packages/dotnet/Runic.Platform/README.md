@@ -16,3 +16,17 @@ carries a `PlatformDiagnostic` with its domain (`HRESULT`, `Win32`, `errno`, an
 message. It is for logs and support, not display. Free-form text from native services
 (GError and D-Bus messages, NSError descriptions) is left out, so a diagnostic contains
 no paths.
+
+`IFileDialogs.OpenDirectoryAsync(new OpenDirectoryOptions())` returns a
+`PickerResult<IDirectoryLease>` for one existing local directory. Keep the selected
+lease alive while C# filesystem operations use `LocalPath`; it retains native
+access until disposal or presentation close. The path preserves the selected
+identity, including Unicode and escaped filename characters. Native paths that
+cannot be represented exactly in C# are refused. Leases and native grants remain
+in C#; expose only application DTOs to a frontend.
+
+User dismissal returns `Dismissed`, caller cancellation throws
+`OperationCanceledException`, and presentation shutdown returns
+`Unavailable(OwnerClosed)`. The `platform.directories.open` capability reports
+availability when using `PresentationFiles`. Existing file-only implementations
+remain compatible and report directory selection unavailable.

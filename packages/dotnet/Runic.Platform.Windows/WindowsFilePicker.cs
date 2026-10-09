@@ -9,12 +9,21 @@ using Runic.Platform.Runtime;
 namespace Runic.Platform.Windows;
 
 // Generated unmanaged Common Item Dialog bindings preserve NativeAOT support.
-internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INativeFilePicker
+internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     private const int Cancelled = unchecked((int)0x800704C7);
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+    public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+        => SelectCoreAsync(save, false, suggestedName, cancellationToken);
+
+    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
+    {
+        var selection = await SelectCoreAsync(false, true, null, cancellationToken).ConfigureAwait(false);
+        return selection is null ? null : new(selection.Path, selection.Access);
+    }
+
+    private async ValueTask<NativeFileSelection?> SelectCoreAsync(bool save, bool directory, string? suggestedName, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows()) throw new NativeBackendUnavailableException();
         var generation = owner.Generation;
@@ -39,7 +48,7 @@ internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INat
                 dialog = Create(save);
                 try
                 {
-                    Configure(dialog, save, suggestedName);
+                    Configure(dialog, save, directory, suggestedName);
                     Shown.TrySetResult();
                     int result = Show(dialog, handle);
                     if (result == Cancelled) return;
@@ -79,7 +88,7 @@ internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INat
         }
         return (nint)dialog;
     }
-    private static unsafe void Configure(nint dialog, bool save, string? suggestedName)
+    private static unsafe void Configure(nint dialog, bool save, bool directory, string? suggestedName)
     {
         if (!IsNativeWindows()) throw new NativeBackendUnavailableException();
         var native = (IFileDialog*)dialog;
@@ -87,6 +96,7 @@ internal sealed partial class WindowsFilePicker(INativePickerOwner owner) : INat
         Marshal.ThrowExceptionForHR(native->GetOptions(&options).Value);
         options |= FILEOPENDIALOGOPTIONS.FOS_FORCEFILESYSTEM | FILEOPENDIALOGOPTIONS.FOS_NOCHANGEDIR |
             FILEOPENDIALOGOPTIONS.FOS_PATHMUSTEXIST | (save ? FILEOPENDIALOGOPTIONS.FOS_OVERWRITEPROMPT : FILEOPENDIALOGOPTIONS.FOS_FILEMUSTEXIST);
+        if (directory) options |= FILEOPENDIALOGOPTIONS.FOS_PICKFOLDERS;
         Marshal.ThrowExceptionForHR(native->SetOptions(options).Value);
         if (suggestedName is not null)
             fixed (char* name = suggestedName)

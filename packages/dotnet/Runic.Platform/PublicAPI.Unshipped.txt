@@ -1,1 +1,17 @@
 #nullable enable
+override Runic.Platform.OpenDirectoryOptions.Equals(object? obj) -> bool
+override Runic.Platform.OpenDirectoryOptions.GetHashCode() -> int
+override Runic.Platform.OpenDirectoryOptions.ToString() -> string!
+Runic.Platform.OpenDirectoryOptions
+Runic.Platform.OpenDirectoryOptions.<Clone>$() -> Runic.Platform.OpenDirectoryOptions!
+Runic.Platform.OpenDirectoryOptions.Deconstruct(out Runic.Platform.OwnerPolicy OwnerPolicy) -> void
+Runic.Platform.OpenDirectoryOptions.Equals(Runic.Platform.OpenDirectoryOptions? other) -> bool
+Runic.Platform.OpenDirectoryOptions.OpenDirectoryOptions(Runic.Platform.OwnerPolicy OwnerPolicy = Runic.Platform.OwnerPolicy.RequireOwner) -> void
+Runic.Platform.OpenDirectoryOptions.OwnerPolicy.get -> Runic.Platform.OwnerPolicy
+Runic.Platform.OpenDirectoryOptions.OwnerPolicy.init -> void
+static Runic.Platform.OpenDirectoryOptions.operator !=(Runic.Platform.OpenDirectoryOptions? left, Runic.Platform.OpenDirectoryOptions? right) -> bool
+static Runic.Platform.OpenDirectoryOptions.operator ==(Runic.Platform.OpenDirectoryOptions? left, Runic.Platform.OpenDirectoryOptions? right) -> bool
+Runic.Platform.IDirectoryLease
+Runic.Platform.IDirectoryLease.DisplayName.get -> string!
+Runic.Platform.IDirectoryLease.LocalPath.get -> string!
+Runic.Platform.IFileDialogs.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>

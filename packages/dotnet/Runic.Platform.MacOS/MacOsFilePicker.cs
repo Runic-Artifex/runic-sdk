@@ -1,18 +1,28 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 
 using Runic.Platform.Runtime;
 
 namespace Runic.Platform.MacOS;
 
-internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativeFilePicker
+internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private static readonly Lazy<bool> Sandboxed = new(IsSandboxed);
     // A sandbox grants the selected URL only, never sibling staging.
     public bool SupportsAtomicReplace => !Sandboxed.Value;
 
-    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+    public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+        => SelectCoreAsync(save, false, suggestedName, cancellationToken);
+
+    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
+    {
+        var selection = await SelectCoreAsync(false, true, null, cancellationToken).ConfigureAwait(false);
+        return selection is null ? null : new(selection.Path, selection.Access);
+    }
+
+    private async ValueTask<NativeFileSelection?> SelectCoreAsync(bool save, bool directory, string? suggestedName, CancellationToken cancellationToken)
     {
         nint panel = 0;
         var result = new TaskCompletionSource<NativeFileSelection?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -34,7 +44,8 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
                 }
                 else
                 {
-                    SendArg(panel, Sel("setCanChooseDirectories:"), 0);
+                    SendArg(panel, Sel("setCanChooseDirectories:"), directory ? 1 : 0);
+                    SendArg(panel, Sel("setCanChooseFiles:"), directory ? 0 : 1);
                     SendArg(panel, Sel("setAllowsMultipleSelection:"), 0);
                 }
                 nint block = CompletionBlock.Create(response =>
@@ -48,8 +59,7 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
                         var access = MacOsSecurityAccess.Acquire(url);
                         try
                         {
-                            string path = Marshal.PtrToStringUTF8(Send(Send(url, Sel("path")), Sel("UTF8String")))
-                                ?? throw new IOException("AppKit returned no local path.");
+                            string path = ReadExactPath(Send(url, Sel("fileSystemRepresentation")));
                             // A sandbox's user-selected grant authorizes the selected URL,
                             // not arbitrary sibling staging files. Never invent that access.
                             bool sandboxed = Sandboxed.Value;
@@ -85,6 +95,18 @@ internal sealed partial class MacOsFilePicker(INativePickerOwner owner) : INativ
             await cancellation.ConfigureAwait(false);
             if (panel != 0) await MacOsMainQueue.InvokeAsync(() => { using var pool = new AutoreleasePool(); Send(panel, Sel("release")); }).ConfigureAwait(false);
         }
+    }
+
+    private static string ReadExactPath(nint bytes)
+    {
+        if (bytes == 0) throw new IOException("AppKit returned no local path.");
+        int length = 0;
+        while (Marshal.ReadByte(bytes, length) != 0)
+            if (++length > 1024 * 1024) throw new IOException("The native path exceeds the supported bound.");
+        var value = new byte[length];
+        Marshal.Copy(bytes, value, 0, length);
+        try { return new UTF8Encoding(false, true).GetString(value); }
+        catch (DecoderFallbackException error) { throw new IOException("The native path cannot be represented exactly in C#.", error); }
     }
 
     // Retain the actual NSURL. Balance only the access explicitly started here;

@@ -48,6 +48,13 @@ An unsandboxed application needing the existing sibling-staging save path can
 explicitly use `LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` with GTK3.
 There is no automatic fallback to toolkit dialogs, including when a portal fails.
 
+Directory selection uses `OpenDirectoryAsync` through the same providers for
+GTK3 and GTK4. It sends FileChooser `OpenFile` with `directory=true`, requiring
+FileChooser version 3 or newer. The provider refuses older portals before showing
+a chooser and accepts one exact local directory URI. Its directory lease retains
+presentation ownership; persistent portal document permissions remain owned by
+the user's permission store.
+
 `OpenUriAsync(owner, uri)` uses OpenURI for HTTP, HTTPS and mailto links. Local-file
 opening uses the separate `CreateFileLauncher(owner)` service and passes a retained file descriptor.
 Ordinary text clipboard access remains with the selected GTK provider; the Clipboard
@@ -64,6 +71,16 @@ Protocol checks run with:
 ```sh
 direnv exec . dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -- --dbus
 ```
+
+The GTK4 production-provider directory journey uses a real native window and
+exported parent with a controlled FileChooser service on an isolated session bus:
+
+```sh
+direnv exec . dbus-run-session -- env GDK_BACKEND=x11 xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -- --directory
+```
+
+It covers exact directory access, dismissal, caller cancellation and native owner
+closure. It does not automate a desktop backend's chooser UI.
 
 ## Desktop services
 

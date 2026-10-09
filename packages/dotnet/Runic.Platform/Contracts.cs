@@ -163,6 +163,9 @@ public abstract record FileCommitResult
 /// <summary>Options for selecting one existing file.</summary>
 /// <param name="OwnerPolicy">The required dialog ownership.</param>
 public sealed record OpenFileOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner);
+/// <summary>Options for selecting one existing local directory.</summary>
+/// <param name="OwnerPolicy">The required dialog ownership.</param>
+public sealed record OpenDirectoryOptions(OwnerPolicy OwnerPolicy = OwnerPolicy.RequireOwner);
 /// <summary>Options for selecting one save destination.</summary>
 /// <param name="SuggestedName">A filename without path separators.</param>
 /// <param name="OwnerPolicy">The required dialog ownership.</param>
@@ -171,10 +174,28 @@ public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPoli
 /// <summary>Presentation-scoped selection of file access. Leases, streams and native access remain in C#.</summary>
 public interface IFileDialogs
 {
+    /// <summary>Selects directory access for C# filesystem operations. Older providers report unavailable.</summary>
+    ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PickerResult<IDirectoryLease>>(new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable));
+    }
     /// <summary>Selects and acquires a single-use read lease.</summary>
     ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default);
     /// <summary>Selects and acquires a save destination.</summary>
     ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default);
+}
+
+/// <summary>Owns access to one local directory until disposed or its presentation closes.</summary>
+/// <remarks>Keep this lease alive while C# filesystem operations use its path. Neither the lease nor native access grants are bridge payloads.</remarks>
+public interface IDirectoryLease : IAsyncDisposable
+{
+    /// <summary>The directory's display name, without a filesystem path. Throws after access is released.</summary>
+    string DisplayName { get; }
+    /// <summary>The exact local path for C# filesystem operations. Throws after access is released; a saved copy does not retain the access grant.</summary>
+    string LocalPath { get; }
 }
 
 /// <summary>Owns acquired read access until disposed or its presentation closes.</summary>

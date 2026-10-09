@@ -11,6 +11,16 @@ public sealed class NativeBackendUnavailableException : Exception;
 /// <param name="Access">Optional access grant transferred to the resulting lease.</param>
 /// <param name="AllowsSiblingReplacement">Whether access permits same-directory staging and replacement.</param>
 public sealed record NativeFileSelection(string Path, IAsyncDisposable? Access, bool AllowsSiblingReplacement);
+/// <summary>An acquired local directory, confined to C# provider infrastructure.</summary>
+/// <param name="Path">The exact local path, never a bridge payload.</param>
+/// <param name="Access">Optional native access grant transferred to the resulting lease.</param>
+public sealed record NativeDirectorySelection(string Path, IAsyncDisposable? Access);
+/// <summary>Optional directory-selection support for a native file picker.</summary>
+public interface INativeDirectoryPicker
+{
+    /// <summary>Shows one owned directory dialog; null means dismissal. Acquired access transfers to the caller.</summary>
+    ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken);
+}
 /// <summary>A statically selected native picker which returns acquired access.</summary>
 public interface INativeFilePicker
 {
@@ -30,6 +40,46 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
 
     /// <inheritdoc />
     public bool SupportsAtomicReplace => picker.SupportsAtomicReplace;
+
+    /// <inheritdoc />
+    public bool SupportsDirectorySelection => picker is INativeDirectoryPicker;
+
+    /// <inheritdoc />
+    public async ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!Enum.IsDefined(options.OwnerPolicy)) throw new ArgumentOutOfRangeException(nameof(options));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsAvailable) return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (picker is not INativeDirectoryPicker directories)
+            return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        NativeDirectorySelection? selection = null;
+        try
+        {
+            selection = await directories.SelectDirectoryAsync(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsAvailable) return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+            if (selection is null) return new PickerResult<IDirectoryLease>.Dismissed();
+            if (!Path.IsPathFullyQualified(selection.Path) || selection.Path.Contains('\0'))
+                return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData);
+            if (!OperatingSystem.IsWindows()) _ = new System.Text.UTF8Encoding(false, true).GetByteCount(selection.Path);
+            // GetAttributes preserves operational failures; Directory.Exists would hide
+            // permission denial and a directory removed after native selection.
+            if ((File.GetAttributes(selection.Path) & FileAttributes.Directory) == 0)
+                return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData);
+            var lease = new DirectoryLease(selection.Path, selection.Access);
+            selection = null;
+            return new PickerResult<IDirectoryLease>.Selected(lease);
+        }
+        catch (OwnerClosedException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (DllNotFoundException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (EntryPointNotFoundException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (NativeBackendUnavailableException) { return new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        catch (UnauthorizedAccessException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.PermissionDenied); }
+        catch (ArgumentException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.InvalidData); }
+        catch (IOException) { return new PickerResult<IDirectoryLease>.Failed(PlatformFailureCode.IoError); }
+        finally { if (selection?.Access is { } access) await access.DisposeAsync().ConfigureAwait(false); }
+    }
 
     /// <inheritdoc />
     public async ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
