@@ -19,6 +19,8 @@ internal static partial class NavigationTests
         await BackCallerCancellationAsync(firstWithToken: true, secondWithToken: false, cancelFirst: true);
         await BackCallerCancellationAsync(firstWithToken: false, secondWithToken: true, cancelFirst: false);
         await CancellingAllBackCallersClosesPromptAsync();
+        await CancelledBackCallerDoesNotAwaitPromptCleanupAsync(joined: false);
+        await CancelledBackCallerDoesNotAwaitPromptCleanupAsync(joined: true);
         await BackCancellationAfterCommitDoesNotChangeOutcomeAsync();
         await BackAfterPushDoesNotJoinAsync();
         await BackAfterChildRegionChangedDoesNotJoinAsync();
@@ -164,6 +166,62 @@ internal static partial class NavigationTests
         await Wait(fixture.Navigator.WhenIdleAsync());
         Require(main.Current == document && dialog.Current is null && discards == 0 && document.Disposed == 0,
             "Cancelling every Back caller left a prompt open or discarded the document.");
+    }
+
+    // Cancellation settles the last caller before the dialog's detached Back runs.
+    // WhenIdle must cover that Back even when the caller observes cancellation first.
+    private static async Task CancelledBackCallerDoesNotAwaitPromptCleanupAsync(bool joined)
+    {
+        await using var fixture = new Fixture();
+        var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+        var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
+        var document = new Page("document");
+        await Wait(main.PushAsync(NavigationTarget.Own(document)));
+        var cleanupEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseCleanup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var prompt = new InitPage("confirm")
+        {
+            Guard = async (_, _) =>
+            {
+                cleanupEntered.TrySetResult();
+                await releaseCleanup.Task;
+                return true;
+            },
+        };
+        var discards = 0;
+        document.Guard = LeaveConfirmation.InDialog(dialog, () => NavigationTarget.Own<Page>(prompt),
+            () => true, () => discards++).CanDepartAsync;
+        using var firstCancellation = new CancellationTokenSource();
+        using var secondCancellation = new CancellationTokenSource();
+        var first = main.BackAsync(cancellationToken: firstCancellation.Token).AsTask();
+        await Until(() => dialog.Current == prompt && prompt.Entry is not null, "The prompt was not shown.");
+        var last = joined ? main.BackAsync(cancellationToken: secondCancellation.Token).AsTask() : first;
+        try
+        {
+            firstCancellation.Cancel();
+            Require(await Wait(first) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled },
+                "The cancelled Back caller did not settle promptly.");
+            if (joined)
+            {
+                Require(!last.IsCompleted && dialog.Current == prompt,
+                    "Cancelling one caller closed the prompt for the remaining caller.");
+                secondCancellation.Cancel();
+            }
+            Require(await Wait(last) is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Cancelled },
+                "The final Back caller waited for the prompt's cleanup.");
+            // Start draining as soon as cancellation is observed, before waiting
+            // for the cleanup hook: this also covers its queued admission.
+            var idle = fixture.Navigator.WhenIdleAsync().AsTask();
+            await Wait(cleanupEntered.Task);
+            Require(!idle.IsCompleted && dialog.Current == prompt && !prompt.Entry!.Retirement.IsCancellationRequested,
+                "WhenIdle completed before the cancelled prompt's cleanup.");
+            releaseCleanup.SetResult();
+            await Wait(idle);
+            Require(dialog.Current is null && prompt.Disposed == 1 && prompt.Entry!.Retirement.IsCancellationRequested
+                && main.Current == document && document.Disposed == 0 && discards == 0,
+                "Draining cancelled Back cleanup left a prompt open or discarded the document.");
+        }
+        finally { releaseCleanup.TrySetResult(); }
     }
 
     private static async Task BackCancellationAfterCommitDoesNotChangeOutcomeAsync()

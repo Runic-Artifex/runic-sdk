@@ -174,7 +174,11 @@ public sealed class EditorTests
         var leaving = app.Regions.Main.BackAsync(cancellationToken: cancellation.Token).AsTask();
         await WhenAsync(app.Regions.Dialog, () => app.Regions.Dialog.Current is not null);
         cancellation.Cancel();
-        await leaving;
+        var rejected = Assert.IsType<NavigationResult<object>.Rejected>(await leaving);
+        Assert.Equal(NavigationRejection.Cancelled, rejected.Reason);
+        // A cancelled Back caller completes immediately; its prompt closes in a
+        // separate transition. Drain that cleanup before asserting the UI state.
+        await app.Regions.Main.Navigator.WhenIdleAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Null(app.Regions.Dialog.Current);
         Assert.Same(app.Editor, app.Regions.Main.Current);
         Assert.Equal("Keep this", app.Editor.Body);
