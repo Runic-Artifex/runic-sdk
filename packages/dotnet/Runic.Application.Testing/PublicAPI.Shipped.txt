@@ -20,7 +20,6 @@ Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Content.get -> Runic.A
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Dispose() -> void
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Mount(Runic.Application.Views.PageReference! reference, string! token, string? clientKey = null, string? connectionKey = null) -> string!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.RootRoute.get -> string!
-Runic.Application.Testing.RunicWindowTestHost<TViewModel>.RunicWindowTestHost(TViewModel! viewModel, string! rootRoute, System.Func<Runic.Application.Views.IBridgeTransport!, Runic.Application.Views.WindowContentSession!, TViewModel!, System.IDisposable!>! attach, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), Runic.Application.Views.IRunicModelContext? modelContext = null) -> void
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Snapshot() -> System.Text.Json.JsonDocument!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Snapshot(Runic.Application.Views.PageReference! reference) -> System.Text.Json.JsonDocument!
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.Transport.get -> Runic.Application.Testing.InMemoryViewTransport!
@@ -181,7 +180,6 @@ Runic.Application.Testing.RunicWindowTestHostOptions.CreateId.get -> System.Func
 Runic.Application.Testing.RunicWindowTestHostOptions.CreateId.init -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.LoggerFactory.get -> Microsoft.Extensions.Logging.ILoggerFactory?
 Runic.Application.Testing.RunicWindowTestHostOptions.LoggerFactory.init -> void
-Runic.Application.Testing.RunicWindowTestHostOptions.ModelContext.get -> Runic.Application.Views.IRunicModelContext?
 Runic.Application.Testing.RunicWindowTestHostOptions.ModelContext.init -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.OperationShutdown.get -> System.Threading.CancellationToken
 Runic.Application.Testing.RunicWindowTestHostOptions.OperationShutdown.init -> void
@@ -209,4 +207,5 @@ Runic.Application.Testing.RunicOperationStatus.Failure.get -> System.Text.Json.J
 Runic.Application.Testing.RunicOperationStatus.Failure.init -> void
 [RUNICNAV001]Runic.Application.Testing.RunicNavigationTestExtensions
 [RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.RetainedContentModelCount(this Runic.Application.Views.WindowContentSession! session) -> int
-[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.UnretiredEntryCount(this Runic.Application.Views.RunicNavigator! navigator) -> int
+Runic.Application.Testing.RunicWindowTestHost<TViewModel>.RunicWindowTestHost(TViewModel! viewModel, string! rootRoute, System.Func<Runic.Application.Views.IBridgeTransport!, Runic.Application.Views.WindowContentSession!, TViewModel!, System.IDisposable!>! attach, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), Runic.Navigation.IRunicModelContext? modelContext = null) -> void
+Runic.Application.Testing.RunicWindowTestHostOptions.ModelContext.get -> Runic.Navigation.IRunicModelContext?

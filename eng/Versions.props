@@ -1,8 +1,8 @@
 <Project>
   <PropertyGroup>
-    <RunicSdkVersion>0.7.0-preview.4</RunicSdkVersion>
+    <RunicSdkVersion>0.7.0-preview.5</RunicSdkVersion>
     <!-- Last published release; package validation compares shipping libraries with it. -->
-    <RunicPackageValidationBaselineVersion>0.7.0-preview.3</RunicPackageValidationBaselineVersion>
+    <RunicPackageValidationBaselineVersion>0.7.0-preview.4</RunicPackageValidationBaselineVersion>
     <Version Condition="'$(Version)' == ''">$(RunicSdkVersion)</Version>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
   </PropertyGroup>

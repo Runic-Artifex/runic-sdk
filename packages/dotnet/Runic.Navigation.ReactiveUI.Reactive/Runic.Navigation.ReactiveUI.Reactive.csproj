@@ -9,8 +9,6 @@
     <PackageTags>runic-artifex;navigation;reactiveui;system-reactive;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- First published in 0.7.0-preview.4; remove after that release (eng/release/README.md). -->
-    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.7.0-preview.4</RunicPackageFirstReleaseVersion>
     <!-- Selects the System.Reactive namespaces in the source shared with
          Runic.Navigation.ReactiveUI. Only the scheduler adapter differs. -->
     <DefineConstants>$(DefineConstants);SYSTEM_REACTIVE</DefineConstants>

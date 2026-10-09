@@ -1,1 +1,65 @@
 #nullable enable
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Closed.get -> System.Threading.CancellationToken
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Dispatcher.get -> System.Windows.Threading.Dispatcher!
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.DispatcherModelContext(System.Windows.Threading.Dispatcher! dispatcher, System.Windows.Threading.DispatcherPriority priority = System.Windows.Threading.DispatcherPriority.Normal, Microsoft.Extensions.Logging.ILogger<Runic.Navigation.Wpf.DispatcherModelContext!>? logger = null) -> void
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.DisposeAsync() -> System.Threading.Tasks.ValueTask
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.Dispose() -> void
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.InvokeAsync(System.Action! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.InvokeAsync<T>(System.Func<T>! turn, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<T>
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.IsExecuting.get -> bool
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.RunHookAsync<T>(System.Func<System.Threading.Tasks.Task<T>!>! hook, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task<T>!
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.TryPost(System.Action! turn) -> bool
+[RUNICNAV001]Runic.Navigation.Wpf.DispatcherModelContext.UnhandledTurnException -> System.Action<System.Exception!>?
+[RUNICNAV001]Runic.Navigation.Wpf.INavigationViewLocator
+[RUNICNAV001]Runic.Navigation.Wpf.INavigationViewLocator.ResolveView(Runic.Navigation.INavigationEntry! entry) -> System.Windows.FrameworkElement?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.CloseOnEscape.get -> bool
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.CloseOnEscape.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.Modality.get -> Runic.Navigation.Wpf.NavigationDialogModality
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.Modality.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.NavigationDialogHost() -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.Region.get -> Runic.Navigation.INavigationRegion?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.Region.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.ViewLocator.get -> Runic.Navigation.Wpf.INavigationViewLocator?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.ViewLocator.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.WindowStyle.get -> System.Windows.Style?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogHost.WindowStyle.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogModality
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogModality.Application = 0 -> Runic.Navigation.Wpf.NavigationDialogModality
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationDialogModality.Owner = 1 -> Runic.Navigation.Wpf.NavigationDialogModality
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.EmptyContent.get -> object?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.EmptyContent.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.HandlesBrowseBack.get -> bool
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.HandlesBrowseBack.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.IsTransitioning.get -> bool
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.NavigationHost() -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.Region.get -> Runic.Navigation.INavigationRegion?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.Region.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.ViewLocator.get -> Runic.Navigation.Wpf.INavigationViewLocator?
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.ViewLocator.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.CreateEntryScopes.get -> bool?
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.CreateEntryScopes.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.Dispatcher.get -> System.Windows.Threading.Dispatcher?
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.Dispatcher.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.MapView<TViewModel, TView>() -> Runic.Navigation.Wpf.RunicWpfNavigationOptions!
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.NavigatorLifetime.get -> Microsoft.Extensions.DependencyInjection.ServiceLifetime
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.NavigatorLifetime.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.Priority.get -> System.Windows.Threading.DispatcherPriority
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.Priority.set -> void
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.RunicWpfNavigationOptions() -> void
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationOptions.UseViewNamingConvention(params System.Reflection.Assembly![]! viewAssemblies) -> Runic.Navigation.Wpf.RunicWpfNavigationOptions!
+[RUNICNAV001]Runic.Navigation.Wpf.RunicWpfNavigationServiceCollectionExtensions
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.CloseOnEscapeProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.ModalityProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.RegionProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.ViewLocatorProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationDialogHost.WindowStyleProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationHost.EmptyContentProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationHost.HandlesBrowseBackProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationHost.IsTransitioningProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationHost.RegionProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationHost.ViewLocatorProperty -> System.Windows.DependencyProperty!
+[RUNICNAV001]static Runic.Navigation.Wpf.RunicWpfNavigationServiceCollectionExtensions.AddRunicWpfNavigation(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Runic.Navigation.Wpf.RunicWpfNavigationOptions!>? configure = null) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
