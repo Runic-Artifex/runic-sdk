@@ -1,6 +1,7 @@
 using Runic.Platform.Runtime;
 using System.Threading.Channels;
 using Tmds.DBus.Protocol;
+using System.Text;
 
 namespace Runic.Platform.Linux.Portal;
 
@@ -60,10 +61,63 @@ public static class PortalPlatformProvider
     }
 }
 
-internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTransport transport, Action<PortalDiagnostic>? diagnosticSink = null) : INativeFilePicker
+internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTransport transport, Action<PortalDiagnostic>? diagnosticSink = null) : INativeFilePicker, INativeDirectoryPicker
 {
     // Portal selections grant the chosen file only, never sibling staging.
     public bool SupportsAtomicReplace => false;
+    public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
+    {
+        var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink).ConfigureAwait(false);
+        if (result.Code == 1) return null;
+        if (result.Code != 0) throw new NativeBackendUnavailableException();
+        if (result.Uris.Length != 1) throw new IOException("The portal did not return one local directory.");
+        // Portal document grants belong to the user's permission store. The
+        // selected directory remains accessible; disposing our lease does not
+        // revoke a user's persistent portal grant.
+        return new(ReadExactLocalPath(result.Uris[0]), null);
+    }
+
+    internal static string ReadExactLocalPath(string value)
+    {
+        if (!value.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+            || value.IndexOfAny(['?', '#', '\\', '\0', '\r', '\n']) >= 0)
+            throw new IOException("The portal did not return a local directory URI.");
+        int pathStart = value.IndexOf('/', 7);
+        if (pathStart < 0) throw new IOException("The portal did not return a local directory URI.");
+        string host = value[7..pathStart];
+        if (host.Length != 0 && !host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            throw new IOException("The portal did not return a local directory URI.");
+        // Decode the original URI bytes, not Uri.LocalPath: URI normalization
+        // or a replacement decoder must not change the selected path identity.
+        var utf8 = new UTF8Encoding(false, true);
+        var bytes = new List<byte>();
+        try
+        {
+            for (int index = pathStart; index < value.Length;)
+            {
+                if (value[index] == '%')
+                {
+                    if (index + 2 >= value.Length || !byte.TryParse(value.AsSpan(index + 1, 2), System.Globalization.NumberStyles.HexNumber,
+                        System.Globalization.CultureInfo.InvariantCulture, out byte decoded))
+                        throw new IOException("The portal returned an invalid URI escape.");
+                    bytes.Add(decoded);
+                    index += 3;
+                }
+                else
+                {
+                    int end = value.IndexOf('%', index);
+                    if (end < 0) end = value.Length;
+                    bytes.AddRange(utf8.GetBytes(value[index..end]));
+                    index = end;
+                }
+            }
+            string path = utf8.GetString(bytes.ToArray());
+            if (path.Contains('\0')) throw new IOException("The portal returned an invalid path.");
+            return path;
+        }
+        catch (Exception error) when (error is DecoderFallbackException or EncoderFallbackException)
+        { throw new IOException("The native path cannot be represented exactly in C#.", error); }
+    }
     public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
     {
         var result = await PortalRequest.RunAsync(owner, transport, save ? "SaveFile" : "OpenFile", suggestedName ?? "Untitled", cancellationToken, diagnosticSink).ConfigureAwait(false);

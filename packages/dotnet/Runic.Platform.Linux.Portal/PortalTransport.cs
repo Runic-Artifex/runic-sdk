@@ -39,6 +39,14 @@ internal sealed class PortalTransport(string? address = null, string destination
     {
         using var session = await PortalConnection.OpenAsync(address, destination, application, cancellationToken).ConfigureAwait(false);
         var connection = session.Connection;
+        if (file is null && method == "SelectDirectory")
+        {
+            // FileChooser.directory was introduced in version 3. Older portals
+            // may ignore unknown options and present a file picker instead.
+            uint version = await new Protocol.FileChooser(connection, session.Destination, Root).GetVersionAsync()
+                .WaitAsync(CallTimeout, cancellationToken).ConfigureAwait(false);
+            if (version < 3) throw new Runic.Platform.Runtime.NativeBackendUnavailableException();
+        }
         if (file is not null)
         {
             uint version = await new Protocol.OpenURI(connection, session.Destination, Root).GetVersionAsync()
@@ -117,6 +125,11 @@ internal sealed class PortalTransport(string? address = null, string destination
         if (method == "OpenURI") return new Protocol.OpenURI(connection, peer, Root).OpenURIAsync(parent, argument, options);
         options["modal"] = VariantValue.Bool(true);
         var chooser = new Protocol.FileChooser(connection, peer, Root);
+        if (method == "SelectDirectory")
+        {
+            options["directory"] = VariantValue.Bool(true);
+            return chooser.OpenFileAsync(parent, "Open directory", options);
+        }
         if (method != "SaveFile") return chooser.OpenFileAsync(parent, "Open file", options);
         options["current_name"] = VariantValue.String(argument);
         return chooser.SaveFileAsync(parent, "Save file", options);

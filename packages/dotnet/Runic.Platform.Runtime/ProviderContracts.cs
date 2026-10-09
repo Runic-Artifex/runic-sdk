@@ -7,6 +7,8 @@ public interface IPickerBackend : IFileDialogs
     bool IsAvailable { get; }
     /// <summary>Whether selected save destinations can be staged and atomically replaced.</summary>
     bool SupportsAtomicReplace => true;
+    /// <summary>Whether this backend implements local directory selection.</summary>
+    bool SupportsDirectorySelection => false;
 }
 
 /// <summary>A verified presentation owner. Native handles stay in C# and are usable only during dispatch.</summary>

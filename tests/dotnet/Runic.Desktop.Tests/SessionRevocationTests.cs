@@ -85,6 +85,58 @@ public sealed class SessionRevocationTests
     }
 
     [Fact]
+    public async Task SessionCloseDrainsOverlappingCallbacksBeforeDisconnectedEvent()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var window = new WebUiWindow();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = 0;
+        using var events = window.Bind(string.Empty, e =>
+        {
+            if (e.EventType == WebUiEventType.Disconnected)
+                disconnected.TrySetResult(Volatile.Read(ref finished) == 1);
+        });
+        using var held = window.BindAsync("held", async (_, _) =>
+        {
+            entered.TrySetResult();
+            // Ignore transport cancellation, as an accepted operation may be
+            // performing recovery before releasing its application resources.
+            await release.Task;
+            Volatile.Write(ref finished, 1);
+            return WebUiResult.None;
+        });
+        using var close = window.BindAsync("close", async (e, token) =>
+        {
+            await e.CloseSessionAsync(token);
+            closed.TrySetResult();
+            return WebUiResult.None;
+        });
+        var url = await window.StartServerAsync("overlapping session close");
+        var token = await GetTokenAsync(url, deadline.Token);
+        using var socket = await ConnectAsync(url, token, deadline.Token);
+        try
+        {
+            await SendCallAsync(socket, token, 1, "held", deadline.Token);
+            await entered.Task.WaitAsync(deadline.Token);
+            await SendCallAsync(socket, token, 2, "close", deadline.Token);
+            await closed.Task.WaitAsync(deadline.Token);
+            // Give the revoked receive loop a chance to deliver disconnection
+            // while the first callback is still deliberately blocked.
+            Assert.NotSame(disconnected.Task,
+                await Task.WhenAny(disconnected.Task, Task.Delay(50, deadline.Token)));
+            release.TrySetResult();
+            Assert.True(await disconnected.Task.WaitAsync(deadline.Token));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [Fact]
     public async Task CapabilityCanDisposeItsOwnSurfaceWithoutDeadlockingDisconnectedEvent()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));

@@ -8,6 +8,34 @@ var transport = new FakeTransport(new(0, ["file:///tmp/a%20file.txt"]));
 var picker = new PortalFilePicker(owner, transport);
 Check((await picker.SelectAsync(false, null, default)) is { Path: "/tmp/a file.txt", AllowsSiblingReplacement: false }, "local URI and conservative grant");
 Check(owner.Released == 1, "parent lease released");
+const string exactDirectory = "/tmp/directory space % Ω 文本\nline";
+Check((await new PortalFilePicker(owner, new FakeTransport(new(0, ["file:///tmp/directory%20space%20%25%20%CE%A9%20%E6%96%87%E6%9C%AC%0Aline"])))
+    .SelectDirectoryAsync(default)) is { Path: exactDirectory }, "directory URI bytes preserve exact Unicode, spaces, percent and line feeds");
+Check(PortalFilePicker.ReadExactLocalPath("file://localhost/tmp/%2525") == "/tmp/%25", "directory percent decoding occurs once");
+Check(PortalFilePicker.ReadExactLocalPath("file:///tmp/./directory/../name") == "/tmp/./directory/../name", "directory URI does not normalize the selected path");
+foreach (string invalid in new[] { "https://example.org/a", "file://remote/tmp/a", "file:///tmp/a#fragment", "file:///tmp/a?query", "file:///tmp/%FF", "file:///tmp/%C0%AF", "file:///tmp/%00", "file:///tmp/%GG", "file:///tmp/%" })
+{
+    try { await new PortalFilePicker(owner, new FakeTransport(new(0, [invalid]))).SelectDirectoryAsync(default); throw new InvalidOperationException("unsafe or lossy directory URI accepted"); }
+    catch (IOException) { }
+}
+Check(await new PortalFilePicker(owner, new FakeTransport(new(1, []))).SelectDirectoryAsync(default) is null, "directory dismissal");
+using (var directoryCancelled = new CancellationTokenSource())
+{
+    var waiting = new FakeTransport(null);
+    var directoryRequest = new PortalFilePicker(owner, waiting).SelectDirectoryAsync(directoryCancelled.Token).AsTask();
+    await waiting.Started.Task;
+    directoryCancelled.Cancel();
+    try { await directoryRequest; throw new InvalidOperationException("directory cancellation ignored"); } catch (OperationCanceledException) { }
+    Check(waiting.Cancelled, "directory request drained on cancellation");
+}
+var directoryOwner = new Owner();
+var directoryWaiting = new FakeTransport(null);
+var ownerDirectoryRequest = new PortalFilePicker(directoryOwner, directoryWaiting).SelectDirectoryAsync(default).AsTask();
+await directoryWaiting.Started.Task;
+directoryOwner.Generation = Guid.NewGuid();
+try { await ownerDirectoryRequest.WaitAsync(TimeSpan.FromSeconds(3)); throw new InvalidOperationException("directory owner replacement ignored"); }
+catch (OwnerClosedException) { }
+Check(directoryOwner.Released == 1 && directoryWaiting.Cancelled, "directory owner close releases parent and request");
 foreach (string uri in new[] { "https://example.com/a", "file://remote/tmp/a", "file:///tmp/a#fragment", "file:///tmp/a?query" })
 {
     try { await new PortalFilePicker(owner, new FakeTransport(new(0, [uri]))).SelectAsync(false, null, default); throw new InvalidOperationException("unsafe URI accepted"); }
@@ -67,6 +95,16 @@ await service.ConnectAsync();
 var fake = new PortalService(service);
 service.AddMethodHandler(fake);
 var realTransport = new PortalTransport(destination: service.UniqueName!);
+var directoryWireResult = await realTransport.RequestAsync("x11:1234", "SelectDirectory", "", default);
+Check(directoryWireResult.Code == 0 && fake.DirectorySelection, "directory option encoded as true");
+Check(fake.Call == "org.freedesktop.portal.FileChooser.OpenFile(ssa{sv}) handle_token,modal,directory" && fake.Argument == "Open directory",
+    "directory picking uses FileChooser.OpenFile with directory option");
+fake.FileChooserVersion = 2;
+fake.Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
+try { await realTransport.RequestAsync("x11:1234", "SelectDirectory", "", default); throw new InvalidOperationException("old portal accepted directory request"); }
+catch (NativeBackendUnavailableException) { }
+Check(!fake.Called.Task.IsCompleted, "old portal never receives a misleading file request");
+fake.FileChooserVersion = 3;
 foreach (bool oldHandle in new[] { false, true })
 {
     fake.OldHandle = oldHandle;
@@ -155,6 +193,8 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public bool AutoRespond = true;
     public bool OldHandle;
     public bool MalformedUris;
+    public bool DirectorySelection;
+    public uint FileChooserVersion = 3;
     public string? Parent;
     public string? Argument;
     public string? CurrentName;
@@ -163,6 +203,15 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public TaskCompletionSource Closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public ValueTask HandleMethodAsync(MethodContext context)
     {
+        if (context.Request.MemberAsString == "Get")
+        {
+            var propertyReader = context.Request.GetBodyReader();
+            CheckProperty(propertyReader.ReadString() == "org.freedesktop.portal.FileChooser" && propertyReader.ReadString() == "version");
+            using var propertyReply = context.CreateReplyWriter("v");
+            propertyReply.WriteVariant(VariantValue.UInt32(FileChooserVersion));
+            context.Reply(propertyReply.CreateMessage());
+            return ValueTask.CompletedTask;
+        }
         if (context.Request.MemberAsString == "Close")
         {
             ClosedCall = $"{context.Request.InterfaceAsString}.Close({context.Request.SignatureAsString})";
@@ -185,6 +234,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
             var value = reader.ReadVariantValue();
             if (key == "handle_token") token = value.GetString();
             if (key == "current_name") CurrentName = value.GetString();
+            if (key == "directory") DirectorySelection = value.GetBool();
         }
         Call = $"{context.Request.InterfaceAsString}.{context.Request.MemberAsString}({context.Request.SignatureAsString}) {string.Join(',', keys)}";
         string path = Path + "/request/" + context.Request.SenderAsString![1..].Replace('.', '_') + "/" + (OldHandle ? "legacy" : token);
@@ -205,4 +255,5 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
         Called.TrySetResult();
         return ValueTask.CompletedTask;
     }
+    private static void CheckProperty(bool expected) { if (!expected) throw new InvalidOperationException("Unexpected portal property query."); }
 }

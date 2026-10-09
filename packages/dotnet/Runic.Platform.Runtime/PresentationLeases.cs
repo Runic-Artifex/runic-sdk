@@ -30,6 +30,13 @@ internal sealed class PresentationReadLease(PresentationLifetime lifetime, IRead
     { RequireOpen(); return lease.OpenReadAsync(cancellationToken); }
 }
 
+internal sealed class PresentationDirectoryLease(PresentationLifetime lifetime, IDirectoryLease lease)
+    : PresentationLease(lifetime, lease), IDirectoryLease
+{
+    public string DisplayName { get { RequireOpen(); return lease.DisplayName; } }
+    public string LocalPath { get { RequireOpen(); return lease.LocalPath; } }
+}
+
 internal sealed class PresentationSaveLease(PresentationLifetime lifetime, ISaveFileLease lease)
     : PresentationLease(lifetime, lease), ISaveFileLease, ILaunchableFileLease
 {

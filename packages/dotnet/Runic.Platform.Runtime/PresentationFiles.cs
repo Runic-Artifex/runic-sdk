@@ -14,9 +14,22 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
         // A destination that can never be written atomically is not a usable save.
         CapabilityStatus save = files is CapabilityStatus.Available && backend?.SupportsAtomicReplace == false
             ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable) : files;
+        CapabilityStatus directories = files is CapabilityStatus.Available && backend?.SupportsDirectorySelection != true
+            ? new CapabilityStatus.Unavailable(PlatformUnavailableReason.BackendUnavailable) : files;
         return new(lifetime.Generation, ImmutableDictionary<string, CapabilityStatus>.Empty
             .Add("platform.files.open", files).Add("platform.files.save", save)
+            .Add("platform.directories.open", directories)
             .Add("platform.dialogs.owned", files));
+    }
+
+    /// <inheritdoc />
+    public ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return PickAsync(options.OwnerPolicy, token => backend!.SupportsDirectorySelection
+            ? backend.OpenDirectoryAsync(options, token)
+            : ValueTask.FromResult<PickerResult<IDirectoryLease>>(new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable)),
+            value => new PresentationDirectoryLease(lifetime, value), cancellationToken);
     }
 
     private PlatformUnavailableReason? Reason(OwnerPolicy policy)

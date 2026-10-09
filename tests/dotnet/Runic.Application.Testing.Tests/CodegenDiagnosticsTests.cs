@@ -10,7 +10,7 @@ namespace Runic.Application.Testing.Tests;
 /// checks its diagnostics. Valid shapes live in this project instead, so the
 /// project build itself proves that their generated C# compiles.
 /// </summary>
-internal static class CodegenDiagnosticsTests
+internal static partial class CodegenDiagnosticsTests
 {
     private const string Preamble = """
         using System;
@@ -40,6 +40,7 @@ internal static class CodegenDiagnosticsTests
         var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-diagnostics-{Guid.NewGuid():N}");
         try
         {
+            await RunDtoJsonIgnoreAsync(generator, temporaryRoot).ConfigureAwait(false);
             async Task Reject(string name, string members, params string[] expected)
             {
                 var output = await GenerateAsync(generator, temporaryRoot, name, Preamble + members).ConfigureAwait(false);
@@ -453,6 +454,11 @@ internal static class CodegenDiagnosticsTests
 
     private static async Task<(int ExitCode, string Output, string Directory)> RunGeneratorAsync(string generator,
         string temporaryRoot, string name, string source, params string[] options)
+        => await RunGeneratorFixtureAsync(generator, temporaryRoot, name, source, null, options).ConfigureAwait(false);
+
+    private static async Task<(int ExitCode, string Output, string Directory)> RunGeneratorFixtureAsync(string generator,
+        string temporaryRoot, string name, string source, IEnumerable<MetadataReference>? additionalReferences,
+        params string[] options)
     {
         var directory = Path.Combine(temporaryRoot, name);
         Directory.CreateDirectory(directory);
@@ -461,7 +467,7 @@ internal static class CodegenDiagnosticsTests
         // does, so diagnostics can report source locations.
         var sourcePath = Path.Combine(directory, "Fixture.cs");
         File.WriteAllText(sourcePath, source);
-        var compilation = Compile(name, source, sourcePath);
+        var compilation = Compile(name, source, sourcePath, additionalReferences);
         Microsoft.CodeAnalysis.Emit.EmitResult emitted;
         using (var image = File.Create(assembly))
         using (var symbols = File.Create(Path.ChangeExtension(assembly, ".pdb")))
@@ -474,17 +480,19 @@ internal static class CodegenDiagnosticsTests
         // Like a bootstrap output directory, place application dependencies
         // (for example ReactiveUI.Binding) beside the inspected assembly.
         foreach (var reference in compilation.GetUsedAssemblyReferences().OfType<PortableExecutableReference>())
-            if (reference.FilePath is { } path && Path.GetDirectoryName(path) == Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))
+            if (reference.FilePath is { } path && (Path.GetDirectoryName(path) == Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)
+                    || additionalReferences?.OfType<PortableExecutableReference>().Any(additional => additional.FilePath == path) == true))
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)), overwrite: true);
         var (exitCode, text) = await RunProcessAsync(generator, assembly, directory, options).ConfigureAwait(false);
         return (exitCode, text, directory);
     }
 
-    private static CSharpCompilation Compile(string name, string source, string path = "")
+    private static CSharpCompilation Compile(string name, string source, string path = "",
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
         var references = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(reference => MetadataReference.CreateFromFile(reference));
+            .Select(reference => MetadataReference.CreateFromFile(reference)).Concat(additionalReferences ?? []);
         return CSharpCompilation.Create($"Fixture{name}",
             [CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest), path, System.Text.Encoding.UTF8)], references,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable,

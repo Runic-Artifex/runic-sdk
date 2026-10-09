@@ -10,7 +10,7 @@ using Runic.Application.Views.Codegen.ReactiveUI;
 internal static class InteractionCodeEmitter
 {
     internal static GeneratedInteractionPlan[] Discover(IEnumerable<PropertyInfo> members, string modelName,
-        string contractFingerprint)
+        string contractFingerprint, bool honorJsonIgnore)
     {
         ArgumentNullException.ThrowIfNull(members);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
@@ -37,10 +37,10 @@ internal static class InteractionCodeEmitter
             plans.Add(new GeneratedInteractionPlan(property, interaction,
                 BridgeTypeGraph.Discover(interaction.Input,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 0),
-                    $"{modelName}.{property.Name}.input", property),
+                    $"{modelName}.{property.Name}.input", property, honorJsonIgnore),
                 BridgeTypeGraph.Discover(interaction.Output,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 1),
-                    $"{modelName}.{property.Name}.output", property),
+                    $"{modelName}.{property.Name}.output", property, honorJsonIgnore),
                 $"{contractFingerprint}:interaction:{property.Name}"));
         }
         return [.. plans];

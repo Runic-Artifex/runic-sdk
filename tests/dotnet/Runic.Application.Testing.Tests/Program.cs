@@ -18,6 +18,13 @@ if (args is ["--navigation"])
     return;
 }
 
+if (args is ["--accepted-work"])
+{
+    await AcceptedWorkScopeTests.RunAsync();
+    Console.WriteLine("Accepted work tests passed.");
+    return;
+}
+
 var model = new RootViewModel();
 using (var host = new RunicWindowTestHost<RootViewModel>(model, "root",
     (transport, content, vm) => new RootBridge(transport, vm, content: content),
@@ -154,6 +161,7 @@ TrackerConformanceTests.Run();
 await NavigationPresentationTests.RunAsync();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();
+await AcceptedWorkScopeTests.RunAsync();
 await InteractionFixture.VerifyAsync();
 await GeneratedInteractionTests.RunAsync();
 await CodegenCacheTests.RunAsync();

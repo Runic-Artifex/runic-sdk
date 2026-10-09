@@ -29,6 +29,7 @@ internal static class Conformance
             ("PICK: native owner closes after admission before dispatch", NativeOwnerDispatchRace),
             ("CLIPBOARD: outcomes, cancellation, retry and shutdown drain", ClipboardConformance),
             ("ACCESS: acquisition failure and selected-file permission limits", NativeAccessTests.RunAsync),
+            ("DIRECTORY: exact access, compatibility, owner lifetime and shared admission", DirectoryTests.RunAsync),
             ("FILE: concrete stream access, staging, conflict and commit cancellation", FileLeaseTests.RunAsync),
             ("CAP-01/02/03/04: readiness, immutable snapshots and explicit ownership", Capabilities),
             ("PICK-01/02/04: dismissal, pre-cancellation and one picker per owner", PickerAdmission),

@@ -51,6 +51,17 @@ public sealed class RunicViewContractAttribute(string contract) : Attribute
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class RunicIgnoreAttribute : Attribute;
 
+/// <summary>
+/// Opts ViewModels declared in the annotated assembly into excluding DTO properties marked
+/// with <c>System.Text.Json.Serialization.JsonIgnoreAttribute</c> when its condition
+/// is <c>Always</c> (including an unspecified condition). This applies throughout
+/// nested DTO graphs, including DTOs from assemblies that do not reference Runic.
+/// ViewModel properties still use <see cref="RunicIgnoreAttribute"/>; conditional
+/// JSON ignores and <c>Never</c> remain included in the Bridge contract.
+/// </summary>
+[AttributeUsage(AttributeTargets.Assembly)]
+public sealed class RunicBridgeJsonIgnoreAttribute : Attribute;
+
 /// <summary>Resolves a fresh .NET view for a presented ViewModel.</summary>
 public interface IRunicViewLocator
 {

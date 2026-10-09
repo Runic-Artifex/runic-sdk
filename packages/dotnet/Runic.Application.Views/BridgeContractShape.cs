@@ -43,6 +43,7 @@ public static class BridgeContractShape
 
     private static void AppendModel(List<string> parts, Type model, IReadOnlyList<Type> models, NullabilityInfoContext nullability)
     {
+        var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
         var properties = PublicModelProperties(model).Where(property => property.GetCustomAttribute<RunicIgnoreAttribute>(true) is null).ToArray();
         foreach (var property in properties)
         {
@@ -52,8 +53,8 @@ public static class BridgeContractShape
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
             if (kind == "command" && command is not null)
             {
-                AppendType(parts, command.GenericTypeArguments[0], ContractAnnotation(property, command, nullability, 0), $"{model.Name}.{property.Name}.input", []);
-                AppendType(parts, command.GenericTypeArguments[1], ContractAnnotation(property, command, nullability, 1), $"{model.Name}.{property.Name}.result", []);
+                AppendType(parts, command.GenericTypeArguments[0], ContractAnnotation(property, command, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
+                AppendType(parts, command.GenericTypeArguments[1], ContractAnnotation(property, command, nullability, 1), $"{model.Name}.{property.Name}.result", [], honorJsonIgnore);
                 var cardinality = property.GetCustomAttribute<RunicCommandResultAttribute>(true)?.Cardinality
                     ?? BridgeCommandResultCardinality.Single;
                 parts.Add($"command-cardinality:{TypeName(model)}:{property.Name}:{cardinality.ToString().ToLowerInvariant()}");
@@ -65,7 +66,7 @@ public static class BridgeContractShape
                 var toolkit = GenericContract(property.PropertyType, "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand`1", "CommunityToolkit.Mvvm.Input.IRelayCommand`1");
                 var input = toolkit?.GenericTypeArguments[0] ?? property.GetCustomAttribute<RunicCommandInputAttribute>(true)?.Input;
                 if (input is not null)
-                    AppendType(parts, input, toolkit is null ? null : GenericAnnotation(nullability.Create(property), 0), $"{model.Name}.{property.Name}.input", []);
+                    AppendType(parts, input, toolkit is null ? null : GenericAnnotation(nullability.Create(property), 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
                 var isAsync = property.PropertyType.GetInterfaces().Append(property.PropertyType)
                     .Any(type => type.FullName == "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand");
                 parts.Add($"command-async:{TypeName(model)}:{property.Name}:{isAsync}");
@@ -74,8 +75,8 @@ public static class BridgeContractShape
             }
             if (kind == "interaction" && interaction is not null)
             {
-                AppendType(parts, interaction.GenericTypeArguments[0], ContractAnnotation(property, interaction, nullability, 0), $"{model.Name}.{property.Name}.input", []);
-                AppendType(parts, interaction.GenericTypeArguments[1], ContractAnnotation(property, interaction, nullability, 1), $"{model.Name}.{property.Name}.output", []);
+                AppendType(parts, interaction.GenericTypeArguments[0], ContractAnnotation(property, interaction, nullability, 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
+                AppendType(parts, interaction.GenericTypeArguments[1], ContractAnnotation(property, interaction, nullability, 1), $"{model.Name}.{property.Name}.output", [], honorJsonIgnore);
                 continue;
             }
             if (kind != "state") continue;
@@ -93,7 +94,7 @@ public static class BridgeContractShape
                 parts.Add($"content:{TypeName(model)}:{WireName(property)}:contract:{ContractFor(property) ?? "default"}");
                 continue;
             }
-            AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
+            AppendType(parts, property.PropertyType, nullability.Create(property), $"{model.Name}.{WireName(property)}", [], honorJsonIgnore, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
         }
         parts.Add($"validation-errors:{TypeName(model)}:{typeof(INotifyDataErrorInfo).IsAssignableFrom(model)}");
     }
@@ -105,13 +106,13 @@ public static class BridgeContractShape
         foreach (var (declaredOn, failure) in BridgeCommandSources.FailureDeclarations(model, command))
         {
             parts.Add($"command-failure:{TypeName(model)}:{command.Name}:{declaredOn}");
-            AppendType(parts, failure, null, $"{model.Name}.{command.Name}.failure", []);
+            AppendType(parts, failure, null, $"{model.Name}.{command.Name}.failure", [], BridgeDtoContract.HonorsJsonIgnore(model.Assembly));
         }
     }
 
     // Canonical recursive shape only. Generated code uses direct accesses; it
     // never invokes this reflection path under trimming/AOT.
-    private static void AppendType(List<string> parts, Type declared, NullabilityInfo? annotation, string path, HashSet<Type> stack, RunicBridgeCodecAttribute? memberCodec = null)
+    private static void AppendType(List<string> parts, Type declared, NullabilityInfo? annotation, string path, HashSet<Type> stack, bool honorJsonIgnore, RunicBridgeCodecAttribute? memberCodec = null)
     {
         var nullable = !declared.IsValueType ? annotation?.ReadState == NullabilityState.Nullable : Nullable.GetUnderlyingType(declared) is not null;
         var type = Nullable.GetUnderlyingType(declared) ?? declared;
@@ -141,20 +142,20 @@ public static class BridgeContractShape
             {
                 var tag = @case.GetCustomAttribute<RunicUnionCaseAttribute>()?.Name ?? "missing";
                 parts.Add($"union-case:{path}:{tag}:{TypeName(@case)}");
-                AppendType(parts, @case, null, path + ".$case=" + tag, stack);
+                AppendType(parts, @case, null, path + ".$case=" + tag, stack, honorJsonIgnore);
             }
             return;
         }
         if (TryDictionary(type, out var dictionaryValue))
         {
             parts.Add($"dictionary:{path}:key:string");
-            AppendType(parts, dictionaryValue!, GenericAnnotation(annotation, 1), path + "{}", stack);
+            AppendType(parts, dictionaryValue!, GenericAnnotation(annotation, 1), path + "{}", stack, honorJsonIgnore);
             return;
         }
         if (TryCollection(type, out var item))
         {
             parts.Add($"collection:{path}");
-            AppendType(parts, item!, GenericAnnotation(annotation, 0), path + "[]", stack);
+            AppendType(parts, item!, GenericAnnotation(annotation, 0), path + "[]", stack, honorJsonIgnore);
             return;
         }
         if (!type.IsPublic || type.IsAbstract || !(type.IsClass || type.IsValueType) || stack.Contains(type))
@@ -165,11 +166,11 @@ public static class BridgeContractShape
         stack.Add(type);
         parts.Add($"dto:{path}:{TypeName(type)}");
         var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var property in PublicDtoProperties(type).Where(property => property.GetCustomAttribute<RunicIgnoreAttribute>(true) is null))
+        foreach (var property in PublicDtoProperties(type).Where(property => !BridgeDtoContract.IsIgnored(property, honorJsonIgnore)))
         {
             var wire = WireName(property);
             parts.Add($"dto-member:{path}:{property.DeclaringType?.FullName}:{property.Name}:wire:{wire}:set:{property.SetMethod?.IsPublic == true}:collision:{!names.Add(wire)}");
-            AppendType(parts, property.PropertyType, new NullabilityInfoContext().Create(property), path + "." + wire, stack, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
+            AppendType(parts, property.PropertyType, new NullabilityInfoContext().Create(property), path + "." + wire, stack, honorJsonIgnore, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
         }
         var constructors = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public).OrderBy(constructor => constructor.MetadataToken)
             .Select(constructor => string.Join(",", constructor.GetParameters().Select(parameter => parameter.Name + ":" + TypeName(parameter.ParameterType))));

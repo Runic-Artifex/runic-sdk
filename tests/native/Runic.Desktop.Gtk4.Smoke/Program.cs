@@ -18,6 +18,7 @@ using var watchdog = new Timer(static _ =>
     Environment.Exit(1);
 }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
 SmokeMode.PortalParentOnly = args.Contains("--portal-parent-only", StringComparer.Ordinal);
+SmokeMode.DirectoryOnly = args.Contains("--directory", StringComparer.Ordinal);
 
 try
 {
@@ -39,6 +40,7 @@ try
         Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run without a display falls back and reports why.");
         return 0;
     }
+    using var directoryPortal = SmokeMode.DirectoryOnly ? DirectorySmoke.StartPortal() : null;
     AssertRunnerContract();
     Environment.ExitCode = RunSmoke();
     Console.WriteLine("PASS GTK 4 / WebKitGTK 6 native window lifecycle and capability contract.");
@@ -222,6 +224,11 @@ static async Task RunAsync()
     if (SmokeMode.PortalParentOnly)
     {
         await host.CloseAsync();
+        return;
+    }
+    if (SmokeMode.DirectoryOnly)
+    {
+        await DirectorySmoke.RunAsync(owner, host);
         return;
     }
     var clipboard = Gtk4PlatformProvider.CreateTextClipboard(owner);
@@ -412,5 +419,6 @@ internal sealed class HostOwner(IDesktopNativeDispatchWindowHost host) : INative
 internal static class SmokeMode
 {
     internal static bool PortalParentOnly { get; set; }
+    internal static bool DirectoryOnly { get; set; }
 }
 #pragma warning restore CA1416

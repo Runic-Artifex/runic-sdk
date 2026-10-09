@@ -29,7 +29,7 @@ await using (var broken = LinuxPlatformProvider.CreateTextClipboard(new Disappea
     try { await broken.ReadTextAsync(30); throw new InvalidOperationException("Unexpected dispatcher failure was swallowed."); }
     catch (InvalidOperationException error) when (error.Message == "dispatcher defect") { }
 }
-if (!args.Contains("--native") && !args.Contains("--portal-cancel")) { Console.WriteLine("PASS Linux clipboard owner dispatch races."); return; }
+if (!args.Contains("--native") && !args.Contains("--portal-cancel") && !args.Contains("--directory-native")) { Console.WriteLine("PASS Linux clipboard owner dispatch races."); return; }
 await using var owner = new GtkOwner();
 await using var clipboard = LinuxPlatformProvider.CreateTextClipboard(owner);
 await using (var parent = await new Gtk3PortalWindowOwner(owner).ExportParentAsync())
@@ -48,6 +48,28 @@ if (args.Contains("--portal-cancel"))
     }
     catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
     Console.WriteLine("PASS real desktop portal request and cancellation; clipboard untouched.");
+    return;
+}
+if (args.Contains("--directory-native"))
+{
+    var directories = LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner);
+    var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    owner.AfterDispatch = () => shown.TrySetResult();
+    using (var cancellation = new CancellationTokenSource())
+    {
+        var selection = directories.OpenDirectoryAsync(new(), cancellation.Token).AsTask();
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+        try { await selection.WaitAsync(TimeSpan.FromSeconds(5)); throw new InvalidOperationException("Directory cancellation ignored."); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+    }
+    shown = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    owner.AfterDispatch = () => shown.TrySetResult();
+    var pendingDirectory = directories.OpenDirectoryAsync(new()).AsTask();
+    await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    await owner.CloseWindowAsync();
+    Check(await pendingDirectory.WaitAsync(TimeSpan.FromSeconds(5)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "GTK native directory owner destruction");
+    Console.WriteLine("PASS GTK3 native directory chooser cancellation, retry and destroyed-owner cleanup.");
     return;
 }
 await owner.InvokeAsync(_ => Native.Clear(Native.Clipboard(Native.Atom("CLIPBOARD", 0))));
@@ -124,9 +146,10 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
     readonly Thread thread;
     readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile bool stopping;
+    volatile bool closed;
     public Action? AfterDispatch { get; set; }
     public Guid Generation { get; } = Guid.NewGuid();
-    public bool IsAvailable => !stopping;
+    public bool IsAvailable => !stopping && !closed;
     public GtkOwner()
     {
         thread = new Thread(() =>
@@ -143,7 +166,7 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
                 while (Native.Iteration(0, 0) != 0) { }
                 Thread.Sleep(1);
             }
-            Native.Destroy(window);
+            if (!closed) Native.Destroy(window);
         });
         thread.Start();
     }
@@ -152,9 +175,10 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
         await started.Task;
         cancellationToken.ThrowIfCancellationRequested();
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        queue.Enqueue((handle => { cancellationToken.ThrowIfCancellationRequested(); action(handle); }, completion));
+        queue.Enqueue((handle => { cancellationToken.ThrowIfCancellationRequested(); if (closed) throw new OwnerClosedException(); action(handle); }, completion));
         await completion.Task;
     }
+    public ValueTask CloseWindowAsync() => InvokeAsync(window => { Native.Destroy(window); closed = true; });
     public ValueTask DisposeAsync() { stopping = true; thread.Join(); return ValueTask.CompletedTask; }
 }
 static partial class Native

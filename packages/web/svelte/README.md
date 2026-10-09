@@ -2,7 +2,7 @@
 
 Svelte 5 Application Views helpers. `@runic-artifex/svelte` and
 `@runic-artifex/svelte/views` export `useView`, `ViewOutlet`, `ViewRegistry`,
-`useCommand` and `useCollectionViewport` for generated Window/View clients.
+`useCommand`, `useOperation` and `useCollectionViewport` for generated Window/View clients.
 
 Generated View clients import `@runic-artifex/views`, which this package also
 builds on, so a Views application installs both packages:
@@ -82,6 +82,71 @@ For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves
 from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
+
+## `useOperation(start, options?)`
+
+Call during component initialization to observe a generated operation's admission,
+pending state, terminal outcome and cancellation. Progress and recovery stay in the
+generated View snapshot:
+
+```svelte
+<script lang="ts">
+  import { useOperation, useView } from "@runic-artifex/svelte/views";
+  import { connectWorkspace } from "./generated/workspace.js";
+
+  const workspace = useView(() => ({ connect: connectWorkspace }));
+  const push = useOperation((remote: string) => workspace.client?.startPush(remote));
+</script>
+
+<button disabled={!workspace.client || push.pending} onclick={() => push.run("origin")}>Push</button>
+{#if push.pending}
+  <p role="status">{workspace.state?.operationMessage ?? "Starting…"}</p>
+  <button disabled={push.cancellationRequested} onclick={() => push.cancel()}>Cancel</button>
+{/if}
+{#if push.error ?? push.cancelError}<p role="alert">{String(push.error ?? push.cancelError)}</p>{/if}
+```
+
+The result exposes reactive `pending`, `admitting`, `operation`, `status`, `outcome`,
+`failure`, `error`, `cancellationRequested`, `cancelling`, `cancellation` and
+`cancelError`, with `run(...args)`, `cancel()` and `reset()`. Both async methods never
+reject. Cancel before a delayed Start receipt is retained for that captured run;
+its response does not release pending state. `reset()` clears feedback while
+preserving busy state and cancellation identity. Component destruction settles UI
+observation promises and detaches feedback without cancelling accepted mutations.
+The host still owns accepted-work completion and shutdown drain.
+
+The optional typed `cancel(operation)` callback can use a short application control
+command. `waitForCompletion(operation, terminalStatus)` can await application drain
+or command availability that outlives the invocation wrapper. By default the helper
+uses the operation's public `wait()` and `outcome()`; the desktop transport keeps
+Cancel and other callbacks responsive during observation.
+
+For rapid read selection, compose the framework-neutral
+[`createLatestOperationController`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
+with Svelte state. It coalesces latest intent across delayed receipts and orders
+the next admission after terminal observation and any application drain barrier:
+
+```svelte
+<script lang="ts">
+  import { createLatestOperationController } from "@runic-artifex/views";
+
+  const selections = createLatestOperationController<void>();
+  let selection = $state.raw(selections.current);
+  const unsubscribe = selections.subscribe(() => { selection = selections.current; });
+  $effect.pre(() => () => { unsubscribe(); selections.dispose(); });
+  // Event handlers call selections.run({ start, cancel, isCurrent, waitForCompletion? }).
+  // Capture the original client/session in each intent. On application-owned
+  // session replacement, call selections.clear("replace") to detach old intent.
+</script>
+
+{#if selection.blocked}<p role="alert">Selection completion is uncertain. Reconnect or replace the session before retrying.</p>{/if}
+```
+
+`clear()` drops queued input and cancels the captured read; `clear("replace")`
+detaches it without cancellation and permits fresh admission. The application must
+establish that replacement boundary and own the old work's drain. Lost terminal
+observation blocks further Starts instead of retrying blindly, with its reason in
+`current.error`; ordinary Cancel does not clear this block.
 
 ## `useCollectionViewport(options)`
 
