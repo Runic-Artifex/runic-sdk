@@ -237,6 +237,7 @@
         "tests/fixtures/application/cswebui-window-probes",
         "tests/fixtures/application/experiments",
         "tests/fixtures/application/navigation-consumer",
+        "tests/fixtures/application/operations-consumer",
         "tests/fixtures/application/reactiveui25-aot",
         "tests/fixtures/application/reactiveui-behavioral-conformance",
         "tests/fixtures/application/reactiveui-reactive-flavor"
