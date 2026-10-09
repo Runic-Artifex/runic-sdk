@@ -1,3 +1,1 @@
 #nullable enable
-[RUNICNAV001]static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenCanGoBackChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<bool>!
-[RUNICNAV001]static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenIsTransitioningChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<bool>!
