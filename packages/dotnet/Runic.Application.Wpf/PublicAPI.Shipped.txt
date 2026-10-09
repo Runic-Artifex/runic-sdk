@@ -1,1 +1,13 @@
 #nullable enable
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicWebView
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicWebView.CreateWindowHostFactory() -> Runic.Desktop.IDesktopWindowHostFactory!
+[RUNICWPF001]Runic.Application.Views.Wpf.RunicWebView.RunicWebView() -> void
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.OpenAsync(Runic.Desktop.DesktopWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.Surface.get -> Runic.Desktop.DesktopSurface!
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.ViewModel.get -> TViewModel!
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeViewExtensions
+[RUNICWPF001]const Runic.Application.Views.Wpf.RunicWebView.DiagnosticId = "RUNICWPF001" -> string!
+[RUNICWPF001]static Runic.Application.Views.Wpf.WpfBridgeViewExtensions.CreateWpfViewAsync<TViewModel>(this System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop, Runic.Desktop.DesktopSurfaceOptions! surfaceOptions, TViewModel! viewModel, Runic.Navigation.IRunicModelContext? modelContext = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.Wpf.WpfBridgeView<TViewModel!>!>

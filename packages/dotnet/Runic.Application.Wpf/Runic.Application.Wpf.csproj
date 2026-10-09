@@ -12,8 +12,6 @@
     <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
     <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.7.0-preview.5</RunicPackageFirstReleaseVersion>
     <NoWarn>$(NoWarn);RUNICWPF001;RUNICNAV001</NoWarn>
   </PropertyGroup>
   <ItemGroup>

@@ -328,3 +328,5 @@ static Runic.Navigation.RunicModelContextRegistry.Shared.get -> Runic.Navigation
 ~[RUNICNAV001]static Runic.Navigation.NavigationResult<TContent>.operator !=(Runic.Navigation.NavigationResult<TContent>? left, Runic.Navigation.NavigationResult<TContent>? right) -> bool
 ~[RUNICNAV001]static Runic.Navigation.NavigationResult<TContent>.operator ==(Runic.Navigation.NavigationResult<TContent>? left, Runic.Navigation.NavigationResult<TContent>? right) -> bool
 ~[RUNICNAV001]virtual Runic.Navigation.NavigationResult<TContent>.Equals(Runic.Navigation.NavigationResult<TContent>? other) -> bool
+[RUNICNAV001]Runic.Navigation.INavigationRegion.ReplaceBorrowedAsync(object! content, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
+Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken

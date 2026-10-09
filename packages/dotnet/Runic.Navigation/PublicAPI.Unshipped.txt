@@ -1,3 +1,1 @@
 #nullable enable
-[RUNICNAV001]Runic.Navigation.INavigationRegion.ReplaceBorrowedAsync(object! content, Runic.Navigation.NavigationRequestOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Navigation.NavigationResult<object!>!>
-Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
