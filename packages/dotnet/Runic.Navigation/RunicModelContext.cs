@@ -34,13 +34,9 @@ public interface IRunicModelContext : IAsyncDisposable
     bool TryPost(Action turn);
 
     /// <summary>Runs a short synchronous turn in this context.</summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity. Remove once PublicAPI.Shipped.txt lists them (eng/release/README.md step 6).")]
     ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default);
 
     /// <summary>Runs a short synchronous turn in this context and returns its result.</summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity. Remove once PublicAPI.Shipped.txt lists them (eng/release/README.md step 6).")]
     ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default);
 }
 
@@ -97,8 +93,6 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     }
 
     /// <inheritdoc />
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity. Remove once PublicAPI.Shipped.txt lists them (eng/release/README.md step 6).")]
     public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(turn);
@@ -116,8 +110,6 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     }
 
     /// <inheritdoc />
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Shipped in Runic.Application 0.7.0-preview.3 and moved unchanged; the overloads differ by generic arity. Remove once PublicAPI.Shipped.txt lists them (eng/release/README.md step 6).")]
     public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(turn);
