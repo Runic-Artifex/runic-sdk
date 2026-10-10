@@ -8,6 +8,15 @@ public interface IPickerBackend : IFileDialogs
     /// <summary>Whether selected save destinations can be staged and atomically replaced.</summary>
     bool SupportsAtomicReplace => true;
     /// <summary>Whether this backend implements local directory selection.</summary>
+    /// <remarks>
+    /// This reports the backend's <see cref="IFileDialogs.OpenDirectoryAsync"/> implementation before a call; it
+    /// does not select behavior. Return <see langword="true"/> exactly when the backend implements that method, and
+    /// keep the inherited default (<see langword="false"/>) only when it relies on the default method, which reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. <see cref="PresentationFiles"/> reports the
+    /// <c>platform.directories.open</c> capability from this value and always calls the backend's method; it throws
+    /// <see cref="InvalidOperationException"/> when a backend reporting <see langword="false"/> returns anything
+    /// other than <see cref="PickerResult{T}.Unavailable"/>, after releasing any selected access.
+    /// </remarks>
     bool SupportsDirectorySelection => false;
 }
 

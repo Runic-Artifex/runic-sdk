@@ -175,6 +175,12 @@ public sealed record SaveFileOptions(string SuggestedName, OwnerPolicy OwnerPoli
 public interface IFileDialogs
 {
     /// <summary>Selects directory access for C# filesystem operations. Older providers report unavailable.</summary>
+    /// <remarks>
+    /// The default implementation returns <see cref="PickerResult{T}.Unavailable"/> with
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. A provider that implements directory selection
+    /// overrides this method and also reports that support through its capability declaration, such as
+    /// <c>IPickerBackend.SupportsDirectorySelection</c> in <c>Runic.Platform.Runtime</c>.
+    /// </remarks>
     ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -189,10 +195,14 @@ public interface IFileDialogs
 }
 
 /// <summary>Owns access to one local directory until disposed or its presentation closes.</summary>
-/// <remarks>Keep this lease alive while C# filesystem operations use its path. Neither the lease nor native access grants are bridge payloads.</remarks>
+/// <remarks>
+/// Keep this lease alive while C# filesystem operations use its path. Neither the lease nor native access grants are
+/// bridge payloads. Presentation close releases access even while application work still uses the path; work that
+/// can outlive the presentation, such as accepted recovery, must finish before the presentation's lifetime is stopped.
+/// </remarks>
 public interface IDirectoryLease : IAsyncDisposable
 {
-    /// <summary>The directory's display name, without a filesystem path. Throws after access is released.</summary>
+    /// <summary>The directory's display name, without its parent path; a filesystem root, such as <c>/</c> or <c>C:\</c>, is named by the root itself. Throws after access is released.</summary>
     string DisplayName { get; }
     /// <summary>The exact local path for C# filesystem operations. Throws after access is released; a saved copy does not retain the access grant.</summary>
     string LocalPath { get; }

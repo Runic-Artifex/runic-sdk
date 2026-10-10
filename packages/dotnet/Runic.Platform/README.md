@@ -25,8 +25,24 @@ identity, including Unicode and escaped filename characters. Native paths that
 cannot be represented exactly in C# are refused. Leases and native grants remain
 in C#; expose only application DTOs to a frontend.
 
+Presentation close releases every lease the presentation still owns; on macOS this
+ends security-scoped access, and `LocalPath` throws once closing starts. Native
+owner closure alone does not release leases. When application work that uses a
+lease can outlive the window, such as recovery owned by an `AcceptedWorkScope`,
+drain that work before stopping the `PresentationLifetime`, or dispose the lease
+at the end of the work itself:
+
+```csharp
+await acceptedWork.DisposeAsync(); // Work using lease.LocalPath has finished.
+await presentationLifetime.DisposeAsync(); // Releases remaining leases.
+```
+
 User dismissal returns `Dismissed`, caller cancellation throws
 `OperationCanceledException`, and presentation shutdown returns
 `Unavailable(OwnerClosed)`. The `platform.directories.open` capability reports
 availability when using `PresentationFiles`. Existing file-only implementations
-remain compatible and report directory selection unavailable.
+remain compatible and report directory selection unavailable. A custom
+`IPickerBackend` that implements `OpenDirectoryAsync` must also return `true` from
+`SupportsDirectorySelection`; `PresentationFiles` always calls the backend's method
+and throws `InvalidOperationException` if an undeclared backend returns a result
+other than `Unavailable`.

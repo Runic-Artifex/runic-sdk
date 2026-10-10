@@ -29,6 +29,21 @@ internal static class DirectoryTests
                 await Throws<ArgumentOutOfRangeException>(() => files.OpenDirectoryAsync(new((OwnerPolicy)10)).AsTask());
             }
 
+            // The backend method is the only behavior. A backend implementing it
+            // while declaring no support fails visibly instead of being silently hidden.
+            await using (var lifetime = new PresentationLifetime(() => true))
+            {
+                var undeclared = new UndeclaredDirectoryBackend(path);
+                var files = new PresentationFiles(lifetime, undeclared);
+                Check(files.GetSnapshot().Statuses["platform.directories.open"] is CapabilityStatus.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
+                await Throws<InvalidOperationException>(() => files.OpenDirectoryAsync(new()).AsTask());
+                Check(undeclared.Access.Releases == 1 && lifetime.GetResourceSnapshot() == (0, 0));
+                undeclared.Declared = true;
+                Check(files.GetSnapshot().Statuses["platform.directories.open"] is CapabilityStatus.Available);
+                var declared = (PickerResult<IDirectoryLease>.Selected)await files.OpenDirectoryAsync(new());
+                Check(declared.Value.LocalPath == path);
+            }
+
             var owner = new Owner();
             var picker = new Picker();
             var backend = new NativePickerBackend(owner, picker);
@@ -42,6 +57,14 @@ internal static class DirectoryTests
             await selected.Value.DisposeAsync();
             Check(access.Releases == 1);
             await Throws<ObjectDisposedException>(() => Task.FromResult(selected.Value.LocalPath));
+
+            // A filesystem root has no final path segment; its display name is the root.
+            string fileSystemRoot = Path.GetPathRoot(path)!;
+            picker.Select = () => new(fileSystemRoot, null);
+            selected = (PickerResult<IDirectoryLease>.Selected)await backend.OpenDirectoryAsync(new());
+            Check(selected.Value.LocalPath == fileSystemRoot && selected.Value.DisplayName == fileSystemRoot);
+            await selected.Value.DisposeAsync();
+            Check(DirectoryLease.GetDisplayName(Path.Combine(root, "name") + Path.DirectorySeparatorChar) == "name");
 
             foreach (string invalid in new[] { Path.Combine(root, "missing"), Path.Combine(root, "ordinary-file") })
             {
@@ -102,6 +125,21 @@ internal static class DirectoryTests
             await Throws<ObjectDisposedException>(() => Task.FromResult(selected.Value.LocalPath));
             Check(access.Releases == 1);
 
+            // Losing the native owner does not revoke access. Accepted work that
+            // still uses the lease drains before the application stops the lifetime.
+            access = new Access();
+            bool ownerOpen = true;
+            await using (var retained = new PresentationLifetime(() => ownerOpen, owner.Generation))
+            {
+                var retainedFiles = new PresentationFiles(retained, new NativePickerBackend(owner, new Picker { Select = () => new(path, access) }));
+                selected = (PickerResult<IDirectoryLease>.Selected)await retainedFiles.OpenDirectoryAsync(new());
+                ownerOpen = false;
+                Check(!retained.HasOwner && retainedFiles.GetSnapshot().Statuses["platform.directories.open"] is CapabilityStatus.Unavailable);
+                Check(selected.Value.LocalPath == path && access.Releases == 0);
+                await retained.DisposeAsync();
+                Check(access.Releases == 1);
+            }
+
             // Unix filenames are native byte strings. A replacement decoder
             // would select a different resource; reject invalid UTF-8 instead.
             if (!OperatingSystem.IsWindows())
@@ -136,6 +174,22 @@ internal static class DirectoryTests
     private sealed class LegacyBackend : IPickerBackend
     {
         public bool IsAvailable => true;
+        public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<PickerResult<IReadFileLease>>(new PickerResult<IReadFileLease>.Dismissed());
+        public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<PickerResult<ISaveFileLease>>(new PickerResult<ISaveFileLease>.Dismissed());
+    }
+    private sealed class UndeclaredDirectoryBackend(string path) : IPickerBackend
+    {
+        internal bool Declared;
+        internal Access Access { get; private set; } = new();
+        public bool IsAvailable => true;
+        public bool SupportsDirectorySelection => Declared;
+        public ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
+        {
+            Access = new Access();
+            return ValueTask.FromResult<PickerResult<IDirectoryLease>>(new PickerResult<IDirectoryLease>.Selected(new DirectoryLease(path, Access)));
+        }
         public ValueTask<PickerResult<IReadFileLease>> OpenFileAsync(OpenFileOptions options, CancellationToken cancellationToken = default)
             => ValueTask.FromResult<PickerResult<IReadFileLease>>(new PickerResult<IReadFileLease>.Dismissed());
         public ValueTask<PickerResult<ISaveFileLease>> SaveFileAsync(SaveFileOptions options, CancellationToken cancellationToken = default)
