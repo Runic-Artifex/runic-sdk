@@ -85,7 +85,23 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow where TViewModel :
     public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(timeout));
-        lock (_gate) return new(_close ??= BeginCloseAsync(timeout));
+        TaskCompletionSource<BridgeWindowCloseResult> close;
+        lock (_gate)
+        {
+            if (_close is not null) return new(_close);
+            // Publish the close before running any of it: disposal and WebView2/COM calls can
+            // pump messages and re-enter CloseAsync or DisposeAsync on this thread.
+            close = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _close = close.Task;
+        }
+        _ = RunCloseAsync(close, timeout);
+        return new(close.Task);
+    }
+
+    private async Task RunCloseAsync(TaskCompletionSource<BridgeWindowCloseResult> close, TimeSpan timeout)
+    {
+        try { close.TrySetResult(await BeginCloseAsync(timeout).ConfigureAwait(false)); }
+        catch (Exception error) { close.TrySetException(error); }
     }
 
     /// <summary>Releases owned presentation resources after accepted operations finish; borrowed models and services stay alive.</summary>

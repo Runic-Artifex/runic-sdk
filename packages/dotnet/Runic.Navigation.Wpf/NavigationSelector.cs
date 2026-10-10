@@ -47,6 +47,10 @@ public static class NavigationSelector
         selector.SetValue(AdapterProperty, args.NewValue is INavigationRegion region ? new Adapter(selector, region) : null);
     }
 
+    // Test seam: the latest selection request started by the control's adapter.
+    internal static Task SelectionCompletion(Selector selector) =>
+        ((Adapter?)selector.GetValue(AdapterProperty))?.Selection ?? Task.CompletedTask;
+
     private static DataTemplate CreateTabTemplate()
     {
         var host = new FrameworkElementFactory(typeof(NavigationHost));
@@ -70,6 +74,8 @@ public static class NavigationSelector
         private long _request;
         private bool _attached;
         private bool _synchronizing;
+
+        internal Task Selection => _selection ?? Task.CompletedTask;
 
         public Adapter(Selector selector, INavigationRegion region)
         {
@@ -106,7 +112,7 @@ public static class NavigationSelector
             _request++;
             var pending = _pending;
             _pending = null;
-            pending?.Cancel(); // The execution owns disposal of its token source.
+            CancelPending(pending); // The execution owns disposal of its token source.
         }
 
         private void Changed(object? sender, PropertyChangedEventArgs args)
@@ -133,7 +139,7 @@ public static class NavigationSelector
             if (ReferenceEquals(selected, _region.Current))
             {
                 var request = ++_request;
-                _pending?.Cancel();
+                CancelPending(_pending);
                 _pending = null;
                 if (_selection is { } previous) _ = KeepSelectionAsync(selected, request, previous);
                 return;
@@ -147,7 +153,7 @@ public static class NavigationSelector
             var cancellation = new CancellationTokenSource();
             _pending = cancellation;
             var request = ++_request;
-            previous?.Cancel();
+            CancelPending(previous);
             _selection = SelectAsync(selected, request, cancellation);
         }
 
@@ -182,8 +188,20 @@ public static class NavigationSelector
                         Reconcile();
                     }).ConfigureAwait(false);
                 }
-                finally { cancellation.Dispose(); }
+                finally
+                {
+                    // After dispatcher shutdown the reset above is skipped: never leave a disposed source pending.
+                    Interlocked.CompareExchange(ref _pending, null, cancellation);
+                    cancellation.Dispose();
+                }
             }
+        }
+
+        // The execution can dispose its source on another thread just after a UI handler read it.
+        private static void CancelPending(CancellationTokenSource? pending)
+        {
+            try { pending?.Cancel(); }
+            catch (ObjectDisposedException) { }
         }
 
         private async Task OnDispatcherAsync(Action action)

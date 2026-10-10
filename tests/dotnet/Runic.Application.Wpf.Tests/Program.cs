@@ -34,6 +34,7 @@ internal static class Program
         await MissingBridgeFailsBeforeListener();
         await BorrowedResourcesSurviveCloseAndAcceptedWork();
         await NativeUnloadReleasesSession();
+        await ReentrantCloseRunsOnce();
         Check(WpfPresentationOptions.Validate(new()).Count == 0, "Default options produced layout warnings.");
         var warnings = WpfPresentationOptions.Validate(new() { Width = 1200, Transparent = true, X = 20 });
         Check(warnings.Select(item => item.Option).ToHashSet().SetEquals(["Width", "Transparent", "X"]), "Unsupported layout options were not reported.");
@@ -115,11 +116,41 @@ internal static class Program
         Check((await http.GetAsync(url)).StatusCode == HttpStatusCode.NotFound, "Unloaded child assets remained available.");
     }
 
+    // Releasing the attachment can pump messages (WebView2/COM) and re-enter close on the same thread.
+    private static async Task ReentrantCloseRunsOnce()
+    {
+        var attachment = new ReentrantAttachment();
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, Model, IDisposable>>((_, _) => attachment);
+        await using var services = collection.BuildServiceProvider();
+        await using var host = await DesktopHost.StartAsync();
+        var view = await services.CreateWpfViewAsync(host, HtmlOptions(), new Model());
+        Task? nested = null;
+        attachment.Disposing = () => nested = view.DisposeAsync().AsTask();
+        var result = await view.CloseAsync(TimeSpan.Zero);
+        await result.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(nested is not null, "The attachment was not released.");
+        await nested!.WaitAsync(TimeSpan.FromSeconds(5));
+        Check(attachment.Disposals == 1, $"Re-entrant close released the attachment {attachment.Disposals} times.");
+    }
+
     internal static DesktopSurfaceOptions HtmlOptions() => new()
     { Content = new DesktopContent.Html("<!doctype html><script src=\"webui.js\"></script><input id=\"editor\" aria-label=\"Editor\">") };
     internal static void Check(bool condition, string message)
     { if (!condition) throw new InvalidOperationException(message); }
 
+    private sealed class ReentrantAttachment : IDisposable
+    {
+        internal Action? Disposing { get; set; }
+        internal int Disposals { get; private set; }
+        public void Dispose()
+        {
+            Disposals++;
+            var disposing = Disposing;
+            Disposing = null;
+            disposing?.Invoke();
+        }
+    }
     private sealed class BorrowedService : IDisposable
     {
         internal bool Disposed { get; private set; }
