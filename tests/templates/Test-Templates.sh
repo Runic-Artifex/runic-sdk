@@ -177,8 +177,16 @@ serve_and_fetch() {
   local cookies="$document.cookies"
   curl -fsS -c "$cookies" -b "$cookies" "$url/index.html" > "$document"
   curl -fsS -c "$cookies" -b "$cookies" "$url/runic-cswebui.js" > /dev/null
+  # A second window's page is served from the same web root as index.html.
+  local pages=("$document")
+  if [[ -f "$directory/Frontend/settings.html" ]]; then
+    curl -fsS -c "$cookies" -b "$cookies" "$url/settings.html" > "$document.settings.html"
+    grep -Fq '<title>Second window</title>' "$document.settings.html"
+    pages+=("$document.settings.html")
+  fi
   if [[ "$expect_development" == true ]]; then
-    grep -Fq 'http://127.0.0.1:' "$document"
+    local page
+    for page in "${pages[@]}"; do grep -Fq 'http://127.0.0.1:' "$page"; done
     # An IDE or terminal may end only dotnet runic dev; it must stop the
     # frontend and native host processes it started.
     kill -TERM "$served_group"
@@ -192,7 +200,7 @@ serve_and_fetch() {
       exit 1
     fi
   else
-    if grep -Fq 'http://127.0.0.1:' "$document"; then
+    if grep -Fq 'http://127.0.0.1:' "${pages[@]}"; then
       echo "The production build served a development document." >&2
       exit 1
     fi
@@ -297,6 +305,13 @@ verify_template() {
     exit 1
   fi
   configure_candidate_registry "$manager" "$output"
+  # A second window gets its own page as a second Vite build input. Angular
+  # builds through the Angular CLI and keeps a single page here.
+  if [[ "$framework" != angular ]]; then
+    sed -i 's|build: { outDir: "dist",|build: { rolldownOptions: { input: ["index.html", "settings.html"] }, outDir: "dist",|' \
+      "$output/Frontend/vite.config.ts"
+    grep -Fq '"settings.html"' "$output/Frontend/vite.config.ts"
+  fi
 
   # The documented first run, verbatim: dotnet tool restore, then
   # dotnet runic dev. doctor must already work before anything is restored.
@@ -315,11 +330,29 @@ verify_template() {
       exit 1
     fi
   fi
+  if [[ "$framework" != angular ]]; then
+    sed 's|<title>[^<]*</title>|<title>Second window</title>|' "$output/Frontend/index.html" > "$output/Frontend/settings.html"
+  fi
   # RUNIC_APPLICATION_SERVE_ONLY is a CS-WebUI host contract. Desktop variants
   # open a native window, so automation covers their generation, build, and types.
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
+  fi
+  if [[ "$manager" == npm && "$host" == cswebui && "$framework" != angular ]]; then
+    # A window entry that is a build input but has no file fails before the
+    # build, naming the page instead of timing out the window's connection.
+    mv "$output/Frontend/settings.html" "$output/settings.html.kept"
+    if (cd "$output" && RUNIC_APPLICATION_SERVE_ONLY=1 timeout -k 10 300 dotnet runic dev --no-restore) \
+      > "$output/dotnet-runic-dev-missing.log" 2>&1 < /dev/null; then
+      echo "dotnet runic dev accepted a missing window entry." >&2
+      exit 1
+    fi
+    if ! grep -Fq "RAPPDEV1009: Window entry not found: 'settings.html'" "$output/dotnet-runic-dev-missing.log"; then
+      tail -n 80 "$output/dotnet-runic-dev-missing.log" >&2
+      exit 1
+    fi
+    mv "$output/settings.html.kept" "$output/Frontend/settings.html"
   fi
 
   dotnet restore "$output/$project_name.csproj" "${restore_sources[@]}"
@@ -346,6 +379,14 @@ verify_template() {
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   test -d "$output/Frontend/node_modules"
   test -f "$output/Frontend/dist/index.html"
+  if [[ "$framework" != angular ]]; then
+    test -f "$output/bin/Release/net10.0/www/settings.html"
+  fi
+  if [[ "$framework" != angular && "$manager" == npm ]]; then
+    dotnet publish "$output/$project_name.csproj" --configuration Release --no-restore --no-build \
+      --output "$output/publish" > "$output/publish.log"
+    test -f "$output/publish/www/settings.html"
+  fi
   # Runic Desktop serves each Window below its own path, where root-absolute
   # asset URLs leave the page blank. Desktop variants are not started here.
   if grep -nE '(src|href)="/[^/]' "$output/Frontend/dist/index.html"; then
