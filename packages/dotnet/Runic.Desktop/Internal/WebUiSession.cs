@@ -21,6 +21,7 @@ internal sealed class WebUiSession : IAsyncDisposable
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly SemaphoreSlim _eventGate = new(1, 1);
     private readonly HashSet<TaskCompletionSource> _pendingCalls = [];
+    private readonly TaskCompletionSource _callbackDrainStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly ConcurrentDictionary<ushort, TaskCompletionSource<ScriptResult>> _pendingScripts = new();
     private int _authenticated;
     private int _revoked;
@@ -57,6 +58,10 @@ internal sealed class WebUiSession : IAsyncDisposable
     public string Cookies { get; }
 
     public bool IsAuthenticated => Volatile.Read(ref _revoked) == 0 && Volatile.Read(ref _authenticated) != 0;
+
+    // Completes once the ended receive loop has snapshotted the accepted callbacks
+    // it drains before Disconnected. Tests use it instead of a timed wait.
+    public Task CallbackDrainStarted => _callbackDrainStarted.Task;
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -142,6 +147,7 @@ internal sealed class WebUiSession : IAsyncDisposable
             // disconnect still follows every callback accepted by this session.
             Task[] pendingCalls;
             lock (_admissionGate) pendingCalls = _pendingCalls.Select(static call => call.Task).ToArray();
+            _callbackDrainStarted.TrySetResult();
             await Task.WhenAll(pendingCalls).ConfigureAwait(false);
             if (_everAuthenticated)
             {

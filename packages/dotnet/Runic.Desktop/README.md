@@ -138,6 +138,45 @@ the provider, including operations unavailable under GTK4/Wayland. For native fi
 pickers and clipboard, register the matching GTK platform provider and the
 [portal service](../Runic.Platform.Linux.Portal/README.md).
 
+## Callback concurrency and ordering
+
+Each browser connection admits one callback or event at a time, but an
+asynchronous callback holds that turn only until its handler first awaits an
+incomplete task. This applies to `DesktopSurface.RegisterCapability` handlers,
+including the Bridge calls of Runic Windows and Views (`Runic.Application.Desktop`).
+A long command or operation wait therefore leaves Cancel, draft edits and other
+control callbacks available. For one connection:
+
+- The part of a capability handler before its first incomplete await runs one
+  at a time, never overlapping another handler's synchronous part or a
+  connection event.
+- The rest of a capability handler can run concurrently with other capability
+  handlers and with connection events, including `Connected`.
+- Connection events (`SubscribeConnectionEvents`) run one at a time.
+- Admission is not guaranteed to follow arrival order, and replies are sent as
+  handlers complete, so they can arrive out of order. The page matches each reply
+  to its call.
+- `Disconnected` is dispatched after every capability call the connection
+  accepted has completed, and no call or event of that connection follows it.
+
+Separate connections, such as several admitted clients, are independent. A
+handler that needs exclusive access across awaits must serialize itself, for
+example with a `SemaphoreSlim` held for the whole handler:
+
+```csharp
+private readonly SemaphoreSlim _saveGate = new(1, 1);
+
+surface.RegisterCapability("save", async (invocation, cancellationToken) =>
+{
+    await _saveGate.WaitAsync(cancellationToken);
+    try { return await SaveAsync(invocation, cancellationToken); }
+    finally { _saveGate.Release(); }
+});
+```
+
+Do not hold such a gate across work that waits for another callback, such as a
+Cancel request, or that callback can never run.
+
 ## Security notes
 
 - A local client that holds the session credential can take the only Bridge

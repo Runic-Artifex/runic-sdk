@@ -179,6 +179,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Registers an asynchronous JavaScript binding.</summary>
+    /// <remarks>
+    /// A session serializes only a call's admission and the handler's synchronous prefix; the rest can
+    /// overlap other calls and events, and replies are sent as calls complete. Events are awaited one at
+    /// a time, and Disconnected follows every call the session accepted. See the Runic.Desktop README.
+    /// </remarks>
     public WebUiBinding BindAsync(
         string element,
         Func<WebUiEvent, CancellationToken, ValueTask<WebUiResult>> handler)
@@ -1519,6 +1524,11 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             await CloseCoreAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
+
+    // Test seam: completes when an ended session starts draining its accepted
+    // callbacks, or at once when the session has already been removed.
+    internal Task CallbackDrainStarted(Guid sessionId)
+        => _sessions.TryGetValue(sessionId, out var session) ? session.CallbackDrainStarted : Task.CompletedTask;
 
     private WebUiSession GetSession(Guid sessionId)
         => _sessions.TryGetValue(sessionId, out var session) && session.IsAuthenticated
