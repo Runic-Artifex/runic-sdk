@@ -229,7 +229,7 @@ test('template lanes cover every framework once and run the creator check in one
   // smoke lane's framework, or their smoke would be skipped silently.
   const smokeFrameworks = strategy.matrix.include.filter(item => item['desktop-smoke'] === '1').map(item => item.framework);
   const variants = [...readFileSync(resolve(root, 'tests/templates/Test-Templates.sh'), 'utf8')
-    .matchAll(/^\s*"(\w+) (\w+) desktop-gtk4 (\w+)"$/gm)];
+    .matchAll(/^\s*"(\w+) (\w+) desktop-gtk4 (\w+)( tests)?"$/gm)];
   assert.ok(variants.length > 0, 'Test-Templates.sh has no desktop-gtk4 variant.');
   for (const [, framework] of variants) assert.deepEqual(smokeFrameworks, [framework]);
 });

@@ -1,23 +1,13 @@
 #if (desktopHost)
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views.Desktop;
-#if (viewModels == "reactiveui")
-using Runic.Navigation.ReactiveUI;
-#endif
 using Runic.Desktop;
 #if (gtk4)
 using Runic.Desktop.Gtk4;
 #endif
 using RunicWindowApp;
 
-var services = new ServiceCollection();
-#if (viewModels == "reactiveui")
-services.AddRunicReactiveModelContext();
-#endif
-services.AddScoped<WorkspaceViewModel>();
-services.AddScoped<WelcomeViewModel>();
-services.AddScoped<CounterViewModel>();
-services.AddRunicViews();
+var services = new ServiceCollection().AddWorkspace();
 
 // Fallbacks and limitations, such as a missing WebKitGTK runtime, are written to standard error.
 #if (gtk4)
@@ -62,19 +52,9 @@ static void ReportDiagnostic(DesktopDiagnostic diagnostic) =>
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views.CsWebUi;
-#if (viewModels == "reactiveui")
-using Runic.Navigation.ReactiveUI;
-#endif
 using RunicWindowApp;
 
-var services = new ServiceCollection();
-#if (viewModels == "reactiveui")
-services.AddRunicReactiveModelContext();
-#endif
-services.AddScoped<WorkspaceViewModel>();
-services.AddScoped<WelcomeViewModel>();
-services.AddScoped<CounterViewModel>();
-services.AddRunicViews();
+var services = new ServiceCollection().AddWorkspace();
 
 using var provider = services.BuildServiceProvider(new ServiceProviderOptions
 {

@@ -166,6 +166,7 @@ await TelemetryTests.RunAsync();
 await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();
 await HostDriverTests.RunAsync();
+await ServiceHostTests.RunAsync();
 TrackerConformanceTests.Run();
 await NavigationPresentationTests.RunAsync();
 await ContentLifecycleTests.RunAsync();

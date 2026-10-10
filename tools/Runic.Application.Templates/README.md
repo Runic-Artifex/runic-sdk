@@ -20,11 +20,18 @@ dotnet runic dev
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `cswebui` (CS-WebUI), `desktop` (Runic Desktop), `desktop-gtk4` (Runic Desktop with GTK 4 on Linux) | `cswebui` |
 | `--view-models` | `toolkit` (CommunityToolkit.Mvvm), `reactiveui` | `toolkit` |
+| `--tests` | Adds a TUnit test project, `MyApp.Tests` | No test project |
 
 `dotnet runic dev` restores NuGet packages, installs the frontend packages,
 builds the application, starts the frontend development server, and opens the
 app. `dotnet runic doctor` checks the prerequisites at any point, including
 before the first restore.
+
+With `--tests`, `dotnet test --project MyApp.Tests` runs TUnit tests that drive
+the Window's ViewModels and generated Bridges in memory with
+`Runic.Application.Testing`, without a browser or native window. The test project
+builds the app without its frontend, and a `global.json` selects
+Microsoft.Testing.Platform for `dotnet test`.
 
 You need the .NET 10 SDK and either Node.js 24 with npm or pnpm, or Bun 1.4.
 Each generated project contains only the selected package manager's lock file
@@ -57,6 +64,8 @@ npm config set --location=project @runic-artifex:registry http://127.0.0.1:<PORT
 SDK's template acceptance check (`bun run verify:templates`) runs the commands
 above for every frontend and package manager, plus pairwise Runic Desktop and
 ReactiveUI variants, and checks that `Runic.Create` produces the same project.
+The pairwise variants and the npm projects add `--tests` and run the generated
+tests.
 Setting `RUNIC_APPLICATION_SERVE_ONLY=1` starts a CS-WebUI app's local server
 without opening a browser and prints `RUNIC_APPLICATION_URL=<url>`. Setting
 `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` makes a Runic Desktop app print
