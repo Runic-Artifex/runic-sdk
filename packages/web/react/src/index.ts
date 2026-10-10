@@ -13,10 +13,15 @@ import {
 import {
   createCollectionViewportController,
   createCommandController,
+  createOperationController,
   createViewController,
   isViewClient,
   viewSourceIdentity,
+  type BridgeOperation,
   type BridgeOutcomeFailure,
+  type OperationController,
+  type OperationControllerOptions,
+  type OperationState,
   type CollectionViewport,
   type CollectionViewportOptions,
   type ViewClient,
@@ -311,6 +316,38 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
   const read = useCallback(() => controller.current, [controller]);
   const { pending, error, failure } = useSyncExternalStore(controller.subscribe, read, read);
   return { run: controller.run, pending, error, failure, reset: controller.reset };
+}
+
+export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFailure = never>
+  extends OperationState<TResult, TFailure>, Pick<OperationController<TArgs, TResult, TFailure>, "run" | "cancel" | "reset"> {}
+
+/**
+ * Tracks Start admission, pending work, cancellation and terminal feedback of a
+ * generated `start<Command>()` operation for rendering. `run` always calls the
+ * latest `start` and options, so they may close over the current client. A run
+ * that ends `cancelled` sets `cancelled`, not `error`. Unmounting stops rendering
+ * feedback; it never cancels accepted work.
+ *
+ * ```tsx
+ * const push = useOperation((remote: string) => client?.startPush(remote));
+ * <button disabled={!client || push.pending} onClick={() => push.run("origin")}>Push</button>
+ * {push.pending && <button disabled={push.cancellationRequested} onClick={() => push.cancel()}>Cancel</button>}
+ * {push.cancelled && <p role="status">Push cancelled.</p>}
+ * ```
+ */
+export function useOperation<TArgs extends readonly unknown[], TResult, TFailure = never>(
+  start: (...args: TArgs) => BridgeOperation<TResult, TFailure> | undefined | PromiseLike<BridgeOperation<TResult, TFailure> | undefined>,
+  options: OperationControllerOptions<TResult, TFailure> = {},
+): OperationHandle<TArgs, TResult, TFailure> {
+  const latest = useRef({ start, options });
+  useInsertionEffect(() => { latest.current = { start, options }; });
+  const [controller] = useState(() => createOperationController((...args: TArgs) => latest.current.start(...args), {
+    cancel: operation => latest.current.options.cancel ? latest.current.options.cancel(operation) : operation.cancel(),
+    waitForCompletion: (operation, status) => latest.current.options.waitForCompletion?.(operation, status),
+  }));
+  const read = useCallback(() => controller.current, [controller]);
+  const current = useSyncExternalStore(controller.subscribe, read, read);
+  return { ...current, run: controller.run, cancel: controller.cancel, reset: controller.reset };
 }
 
 export interface CollectionViewportHandle {

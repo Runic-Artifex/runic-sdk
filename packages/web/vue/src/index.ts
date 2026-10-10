@@ -17,9 +17,14 @@ import {
 import {
   createCollectionViewportController,
   createCommandController,
+  createOperationController,
   createViewController,
   viewSourceIdentity,
+  type BridgeOperation,
   type BridgeOutcomeFailure,
+  type OperationController,
+  type OperationControllerOptions,
+  type OperationState,
   type CollectionViewport,
   type CollectionViewportOptions,
   type ViewClient,
@@ -151,6 +156,34 @@ export function useCommand<TArgs extends readonly unknown[], TReturn>(
     writable.error = controller.current.error;
     writable.failure = controller.current.failure;
   });
+  if (getCurrentScope()) onScopeDispose(() => controller.dispose());
+  return handle;
+}
+
+export interface OperationHandle<TArgs extends readonly unknown[], TResult, TFailure = never>
+  extends OperationState<TResult, TFailure>, Pick<OperationController<TArgs, TResult, TFailure>, "run" | "cancel" | "reset"> {}
+
+/**
+ * Tracks Start admission, pending work, cancellation and terminal feedback of a
+ * generated `start<Command>()` operation. The result is a reactive object; do not
+ * destructure its state. A run that ends `cancelled` sets `cancelled`, not `error`.
+ * Scope disposal settles run promises without cancelling accepted work.
+ *
+ * ```vue
+ * const push = useOperation((remote: string) => client.value?.startPush(remote));
+ * <button :disabled="push.pending" @click="push.run('origin')">Push</button>
+ * <p v-if="push.cancelled" role="status">Push cancelled.</p>
+ * ```
+ */
+export function useOperation<TArgs extends readonly unknown[], TResult, TFailure = never>(
+  start: (...args: TArgs) => BridgeOperation<TResult, TFailure> | undefined | PromiseLike<BridgeOperation<TResult, TFailure> | undefined>,
+  options: OperationControllerOptions<TResult, TFailure> = {},
+): OperationHandle<TArgs, TResult, TFailure> {
+  const controller = createOperationController(start, options);
+  const handle = shallowReactive<OperationHandle<TArgs, TResult, TFailure>>({
+    ...controller.current, run: controller.run, cancel: controller.cancel, reset: controller.reset,
+  });
+  controller.subscribe(() => { Object.assign(handle, controller.current); });
   if (getCurrentScope()) onScopeDispose(() => controller.dispose());
   return handle;
 }

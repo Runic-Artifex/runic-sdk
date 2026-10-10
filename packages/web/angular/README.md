@@ -101,6 +101,32 @@ as the Notes example's
 [`WindowOperations.runDispatched`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Angular/src/app/window-operations.ts)
 does for its navigation commands.
 
+## Operations
+
+`injectOperation(start, options?)` observes a generated `start<Command>()` operation
+through the framework-neutral
+[operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
+for the lifetime of the injection context:
+
+```ts
+readonly push = injectOperation((remote: string) => this.workspace.client()?.startPush(remote));
+// <button [disabled]="!workspace.client() || push.pending()" (click)="push.run('origin')">Push</button>
+// @if (push.pending()) { <button [disabled]="push.cancellationRequested()" (click)="push.cancel()">Cancel</button> }
+// @if (push.cancelled()) { <p role="status">Push cancelled.</p> }
+// @if (push.error() !== undefined) { <p role="alert">{{ push.error() }}</p> }
+```
+
+It returns `run(...args)`, `cancel()` and `reset()`, which never reject, and the
+`pending`, `admitting`, `operation`, `status`, `outcome`, `failure`, `error`,
+`cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and `cancelError`
+signals. A run that ends with a `cancelled` status sets `cancelled` and resolves to
+`undefined` without an `error`; `failed` and `timedOut` statuses are still `error`.
+`pending` stays true after a Cancel response until the operation reaches its terminal
+status. Destroying the injection context settles run promises without cancelling
+accepted work. The options also take the controller's `cancel(operation)` and
+`waitForCompletion(operation, status)` callbacks, and `injector` outside an injection
+context.
+
 ## Collection viewports
 
 `injectCollectionViewport(element, options)` follows a fixed-row-height scroll
