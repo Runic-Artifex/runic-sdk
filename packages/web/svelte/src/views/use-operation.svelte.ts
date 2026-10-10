@@ -22,8 +22,10 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
   const controller = createOperationController(start, options);
   let current = $state.raw(controller.current);
   const unsubscribe = controller.subscribe(() => { current = controller.current; });
-  // Register teardown immediately, even if the owner is destroyed before the
-  // first deferred effect flush. This effect has no reactive dependencies.
+  // Svelte runs a pre effect when it is created, during owner initialization,
+  // so this teardown exists even if the owner is destroyed before its first
+  // flush. onMount/onDestroy and $effect are deferred to that flush and would
+  // leak the controller then. The effect reads no state, so it never re-runs.
   $effect.pre(() => () => { unsubscribe(); controller.dispose(); });
 
   return {

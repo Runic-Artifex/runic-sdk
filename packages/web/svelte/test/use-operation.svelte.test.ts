@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 
-import { flushSync } from "svelte";
+import { flushSync, mount, unmount } from "svelte";
 import { describe, expect, expectTypeOf, test } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import { useOperation, type OperationHandle } from "../src/views/index.js";
+import OperationOwner from "./fixtures/OperationOwner.svelte";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -167,6 +168,25 @@ describe("useOperation", () => {
     const result = operation.run();
     const cancellation = operation.cancel();
     destroy();
+    expect(await result).toBeUndefined();
+    expect(await cancellation).toBeUndefined();
+    admission.resolve(accepted.operation);
+    await settle();
+    expect(accepted.cancellations()).toBe(0);
+    expect(accepted.outcomes()).toBe(0);
+  });
+
+  test("a component unmounted before its first effect flush disposes its operation", async () => {
+    const accepted = work(bridgeSuccess(1));
+    const admission = deferred<BridgeOperation<number>>();
+    const target = document.createElement("div");
+    // mount() runs component initialization but defers user effects until a
+    // flush; teardown registered by onMount/onDestroy would not exist yet.
+    const component = mount(OperationOwner, { target, props: { start: () => admission.promise } });
+    const operation: OperationHandle<[], number> = component.operation;
+    const result = operation.run();
+    const cancellation = operation.cancel();
+    await unmount(component);
     expect(await result).toBeUndefined();
     expect(await cancellation).toBeUndefined();
     admission.resolve(accepted.operation);
