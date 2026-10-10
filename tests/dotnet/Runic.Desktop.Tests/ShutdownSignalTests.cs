@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Runic.Desktop.Internal;
 using System.Runtime.InteropServices;
 
 namespace Runic.Desktop.Tests;
@@ -85,6 +86,24 @@ public sealed partial class ShutdownSignalTests
         Assert.DoesNotContain("host-disposed", fixture.Output);
     }
 
+    [Theory]
+    [InlineData("SIGINT")]
+    [InlineData("SIGTERM")]
+    public async Task ForwardedCopiesOfTheSignalDoNotEndTheShutdown(string repeat)
+    {
+        // A terminal Ctrl+C under dotnet watch reaches the app, then watch sends SIGTERM. Windows has no SIGTERM to
+        // send, and its console delivers one Ctrl+C per key press.
+        if (OperatingSystem.IsWindows()) return;
+        await using var fixture = Fixture.Start("orderly");
+        await fixture.WaitForAsync("ready");
+
+        fixture.Send("SIGINT");
+        fixture.Send(repeat);
+
+        await fixture.WaitForAsync("host-disposed");
+        Assert.Equal(ShutdownSignalFixture.ApplicationExitCode, await fixture.WaitForExitAsync());
+    }
+
     [Fact]
     public async Task SecondSignalEndsAShutdownThatDoesNotFinish()
     {
@@ -93,6 +112,7 @@ public sealed partial class ShutdownSignalTests
 
         fixture.Send("SIGINT");
         await fixture.WaitForAsync("shutdown-requested");
+        await Task.Delay(ShutdownSignals.RepeatWindow + TimeSpan.FromMilliseconds(200));
         fixture.Send("SIGINT");
 
         Assert.NotEqual(ShutdownSignalFixture.ApplicationExitCode, await fixture.WaitForExitAsync());

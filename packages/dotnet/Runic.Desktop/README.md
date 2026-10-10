@@ -27,7 +27,9 @@ way as closing its last window. The first signal cancels
 confirmation, so `WaitForClose` returns. The application then releases its
 work, for example by disposing the services that own an `AcceptedWorkScope`,
 and `DesktopEventLoop.Run` disposes the host before the loop ends. Each window
-closes on its own UI thread. A second signal ends the process at once. Set
+closes on its own UI thread. A second Ctrl+C, a second or later after the first
+signal, ends the process at once; the copies that `dotnet run`, `dotnet watch`
+and `dotnet runic dev` forward do not. Set
 `DesktopHostOptions.HandleShutdownSignals` to `false` to handle these signals
 yourself. Hosts created with `DesktopHost.StartAsync` do not handle signals.
 

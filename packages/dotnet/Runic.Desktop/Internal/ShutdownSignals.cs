@@ -8,8 +8,15 @@ namespace Runic.Desktop.Internal;
 /// </remarks>
 internal sealed class ShutdownSignals : IDisposable
 {
+    /// <summary>
+    /// Repeats sooner than this are copies of the first signal: a terminal Ctrl+C reaches every process in the
+    /// group, and dotnet run, dotnet watch or dotnet runic dev forward their own.
+    /// </summary>
+    internal static readonly TimeSpan RepeatWindow = TimeSpan.FromSeconds(1);
+
     private readonly DesktopHost _host;
     private readonly PosixSignalRegistration[] _registrations;
+    private long _firstSignalAt;
 
     private ShutdownSignals(DesktopHost host)
     {
@@ -26,8 +33,18 @@ internal sealed class ShutdownSignals : IDisposable
 
     private void Handle(PosixSignalContext context)
     {
-        // A repeated signal keeps its default action, so a shutdown that hangs can still be ended.
-        if (!_host.RequestShutdown(context.Signal.ToString())) return;
+        // Handlers for different signals run concurrently, so the first time is recorded before anything else.
+        long now = Environment.TickCount64;
+        long first = Interlocked.CompareExchange(ref _firstSignalAt, now, 0);
+        if (!_host.RequestShutdown(context.Signal.ToString()) &&
+            context.Signal == PosixSignal.SIGINT &&
+            first != 0 && now - first >= (long)RepeatWindow.TotalMilliseconds)
+        {
+            // A second Ctrl+C keeps its default action, so a shutdown that hangs can still be ended. Other
+            // repeats are absorbed: supervisors that send SIGTERM escalate with SIGKILL themselves.
+            return;
+        }
+
         context.Cancel = true;
         if (OperatingSystem.IsWindows() && context.Signal is PosixSignal.SIGHUP or PosixSignal.SIGTERM)
         {
