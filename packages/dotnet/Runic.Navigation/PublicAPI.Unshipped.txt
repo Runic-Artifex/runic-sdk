@@ -1,1 +1,3 @@
 #nullable enable
+*REMOVED*Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
+[RUNICNAV001]Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Navigation;
@@ -43,7 +44,7 @@ public interface IRunicModelContext : IAsyncDisposable
 /// <summary>
 /// A host-neutral serial execution context for a ViewModel graph.
 /// </summary>
-#pragma warning disable RUNICNAV001 // The context stays stable; only the optional navigator lifetime interface is experimental.
+#pragma warning disable RUNICNAV001 // The context stays stable; only its optional lifetime surface (Closed) is experimental.
 public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLifetime
 #pragma warning restore RUNICNAV001
 {
@@ -83,6 +84,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     /// Callbacks run synchronously on the closing thread. Their exceptions are reported through
     /// <see cref="UnhandledTurnException"/> and do not interrupt shutdown. The token remains usable after disposal.
     /// </remarks>
+    [Experimental("RUNICNAV001")] // RunicNavigator.DiagnosticId, which this stable type cannot reference.
     public CancellationToken Closed => _closedSource.Token;
 
     /// <inheritdoc />

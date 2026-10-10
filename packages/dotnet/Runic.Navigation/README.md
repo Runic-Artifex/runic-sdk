@@ -514,7 +514,8 @@ context for an object that is already bound is rejected.
 Disposing a `RunicModelContext` rejects queued turns and waits for the running
 turn. It implements `IRunicModelContextLifetime`: its `Closed` token is cancelled
 after admission stops and before queued turns are rejected, so navigators close
-immediately, like those using the WPF dispatcher context. A posted turn that
+immediately, like those using the WPF dispatcher context. Like the interface,
+`Closed` is experimental (`RUNICNAV001`). A posted turn that
 disposal drops is logged (event 1031). Exceptions from close callbacks are reported
 through `UnhandledTurnException` (event 1030) and do not interrupt shutdown.
 

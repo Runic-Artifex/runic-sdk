@@ -82,9 +82,11 @@ internal static partial class NavigationTests
         await Until(() => dialog.Current is InitPage { Entry: not null }, "The prompt was not shown.");
         var prompt = (InitPage)dialog.Current!;
         var second = main.BackAsync(cancellationToken: withTokens ? secondCancellation.Token : default).AsTask();
-        await Task.Delay(50);
-        Require(prompts == 1 && dialog.Current == prompt && !prompt.Entry!.Retirement.IsCancellationRequested,
-            $"A second Back while the guard asks reopened the prompt ({prompts} prompts).");
+        // Admission joins synchronously, and a joined Back starts no guard or prompt of its own.
+        // The prompt count is checked again after both callers settle and the navigator is idle.
+        Require(fixture.Logs.Count(BackJoined) == 1 && prompts == 1 && dialog.Current == prompt
+            && !prompt.Entry!.Retirement.IsCancellationRequested,
+            $"A second Back while the guard asks did not join ({fixture.Logs.Count(BackJoined)} joins, {prompts} prompts).");
 
         var answer = confirm ? await Wait(prompt.Entry!.CompleteAsync(true)) : await Wait(prompt.Entry!.DismissAsync());
         Require(answer is NavigationResult<object>.Committed, $"Answering the prompt gave {answer}.");
