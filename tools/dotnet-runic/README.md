@@ -27,6 +27,15 @@ also passes `RunicBridgeInstallFrontend=false`, so the build does not install
 missing frontend packages either. Application arguments after `--` are passed
 to the Window process. When a restore, install or build step fails, the error
 names the program and its working directory and then points to `doctor`.
+With Vite, `dev` prepares a development document for every HTML page that
+`vite build` emits, so a second window with its own page (for example
+`settings.html` listed in `build.rolldownOptions.input` and opened with
+`new DesktopContent.Directory(www, "settings.html")`) loads in `dev` exactly
+as in build and publish. Before the build, `dev` reads the build inputs from
+the resolved Vite configuration with Node.js, or with Bun for a Bun frontend,
+and prints them as `[dev] Pages: index.html, settings.html`. An input whose
+file does not exist stops `dev` with `RAPPDEV1009: Window entry not found:
+'settings.html' …` instead of a window that times out waiting for its page.
 The Window runs with `DOTNET_ENVIRONMENT=Development` unless you set
 `DOTNET_ENVIRONMENT` or `ASPNETCORE_ENVIRONMENT` yourself, so failed Bridge
 calls carry the exception type, message and stack to the browser.
@@ -177,7 +186,7 @@ none of them; the defaults follow the frontend directory.
 | `RunicApplicationFrontendDevServerKind` | `angular` with `angular.json`, `vite` with a `vite.config.*`, otherwise none |
 | `RunicApplicationFrontendViteDevServerEntry` | the first of `/src/main.ts`, `/src/main.tsx`, `/src/main.js`, `/src/main.jsx` |
 | `RunicApplicationFrontendViteConfiguration` | the frontend's `vite.config.*` |
-| `RunicApplicationFrontendDevServerDocument` | `index.html`; separate several documents with `;` |
+| `RunicApplicationFrontendDevServerDocument` | every HTML build input with Vite, `index.html` with Angular; set it to override the list and separate several documents with `;` |
 | `RunicApplicationFrontendDevWatchTarget` | none; an MSBuild target to run as the frontend watcher without a development server |
 
 The package manager comes from `packageManager` in the frontend `package.json`,

@@ -29,6 +29,9 @@ internal static class Program
             ("Vite and Angular bind their development servers to loopback", DevelopmentServersBindLoopback),
             ("Vite readiness reports useful failures and honors cancellation", ViteReadinessIsActionable),
             ("development documents rewrite assets for the native bootstrap", DevelopmentDocumentIsNativeSafe),
+            ("development documents follow every Vite HTML build input", DevelopmentDocumentsFollowViteInputs),
+            ("a missing window entry fails with entry not found", MissingWindowEntryIsNamed),
+            ("dev reads the Vite build inputs through the frontend runtime", DevReadsViteBuildInputs),
             ("size inventory counts every file and preserves hashes", SizeInventoryAccountsForBytes),
             ("doctor accepts a healthy Views Window project", DoctorAcceptsViewsWindowProject),
             ("doctor guides an unrestored project instead of failing", DoctorGuidesUnrestoredProject),
@@ -287,6 +290,115 @@ internal static class Program
         Contains(generated, "<script src=\"runic-desktop.js\">");
         Throws<DevUsageException>(() => FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "../escape.html", html));
+    }
+
+    private static void DevelopmentDocumentsFollowViteInputs()
+    {
+        using var workspace = new TestWorkspace();
+        string root = Path.Combine(workspace.Root, "Frontend");
+        workspace.Write("Frontend/index.html", "<html></html>");
+        workspace.Write("Frontend/pages/settings.html", "<html></html>");
+        // The entry document comes first, whatever the input order; script inputs build no page.
+        SequenceEqual(["index.html", "pages/settings.html"], ViteBuildInputs.SelectDocuments(root,
+            [Path.Combine(root, "pages", "settings.html"), Path.Combine(root, "src", "worker.ts"), Path.Combine(root, "index.html")],
+            null));
+        // An explicit RunicApplicationFrontendDevServerDocument list wins.
+        SequenceEqual(["pages/settings.html"], ViteBuildInputs.SelectDocuments(root,
+            [Path.Combine(root, "index.html")], ["pages/settings.html"]));
+        SequenceEqual(["index.html"], ViteBuildInputs.SelectDocuments(root, [Path.Combine(root, "src", "lib.ts")], null));
+        try
+        {
+            ViteBuildInputs.SelectDocuments(root, [Path.Combine(workspace.Root, "outside.html")], null);
+            throw new InvalidOperationException("An input outside the Vite root was accepted.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1005", error.Code);
+            DoesNotContain(error.Message, workspace.Root);
+        }
+
+        // Without the property, Angular and the frontend compiler keep index.html.
+        var configuration = CreateConfiguration(workspace, "vite") with { DevelopmentServerDocument = string.Empty };
+        False(configuration.HasExplicitDevelopmentServerDocuments, "An empty property selects the Vite inputs.");
+        SequenceEqual(["index.html"], configuration.DevelopmentServerDocuments);
+
+        (string parsedRoot, IReadOnlyList<string> inputs) = ViteBuildInputs.Parse(
+            "plugin noise\nRUNIC_VITE_INPUTS={\"root\":\"/app\",\"inputs\":[\"/app/index.html\"]}\n");
+        Equal("/app", parsedRoot);
+        SequenceEqual(["/app/index.html"], inputs);
+        try
+        {
+            ViteBuildInputs.Parse("no marker");
+            throw new InvalidOperationException("Output without inputs was accepted.");
+        }
+        catch (DevDevelopmentException error)
+        {
+            Equal("RAPPDEV1010", error.Code);
+        }
+    }
+
+    private static void MissingWindowEntryIsNamed()
+    {
+        using var workspace = new TestWorkspace();
+        string root = Path.Combine(workspace.Root, "Frontend");
+        workspace.Write("Frontend/index.html", "<html></html>");
+        foreach (IReadOnlyList<string>? explicitDocuments in new IReadOnlyList<string>?[] { null, ["index.html", "pages/settings.html"] })
+        {
+            try
+            {
+                ViteBuildInputs.SelectDocuments(root,
+                    [Path.Combine(root, "index.html"), Path.Combine(root, "pages", "settings.html")], explicitDocuments);
+                throw new InvalidOperationException("A missing window entry was accepted.");
+            }
+            catch (DevUsageException error)
+            {
+                Equal("RAPPDEV1009", error.Code);
+                Contains(error.Message, "Window entry not found: 'pages/settings.html'");
+                DoesNotContain(error.Message, "presentation-connection-timeout");
+                DoesNotContain(error.Message, workspace.Root);
+                Contains(error.LocalDetail ?? string.Empty, root);
+            }
+        }
+    }
+
+    private static void DevReadsViteBuildInputs() => VerifyDevReadsViteBuildInputsAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyDevReadsViteBuildInputsAsync()
+    {
+        using var workspace = new TestWorkspace();
+        // Bun runs the probe for a Bun frontend; a stand-in vite package records
+        // the configuration file and returns a multi-page build input.
+        workspace.Write("Frontend/package.json", """{"packageManager":"bun@1.4.2"}""");
+        workspace.Write("Frontend/node_modules/vite/package.json", """{"name":"vite","type":"module","main":"index.js"}""");
+        workspace.Write("Frontend/node_modules/vite/index.js", """
+            export async function resolveConfig(inline, command, mode) {
+              if (command !== "build" || mode !== "production" || !inline.configFile.endsWith("vite.config.ts"))
+                throw new Error(`unexpected ${command} ${mode} ${inline.configFile}`);
+              console.log("plugin output");
+              return { root: process.cwd(), build: { rolldownOptions: { input: { settings: "pages/settings.html", main: "index.html" } } } };
+            }
+            """);
+        workspace.Write("Frontend/vite.config.ts", "export default {};");
+        workspace.Write("Frontend/index.html", "<html></html>");
+        var configuration = CreateConfiguration(workspace, "vite") with { DevelopmentServerDocument = string.Empty };
+        try
+        {
+            await ViteBuildInputs.ApplyAsync(configuration, CancellationToken.None);
+            throw new InvalidOperationException("A missing second page was accepted.");
+        }
+        catch (DevUsageException error)
+        {
+            Equal("RAPPDEV1009", error.Code);
+            Contains(error.Message, "'pages/settings.html'");
+        }
+
+        workspace.Write("Frontend/pages/settings.html", "<html></html>");
+        DevProjectConfiguration applied = await ViteBuildInputs.ApplyAsync(configuration, CancellationToken.None);
+        SequenceEqual(["index.html", "pages/settings.html"], applied.DevelopmentServerDocuments);
+        // The host's development entry document stays index.html.
+        IReadOnlyDictionary<string, string?> environment = HostProcessController.CreateDevelopmentEnvironment(
+            applied, new Dictionary<string, string?> { ["RUNIC_APPLICATION_VITE_DEV_SERVER"] = "http://127.0.0.1:5173/" });
+        Equal(Path.Combine(applied.RuntimeWebRoot, "index.html"), environment["RUNIC_APPLICATION_DEVELOPMENT_DOCUMENT"]);
     }
 
     private static void SizeInventoryAccountsForBytes()
