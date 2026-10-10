@@ -53,7 +53,7 @@ public sealed partial class EditorViewModel : ObservableObject, INavigationIniti
         try
         {
             await _store.SaveAsync(submitted, token);
-            token.ThrowIfCancellationRequested();
+            // The store has written the note; a late Cancel no longer undoes it.
             if (_disposed) return;
             _saved = submitted;
             RefreshDraftState(); // Later edits remain dirty after this save.

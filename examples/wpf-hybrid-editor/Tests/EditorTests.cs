@@ -63,6 +63,21 @@ public sealed class EditorTests
     }
 
     [Fact]
+    public async Task A_cancel_after_the_store_writes_keeps_the_save()
+    {
+        var storage = new LateCancelStore();
+        await using var app = await TestApp.OpenAsync(storage);
+        storage.AfterWrite = () => app.Editor.SaveCancelCommand.Execute(null);
+        using var web = app.Connect();
+        web.Root.Set(vm => vm.Title, "Written").EnsureOk();
+        (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
+        Assert.Equal("Written", storage.Get(1).Title);
+        Assert.False(app.Editor.IsDirty);
+        Assert.Equal("Saved.", app.Editor.Status);
+        Assert.False(web.Root.Snapshot().CanExecute(vm => vm.SaveCommand));
+    }
+
+    [Fact]
     public async Task A_storage_failure_is_shared_and_can_be_retried()
     {
         var storage = new FailingStore();
@@ -206,6 +221,20 @@ public sealed class EditorTests
         source.PropertyChanged += Changed;
         try { if (ready()) return; await completion.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
         finally { source.PropertyChanged -= Changed; }
+    }
+
+    private sealed class LateCancelStore : INoteStore
+    {
+        private Note _note = new(1, "Groceries", "Milk");
+        public Action? AfterWrite { get; set; }
+        public IReadOnlyList<Note> All => [_note];
+        public Note Get(int id) => _note;
+        public Task SaveAsync(Note note, CancellationToken token)
+        {
+            _note = note;
+            AfterWrite?.Invoke(); // Cancel arrives after the write has completed.
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FailingStore : INoteStore

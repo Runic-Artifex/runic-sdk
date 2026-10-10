@@ -50,6 +50,8 @@ public partial class EditorView : UserControl
 
     private async Task PresentAsync()
     {
+        // This open's own token: a later reload must not turn its cancellation into a host failure.
+        var openToken = CancellationToken.None;
         await _changes.WaitAsync();
         try
         {
@@ -67,6 +69,7 @@ public partial class EditorView : UserControl
             }
             using var opening = new CancellationTokenSource();
             _opening = opening;
+            openToken = opening.Token;
             var control = _control = new RunicWebView();
             var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             void ChildLoaded(object sender, RoutedEventArgs e) => loaded.TrySetResult();
@@ -92,7 +95,7 @@ public partial class EditorView : UserControl
                 _opening = null;
             }
         }
-        catch (OperationCanceledException) when (!_loaded)
+        catch (OperationCanceledException) when (openToken.IsCancellationRequested)
         {
             await ReleasePresentationAsync();
         }
