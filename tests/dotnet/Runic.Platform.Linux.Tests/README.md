@@ -10,6 +10,10 @@ provider and reads the selection in an independent process using GTK's native AP
 It checks absent/empty text, Unicode, length bounds, canceled writes, cancellation
 after native acquisition, canceled read drain/retry and ownership replacement.
 
+`--directory-native` checks GTK3 directory chooser cancellation, retry and owner
+destruction. `--directory-loop-stopped` stops the GTK loop while a chooser is open and
+checks that the picker completes and presentation shutdown drains.
+
 Publish this same executable with `-r linux-x64 -p:PublishAot=true` for NativeAOT;
 run the published executable with `--native` under the same explicit display profile. Keep source revision,
 executable/dependency hashes, toolchain and display profile with the result. A
