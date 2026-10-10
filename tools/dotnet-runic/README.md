@@ -59,7 +59,20 @@ Fedora, Arch, openSUSE and NixOS, read from `/etc/os-release`, and the library
 file names on other distributions. The check also warns when the project
 restores `Runic.Platform.Linux`: its GTK 3 portal parent loads `libgtk-3`, and a
 GTK 4 process must not load GTK 3. With `--rid`, `target-presentation` reports
-the native libraries instead.
+the native libraries instead. A project on `Runic.Application.Desktop` gets the
+platform providers from that package, and `services.AddRunicPlatformServices()`
+selects the GTK 4 one. For such a project the check lists only the native
+libraries, and warns about `Runic.Platform.Linux` only when the project
+references it directly.
+
+A project on `Runic.Application.Desktop` or `Runic.Application.CsWebUi` also
+gets a `platform-services` check. It names the provider that
+`AddRunicPlatformServices()` selects on this machine. On Linux, it warns when
+there is no D-Bus session bus or no installed `xdg-desktop-portal` (the
+`org.freedesktop.portal.Desktop` D-Bus service in `XDG_DATA_HOME` or
+`XDG_DATA_DIRS`), because the file dialogs and the file launcher use the portal.
+For CS-WebUI it reports that the services return `OwnerUnavailable`. The check
+describes this machine, so `--rid` skips it.
 
 ### Deployment checks for a target
 

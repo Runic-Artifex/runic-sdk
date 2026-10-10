@@ -18,6 +18,10 @@ services.AddScoped<WorkspaceViewModel>();
 services.AddScoped<WelcomeViewModel>();
 services.AddScoped<CounterViewModel>();
 services.AddRunicViews();
+// Per-window file dialogs, clipboard and file launcher from the provider for the running backend. A
+// ViewModel can take IFileDialogs, ITextClipboard or IWindowPlatformServices in its constructor; they
+// bind to the native window when it opens and report OwnerUnavailable until then.
+services.AddRunicPlatformServices();
 
 // Fallbacks and limitations, such as a missing WebKitGTK runtime, are written to standard error.
 #if (gtk4)
@@ -75,6 +79,10 @@ services.AddScoped<WorkspaceViewModel>();
 services.AddScoped<WelcomeViewModel>();
 services.AddScoped<CounterViewModel>();
 services.AddRunicViews();
+// Registers IFileDialogs, ITextClipboard and IWindowPlatformServices so ViewModels resolve on CS-WebUI.
+// CS-WebUI has no native window owner, so they report OwnerUnavailable; use --host desktop for native
+// dialogs and the clipboard.
+services.AddRunicPlatformServices();
 
 using var provider = services.BuildServiceProvider(new ServiceProviderOptions
 {

@@ -17,8 +17,6 @@
     <PackageReference Include="Runic.Application.Desktop" Version="__RUNIC_NUGET_VERSION__" />
 <!--#if (gtk4) -->
     <PackageReference Include="Runic.Desktop.Gtk4" Version="__RUNIC_NUGET_VERSION__" />
-    <PackageReference Include="Runic.Platform.Linux.Gtk4" Version="__RUNIC_NUGET_VERSION__" />
-    <PackageReference Include="Runic.Platform.Linux.Portal" Version="__RUNIC_NUGET_VERSION__" />
 <!--#endif -->
 <!--#else -->
     <PackageReference Include="Runic.Application.CsWebUi" Version="__RUNIC_NUGET_VERSION__" />

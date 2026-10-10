@@ -19,6 +19,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private IDisposable? _attachment;
     private DesktopWindow? _presentation;
     private DesktopNativeOwner? _nativeOwner;
+    private DesktopWindowPlatformServices? _platformServices;
     private Task<BridgeWindowCloseResult>? _close;
     private Task? _completion;
     private bool _finalized;
@@ -45,7 +46,8 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     /// <summary>The native platform-service owner of the opened presentation.</summary>
     /// <remarks>
     /// Pass it to the platform provider for the window's backend for file dialogs, file launchers and clipboard
-    /// access. It is available while the embedded window is open. A presentation without native dispatch, such
+    /// access, or let <c>services.AddRunicPlatformServices()</c> bind <see cref="Runic.Platform.IWindowPlatformServices"/> to it.
+    /// It is available while the embedded window is open. A presentation without native dispatch, such
     /// as an installed browser after an embedded-window fallback, still has an owner, but its
     /// <see cref="DesktopNativeOwner.IsAvailable"/> is <see langword="false"/>.
     /// </remarks>
@@ -69,9 +71,13 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         {
             if (_presentation is not null || _close is not null)
                 throw new InvalidOperationException("The Desktop presentation is already open or closing.");
+            var nativeOwner = new DesktopNativeOwner(presentation);
             // Lock-free readers see the owner no later than the presentation.
-            Volatile.Write(ref _nativeOwner, new DesktopNativeOwner(presentation));
+            Volatile.Write(ref _nativeOwner, nativeOwner);
             Volatile.Write(ref _presentation, presentation);
+            // The scope's platform services, which its ViewModels may already hold, now follow this window.
+            _platformServices = _scope.ServiceProvider.GetService<DesktopWindowPlatformServices>();
+            _platformServices?.Bind(nativeOwner);
         }
     }
 
@@ -116,6 +122,9 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         Capture(_transport.Dispose, errors);
         // The visible presentation closes promptly, while the scope remains
         // alive until operations accepted before close reach a terminal result.
+        // Platform services stop with the presentation: file access ends when
+        // the window closes, even for operations that are still draining.
+        await StopPlatformServicesAsync(errors).ConfigureAwait(false);
         if (_presentation is not null)
             await CaptureAsync(_presentation.CloseAsync, errors).ConfigureAwait(false);
         Task completion;
@@ -140,10 +149,20 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         }
         Capture(_content.Dispose, errors);
         Capture(_transport.Dispose, errors);
+        // Release provider resources, such as owned clipboard data, while the native window may still be open.
+        await StopPlatformServicesAsync(errors).ConfigureAwait(false);
         if (_presentation is not null)
             await CaptureAsync(_presentation.DisposeAsync, errors).ConfigureAwait(false);
         await CaptureAsync(_surface.DisposeAsync, errors).ConfigureAwait(false);
         await CaptureAsync(_scope.DisposeAsync, errors).ConfigureAwait(false);
+    }
+
+    // Idempotent: the platform services join their first shutdown.
+    private Task StopPlatformServicesAsync(List<Exception> errors)
+    {
+        DesktopWindowPlatformServices? services;
+        lock (_closeGate) services = _platformServices;
+        return services is null ? Task.CompletedTask : CaptureAsync(services.DisposeAsync, errors);
     }
 
     private static Task CompletionFor(List<Exception> errors) => errors.Count switch
