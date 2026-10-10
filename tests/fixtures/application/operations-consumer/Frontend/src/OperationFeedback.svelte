@@ -13,3 +13,4 @@
 
 <p>Operation: <output id="pending">{operation.pending ? "pending" : "idle"}</output></p>
 <p>Cancellation: <output id="cancellation">{operation.cancellationRequested ? "requested" : "none"}</output></p>
+<p>Terminal: <output id="terminal">{operation.cancelled ? "cancelled" : operation.error === undefined ? "none" : "error"}</output></p>

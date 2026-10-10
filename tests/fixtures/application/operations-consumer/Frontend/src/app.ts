@@ -58,11 +58,14 @@ async function journeys(): Promise<string[]> {
   await bounded(client.setDraft("during-wait"), "draft during operation.wait");
   require(client.snapshot.draft === "during-wait", "The responsive draft callback was not applied.");
   await bounded(svelteOperation.cancel(), "Cancel during operation.wait");
-  await bounded(observed, "Svelte cancelled observation");
+  const observedResult = await bounded(observed, "Svelte cancelled observation");
   await until(() => document.querySelector("#pending")?.textContent === "idle", "Svelte terminal feedback");
-  require(svelteOperation.status?.kind === "cancelled" && svelteOperation.error instanceof BridgeError,
+  // Cancellation is a normal terminal state, never an error or outcome.
+  require(observedResult === undefined && svelteOperation.status?.kind === "cancelled" && svelteOperation.cancelled
+    && svelteOperation.error === undefined && svelteOperation.outcome === undefined && svelteOperation.failure === undefined,
     "Svelte feedback lost the terminal cancellation.");
   require(document.querySelector("#cancellation")?.textContent === "requested", "Svelte Cancel feedback did not render.");
+  require(document.querySelector("#terminal")?.textContent === "cancelled", "Svelte cancelled feedback did not render.");
   pass("responsive-wait-and-binding");
 
   const latest = createLatestOperationController<string>();
@@ -188,9 +191,10 @@ async function journeys(): Promise<string[]> {
   const mutationObservation = mutation.run();
   await until(() => client.snapshot.mutationActive, "accepted mutation");
   await mutation.cancel();
-  await bounded(mutationObservation, "cancelled invocation wrapper");
+  const mutationResult = await bounded(mutationObservation, "cancelled invocation wrapper");
   await until(() => client.snapshot.recoveryStarted, "accepted recovery started");
-  require(mutation.current.status?.kind === "cancelled" && client.snapshot.mutationActive && !client.snapshot.recoveryPublished,
+  require(mutationResult === undefined && mutation.current.status?.kind === "cancelled" && mutation.current.cancelled
+    && mutation.current.error === undefined && client.snapshot.mutationActive && !client.snapshot.recoveryPublished,
     "The consumer did not retain accepted recovery after wrapper cancellation.");
   mutation.dispose();
   pass("cancelled-wrapper-ready-for-close");
