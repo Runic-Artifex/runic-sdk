@@ -150,6 +150,49 @@ The [First Window](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples
 [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views)
 examples exercise the packaged graph and generated client.
 
+## Threading: state after await
+
+A Window's ViewModels belong to its model context. The bridge reads state,
+applies property writes and starts commands in that context's turns, one at a
+time. The rule for both MVVM flavours is:
+
+> **Set ViewModel state directly in a command, also after `await`. Leave the
+> model context only for work that doesn't touch ViewModel state, and commit
+> its result with `IRunicModelContext.InvokeAsync`.**
+
+```csharp
+[RelayCommand] // or ReactiveCommand.CreateFromTask(SaveAsync, outputScheduler: scheduler)
+private async Task SaveAsync(CancellationToken token)
+{
+    Status = "Saving";
+    await _store.SaveAsync(Title, token);
+    Status = "Saved";               // runs in a model-context turn
+}
+```
+
+- A command body that the bridge starts, such as a CommunityToolkit
+  `[RelayCommand]` or `AsyncRelayCommand`, or a ReactiveUI
+  `ReactiveCommand.CreateFromTask`, runs in a turn. Every `await` in it, nested
+  ones included, resumes in a later turn of the same context, as code on a UI
+  thread resumes on that thread. Writes after `await` are applied in the order
+  in which the continuations become ready, and no other turn runs between two
+  awaits of one body.
+- Code after `ConfigureAwait(false)`, in `Task.Run`, in a timer or in another
+  background callback runs outside the context. Do CPU-bound or blocking work
+  there, then commit: `await modelContext.InvokeAsync(() => Items = loaded)`.
+  Don't use `ConfigureAwait(false)` in ViewModel code that writes state after
+  it. Code you start outside a turn, such as a test that calls
+  `ExecuteAsync` directly, also commits with `InvokeAsync`.
+- Don't block a turn on asynchronous work (`.Result`, `.Wait()`,
+  `GetAwaiter().GetResult()`): its continuation needs the same context, so it
+  deadlocks, as it would on a UI thread.
+- When the context closes, for example because the window closed, pending
+  continuations run on the thread pool outside any turn, so the command still
+  finishes; nothing presents its later writes.
+- With WPF, `DispatcherModelContext` is the UI dispatcher, so the same rule
+  holds there. Navigation hooks are not commands; see
+  [Runic.Navigation threading](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#threading).
+
 ## Generated TypeScript
 
 Each ViewModel gets a module named after it (`EditorViewModel` becomes

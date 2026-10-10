@@ -18,6 +18,13 @@ if (args is ["--navigation"])
     return;
 }
 
+if (args is ["--continuations"])
+{
+    await ContinuationTests.RunAsync();
+    Console.WriteLine("Continuation tests passed.");
+    return;
+}
+
 if (args is ["--accepted-work"])
 {
     await AcceptedWorkScopeTests.RunAsync();
@@ -144,6 +151,7 @@ await CodegenShapeTests.RunNamingAsync();
 await DataShapeTests.RunAsync();
 await OperationResultTests.RunAsync();
 await ModelContextTests.RunAsync();
+await ContinuationTests.RunAsync();
 await TypedReactiveTests.RunAsync();
 await ToolkitTypedTests.RunAsync();
 await ToolkitCancelTests.RunAsync();
