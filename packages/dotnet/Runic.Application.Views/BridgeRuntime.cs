@@ -250,6 +250,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly object _modelGate;
     private readonly BridgeSnapshotDelivery _delivery;
     private readonly BridgeModelTurn _modelTurn;
+    private IRunicModelContextLease? _modelContextLease;
     private readonly WindowContentSession? _content;
     private readonly IBridgeTransport _transport;
     private readonly T _vm;
@@ -343,6 +344,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _transport = transport;
         _vm = vm;
         _modelGate = BridgeModelGates.For(vm);
+        // Before the model turn is chosen: an unbound model would otherwise fall
+        // back to a lock that orders differently from the window's turns.
+        _modelContextLease = content?.BindBridgeModel(vm);
         _modelTurn = BridgeModelTurn.For(vm);
         _content = content;
         // A window can detach a content route and attach a new bridge to the
@@ -467,6 +471,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             _collections.Clear();
             if (_errors is not null) _errors.ErrorsChanged -= OnErrorsChanged;
             foreach (var command in subscribedCommands) command.CanExecuteChanged -= OnCanExecuteChanged;
+            _modelContextLease?.Dispose();
             throw;
         }
     }
@@ -1487,6 +1492,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     public virtual void Dispose()
     {
         _modelTurn.RunForTeardown(DisposeCore);
+        Interlocked.Exchange(ref _modelContextLease, null)?.Dispose();
         GC.SuppressFinalize(this);
     }
 

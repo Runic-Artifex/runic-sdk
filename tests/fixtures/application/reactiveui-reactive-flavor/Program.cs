@@ -54,6 +54,43 @@ using (new FlavorModelBridge(transport, model))
         throw new InvalidOperationException("A genuinely disabled command was admitted after its first execution.");
 }
 
+// #132: the window binds its root and each child it presents, including one the root
+// creates in a command; a child bound to another context fails, naming its type.
+var viewLocator = new ReactiveRunicViewLocator(locator);
+var shell = new FlavorShellModel(commandScheduler);
+using (var host = new RunicWindowTestHost<FlavorShellModel>(shell,
+    (transport, content, vm) => new FlavorShellModelBridge(transport, vm, content: content),
+    new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = viewLocator }))
+{
+    if (!BoundTo(shell)) throw new InvalidOperationException("The window did not bind its root ViewModel.");
+    using (var opened = JsonDocument.Parse(await host.Transport.CallAsync($"{host.RootRoute}Open")))
+        if (!opened.RootElement.GetProperty("ok").GetBoolean())
+            throw new InvalidOperationException($"The shell command failed: {opened.RootElement}");
+    var page = host.Root.Snapshot().Reference(vm => vm.Main)
+        ?? throw new InvalidOperationException("The shell did not present its created child.");
+    if (!BoundTo(shell.Main!)) throw new InvalidOperationException("The window did not bind a child created by its ViewModel.");
+    using (var counted = JsonDocument.Parse(await host.Transport.CallAsync($"content{page.Id}Count")))
+        if (!counted.RootElement.GetProperty("ok").GetBoolean())
+            throw new InvalidOperationException($"The created child's command failed: {counted.RootElement}");
+
+    await using var other = new RunicModelContext();
+    var foreign = new FlavorModel(commandScheduler) { Name = "foreign" };
+    using (RunicModelContextRegistry.Shared.Bind(other, foreign))
+    {
+        try
+        {
+            _ = host.Content.Expose("flavor", foreign,
+                (transport, vm, route) => new FlavorModelBridge(transport, vm, route, content: host.Content));
+            throw new InvalidOperationException("A child bound to another context was presented.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains(typeof(FlavorModel).FullName!, StringComparison.Ordinal)) { }
+    }
+}
+if (RunicModelContextRegistry.Shared.TryGet(shell, out _)) throw new InvalidOperationException("Closing the window kept its root bound.");
+
+bool BoundTo(object model) =>
+    RunicModelContextRegistry.Shared.TryGet(model, out var bound) && ReferenceEquals(bound, context);
+
 IScheduler scheduler = schedulers.For(context);
 scheduler.Schedule("scheduled", static (_, value) =>
 {

@@ -9,6 +9,8 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- Tests exercise the experimental navigation API. -->
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+    <!-- NavOrphanViewModel deliberately has no View. -->
+    <NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>
     <RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled>
     <RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand>
     <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicBridgeFrontendDir>

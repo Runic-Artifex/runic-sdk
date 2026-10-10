@@ -63,7 +63,14 @@ internal sealed record DevProjectConfiguration(
     internal string DevelopmentServerKind { get; init; } =
         ViteDevServerEnabled ? "vite" : string.Empty;
 
-    internal string DevelopmentServerDocument { get; init; } = "index.html";
+    /// <summary>
+    /// The explicit <c>RunicApplicationFrontendDevServerDocument</c> list. When it
+    /// is empty, <c>dotnet runic dev</c> takes the documents from the Vite build
+    /// inputs (<see cref="ViteBuildInputs"/>); the Angular server uses index.html.
+    /// </summary>
+    internal string DevelopmentServerDocument { get; init; } = string.Empty;
+
+    internal bool HasExplicitDevelopmentServerDocuments => !string.IsNullOrWhiteSpace(DevelopmentServerDocument);
 
     internal bool HasNodeWorkspace => !string.IsNullOrWhiteSpace(Workspace);
 
@@ -74,7 +81,9 @@ internal sealed record DevProjectConfiguration(
     internal bool HasDevelopmentServer => DevelopmentServerKind is "vite" or "angular";
 
     internal IReadOnlyList<string> DevelopmentServerDocuments =>
-        DevelopmentServerDocument.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        HasExplicitDevelopmentServerDocuments
+            ? DevelopmentServerDocument.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            : ["index.html"];
 
     internal string RuntimeWebRoot => Path.GetFullPath(Path.Combine(TargetDirectory, FrontendWebRoot));
 
@@ -181,9 +190,7 @@ internal sealed record DevProjectConfiguration(
             FrontendCompilerWatchPattern = Value("RunicApplicationFrontendCompilerWatchPattern"),
             FrontendCompilerHotReloadTarget = Value("RunicApplicationFrontendCompilerHotReloadTarget"),
             DevelopmentServerKind = serverKind,
-            DevelopmentServerDocument = string.IsNullOrWhiteSpace(Value("RunicApplicationFrontendDevServerDocument"))
-                ? "index.html"
-                : Value("RunicApplicationFrontendDevServerDocument"),
+            DevelopmentServerDocument = Value("RunicApplicationFrontendDevServerDocument"),
         };
         evaluated.Validate();
         return evaluated;

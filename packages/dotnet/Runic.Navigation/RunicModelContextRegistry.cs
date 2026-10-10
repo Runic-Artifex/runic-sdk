@@ -14,10 +14,10 @@ public interface IRunicModelContextLease : IDisposable, IAsyncDisposable
 /// Associates each model identity with the context that owns its mutations.
 /// </summary>
 /// <remarks>
-/// Bind every object that can be independently presented or mutated. The registry cannot
-/// infer an arbitrary CLR object graph, so composition roots should bind their root and
-/// children together. A second context for the same object is rejected rather than moving
-/// a live ViewModel between execution owners.
+/// A window session binds its root ViewModel and the content it presents, and a navigator
+/// binds the content it owns, each for as long as it presents or owns it. Bind other objects
+/// that must keep a context while nothing presents them. A second context for the same
+/// object is rejected rather than moving a live ViewModel between execution owners.
 /// </remarks>
 public sealed class RunicModelContextRegistry
 {
@@ -147,7 +147,7 @@ public sealed class RunicModelContextRegistry
             if (existing is not null)
             {
                 if (!ReferenceEquals(existing.Context, context))
-                    throw new InvalidOperationException("The model graph is already owned by a different Runic model context.");
+                    throw OwnedByOtherContext(models.First(existing.Models.Contains));
                 return AddLease(existing, models);
             }
 
@@ -164,12 +164,16 @@ public sealed class RunicModelContextRegistry
     private Registration? FindContextOrThrow(IEnumerable<object> models)
     {
         Registration? registration = null;
+        object? bound = null;
         foreach (var model in models)
         {
             if (!_registrations.TryGetValue(model, out var candidate)) continue;
             if (registration is not null && !ReferenceEquals(registration, candidate))
-                throw new InvalidOperationException("The supplied models belong to different Runic model contexts.");
+                throw new InvalidOperationException(
+                    $"{bound!.GetType().FullName} and {model.GetType().FullName} are bound to different Runic model contexts. "
+                    + "Bind them in separate calls, or to one context.");
             registration = candidate;
+            bound = model;
         }
         return registration;
     }
@@ -184,7 +188,7 @@ public sealed class RunicModelContextRegistry
                 registration.Models.Add(model);
             }
             else if (!ReferenceEquals(existing, registration))
-                throw new InvalidOperationException("The model graph is already owned by a different Runic model context.");
+                throw OwnedByOtherContext(model);
         }
         registration.LeaseCount++;
         return new Lease(this, registration, models);
@@ -209,6 +213,13 @@ public sealed class RunicModelContextRegistry
 
         if (dispose is not null) await dispose.DisposeAsync().ConfigureAwait(false);
     }
+
+    // Names the type: a window, navigator or bridge reports this for a ViewModel
+    // the application bound elsewhere, often far from the failing call.
+    private static InvalidOperationException OwnedByOtherContext(object model) => new(
+        $"{model.GetType().FullName} is already bound to a different Runic model context. A ViewModel has one model "
+        + "context: present it only in windows and navigators that use that IRunicModelContext, or dispose the lease "
+        + "that bound it first.");
 
     private static object[] Normalize(object[] models)
     {

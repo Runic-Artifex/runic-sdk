@@ -25,6 +25,14 @@ if (args is ["--accepted-work"])
     return;
 }
 
+if (args is ["--model-context"])
+{
+    await ModelContextTests.RunAsync();
+    await ModelContextPresentationTests.RunAsync();
+    Console.WriteLine("Model context tests passed.");
+    return;
+}
+
 var model = new RootViewModel();
 using (var host = new RunicWindowTestHost<RootViewModel>(model, "root",
     (transport, content, vm) => new RootBridge(transport, vm, content: content),
@@ -144,6 +152,7 @@ await CodegenShapeTests.RunNamingAsync();
 await DataShapeTests.RunAsync();
 await OperationResultTests.RunAsync();
 await ModelContextTests.RunAsync();
+await ModelContextPresentationTests.RunAsync();
 await TypedReactiveTests.RunAsync();
 await ToolkitTypedTests.RunAsync();
 await ToolkitCancelTests.RunAsync();

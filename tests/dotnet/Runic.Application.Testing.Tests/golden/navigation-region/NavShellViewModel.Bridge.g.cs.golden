@@ -62,7 +62,7 @@ internal sealed class NavShellBridge : ViewModelBridge<global::Runic.Application
                     writer.WriteEndObject();
                     break;
                 }
-                default: throw new global::System.NotSupportedException("Main contains an unregistered ViewModel type.");
+                default: { var unregistered = vm.Main?.Current!; throw new global::System.NotSupportedException($"The navigation region NavShellViewModel.Main cannot present {unregistered.GetType().FullName}: the Bridge generator found no Runic View for it. Declare one in the project that generates this Bridge, for example 'public sealed partial class {(unregistered.GetType().Name.EndsWith("ViewModel", global::System.StringComparison.Ordinal) ? unregistered.GetType().Name[..^9] : unregistered.GetType().Name)}View : RunicView<{unregistered.GetType().Name}>;', and rebuild."); }
             }
         }
         writer.WriteEndObject();

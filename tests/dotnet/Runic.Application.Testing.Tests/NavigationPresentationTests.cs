@@ -26,6 +26,29 @@ internal static class NavigationPresentationTests
         await ReconnectAndHotReloadLeaveEntriesAsync();
         await RuntimeDescriptorsObserveTheRegionAsync();
         GeneratedSlotContract();
+        await UnregisteredContentNamesRegionAndTypeAsync();
+    }
+
+    // A pushed ViewModel without a View fails with the region and its type,
+    // not an anonymous "unregistered ViewModel type".
+    private static async Task UnregisteredContentNamesRegionAndTypeAsync()
+    {
+        await using var window = new Window();
+        await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavOrphanViewModel())));
+        Exception? failure = null;
+        try { window.Host.Root.Snapshot(); }
+        catch (Exception error) { failure = error; }
+        var messages = string.Join(" | ", Chain(failure).Select(error => error.Message));
+        Require(Chain(failure).OfType<NotSupportedException>().Any(error =>
+                error.Message.Contains("navigation region NavShellViewModel.Main", StringComparison.Ordinal)
+                && error.Message.Contains(typeof(NavOrphanViewModel).FullName!, StringComparison.Ordinal)
+                && error.Message.Contains("public sealed partial class NavOrphanView : RunicView<NavOrphanViewModel>;", StringComparison.Ordinal)),
+            $"Presenting a ViewModel without a View did not name the region and the type: {messages}");
+
+        static IEnumerable<Exception> Chain(Exception? error)
+        {
+            for (; error is not null; error = error.InnerException) yield return error;
+        }
     }
 
     private static async Task WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync()
