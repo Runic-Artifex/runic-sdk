@@ -26,10 +26,23 @@ public sealed class PresentationFiles(PresentationLifetime lifetime, IPickerBack
     public ValueTask<PickerResult<IDirectoryLease>> OpenDirectoryAsync(OpenDirectoryOptions options, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
-        return PickAsync(options.OwnerPolicy, token => backend!.SupportsDirectorySelection
-            ? backend.OpenDirectoryAsync(options, token)
-            : ValueTask.FromResult<PickerResult<IDirectoryLease>>(new PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.BackendUnavailable)),
+        return PickAsync(options.OwnerPolicy, token => OpenBackendDirectoryAsync(backend!, options, token),
             value => new PresentationDirectoryLease(lifetime, value), cancellationToken);
+    }
+
+    // The backend's OpenDirectoryAsync is the only selection behavior; its
+    // SupportsDirectorySelection only reports that behavior before a call. A result
+    // other than Unavailable from a backend declaring no support means the backend
+    // implements the method but would be reported unavailable: fail visibly.
+    private static async ValueTask<PickerResult<IDirectoryLease>> OpenBackendDirectoryAsync(IPickerBackend backend,
+        OpenDirectoryOptions options, CancellationToken cancellationToken)
+    {
+        var result = await backend.OpenDirectoryAsync(options, cancellationToken).ConfigureAwait(false);
+        if (result is PickerResult<IDirectoryLease>.Unavailable || backend.SupportsDirectorySelection) return result;
+        if (result is PickerResult<IDirectoryLease>.Selected selected) await selected.Value.DisposeAsync().ConfigureAwait(false);
+        throw new InvalidOperationException(
+            $"{backend.GetType().Name} implements {nameof(IFileDialogs.OpenDirectoryAsync)} but reports {nameof(IPickerBackend.SupportsDirectorySelection)} as false. " +
+            "Return true from SupportsDirectorySelection so the platform.directories.open capability reports directory selection.");
     }
 
     private PlatformUnavailableReason? Reason(OwnerPolicy policy)

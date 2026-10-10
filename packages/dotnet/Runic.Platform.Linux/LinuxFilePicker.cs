@@ -38,6 +38,7 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
         GCHandle handle = default;
         CancellationTokenRegistration registration = default;
         Task cancellation = Task.CompletedTask;
+        bool released = false, loopStopped = false;
         try
         {
             await owner.InvokeAsync(parent =>
@@ -59,7 +60,15 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
             registration = cancellationToken.Register(() => cancellation = CancelAsync());
             async Task CancelAsync()
             {
-                try { await OnContextAsync(context, () => { Hide(dialog); state.Result.TrySetResult(null); }).ConfigureAwait(false); }
+                try
+                {
+                    // A stopped loop delivers no response; report the cancellation without it.
+                    if (!await TryOnContextAsync(context, () => { if (!released) Hide(dialog); state.Result.TrySetResult(null); }, ClosedOwnerGrace).ConfigureAwait(false))
+                    {
+                        loopStopped = true;
+                        state.Result.TrySetResult(null);
+                    }
+                }
                 catch (Exception error) { state.Result.TrySetException(error); }
             }
             var result = await state.Result.Task.ConfigureAwait(false);
@@ -72,29 +81,56 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
             await cancellation.ConfigureAwait(false);
             if (context != 0)
             {
-                try
+                // The verified owner can be gone. The context and parent
+                // references keep cleanup valid until native signals are disconnected.
+                // Native objects are touched only on the chooser's GTK context. If that
+                // loop no longer iterates, the queued cleanup keeps its references and
+                // the context: the dialog leaks with the stopped loop rather than
+                // hanging this picker and presentation shutdown.
+                await TryOnContextAsync(context, () =>
                 {
-                    // The verified owner can be gone. The context and parent
-                    // references keep cleanup valid until native signals are disconnected.
-                    await OnContextAsync(context, () =>
+                    released = true;
+                    if (dialog != 0)
                     {
-                        if (dialog != 0)
-                        {
-                            if (responseSignal != 0 && IsConnected(dialog, responseSignal) != 0) Disconnect(dialog, responseSignal);
-                            Destroy(dialog);
-                            Unref(dialog);
-                        }
-                        if (retainedParent != 0)
-                        {
-                            if (parentSignal != 0 && IsConnected(retainedParent, parentSignal) != 0) Disconnect(retainedParent, parentSignal);
-                            Unref(retainedParent);
-                        }
-                        if (handle.IsAllocated) handle.Free();
-                    }).ConfigureAwait(false);
-                }
-                finally { UnrefContext(context); }
+                        if (responseSignal != 0 && IsConnected(dialog, responseSignal) != 0) Disconnect(dialog, responseSignal);
+                        Destroy(dialog);
+                        Unref(dialog);
+                    }
+                    if (retainedParent != 0)
+                    {
+                        if (parentSignal != 0 && IsConnected(retainedParent, parentSignal) != 0) Disconnect(retainedParent, parentSignal);
+                        Unref(retainedParent);
+                    }
+                    if (handle.IsAllocated) handle.Free();
+                }, loopStopped ? TimeSpan.Zero : ClosedOwnerGrace, releaseContext: true).ConfigureAwait(false);
             }
         }
+    }
+
+    // Context work has no other escape once the owner closed: its loop may already
+    // have quit. A live loop runs queued work well within this bound.
+    private static readonly TimeSpan ClosedOwnerGrace = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan OwnerPoll = TimeSpan.FromMilliseconds(100);
+
+    // Returns false when the action did not run: GLib destroyed its source, or the owner
+    // closed and the context did not dispatch it within the grace period. Abandoned work
+    // stays queued with every native reference it captured and may still run if the loop
+    // iterates again. With releaseContext, the caller's context reference is released
+    // after the work finishes or its source is destroyed, never while it is still queued.
+    private async ValueTask<bool> TryOnContextAsync(nint context, Action action, TimeSpan grace, bool releaseContext = false)
+    {
+        Task<bool> work;
+        try { work = OnContextAsync(context, action); }
+        catch { if (releaseContext) UnrefContext(context); throw; }
+        if (releaseContext)
+            _ = work.ContinueWith(_ => UnrefContext(context), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        while (!work.IsCompleted)
+        {
+            bool closed = !owner.IsAvailable;
+            await Task.WhenAny(work, Task.Delay(closed ? grace : OwnerPoll)).ConfigureAwait(false);
+            if (closed && !work.IsCompleted) return false;
+        }
+        return await work.ConfigureAwait(false);
     }
 
     private sealed class Selection
@@ -140,10 +176,12 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
         try { return new UTF8Encoding(false, true).GetString(value); }
         catch (DecoderFallbackException error) { throw new IOException("The native path cannot be represented exactly in C#.", error); }
     }
-    private sealed record ContextWork(Action Action, TaskCompletionSource Completion);
-    private static unsafe ValueTask OnContextAsync(nint context, Action action)
+    private sealed record ContextWork(Action Action, TaskCompletionSource<bool> Completion);
+    // Completes with true (or the action's exception) after dispatch, or with false
+    // when GLib destroys the source without dispatching it.
+    private static unsafe Task<bool> OnContextAsync(nint context, Action action)
     {
-        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var handle = GCHandle.Alloc(new ContextWork(action, completion));
         nint source = NewIdleSource();
         try
@@ -153,18 +191,23 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
             if (AttachSource(source, context) == 0) throw new IOException("GTK could not queue chooser cleanup.");
         }
         finally { UnrefSource(source); }
-        return new(completion.Task);
+        return completion.Task;
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int RunContextWork(nint context)
     {
         var work = (ContextWork)GCHandle.FromIntPtr(context).Target!;
-        try { work.Action(); work.Completion.TrySetResult(); }
+        try { work.Action(); work.Completion.TrySetResult(true); }
         catch (Exception error) { work.Completion.TrySetException(error); }
         return 0;
     }
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    private static void ReleaseContextWork(nint context) => GCHandle.FromIntPtr(context).Free();
+    private static void ReleaseContextWork(nint context)
+    {
+        var handle = GCHandle.FromIntPtr(context);
+        ((ContextWork)handle.Target!).Completion.TrySetResult(false);
+        handle.Free();
+    }
     private static bool RequiresPortal => File.Exists("/.flatpak-info") || Environment.GetEnvironmentVariable("SNAP") is not null
         || Environment.GetEnvironmentVariable("GTK_USE_PORTAL") == "1";
 

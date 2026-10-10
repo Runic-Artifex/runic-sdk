@@ -29,7 +29,7 @@ await using (var broken = LinuxPlatformProvider.CreateTextClipboard(new Disappea
     try { await broken.ReadTextAsync(30); throw new InvalidOperationException("Unexpected dispatcher failure was swallowed."); }
     catch (InvalidOperationException error) when (error.Message == "dispatcher defect") { }
 }
-if (!args.Contains("--native") && !args.Contains("--portal-cancel") && !args.Contains("--directory-native")) { Console.WriteLine("PASS Linux clipboard owner dispatch races."); return; }
+if (!args.Contains("--native") && !args.Contains("--portal-cancel") && !args.Contains("--directory-native") && !args.Contains("--directory-loop-stopped")) { Console.WriteLine("PASS Linux clipboard owner dispatch races."); return; }
 await using var owner = new GtkOwner();
 await using var clipboard = LinuxPlatformProvider.CreateTextClipboard(owner);
 await using (var parent = await new Gtk3PortalWindowOwner(owner).ExportParentAsync())
@@ -70,6 +70,23 @@ if (args.Contains("--directory-native"))
     await owner.CloseWindowAsync();
     Check(await pendingDirectory.WaitAsync(TimeSpan.FromSeconds(5)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "GTK native directory owner destruction");
     Console.WriteLine("PASS GTK3 native directory chooser cancellation, retry and destroyed-owner cleanup.");
+    return;
+}
+if (args.Contains("--directory-loop-stopped"))
+{
+    // The GTK loop can quit while a chooser is open, before presentation shutdown.
+    // Queued native cancellation and cleanup can then never run; shutdown must not wait for them.
+    // Not `await using`: a regression must fail with the bounded wait below, not hang in disposal.
+    var presentation = new PresentationLifetime(() => owner.IsAvailable, owner.Generation);
+    var files = new PresentationFiles(presentation, LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner));
+    var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    owner.AfterDispatch = () => shown.TrySetResult();
+    var pending = files.OpenDirectoryAsync(new()).AsTask();
+    await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    await owner.StopLoopAsync(destroyWindow: false);
+    await presentation.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+    Check(await pending.WaitAsync(TimeSpan.FromSeconds(1)) is PickerResult<IDirectoryLease>.Unavailable { Reason: PlatformUnavailableReason.OwnerClosed }, "stopped GTK loop chooser shutdown");
+    Console.WriteLine("PASS GTK3 native directory chooser completes and presentation shutdown drains after the GTK loop stopped.");
     return;
 }
 await owner.InvokeAsync(_ => Native.Clear(Native.Clipboard(Native.Atom("CLIPBOARD", 0))));
@@ -147,6 +164,7 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
     readonly TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
     volatile bool stopping;
     volatile bool closed;
+    volatile bool keepWindow;
     public Action? AfterDispatch { get; set; }
     public Guid Generation { get; } = Guid.NewGuid();
     public bool IsAvailable => !stopping && !closed;
@@ -166,7 +184,7 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
                 while (Native.Iteration(0, 0) != 0) { }
                 Thread.Sleep(1);
             }
-            if (!closed) Native.Destroy(window);
+            if (!closed && !keepWindow) Native.Destroy(window);
         });
         thread.Start();
     }
@@ -179,6 +197,9 @@ sealed class GtkOwner : INativePickerOwner, IAsyncDisposable
         await completion.Task;
     }
     public ValueTask CloseWindowAsync() => InvokeAsync(window => { Native.Destroy(window); closed = true; });
+    // Quits the loop; the thread no longer iterates GTK. A kept window models a loop
+    // that quit before its windows were destroyed.
+    public ValueTask StopLoopAsync(bool destroyWindow) { keepWindow = !destroyWindow; return DisposeAsync(); }
     public ValueTask DisposeAsync() { stopping = true; thread.Join(); return ValueTask.CompletedTask; }
 }
 static partial class Native

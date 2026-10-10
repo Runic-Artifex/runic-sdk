@@ -91,6 +91,11 @@ public sealed class PresentationLifetime : IAsyncDisposable
     public ValueTask StopAsync() => DisposeAsync();
 
     /// <summary>Joins the single shared shutdown result.</summary>
+    /// <remarks>
+    /// Shutdown drains admitted platform operations, then releases every lease this presentation still owns. It does
+    /// not wait for application work that uses those leases: drain such work, for example an application's
+    /// accepted-work scope, before stopping the lifetime. Owner closure alone does not start shutdown.
+    /// </remarks>
     public ValueTask DisposeAsync()
     {
         TaskCompletionSource closed;

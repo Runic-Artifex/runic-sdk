@@ -4,7 +4,11 @@ internal sealed class DirectoryLease(string path, IAsyncDisposable? access) : ID
 {
     private TaskCompletionSource? _closed;
     public string LocalPath { get { RequireOpen(); return path; } }
-    public string DisplayName { get { RequireOpen(); return Path.GetFileName(Path.TrimEndingDirectorySeparator(path)); } }
+    public string DisplayName { get { RequireOpen(); return GetDisplayName(path); } }
+
+    // A filesystem root has no final name; the root itself identifies it.
+    internal static string GetDisplayName(string path) =>
+        Path.GetFileName(Path.TrimEndingDirectorySeparator(path)) is { Length: > 0 } name ? name : path;
 
     private void RequireOpen() => ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed) is not null, this);
 

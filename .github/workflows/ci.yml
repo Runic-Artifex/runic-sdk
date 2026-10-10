@@ -505,6 +505,12 @@ jobs:
         if: runner.os == 'Linux'
         timeout-minutes: 3
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --native
+      - name: Verify native GTK directory chooser lifecycle
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: |
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --directory-native
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet tests/dotnet/Runic.Platform.Linux.Tests/bin/Release/net10.0/Runic.Platform.Linux.Tests.dll --directory-loop-stopped
       - name: Verify native clipboard
         if: runner.os != 'Linux'
         timeout-minutes: 3
