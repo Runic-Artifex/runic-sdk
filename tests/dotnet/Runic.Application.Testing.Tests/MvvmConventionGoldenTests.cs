@@ -43,7 +43,7 @@ internal static class MvvmConventionGoldenTests
 
     // A model section starts at its "model:" line and ends before the next
     // "model:" or "view:" line.
-    private static IEnumerable<string> ModelSections(IEnumerable<string> parts, IReadOnlySet<string> models)
+    private static IEnumerable<string> ModelSections(IEnumerable<string> parts, HashSet<string> models)
     {
         var include = false;
         foreach (var part in parts)
