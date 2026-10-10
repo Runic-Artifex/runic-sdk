@@ -103,13 +103,15 @@ generated View snapshot:
   <p role="status">{workspace.state?.operationMessage ?? "Starting…"}</p>
   <button disabled={push.cancellationRequested} onclick={() => push.cancel()}>Cancel</button>
 {/if}
+{#if push.cancelled}<p role="status">Push cancelled.</p>{/if}
 {#if push.error ?? push.cancelError}<p role="alert">{String(push.error ?? push.cancelError)}</p>{/if}
 ```
 
 The result exposes reactive `pending`, `admitting`, `operation`, `status`, `outcome`,
-`failure`, `error`, `cancellationRequested`, `cancelling`, `cancellation` and
-`cancelError`, with `run(...args)`, `cancel()` and `reset()`. Both async methods never
-reject. Cancel before a delayed Start receipt is retained for that captured run;
+`failure`, `error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation`
+and `cancelError`, with `run(...args)`, `cancel()` and `reset()`. Both async methods never
+reject. A run that ends with a `cancelled` status sets `cancelled` and leaves `error`
+undefined; `failed` and `timedOut` statuses are still `error`. Cancel before a delayed Start receipt is retained for that captured run;
 its response does not release pending state. `reset()` clears feedback while
 preserving busy state and cancellation identity. Component destruction settles UI
 observation promises and detaches feedback without cancelling accepted mutations.

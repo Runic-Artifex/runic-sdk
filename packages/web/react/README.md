@@ -112,6 +112,30 @@ from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
 
+## `useOperation(start, options?)`
+
+Observes a generated `start<Command>()` operation through the framework-neutral
+[operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection).
+`run(...args)` calls the latest `start`, so it may close over the current client:
+
+```tsx
+const push = useOperation((remote: string) => client?.startPush(remote));
+<button disabled={!client || push.pending} onClick={() => void push.run("origin")}>Push</button>
+{push.pending && <button disabled={push.cancellationRequested} onClick={() => void push.cancel()}>Cancel</button>}
+{push.cancelled && <p role="status">Push cancelled.</p>}
+{push.error !== undefined && <p role="alert">{String(push.error)}</p>}
+```
+
+The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
+`cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
+run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
+without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
+stays true after a Cancel response until the operation reaches its terminal status.
+Unmounting stops rendering feedback but never cancels accepted work. The optional
+`cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
+controller's options.
+
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, ref }`.

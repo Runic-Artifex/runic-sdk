@@ -1,10 +1,10 @@
 import { act, Component, createElement, StrictMode, Suspense, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
-import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
+import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 import {
-  retrySuspenseView, useCollectionViewport, useCommand, useSuspenseView, useView, ViewOutlet,
-  type CollectionViewportHandle, type CommandHandle, type ViewHandle, type ViewRegistry, type ViewSource,
+  retrySuspenseView, useCollectionViewport, useCommand, useOperation, useSuspenseView, useView, ViewOutlet,
+  type CollectionViewportHandle, type CommandHandle, type OperationHandle, type ViewHandle, type ViewRegistry, type ViewSource,
 } from "../dist/index.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -484,5 +484,64 @@ describe("useView source changes", () => {
     expect(b.clients[0]!.disposed).toBe(1);
     expect(latest?.client).toBe(a.clients[1]);
     expect(text()).toBe("11");
+  });
+});
+
+function fakeOperation(requestId: string) {
+  let finish!: (status: BridgeOperationStatus<number>) => void;
+  const terminal = new Promise<BridgeOperationStatus<number>>(resolve => { finish = resolve; });
+  let cancels = 0;
+  const operation: BridgeOperation<number> = {
+    requestId,
+    status: () => terminal,
+    completion: terminal,
+    wait: () => terminal,
+    async cancel() { cancels++; return { contract: "test", requestId, kind: "cancellation-requested" }; },
+    async outcome() {
+      const status = await terminal;
+      if (status.kind === "succeeded") return bridgeSuccess(status.result as number);
+      throw new BridgeError(status.kind === "cancelled" ? "cancelled" : status.kind === "timedOut" ? "timeout" : "failed", status.kind);
+    },
+  };
+  return { operation, finish, cancels: () => cancels };
+}
+
+describe("useOperation", () => {
+  test("Cancel ends in a cancelled state without an error; failed and timed-out runs are errors", async () => {
+    let handle: OperationHandle<[], number> | undefined;
+    let current = fakeOperation("first");
+    function Runner(): ReactNode {
+      handle = useOperation(() => current.operation);
+      return createElement("output", null, `${handle.pending}:${handle.cancelled}:${handle.error ? (handle.error as BridgeError).kind : ""}`);
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(StrictMode, null, createElement(Runner)));
+    });
+    expectTypeOf(handle!.cancelled).toEqualTypeOf<boolean>();
+    expectTypeOf(handle!.run).returns.resolves.toEqualTypeOf<BridgeOutcome<number, never> | undefined>();
+    let result: Promise<unknown> | undefined;
+    await act(async () => { result = handle!.run(); });
+    expect(text()).toBe("true:false:");
+    await act(async () => { await handle!.cancel(); });
+    expect(current.cancels()).toBe(1);
+    expect(handle!.cancellationRequested).toBe(true);
+    await act(async () => { current.finish({ contract: "test", requestId: "first", kind: "cancelled" }); await result; });
+    expect(await result).toBeUndefined();
+    expect(text()).toBe("false:true:");
+    expect(handle!.status?.kind).toBe("cancelled");
+
+    for (const [status, kind] of [
+      [{ contract: "test", requestId: "next", kind: "failed", error: { kind: "failed", message: "boom" } }, "failed"],
+      [{ contract: "test", requestId: "next", kind: "timedOut", cancellation: "cancellation-requested" }, "timeout"],
+    ] as const) {
+      current = fakeOperation("next");
+      await act(async () => { result = handle!.run(); });
+      expect(text()).toBe("true:false:");
+      await act(async () => { current.finish(status); await result; });
+      expect(text()).toBe(`false:false:${kind}`);
+    }
+    await act(async () => { handle!.reset(); });
+    expect(text()).toBe("false:false:");
   });
 });

@@ -28,6 +28,7 @@ function work<T, F = never>(outcome: BridgeOutcome<T, F>) {
       outcomes++;
       const status = await terminal.promise;
       if (status.kind === "cancelled") throw new BridgeError("cancelled", "Cancelled");
+      if (status.kind === "failed") throw new BridgeError("failed", status.error.message);
       return outcome;
     },
   };
@@ -70,6 +71,43 @@ describe("useOperation", () => {
     operation.reset();
     expect(operation.failure).toBeUndefined();
     destroy();
+  });
+
+  test("Cancel ends in a cancelled state without an error; a failed run is still an error", async () => {
+    const accepted = work(bridgeSuccess(1));
+    let operation!: OperationHandle<[], number>;
+    const cancelled: boolean[] = [];
+    const destroy = $effect.root(() => {
+      operation = useOperation(() => accepted.operation);
+      $effect(() => { cancelled.push(operation.cancelled); });
+    });
+    flushSync();
+    expectTypeOf(operation.cancelled).toEqualTypeOf<boolean>();
+    const result = operation.run();
+    await settle();
+    await operation.cancel();
+    accepted.terminal.resolve({ contract: "test", requestId: "svelte-test", kind: "cancelled" });
+    expect(await result).toBeUndefined();
+    flushSync();
+    expect(operation.cancelled).toBe(true);
+    expect(operation.error).toBeUndefined();
+    expect(operation.pending).toBe(false);
+    expect(cancelled.at(-1)).toBe(true);
+    operation.reset();
+    flushSync();
+    expect(operation.cancelled).toBe(false);
+    destroy();
+
+    const failing = work(bridgeSuccess(1));
+    let failed!: OperationHandle<[], number>;
+    const stop = $effect.root(() => { failed = useOperation(() => failing.operation); });
+    flushSync();
+    const run = failed.run();
+    failing.terminal.resolve({ contract: "test", requestId: "svelte-test", kind: "failed", error: { kind: "failed", message: "boom" } });
+    expect(await run).toBeUndefined();
+    expect(failed.cancelled).toBe(false);
+    expect((failed.error as BridgeError).kind).toBe("failed");
+    stop();
   });
 
   test("observes generated void controls and waits for application drain before ending pending", async () => {

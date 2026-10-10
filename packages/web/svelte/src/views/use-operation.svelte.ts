@@ -39,6 +39,7 @@ export function useOperation<TArgs extends readonly unknown[], TResult, TFailure
     get outcome() { return current.outcome; },
     get failure() { return current.failure; },
     get error() { return current.error; },
+    get cancelled() { return current.cancelled; },
     get cancellationRequested() { return current.cancellationRequested; },
     get cancelling() { return current.cancelling; },
     get cancellation() { return current.cancellation; },

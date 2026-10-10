@@ -15,7 +15,13 @@ export interface OperationState<TResult, TFailure = never> {
   readonly status: BridgeOperationStatus<TResult, TFailure> | undefined;
   readonly outcome: BridgeOutcome<TResult, TFailure> | undefined;
   readonly failure: TFailure | undefined;
+  /** An unexpected failure, including a `failed` or `timedOut` status. Never a `cancelled` status. */
   readonly error: unknown;
+  /**
+   * The latest run ended with a `cancelled` status, whoever requested it. This is a
+   * normal terminal state: `outcome`, `failure` and `error` stay undefined.
+   */
+  readonly cancelled: boolean;
   readonly cancellationRequested: boolean;
   /** A cancellation callback is in flight; its response does not establish completion. */
   readonly cancelling: boolean;
@@ -37,7 +43,10 @@ export interface OperationControllerOptions<TResult, TFailure = never> {
 export interface OperationController<TArgs extends readonly unknown[], TResult, TFailure = never> {
   readonly current: OperationState<TResult, TFailure>;
   subscribe(listener: () => void): () => void;
-  /** Starts and observes an operation. Never rejects; unexpected failures are `current.error`. */
+  /**
+   * Starts and observes an operation. Never rejects; resolves to undefined after
+   * cancellation (`current.cancelled`) or an unexpected failure (`current.error`).
+   */
   run(...args: TArgs): Promise<BridgeOutcome<TResult, TFailure> | undefined>;
   /** Retains Cancel before a delayed Start receipt. Never rejects; failures are `current.cancelError`. */
   cancel(): Promise<CancelResult>;
@@ -49,7 +58,7 @@ export interface OperationController<TArgs extends readonly unknown[], TResult, 
 
 function initial<TResult, TFailure>(): OperationState<TResult, TFailure> {
   return { pending: false, admitting: false, operation: undefined, status: undefined, outcome: undefined,
-    failure: undefined, error: undefined, cancellationRequested: false, cancelling: false, cancellation: undefined, cancelError: undefined };
+    failure: undefined, error: undefined, cancelled: false, cancellationRequested: false, cancelling: false, cancellation: undefined, cancelError: undefined };
 }
 
 function publisher<T>(value: T) {
@@ -133,6 +142,11 @@ export function createOperationController<TArgs extends readonly unknown[], TRes
       if (disposed) return;
       await options.waitForCompletion?.(operation, status);
       if (disposed) return;
+      // A cancelled run ends normally; only direct outcome() callers get its BridgeError.
+      if (status.kind === "cancelled") {
+        if (run.feedback === feedback) publish(run, { cancelled: true });
+        return;
+      }
       const outcome = await operation.outcome();
       if (disposed) return;
       if (run.feedback === feedback) publish(run, { outcome, failure: outcome.ok ? undefined : outcome.failure });
@@ -178,7 +192,7 @@ export function createOperationController<TArgs extends readonly unknown[], TRes
     reset() {
       if (disposed) return;
       feedback++;
-      state.publish({ outcome: undefined, failure: undefined, error: undefined, cancelError: undefined });
+      state.publish({ outcome: undefined, failure: undefined, error: undefined, cancelled: false, cancelError: undefined });
     },
     dispose() {
       if (disposed) return;
@@ -302,6 +316,7 @@ export function createLatestOperationController<TResult = void, TFailure = never
       if (!observed(intent)) return;
       publish(intent, { status });
       if (!observed(intent)) return;
+      if (status.kind === "cancelled") { publish(intent, { cancelled: true }); return; }
       const outcome = await operation.outcome();
       if (fresh(intent)) {
         state.publish({ outcome, failure: outcome.ok ? undefined : outcome.failure });
@@ -354,7 +369,7 @@ export function createLatestOperationController<TResult = void, TFailure = never
       const previous = active;
       if (previous) previous.superseded = true;
       pending = intent;
-      state.publish({ pending: true, outcome: undefined, failure: undefined, error: undefined, cancelError: undefined });
+      state.publish({ pending: true, outcome: undefined, failure: undefined, error: undefined, cancelled: false, cancelError: undefined });
       // Publication can reenter run() and admit a newer intent. Only supersede
       // the active intent captured before publication, never that newer read.
       if (previous && observed(previous)) requestCancel(previous);
