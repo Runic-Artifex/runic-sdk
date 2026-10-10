@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Reaches Runic.Application only through the model project and references
+       no host adapter, so generation stays off. Its View gets RUNICBRIDGE014. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Model/SplitModel.csproj" />
+  </ItemGroup>
+</Project>

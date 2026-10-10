@@ -53,7 +53,7 @@ try
         }
         var assembly = Assembly.LoadFrom(Path.GetFullPath(positional[1]));
         var viewTypes = new Dictionary<Type, List<Type>>();
-        foreach (var type in assembly.GetTypes())
+        foreach (var type in InspectableTypes(assembly))
         {
             try
             {
@@ -209,6 +209,36 @@ static string BridgeTypeName(Type model, string shortName) =>
 static void AppendNamespace(StringBuilder source, string? ns)
 {
     if (ns is not null) source.AppendLine($"namespace {ns};");
+}
+
+// A WPF or Windows Forms project also declares its Application, windows and
+// controls, which derive from Windows Desktop framework types this process
+// cannot load. Runic Views and ViewModels must not depend on them, so inspect
+// the types that load. Any other load failure stays RUNICBRIDGE005.
+static IEnumerable<Type> InspectableTypes(Assembly assembly)
+{
+    try
+    {
+        return assembly.GetTypes();
+    }
+    catch (ReflectionTypeLoadException error) when (error.LoaderExceptions.All(IsWindowsDesktopLoadFailure))
+    {
+        var missing = error.LoaderExceptions.OfType<FileNotFoundException>()
+            .Select(inner => new AssemblyName(inner.FileName!).Name).Distinct(StringComparer.Ordinal);
+        Console.WriteLine($"{assembly.GetName().Name}: skipped {error.Types.Count(type => type is null)} types that depend on {string.Join(", ", missing)}. Runic Views and ViewModels cannot depend on Windows Desktop framework types.");
+        return error.Types.OfType<Type>();
+    }
+}
+
+static bool IsWindowsDesktopLoadFailure(Exception? error)
+{
+    if (error is not FileNotFoundException { FileName: { } fileName }) return false;
+    var name = new AssemblyName(fileName).Name ?? "";
+    return name is "WindowsBase" or "System.Xaml" or "ReachFramework" or "Accessibility" or "WindowsFormsIntegration"
+        or "System.Printing" or "DirectWriteForwarder"
+        || name.StartsWith("Presentation", StringComparison.Ordinal)
+        || name.StartsWith("UIAutomation", StringComparison.Ordinal)
+        || name.StartsWith("System.Windows.", StringComparison.Ordinal);
 }
 
 static Type? ViewModelFor(Type view)

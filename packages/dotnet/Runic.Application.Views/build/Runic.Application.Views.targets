@@ -4,8 +4,13 @@
   <PropertyGroup>
     <RunicBridgeGeneratedDir>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge/</RunicBridgeGeneratedDir>
     <RunicBridgeNoViewsMarker>RunicBridge.NoViews.marker</RunicBridgeNoViewsMarker>
-    <RunicBridgeTypescriptDir Condition="'$(RunicBridgeTypescriptDir)' == ''">$(MSBuildProjectDirectory)/Frontend/src/generated</RunicBridgeTypescriptDir>
     <RunicBridgeFrontendDir Condition="'$(RunicBridgeFrontendDir)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir>
+    <RunicBridgeTypescriptDir Condition="'$(RunicBridgeTypescriptDir)' == ''">$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir>
+    <!-- WPF compiles a temporary copy of the project (<name>_<random>_wpftmp)
+         to resolve local types in XAML. The copy imports these targets too,
+         but must not generate or bootstrap again: it compiles the code that
+         the real project generated before the copy was created. -->
+    <_RunicBridgeMarkupTemporary Condition="'$(_TargetAssemblyProjectName)' != '' or $(MSBuildProjectName.EndsWith('_wpftmp'))">true</_RunicBridgeMarkupTemporary>
   </PropertyGroup>
 
   <!-- The frontend package manager follows package.json "packageManager",
@@ -15,12 +20,15 @@
     <RunicBridgeFrontendPackageManager>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(RunicBridgeFrontendDir)/package.json')), '(?&lt;="packageManager"\s*:\s*")(npm|pnpm|bun)(?=@)'))</RunicBridgeFrontendPackageManager>
   </PropertyGroup>
   <PropertyGroup>
+    <_RunicBridgeDefaultFrontendBuild Condition="'$(RunicBridgeFrontendBuildCommand)' == ''">true</_RunicBridgeDefaultFrontendBuild>
     <RunicBridgeFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' == '' and Exists('$(RunicBridgeFrontendDir)/pnpm-lock.yaml')">pnpm</RunicBridgeFrontendPackageManager>
     <RunicBridgeFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' == '' and Exists('$(RunicBridgeFrontendDir)/bun.lock')">bun</RunicBridgeFrontendPackageManager>
     <RunicBridgeFrontendPackageManager Condition="'$(RunicBridgeFrontendPackageManager)' == ''">npm</RunicBridgeFrontendPackageManager>
     <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'pnpm'">pnpm run build</RunicBridgeFrontendBuildCommand>
     <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'bun'">bun run --bun build</RunicBridgeFrontendBuildCommand>
     <RunicBridgeFrontendBuildCommand Condition="'$(RunicBridgeFrontendBuildCommand)' == ''">npm run build</RunicBridgeFrontendBuildCommand>
+    <!-- A project may still set its own command after importing these targets. -->
+    <_RunicBridgeDefaultFrontendBuildCommand Condition="'$(_RunicBridgeDefaultFrontendBuild)' == 'true'">$(RunicBridgeFrontendBuildCommand)</_RunicBridgeDefaultFrontendBuildCommand>
     <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'pnpm'">pnpm install --frozen-lockfile --ignore-scripts</RunicBridgeFrontendInstallCommand>
     <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == '' and '$(RunicBridgeFrontendPackageManager)' == 'bun'">bun install --frozen-lockfile --ignore-scripts</RunicBridgeFrontendInstallCommand>
     <RunicBridgeFrontendInstallCommand Condition="'$(RunicBridgeFrontendInstallCommand)' == '' and Exists('$(RunicBridgeFrontendDir)/package-lock.json')">npm ci --ignore-scripts</RunicBridgeFrontendInstallCommand>
@@ -43,23 +51,57 @@
                       GlobalPropertiesToRemove="PublishAot;RuntimeIdentifier;SelfContained" />
   </ItemGroup>
 
+  <!-- The bootstrap pass sets its own output paths. Referenced projects (a
+       model project beside a WPF application, for example) keep the
+       properties of the real build, so they are not compiled again into the
+       bootstrap directories. -->
+  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+    <ProjectReference Update="@(ProjectReference)"
+                      GlobalPropertiesToRemove="%(GlobalPropertiesToRemove);RunicBridgeBootstrap;RunAnalyzers;RunCodeAnalysis;CopyLocalLockFileAssemblies;OutputPath;IntermediateOutputPath" />
+  </ItemGroup>
+
+  <!-- Generation turns on for a project that references Runic.Application
+       directly, or that references a host adapter directly or transitively:
+       each adapter's props set RunicApplicationHostAdapter=true. -->
   <Target Name="RunicViewsDetectBridgeUse" BeforeTargets="PrepareForBuild">
     <ItemGroup>
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
-        Condition="'%(PackageReference.Identity)' == 'Runic.Application' or '%(PackageReference.Identity)' == 'Runic.Application.CsWebUi' or '%(PackageReference.Identity)' == 'Runic.Application.Desktop'" />
+        Condition="'%(PackageReference.Identity)' == 'Runic.Application'" />
     </ItemGroup>
     <!-- Generation that this file turns on by default is optional: a project
          that declares no Window or View (for example one that only uses the
          navigator) builds without bridge output. A project that sets
          RunicBridgeBuildEnabled=true, or visibly expects output (a frontend
          package.json, RunicBridgeFrontendInput items, a composition type or a
-         model assembly), still gets RUNICBRIDGE006 when it has no Window. -->
+         model assembly), still gets RUNICBRIDGE006 when it has no Window.
+         A WPF application may keep its web Views in a referenced model
+         project, so there the adapter's default composition type alone does
+         not require them. -->
     <PropertyGroup>
-      <_RunicBridgeOptional Condition="'$(RunicBridgeBuildEnabled)' == '' and '$(RunicBridgeCompositionType)' == '' and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeOptional>
+      <_RunicBridgeOptional Condition="'$(RunicBridgeBuildEnabled)' == '' and ('$(RunicBridgeCompositionType)' == '' or '$(UseWPF)' == 'true') and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeOptional>
+      <_RunicBridgeDefaultedOff Condition="'$(RunicBridgeBuildEnabled)' == ''">true</_RunicBridgeDefaultedOff>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and Exists('$(RunicBridgeCodegenProject)')">true</RunicBridgeBuildEnabled>
-      <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and '@(_RunicBridgeDirectPackage)' != ''">true</RunicBridgeBuildEnabled>
+      <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == '' and ('@(_RunicBridgeDirectPackage)' != '' or '$(RunicApplicationHostAdapter)' == 'true')">true</RunicBridgeBuildEnabled>
       <RunicBridgeBuildEnabled Condition="'$(RunicBridgeBuildEnabled)' == ''">false</RunicBridgeBuildEnabled>
+      <_RunicBridgeDefaultedOff Condition="'$(RunicBridgeBuildEnabled)' != 'false'"></_RunicBridgeDefaultedOff>
     </PropertyGroup>
+  </Target>
+
+  <!-- Without generation, a declared Window or View gets no bridge,
+       AddRunicViews() or TypeScript client, and the first sign would be a
+       CS1061 at the call. When generation is off only by default (no host
+       adapter and no direct Runic.Application reference), look for a class
+       deriving from RunicWindow<T> or RunicView<T> and say so once. -->
+  <Target Name="RunicViewsCheckDisabledGeneration" BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicViewsDetectBridgeUse"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <ItemGroup Condition="'$(_RunicBridgeDefaultedOff)' == 'true'">
+      <_RunicBridgeViewSource Include="@(Compile)"
+        Condition="Exists('%(Compile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(Compile.FullPath)')), ':\s*(global::)?(Runic\.Application\.Views\.)?Runic(Window|View)\s*&lt;'))" />
+    </ItemGroup>
+    <Warning Code="RUNICBRIDGE014" Condition="'@(_RunicBridgeViewSource)' != ''"
+             File="$(MSBuildProjectFullPath)"
+             Text="$(AssemblyName) declares a Runic Window or View (@(_RunicBridgeViewSource->'%(Filename)%(Extension)', ', ')), but Bridge generation is off because the project references no host adapter (Runic.Application.Desktop, Runic.Application.CsWebUi or Runic.Application.Wpf) and not Runic.Application directly. No bridge, AddRunicViews() or TypeScript client is generated. Set RunicBridgeBuildEnabled=true to generate them here, or false when another project generates them." />
   </Target>
 
   <Target Name="RunicViewsDesignTimeComposition" BeforeTargets="CoreCompile"
@@ -82,8 +124,8 @@
        An empty composition lets Program.cs call AddRunicViews() or
        AddRunicBridges() in that pass, so a starter needs no bootstrap-only
        OutputType or Compile changes. -->
-  <Target Name="RunicViewsBootstrapComposition" BeforeTargets="CoreCompile"
-          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeCompositionType)' != ''">
+  <Target Name="RunicViewsBootstrapComposition" BeforeTargets="CoreCompile;GenerateTemporaryTargetAssembly"
+          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeCompositionType)' != '' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <PropertyGroup>
       <_RunicBridgeBootstrapComposition>$(IntermediateOutputPath)RunicBridgeComposition.Bootstrap.g.cs</_RunicBridgeBootstrapComposition>
     </PropertyGroup>
@@ -100,7 +142,7 @@
        the documentation warnings suppressed, so the real build is unchanged.
        Set RunicBridgeDocumentation=false to skip it. -->
   <Target Name="RunicViewsBootstrapDocumentation" BeforeTargets="CoreCompile"
-          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeDocumentation)' != 'false' and '@(DocFileItem)' == ''">
+          Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeDocumentation)' != 'false' and '@(DocFileItem)' == ''">
     <PropertyGroup>
       <NoWarn>$(NoWarn);CS1570;CS1571;CS1572;CS1573;CS1574;CS1580;CS1581;CS1584;CS1587;CS1589;CS1590;CS1591;CS1592;CS1658;CS1710;CS1711;CS1712;CS1723;CS1734;CS1735</NoWarn>
     </PropertyGroup>
@@ -111,9 +153,12 @@
     </ItemGroup>
   </Target>
 
-  <Target Name="RunicViewsGenerateBridge" BeforeTargets="CoreCompile"
+  <!-- In a WPF project this runs before the temporary markup assembly, so
+       that assembly can compile the generated code (see
+       RunicViewsMarkupTemporaryCompile). -->
+  <Target Name="RunicViewsGenerateBridge" BeforeTargets="CoreCompile;GenerateTemporaryTargetAssembly"
           DependsOnTargets="RunicViewsDetectBridgeUse;ResolveProjectReferences"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <MSBuild Projects="$(RunicBridgeCodegenProject)" Targets="Build"
              Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
              Condition="Exists('$(RunicBridgeCodegenProject)')" />
@@ -149,7 +194,28 @@
     </ItemGroup>
     <ItemGroup>
       <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
-      <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != ''" />
+      <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicBridgeCompositionType)' != '' and '$(_RunicBridgeSkipped)' != 'true'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- WPF's temporary markup project is a copy of the project file, so it
+       sees none of the Compile items added above. Compile the code that the
+       real project (or its bootstrap pass) has just generated, so that
+       code-behind calling AddRunicViews() or a generated View member
+       resolves in that assembly too. -->
+  <Target Name="RunicViewsMarkupTemporaryCompile" BeforeTargets="CoreCompile"
+          DependsOnTargets="RunicViewsDetectBridgeUse"
+          Condition="'$(_RunicBridgeMarkupTemporary)' == 'true' and '$(RunicBridgeBuildEnabled)' != 'false' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicBridgeBootstrapComposition>$(IntermediateOutputPath)RunicBridgeComposition.Bootstrap.g.cs</_RunicBridgeBootstrapComposition>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true' and '$(RunicBridgeCompositionType)' != ''">
+      <Compile Include="$(_RunicBridgeBootstrapComposition)" Condition="Exists('$(_RunicBridgeBootstrapComposition)')" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(RunicBridgeBootstrap)' != 'true' and !Exists('$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)')">
+      <Compile Include="$(RunicBridgeGeneratedDir)*.Bridge.g.cs;$(RunicBridgeGeneratedDir)*.View.g.cs" />
+      <Compile Include="$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs"
+               Condition="'$(RunicBridgeCompositionType)' != '' and Exists('$(RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs')" />
     </ItemGroup>
   </Target>
 
@@ -160,9 +226,13 @@
        C#-only edit does not rebuild the frontend. Add inputs outside the
        frontend directory (for example workspace packages) as
        RunicBridgeFrontendInput items, or set RunicBridgeBuildFrontend=false
-       when another tool owns the frontend build. -->
+       when another tool owns the frontend build. A missing frontend is
+       RUNICBRIDGE013 rather than a failed command. -->
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
+    <Error Code="RUNICBRIDGE013" File="$(MSBuildProjectFullPath)"
+           Condition="!Exists('$(RunicBridgeFrontendDir)') or ('$(RunicBridgeFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)' and !Exists('$(RunicBridgeFrontendDir)/package.json'))"
+           Text="$(AssemblyName) declares Runic Views, but the frontend directory $([System.IO.Path]::GetFullPath('$(RunicBridgeFrontendDir)')) has no package.json to build the generated client in $([System.IO.Path]::GetFullPath('$(RunicBridgeTypescriptDir)')). Create the frontend there, set RunicBridgeFrontendDir to your frontend package directory, or set RunicBridgeBuildFrontend=false when another tool builds it." />
     <ItemGroup>
       <RunicBridgeFrontendInput Include="$(RunicBridgeFrontendDir)/**/*"
           Exclude="$(RunicBridgeFrontendDir)/node_modules/**;$(RunicBridgeFrontendDir)/dist/**;$(RunicBridgeFrontendDir)/build/**;$(RunicBridgeFrontendDir)/bin/**;$(RunicBridgeFrontendDir)/obj/**;$(RunicBridgeFrontendDir)/.*/**" />
@@ -178,7 +248,7 @@
        plain dotnet build and dotnet run work. Set
        RunicBridgeInstallFrontend=false when a workspace install owns it. -->
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json') and !Exists('$(RunicBridgeFrontendDir)/node_modules')">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json') and !Exists('$(RunicBridgeFrontendDir)/node_modules')">
     <Message Importance="high"
              Text="Installing frontend dependencies in $(RunicBridgeFrontendDir) with $(RunicBridgeFrontendPackageManager). Set RunicBridgeInstallFrontend=false to install them yourself." />
     <Exec Command="$(RunicBridgeFrontendInstallCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
@@ -188,9 +258,52 @@
 
   <Target Name="RunicViewsBuildFrontend" AfterTargets="RunicViewsCollectFrontendInputs"
           Inputs="@(RunicBridgeFrontendInput)" Outputs="$(RunicBridgeFrontendStamp)"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
     <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
     <Touch Files="$(RunicBridgeFrontendStamp)" AlwaysCreate="true" />
+  </Target>
+
+  <!-- Views can live in a referenced model project, for example beside a WPF
+       application. The model project builds its frontend, and an application
+       that references it, directly or through other projects, copies that
+       frontend to its own www/ too. The application's own frontend, if any,
+       is copied afterwards and wins. -->
+  <Target Name="RunicViewsCollectReferencedFrontends"
+          DependsOnTargets="AssignProjectConfiguration;_SplitProjectReferencesByFileExistence;_GetProjectReferenceTargetFrameworkProperties"
+          Condition="'$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <MSBuild Projects="@(_MSBuildProjectReferenceExistent)" Targets="RunicViewsGetFrontendFiles"
+             BuildInParallel="$(BuildInParallel)" SkipNonexistentTargets="true"
+             Properties="%(_MSBuildProjectReferenceExistent.SetConfiguration); %(_MSBuildProjectReferenceExistent.SetPlatform); %(_MSBuildProjectReferenceExistent.SetTargetFramework)"
+             RemoveProperties="%(_MSBuildProjectReferenceExistent.GlobalPropertiesToRemove)"
+             Condition="'@(_MSBuildProjectReferenceExistent)' != ''">
+      <Output TaskParameter="TargetOutputs" ItemName="_RunicBridgeReferencedFrontendFile" />
+    </MSBuild>
+  </Target>
+
+  <!-- Returns this project's built frontend after those of its references. -->
+  <Target Name="RunicViewsGetFrontendFiles" DependsOnTargets="RunicViewsDetectBridgeUse;RunicViewsCollectReferencedFrontends"
+          Returns="@(_RunicBridgeReferencedFrontendFile);@(_RunicBridgeOwnFrontendFile)">
+    <ItemGroup Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicBridgeBootstrap)' != 'true'">
+      <_RunicBridgeFrontendDistFile Include="$(RunicBridgeFrontendDir)/dist/**/*" />
+      <_RunicBridgeOwnFrontendFile Include="@(_RunicBridgeFrontendDistFile->'%(FullPath)')"
+        RunicBridgeFrontendPath="%(_RunicBridgeFrontendDistFile.RecursiveDir)%(_RunicBridgeFrontendDistFile.Filename)%(_RunicBridgeFrontendDistFile.Extension)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="RunicViewsCopyReferencedFrontends" AfterTargets="Build"
+          DependsOnTargets="RunicViewsCollectReferencedFrontends"
+          Condition="'$(OutputType)' != 'Library' and '$(RunicBridgeBootstrap)' != 'true' and '$(RunicBridgeCopyFrontend)' != 'false'">
+    <Copy SourceFiles="@(_RunicBridgeReferencedFrontendFile)"
+          DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)www/%(RunicBridgeFrontendPath)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="RunicViewsCopyReferencedFrontendsForPublish" AfterTargets="Publish"
+          DependsOnTargets="RunicViewsCollectReferencedFrontends"
+          Condition="'$(OutputType)' != 'Library' and '$(RunicBridgeBootstrap)' != 'true'">
+    <Copy SourceFiles="@(_RunicBridgeReferencedFrontendFile)"
+          DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)www/%(RunicBridgeFrontendPath)')"
+          SkipUnchangedFiles="true" />
   </Target>
 
   <!-- RunicBridgeCopyFrontend=false keeps a development document that
