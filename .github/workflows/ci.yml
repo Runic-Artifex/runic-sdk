@@ -470,6 +470,8 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release
           # The GTK runner has one lifetime per process; the entry-point check runs separately.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
+          # SIGTERM closes the GTK window and disposes the host before the GTK loop ends.
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --signal
           # Without a display the entry point must fall back instead of letting gtk_init exit the process.
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --no-display
       - name: Verify GTK4 and portal NativeAOT consumers

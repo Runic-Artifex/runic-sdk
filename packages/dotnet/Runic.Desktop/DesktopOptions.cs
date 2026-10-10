@@ -101,6 +101,20 @@ public sealed record DesktopHostOptions
     /// </remarks>
     public int BrowserLaunchAttempts { get; init; } = DefaultBrowserLaunchAttempts;
 
+    /// <summary>
+    /// Gets whether <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> handles
+    /// Ctrl+C, SIGTERM and SIGHUP (a closed Windows console) by shutting the application down in order. Defaults to
+    /// <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// The first signal cancels <see cref="DesktopHost.ShutdownRequested"/> and closes every open window without
+    /// close confirmation, as if the user had closed them; the application then returns, its window and services
+    /// release their work, and the host is disposed. A second signal keeps its default action and ends the process
+    /// at once. Set to <see langword="false"/> when the application handles these signals itself. Hosts created with
+    /// <see cref="DesktopHost.StartAsync"/> never register signal handlers.
+    /// </remarks>
+    public bool HandleShutdownSignals { get; init; } = true;
+
     /// <summary>Gets an optional sink for redacted host diagnostics.</summary>
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 
