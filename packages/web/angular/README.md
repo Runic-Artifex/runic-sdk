@@ -47,6 +47,34 @@ already connected client is observed and left to its owner. Outside an
 injection context, pass `{ injector }`; pass `{ release }` to defer disposal,
 for example until queued commands finish.
 
+### Read-only state and two-way binding
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from the `state` signal. A property with a public C# setter
+also gets a `set<Property>` client method: bind the control's value from
+`state` and call the setter from its change event. Status with a
+`private set`, such as `IsDirty` or `Error`, has no setter and is only rendered:
+
+```ts
+// C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+@Component({
+  selector: "counter-page",
+  template: `
+    <p>{{ counter.state()?.count ?? "…" }}</p>
+    <select #step (change)="setStep.run(+step.value)">
+      @for (value of [1, 5]; track value) {
+        <option [value]="value" [selected]="value === (counter.state()?.step ?? 1)">{{ value }}</option>
+      }
+    </select>
+  `,
+})
+export class CounterPage {
+  readonly page = input.required<CounterPageReference>();
+  readonly counter = injectView(this.page);
+  readonly setStep = injectCommand((step: number) => this.counter.client()?.setStep(step));
+}
+```
+
 ## Outlet
 
 Register a component for each generated View kind and pass the current

@@ -64,6 +64,24 @@ locator.CreateMappingBuilder()
 For global lookup, replace `ReactiveUI.ViewLocator.Current` with
 `ReactiveUI.Binding.ViewLocator.GetCurrent()`.
 
+## Read-only and settable properties
+
+As with any ReactiveUI View, the property's setter decides what the web
+frontend may set. A public setter gets a `set<Property>` client method; give
+status a private setter so it stays read-only to every View:
+
+```csharp
+[Reactive]
+public partial string Title { get; set; } = "";       // client: setTitle
+
+[Reactive]
+public partial bool IsDirty { get; private set; }     // read-only: no setIsDirty
+```
+
+A hand-written property with `private set => this.RaiseAndSetIfChanged(ref _isDirty, value)`
+works the same way. See
+[read-only and settable state](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views#read-only-and-settable-state).
+
 ## Generated ReactiveUI contracts
 
 Public `IReactiveCommand<TInput, TResult>` properties are inspected through

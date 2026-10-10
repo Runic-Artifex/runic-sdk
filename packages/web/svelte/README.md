@@ -41,6 +41,32 @@ reference with a different `connect` function. An already connected client is
 observed and left to its owner. The result exposes reactive `state`, `client`,
 `error` and `pending` properties and `retry()`.
 
+### Read-only state and `bind:value`
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from `state`. A property with a public C# setter also gets a
+`set<Property>` client method; pass a getter and setter pair to `bind:value`
+(Svelte 5.9 or later) to bind it two way. Status with a `private set`, such as
+`IsDirty` or `Error`, has no setter and is only rendered:
+
+```svelte
+<script lang="ts">
+  // C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+  import { useCommand, useView } from "@runic-artifex/svelte/views";
+  import type { CounterPageReference } from "./generated/counter.js";
+
+  let { page }: { page: CounterPageReference } = $props();
+  const counter = useView(() => page);
+  const setStep = useCommand((step: number) => counter.client?.setStep(step));
+</script>
+
+<p>{counter.state?.count ?? "…"}</p>
+<select bind:value={() => counter.state?.step ?? 1, step => setStep.run(step)}>
+  <option value={1}>1</option>
+  <option value={5}>5</option>
+</select>
+```
+
 ## `ViewOutlet`
 
 Renders the component registered for a generated reference's `kind` and passes

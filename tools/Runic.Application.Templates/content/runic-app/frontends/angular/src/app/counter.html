@@ -1,6 +1,12 @@
 <section>
   <h2>Counter View</h2>
   <p class="count">{{ state()?.count ?? "…" }}</p>
+  <label>
+    Step
+    <select #step [disabled]="!counter.client()" (change)="setStep.run(+step.value)">
+      @for (value of steps; track value) { <option [value]="value" [selected]="value === (state()?.step ?? 1)">{{ value }}</option> }
+    </select>
+  </label>
   <button [disabled]="!counter.client() || increment.pending()" (click)="increment.run()">Increment</button>
   @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
 </section>

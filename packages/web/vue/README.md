@@ -43,6 +43,36 @@ Returns shallow refs `{ state, client, error, pending }` and `retry()`:
 - `pending` is true while a reference connects. `error` holds a failed
   connection; `retry()` connects again.
 
+### Read-only state and `v-model`
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from `state`. A property with a public C# setter also gets a
+`set<Property>` client method; wrap it in a writable `computed` to use
+`v-model`. Status with a `private set`, such as `IsDirty` or `Error`, has no
+setter and is only rendered:
+
+```vue
+<script setup lang="ts">
+// C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+import { computed } from "vue";
+import { useCommand, useView } from "@runic-artifex/vue";
+import type { CounterPageReference } from "./generated/counter.js";
+
+const props = defineProps<{ page: CounterPageReference }>();
+const { state, client } = useView(() => props.page);
+const setStep = useCommand((value: number) => client.value?.setStep(value));
+const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep.run(value) });
+</script>
+
+<template>
+  <p>{{ state?.count ?? "…" }}</p>
+  <select v-model.number="step">
+    <option :value="1">1</option>
+    <option :value="5">5</option>
+  </select>
+</template>
+```
+
 ## `ViewOutlet`
 
 Renders the component registered for a generated reference's `kind` and

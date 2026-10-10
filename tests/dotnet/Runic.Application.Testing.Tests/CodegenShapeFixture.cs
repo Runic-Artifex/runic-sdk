@@ -122,6 +122,10 @@ public sealed partial class DocumentedViewModel : CommunityToolkit.Mvvm.Componen
     [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
     private string _note = "";
 
+    // Read-only to every View: the generated client has no setIsDirty.
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    public partial bool IsDirty { get; private set; }
+
     // Also used by CodegenShapeViewModel: named types are declared once.
     public CodegenPoint Corner { get; } = new(1, 2);
 
