@@ -235,8 +235,8 @@ generator, such as a CommunityToolkit `[ObservableProperty]`, points at its
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
 | `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or `Nullable<T>`. | Declare one failure type per command: any Bridge value type, typically a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
-| `RUNICBRIDGE013` | A project declares Runic Views, but `RunicBridgeFrontendDir` does not exist or, with the default build command, has no `package.json`. Reported by the build targets. | Create the frontend there, point `RunicBridgeFrontendDir` at your frontend package, or set `RunicBridgeBuildFrontend=false` when another tool builds it. |
-| `RUNICBRIDGE014` | A warning: a project declares a Runic Window or View, but generation is off because it references no host adapter and not `Runic.Application` directly, so no bridge, `AddRunicViews()` or client is generated. Reported by the build targets. | Set `RunicBridgeBuildEnabled=true` to generate in that project, or `false` when another project generates its Views. |
+| `RUNICBRIDGE014` | A project declares Runic Views, but `RunicBridgeFrontendDir` does not exist or, with the default build command, has no `package.json`. Reported by the build targets. | Create the frontend there, point `RunicBridgeFrontendDir` at your frontend package, or set `RunicBridgeBuildFrontend=false` when another tool builds it. |
+| `RUNICBRIDGE015` | A warning: a project declares a Runic Window or View, but generation is off because it references no host adapter and not `Runic.Application` directly, so no bridge, `AddRunicViews()` or client is generated. Reported by the build targets. | Set `RunicBridgeBuildEnabled=true` to generate in that project, or `false` when another project generates its Views. |
 
 ## Build properties
 
@@ -273,7 +273,7 @@ Each adapter's build props set `RunicApplicationHostAdapter` to `true`, which is
 what the targets check. A project that reaches `Runic.Application` only through
 another project, such as a library that references a model project, does not
 generate; if it declares a Window or View anyway, the build warns with
-`RUNICBRIDGE014`. That default is optional:
+`RUNICBRIDGE015`. That default is optional:
 when the assembly declares no Runic Window or View, for example an application
 that only uses the navigator, the build generates nothing (and removes stale
 generated C# and TypeScript), skips the frontend install, build and copy steps,

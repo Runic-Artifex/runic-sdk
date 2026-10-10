@@ -6,9 +6,9 @@
 //     Frontend/src/generated and the built frontend in www/.
 //  2. Split: the View lives in a WPF-free model project; the WPF application copies
 //     the model's built frontend to its own www/.
-//  3. Without a Frontend folder, the single project fails with one RUNICBRIDGE013.
+//  3. Without a Frontend folder, the single project fails with one RUNICBRIDGE014.
 //  4. A library that reaches Runic.Application only through the model project and
-//     declares a View gets one RUNICBRIDGE014 warning.
+//     declares a View gets one RUNICBRIDGE015 warning.
 // Usage: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -77,13 +77,13 @@ try {
   cpSync(join(directory, "Single"), join(directory, "NoFrontend"), { recursive: true, filter: source => !/[\\/](bin|obj|Frontend)$/.test(source) });
   const missing = build("NoFrontend/WpfSingle.csproj", { fail: true });
   assert.equal(summary(missing, "Error"), 1, "Expected exactly one error.");
-  assert.ok(count(missing, /error RUNICBRIDGE013:.*RunicBridgeFrontendDir/) > 0, "Expected RUNICBRIDGE013.");
+  assert.ok(count(missing, /error RUNICBRIDGE014:.*RunicBridgeFrontendDir/) > 0, "Expected RUNICBRIDGE014.");
   assert.equal(count(missing, /MSB6003|MSB3073/), 0, "A frontend command ran without a frontend.");
 
   // 4. Generation off by default with a declared View is one coded warning.
   const library = build("Split/Library/SplitLibrary.csproj");
   assert.equal(summary(library, "Warning"), 1, "Expected exactly one warning.");
-  assert.ok(count(library, /warning RUNICBRIDGE014:.*PreviewView\.cs.*RunicBridgeBuildEnabled=true/) > 0, "Expected RUNICBRIDGE014.");
+  assert.ok(count(library, /warning RUNICBRIDGE015:.*PreviewView\.cs.*RunicBridgeBuildEnabled=true/) > 0, "Expected RUNICBRIDGE015.");
   console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off");
 } finally {
   if (keep) console.log(`Kept ${directory}`);
