@@ -162,6 +162,7 @@ await SnapshotBatchTests.RunAsync();
 await FailureDetailTests.RunAsync();
 await DomainFailureTests.RunAsync();
 await DomainFailureCodegenTests.RunAsync();
+MvvmConventionGoldenTests.Run();
 await TelemetryTests.RunAsync();
 await CollectionDeltaTests.RunAsync();
 await CollectionDeltaConformanceTests.RunAsync();
