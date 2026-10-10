@@ -121,6 +121,13 @@ application decision; a Window's root ViewModel must be scoped. The
 registrations are generated code, so they need no reflection and are
 NativeAOT-safe.
 
+The window binds its root ViewModel to the window's model context, and a Bridge
+attached directly to a `WindowContentSession` binds its ViewModel for the
+Bridge's lifetime, so no ViewModel needs a manual
+`RunicModelContextRegistry.Bind`. A root, content or Bridge ViewModel already
+bound to a different context is rejected with an `InvalidOperationException`
+that names its type.
+
 Presented content is bound to the window's model context, and keeps its
 checked-field registries, only while it is attached. Replacing, clearing, or
 pruning it releases both; the window keeps a weak identity so presenting the same
