@@ -48,6 +48,7 @@ internal static class Program
             Run("selector unload and remount", SelectorTests.UnloadCancelsAndRemounts);
             Run("selecting current cancels without replacing", SelectorTests.SelectingCurrentCancelsWithoutReplacing);
             Run("invalid selection restores and logs", SelectorTests.InvalidSelectionRestoresAndLogs);
+            Run("selector detach after dispatcher shutdown", SelectorTests.DetachAfterShutdownEndedSelection);
             Run("plain view location and borrowed lifetime", PlainViewHostTests.RegisteredLocationAndBorrowedLifetime);
             Run("plain view location and failure", PlainViewHostTests.ExplicitLocationAndFailure);
             Run("dialog results", DialogTests.Results);

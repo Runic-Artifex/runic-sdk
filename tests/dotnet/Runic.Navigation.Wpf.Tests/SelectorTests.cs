@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
@@ -151,6 +152,43 @@ internal static class SelectorTests
                 "Multiple selection was accepted as a navigation selection.");
         }
         finally { window.Close(); }
+    }
+
+    // A selection that ends after its dispatcher shut down skips the UI reset and disposes its token
+    // source. Detaching later must not cancel that disposed source.
+    public static void DetachAfterShutdownEndedSelection()
+    {
+        var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Exception? error = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var dispatcher = Dispatcher.CurrentDispatcher;
+                using var fixture = new NavFixture();
+                var calls = 0;
+                var home = new GuardedPage("home", () => { calls++; return new(gate.Task); });
+                var other = new Page("other");
+                var region = fixture.Navigator.CreateRegion<Page>(new object(), NavigationTarget.Borrow<Page>(home));
+                var tabs = new TabControl { ItemsSource = new Page[] { home, other } };
+                NavigationSelector.SetRegion(tabs, region);
+                ShowWindow(tabs, scope => AddTemplates(scope, typeof(Page)));
+                tabs.SelectedItem = other;
+                PumpUntil(() => calls == 1, "the pending selection");
+                var selection = NavigationSelector.SelectionCompletion(tabs);
+                dispatcher.BeginInvoke(() => dispatcher.InvokeShutdown());
+                Dispatcher.Run();
+                gate.SetResult(true);
+                Require(selection.Wait(WaitLimit), "The selection did not end after dispatcher shutdown.");
+                NavigationSelector.SetRegion(tabs, null);
+            }
+            catch (Exception failure) { error = failure; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        try { Require(thread.Join(WaitLimit), "The secondary UI thread did not stop."); }
+        finally { gate.TrySetResult(false); }
+        if (error is not null) throw new InvalidOperationException("Detaching after shutdown failed.", error);
     }
 
     private static T? Descendant<T>(DependencyObject root) where T : DependencyObject
