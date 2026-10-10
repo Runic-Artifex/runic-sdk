@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Primitives;
 using Runic.Application.Testing;
@@ -19,6 +21,123 @@ internal static class AcceptedWorkScopeTests
         await FaultsAndCancellationRetainTheirOriginalOutcomes();
         await SynchronousFactoryFailuresReleaseAdmission();
         await ConcurrentDisposalWaitsForAcceptedWork();
+        await AcceptedWorkCanDisposeItsOwner();
+        await NestedAcceptedWorkCanDrainItsOwner();
+        await FaultsAreLoggedOnceWithoutFailingTheDrain();
+    }
+
+    private static async Task AcceptedWorkCanDisposeItsOwner()
+    {
+        var owner = new AcceptedWorkScope();
+        var otherRelease = Signal();
+        var closeRequested = Signal();
+        var resourcesReleased = false;
+        var other = owner.RunAsync(() => otherRelease.Task);
+        // "Save and close": the accepted task disposes the model that owns it,
+        // here from a thread-pool continuation that inherits its execution context.
+        var saveAndClose = owner.RunAsync(async () =>
+        {
+            await closeRequested.Task.ConfigureAwait(false);
+            await Task.Run(async () =>
+            {
+                await owner.DisposeAsync();
+                resourcesReleased = true;
+            }).ConfigureAwait(false);
+        });
+        try
+        {
+            closeRequested.SetResult();
+            await WaitUntilAdmissionClosedAsync(owner);
+            Require(!resourcesReleased && !saveAndClose.IsCompleted,
+                "Disposal from accepted work stopped waiting for other accepted work.");
+            var external = owner.DisposeAsync().AsTask();
+            otherRelease.SetResult();
+            await saveAndClose.WaitAsync(Deadline);
+            Require(resourcesReleased, "Disposal from accepted work did not complete after other work finished.");
+            await Task.WhenAll(external, other).WaitAsync(Deadline);
+            await owner.DrainAsync().WaitAsync(Deadline);
+        }
+        finally
+        {
+            otherRelease.TrySetResult();
+            closeRequested.TrySetResult();
+        }
+    }
+
+    private static async Task NestedAcceptedWorkCanDrainItsOwner()
+    {
+        var owner = new AcceptedWorkScope();
+        using var cancellation = new CancellationTokenSource();
+        var outer = owner.RunAsync(async () =>
+        {
+            await Task.Yield();
+            await owner.RunAsync(async () =>
+            {
+                await Task.Yield();
+                // The inner task excludes itself and the outer task that awaits it.
+                await owner.DrainAsync(cancellation.Token);
+            });
+            return 7;
+        });
+        Require(await outer.WaitAsync(Deadline) == 7, "Nested accepted work could not drain its owner.");
+        await owner.DisposeAsync().AsTask().WaitAsync(Deadline);
+
+        // Work of another scope does not exclude this scope's accepted work.
+        await using var unrelated = new AcceptedWorkScope();
+        var release = Signal();
+        var held = unrelated.RunAsync(() => release.Task);
+        var foreignOwner = new AcceptedWorkScope();
+        Task? foreignDrain = null;
+        await foreignOwner.RunAsync(() =>
+        {
+            foreignDrain = unrelated.DrainAsync();
+            return Task.CompletedTask;
+        }).WaitAsync(Deadline);
+        Require(foreignDrain is { IsCompleted: false }, "Work of another scope skipped this scope's accepted work.");
+        release.SetResult();
+        await Task.WhenAll(foreignDrain!, held).WaitAsync(Deadline);
+        await foreignOwner.DisposeAsync().AsTask().WaitAsync(Deadline);
+    }
+
+    private static async Task FaultsAreLoggedOnceWithoutFailingTheDrain()
+    {
+        var log = new LogCapture();
+        var owner = new AcceptedWorkScope(log);
+        var failure = new InvalidOperationException("Accepted work failed after its invocation detached.");
+        var declared = new RunicFailureException("conflict");
+        var failed = Signal();
+        var domain = Signal();
+        var cancelled = Signal();
+        _ = owner.RunAsync(() => failed.Task);
+        _ = owner.RunAsync(() => domain.Task);
+        _ = owner.RunAsync(() => cancelled.Task);
+        _ = owner.RunAsync(() => Task.CompletedTask);
+        var drain = owner.DrainAsync();
+        failed.SetException(failure);
+        domain.SetException(declared);
+        cancelled.SetCanceled();
+        await drain.WaitAsync(Deadline);
+        Require(drain.IsCompletedSuccessfully, "A logged fault failed the drain.");
+        var entries = log.Entries.ToArray();
+        Require(entries.Length == 2, $"Expected two accepted-work log entries, found {entries.Length}.");
+        Require(entries.Any(entry => entry.EventId.Id == 1013 && entry.Level == LogLevel.Error && ReferenceEquals(entry.Exception, failure)),
+            "An accepted-work fault was not logged as event 1013 with its exception.");
+        Require(entries.Any(entry => entry.EventId.Id == 1014 && entry.Level == LogLevel.Debug && ReferenceEquals(entry.Exception, declared)),
+            "A declared accepted-work failure was not logged as event 1014.");
+    }
+
+    // Disposal closes admission synchronously before it waits, so a rejected
+    // admission proves that the accepted work has started disposing its owner.
+    private static async Task WaitUntilAdmissionClosedAsync(AcceptedWorkScope owner)
+    {
+        var deadline = DateTime.UtcNow + Deadline;
+        while (true)
+        {
+            try { _ = owner.RunAsync(() => Task.CompletedTask); }
+            catch (InvalidOperationException) { return; }
+            if (DateTime.UtcNow > deadline) throw new TimeoutException("The accepted work did not dispose its owner.");
+            await Task.Yield();
+        }
     }
 
     private static async Task DrainIncludesAnAcceptedFactoryBeforeItReturnsItsTask()
@@ -245,4 +364,18 @@ internal static class AcceptedWorkScopeTests
             ExecuteAsync: (vm, cancellation, _) => ReactiveCommandExecution.ExecuteCompletion(vm.Save, RxVoid.Default, cancellation),
             CanExecute: (_, _) => true)],
         content: content);
+
+    private sealed record LogEntry(LogLevel Level, EventId EventId, Exception? Exception);
+
+    private sealed class LogCapture : ILogger
+    {
+        public ConcurrentQueue<LogEntry> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Enqueue(new(logLevel, eventId, exception));
+    }
 }

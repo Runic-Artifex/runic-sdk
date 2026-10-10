@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Application.Views.AcceptedWorkScope.AcceptedWorkScope(Microsoft.Extensions.Logging.ILogger? logger) -> void

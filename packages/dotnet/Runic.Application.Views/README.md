@@ -512,6 +512,8 @@ output accordingly. The message properties are listed per event.
 | 1010 | `BridgeSnapshotCaptureFailed` | Error | A state snapshot writer throws. | `Model`, `Route`, `ErrorType` |
 | 1011 | `BridgeSnapshotDeliveryFailed` | Error | A host rejects a state or delta frame. | `Model`, `Route`, `ErrorType` |
 | 1012 | `BridgeCollectionKeysRejected` | Error | A `[RunicCollection]` has a null row or a null, empty or duplicate key, so the route withholds its state. | `Model`, `Field`, `Key`, `Route` |
+| 1013 | `AcceptedWorkFailed` | Error | A task owned by an `AcceptedWorkScope` faults. | `ErrorType` |
+| 1014 | `AcceptedWorkDomainFailed` | Debug | A task owned by an `AcceptedWorkScope` throws a declared failure. | `FailureType` |
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
@@ -534,9 +536,11 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1021 and 1050 use the category `Runic.Application.Views`
+Events 1000-1012, 1020, 1021 and 1050 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
+Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,
+or `Trace` without one.
 Navigation (1060-1074) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
@@ -633,10 +637,20 @@ owns its resources. Pass a factory so ownership is registered before the task
 starts, and include recovery, publication, and cleanup in that task:
 
 ```csharp
-private readonly AcceptedWorkScope _acceptedWork = new();
+private readonly AcceptedWorkScope _acceptedWork;
+
+public NotesModel(ILogger<NotesModel> logger) => _acceptedWork = new(logger);
 
 public Task SaveAsync(CancellationToken cancellationToken) =>
     _acceptedWork.RunAsync(() => SaveAndRecoverAsync(cancellationToken));
+
+public Task SaveAndCloseAsync(CancellationToken cancellationToken) =>
+    _acceptedWork.RunAsync(async () =>
+    {
+        await SaveAndRecoverAsync(cancellationToken);
+        // Closing disposes this model; that drain does not wait for this task.
+        await _window.CloseAsync();
+    });
 
 public async ValueTask DisposeAsync()
 {
@@ -654,11 +668,26 @@ invoking the factory.
 
 `DrainAsync(cancellationToken)` closes admission and waits for actual task
 completion, including faulted and cancelled tasks. Its cancellation token only
-stops that observer's wait; it neither cancels nor abandons owned work. Drain
-observes task failures without throwing them again, so callers still handle
-outcomes through their original tasks. `DisposeAsync` is idempotent and waits
-without cancellation. Keep resources alive through this drain even if a
-bridge invocation or an earlier drain observer has already been cancelled.
+stops that observer's wait; it neither cancels nor abandons owned work.
+`DisposeAsync` is idempotent and waits without cancellation. Keep resources
+alive through this drain even if a bridge invocation or an earlier drain
+observer has already been cancelled.
+
+Each owned task keeps its original outcome, and drain does not throw for it.
+Because an invocation may stop observing a task before it fails, the scope logs
+each fault once: event 1013 at Error, or 1014 at Debug for a declared
+`RunicFailureException` (see [Logging and telemetry](#logging-and-telemetry)).
+Cancellations are not logged. Pass the model's logger to the constructor;
+without one, entries go to `System.Diagnostics.Trace`.
+
+A drain or disposal started from accepted work of the same scope, such as the
+"Save and close" task above, waits for all other accepted work but not for the
+calling task or the accepted tasks awaiting it, which cannot finish until the
+drain does. This applies to code that inherits the task's execution context,
+including awaited continuations and `Task.Run`. Code that continues in that
+task after the drain must not use the resources the owner released. If the
+close is queued to another thread without the execution context, do not await
+its disposal from the accepted task; let the task return instead.
 
 The scope does not serialize operations, dispatch model changes, request
 cancellation, or implement recovery. The application still owns those policies

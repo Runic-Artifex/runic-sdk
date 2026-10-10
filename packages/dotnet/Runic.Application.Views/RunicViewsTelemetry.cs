@@ -264,6 +264,14 @@ internal static partial class ViewsLog
         Message = "Bridge collection {Model}.{Field} on route {Route} has an invalid key {Key}; the route publishes no state until the keys are valid.")]
     internal static partial void CollectionKeysRejected(ILogger logger, Exception? exception, string model, string field, string key, string route);
 
+    [LoggerMessage(EventId = 1013, EventName = "AcceptedWorkFailed", Level = LogLevel.Error,
+        Message = "Accepted application work failed with {ErrorType}.")]
+    internal static partial void AcceptedWorkFailed(ILogger logger, Exception? exception, string errorType);
+
+    [LoggerMessage(EventId = 1014, EventName = "AcceptedWorkDomainFailed", Level = LogLevel.Debug,
+        Message = "Accepted application work failed with its declared failure {FailureType}.")]
+    internal static partial void AcceptedWorkDomainFailed(ILogger logger, Exception? exception, string failureType);
+
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
     internal static partial void MountFailed(ILogger logger, Exception? exception, string route, string errorType);
