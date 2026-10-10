@@ -5,6 +5,7 @@ import * as bridgeWire from "@runic-artifex/views/generated/wire";
 
 export interface GeneratedReactiveState {
   readonly name: string;
+  readonly isDirty: boolean;
   readonly summary: string;
   readonly saveCount: number;
   readonly canSave: boolean;
@@ -23,6 +24,7 @@ export interface GeneratedReactiveSaveOperation extends BridgeOperation<void> {}
  * Exercises the ReactiveUI 26 generators before the Runic bridge's compiled model inspection runs. The bridge only sees the generated public members.
  */
 export interface GeneratedReactiveClient extends ViewClient<GeneratedReactiveState> {
+  /** Calls the public C# setter of `GeneratedReactiveViewModel.Name`. */
   setName(value: string): Promise<GeneratedReactiveState>;
   writeName(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   fieldBaseline<K extends keyof GeneratedReactiveCheckedFields>(field: K): FieldBaseline<GeneratedReactiveCheckedFields[K]>;
@@ -39,9 +41,10 @@ export interface GeneratedReactivePageReference {
 const pageGeneratedReactiveReferences = viewReferences<GeneratedReactivePageReference>(id => ({ kind: "generatedReactive", connect: () => connectGeneratedReactiveAt(`content${id}`, true) }));
 export function pageGeneratedReactive(id: string): GeneratedReactivePageReference { return pageGeneratedReactiveReferences(id); }
 
-type WireState = Omit<GeneratedReactiveState, "name" | "summary" | "saveCount"> & {
+type WireState = Omit<GeneratedReactiveState, "name" | "isDirty" | "summary" | "saveCount"> & {
   readonly revision: number;
   readonly name: unknown;
+  readonly isDirty: unknown;
   readonly summary: unknown;
   readonly saveCount: unknown;
   readonly __runicFields: {
@@ -53,6 +56,7 @@ function hydrate(wire: WireState): GeneratedReactiveState {
   return {
     ...state,
     name: bridgeWire.string(wire.name),
+    isDirty: bridgeWire.boolean(wire.isDirty),
     summary: bridgeWire.string(wire.summary),
     saveCount: bridgeWire.integer(wire.saveCount, -2147483648, 2147483647),
   };

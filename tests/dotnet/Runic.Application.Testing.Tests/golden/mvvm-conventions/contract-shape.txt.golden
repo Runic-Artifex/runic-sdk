@@ -10,6 +10,8 @@ dto:DocumentedViewModel.item:Runic.Application.Testing.Tests.DocumentedItem
 dto-member:DocumentedViewModel.item:Runic.Application.Testing.Tests.DocumentedItem:Title:wire:title:set:True:collision:False
 wire:DocumentedViewModel.item.title:type:System.String:nullable:False
 dto-constructors:DocumentedViewModel.item:Title:System.String
+member:Runic.Application.Testing.Tests.DocumentedViewModel:IsDirty:wire:isDirty:state:access:read
+wire:DocumentedViewModel.isDirty:type:System.Boolean:nullable:False
 member:Runic.Application.Testing.Tests.DocumentedViewModel:Corner:wire:corner:state:access:read
 wire:DocumentedViewModel.corner:type:Runic.Application.Testing.Tests.CodegenPoint:nullable:False
 dto:DocumentedViewModel.corner:Runic.Application.Testing.Tests.CodegenPoint
@@ -53,6 +55,8 @@ validation-errors:Runic.Application.Testing.Tests.GeneratedInteractionViewModel:
 model:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:public-name:GeneratedReactive
 member:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:Name:wire:name:state:access:write
 wire:GeneratedReactiveViewModel.name:type:System.String:nullable:False
+member:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:IsDirty:wire:isDirty:state:access:read
+wire:GeneratedReactiveViewModel.isDirty:type:System.Boolean:nullable:False
 member:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:Summary:wire:summary:state:access:read
 wire:GeneratedReactiveViewModel.summary:type:System.String:nullable:False
 member:Runic.Application.Testing.Tests.GeneratedReactiveViewModel:SaveCount:wire:saveCount:state:access:read

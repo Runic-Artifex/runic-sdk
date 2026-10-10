@@ -9,6 +9,7 @@ export interface DocumentedState {
   /** The current layout. */
   readonly layout: DocumentedLayout;
   readonly item: DocumentedItem;
+  readonly isDirty: boolean;
   readonly corner: CodegenPoint;
   /** The note being edited. */
   readonly note: string;
@@ -24,7 +25,11 @@ export interface DocumentedCheckedFields {
  * Generated TypeScript names its enum and DTO types after the C# types, copies these XML comments and uses the command method's parameter name.
  */
 export interface DocumentedClient extends ViewClient<DocumentedState> {
-  /** The note being edited. */
+  /**
+   * The note being edited.
+   *
+   * Calls the public C# setter of `DocumentedViewModel.Note`.
+   */
   setNote(value: string): Promise<DocumentedState>;
   /** The note being edited. */
   writeNote(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
@@ -41,10 +46,11 @@ export interface DocumentedPageReference {
 const pageDocumentedReferences = viewReferences<DocumentedPageReference>(id => ({ kind: "documented", connect: () => connectDocumentedAt(`content${id}`, true) }));
 export function pageDocumented(id: string): DocumentedPageReference { return pageDocumentedReferences(id); }
 
-type WireState = Omit<DocumentedState, "layout" | "item" | "corner" | "note"> & {
+type WireState = Omit<DocumentedState, "layout" | "item" | "isDirty" | "corner" | "note"> & {
   readonly revision: number;
   readonly layout: unknown;
   readonly item: unknown;
+  readonly isDirty: unknown;
   readonly corner: unknown;
   readonly note: unknown;
   readonly __runicFields: {
@@ -57,6 +63,7 @@ function hydrate(wire: WireState): DocumentedState {
     ...state,
     layout: bridgeWire.enumName<DocumentedLayout>(wire.layout, ["List", "Grid"]),
     item: bridgeWire.object<DocumentedItem>(wire.item, value => ({ title: bridgeWire.string(value["title"])})),
+    isDirty: bridgeWire.boolean(wire.isDirty),
     corner: bridgeWire.object<CodegenPoint>(wire.corner, value => ({ x: bridgeWire.integer(value["x"], -2147483648, 2147483647), y: bridgeWire.integer(value["y"], -2147483648, 2147483647)})),
     note: bridgeWire.string(wire.note),
   };

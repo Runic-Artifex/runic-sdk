@@ -37,6 +37,7 @@ export interface TypedReactiveInterfaceOnlyOperation extends BridgeOperation<num
 
 /** A connected TypedReactive ViewModel. Dispose it when its presentation ends. */
 export interface TypedReactiveClient extends ViewClient<TypedReactiveState> {
+  /** Calls the public C# setter of `TypedReactiveViewModel.SaveEnabled`. */
   setSaveEnabled(value: boolean): Promise<TypedReactiveState>;
   writeSaveEnabled(value: boolean, options: FieldWriteOptions<boolean>): Promise<FieldWriteReceipt<boolean>>;
   fieldBaseline<K extends keyof TypedReactiveCheckedFields>(field: K): FieldBaseline<TypedReactiveCheckedFields[K]>;

@@ -10,6 +10,7 @@ internal sealed class DocumentedBridge : ViewModelBridge<global::Runic.Applicati
         [
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Layout", vm => vm.Layout, null),
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Item", vm => vm.Item, null),
+            new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("IsDirty", vm => vm.IsDirty, null),
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Corner", vm => vm.Corner, null),
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", vm => vm.Note, (vm, e) => vm.Note = e.GetString()),
         ],
@@ -31,6 +32,7 @@ internal sealed class DocumentedBridge : ViewModelBridge<global::Runic.Applicati
         [
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("layout", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Layout, propertyName: "Layout"),
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("item", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Item, propertyName: "Item"),
+            new global::Runic.Application.Views.BridgeDataSubscriptionMember("isDirty", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).IsDirty, propertyName: "IsDirty"),
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("corner", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Corner, propertyName: "Corner"),
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("note", static owner => ((global::Runic.Application.Testing.Tests.DocumentedViewModel)owner).Note, propertyName: "Note"),
         ]
@@ -89,6 +91,23 @@ private static class ItemValueCodec
     private static global::System.String Read1(global::System.Text.Json.JsonElement element)
     {
         return global::Runic.Application.Views.BridgeWire.ReadString(element);
+    }
+
+}
+
+private static class IsDirtyValueCodec
+{
+    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
+    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
+
+    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
+    {
+        writer.WriteBooleanValue(value);
+    }
+
+    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
+    {
+        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.BridgeWire.Invalid("Expected a boolean.");
     }
 
 }
@@ -193,6 +212,8 @@ private static class ChangeLayoutCommandInputCodec
         LayoutValueCodec.Write(writer, vm.Layout);
         writer.WritePropertyName("item");
         ItemValueCodec.Write(writer, vm.Item);
+        writer.WritePropertyName("isDirty");
+        IsDirtyValueCodec.Write(writer, vm.IsDirty);
         writer.WritePropertyName("corner");
         CornerValueCodec.Write(writer, vm.Corner);
         writer.WritePropertyName("note");

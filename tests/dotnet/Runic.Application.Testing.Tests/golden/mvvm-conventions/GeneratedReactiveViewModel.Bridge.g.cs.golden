@@ -9,6 +9,7 @@ internal sealed class GeneratedReactiveBridge : ViewModelBridge<global::Runic.Ap
         CreateWriter(content),
         [
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("Name", vm => vm.Name, (vm, e) => vm.Name = e.GetString()),
+            new PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("IsDirty", vm => vm.IsDirty, null),
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("Summary", vm => vm.Summary, null),
             new PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel>("SaveCount", vm => vm.SaveCount, null),
         ],
@@ -29,6 +30,7 @@ internal sealed class GeneratedReactiveBridge : ViewModelBridge<global::Runic.Ap
     private static readonly global::Runic.Application.Views.BridgeDataSubscriptionMember[] DataMetadata =
         [
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("name", static owner => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)owner).Name, propertyName: "Name"),
+            new global::Runic.Application.Views.BridgeDataSubscriptionMember("isDirty", static owner => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)owner).IsDirty, propertyName: "IsDirty"),
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("summary", static owner => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)owner).Summary, propertyName: "Summary"),
             new global::Runic.Application.Views.BridgeDataSubscriptionMember("saveCount", static owner => ((global::Runic.Application.Testing.Tests.GeneratedReactiveViewModel)owner).SaveCount, propertyName: "SaveCount"),
         ]
@@ -46,6 +48,23 @@ private static class NameValueCodec
     private static global::System.String Read0(global::System.Text.Json.JsonElement element)
     {
         return global::Runic.Application.Views.BridgeWire.ReadString(element);
+    }
+
+}
+
+private static class IsDirtyValueCodec
+{
+    internal static void Write(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value) => Write0(writer, value);
+    internal static global::System.Boolean Read(global::System.Text.Json.JsonElement element) => Read0(element);
+
+    private static void Write0(global::System.Text.Json.Utf8JsonWriter writer, global::System.Boolean value)
+    {
+        writer.WriteBooleanValue(value);
+    }
+
+    private static global::System.Boolean Read0(global::System.Text.Json.JsonElement element)
+    {
+        return element.ValueKind is global::System.Text.Json.JsonValueKind.True ? true : element.ValueKind is global::System.Text.Json.JsonValueKind.False ? false : throw global::Runic.Application.Views.BridgeWire.Invalid("Expected a boolean.");
     }
 
 }
@@ -95,6 +114,8 @@ private static class SaveCountValueCodec
         writer.WriteNumber("revision", revision);
         writer.WritePropertyName("name");
         NameValueCodec.Write(writer, vm.Name);
+        writer.WritePropertyName("isDirty");
+        IsDirtyValueCodec.Write(writer, vm.IsDirty);
         writer.WritePropertyName("summary");
         SummaryValueCodec.Write(writer, vm.Summary);
         writer.WritePropertyName("saveCount");
