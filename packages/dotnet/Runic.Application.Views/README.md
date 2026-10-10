@@ -157,6 +157,70 @@ The [First Window](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples
 [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views)
 examples exercise the packaged graph and generated client.
 
+## Read-only and settable state
+
+The web frontend is the View, so the usual MVVM rule applies: the ViewModel's
+C# accessibility is the contract, and the View decides what it binds two-way.
+A property with a public getter is state every View can read. A property with a
+public setter is also what any View, whether WPF, Avalonia or the web frontend,
+may set, so its generated client gets a `set<Property>` member. A `private set`
+keeps the property read-only to every View. Runic adds no attribute of its own.
+
+Give status that the ViewModel computes, such as `IsDirty`, `Error`, a status
+message or a collection, a private setter, and keep form fields publicly
+settable. With CommunityToolkit.Mvvm 8.4, declare partial properties:
+
+```csharp
+public sealed partial class EditorViewModel : ObservableObject
+{
+    // Form field: the client has setTitle.
+    [ObservableProperty]
+    public partial string Title { get; set; }
+
+    // Status: read-only to every View, so there is no setIsDirty or setError.
+    [ObservableProperty]
+    public partial bool IsDirty { get; private set; }
+
+    [ObservableProperty]
+    public partial string? Error { get; private set; }
+}
+```
+
+A field such as `[ObservableProperty] private bool isDirty;` generates a
+property with a public setter, so the web frontend could set it too. With
+ReactiveUI, give the property a private setter, either written out with
+`RaiseAndSetIfChanged` or generated with `[Reactive]`:
+
+```csharp
+public sealed partial class EditorViewModel : ReactiveObject
+{
+    private bool _isDirty;
+
+    // Form field: the client has setTitle.
+    [Reactive]
+    public partial string Title { get; set; } = "";
+
+    public bool IsDirty
+    {
+        get => _isDirty;
+        private set => this.RaiseAndSetIfChanged(ref _isDirty, value);
+    }
+
+    // The same with the ReactiveUI source generator.
+    [Reactive]
+    public partial string? Error { get; private set; }
+}
+```
+
+The comment on each generated `set<Property>` member names the C# setter it
+calls. To ask the ViewModel to change its status, call a command. The
+[React](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/react#read-only-state-and-two-way-binding),
+[Vue](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vue#read-only-state-and-v-model),
+[Svelte](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#read-only-state-and-bindvalue)
+and [Angular](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/angular#read-only-state-and-two-way-binding)
+guides show reading state one way and binding a settable property two way.
+The `dotnet new runic-app` template's Counter page has one of each.
+
 ## Generated TypeScript
 
 Each ViewModel gets a module named after it (`EditorViewModel` becomes

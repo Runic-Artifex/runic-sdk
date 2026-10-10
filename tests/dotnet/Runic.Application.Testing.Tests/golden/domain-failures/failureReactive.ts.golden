@@ -26,6 +26,7 @@ export interface FailureReactiveImportOperation extends BridgeStreamOperation<nu
  * A ReactiveUI command that declares its failure on the property.
  */
 export interface FailureReactiveClient extends ViewClient<FailureReactiveState> {
+  /** Calls the public C# setter of `FailureReactiveViewModel.Title`. */
   setTitle(value: string): Promise<FailureReactiveState>;
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   fieldBaseline<K extends keyof FailureReactiveCheckedFields>(field: K): FieldBaseline<FailureReactiveCheckedFields[K]>;

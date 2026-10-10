@@ -36,7 +36,9 @@ export interface EditorDiscardOperation extends BridgeOperation<void> {}
 /** A connected Editor ViewModel. Dispose it when its presentation ends. */
 export interface EditorClient extends ViewClient<EditorState> {
   readonly interactions: EditorInteractions;
+  /** Calls the public C# setter of `EditorViewModel.Title`. */
   setTitle(value: string): Promise<EditorState>;
+  /** Calls the public C# setter of `EditorViewModel.Body`. */
   setBody(value: string): Promise<EditorState>;
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   writeBody(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;

@@ -18,7 +18,8 @@ matches your Runic SDK packages.
 Each generated module exports `connect<Name>()` for a root ViewModel and
 `page<Kind>(id)` references for presented content. A connected `<Name>Client`
 has a `snapshot`, `subscribe(listener)`, `dispose()` and one method per setter,
-command and operation:
+command and operation. As in any MVVM View, only a property with a public C#
+setter gets a `set<Property>` method; a `private set` keeps it read-only state:
 
 ```ts
 import { BridgeError } from "@runic-artifex/views";
