@@ -26,6 +26,10 @@ public sealed partial class GeneratedReactiveViewModel : ReactiveObject, IDispos
     [Reactive]
     public partial string Name { get; set; } = string.Empty;
 
+    // Read-only to every View: the generated client has no setIsDirty.
+    [Reactive]
+    public partial bool IsDirty { get; private set; }
+
     [ObservableAsProperty]
     public partial string Summary { get; }
 

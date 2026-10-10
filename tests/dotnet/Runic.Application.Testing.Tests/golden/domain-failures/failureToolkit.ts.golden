@@ -27,6 +27,7 @@ export interface FailureToolkitDiscardOperation extends BridgeOperation<void> {}
  * Declared failures on every CommunityToolkit and plain command shape: a sync RelayCommand and an AsyncRelayCommand declared on their [RelayCommand] methods, and a plain ICommand declared on its property.
  */
 export interface FailureToolkitClient extends ViewClient<FailureToolkitState> {
+  /** Calls the public C# setter of `FailureToolkitViewModel.Title`. */
   setTitle(value: string): Promise<FailureToolkitState>;
   writeTitle(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   fieldBaseline<K extends keyof FailureToolkitCheckedFields>(field: K): FieldBaseline<FailureToolkitCheckedFields[K]>;

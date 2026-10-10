@@ -188,6 +188,14 @@ catch (Exception error) when (Diagnostics.IsReportable(error))
     Diagnostics.Report(error);
 }
 
+// A set… member exists because its C# property has a public setter, which is
+// what any MVVM View may write; name the setter the call runs.
+static string SetterDocumentation(PropertyInfo property)
+{
+    var setter = $"Calls the public C# setter of `{property.DeclaringType!.Name.Split('`')[0]}.{property.Name}`.";
+    return XmlDocumentation.Summary(property) is { } summary ? summary + "\n\n" + setter : setter;
+}
+
 static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal)
     ? model.Name[..^"ViewModel".Length] : model.Name;
 
@@ -956,7 +964,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
-        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
+        XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
     }
     foreach (var property in checkedProperties)

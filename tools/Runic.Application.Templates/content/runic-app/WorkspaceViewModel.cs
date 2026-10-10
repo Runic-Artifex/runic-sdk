@@ -45,14 +45,24 @@ public sealed class WelcomeViewModel : ReactiveObject, IWorkspacePage
 public sealed class CounterViewModel : ReactiveObject, IWorkspacePage, IDisposable
 {
     private int _count;
+    private int _step = 1;
 
     public CounterViewModel(ISequencer scheduler) =>
-        IncrementCommand = ReactiveCommand.Create(() => { Count++; }, scheduler);
+        IncrementCommand = ReactiveCommand.Create(() => { Count += Step; }, scheduler);
 
+    // As for any MVVM View, the setter's accessibility decides what the web
+    // frontend may set: Count is read-only state, Step is a form field, so the
+    // generated client has setStep but no setCount.
     public int Count
     {
         get => _count;
         private set => this.RaiseAndSetIfChanged(ref _count, value);
+    }
+
+    public int Step
+    {
+        get => _step;
+        set => this.RaiseAndSetIfChanged(ref _step, value);
     }
 
     public ReactiveCommand<RxVoid, RxVoid> IncrementCommand { get; }
@@ -100,10 +110,18 @@ public sealed partial class WelcomeViewModel : ObservableObject, IWorkspacePage
 
 public sealed partial class CounterViewModel : ObservableObject, IWorkspacePage
 {
-    private int _count;
-    public int Count { get => _count; private set => SetProperty(ref _count, value); }
+    public CounterViewModel() => Step = 1;
+
+    // As for any MVVM View, the setter's accessibility decides what the web
+    // frontend may set: Count is read-only state, Step is a form field, so the
+    // generated client has setStep but no setCount.
+    [ObservableProperty]
+    public partial int Count { get; private set; }
+
+    [ObservableProperty]
+    public partial int Step { get; set; }
 
     [RelayCommand]
-    private void Increment() => Count++;
+    private void Increment() => Count += Step;
 }
 #endif
