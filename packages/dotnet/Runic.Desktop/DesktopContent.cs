@@ -182,6 +182,8 @@ public abstract record DesktopContent
     /// <param name="Entry">
     /// The file the presentation opens, relative to <paramref name="Root"/>, such as <c>index.html</c>. When omitted,
     /// a request for a directory opens its <c>index.html</c>, <c>index.htm</c>, <c>index.ts</c> or <c>index.js</c>.
+    /// The entry is a file path, not a URL: an entry with a <c>?query</c> or <c>#fragment</c> throws a
+    /// <see cref="DesktopConfigurationException"/> whose diagnostic code is <c>content-entry-invalid</c>.
     /// </param>
     public sealed record Directory(string Root, string? Entry = null) : DesktopContent
     {
@@ -216,6 +218,9 @@ public abstract record DesktopContent
         public ContentHandler Resolve { get; init => field = RequireNotNull(value, nameof(Resolve)); } = RequireNotNull(Resolve, nameof(Resolve));
     }
 
+    // The diagnostic code of a directory entry that is not a plain relative file path.
+    internal const string EntryInvalidCode = "content-entry-invalid";
+
     // Each property validates in its initializer (constructor) and in its init accessor (object initializers
     // and `with` expressions), so no instance holds an unchecked value.
     private static T RequireNotNull<T>(T value, string parameterName)
@@ -238,6 +243,21 @@ public abstract record DesktopContent
             return null;
         }
         ArgumentException.ThrowIfNullOrWhiteSpace(entry, parameterName);
+        // The entry names a file, not a URL. A query or fragment would become part of the file name, so
+        // the window would wait for a page that never loads.
+        if (entry.IndexOfAny(['?', '#']) >= 0)
+        {
+            throw new DesktopConfigurationException([new DesktopDiagnostic(
+                DesktopErrorCategory.InvalidArgument,
+                EntryInvalidCode,
+                $"The entry \"{entry}\" contains a query string or fragment; the entry names a file, such as \"index.html\".",
+                Retryable: false,
+                Remediation: "Remove the '?…' or '#…' part. Pass startup state through the window's ViewModel, " +
+                    "or navigate inside the frontend after it loads.")
+            {
+                Option = "DesktopContent.Directory.Entry",
+            }]);
+        }
         if (Path.IsPathRooted(entry) || entry.Replace('\\', '/').Split('/').Contains(".."))
         {
             throw new ArgumentException(

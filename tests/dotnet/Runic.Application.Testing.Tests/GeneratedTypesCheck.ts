@@ -2,6 +2,7 @@
 // unions, so a switch over every case is exhaustive.
 import type { CodegenShapeState } from "./obj/bridge-frontend/generated/codegenShape.js";
 import type { DocumentedLayout, DocumentedState } from "./obj/bridge-frontend/generated/documented.js";
+import type { NamingClient, NamingState } from "./obj/bridge-frontend/generated/naming.js";
 
 export function describeLayout(state: DocumentedState): string {
   const layout: DocumentedLayout = state.layout;
@@ -29,3 +30,13 @@ export const requiredSlot: CodegenShapeState["required"] = {
   // @ts-expect-error CodegenSlot<string> does not accept null.
   value: null, fallback: null, items: [], values: [], map: { key: "m" }, inner: { value: "i" },
 };
+
+// Names next to the reserved client members stay ordinary members: a state
+// property named New and a NewItem command (a NewCommand is RUNICBRIDGE004).
+export function newState(state: NamingState): string {
+  return state.new;
+}
+
+export function createItem(client: NamingClient): Promise<NamingState> {
+  return client.newItem();
+}

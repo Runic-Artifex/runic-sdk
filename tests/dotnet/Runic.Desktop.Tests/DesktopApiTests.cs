@@ -688,6 +688,21 @@ public sealed class DesktopApiTests
         Assert.Throws<ArgumentException>(() => directory with { Entry = Path.GetFullPath("index.html") });
         Assert.Throws<ArgumentException>(() => directory with { Root = "" });
         Assert.Null((directory with { Entry = null }).Entry);
+        // An entry is a file, not a URL: a query or fragment fails at once with a coded diagnostic instead of
+        // a window that waits for a page that never loads.
+        foreach (var entry in new[] { "index.html?mode=edit", "index.html#settings", "settings/#/tab" })
+        {
+            var constructed = Assert.Throws<DesktopConfigurationException>(() => new DesktopContent.Directory("www", entry));
+            var initialized = Assert.Throws<DesktopConfigurationException>(() => directory with { Entry = entry });
+            foreach (var error in new[] { constructed, initialized })
+            {
+                var diagnostic = Assert.Single(error.Diagnostics);
+                Assert.Equal("content-entry-invalid", diagnostic.Code);
+                Assert.Equal("DesktopContent.Directory.Entry", diagnostic.Option);
+                Assert.Contains(entry, error.Message, StringComparison.Ordinal);
+                Assert.Contains("content-entry-invalid", error.Message, StringComparison.Ordinal);
+            }
+        }
         Assert.Throws<ArgumentNullException>(() => new DesktopContent.Html("<p></p>") with { Document = null! });
         Assert.Throws<ArgumentNullException>(() => new DesktopContent.Handler(static (_, _) => ValueTask.FromResult<ContentResponse?>(null)) with { Resolve = null! });
         Assert.Equal(new Uri("http://example.test/next"), (url with { Url = new Uri("http://example.test/next") }).Url);
