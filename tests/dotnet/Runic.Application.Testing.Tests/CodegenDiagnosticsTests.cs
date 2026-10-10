@@ -284,7 +284,27 @@ internal static partial class CodegenDiagnosticsTests
             await Reject("ThenableView", """
                 public sealed class ThenViewModel : FixtureModel { public IRelayCommand ThenCommand { get; } = new RelayCommand(() => { }); }
                 public sealed partial class ThenWindow(ThenViewModel model) : RunicWindow<ThenViewModel>(model);
-                """, "generated view name 'then' conflicts", "thenable").ConfigureAwait(false);
+                """, "error RUNICBRIDGE004:", "ThenViewModel.ThenCommand: the generated client member 'then'", "thenable",
+                "Rename the command, for example to ContinueCommand").ConfigureAwait(false);
+            // A command's bare name is a client member: `new()` in the client
+            // type is a construct signature, so the TypeScript would not compile.
+            await RejectAt("NewCommand", """
+                public sealed partial class NewViewModel : FixtureModel
+                {
+                    public IRelayCommand NewCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class NewWindow(NewViewModel model) : RunicWindow<NewViewModel>(model);
+                """, "RUNICBRIDGE004", "public IRelayCommand NewCommand",
+                "NewViewModel.NewCommand: the generated client member 'new' declares a construct signature",
+                "Rename the command, for example to CreateCommand (client member 'create')").ConfigureAwait(false);
+            await Reject("ConstructorCommand", """
+                public sealed class ConstructorViewModel : FixtureModel { public IRelayCommand<string> ConstructorCommand { get; } = new RelayCommand<string>(_ => { }); }
+                public sealed partial class ConstructorWindow(ConstructorViewModel model) : RunicWindow<ConstructorViewModel>(model);
+                """, "error RUNICBRIDGE004:", "the generated client member 'constructor'").ConfigureAwait(false);
+            await Reject("ToJsonCommand", """
+                public sealed class ToJsonViewModel : FixtureModel { public IAsyncRelayCommand ToJSONCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask); }
+                public sealed partial class ToJsonWindow(ToJsonViewModel model) : RunicWindow<ToJsonViewModel>(model);
+                """, "error RUNICBRIDGE004:", "the generated client member 'toJSON'").ConfigureAwait(false);
             await Reject("AvailabilityRoute", """
                 public sealed class AvailabilityViewModel : FixtureModel
                 {
@@ -390,6 +410,45 @@ internal static partial class CodegenDiagnosticsTests
                 && registration.Contains("Func<IBridgeTransport, WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
                 && registration.Contains("Func<IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),
                 $"DI composition registered a transport-only factory for an interaction ViewModel.\n{registration}");
+
+            // A ViewModel that a region, content property or content collection
+            // admits but that has no View builds with a warning at its
+            // declaration, and the generated failure names the slot and type.
+            const string MissingViewSource = """
+                public interface IPage : INotifyPropertyChanged { }
+                public sealed class ShellViewModel : FixtureModel
+                {
+                    public NavigationRegion<IPage> Main { get; } = null!;
+                    public IPage? Detail { get; }
+                    public IReadOnlyList<IPage> Tabs { get; } = [];
+                }
+                public sealed class HomeViewModel : FixtureModel, IPage { public string Title => "home"; }
+                public sealed class OrphanViewModel : FixtureModel, IPage { public string Title => "orphan"; }
+                internal sealed class HiddenPageViewModel : FixtureModel, IPage { }
+                public abstract class AbstractPageViewModel : FixtureModel, IPage { }
+                public sealed partial class ShellWindow(ShellViewModel model) : RunicWindow<ShellViewModel>(model);
+                public sealed partial class HomeView : RunicView<HomeViewModel>;
+                """;
+            var (missingViewExit, missingViewOutput, missingViewDirectory) = await RunGeneratorAsync(generator, temporaryRoot,
+                "MissingView", Preamble + "#pragma warning disable RUNICNAV001\n" + MissingViewSource).ConfigureAwait(false);
+            var orphanLine = (Preamble + "#pragma warning disable RUNICNAV001\n" + MissingViewSource)
+                .Split('\n').ToList().FindIndex(text => text.Contains("class OrphanViewModel", StringComparison.Ordinal)) + 1;
+            var warnings = missingViewOutput.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE013:", StringComparison.Ordinal)).ToArray();
+            Require(missingViewExit == 0 && warnings.Length == 3
+                    && warnings.All(text => text.StartsWith($"{Path.Combine(missingViewDirectory, "Fixture.cs")}({orphanLine},", StringComparison.Ordinal)
+                        && text.Contains("Fixture.OrphanViewModel is assignable to IPage but has no Runic View", StringComparison.Ordinal)
+                        && text.Contains("'public sealed partial class OrphanView : RunicView<OrphanViewModel>;'", StringComparison.Ordinal))
+                    && warnings.Any(text => text.Contains("ShellViewModel.Main:", StringComparison.Ordinal) && text.Contains("pushing it to this navigation region throws NotSupportedException", StringComparison.Ordinal))
+                    && warnings.Any(text => text.Contains("ShellViewModel.Detail:", StringComparison.Ordinal))
+                    && warnings.Any(text => text.Contains("ShellViewModel.Tabs:", StringComparison.Ordinal))
+                    && !missingViewOutput.Contains("HiddenPageViewModel", StringComparison.Ordinal)
+                    && !missingViewOutput.Contains("AbstractPageViewModel", StringComparison.Ordinal)
+                    && !missingViewOutput.Contains("HomeViewModel is assignable", StringComparison.Ordinal),
+                $"A region ViewModel without a View was not reported once per slot as RUNICBRIDGE013.\n{missingViewOutput}");
+            var shellBridge = File.ReadAllText(Path.Combine(missingViewDirectory, "cs", "Fixture.ShellViewModel.Bridge.g.cs"));
+            Require(shellBridge.Contains("The navigation region ShellViewModel.Main cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal)
+                    && shellBridge.Contains("The ShellViewModel.Tabs cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal),
+                $"The generated content failure does not name the slot and the presented type.\n{shellBridge}");
 
             // Bridge generation that the build turned on by default is
             // optional: an assembly with no Window or View (a navigator-only

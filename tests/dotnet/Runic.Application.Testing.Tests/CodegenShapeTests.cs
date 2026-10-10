@@ -240,6 +240,8 @@ internal static class CodegenShapeTests
             ("naming.ts", naming, "    prototype: bridgeWire.string(wire.prototype),"),
             ("naming.ts", naming, "  rename(defaultValue: string): Promise<NamingState>;"),
             ("naming.ts", naming, "  show(viewValue: string): Promise<NamingState>;"),
+            ("naming.ts", naming, "  readonly new: string;"),
+            ("naming.ts", naming, "  newItem(): Promise<NamingState>;"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");

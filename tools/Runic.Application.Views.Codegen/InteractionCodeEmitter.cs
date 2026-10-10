@@ -90,9 +90,16 @@ internal static class InteractionCodeEmitter
         view.Add("snapshot", "the generated snapshot property");
         view.Add("subscribe", "the generated subscribe method");
         view.Add("dispose", "the generated dispose method");
-        // A view with a then() method is thenable: `await connectX()` would
-        // call it instead of resolving to the view.
-        view.Add("then", "Promise resolution (a then() member makes the connected view thenable)");
+        // A command's bare name is a client member; a few valid C# names are
+        // not usable there (a construct signature, a thenable client, ...).
+        foreach (var command in commandProperties)
+        {
+            var name = command.Name[..^"Command".Length];
+            if (TypeScriptModules.ReservedClientMemberNames.TryGetValue(LowerFirst(name), out var reserved))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                    $"{modelName}.{command.Name}: the generated client member '{LowerFirst(name)}' {reserved.Reason}. Rename the command, for example to {reserved.Suggestion}Command (client member '{LowerFirst(reserved.Suggestion)}').",
+                    command);
+        }
         var interactionPlans = interactions.ToArray();
         if (interactionPlans.Length > 0) view.Add("interactions", "the generated interactions property");
         foreach (var property in stateProperties.Where(property => property.SetMethod?.IsPublic == true))
