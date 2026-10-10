@@ -89,7 +89,7 @@ public sealed class SessionRevocationTests
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var window = new WebUiWindow();
-        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var entered = new TaskCompletionSource<Guid>(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnected = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -99,9 +99,9 @@ public sealed class SessionRevocationTests
             if (e.EventType == WebUiEventType.Disconnected)
                 disconnected.TrySetResult(Volatile.Read(ref finished) == 1);
         });
-        using var held = window.BindAsync("held", async (_, _) =>
+        using var held = window.BindAsync("held", async (e, _) =>
         {
-            entered.TrySetResult();
+            entered.TrySetResult(e.SessionIdentifier);
             // Ignore transport cancellation, as an accepted operation may be
             // performing recovery before releasing its application resources.
             await release.Task;
@@ -120,13 +120,15 @@ public sealed class SessionRevocationTests
         try
         {
             await SendCallAsync(socket, token, 1, "held", deadline.Token);
-            await entered.Task.WaitAsync(deadline.Token);
+            var sessionId = await entered.Task.WaitAsync(deadline.Token);
+            var drainStarted = window.CallbackDrainStarted(sessionId);
+            Assert.False(drainStarted.IsCompleted);
             await SendCallAsync(socket, token, 2, "close", deadline.Token);
             await closed.Task.WaitAsync(deadline.Token);
-            // Give the revoked receive loop a chance to deliver disconnection
-            // while the first callback is still deliberately blocked.
-            Assert.NotSame(disconnected.Task,
-                await Task.WhenAny(disconnected.Task, Task.Delay(50, deadline.Token)));
+            // The revoked receive loop has reached the point where it would deliver
+            // disconnection, while the first callback is still deliberately blocked.
+            await drainStarted.WaitAsync(deadline.Token);
+            Assert.False(disconnected.Task.IsCompleted);
             release.TrySetResult();
             Assert.True(await disconnected.Task.WaitAsync(deadline.Token));
         }

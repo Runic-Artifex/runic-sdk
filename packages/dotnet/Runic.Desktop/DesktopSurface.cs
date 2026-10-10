@@ -31,6 +31,15 @@ public sealed class DesktopSurface : IAsyncDisposable
     public Uri Url => _engine.Url ?? throw new ObjectDisposedException(nameof(DesktopSurface));
 
     /// <summary>Registers or replaces a named presentation capability.</summary>
+    /// <remarks>
+    /// Each browser connection admits one invocation or connection event at a time, but only until the
+    /// handler first awaits an incomplete task. The rest of the handler can run concurrently with other
+    /// invocations and connection events, so a long wait leaves Cancel and other control calls available.
+    /// Invocations are not guaranteed to start in arrival order, and replies are sent as handlers complete.
+    /// A handler that needs exclusive access across awaits must serialize itself, for example with a
+    /// <see cref="SemaphoreSlim"/>. <see cref="PresentationEventKind.Disconnected"/> follows the completion
+    /// of every invocation the connection accepted.
+    /// </remarks>
     public PresentationCapabilityRegistration RegisterCapability(
         string capability,
         PresentationCapabilityHandler handler)
@@ -65,6 +74,11 @@ public sealed class DesktopSurface : IAsyncDisposable
     }
 
     /// <summary>Observes authenticated connection and disconnection events for this surface.</summary>
+    /// <remarks>
+    /// Events of one connection run one at a time and never overlap the synchronous part of a capability
+    /// handler, but they can overlap a capability handler that is awaiting. A disconnection event follows
+    /// the completion of every invocation the connection accepted. See <see cref="RegisterCapability"/>.
+    /// </remarks>
     public IDisposable SubscribeConnectionEvents(Action<PresentationInvocation> handler)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
