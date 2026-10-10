@@ -58,6 +58,13 @@ internal static class DevApplication
             {
                 await InstallFrontendAsync(configuration, options.Restore, stop.Token).ConfigureAwait(false);
             }
+            // Before the build, so a missing window entry fails without waiting for it.
+            if (options.WatchFrontend && configuration.DevelopmentServerKind == "vite" &&
+                !configuration.HasFrontendCompiler)
+            {
+                configuration = await ViteBuildInputs.ApplyAsync(configuration, stop.Token)
+                    .ConfigureAwait(false);
+            }
             await BuildAsync(dotnetHost, configuration, options, stop.Token)
                 .ConfigureAwait(false);
             return await RunDevelopmentLoopAsync(
