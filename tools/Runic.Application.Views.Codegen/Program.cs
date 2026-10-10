@@ -256,24 +256,40 @@ static string UnregisteredContentMessage(Type model, PropertyInfo property, bool
 // concrete ViewModels in the application assembly that a slot admits but no
 // View presents. Types in other assemblies are not checked: their Views, if
 // any, are not visible here either.
+//
+// A warning must name a ViewModel that is meant for the slot, so a broad slot
+// type is not checked: a framework type (System, ReactiveUI, CommunityToolkit),
+// a type that the slot's owner or a Window's ViewModel also derives from or
+// implements (an application-wide ViewModel base), or one that admits more than
+// MissingViewCandidateLimit ViewModels without a View. Window ViewModels are
+// never candidates: every Window is a RunicView, so they are in viewTypes.
 static void WarnContentWithoutView(Type model, IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentProperties,
     IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentCollections, IReadOnlySet<PropertyInfo> regionSlots,
     IReadOnlyDictionary<Type, List<Type>> viewTypes)
 {
+    const int MissingViewCandidateLimit = 8;
     Type[] types;
     try { types = model.Assembly.GetTypes(); }
     catch (ReflectionTypeLoadException error) { types = [.. error.Types.OfType<Type>()]; }
     var candidates = types.Where(type => type.IsClass && type.IsPublic && !type.IsAbstract && !type.ContainsGenericParameters
             && typeof(INotifyPropertyChanged).IsAssignableFrom(type) && !viewTypes.ContainsKey(type))
         .OrderBy(type => type.FullName, StringComparer.Ordinal).ToArray();
+    var windowModels = viewTypes.Where(entry => entry.Value.Any(IsWindow)).Select(entry => entry.Key).Append(model).ToArray();
     foreach (var property in contentProperties.Keys.Concat(contentCollections.Keys))
     {
         var slotType = regionSlots.Contains(property) ? BridgeContractShape.NavigationRegionContent(property.PropertyType)!
             : contentCollections.ContainsKey(property) ? property.PropertyType.GenericTypeArguments[0]
             : property.PropertyType;
+        if (slotType == typeof(object) || BridgeContractShape.IsFrameworkBase(slotType) || slotType.Namespace is { } ns
+                && (ns == "System" || ns == "ReactiveUI" || ns.StartsWith("ReactiveUI.", StringComparison.Ordinal)
+                    || ns.StartsWith("CommunityToolkit.", StringComparison.Ordinal))
+            || windowModels.Any(slotType.IsAssignableFrom))
+            continue;
+        var missing = candidates.Where(type => type != model && slotType.IsAssignableFrom(type)).ToArray();
+        if (missing.Length > MissingViewCandidateLimit) continue;
         var contract = ContractFor(property);
         var slot = regionSlots.Contains(property) ? "pushing it to this navigation region" : "presenting it in this slot";
-        foreach (var candidate in candidates.Where(type => type != model && slotType.IsAssignableFrom(type)))
+        foreach (var candidate in missing)
             Diagnostics.Warn(BridgeDiagnosticCodes.MissingView,
                 $"{model.Name}.{property.Name}: {candidate.FullName} is assignable to {slotType.Name} but has no Runic View"
                 + (contract is null ? "" : $" with contract '{contract}'")
