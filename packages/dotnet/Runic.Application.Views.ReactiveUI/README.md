@@ -105,33 +105,36 @@ package, which this package references, so add
 and explicitly marshal background state changes through the model context.
 
 Call `AddRunicReactiveModelContext()` before the ViewModel creates its commands
-and inject the sequencer. Bind the root and every independently
-presented child to that same context. `IRunicModelContext` and
-`RunicModelContextRegistry` are in the `Runic.Navigation` namespace:
+and inject the sequencer:
 
 ```csharp
 services.AddRunicReactiveModelContext();
 
-public EditorViewModel(
-    EditorSession session,
-    IRunicModelContext modelContext,
-    ISequencer scheduler)
+public EditorViewModel(EditorSession session, ISequencer scheduler)
 {
     _scheduler = scheduler;
     Workspace = new EditorWorkspaceViewModel(session, this, _scheduler);
-    _contextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this, Workspace);
 }
 
 protected ReactiveCommand<string, RxVoid> CreateCommand(Func<string, Task> work) =>
     ReactiveCommand.CreateFromTask<string>(work, _scheduler);
 ```
 
+The ViewModels need no `RunicModelContextRegistry.Bind`. The CS-WebUI, Desktop
+and WPF hosts give the window the scope's context and bind the root ViewModel
+to it. The window binds each child ViewModel it presents, including one a
+ViewModel creates later, for as long as it presents it, and a navigator binds
+the region entries it owns. A ViewModel already bound to a different context
+fails when presented, with an `InvalidOperationException` naming its type. When
+you build a `WindowContentSession` or `RunicWindowTestHost` yourself, pass the
+context the ViewModels' sequencer uses as its `ModelContext`; otherwise the
+window creates a context of its own and commands and replies are not ordered
+with each other.
+
 `Execute` may complete before its scheduled `IsExecuting` and `CanExecute`
 notifications arrive. The context-backed scheduler orders those notifications
 with bridge replies and state publication. A default headless scheduler may
 deliver them later; do not solve that by changing ReactiveUI's global scheduler.
-Bind dynamically created or independently presented children to the same
-context and retain their leases until their presentation is removed.
 
 The scheduler delivers the command's notifications; the task body itself runs
 in the context because the bridge starts it in a turn. Set ViewModel state

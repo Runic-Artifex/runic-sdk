@@ -30,6 +30,7 @@ function held<TResult = void, TFailure = never>(requestId: string, outcome: Brid
       const status = await terminal.promise;
       if (status.kind === "cancelled") throw new BridgeError("cancelled", "Cancelled");
       if (status.kind === "failed") throw new BridgeError("failed", status.error.message);
+      if (status.kind === "timedOut") throw new BridgeError("timeout", "Timed out");
       return outcome;
     },
   };
@@ -133,6 +134,68 @@ test("declared failures, unexpected failures and absent clients have distinct fe
   assert.equal(await absent.run(), undefined);
   assert.equal(absent.current.pending, false);
   assert.equal(absent.current.error, undefined);
+});
+
+test("a cancelled run is a normal terminal state, not an error", async () => {
+  const work = held("cancel");
+  const controller = createOperationController(() => work.operation);
+  const result = controller.run();
+  await settle();
+  await controller.cancel();
+  work.terminal.resolve({ contract: "test", requestId: "cancel", kind: "cancelled" });
+  assert.equal(await result, undefined);
+  assert.equal(controller.current.cancelled, true);
+  assert.equal(controller.current.status?.kind, "cancelled");
+  assert.equal(controller.current.error, undefined);
+  assert.equal(controller.current.outcome, undefined);
+  assert.equal(controller.current.failure, undefined);
+  assert.equal(controller.current.pending, false);
+  assert.equal(work.outcomes(), 0, "the controller does not ask outcome() to reject");
+  await assert.rejects(work.operation.outcome(), (error: unknown) => error instanceof BridgeError && error.kind === "cancelled");
+  controller.reset();
+  assert.equal(controller.current.cancelled, false);
+
+  const next = held("next");
+  const again = createOperationController((which: boolean) => which ? work.operation : next.operation);
+  await again.run(true);
+  assert.equal(again.current.cancelled, true);
+  const run = again.run(false);
+  assert.equal(again.current.cancelled, false, "a new run clears cancellation feedback");
+  next.finish();
+  await run;
+  assert.equal(again.current.cancelled, false);
+});
+
+test("failed and timed-out runs remain errors", async () => {
+  for (const status of [
+    { contract: "test", requestId: "x", kind: "failed", error: { kind: "failed", message: "boom" } },
+    { contract: "test", requestId: "x", kind: "timedOut", cancellation: "cancellation-requested" },
+  ] as const) {
+    const work = held("x");
+    const controller = createOperationController(() => work.operation);
+    const result = controller.run();
+    work.terminal.resolve(status);
+    assert.equal(await result, undefined);
+    assert.equal(controller.current.cancelled, false);
+    assert.equal((controller.current.error as BridgeError).kind, status.kind === "failed" ? "failed" : "timeout");
+  }
+});
+
+test("latest selection reports a fresh cancelled read as cancelled, not an error", async () => {
+  const work = held<number>("read");
+  const controller = createLatestOperationController<number>();
+  const result = controller.run({ start: () => work.operation });
+  await settle();
+  work.terminal.resolve({ contract: "test", requestId: "read", kind: "cancelled" });
+  assert.equal(await result, undefined);
+  assert.equal(controller.current.cancelled, true);
+  assert.equal(controller.current.error, undefined);
+  assert.equal(controller.current.blocked, false);
+  const next = held<number>("next", bridgeSuccess(1));
+  const following = controller.run({ start: () => next.operation });
+  assert.equal(controller.current.cancelled, false);
+  next.finish();
+  assert.deepEqual(await following, bridgeSuccess(1));
 });
 
 test("overlapping mutation observers publish latest feedback without cancelling earlier accepted work", async () => {

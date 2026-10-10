@@ -18,7 +18,8 @@ The existing Linux package-consumer CI job runs these focused journeys:
   property; conditional JSON rules and root model members remain in the contract.
 - An awaited long command and a public operation `wait()` admit concurrent draft
   and Cancel callbacks through the real desktop transport. The shipped Svelte
-  `useOperation` renders pending and cancellation state.
+  `useOperation` renders pending and cancellation state, and a cancelled run ends
+  in its `cancelled` state without an error.
 - `createLatestOperationController` coalesces choices before a delayed real Start
   receipt, waits for actual accepted read completion before admitting the newest
   choice, and drops stale intents/cancellation across repository replacement.

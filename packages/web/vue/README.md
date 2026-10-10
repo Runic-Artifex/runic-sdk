@@ -88,6 +88,33 @@ from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
 
+## `useOperation(start, options?)`
+
+Observes a generated `start<Command>()` operation through the framework-neutral
+[operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
+and returns a reactive object; read its state from the object rather than destructuring it:
+
+```vue
+<script setup lang="ts">
+const push = useOperation((remote: string) => client.value?.startPush(remote));
+</script>
+
+<template>
+  <button :disabled="!client || push.pending" @click="push.run('origin')">Push</button>
+  <button v-if="push.pending" :disabled="push.cancellationRequested" @click="push.cancel()">Cancel</button>
+  <p v-if="push.cancelled" role="status">Push cancelled.</p>
+  <p v-if="push.error !== undefined" role="alert">{{ String(push.error) }}</p>
+</template>
+```
+
+The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
+`cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
+run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
+without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
+stays true after a Cancel response until the operation reaches its terminal status.
+Disposing the effect scope settles run promises without cancelling accepted work.
+
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, attach }`.

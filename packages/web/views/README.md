@@ -169,8 +169,10 @@ change, and `subscribe(listener)`, which returns an unsubscribe function.
   `collectionViewport` range and changes only when the range or sizes change.
 - `createOperationController(start, options?)` observes generated `start<Command>()`
   handles through their public `wait()` and `outcome()`. Its state covers admission,
-  pending work, terminal status/outcome, declared failure, unexpected error and
-  cancellation feedback. `run(...args)` and `cancel()` never reject. `reset()` clears
+  pending work, terminal status/outcome, declared failure, unexpected error,
+  cancellation feedback and a separate `cancelled` end state. `run(...args)` and
+  `cancel()` never reject. React and Vue `useOperation`, Svelte `useOperation` and
+  Angular `injectOperation` expose the same state. `reset()` clears
   feedback while retaining pending work and its cancellation identity; `dispose()`
   detaches feedback and settles UI observation promises without cancelling work.
 - `createLatestOperationController<TResult, TFailure>()` serializes superseding
@@ -198,10 +200,14 @@ push.dispose();
 ```
 
 `current` has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
-`error`, `cancellationRequested`, `cancelling`, `cancellation` and `cancelError`.
-`pending` spans Start admission, terminal wait, any completion barrier and outcome
-delivery. A declared failure is an outcome and `failure`; an unexpected failure is
-`error`. Cancel failures are `cancelError` and do not release pending work. A Cancel
+`error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
+`cancelError`. `pending` spans Start admission, terminal wait, any completion barrier
+and outcome delivery. A declared failure is an outcome and `failure`; an unexpected
+failure, including a `failed` or `timedOut` status, is `error`. A `cancelled` status,
+whether this UI or .NET requested it, is a normal end: `cancelled` becomes true,
+`run()` resolves to `undefined`, and `error`, `outcome` and `failure` stay undefined.
+Only a direct `operation.outcome()` call still rejects with `BridgeError("cancelled")`.
+Starting a run and `reset()` clear `cancelled`. Cancel failures are `cancelError` and do not release pending work. A Cancel
 requested before a delayed Start receipt is sent after that captured run is admitted.
 An absent client may return `undefined` from `start`, ending the run without error.
 Overlapping runs are observed independently, and only the latest publishes feedback

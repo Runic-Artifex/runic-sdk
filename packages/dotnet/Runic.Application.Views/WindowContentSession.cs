@@ -129,6 +129,7 @@ public sealed class WindowContentSession : IDisposable
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _viewLocator = viewLocator;
         _modelContexts = RunicModelContextRegistry.Shared;
+        if (rootModel is not null && modelContext is not null) ThrowIfBoundElsewhere(modelContext, rootModel);
         if (rootModel is not null)
             _rootModelLease = modelContext is null
                 ? _modelContexts.Acquire(() => new RunicModelContext(contextLogger), rootModel)
@@ -873,9 +874,31 @@ public sealed class WindowContentSession : IDisposable
     private IRunicModelContextLease AcquireContentModelLease(object viewModel)
     {
         var context = ModelContext ?? throw new ObjectDisposedException(nameof(WindowContentSession));
+        ThrowIfBoundElsewhere(context, viewModel);
         var lease = _modelContexts.Bind(context, viewModel);
         _contentModelLeases.Add(lease);
         return lease;
+    }
+
+    // A bridge runs its model's turns on the context the model is bound to. The
+    // window binds its root and presented content before their bridges attach;
+    // a bridge attached directly to this session, as by a hand-built host, binds
+    // its model here for the bridge's lifetime. Without that it would fall back
+    // to a lock which, with this window's turns, can deadlock (#132).
+    internal IRunicModelContextLease? BindBridgeModel(object viewModel)
+    {
+        if (ModelContext is not { } context) return null;
+        ThrowIfBoundElsewhere(context, viewModel);
+        return _modelContexts.TryGet(viewModel, out _) ? null : _modelContexts.Bind(context, viewModel);
+    }
+
+    private void ThrowIfBoundElsewhere(IRunicModelContext context, object viewModel)
+    {
+        if (_modelContexts.TryGet(viewModel, out var owner) && !ReferenceEquals(owner, context))
+            throw new InvalidOperationException(
+                $"{viewModel.GetType().FullName} is bound to a different Runic model context than the window that presents it. "
+                + "Create the window with that ViewModel's IRunicModelContext (WindowContentSessionOptions.ModelContext, or "
+                + "resolve the ViewModel from the window's service scope), or do not bind it to another context.");
     }
 
     private void CompleteFailedAttachment(object viewModel, string kind, Entry entry, bool created)
