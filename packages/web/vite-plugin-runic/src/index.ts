@@ -9,7 +9,9 @@ import type {
   RunicDiagnosticSource,
   RunicRuntimeState,
 } from "./client.js";
+import { isAbsolute, relative } from "node:path";
 import { sanitizeDiagnosticSummary } from "./diagnostics.js";
+import { rewriteHostScripts, webRootPrefix } from "./host-scripts.js";
 
 export type {
   RunicDiagnosticDetail,
@@ -154,25 +156,45 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
       }
       return { base: "./" };
     },
+    // The build parses HTML in a later transform, so host scripts are marked
+    // vite-ignore here; the dev server has no such pass and uses the hook below.
+    transform: {
+      filter: { id: /\.html$/ },
+      handler(code, id) {
+        if (state.vite.command !== "build" || !id.endsWith(".html")) return undefined;
+        const documentPath = relative(resolvedRoot, id);
+        if (documentPath.startsWith("..") || isAbsolute(documentPath)) return undefined;
+        const rewritten = rewriteHostScripts(code, documentPath, true);
+        return rewritten === code ? undefined : { code: rewritten, map: null };
+      },
+    },
     transformIndexHtml: {
       order: "post" as const,
-      handler: () => [
-        ...(desktopBootstrapUrl === undefined ? [] : [{
-          tag: "script",
-          attrs: {
-            src: state.vite.command === "build" ? "./runic-desktop.js" : desktopBootstrapUrl,
-          },
-          injectTo: "head-prepend" as const,
-        }]),
-        // The development client forwards Views runtime failures to the
-        // timeline. It loads before application modules, so a missing Bridge
-        // at startup is reported too.
-        ...(state.vite.command !== "serve" || options.devtools === false ? [] : [{
-          tag: "script",
-          attrs: { type: "module", src: `${base}@id/${virtualClientId}` },
-          injectTo: "head" as const,
-        }]),
-      ],
+      handler: (html, context) => {
+        const prefix = webRootPrefix(context.path);
+        const tags = [
+          ...(desktopBootstrapUrl === undefined ? [] : [{
+            tag: "script",
+            attrs: {
+              src: state.vite.command === "build" || desktopBootstrapUrl === "./runic-desktop.js"
+                ? `${prefix}runic-desktop.js`
+                : desktopBootstrapUrl,
+            },
+            injectTo: "head-prepend" as const,
+          }]),
+          // The development client forwards Views runtime failures to the
+          // timeline. It loads before application modules, so a missing Bridge
+          // at startup is reported too.
+          ...(state.vite.command !== "serve" || options.devtools === false ? [] : [{
+            tag: "script",
+            attrs: { type: "module", src: `${base}@id/${virtualClientId}` },
+            injectTo: "head" as const,
+          }]),
+        ];
+        return state.vite.command === "serve"
+          ? { html: rewriteHostScripts(html, context.path, false), tags }
+          : tags;
+      },
     },
     diagnostics: { report: (entry) => appendDiagnostic(entry) },
     configResolved(resolved) {

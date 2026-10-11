@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -25,25 +26,26 @@ internal static partial class FrontendDevelopmentDocument
                 developmentDocument,
                 "<head><base href=\"./\">",
                 1);
+        // A page in a folder, such as pages/settings.html, resolves its
+        // relative assets from that folder on the development server.
+        string documentPath = destinationDocument.Replace('\\', '/').TrimStart('/');
+        var documentUrl = new Uri(origin, documentPath);
+        string webRoot = string.Concat(Enumerable.Repeat("../", documentPath.Count(character => character == '/')));
         document = DevelopmentAssetAttribute().Replace(document, match =>
         {
             string path = match.Groups["path"].Value;
-            // The document is served from the web root, so "webui.js",
-            // "./webui.js" and "/webui.js" name the same file.
-            string normalized = path.StartsWith("./", StringComparison.Ordinal)
-                ? path[1..]
-                : path.StartsWith('/') ? path : "/" + path;
             // The native host serves webui.js and the Runic Desktop bootstrap that
             // runic({ desktop: true }) inserts, and the Runic host packages copy
             // their client scripts into the runtime web root. Runic Desktop serves
-            // each Window below its own path, so keep them relative to the base.
-            if (normalized is "/webui.js" or "/runic-desktop.js" or "/runic-cswebui.js" or "/runic-desktop-views.js")
+            // each Window below its own path, so keep them relative to the base
+            // and point a nested page back at the web root.
+            if (HostScriptName(path) is { } hostScript)
             {
-                return match.Groups["prefix"].Value + normalized[1..] + match.Groups["suffix"].Value;
+                return match.Groups["prefix"].Value + webRoot + hostScript + match.Groups["suffix"].Value;
             }
 
             return match.Groups["prefix"].Value +
-                new Uri(origin, path).AbsoluteUri +
+                new Uri(documentUrl, path).AbsoluteUri +
                 match.Groups["suffix"].Value;
         });
         document = RootModuleSpecifier().Replace(
@@ -73,6 +75,20 @@ internal static partial class FrontendDevelopmentDocument
                 throwOnInvalidBytes: true));
         Console.WriteLine(
             $"[dev] Wrote native frontend bootstrap '{destination}'.");
+    }
+
+    /// <summary>
+    /// The host script a path names. "webui.js", "./webui.js", "/webui.js" and
+    /// "../webui.js" all name the file in the web root.
+    /// </summary>
+    internal static string? HostScriptName(string path)
+    {
+        string[] segments = path.Split('/');
+        string name = segments[^1];
+        return name is "webui.js" or "runic-desktop.js" or "runic-cswebui.js" or "runic-desktop-views.js" &&
+            segments[..^1].All(segment => segment is "" or "." or "..")
+                ? name
+                : null;
     }
 
     [GeneratedRegex("<base\\s+[^>]*href\\s*=\\s*[\"'][^\"']*[\"'][^>]*>", RegexOptions.IgnoreCase)]
