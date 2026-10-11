@@ -469,8 +469,8 @@ run_generated_tests() {
     echo "Building the generated tests built the frontend." >&2
     exit 1
   fi
-  # The test project uses the app's Bridges: it gets the host adapter only through
-  # the app, so it neither generates nor reports RUNICBRIDGE006 or RUNICBRIDGE015.
+  # The test project uses the app's Bridges: TUnit sets IsTestProject and it declares
+  # no Window or View, so it neither generates nor reports RUNICBRIDGE006 or 015.
   if [[ -e "$output/$project_name.Tests/obj/runic-bridge" || -e "$output/$project_name.Tests/obj/Debug/net10.0/runic-bridge" ]] \
     || grep -Eq 'RUNICBRIDGE[0-9]+' "$log"; then
     echo "Building the generated tests ran Bridge generation in the test project." >&2

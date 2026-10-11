@@ -67,22 +67,21 @@
     <ItemGroup>
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
         Condition="'%(PackageReference.Identity)' == 'Runic.Application'" />
-      <_RunicBridgeDirectAdapter Include="@(PackageReference)"
-        Condition="'%(PackageReference.Identity)' == 'Runic.Application.Desktop' or '%(PackageReference.Identity)' == 'Runic.Application.CsWebUi' or '%(PackageReference.Identity)' == 'Runic.Application.Wpf'" />
     </ItemGroup>
-    <!-- A project that receives a host adapter only through a referenced
-         application, such as a test project, consumes that application's
-         generated Bridges and does not generate its own. Unless it declares a
-         Window or View itself or has a frontend, generation stays off there,
-         without RUNICBRIDGE006 or RUNICBRIDGE015 and without a bootstrap build. -->
+    <!-- A test project (IsTestProject, which Microsoft.NET.Test.Sdk and TUnit
+         set) that references a Runic application uses that application's
+         generated Bridges. Unless it declares a Window or View itself or
+         visibly expects output, generation stays off there, without
+         RUNICBRIDGE006 or RUNICBRIDGE015 and without a bootstrap build. Other
+         projects keep the diagnostics. -->
     <PropertyGroup>
-      <_RunicBridgeAdapterConsumer Condition="'$(RunicBridgeBuildEnabled)' == '' and '$(RunicApplicationHostAdapter)' == 'true' and '@(_RunicBridgeDirectPackage)' == '' and '@(_RunicBridgeDirectAdapter)' == '' and !Exists('$(RunicBridgeCodegenProject)') and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeAdapterConsumer>
+      <_RunicBridgeTestProject Condition="'$(IsTestProject)' == 'true' and '$(RunicBridgeBuildEnabled)' == '' and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeTestProject>
     </PropertyGroup>
-    <ItemGroup Condition="'$(_RunicBridgeAdapterConsumer)' == 'true'">
-      <_RunicBridgeConsumerViewSource Include="@(Compile)"
+    <ItemGroup Condition="'$(_RunicBridgeTestProject)' == 'true'">
+      <_RunicBridgeTestViewSource Include="@(Compile)"
         Condition="Exists('%(Compile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(Compile.FullPath)')), ':\s*(global::)?(Runic\.Application\.Views\.)?Runic(Window|View)\s*&lt;'))" />
     </ItemGroup>
-    <PropertyGroup Condition="'$(_RunicBridgeAdapterConsumer)' == 'true' and '@(_RunicBridgeConsumerViewSource)' == ''">
+    <PropertyGroup Condition="'$(_RunicBridgeTestProject)' == 'true' and '@(_RunicBridgeTestViewSource)' == ''">
       <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
     </PropertyGroup>
     <!-- Generation that this file turns on by default is optional: a project
