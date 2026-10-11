@@ -42,6 +42,17 @@ Verify behavioral conformance through real consumers rather than requiring
 matching API signatures. Add adapters when concrete consumer friction warrants
 them; native framework APIs that already compose well need no symmetry wrapper.
 
+ReactiveUI is the primary MVVM path and CommunityToolkit is supported, but
+general-purpose projects (Views and Navigation cores, Platform, Desktop, Assets
+and tools) depend on neither. Core code understands `ICommand`,
+`INotifyPropertyChanged`, `INotifyDataErrorInfo` and the Runic attributes; a
+library's types are known only to its convention module
+(`Runic.Application.Views/Conventions`, `Runic.Application.Views.Codegen/Conventions`),
+its generator plug-in and its adapter package. `eng/mvvm-layering.test.mjs` fails
+when a project outside its allow-list references ReactiveUI, System.Reactive or
+CommunityToolkit.Mvvm, directly, through a project reference, in its packed
+build files or in its locked package graph.
+
 Use `ProjectReference` and `workspace:*` for internal development dependencies.
 Published package names and dependency ranges are public contracts. A package's
 shipped targets and native assets stay with it. Shared .NET build policy lives in
