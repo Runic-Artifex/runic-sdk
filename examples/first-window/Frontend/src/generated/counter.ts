@@ -15,6 +15,7 @@ export interface CounterCheckedFields {
 
 /** A connected Counter ViewModel. Dispose it when its presentation ends. */
 export interface CounterClient extends ViewClient<CounterState> {
+  /** Calls the public C# setter of `CounterViewModel.Step`. */
   setStep(value: number): Promise<CounterState>;
   writeStep(value: number, options: FieldWriteOptions<number>): Promise<FieldWriteReceipt<number>>;
   fieldBaseline<K extends keyof CounterCheckedFields>(field: K): FieldBaseline<CounterCheckedFields[K]>;

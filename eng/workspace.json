@@ -251,7 +251,8 @@
         "packages/dotnet/Runic.Application.Wpf",
         "tests/dotnet/Runic.Application.Wpf.Tests",
         "tests/dotnet/Runic.Application.Wpf.Windows.Tests",
-        "examples/wpf-hybrid-editor"
+        "examples/wpf-hybrid-editor",
+        "tests/fixtures/application/wpf-bridge-consumer"
       ]
     },
     "views-effect": {

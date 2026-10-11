@@ -33,6 +33,12 @@ try
         Console.WriteLine("PASS GTK 4 DesktopEventLoop.Run entry point.");
         return 0;
     }
+    if (args.Contains("--signal", StringComparer.Ordinal))
+    {
+        RunSignalSmoke();
+        Console.WriteLine("PASS GTK 4 SIGTERM closes the window, ends the GTK loop and disposes the host.");
+        return 0;
+    }
     if (args.Contains("--no-display", StringComparer.Ordinal))
     {
         // Run with no reachable display: gtk_init would end the process with exit(1).
@@ -168,6 +174,47 @@ static void RunEventLoopSmoke()
     {
         started?.Validate();
         throw new InvalidOperationException("DesktopEventLoop.Run did not dispose the host it started.");
+    }
+    catch (ObjectDisposedException)
+    {
+    }
+}
+
+// SIGTERM must run the shutdown of a closed last window: the GTK window closes on the GTK thread, WaitForClose
+// returns, the application returns and DesktopEventLoop.Run disposes the host before GTK quits.
+[SupportedOSPlatform("linux")]
+static void RunSignalSmoke()
+{
+    DesktopHost? started = null;
+    var closed = false;
+    int result = DesktopEventLoop.Run(new DesktopHostOptions().WithGtk4("dev.runic.desktop.gtk4.SignalSmoke"), async host =>
+    {
+        started = host;
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Html("<!doctype html><title>GTK4 signal</title><script src=\"webui.js\"></script>"),
+        });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true });
+        if (await surface.ExecuteJavaScriptAsync("return document.title;", TimeSpan.FromSeconds(10)) != "GTK4 signal")
+        {
+            throw new InvalidOperationException("The GTK 4 signal window did not load its page.");
+        }
+        if (SignalNative.Kill(Environment.ProcessId, SignalNative.SigTerm) != 0)
+        {
+            throw new InvalidOperationException("The smoke could not send SIGTERM to itself.");
+        }
+        window.WaitForClose();
+        closed = host.ShutdownRequested.IsCancellationRequested;
+        return 43;
+    });
+    if (result != 43 || !closed)
+    {
+        throw new InvalidOperationException($"SIGTERM returned {result} (shutdown requested: {closed}) instead of closing the window.");
+    }
+    try
+    {
+        started?.Validate();
+        throw new InvalidOperationException("DesktopEventLoop.Run did not dispose the host after SIGTERM.");
     }
     catch (ObjectDisposedException)
     {
@@ -422,3 +469,11 @@ internal static class SmokeMode
     internal static bool DirectoryOnly { get; set; }
 }
 #pragma warning restore CA1416
+
+internal static partial class SignalNative
+{
+    internal const int SigTerm = 15;
+
+    [System.Runtime.InteropServices.LibraryImport("libc", EntryPoint = "kill")]
+    internal static partial int Kill(int processId, int signal);
+}

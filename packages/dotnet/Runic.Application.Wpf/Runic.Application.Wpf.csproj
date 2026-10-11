@@ -23,6 +23,7 @@
     <InternalsVisibleTo Include="Runic.Application.Wpf.Windows.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Application.Wpf.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="build/Runic.Application.Wpf.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Wpf.props" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

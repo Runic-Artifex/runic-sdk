@@ -23,7 +23,10 @@ internal static partial class Program
     private const string ProjectDescription =
         "The project file, or a directory with one .csproj. Defaults to the current directory.";
 
-    internal static Task<int> Main(string[] arguments) => RunAsync(arguments);
+    internal static Task<int> Main(string[] arguments) =>
+        arguments is [ProcessTreeSignal.CtrlCHelperArgument, string processId]
+            ? Task.FromResult(ProcessTreeSignal.RunCtrlCHelper(processId))
+            : RunAsync(arguments);
 
     internal static async Task<int> RunAsync(string[] arguments, ICommandConsole? console = null)
     {

@@ -1,1 +1,4 @@
 #nullable enable
+Runic.Desktop.DesktopHost.ShutdownRequested.get -> System.Threading.CancellationToken
+Runic.Desktop.DesktopHostOptions.HandleShutdownSignals.get -> bool
+Runic.Desktop.DesktopHostOptions.HandleShutdownSignals.init -> void

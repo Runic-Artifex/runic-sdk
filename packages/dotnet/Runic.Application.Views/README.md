@@ -157,6 +157,70 @@ The [First Window](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples
 [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views)
 examples exercise the packaged graph and generated client.
 
+## Read-only and settable state
+
+The web frontend is the View, so the usual MVVM rule applies: the ViewModel's
+C# accessibility is the contract, and the View decides what it binds two-way.
+A property with a public getter is state every View can read. A property with a
+public setter is also what any View, whether WPF, Avalonia or the web frontend,
+may set, so its generated client gets a `set<Property>` member. A `private set`
+keeps the property read-only to every View. Runic adds no attribute of its own.
+
+Give status that the ViewModel computes, such as `IsDirty`, `Error`, a status
+message or a collection, a private setter, and keep form fields publicly
+settable. With CommunityToolkit.Mvvm 8.4, declare partial properties:
+
+```csharp
+public sealed partial class EditorViewModel : ObservableObject
+{
+    // Form field: the client has setTitle.
+    [ObservableProperty]
+    public partial string Title { get; set; }
+
+    // Status: read-only to every View, so there is no setIsDirty or setError.
+    [ObservableProperty]
+    public partial bool IsDirty { get; private set; }
+
+    [ObservableProperty]
+    public partial string? Error { get; private set; }
+}
+```
+
+A field such as `[ObservableProperty] private bool isDirty;` generates a
+property with a public setter, so the web frontend could set it too. With
+ReactiveUI, give the property a private setter, either written out with
+`RaiseAndSetIfChanged` or generated with `[Reactive]`:
+
+```csharp
+public sealed partial class EditorViewModel : ReactiveObject
+{
+    private bool _isDirty;
+
+    // Form field: the client has setTitle.
+    [Reactive]
+    public partial string Title { get; set; } = "";
+
+    public bool IsDirty
+    {
+        get => _isDirty;
+        private set => this.RaiseAndSetIfChanged(ref _isDirty, value);
+    }
+
+    // The same with the ReactiveUI source generator.
+    [Reactive]
+    public partial string? Error { get; private set; }
+}
+```
+
+The comment on each generated `set<Property>` member names the C# setter it
+calls. To ask the ViewModel to change its status, call a command. The
+[React](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/react#read-only-state-and-two-way-binding),
+[Vue](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/vue#read-only-state-and-v-model),
+[Svelte](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/svelte#read-only-state-and-bindvalue)
+and [Angular](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/angular#read-only-state-and-two-way-binding)
+guides show reading state one way and binding a settable property two way.
+The `dotnet new runic-app` template's Counter page has one of each.
+
 ## Generated TypeScript
 
 Each ViewModel gets a module named after it (`EditorViewModel` becomes
@@ -248,6 +312,8 @@ generation; every other code fails the build.
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
 | `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or `Nullable<T>`. | Declare one failure type per command: any Bridge value type, typically a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
 | `RUNICBRIDGE013` (warning) | A public, concrete ViewModel in the application assembly can be put in a ViewModel content property, ViewModel collection or `NavigationRegion<TContent>` slot, but has no View, so pushing or presenting it throws `NotSupportedException` naming the slot and the type. Broad slot types are not checked: framework types (System, ReactiveUI, CommunityToolkit), a type the slot's owner or a Window's ViewModel also derives from or implements, and a type that more than eight ViewModels without a View could fill. | Add a View, such as `public sealed partial class SettingsView : RunicView<SettingsViewModel>;` (with the slot's `[RunicViewContract]`, if any). If the type is never presented there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`. |
+| `RUNICBRIDGE014` | A project declares Runic Views, but `RunicBridgeFrontendDir` does not exist or, with the default build command, has no `package.json`. Reported by the build targets. | Create the frontend there, point `RunicBridgeFrontendDir` at your frontend package, or set `RunicBridgeBuildFrontend=false` when another tool builds it. |
+| `RUNICBRIDGE015` (warning) | A project declares a Runic Window or View, but generation is off because it references no host adapter and not `Runic.Application` directly, so no bridge, `AddRunicViews()` or client is generated. Reported by the build targets. | Set `RunicBridgeBuildEnabled=true` to generate in that project, or `false` when another project generates its Views. |
 
 ## Build properties
 
@@ -277,7 +343,14 @@ development server serves the frontend. The
 lists the development-server properties it reads.
 
 Bridge generation turns on by default for a project that references
-`Runic.Application` or builds in this repository. That default is optional:
+`Runic.Application` directly, references a host adapter
+(`Runic.Application.Desktop`, `Runic.Application.CsWebUi` or
+`Runic.Application.Wpf`) directly or transitively, or builds in this repository.
+Each adapter's build props set `RunicApplicationHostAdapter` to `true`, which is
+what the targets check. A project that reaches `Runic.Application` only through
+another project, such as a library that references a model project, does not
+generate; if it declares a Window or View anyway, the build warns with
+`RUNICBRIDGE015`. That default is optional:
 when the assembly declares no Runic Window or View, for example an application
 that only uses the navigator, the build generates nothing (and removes stale
 generated C# and TypeScript), skips the frontend install, build and copy steps,
@@ -288,11 +361,19 @@ without a Window, when the project sets `RunicBridgeBuildEnabled` to `true`, or
 when it shows that it expects output: a `package.json` in
 `RunicBridgeFrontendDir`, `RunicBridgeFrontendInput` items,
 `RunicBridgeCompositionType` or `RunicBridgeModelAssembly`. Projects that
-reference a host adapter (`Runic.Application.CsWebUi` or
-`Runic.Application.Desktop`) always require generation, because the adapter
-sets `RunicBridgeCompositionType`. A navigator-only application should set
+reference `Runic.Application.CsWebUi` or `Runic.Application.Desktop` always
+require generation, because the adapter sets `RunicBridgeCompositionType`. WPF
+projects (`UseWPF`) stay optional, because a WPF application often keeps its
+Views in a WPF-free model project. A navigator-only application should set
 `RunicBridgeBuildEnabled` to `false`: that also skips the nested bootstrap
 build, which optional mode still pays for.
+
+When the Views live in a referenced project, the application copies that
+project's built `<frontend>/dist` to its own `www/` on build and publish, so the
+application itself can set `RunicBridgeBuildEnabled` to `false`. The
+application's own frontend wins over a referenced one with the same file. WPF's
+temporary markup-compile project (`*_wpftmp`) never runs the generator; it
+compiles the code that the real project generated.
 
 A single-project application is compiled twice: a bootstrap pass with an empty
 generated composition, which the generator inspects, then the real build with

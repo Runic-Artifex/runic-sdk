@@ -14,6 +14,8 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- Faults link to their catalog entry at the release tag. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <!-- LibraryImport for the signals that stop the application gracefully. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>

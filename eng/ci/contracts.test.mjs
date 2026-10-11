@@ -109,9 +109,12 @@ test('every executable application fixture runs in CI', () => {
   const commands = readdirSync(resolve(root, '.github/workflows'))
     .flatMap(name => readFileSync(resolve(root, '.github/workflows', name), 'utf8').split('\n'))
     .filter(line => /\bdotnet (run|publish|test)\b/.test(line) || /\b(bun|node) \S*package-smoke\.mjs\b/.test(line));
+  // A package-smoke.mjs in the fixture's root folder also covers its nested projects.
   const runByWorkflow = path => {
     const directory = path.slice(0, path.lastIndexOf('/'));
-    return commands.some(line => line.includes(path) || line.includes(`${directory}/package-smoke.mjs`) || new RegExp(`${directory.replaceAll('.', '\\.')}(?=[\\s"']|$)`).test(line));
+    const fixture = path.split('/').slice(0, 4).join('/');
+    return commands.some(line => line.includes(path) || line.includes(`${directory}/package-smoke.mjs`)
+      || line.includes(`${fixture}/package-smoke.mjs`) || new RegExp(`${directory.replaceAll('.', '\\.')}(?=[\\s"']|$)`).test(line));
   };
   const suites = managedTests(root, 'linux').map(item => item.path);
   const listed = applicationFixtures.map(item => item.path);

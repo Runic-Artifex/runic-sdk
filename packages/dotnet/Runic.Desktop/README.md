@@ -21,6 +21,18 @@ any loop starts. If the factory cannot run its loop, the reasons go to
 `DiagnosticSink` and the logger, and the plain loop runs so a browser fallback
 can open. One Desktop event loop runs per process.
 
+Ctrl+C, SIGTERM and closing the Windows console stop the application the same
+way as closing its last window. The first signal cancels
+`host.ShutdownRequested` and closes every open window without close
+confirmation, so `WaitForClose` returns. The application then releases its
+work, for example by disposing the services that own an `AcceptedWorkScope`,
+and `DesktopEventLoop.Run` disposes the host before the loop ends. Each window
+closes on its own UI thread. A second Ctrl+C, a second or later after the first
+signal, ends the process at once; the copies that `dotnet run`, `dotnet watch`
+and `dotnet runic dev` forward do not. Set
+`DesktopHostOptions.HandleShutdownSignals` to `false` to handle these signals
+yourself. Hosts created with `DesktopHost.StartAsync` do not handle signals.
+
 `DesktopSurfaceOptions.Content` takes one `DesktopContent` case:
 
 | Case | Serves |
