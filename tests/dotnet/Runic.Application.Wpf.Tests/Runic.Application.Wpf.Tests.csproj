@@ -19,6 +19,8 @@
     <Compile Include="../../../packages/dotnet/Runic.Application.Wpf/WpfBridgeView.cs" Link="Host/WpfBridgeView.cs" />
     <Compile Include="../../../packages/dotnet/Runic.Application.Wpf/WpfPresentationOptions.cs" Link="Host/WpfPresentationOptions.cs" />
     <Compile Include="../../../packages/dotnet/Runic.Application.Wpf/WpfDiagnostics.cs" Link="Host/WpfDiagnostics.cs" />
+    <Compile Include="../../../packages/dotnet/Runic.Application.Wpf/PresentationLifecycle.cs" Link="Host/PresentationLifecycle.cs" />
+    <Compile Include="../../../packages/dotnet/Runic.Application.Wpf/RunicViewHostState.cs" Link="Host/RunicViewHostState.cs" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

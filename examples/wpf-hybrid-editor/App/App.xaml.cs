@@ -26,7 +26,7 @@ public partial class App : Application
         _services = AddServices(new ServiceCollection()).BuildServiceProvider();
         _windowScope = _services.CreateScope();
         var regions = _windowScope.ServiceProvider.GetRequiredService<AppRegions>();
-        new MainWindow(regions) { DataContext = regions }.Show();
+        new MainWindow { DataContext = regions }.Show();
         await regions.Main.ResetAsync<NotesListViewModel>();
     }
 

@@ -40,6 +40,7 @@ internal static class Program
             Run("view constructors get the content", HostTests.LocatorPassesTheContent);
             Run("failed view and rebinding", HostTests.FailedViewAndRebinding);
             Run("naming convention", HostTests.NamingConvention);
+            Run("GuardWindowClose", HostTests.GuardWindowClose);
             Run("BrowseBack", HostTests.BrowseBack);
             Run("double BrowseBack, then Back from code", HostTests.DoubleBrowseBackThenBackFromCode);
             Run("unloaded host is collectable", HostTests.UnloadedHostIsCollectable);
@@ -60,6 +61,7 @@ internal static class Program
             Run("owner modality", DialogTests.OwnerModality);
             Run("shared refcount", DialogTests.SharedRefcount);
             Run("modality table holds", DialogTests.ModalityTableHolds);
+            Run("IsDefault and IsCancel buttons", DialogTests.DefaultAndCancelButtons);
             Run("Esc", DialogTests.Escape);
             Run("owner close", DialogTests.OwnerClose);
             Run("leave confirmation in a dialog", DialogTests.LeaveConfirmationInDialog);

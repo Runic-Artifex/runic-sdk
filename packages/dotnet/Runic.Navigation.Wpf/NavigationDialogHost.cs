@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
@@ -18,11 +20,17 @@ namespace Runic.Navigation.Wpf;
 /// </para>
 /// <para>
 /// A dialog completes through its entry (<c>CompleteAsync</c> or <c>DismissAsync</c>), never through
-/// <see cref="Window.DialogResult"/>, which throws on a window shown with <see cref="Window.Show"/>, and never through
-/// <c>IsCancel</c> or <c>IsDefault</c> buttons. Closing a dialog window (the close button, Alt+F4 or, with
+/// <see cref="Window.DialogResult"/>, which throws on a window shown with <see cref="Window.Show"/>. Closing a dialog
+/// window (the close button, Alt+F4, an <see cref="Button.IsCancel"/> button without a command or, with
 /// <see cref="CloseOnEscape"/>, Esc) goes back in the region, or clears it from its bottom entry; a guard may veto it,
 /// and the window stays open. The host never cancels its owner's close: the dialogs close with the owner, and the host
 /// clears the region once.
+/// </para>
+/// <para>
+/// <see cref="Button.IsDefault"/> and <see cref="Button.IsCancel"/> work as in a window shown with
+/// <see cref="Window.ShowDialog"/>: Enter clicks the default button, which runs its command. A cancel button without a
+/// command dismisses the dialog, where <c>ShowDialog</c> would set <c>DialogResult</c> to <see langword="false"/>. Esc
+/// dismisses the dialog while <see cref="CloseOnEscape"/> is on, and clicks the cancel button when it is off.
 /// </para>
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId)]
@@ -110,6 +118,7 @@ public class NavigationDialogHost : FrameworkElement
     }
 
     /// <summary>Gets or sets whether Esc in a dialog window closes it like its close button. The default is <see langword="true"/>.</summary>
+    /// <remarks>When <see langword="false"/>, Esc still clicks a <see cref="Button.IsCancel"/> button in the dialog.</remarks>
     public bool CloseOnEscape
     {
         get => (bool)GetValue(CloseOnEscapeProperty);
@@ -258,6 +267,11 @@ public class NavigationDialogHost : FrameworkElement
             window.DataContext = entry.Content;
             window.Content = NavigationPresenters.Create(this, region, entry, ViewLocator, explicitTemplate: true);
             window.InputBindings.Add(new KeyBinding(new EscapeCommand(this, entry.Id), Key.Escape, ModifierKeys.None));
+            // ShowDialog's IsCancel: a cancel button without a command closes the dialog, here through the region.
+            window.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler((_, e) =>
+            {
+                if (e.OriginalSource is Button { IsCancel: true, Command: null }) PostDismiss(entry.Id);
+            }));
             window.Closing += OnDialogClosing;
             window.Closed += OnDialogClosed;
             _windows.Add(dialog);

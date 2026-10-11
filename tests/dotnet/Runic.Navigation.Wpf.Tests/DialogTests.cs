@@ -1,5 +1,8 @@
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using static Runic.Navigation.Wpf.Tests.Ui;
@@ -234,6 +237,39 @@ internal static class DialogTests
             DialogModalityTable.Release(held!);
         }
         finally { window.Close(); }
+    }
+
+    // W250-016: IsDefault and IsCancel as in ShowDialog. Enter and Esc go through WPF's access keys, as from the keyboard.
+    public static void DefaultAndCancelButtons()
+    {
+        using var scene = new DialogScene(host => host.Resources.Add(new DataTemplateKey(typeof(ButtonsDialog)), ButtonsDialog.Template()));
+        // Enter clicks the default button, whose command completes the dialog.
+        var accepted = new ButtonsDialog();
+        var request = scene.Region.PushForResult<bool>(NavigationTarget.Own<object>(accepted));
+        var window = scene.WaitForWindows(1);
+        Require(AccessKeyManager.ProcessKey(PresentationSource.FromVisual(window), "\r", false), "Enter found no default button.");
+        Require(Pump(request.Completion) is NavigationCompletion<bool>.Completed { Value: true }, "Enter did not run the default button's command.");
+        PumpUntil(() => !IsOpen(window), "the accepted dialog to close");
+
+        // A cancel button without a command dismisses, through Esc with CloseOnEscape off, or a click.
+        scene.Host.CloseOnEscape = false;
+        request = scene.Region.PushForResult<bool>(NavigationTarget.Own<object>(new ButtonsDialog()));
+        window = scene.WaitForWindows(1);
+        Require(AccessKeyManager.ProcessKey(PresentationSource.FromVisual(window), "\x1B", false), "Esc found no cancel button.");
+        Require(Pump(request.Completion) is NavigationCompletion<bool>.Dismissed, "The cancel button did not dismiss the dialog.");
+        PumpUntil(() => !IsOpen(window), "the cancelled dialog to close");
+
+        // A cancel button with a command only runs it.
+        var commanded = new ButtonsDialog { CancelCommand = new RelayCommand(() => { }) };
+        request = scene.Region.PushForResult<bool>(NavigationTarget.Own<object>(commanded));
+        window = scene.WaitForWindows(1);
+        var cancel = ButtonsDialog.Find(window, "Cancel");
+        ((IInvokeProvider)new ButtonAutomationPeer(cancel).GetPattern(PatternInterface.Invoke)!).Invoke();
+        PumpUntil(() => commanded.CancelCommand is RelayCommand { Runs: 1 }, "the cancel command");
+        Drain();
+        Require(IsOpen(window) && !request.Completion.IsCompleted, "A cancel button with a command dismissed the dialog.");
+        Pump(commanded.Entry!.DismissAsync());
+        PumpUntil(() => !IsOpen(window), "the dialog to close");
     }
 
     public static void Escape()
