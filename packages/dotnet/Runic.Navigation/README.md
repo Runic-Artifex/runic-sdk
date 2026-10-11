@@ -499,6 +499,17 @@ public sealed partial class ConfirmNavigationViewModel(NavigationEntryContext en
 }
 ```
 
+ReactiveUI apps can ask through an `Interaction` instead of a dialog region, with
+`ReactiveLeaveConfirmation.WithInteraction` from
+[Runic.Navigation.ReactiveUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#leave-confirmation-through-an-interaction).
+
+Work that a hook starts on a presentation's side, such as a question shown in a
+browser, should end with the hook. `RunicNavigator.HookCancellationToken`
+returns the token of the hook whose code runs on the calling asynchronous flow
+(the guard's `token`), or `CancellationToken.None` outside hooks.
+`Runic.Application.Views` ends a browser interaction request with it, so a
+superseded guard aborts the browser handler's `signal`.
+
 ### Window close and disposal
 
 DI disposes the navigator before the model context it depends on. Its

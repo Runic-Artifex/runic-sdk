@@ -184,6 +184,10 @@ public sealed class BridgeInteractionRouter : IDisposable
             || string.IsNullOrWhiteSpace(invocation.ConnectionKey)) return null;
         if (invocation.CancellationToken.IsCancellationRequested)
             return Task.FromCanceled<TOutput>(invocation.CancellationToken);
+        // A navigation hook, such as a leave confirmation's guard, asks on behalf of its transition: the request ends
+        // when that transition is superseded, cancelled or closed.
+        var hook = NavigationHookCancellation();
+        if (hook.IsCancellationRequested) return Task.FromCanceled<TOutput>(hook);
         var lifetime = ResolveTimeout(timeout);
 
         var key = new DefinitionKey(route, name, contract);
@@ -214,7 +218,7 @@ public sealed class BridgeInteractionRouter : IDisposable
                 value => decodeOutput(value), lifetime, _session.TimeProvider.GetUtcNow().Add(lifetime));
             _pending.Add(requestId, request);
             presentation.Pending.Enqueue(requestId);
-            var cancellation = RegisterCancellation(requestId, request.Timeout, invocation.CancellationToken);
+            var cancellation = RegisterCancellation(requestId, request.Timeout, invocation.CancellationToken, hook);
             request.Cancellation = cancellation;
             // Register invokes synchronously for an already-cancelled token.
             // Never deliver a request whose admission was cancelled that way.
@@ -495,15 +499,22 @@ public sealed class BridgeInteractionRouter : IDisposable
         }
     }
 
-    private CancellationLease RegisterCancellation(string requestId, TimeSpan timeout, CancellationToken cancellationToken)
+#pragma warning disable RUNICNAV001 // Ends requests with the experimental navigator's hook token.
+    private static CancellationToken NavigationHookCancellation() => Runic.Navigation.RunicNavigator.HookCancellationToken;
+#pragma warning restore RUNICNAV001
+
+    private CancellationLease RegisterCancellation(string requestId, TimeSpan timeout, CancellationToken cancellationToken,
+        CancellationToken hookCancellation)
     {
         var source = new CancellationTokenSource(timeout, _session.TimeProvider);
-        var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, source.Token);
+        var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, hookCancellation, source.Token);
         var registration = linked.Token.Register(() =>
         {
             Exception error = cancellationToken.IsCancellationRequested
                 ? new RunicInteractionCancelledException("The invoking command was cancelled.")
-                : new RunicInteractionTimeoutException("The browser interaction timed out.");
+                : hookCancellation.IsCancellationRequested
+                    ? new RunicInteractionCancelledException("The navigation that asked was superseded or cancelled.")
+                    : new RunicInteractionTimeoutException("The browser interaction timed out.");
             CancelRequest(requestId, error);
         });
         return new CancellationLease(registration, linked, source);

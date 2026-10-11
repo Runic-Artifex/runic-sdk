@@ -7,7 +7,7 @@
     <PackageId>Runic.Navigation.ReactiveUI.Reactive</PackageId>
     <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
-    <Description>System.Reactive-flavor observables and a back command for Runic.Navigation regions.</Description>
+    <Description>System.Reactive-flavor observables, commands and interaction leave confirmation for Runic.Navigation regions and entries.</Description>
     <PackageTags>runic-artifex;navigation;reactiveui;system-reactive;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- First published in 0.7.0-preview.4; remove after that release (eng/release/README.md). -->
@@ -19,6 +19,8 @@
     <PackageReference Include="ReactiveUI.Reactive" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
     <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigation.cs" Link="Shared/ReactiveNavigation.cs" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveNavigationEntry.cs" Link="Shared/ReactiveNavigationEntry.cs" />
+    <Compile Include="../Runic.Navigation.ReactiveUI/ReactiveLeaveConfirmation.cs" Link="Shared/ReactiveLeaveConfirmation.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

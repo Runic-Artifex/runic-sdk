@@ -3,6 +3,7 @@
 import type { CodegenShapeState } from "./obj/bridge-frontend/generated/codegenShape.js";
 import type { DocumentedLayout, DocumentedState } from "./obj/bridge-frontend/generated/documented.js";
 import type { NamingClient, NamingState } from "./obj/bridge-frontend/generated/naming.js";
+import type { NavDiscardPrompt, NavigationOutcome, ReactiveNavEditorClient } from "./obj/bridge-frontend/generated/reactiveNavEditor.js";
 
 export function describeLayout(state: DocumentedState): string {
   const layout: DocumentedLayout = state.layout;
@@ -39,4 +40,21 @@ export function newState(state: NamingState): string {
 
 export function createItem(client: NamingClient): Promise<NamingState> {
   return client.newItem();
+}
+
+// W250-034/035: an editor's result commands return a typed NavigationOutcome, and the web View answers its
+// ReactiveLeaveConfirmation interaction; the signal aborts when the navigation that asked is superseded.
+export function answerLeaveConfirmation(
+  view: ReactiveNavEditorClient,
+  ask: (prompt: NavDiscardPrompt, signal: AbortSignal) => Promise<boolean>,
+): () => void {
+  return view.interactions.confirmDiscard.handle((prompt, { signal }) => ask(prompt, signal));
+}
+
+export async function closeEditor(view: ReactiveNavEditorClient): Promise<string> {
+  const operation = await view.startClose();
+  const settled = await operation.outcome();
+  if (!settled.ok) return "failed";
+  const outcome: NavigationOutcome = settled.value;
+  return outcome.kind === "Rejected" ? `kept: ${outcome.rejection ?? "unknown"}` : outcome.kind;
 }
