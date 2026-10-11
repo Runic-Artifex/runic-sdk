@@ -154,6 +154,14 @@ notifications arrive. The context-backed scheduler orders those notifications
 with bridge replies and state publication. A default headless scheduler may
 deliver them later; do not solve that by changing ReactiveUI's global scheduler.
 
+The scheduler delivers the command's notifications; the task body itself runs
+in the context because the bridge starts it in a turn. Set ViewModel state
+directly in a `CreateFromTask` body, also after `await`, as with any MVVM
+library. Use `InvokeAsync` only for code that left the context, for example
+after `ConfigureAwait(false)` or in `Task.Run`. The
+[threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await)
+has the details.
+
 The extension uses `TryAdd` for the scoped `IRunicModelContext`, singleton
 `IRunicReactiveSchedulerProvider`, and transient `ISequencer` (which returns
 the provider's scheduler for the resolved context), preserving custom

@@ -21,17 +21,6 @@ public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewMod
 {
     public DesktopWindow Presentation => host.Presentation;
     public DesktopSurface Surface => host.Surface;
-#if (gtk4)
-    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
-    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 4,
-    // PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)).
-    // Do not use LinuxPlatformProvider here: it parents dialogs through GTK 3.
-#else
-    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
-    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 3,
-    // LinuxPlatformProvider.CreateFileDialogs(NativeOwner).
-#endif
-    public DesktopNativeOwner NativeOwner => host.NativeOwner;
     public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 
@@ -44,17 +33,6 @@ public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewMod
     public WorkspaceViewModel ViewModel => host.ViewModel;
     public DesktopSurface Surface => host.Surface;
     public DesktopWindow Presentation => host.Presentation;
-#if (gtk4)
-    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
-    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 4,
-    // PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)).
-    // Do not use LinuxPlatformProvider here: it parents dialogs through GTK 3.
-#else
-    // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
-    // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 3,
-    // LinuxPlatformProvider.CreateFileDialogs(NativeOwner).
-#endif
-    public DesktopNativeOwner NativeOwner => host.NativeOwner;
     public ValueTask DisposeAsync() => host.DisposeAsync();
 }
 

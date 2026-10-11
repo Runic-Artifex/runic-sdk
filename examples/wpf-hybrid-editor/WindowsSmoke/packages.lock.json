@@ -7,15 +7,15 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
-          "Runic.Application": "[0.7.0-preview.4, )"
+          "Runic.Application": "[0.7.0-preview.7, )"
         }
       },
       "hybridnotes.wpf": {
         "type": "Project",
         "dependencies": {
-          "HybridNotes.Model": "[0.7.0-preview.4, )",
-          "Runic.Application.Wpf": "[0.7.0-preview.4, )",
-          "Runic.Navigation.Wpf": "[0.7.0-preview.4, )"
+          "HybridNotes.Model": "[0.7.0-preview.7, )",
+          "Runic.Application.Wpf": "[0.7.0-preview.7, )",
+          "Runic.Navigation.Wpf": "[0.7.0-preview.7, )"
         }
       },
       "Runic.Application": {
@@ -23,22 +23,27 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
+          "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
       "runic.application.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Application": "[0.7.0-preview.4, )",
-          "Runic.Desktop": "[0.7.0-preview.4, )",
-          "Runic.Platform.Runtime": "[0.7.0-preview.4, )"
+          "Runic.Application": "[0.7.0-preview.7, )",
+          "Runic.Desktop": "[0.7.0-preview.7, )",
+          "Runic.Platform.Linux": "[0.7.0-preview.7, )",
+          "Runic.Platform.Linux.Gtk4": "[0.7.0-preview.7, )",
+          "Runic.Platform.Linux.Portal": "[0.7.0-preview.7, )",
+          "Runic.Platform.MacOS": "[0.7.0-preview.7, )",
+          "Runic.Platform.Runtime": "[0.7.0-preview.7, )",
+          "Runic.Platform.Windows": "[0.7.0-preview.7, )"
         }
       },
       "runic.application.wpf": {
         "type": "Project",
         "dependencies": {
-          "Runic.Application.Desktop": "[0.7.0-preview.4, )"
+          "Runic.Application.Desktop": "[0.7.0-preview.7, )"
         }
       },
       "runic.desktop": {
@@ -59,16 +64,48 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
+          "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
       "runic.platform": {
         "type": "Project"
       },
+      "runic.platform.linux": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Linux.Portal": "[0.7.0-preview.7, )",
+          "Runic.Platform.Runtime": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.platform.linux.gtk4": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.platform.linux.portal": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.7.0-preview.7, )",
+          "Tmds.DBus.Protocol": "[0.95.1, )"
+        }
+      },
+      "runic.platform.macos": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.7.0-preview.7, )"
+        }
+      },
       "runic.platform.runtime": {
         "type": "Project",
         "dependencies": {
-          "Runic.Platform": "[0.7.0-preview.4, )"
+          "Runic.Platform": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.platform.windows": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.Platform.Runtime": "[0.7.0-preview.7, )"
         }
       },
       "CommunityToolkit.Mvvm": {
@@ -106,6 +143,12 @@
         "requested": "[1.0.4258.31, )",
         "resolved": "1.0.4258.31",
         "contentHash": "sHVZ2MQrHT1J3q5/6csn0fIP27rzpTO/RRC+wPQDrZheB7T4t2n+vVbY6SdCKr4WRV9s/gmBM3PPMWWJtoDzMg=="
+      },
+      "Tmds.DBus.Protocol": {
+        "type": "CentralTransitive",
+        "requested": "[0.95.1, )",
+        "resolved": "0.95.1",
+        "contentHash": "IbGhqZAqqgB/DkT70+lAk4MNv95tZtsTMFQ+S3uGy0aTfOkGVeFjeNJsX8dBI/3+CPnO5XW6lRQKGeFEgHElKw=="
       }
     }
   }

@@ -268,22 +268,16 @@ verify_template() {
       grep -Fq 'DiagnosticSink = ReportDiagnostic' "$output/Program.cs"
       ;;
   esac
-  # The NativeOwner comment names the provider for the selected Linux toolkit.
-  if [[ "$host" == desktop-gtk4 ]]; then
-    grep -Fq 'Gtk4PlatformProvider.CreatePortalWindowOwner(NativeOwner)' "$output/Views.cs"
-    if grep -n 'LinuxPlatformProvider.CreateFileDialogs' "$output/Views.cs"; then
-      echo "The GTK 4 project points NativeOwner at the GTK 3 provider." >&2
-      exit 1
-    fi
-  elif [[ "$host" == desktop ]]; then
-    grep -Fq 'LinuxPlatformProvider.CreateFileDialogs(NativeOwner)' "$output/Views.cs"
+  # Every host registers the platform-services facade, and no project picks a provider package itself.
+  grep -Fq 'services.AddRunicPlatformServices();' "$output/Program.cs"
+  if grep -nE 'NativeOwner|PlatformProvider|Runic\.Platform\.' "$output/Views.cs" "$output/Program.cs" "$output/$project_name.csproj"; then
+    echo "The $host project chooses a platform provider instead of using AddRunicPlatformServices." >&2
+    exit 1
   fi
-  # Only the GTK 4 variant selects GTK 4 and references its provider and portal packages.
+  # Only the GTK 4 variant selects GTK 4 and references its desktop package.
   if [[ "$host" == desktop-gtk4 ]]; then
     grep -Fq 'DiagnosticSink = ReportDiagnostic }.WithGtk4();' "$output/Program.cs"
-    for package in Runic.Desktop.Gtk4 Runic.Platform.Linux.Gtk4 Runic.Platform.Linux.Portal; do
-      grep -Fq "\"$package\"" "$output/$project_name.csproj"
-    done
+    grep -Fq '"Runic.Desktop.Gtk4"' "$output/$project_name.csproj"
   elif grep -nE 'Gtk4|Linux\.Portal' "$output/Program.cs" "$output/$project_name.csproj"; then
     echo "The $host project references the GTK 4 profile." >&2
     exit 1

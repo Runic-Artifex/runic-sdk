@@ -133,41 +133,38 @@ internal static class BridgeDomainFailures
     }
 }
 
-// Where a command declares its failure: CommunityToolkit generates SaveCommand
-// from [RelayCommand] Save, SaveAsync or OnSave, and the declaration may sit on
-// that method. Shared by the code generator and BridgeContractShape.
+// Where a command declares its failure: an MVVM library may generate the
+// command property from an attributed method (CommunityToolkit generates
+// SaveCommand from [RelayCommand] Save, SaveAsync or OnSave), and the
+// declaration may sit on that method. Shared by the code generator and
+// BridgeContractShape.
 internal static class BridgeCommandSources
 {
     [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]
-    internal static MethodInfo? ToolkitSourceMethod(Type model, PropertyInfo command)
+    internal static MethodInfo? SourceMethod(Type model, PropertyInfo command)
     {
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal)) return null;
         var name = command.Name[..^"Command".Length];
         return (command.DeclaringType ?? model).GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance
                 | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-            .Where(method => method.CustomAttributes.Any(attribute =>
-                attribute.AttributeType.FullName == "CommunityToolkit.Mvvm.Input.RelayCommandAttribute"))
-            .OrderBy(method => method.MetadataToken)
-            .FirstOrDefault(method =>
-            {
-                var candidate = method.Name;
-                if (candidate.Length > 2 && candidate.StartsWith("On", StringComparison.Ordinal) && char.IsUpper(candidate[2]))
-                    candidate = candidate[2..];
-                if (candidate.Length > "Async".Length && candidate.EndsWith("Async", StringComparison.Ordinal))
-                    candidate = candidate[..^"Async".Length];
-                return candidate == name;
-            });
+            .Select(method => (Method: method, Convention: method.CustomAttributes
+                .Select(attribute => BridgeMvvmConventions.CommandSource(attribute.AttributeType))
+                .FirstOrDefault(convention => convention is not null)))
+            .Where(source => source.Convention is not null)
+            .OrderBy(source => source.Method.MetadataToken)
+            .FirstOrDefault(source => (source.Convention!.CommandSourceName?.Invoke(source.Method.Name) ?? source.Method.Name) == name)
+            .Method;
     }
 
     // The failure declarations of a command: on the property, then on its
-    // [RelayCommand] method. More than one is a codegen diagnostic.
+    // source method. More than one is a codegen diagnostic.
     [RequiresUnreferencedCode("Reflects over the non-public methods of a ViewModel; used only by code generation and Hot Reload.")]
     internal static IReadOnlyList<(string DeclaredOn, Type Failure)> FailureDeclarations(Type model, PropertyInfo command)
     {
         var declarations = new List<(string, Type)>();
         foreach (var attribute in command.GetCustomAttributes<RunicFailureAttribute>(true))
             declarations.Add(("property", attribute.Failure));
-        if (ToolkitSourceMethod(model, command) is { } method)
+        if (SourceMethod(model, command) is { } method)
             foreach (var attribute in method.GetCustomAttributes<RunicFailureAttribute>(true))
                 declarations.Add(("method", attribute.Failure));
         return declarations;

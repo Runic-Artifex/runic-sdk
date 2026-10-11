@@ -12,6 +12,7 @@
     <PackageReference Include="CsWebUi" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Update="build/Runic.Application.Views.CsWebUi.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.CsWebUi.targets" />
     <None Update="build/Runic.Application.CsWebUi.props" Pack="true" PackagePath="buildTransitive/Runic.Application.CsWebUi.props" />

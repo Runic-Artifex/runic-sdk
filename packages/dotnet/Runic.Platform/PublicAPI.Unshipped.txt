@@ -1,1 +1,9 @@
 #nullable enable
+Runic.Platform.IWindowPlatformServices
+Runic.Platform.IWindowPlatformServices.Clipboard.get -> Runic.Platform.ITextClipboard!
+Runic.Platform.IWindowPlatformServices.FileDialogs.get -> Runic.Platform.IFileDialogs!
+Runic.Platform.IWindowPlatformServices.FileLauncher.get -> Runic.Platform.IDesktopFileLauncher!
+Runic.Platform.PickerResult<T>.Selected.Deconstruct(out T value) -> void
+Runic.Platform.WindowPlatformServices
+static Runic.Platform.WindowPlatformServices.CapabilityIds.get -> System.Collections.Immutable.ImmutableArray<string!>
+static Runic.Platform.WindowPlatformServices.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IWindowPlatformServices!

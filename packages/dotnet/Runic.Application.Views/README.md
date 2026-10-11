@@ -157,6 +157,49 @@ The [First Window](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples
 [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-reactive-views)
 examples exercise the packaged graph and generated client.
 
+## Threading: state after await
+
+A Window's ViewModels belong to its model context. The bridge reads state,
+applies property writes and starts commands in that context's turns, one at a
+time. The rule for both MVVM flavours is:
+
+> **Set ViewModel state directly in a command, also after `await`. Leave the
+> model context only for work that doesn't touch ViewModel state, and commit
+> its result with `IRunicModelContext.InvokeAsync`.**
+
+```csharp
+[RelayCommand] // or ReactiveCommand.CreateFromTask(SaveAsync, outputScheduler: scheduler)
+private async Task SaveAsync(CancellationToken token)
+{
+    Status = "Saving";
+    await _store.SaveAsync(Title, token);
+    Status = "Saved";               // runs in a model-context turn
+}
+```
+
+- A command body that the bridge starts, such as a CommunityToolkit
+  `[RelayCommand]` or `AsyncRelayCommand`, or a ReactiveUI
+  `ReactiveCommand.CreateFromTask`, runs in a turn. Every `await` in it, nested
+  ones included, resumes in a later turn of the same context, as code on a UI
+  thread resumes on that thread. Writes after `await` are applied in the order
+  in which the continuations become ready, and no other turn runs between two
+  awaits of one body.
+- Code after `ConfigureAwait(false)`, in `Task.Run`, in a timer or in another
+  background callback runs outside the context. Do CPU-bound or blocking work
+  there, then commit: `await modelContext.InvokeAsync(() => Items = loaded)`.
+  Don't use `ConfigureAwait(false)` in ViewModel code that writes state after
+  it. Code you start outside a turn, such as a test that calls
+  `ExecuteAsync` directly, also commits with `InvokeAsync`.
+- Don't block a turn on asynchronous work (`.Result`, `.Wait()`,
+  `GetAwaiter().GetResult()`): its continuation needs the same context, so it
+  deadlocks, as it would on a UI thread.
+- When the context closes, for example because the window closed, pending
+  continuations run on the thread pool outside any turn, so the command still
+  finishes; nothing presents its later writes.
+- With WPF, `DispatcherModelContext` is the UI dispatcher, so the same rule
+  holds there. Navigation hooks are not commands; see
+  [Runic.Navigation threading](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#threading).
+
 ## Read-only and settable state
 
 The web frontend is the View, so the usual MVVM rule applies: the ViewModel's
@@ -321,6 +364,8 @@ generation; every other code fails the build.
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
 | `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or `Nullable<T>`. | Declare one failure type per command: any Bridge value type, typically a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
 | `RUNICBRIDGE013` (warning) | A public, concrete ViewModel in the application assembly can be put in a ViewModel content property, ViewModel collection or `NavigationRegion<TContent>` slot, but has no View, so pushing or presenting it throws `NotSupportedException` naming the slot and the type. Broad slot types are not checked: framework types (System, ReactiveUI, CommunityToolkit), a type the slot's owner or a Window's ViewModel also derives from or implements, and a type that more than eight ViewModels without a View could fill. | Add a View, such as `public sealed partial class SettingsView : RunicView<SettingsViewModel>;` (with the slot's `[RunicViewContract]`, if any). If the type is never presented there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`. |
+| `RUNICBRIDGE014` | A project declares Runic Views, but `RunicBridgeFrontendDir` does not exist or, with the default build command, has no `package.json`. Reported by the build targets. | Create the frontend there, point `RunicBridgeFrontendDir` at your frontend package, or set `RunicBridgeBuildFrontend=false` when another tool builds it. |
+| `RUNICBRIDGE015` (warning) | A project declares a Runic Window or View, but generation is off because it references no host adapter and not `Runic.Application` directly, so no bridge, `AddRunicViews()` or client is generated. Reported by the build targets. | Set `RunicBridgeBuildEnabled=true` to generate in that project, or `false` when another project generates its Views. |
 
 ## Build properties
 
@@ -350,7 +395,14 @@ development server serves the frontend. The
 lists the development-server properties it reads.
 
 Bridge generation turns on by default for a project that references
-`Runic.Application` or builds in this repository. That default is optional:
+`Runic.Application` directly, references a host adapter
+(`Runic.Application.Desktop`, `Runic.Application.CsWebUi` or
+`Runic.Application.Wpf`) directly or transitively, or builds in this repository.
+Each adapter's build props set `RunicApplicationHostAdapter` to `true`, which is
+what the targets check. A project that reaches `Runic.Application` only through
+another project, such as a library that references a model project, does not
+generate; if it declares a Window or View anyway, the build warns with
+`RUNICBRIDGE015`. That default is optional:
 when the assembly declares no Runic Window or View, for example an application
 that only uses the navigator, the build generates nothing (and removes stale
 generated C# and TypeScript), skips the frontend install, build and copy steps,
@@ -361,11 +413,19 @@ without a Window, when the project sets `RunicBridgeBuildEnabled` to `true`, or
 when it shows that it expects output: a `package.json` in
 `RunicBridgeFrontendDir`, `RunicBridgeFrontendInput` items,
 `RunicBridgeCompositionType` or `RunicBridgeModelAssembly`. Projects that
-reference a host adapter (`Runic.Application.CsWebUi` or
-`Runic.Application.Desktop`) always require generation, because the adapter
-sets `RunicBridgeCompositionType`. A navigator-only application should set
+reference `Runic.Application.CsWebUi` or `Runic.Application.Desktop` always
+require generation, because the adapter sets `RunicBridgeCompositionType`. WPF
+projects (`UseWPF`) stay optional, because a WPF application often keeps its
+Views in a WPF-free model project. A navigator-only application should set
 `RunicBridgeBuildEnabled` to `false`: that also skips the nested bootstrap
 build, which optional mode still pays for.
+
+When the Views live in a referenced project, the application copies that
+project's built `<frontend>/dist` to its own `www/` on build and publish, so the
+application itself can set `RunicBridgeBuildEnabled` to `false`. The
+application's own frontend wins over a referenced one with the same file. WPF's
+temporary markup-compile project (`*_wpftmp`) never runs the generator; it
+compiles the code that the real project generated.
 
 A single-project application is compiled twice: a bootstrap pass with an empty
 generated composition, which the generator inspects, then the real build with

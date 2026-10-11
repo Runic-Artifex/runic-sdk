@@ -848,7 +848,7 @@ internal sealed class BridgeTypeGraph
         private IEnumerable<PropertyInfo> DataProperties(Type type, string path)
         {
             var hierarchy = new Stack<Type>();
-            for (var current = type; current is not null && current != typeof(object) && !IsFrameworkBase(current); current = current.BaseType)
+            for (var current = type; current is not null && current != typeof(object) && !BridgeContractShape.IsFrameworkBase(current); current = current.BaseType)
                 hierarchy.Push(current);
             var names = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
             foreach (var current in hierarchy)
@@ -862,9 +862,6 @@ internal sealed class BridgeTypeGraph
                 yield return property;
             }
         }
-
-        private static bool IsFrameworkBase(Type type) => type.FullName is "ReactiveUI.ReactiveObject" or "CommunityToolkit.Mvvm.ComponentModel.ObservableObject" ||
-            type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
 
         private static string WireName(PropertyInfo property) =>
             property.GetCustomAttribute<RunicAliasAttribute>(inherit: true)?.Name

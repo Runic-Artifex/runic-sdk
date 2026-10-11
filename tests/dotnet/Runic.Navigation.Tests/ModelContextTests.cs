@@ -20,6 +20,144 @@ internal static class ModelContextTests
         await CloseSignalPrecedesQueuedRejection();
         await CloseCallbackFailureDoesNotInterruptShutdown();
         await ConcurrentDisposalWaitsForCloseNotification();
+        await AwaitsInATurnResumeInTurns();
+        await ContinuationsKeepTheirReadyOrder();
+        await ContinuationsAfterCloseRunOnThePool();
+        await AsyncVoidFailureInATurnIsReported();
+        await SendRunsInATurnOrInlineAfterClose();
+    }
+
+    // D018.5: code started in a turn resumes in a turn after each await, nested or not, until it leaves
+    // the context with ConfigureAwait(false).
+    private static async Task AwaitsInATurnResumeInTurns()
+    {
+        await using var context = new RunicModelContext();
+        var steps = new List<(string Step, bool InTurn, bool HasContext)>();
+        void Record(string step) => steps.Add((step, context.IsExecuting, SynchronizationContext.Current is not null));
+        async Task NestedAsync()
+        {
+            await Task.Delay(1);
+            Record("inner");
+        }
+        async Task BodyAsync()
+        {
+            Record("start");
+            await Task.Yield();
+            Record("yield");
+            await Task.Run(() => { });
+            Record("run");
+            await NestedAsync();
+            Record("nested");
+            await Task.Delay(1).ConfigureAwait(false);
+            Record("left");
+        }
+
+        var body = await context.InvokeAsync(BodyAsync);
+        await body.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(steps.Select(step => step.Step).SequenceEqual(["start", "yield", "run", "inner", "nested", "left"]),
+            $"The body did not run in order: {string.Join(", ", steps)}");
+        Require(steps.Take(5).All(step => step.InTurn && step.HasContext),
+            $"A continuation of code started in a turn ran outside a turn: {string.Join(", ", steps)}");
+        Require(steps[^1] is { InTurn: false, HasContext: false },
+            "Code after ConfigureAwait(false) stayed on the model context.");
+    }
+
+    // Continuations become turns in the order they become ready, and each runs to its next await
+    // before another turn starts.
+    private static async Task ContinuationsKeepTheirReadyOrder()
+    {
+        await using var context = new RunicModelContext();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var writes = new List<string>();
+        async Task WriteAsync(string name)
+        {
+            await gate.Task;
+            writes.Add($"{name}:1");
+            writes.Add($"{name}:2");
+            await Task.Yield();
+            writes.Add($"{name}:3");
+        }
+
+        var bodies = await context.InvokeAsync(() => new[] { WriteAsync("a"), WriteAsync("b"), WriteAsync("c") });
+        gate.SetResult();
+        await Task.WhenAll(bodies).WaitAsync(TimeSpan.FromSeconds(5));
+        Require(writes.SequenceEqual(["a:1", "a:2", "b:1", "b:2", "c:1", "c:2", "a:3", "b:3", "c:3"]),
+            $"Writes after await were not applied in ready order: {string.Join(", ", writes)}");
+    }
+
+    // A continuation never strands its task at shutdown: queued when the context closes, or posted
+    // after it closed, it runs on the thread pool outside any turn, and is not reported as dropped.
+    private static async Task ContinuationsAfterCloseRunOnThePool()
+    {
+        var context = new RunicModelContext();
+        var dropped = new List<Exception>();
+        context.UnhandledTurnException += dropped.Add;
+        var queuedGate = new TaskCompletionSource();
+        var lateGate = new TaskCompletionSource();
+        (bool InTurn, bool HasContext)? queuedResumed = null, lateResumed = null;
+        async Task QueuedAsync()
+        {
+            await queuedGate.Task;
+            queuedResumed = (context.IsExecuting, SynchronizationContext.Current is not null);
+        }
+        async Task LateAsync()
+        {
+            await lateGate.Task;
+            lateResumed = (context.IsExecuting, SynchronizationContext.Current is not null);
+        }
+
+        var (queued, late) = await context.InvokeAsync(() => (QueuedAsync(), LateAsync()));
+        using var running = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        Require(context.TryPost(() => { running.Set(); release.Wait(); }), "The blocking turn was rejected.");
+        Require(running.Wait(TimeSpan.FromSeconds(5)), "The blocking turn did not start.");
+        Task disposal;
+        try
+        {
+            queuedGate.SetResult(); // queued behind the blocking turn
+            disposal = context.DisposeAsync().AsTask();
+            await queued.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { release.Set(); }
+        await disposal.WaitAsync(TimeSpan.FromSeconds(5));
+        lateGate.SetResult(); // posted after the context closed
+        await late.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(queuedResumed == (false, false) && lateResumed == (false, false),
+            $"A continuation after close did not run on the pool: {queuedResumed}, {lateResumed}");
+        Require(dropped.Count == 0, $"A continuation after close was reported: {string.Join(", ", dropped)}");
+    }
+
+    // An async void method started in a turn throws into the context it resumed on: the failure is
+    // reported like a failed posted turn instead of escaping to the thread pool.
+    private static async Task AsyncVoidFailureInATurnIsReported()
+    {
+        await using var context = new RunicModelContext();
+        var reported = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.UnhandledTurnException += error => reported.TrySetResult(error);
+#pragma warning disable VSTHRD100 // The async void method is the case under test.
+        static async void FailLater()
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("async void");
+        }
+#pragma warning restore VSTHRD100
+        await context.InvokeAsync(FailLater);
+        var error = await reported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(error is InvalidOperationException { Message: "async void" }, $"The wrong failure was reported: {error}");
+        Require(await context.InvokeAsync(() => true), "The context stopped running turns after the failure.");
+    }
+
+    private static async Task SendRunsInATurnOrInlineAfterClose()
+    {
+        var context = new RunicModelContext();
+        var synchronizationContext = await context.InvokeAsync(() => SynchronizationContext.Current!);
+        var inTurn = false;
+        synchronizationContext.Send(_ => inTurn = context.IsExecuting, null);
+        Require(inTurn, "Send from another thread did not run in a turn.");
+        await context.DisposeAsync();
+        var ran = false;
+        synchronizationContext.Send(_ => ran = !context.IsExecuting, null);
+        Require(ran, "Send after close did not run inline.");
     }
 
     private static async Task CloseSignalPrecedesQueuedRejection()

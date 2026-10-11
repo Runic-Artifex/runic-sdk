@@ -46,6 +46,9 @@ This is enough to generate the client and bridge registrations. The application
 keeps its WPF `Window`; it does not need a Runic `Window`. Register the generated
 `AddRunicViews()` with your application services and build the frontend with the
 Views targets, as [HybridNotes.Model.csproj](Model/HybridNotes.Model.csproj) does.
+The WPF application sets `RunicBridgeBuildEnabled` to `false` and needs no copy
+target of its own: the Views targets copy the model project's built frontend to
+its `www/` folder.
 The logical View describes the web presentation contract; WPF's
 `MapView<EditorViewModel, EditorView>()` independently selects its native page.
 

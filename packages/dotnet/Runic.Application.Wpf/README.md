@@ -22,8 +22,20 @@ await view.OpenAsync();
 Register generated Bridges using `AddRunicViews()` from the application's
 generated composition. A logical `RunicView<TModel>` is sufficient; no additional
 Runic Window or navigation engine is required. The frontend uses the existing
-Desktop Views client and generated `connect...()` function. Frontend build and
-copying can be owned by the application as in other Runic Views integrations.
+Desktop Views client and generated `connect...()` function.
+
+Referencing this package turns Bridge generation on, as the other host adapters
+do. In a single-project application, declare the View next to the WPF code and
+keep the frontend in `Frontend/`: the build writes the client to
+`Frontend/src/generated`, builds the frontend and copies `Frontend/dist` to
+`www/`. WPF's temporary `*_wpftmp` markup-compile project reuses the generated
+code instead of generating again. Views and ViewModels cannot depend on WPF
+types; the generator skips such types. When the Views live in a WPF-free model
+project that references `Runic.Application`, that project generates and builds
+the frontend, and the WPF application copies its `dist` to `www/`. The
+application can then set `RunicBridgeBuildEnabled` to `false`. See the
+`Runic.Application` README's build properties for the frontend folder and
+diagnostics.
 
 The adapter uses DesktopHost's existing asset server, authenticated surface,
 WebSocket transport and Views session. Its `HwndHost` reuses Runic Desktop's

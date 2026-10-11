@@ -3,8 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Runic.Application.Views;
-using Runic.Application.Views.Codegen.ReactiveUI;
-using Runic.Application.Views.Codegen.Toolkit;
 
 /// <summary>
 /// Content-addressed cache for the multi-view bridge generator.
@@ -133,9 +131,7 @@ internal static class BridgeGenerationCache
         {
             Assembly.GetExecutingAssembly(),
             typeof(IBridgeTransport).Assembly,
-            typeof(ToolkitCommandInspector).Assembly,
-            typeof(ReactiveCommandInspector).Assembly,
-        };
+        }.Concat(MvvmCodegenConventions.All.Select(convention => convention.PluginAssembly));
         return assemblies.Select(assembly => assembly.Location)
             .Where(path => !string.IsNullOrEmpty(path) && File.Exists(path))
             .Select(Path.GetFullPath)
