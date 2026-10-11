@@ -9,9 +9,6 @@
     <RunicDiagnosticsHelpLinkBase>$(RunicReleaseSourceUrl)$(RunicDiagnosticsCatalog)#</RunicDiagnosticsHelpLinkBase>
     <_RunicRepositoryRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</_RunicRepositoryRoot>
     <RunicExperimentalHelpLinkBase Condition="'$(RunicExperimentalHelpLinkBase)' == ''">$(RunicReleaseSourceUrl)docs/experimental.md#</RunicExperimentalHelpLinkBase>
-    <!-- Named per project: a nested build, such as the Bridge bootstrap pass, can give
-         several projects one IntermediateOutputPath. -->
-    <_RunicReleaseLinksFile>$(IntermediateOutputPath)$(MSBuildProjectName).RunicReleaseLinks.g.cs</_RunicReleaseLinksFile>
     <RunicReleaseLinksNamespace Condition="'$(RunicReleaseLinksNamespace)' == ''">$(RootNamespace)</RunicReleaseLinksNamespace>
   </PropertyGroup>
 
@@ -21,6 +18,10 @@
        the ID, so a new diagnostic needs only its catalog entry. -->
   <Target Name="RunicGenerateReleaseLinks" BeforeTargets="CoreCompile" Condition="'$(RunicGenerateReleaseLinks)' == 'true'">
     <PropertyGroup>
+      <!-- Named per project: a nested build, such as the Bridge bootstrap pass, can give
+           several projects one IntermediateOutputPath. Set here, where IntermediateOutputPath
+           is known even when this file is imported before the SDK targets. -->
+      <_RunicReleaseLinksFile>$(IntermediateOutputPath)$(MSBuildProjectName).RunicReleaseLinks.g.cs</_RunicReleaseLinksFile>
       <_RunicReleaseLinksSource>
 // &lt;auto-generated/&gt;
 namespace $(RunicReleaseLinksNamespace)%3B
