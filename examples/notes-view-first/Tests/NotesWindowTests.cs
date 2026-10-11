@@ -468,17 +468,10 @@ internal sealed class TestWindow : IAsyncDisposable
         configure?.Invoke(services);
         _services = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         Scope = _services.CreateAsyncScope();
-        var window = Scope.ServiceProvider;
-        Host = new RunicWindowTestHost<ShellViewModel>(
-            window.GetRequiredService<ShellViewModel>(),
-            window.GetRequiredService<Func<IBridgeTransport, WindowContentSession, ShellViewModel, IDisposable>>(),
-            new RunicWindowTestHostOptions
-            {
-                ViewLocator = window.GetRequiredService<IRunicViewLocator>(),
-                // The window graph shares the navigator's model context.
-                ModelContext = window.GetRequiredService<IRunicModelContext>(),
-                TimeProvider = clock,
-            });
+        // Resolves the shell, its generated Bridge, the View locator and the model
+        // context the navigator shares from the window's scope.
+        Host = RunicWindowTestHost.Create<ShellViewModel>(Scope.ServiceProvider,
+            new RunicWindowTestHostOptions { TimeProvider = clock });
     }
 
     public AsyncServiceScope Scope { get; }

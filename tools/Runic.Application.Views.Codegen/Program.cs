@@ -1018,7 +1018,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var plan = commandPlans[command];
         var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
-        XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command]));
+        XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command], plan.Command));
         var reply = plan.FailureGraph is { } declaredFailure
             ? $"BridgeOutcome<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
         ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;");
@@ -1373,10 +1373,12 @@ static T? InspectCommand<T>(Type model, PropertyInfo command, Func<T?> inspect) 
 static MethodInfo? CommandSourceMethod(Type model, PropertyInfo command) =>
     BridgeCommandSources.SourceMethod(model, command);
 
-// A generated command property's comment only says which method it wraps
-// ([RelayCommand]), so such a command uses its method's documentation alone.
-static string? CommandDocumentation(PropertyInfo command, MethodInfo? source) =>
-    source is null ? XmlDocumentation.Summary(command) : XmlDocumentation.Summary(source);
+// A generated command property's comment only says which method it wraps,
+// so such a command uses its method's documentation alone. Without a source
+// method, the command's MVVM convention chooses the property's comment.
+static string? CommandDocumentation(PropertyInfo command, MethodInfo? source, MvvmCommand? library) =>
+    source is not null ? XmlDocumentation.Summary(source)
+    : library is not null ? library.PropertyDocumentation(command) : XmlDocumentation.Summary(command);
 
 // The TypeScript parameter of a command with an argument: its source method's
 // parameter name, else the argument's C# type name, else "input".

@@ -23,14 +23,14 @@ export interface ToolkitCancelBackgroundOperation extends BridgeOperation<void> 
 /** A connected ToolkitCancel ViewModel. Dispose it when its presentation ends. */
 export interface ToolkitCancelClient extends ViewClient<ToolkitCancelState> {
   save(): Promise<ToolkitCancelState>;
-  /** Gets an `ICommand` instance that can be used to cancel `SaveCommand`. */
+  /** Cancels the running `save` call. */
   saveCancel(): Promise<ToolkitCancelState>;
   export(input: string): Promise<ToolkitCancelState>;
   canExport(input: string): Promise<boolean>;
-  /** Gets an `ICommand` instance that can be used to cancel `ExportCommand`. */
+  /** Cancels the running `export` call. */
   exportCancel(): Promise<ToolkitCancelState>;
   background(): Promise<ToolkitCancelState>;
-  /** Gets an `ICommand` instance that can be used to cancel `BackgroundCommand`. */
+  /** Cancels the running `background` call. */
   backgroundCancel(): Promise<ToolkitCancelState>;
   startSave(): Promise<ToolkitCancelSaveOperation>;
   startSaveWithRequestId(requestId: string): Promise<ToolkitCancelSaveOperation>;

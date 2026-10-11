@@ -28,6 +28,9 @@
         "frontends/**/*",
         "**/*.filelist",
         "**/*.user"
+      ],
+      "modifiers": [
+        { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] }
       ]
     },
     {
@@ -128,6 +131,13 @@
         { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" },
         { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "Reactive objects and commands on the Window's model context" }
       ]
+    },
+    "tests": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Test project",
+      "description": "Adds a TUnit test project that drives the Window headlessly with Runic.Application.Testing."
     },
     "runicVersion": {
       "type": "parameter",

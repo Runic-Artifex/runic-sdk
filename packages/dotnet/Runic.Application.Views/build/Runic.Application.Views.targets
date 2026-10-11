@@ -68,6 +68,22 @@
       <_RunicBridgeDirectPackage Include="@(PackageReference)"
         Condition="'%(PackageReference.Identity)' == 'Runic.Application'" />
     </ItemGroup>
+    <!-- A test project (IsTestProject, which Microsoft.NET.Test.Sdk and TUnit
+         set) that references a Runic application uses that application's
+         generated Bridges. Unless it declares a Window or View itself or
+         visibly expects output, generation stays off there, without
+         RUNICBRIDGE006 or RUNICBRIDGE015 and without a bootstrap build. Other
+         projects keep the diagnostics. -->
+    <PropertyGroup>
+      <_RunicBridgeTestProject Condition="'$(IsTestProject)' == 'true' and '$(RunicBridgeBuildEnabled)' == '' and '$(RunicBridgeModelAssembly)' == '' and '@(RunicBridgeFrontendInput)' == '' and !Exists('$(RunicBridgeFrontendDir)/package.json')">true</_RunicBridgeTestProject>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicBridgeTestProject)' == 'true'">
+      <_RunicBridgeTestViewSource Include="@(Compile)"
+        Condition="Exists('%(Compile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(Compile.FullPath)')), ':\s*(global::)?(Runic\.Application\.Views\.)?Runic(Window|View)\s*&lt;'))" />
+    </ItemGroup>
+    <PropertyGroup Condition="'$(_RunicBridgeTestProject)' == 'true' and '@(_RunicBridgeTestViewSource)' == ''">
+      <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
+    </PropertyGroup>
     <!-- Generation that this file turns on by default is optional: a project
          that declares no Window or View (for example one that only uses the
          navigator) builds without bridge output. A project that sets

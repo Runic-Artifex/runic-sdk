@@ -1,6 +1,7 @@
 // Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
 // Runic.Application.ReactiveUI.Reactive. Both flavors expose IReactiveCommand
 // from the ReactiveUI namespace.
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Windows.Input;
@@ -18,6 +19,7 @@ namespace Runic.Application.Views.ReactiveUI;
 /// than <see cref="ICommand"/>.  Generated bridges use this helper instead of
 /// assuming that a ViewModel exposed a concrete <c>ReactiveCommand&lt;TParam, TResult&gt;</c>.
 /// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class ReactiveCommandExecution
 {
     /// <summary>

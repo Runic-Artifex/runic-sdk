@@ -9,7 +9,8 @@ dnx Runic.Create@<VERSION>
 `dnx` ships with the .NET 10 SDK and runs the tool without installing it. The
 creator asks for the project name, frontend (React, Vue, Svelte or Angular),
 JavaScript package manager (npm, pnpm or Bun), Window host (CS-WebUI or Runic
-Desktop), and ViewModel library (CommunityToolkit.Mvvm or ReactiveUI). It then
+Desktop), ViewModel library (CommunityToolkit.Mvvm or ReactiveUI), and whether
+to add a test project. It then
 installs the matching `Runic.Application.Templates` version and runs
 `dotnet new runic-app`.
 
@@ -33,6 +34,7 @@ commands in the browser.
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
 | `--host` | `cswebui`, `desktop`, `desktop-gtk4` | `cswebui` |
 | `--view-models` | `toolkit`, `reactiveui` | `toolkit` |
+| `--tests` | Adds a TUnit test project for the Window | No test project |
 | `--directory` | A directory | The project name |
 | `--template-source` | An additional NuGet source for the template | |
 
@@ -41,8 +43,9 @@ creator's global `--output human|json` option selects the command output format.
 The equivalent `dotnet new runic-app` command uses `--output` or `-o` for its
 destination directory.
 
-The frontend, package manager, host and ViewModel choices come from the template
-itself, so `dotnet new runic-app --help` lists the same choices.
+The frontend, package manager, host and ViewModel choices and `--tests` come from
+the template itself, so `dotnet new runic-app --help` lists the same options.
+With `--tests`, the next steps include `dotnet test --project MyApp.Tests`.
 
 See the [getting-started guide](https://docs.runic-artifex.eu/getting-started/),
 [source](https://github.com/Runic-Artifex/runic-sdk/tree/main/tools/Runic.Create),
