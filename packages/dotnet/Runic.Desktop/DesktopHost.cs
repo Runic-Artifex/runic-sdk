@@ -201,6 +201,10 @@ public sealed class DesktopHost : IAsyncDisposable
             {
                 throw new DirectoryNotFoundException($"The Desktop content root does not exist: {rootFolder}");
             }
+            if (directory.Entry is { } entry && !File.Exists(Path.Combine(rootFolder, entry)))
+            {
+                throw DesktopContent.EntryNotFound(entry, rootFolder);
+            }
         }
 
         var id = Guid.NewGuid();
