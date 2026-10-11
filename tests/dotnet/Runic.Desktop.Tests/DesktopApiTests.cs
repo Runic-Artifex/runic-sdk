@@ -712,6 +712,34 @@ public sealed class DesktopApiTests
         {
             Content = new DesktopContent.Directory(Path.Combine(Path.GetTempPath(), $"runic-missing-{Guid.NewGuid():N}")),
         }));
+
+        // An entry the frontend build did not emit fails at once, naming the page and the pages that exist,
+        // instead of a window that times out waiting for its Runic client script.
+        var root = Directory.CreateTempSubdirectory("runic-entry-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "index.html"), "<p></p>");
+            Directory.CreateDirectory(Path.Combine(root, "pages"));
+            File.WriteAllText(Path.Combine(root, "pages", "settings.html"), "<p></p>");
+            var missing = await Assert.ThrowsAsync<DesktopConfigurationException>(async () => await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(root, "about.html"),
+            }));
+            var notFound = Assert.Single(missing.Diagnostics);
+            Assert.Equal("content-entry-not-found", notFound.Code);
+            Assert.Equal(DesktopErrorCategory.NotFound, notFound.Category);
+            Assert.Equal("DesktopContent.Directory.Entry", notFound.Option);
+            Assert.Contains("\"about.html\"", notFound.Message, StringComparison.Ordinal);
+            Assert.Contains("Known pages: index.html, pages/settings.html.", notFound.Message, StringComparison.Ordinal);
+            await using var nested = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(root, "pages/settings.html"),
+            });
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     [Fact]

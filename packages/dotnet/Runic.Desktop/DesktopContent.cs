@@ -221,6 +221,36 @@ public abstract record DesktopContent
     // The diagnostic code of a directory entry that is not a plain relative file path.
     internal const string EntryInvalidCode = "content-entry-invalid";
 
+    // The diagnostic code of a directory entry whose file does not exist in the root.
+    internal const string EntryNotFoundCode = "content-entry-not-found";
+
+    // A window would otherwise wait for a page that never loads, then time out
+    // blaming the Runic client script. Name the pages the root does have: a
+    // frontend build emits one per HTML input.
+    internal static DesktopConfigurationException EntryNotFound(string entry, string rootFolder)
+    {
+        const int maximumPages = 20;
+        var pages = System.IO.Directory
+            .EnumerateFiles(rootFolder, "*.html", new EnumerationOptions { RecurseSubdirectories = true, MaxRecursionDepth = 4 })
+            .Select(page => Path.GetRelativePath(rootFolder, page).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal)
+            .Take(maximumPages + 1)
+            .ToArray();
+        var known = pages.Length == 0
+            ? "The root contains no HTML pages."
+            : $"Known pages: {string.Join(", ", pages.Take(maximumPages))}{(pages.Length > maximumPages ? ", …" : string.Empty)}.";
+        return new DesktopConfigurationException([new DesktopDiagnostic(
+            DesktopErrorCategory.NotFound,
+            EntryNotFoundCode,
+            $"Window entry not found: \"{entry}\" does not exist in the content root {rootFolder}. {known}",
+            Retryable: false,
+            Remediation: "Add the page to the frontend build inputs (for Vite, build.rolldownOptions.input) so the build " +
+                "emits it, rebuild, or open one of the known pages.")
+        {
+            Option = "DesktopContent.Directory.Entry",
+        }]);
+    }
+
     // Each property validates in its initializer (constructor) and in its init accessor (object initializers
     // and `with` expressions), so no instance holds an unchecked value.
     private static T RequireNotNull<T>(T value, string parameterName)

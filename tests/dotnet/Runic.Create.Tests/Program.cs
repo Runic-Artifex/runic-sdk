@@ -1,6 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Runic.CommandLine;
 using Runic.Create;
 
 namespace Runic.Create.Tests;
@@ -17,6 +23,9 @@ internal static class Program
             ("project names start with a letter", ProjectNamesAreValidated),
             ("plans print the same choices for dotnet new and the creator", PlansAreReproducible),
             ("plans quote values a shell would split", PlansQuoteShellValues),
+            ("-o and --output choose the destination as they do for dotnet new", OutputChoosesTheDestination),
+            ("--directory remains a hidden alias of --output", DirectoryIsAFormerAlias),
+            ("--format selects JSON output", FormatSelectsJson),
             ("the test project toggle is a presence flag in every command", TestsTogglePassesThrough),
             ("faults link to their catalog entry at the release tag", FaultsLinkToCatalog),
         ];
@@ -62,13 +71,13 @@ internal static class Program
         Equal("tests", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
         True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
+        Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
 
     private static void CreatorExposesEveryOption()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         Equal(string.Join(',', model.Options.Select(option => option.LongName)), string.Join(',', Runic.Create.Program.OptionFlags));
-        Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
 
     private static void ExplicitChoicesAreValidated()
@@ -111,8 +120,86 @@ internal static class Program
             model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray(), "/feeds/local nuget");
         Equal("dotnet new install Runic.Application.Templates@1.0.0 --nuget-source '/feeds/local nuget'", plan.InstallCommand);
         True(plan.CreateCommand.Contains("--output 'My Projects/it'\"'\"'s'", StringComparison.Ordinal), plan.CreateCommand);
-        True(plan.CreatorCommand.Contains("--directory 'My Projects/it'\"'\"'s'", StringComparison.Ordinal), plan.CreatorCommand);
+        True(plan.CreatorCommand.Contains("--output 'My Projects/it'\"'\"'s'", StringComparison.Ordinal), plan.CreatorCommand);
         Equal("cd 'My Projects/it'\"'\"'s'", plan.NextSteps[0]);
+    }
+
+    private static void OutputChoosesTheDestination()
+    {
+        string destination = Path.Combine(Path.GetTempPath(), "runic-create-" + Guid.NewGuid().ToString("N"), "apps", "MyApp");
+        foreach (string flag in new[] { "-o", "--output" })
+        {
+            (int exitCode, string output, string error) = Run("MyApp", flag, destination, "--yes", "--dry-run", "--format", "json");
+            Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + error);
+            Equal(destination, ResultProperty(output, "Directory"));
+            True(ResultProperty(output, "ReproduceCommand").Contains("--output ", StringComparison.Ordinal), output);
+            True(!Directory.Exists(destination), destination);
+        }
+    }
+
+    private static void DirectoryIsAFormerAlias()
+    {
+        string destination = Path.Combine(Path.GetTempPath(), "runic-create-" + Guid.NewGuid().ToString("N"));
+        (int exitCode, string output, _) = Run("MyApp", "--directory", destination, "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Equal(destination, ResultProperty(output, "Directory"));
+
+        (exitCode, _, string error) = Run("MyApp", "--directory", destination, "-o", destination + "-other", "--yes", "--dry-run");
+        Equal("2", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        True(error.Contains("RCREATE006", StringComparison.Ordinal), error);
+
+        (_, string help, _) = Run("create", "--help");
+        True(help.Contains("--output", StringComparison.Ordinal), help);
+        True(!help.Contains("--directory", StringComparison.Ordinal), help);
+    }
+
+    private static void FormatSelectsJson()
+    {
+        (int exitCode, string output, _) = Run("MyApp", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Equal("MyApp", ResultProperty(output, "Directory"));
+    }
+
+    private static (int ExitCode, string Output, string Error) Run(params string[] arguments)
+    {
+        var console = new CaptureConsole();
+        int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(arguments).GetAwaiter().GetResult();
+        return (exitCode, console.Output.ToString(), console.Error.ToString());
+    }
+
+    private static string ResultProperty(string json, string name)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.GetProperty("payload").GetProperty(name).GetString() ?? "";
+    }
+
+    private sealed class CaptureConsole : ICommandConsole
+    {
+        public StringBuilder Output { get; } = new();
+        public StringBuilder Error { get; } = new();
+        public bool IsErrorRedirected => true;
+        public bool IsInputRedirected => true;
+        public bool IsInteractive => false;
+        public bool IsOutputRedirected => true;
+        public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
+
+        public ValueTask WriteErrorAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+        {
+            Error.Append(value.Span);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask WriteOutAsync(ReadOnlyMemory<char> value, CancellationToken cancellationToken)
+        {
+            Output.Append(value.Span);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask WriteOutBytesAsync(ReadOnlyMemory<byte> value, CancellationToken cancellationToken)
+        {
+            Output.Append(Encoding.UTF8.GetString(value.Span));
+            return ValueTask.CompletedTask;
+        }
     }
 
     private static void TestsTogglePassesThrough()

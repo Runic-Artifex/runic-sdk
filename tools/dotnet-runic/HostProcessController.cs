@@ -126,7 +126,8 @@ internal sealed class HostProcessController : IAsyncDisposable
             _dotnetHost,
             _configuration.ProjectDirectory,
             arguments,
-            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment));
+            CreateDevelopmentEnvironment(_configuration, _developmentEnvironment),
+            _options.WatchHost ? IsExpectedTerminationNotice : null);
         if (_options.WatchHost)
         {
             process.OutputReceived += ObserveOutput;
@@ -239,6 +240,27 @@ internal sealed class HostProcessController : IAsyncDisposable
             environment[key] = value;
         }
         return environment;
+    }
+
+    /// <summary>Exit codes of an application that stopped on SIGTERM or Ctrl+C: 128 + 15, 128 + 2, and Windows' STATUS_CONTROL_C_EXIT.</summary>
+    private static readonly string[] ExpectedTerminationCodes = ["143", "130", "-1073741510"];
+
+    /// <summary>
+    /// dotnet watch stops the application with SIGTERM (Ctrl+C on Windows) before each restart, and dev does the
+    /// same when it stops. An application without its own signal handling then exits with 143, and dotnet watch
+    /// reports "Exited with error code 143" although nothing failed. Other exit codes are still shown.
+    /// </summary>
+    internal static bool IsExpectedTerminationNotice(string line)
+    {
+        const string notice = "Exited with error code ";
+        int index = line.LastIndexOf(notice, StringComparison.Ordinal);
+        if (index < 0) return false;
+        // The code can be followed by a period or a colour reset.
+        string rest = line[(index + notice.Length)..];
+        int length = 0;
+        while (length < rest.Length && (char.IsAsciiDigit(rest[length]) || (length == 0 && rest[0] == '-'))) length++;
+        string code = rest[..length];
+        return Array.IndexOf(ExpectedTerminationCodes, code) >= 0;
     }
 
     private void ObserveOutput(string line)

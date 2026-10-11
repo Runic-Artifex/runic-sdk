@@ -17,18 +17,33 @@ internal static class Program
     internal const int UsageFailure = 2;
     internal const int InternalFailure = 3;
 
+    /// <summary>
+    /// Selects human or JSON output. <c>--output</c> and <c>-o</c> choose the
+    /// destination directory, as they do for <c>dotnet new</c>.
+    /// </summary>
+    internal const string FormatOptionName = "--format";
+
     internal static Task<int> Main(string[] arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
-        return new CommandApp(GeneratedCommandCatalog.Create())
+        return CreateApp(new SpectreCommandConsole(), Environment.GetEnvironmentVariable).RunAsync(arguments);
+    }
+
+    internal static CommandApp CreateApp(ICommandConsole console, Func<string, string?> getEnvironmentVariable) =>
+        new(GeneratedCommandCatalog.Create())
         {
             Name = "runic-create",
             Version = Version,
             HelpPresenter = new SpectreHelpPresenter(),
-            Console = new SpectreCommandConsole(),
+            Console = console,
             ExitCodePolicy = CreateExitCodePolicy.Instance,
-        }.RunAsync(arguments);
-    }
+            ParseSettings = new ParseSettings(
+                getEnvironmentVariable(CommandOutputClassifier.EnvironmentVariableName),
+                transportOutputOptionName: FormatOptionName)
+            {
+                GetEnvironmentVariable = getEnvironmentVariable,
+            },
+        };
 
     [Command("create",
         Description = "Create a Runic application. Asks for each option you do not pass.",
@@ -37,6 +52,7 @@ internal static class Program
             "dnx Runic.Create",
             "dnx Runic.Create -- MyApp --frontend svelte --package-manager bun",
             "dnx Runic.Create -- MyApp --yes --dry-run",
+            "dnx Runic.Create -- MyApp -o apps/MyApp --yes",
         ])]
     [DefaultCommand]
     [CommandResult("runic.create/1", typeof(CreateJsonContext))]
@@ -44,7 +60,8 @@ internal static class Program
         CommandExecutionContext context,
         CancellationToken cancellationToken,
         [Argument(Description = "Project name and default directory.")] string? name = null,
-        [Option("--directory", ValueName = "PATH", Description = "Create the project in this directory instead.")] string? directory = null,
+        [Option("--output", "-o", ValueName = "PATH", Description = "Create the project in this directory instead, as dotnet new --output does.")] string? output = null,
+        [Option("--directory", ValueName = "PATH", Hidden = true, Description = "Former name of --output.")] string? directory = null,
         [Option("--frontend", Description = "Frontend framework.")] string? frontend = null,
         [Option("--package-manager", Description = "JavaScript package manager.")] string? packageManager = null,
         [Option("--host", Description = "Window host.")] string? host = null,
@@ -54,9 +71,17 @@ internal static class Program
         [Option("--dry-run", Description = "Print the commands without running them.")] bool dryRun = false,
         [Option("--template-source", ValueName = "SOURCE", Description = "An additional NuGet source for the template package.")] string? templateSource = null)
     {
+        string? destination = Optional(output);
+        string? formerDestination = Optional(directory);
+        if (destination is not null && formerDestination is not null &&
+            !string.Equals(destination, formerDestination, StringComparison.Ordinal))
+        {
+            return Task.FromResult(CreateApplication.Failure(CommandExitCategory.Usage, "RCREATE006",
+                "Pass the destination once with --output (-o). --directory is its former name."));
+        }
         var request = new CreateRequest(
             Optional(name),
-            Optional(directory),
+            destination ?? formerDestination,
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["frontend"] = frontend ?? "",
