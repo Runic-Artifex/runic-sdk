@@ -505,6 +505,15 @@ a turn of the same context, it runs inline. `TryPost` queues a turn without
 waiting. `RunicModelContext` is the default implementation, and
 `AddRunicNavigation()` registers one per scope unless one is registered.
 
+`RunicModelContext` runs each turn under a `SynchronizationContext` that
+queues posted callbacks as new turns, so an `await` in async code started in a
+turn, such as a command body, resumes in a later turn, as on a UI thread.
+Continuations are queued in the order they become ready. Code after
+`ConfigureAwait(false)` or in `Task.Run` leaves the context. Once the context
+is closed, continuations run on the thread pool outside any turn, so the code
+still finishes. Navigation hooks don't run in turns (see
+[Threading](#threading)).
+
 `RunicModelContextRegistry` associates each model object with the context that
 owns its changes. `Bind` registers objects with an application-owned context.
 `Acquire` creates a context for a model graph, reuses it for later leases of

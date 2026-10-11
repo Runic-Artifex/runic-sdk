@@ -95,6 +95,15 @@ The generated clients are not committed: `.gitignore` excludes
 them again. Until the first build, your editor and
 `__PACKAGE_MANAGER_NAME__ run typecheck` report the missing modules.
 
+## State and threading
+
+Set ViewModel properties directly in commands, also after `await`: an async
+command resumes on the Window's model context, so its writes are applied one
+at a time and in order. Only code that leaves the context, after
+`ConfigureAwait(false)` or in `Task.Run`, commits its result with
+`IRunicModelContext.InvokeAsync`. See the
+[threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await).
+
 ## Read-only and settable state
 
 As in any MVVM View, the C# setters decide what the frontend may set. The

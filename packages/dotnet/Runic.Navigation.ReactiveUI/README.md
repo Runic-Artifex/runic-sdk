@@ -134,7 +134,7 @@ var canOpen = Main.WhenIsTransitioningChanged()
 OpenCommand = ReactiveCommand.CreateFromTask(async token =>
 {
     var result = await Main.PushAsync<DocumentViewModel>(cancellationToken: token);
-    await context.InvokeAsync(() => HandleNavigationOutcome(result), CancellationToken.None);
+    HandleNavigationOutcome(result); // resumes on the model context
 }, canOpen, scheduler).DisposeWith(disposables);
 
 _isNavigatingHelper = Main.WhenIsTransitioningChanged()
@@ -144,6 +144,12 @@ _isNavigatingHelper = Main.WhenIsTransitioningChanged()
 
 The `IsNavigating` getter reads `_isNavigatingHelper.Value` (or use ReactiveUI's
 `[ObservableAsProperty]` generator convention).
+
+The command resumes on the model context after `await` because it started
+there: the Runic bridge starts commands in a model-context turn, and a WPF
+binding starts them on the dispatcher of a `DispatcherModelContext`. A command
+started elsewhere, such as directly from a test, commits its state with
+`context.InvokeAsync`.
 
 `HandleNavigationOutcome` is application policy: a guard veto, cancellation,
 supersession or failure is a typed core result, and must not be treated as a
