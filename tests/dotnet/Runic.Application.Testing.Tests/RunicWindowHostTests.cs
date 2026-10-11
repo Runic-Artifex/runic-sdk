@@ -10,9 +10,11 @@ namespace Runic.Application.Testing.Tests;
 // D018.3: one Window class and one open API for every host. These run the host-neutral half of
 // OpenWindowAsync and ValidateWindow against a recording host; the Desktop and CS-WebUI adapters
 // have their own checks (tests/dotnet/Runic.Application.Views.Desktop.Tests, cswebui-window-probes).
+// The former runner's order: HostProbeViewModel.Created and ScopeProbe.Live are static, Services() resets them, and
+// the validation case, which builds its own provider, relies on the earlier cases having reset them.
 internal sealed class RunicWindowHostTests
 {
-    [Test]
+    [Test, NotInParallel(Order = 1)]
     public async Task OpenResolvesTheViewModelInANewScopeAndAssignsIt()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
@@ -43,7 +45,7 @@ internal sealed class RunicWindowHostTests
             "Disposing the Window did not release its scope and Bridge.");
     }
 
-    [Test]
+    [Test, NotInParallel(Order = 2)]
     public async Task MissingBridgeFailsBeforeTheHostOrViewModel()
     {
         var log = new LogCapture();
@@ -60,7 +62,7 @@ internal sealed class RunicWindowHostTests
             "A missing Bridge was not logged once as event 1050 WindowRegistrationMissing.");
     }
 
-    [Test]
+    [Test, NotInParallel(Order = 3)]
     public async Task OpaqueContainerReportsTheMissingBridgeAndReleasesTheScope()
     {
         await using var provider = Services(bridge: false).BuildServiceProvider();
@@ -74,7 +76,7 @@ internal sealed class RunicWindowHostTests
             "Opening on an opaque container reached the host, constructed the ViewModel or kept the scope.");
     }
 
-    [Test]
+    [Test, NotInParallel(Order = 4)]
     public void ValidationReturnsOneResultWithRegistrationOptionAndHostDiagnostics()
     {
         using var empty = new ServiceCollection().BuildServiceProvider();
@@ -99,7 +101,7 @@ internal sealed class RunicWindowHostTests
         valid.ThrowIfInvalid();
     }
 
-    [Test]
+    [Test, NotInParallel(Order = 5)]
     public async Task InvalidOptionsAndCancellationStopBeforeTheHost()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
@@ -119,7 +121,7 @@ internal sealed class RunicWindowHostTests
             "Invalid options or a cancelled open created a scope, ViewModel or window.");
     }
 
-    [Test]
+    [Test, NotInParallel(Order = 6)]
     public async Task HostCancellationReleasesTheScope()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
@@ -134,7 +136,7 @@ internal sealed class RunicWindowHostTests
         Require(ScopeProbe.Live == 0, "A cancelled host open kept the Window's scope.");
     }
 
-    [Test]
+    [Test, NotInParallel(Order = 7)]
     public async Task LifecycleForwardsCancellationTokensToTheHost()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
