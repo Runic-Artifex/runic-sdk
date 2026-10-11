@@ -46,8 +46,9 @@ try
 
         string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}",
             $"reactiveui={CodegenOptions.ReactiveUiFlavor}"];
-        if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments))
+        if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
         {
+            foreach (var warning in cachedWarnings) Console.Error.WriteLine(warning);
             Console.WriteLine("Bridge generation is up to date.");
             return;
         }
@@ -178,7 +179,7 @@ try
         else GenerateCompositionRegistration(compositionPath, compositionType, models, contentRequired,
             viewTypes.Values.SelectMany(variants => variants).Where(view => !IsWindow(view))
                 .OrderBy(view => view.FullName, StringComparer.Ordinal));
-        BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments);
+        BridgeGenerationCache.Save(positional[1], positional[2], positional[3], cacheArguments, Diagnostics.Warnings);
     }
     else
     {
@@ -192,6 +193,14 @@ try
 catch (Exception error) when (Diagnostics.IsReportable(error))
 {
     Diagnostics.Report(error);
+}
+
+// A set… member exists because its C# property has a public setter, which is
+// what any MVVM View may write; name the setter the call runs.
+static string SetterDocumentation(PropertyInfo property)
+{
+    var setter = $"Calls the public C# setter of `{property.DeclaringType!.Name.Split('`')[0]}.{property.Name}`.";
+    return XmlDocumentation.Summary(property) is { } summary ? summary + "\n\n" + setter : setter;
 }
 
 static string PublicName(Type model) => model.Name.EndsWith("ViewModel", StringComparison.Ordinal)
@@ -234,6 +243,71 @@ static string? ContractFor(MemberInfo member)
 
 static string PageKind(string name, string? contract) =>
     LowerFirst(name) + (contract is null ? "" : char.ToUpperInvariant(contract[0]) + contract[1..]);
+
+// The generated runtime failure for content of a type without a generated
+// View, as a C# interpolated string over the switch's `unregistered` local.
+// It names the slot and the presented type and says how to add the View.
+static string UnregisteredContentMessage(Type model, PropertyInfo property, bool region)
+{
+    var contract = ContractFor(property);
+    var slot = region ? $"navigation region {model.Name}.{property.Name}" : $"{model.Name}.{property.Name}";
+    return $"$\"The {slot} cannot present {{unregistered.GetType().FullName}}: the Bridge generator found no Runic View"
+        + (contract is null ? "" : $" with contract '{contract}'")
+        + " for it. Declare one in the project that generates this Bridge, for example"
+        + " 'public sealed partial class {(unregistered.GetType().Name.EndsWith(\"ViewModel\", global::System.StringComparison.Ordinal) ? unregistered.GetType().Name[..^9] : unregistered.GetType().Name)}View : RunicView<{unregistered.GetType().Name}>;'"
+        + (contract is null ? "" : $" with [RunicViewContract(\\\"{contract}\\\")]")
+        + ", and rebuild.\"";
+}
+
+// A slot only presents ViewModels with a View, so a pushed ViewModel without
+// one compiles and then fails when presented. Warn about the public, top-level
+// concrete ViewModels in the application assembly that a slot admits but no
+// View presents. Types in other assemblies are not checked: their Views, if
+// any, are not visible here either.
+//
+// A warning must name a ViewModel that is meant for the slot, so a broad slot
+// type is not checked: a framework type (System, ReactiveUI, CommunityToolkit),
+// a type that the slot's owner or a Window's ViewModel also derives from or
+// implements (an application-wide ViewModel base), or one that admits more than
+// MissingViewCandidateLimit ViewModels without a View. Window ViewModels are
+// never candidates: every Window is a RunicView, so they are in viewTypes.
+static void WarnContentWithoutView(Type model, IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentProperties,
+    IReadOnlyDictionary<PropertyInfo, (Type Model, string Name)[]> contentCollections, IReadOnlySet<PropertyInfo> regionSlots,
+    IReadOnlyDictionary<Type, List<Type>> viewTypes)
+{
+    const int MissingViewCandidateLimit = 8;
+    Type[] types;
+    try { types = model.Assembly.GetTypes(); }
+    catch (ReflectionTypeLoadException error) { types = [.. error.Types.OfType<Type>()]; }
+    var candidates = types.Where(type => type.IsClass && type.IsPublic && !type.IsAbstract && !type.ContainsGenericParameters
+            && typeof(INotifyPropertyChanged).IsAssignableFrom(type) && !viewTypes.ContainsKey(type))
+        .OrderBy(type => type.FullName, StringComparer.Ordinal).ToArray();
+    var windowModels = viewTypes.Where(entry => entry.Value.Any(IsWindow)).Select(entry => entry.Key).Append(model).ToArray();
+    foreach (var property in contentProperties.Keys.Concat(contentCollections.Keys))
+    {
+        var slotType = regionSlots.Contains(property) ? BridgeContractShape.NavigationRegionContent(property.PropertyType)!
+            : contentCollections.ContainsKey(property) ? property.PropertyType.GenericTypeArguments[0]
+            : property.PropertyType;
+        if (slotType == typeof(object) || BridgeContractShape.IsFrameworkBase(slotType) || slotType.Namespace is { } ns
+                && (ns == "System" || ns == "ReactiveUI" || ns.StartsWith("ReactiveUI.", StringComparison.Ordinal)
+                    || ns.StartsWith("CommunityToolkit.", StringComparison.Ordinal))
+            || windowModels.Any(slotType.IsAssignableFrom))
+            continue;
+        var missing = candidates.Where(type => type != model && slotType.IsAssignableFrom(type)).ToArray();
+        if (missing.Length > MissingViewCandidateLimit) continue;
+        var contract = ContractFor(property);
+        var slot = regionSlots.Contains(property) ? "pushing it to this navigation region" : "presenting it in this slot";
+        foreach (var candidate in missing)
+            Diagnostics.Warn(BridgeDiagnosticCodes.MissingView,
+                $"{model.Name}.{property.Name}: {candidate.FullName} is assignable to {slotType.Name} but has no Runic View"
+                + (contract is null ? "" : $" with contract '{contract}'")
+                + $", so {slot} throws NotSupportedException at runtime. Add"
+                + $" 'public sealed partial class {PublicName(candidate)}View : RunicView<{candidate.Name}>;'"
+                + (contract is null ? "" : $" with [RunicViewContract(\"{contract}\")]")
+                + $", or suppress {BridgeDiagnosticCodes.MissingView} with NoWarn if it is never presented here.",
+                candidate);
+    }
+}
 
 static int InheritanceDepth(Type type)
 {
@@ -470,6 +544,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         incrementalCollections.Add(property, key.Property);
     }
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
+    if (viewTypes is not null) WarnContentWithoutView(model, contentProperties, contentCollections, regionSlots, viewTypes);
     // A region slot presents its Current, whose nullability (always nullable)
     // is the slot's wire and TypeScript nullability.
     string ContentAccess(PropertyInfo property) =>
@@ -755,7 +830,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 cs.AppendLine("                    break;");
                 cs.AppendLine("                }");
             }
-            cs.AppendLine($"                default: throw new global::System.NotSupportedException(\"{property.Name} contains an unregistered ViewModel type.\");");
+            cs.AppendLine($"                default: {{ var unregistered = {ContentAccess(property)}!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, regionSlots.Contains(property))}); }}");
             cs.AppendLine("            }");
             cs.AppendLine("        }");
         }
@@ -805,7 +880,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 cs.AppendLine("                        break;");
                 cs.AppendLine("                    }");
             }
-            cs.AppendLine($"                    default: throw new global::System.NotSupportedException(\"{property.Name} contains an unregistered ViewModel type.\");");
+            cs.AppendLine($"                    default: {{ var unregistered = item!; throw new global::System.NotSupportedException({UnregisteredContentMessage(model, property, false)}); }}");
             cs.AppendLine("                }");
             cs.AppendLine("            }");
             cs.AppendLine($"            content.PruneCollection(vm, \"{property.Name}\", {activeName});");
@@ -929,7 +1004,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
-        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
+        XmlDocumentation.Append(ts, "  ", SetterDocumentation(property));
         ts.AppendLine($"  set{property.Name}(value: {TsPropertyType(property)}): Promise<{shortName}State>;");
     }
     foreach (var property in checkedProperties)
@@ -1393,6 +1468,8 @@ static class BridgeDiagnosticCodes
     internal const string Interaction = "RUNICBRIDGE011";
     /// <summary>A RunicFailure declaration is misplaced, repeated or names an unsupported type.</summary>
     internal const string Failure = "RUNICBRIDGE012";
+    /// <summary>Warning: a ViewModel that a content slot or navigation region admits has no View.</summary>
+    internal const string MissingView = "RUNICBRIDGE013";
 }
 
 /// <summary>A generator diagnostic with its ID and the declaration it concerns.</summary>
@@ -1410,9 +1487,25 @@ static class Diagnostics
 {
     internal static bool HasErrors { get; private set; }
 
+    private static readonly List<string> ReportedWarnings = [];
+
+    // The cache records them, so a skipped generation repeats them.
+    internal static IReadOnlyList<string> Warnings => ReportedWarnings;
+
     internal static bool IsReportable(Exception error) => error is ArgumentException or InvalidOperationException
         or NotSupportedException or IOException or UnauthorizedAccessException or BadImageFormatException
         or TypeLoadException or ReflectionTypeLoadException;
+
+    /// <summary>Writes an MSBuild canonical warning; generation continues.</summary>
+    internal static void Warn(string code, string message, MemberInfo? member)
+    {
+        var location = SourceLocator.Find(member);
+        var line = location is { } at
+            ? $"{at.Path}({at.Line},{at.Column}): warning {code}: {message}"
+            : $"warning {code}: {message}";
+        ReportedWarnings.Add(line);
+        Console.Error.WriteLine(line);
+    }
 
     internal static void Report(Exception error, Type? model = null)
     {
@@ -1466,6 +1559,20 @@ static class TypeScriptModules
         "import", "in", "instanceof", "interface", "let", "new", "null", "package", "private", "protected", "public",
         "return", "static", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void",
         "while", "with", "yield",
+    };
+
+    // Generated client members that are valid C# names but break the client
+    // object type or object literal, with the reason and a suggested rename.
+    // A command is the only member whose bare name becomes a client member.
+    internal static readonly Dictionary<string, (string Reason, string Suggestion)> ReservedClientMemberNames = new(StringComparer.Ordinal)
+    {
+        ["new"] = ("declares a construct signature in a TypeScript object type, so the generated client does not compile", "Create"),
+        ["constructor"] = ("replaces the client's Object.prototype.constructor, which frameworks and type checks read", "Construct"),
+        ["then"] = ("makes the connected client thenable, so 'await connect…()' calls it instead of resolving to the client", "Continue"),
+        ["__proto__"] = ("sets the prototype of the client object literal instead of defining a member", "Prototype"),
+        ["toJSON"] = ("replaces the client's JSON.stringify serialization", "Export"),
+        ["toString"] = ("replaces the client's string conversion", "Format"),
+        ["valueOf"] = ("replaces the client's primitive conversion", "Evaluate"),
     };
 
     // Encoders declare bridgeNullable<N>, bridgeUnion<N> and

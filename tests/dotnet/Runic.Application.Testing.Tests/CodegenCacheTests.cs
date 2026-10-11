@@ -48,6 +48,20 @@ internal static class CodegenCacheTests
                 Require(File.GetLastWriteTimeUtc(manifest) == recordedSentinel,
                     "The explicit primitives flavor should be equivalent to the default and reuse the cache entry.");
 
+            // NavOrphanViewModel has no View. A cache hit skips generation but
+            // repeats its warning, so a no-op build still reports it.
+            Require(File.ReadAllText(manifest).Contains("warning RUNICBRIDGE013:", StringComparison.Ordinal),
+                "The cache manifest did not record the generation's warnings.");
+            File.SetLastWriteTimeUtc(manifest, sentinel);
+            recordedSentinel = File.GetLastWriteTimeUtc(manifest);
+            var replayed = await GenerateOutputAsync(root, generator, csharp, typescript).ConfigureAwait(false);
+            Require(replayed.Contains("Bridge generation is up to date.", StringComparison.Ordinal)
+                    && replayed.Contains("warning RUNICBRIDGE013:", StringComparison.Ordinal)
+                    && replayed.Contains(nameof(NavOrphanViewModel), StringComparison.Ordinal),
+                $"A cache hit did not repeat the recorded warnings.\n{replayed}");
+            if (supportsExplicitMtime)
+                Require(File.GetLastWriteTimeUtc(manifest) == recordedSentinel, "The warning replay was not a cache hit.");
+
             File.Delete(csharpOutput);
             await GenerateAsync(root, generator, csharp, typescript).ConfigureAwait(false);
             Require(File.Exists(csharpOutput) && File.ReadAllText(csharpOutput) == originalCSharp,
@@ -101,6 +115,31 @@ internal static class CodegenCacheTests
     private static Task GenerateAsync(string root, string generator, string csharp, string typescript,
         params string[] options) => GeneratedHarnessProcess.RunAsync("dotnet",
         [generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, typescript, .. options], root);
+
+    private static async Task<string> GenerateOutputAsync(string root, string generator, string csharp, string typescript)
+    {
+        using var process = new System.Diagnostics.Process
+        {
+            StartInfo = new System.Diagnostics.ProcessStartInfo("dotnet")
+            {
+                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, WorkingDirectory = root,
+                ArgumentList = { generator, "--generate", typeof(CodegenCacheTests).Assembly.Location, csharp, typescript },
+            },
+        };
+        process.Start();
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw new TimeoutException("The bridge generator did not finish within 30 seconds.");
+        }
+        var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
+        Require(process.ExitCode == 0, $"The bridge generator failed.\n{text}");
+        return text;
+    }
 
     private static string Output(string directory, string pattern) => Directory.EnumerateFiles(directory, pattern)
         .OrderBy(path => path, StringComparer.Ordinal)

@@ -18,17 +18,22 @@ internal static class BridgeGenerationCache
 {
     private const string ManifestFileName = ".runic-bridge-generation-cache.json";
     // Version 3: generated TypeScript gained named types and XML documentation,
-    // so outputs recorded by earlier generators must regenerate.
-    private const int SchemaVersion = 3;
+    // so outputs recorded by earlier generators must regenerate. Version 4:
+    // generated content failures name their type, and warnings are recorded.
+    private const int SchemaVersion = 4;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
     };
 
-    /// <summary>Returns true only when generation can be safely skipped.</summary>
+    /// <summary>
+    /// Returns true only when generation can be safely skipped, with the
+    /// warnings the recorded generation reported so a skipped build repeats them.
+    /// </summary>
     internal static bool TryHit(string modelAssemblyPath, string csharpOutputDirectory,
-        string typeScriptOutputDirectory, IEnumerable<string> outputAffectingArguments)
+        string typeScriptOutputDirectory, IEnumerable<string> outputAffectingArguments, out IReadOnlyList<string> warnings)
     {
+        warnings = [];
         if (IsBypassed()) return false;
 
         try
@@ -43,7 +48,9 @@ internal static class BridgeGenerationCache
                     ComputeFingerprint(modelAssemblyPath, roots, outputAffectingArguments),
                     StringComparison.Ordinal)) return false;
 
-            return VerifyOutputs(roots, manifest);
+            if (!VerifyOutputs(roots, manifest)) return false;
+            warnings = manifest.Warnings ?? [];
+            return true;
         }
         // A cache is an optimization. Corrupt manifests, temporary IO trouble,
         // and a concurrent cleaner must cause regeneration instead of failure.
@@ -56,7 +63,7 @@ internal static class BridgeGenerationCache
 
     /// <summary>Persists a cache entry only after all generator writes succeed.</summary>
     internal static void Save(string modelAssemblyPath, string csharpOutputDirectory,
-        string typeScriptOutputDirectory, IEnumerable<string> outputAffectingArguments)
+        string typeScriptOutputDirectory, IEnumerable<string> outputAffectingArguments, IReadOnlyList<string> warnings)
     {
         if (IsBypassed()) return;
 
@@ -67,6 +74,7 @@ internal static class BridgeGenerationCache
             Fingerprint = ComputeFingerprint(modelAssemblyPath, roots, outputAffectingArguments),
             CSharpOutputs = CaptureOutputs(roots.CSharp, IsCSharpGeneratedFile),
             TypeScriptOutputs = CaptureOutputs(roots.TypeScript, IsTypeScriptGeneratedFile),
+            Warnings = [.. warnings],
         };
         WriteAtomically(Path.Combine(roots.CSharp, ManifestFileName),
             JsonSerializer.Serialize(manifest, JsonOptions));
@@ -207,6 +215,7 @@ internal static class BridgeGenerationCache
         public string Fingerprint { get; set; } = "";
         public List<Output>? CSharpOutputs { get; set; }
         public List<Output>? TypeScriptOutputs { get; set; }
+        public List<string>? Warnings { get; set; }
     }
 
     private sealed class Output

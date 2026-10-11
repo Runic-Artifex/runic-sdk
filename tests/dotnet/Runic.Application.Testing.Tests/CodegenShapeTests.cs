@@ -159,12 +159,23 @@ internal static class CodegenShapeTests
             ("documented.ts", documented, "  /** The current layout. */\n  readonly layout: DocumentedLayout;"),
             ("documented.ts", documented, "  /** The note being edited. */\n  readonly note: string;"),
             ("documented.ts", documented, "  /** Switches to `layout`. */\n  changeLayout(layout: DocumentedLayout): Promise<DocumentedState>;"),
+            // C# accessibility is the contract: a public setter, and only a
+            // public setter, becomes a set… member that names it.
+            ("documented.ts", documented, "  /**\n   * The note being edited.\n   *\n   * Calls the public C# setter of `DocumentedViewModel.Note`.\n   */\n  setNote(value: string): Promise<DocumentedState>;"),
+            ("documented.ts", documented, "  readonly item: DocumentedItem;\n  readonly isDirty: boolean;"),
             ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
             ("documented.ts", documented, "layout: bridgeWire.enumName<DocumentedLayout>(wire.layout, [\"List\", \"Grid\"]),"),
             ("collectionDelta.ts", collection, "rows: defineCollection<CollectionRow>(wire => bridgeWire.object<CollectionRow>(wire,"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");
+        var generatedReactive = File.ReadAllText(Path.Combine(directory, "generatedReactive.ts")).ReplaceLineEndings("\n");
+        Require(!documented.Contains("setIsDirty", StringComparison.Ordinal) && !documented.Contains("setLayout", StringComparison.Ordinal),
+            "A Toolkit property with a private setter became settable from the web View.");
+        Require(generatedReactive.Contains("  /** Calls the public C# setter of `GeneratedReactiveViewModel.Name`. */\n  setName(value: string)", StringComparison.Ordinal)
+            && generatedReactive.Contains("readonly isDirty: boolean;", StringComparison.Ordinal)
+            && !generatedReactive.Contains("setIsDirty", StringComparison.Ordinal),
+            $"A ReactiveUI [Reactive] property's setter accessibility did not decide its set… member:\n{generatedReactive}");
         Require(!documented.Contains("instance wrapping", StringComparison.Ordinal),
             "A Toolkit command copied its generated property comment instead of its method documentation.");
         Require(Count(types, "export interface CodegenPoint ") == 1,
@@ -240,6 +251,8 @@ internal static class CodegenShapeTests
             ("naming.ts", naming, "    prototype: bridgeWire.string(wire.prototype),"),
             ("naming.ts", naming, "  rename(defaultValue: string): Promise<NamingState>;"),
             ("naming.ts", naming, "  show(viewValue: string): Promise<NamingState>;"),
+            ("naming.ts", naming, "  readonly new: string;"),
+            ("naming.ts", naming, "  newItem(): Promise<NamingState>;"),
         })
             Require(text.Contains(expected, StringComparison.Ordinal),
                 $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{text}");

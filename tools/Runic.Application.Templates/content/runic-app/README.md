@@ -104,6 +104,20 @@ at a time and in order. Only code that leaves the context, after
 `IRunicModelContext.InvokeAsync`. See the
 [threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await).
 
+## Read-only and settable state
+
+As in any MVVM View, the C# setters decide what the frontend may set. The
+Counter's `Count` has a private setter, so the page only reads it; `Step` has a
+public setter, so the generated client has `setStep` and the page binds it two
+way. Give status such as `IsDirty`, `Error` or a collection a private setter
+<!--#if (viewModels == "reactiveui") -->
+(`private set => this.RaiseAndSetIfChanged(...)`, or `[Reactive]` with
+`{ get; private set; }`), and keep form fields publicly settable.
+<!--#else -->
+(`[ObservableProperty] public partial T Name { get; private set; }`), and keep
+form fields publicly settable.
+<!--#endif -->
+
 ## Publish
 
 ```sh

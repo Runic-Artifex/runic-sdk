@@ -97,6 +97,7 @@ public sealed class DesktopSurface : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         var configured = options ?? new DesktopWindowOptions();
+        DesktopWindow window;
         await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -157,13 +158,17 @@ public sealed class DesktopSurface : IAsyncDisposable
             {
                 actualBrowser = FromCompatibilityBrowser(_engine.CurrentBrowser);
             }
-            _window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
-            return _window;
+            window = new DesktopWindow(this, _engine, requestedBrowser, actualBrowser, fellBack);
+            _window = window;
         }
         finally
         {
             _windowGate.Release();
         }
+        // A shutdown requested while this window opened closes it too. The gate release orders this check after
+        // the window was published, so either the shutdown sees the window or the window sees the shutdown.
+        if (_host.IsShutdownRequested) await window.CloseAsync().ConfigureAwait(false);
+        return window;
     }
 
     /// <summary>Runs JavaScript in every authenticated presentation session.</summary>
@@ -258,6 +263,11 @@ public sealed class DesktopSurface : IAsyncDisposable
         // The application's decision must not hold the gate needed by forced shutdown.
         return await decision.ConfigureAwait(false);
     }
+
+    // Force-closes the current window for a host shutdown. It does not wait for the gate: a window that is still
+    // opening checks the shutdown itself once it is published.
+    internal ValueTask CloseWindowForShutdownAsync() =>
+        Volatile.Read(ref _window) is { } window ? window.CloseAsync() : ValueTask.CompletedTask;
 
     internal async ValueTask CloseWindowAsync(DesktopWindow window)
     {
