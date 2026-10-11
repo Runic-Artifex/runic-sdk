@@ -562,6 +562,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // Test seam: runs between the cancellation check and the initialize claim.
     internal Action? BeforeInitializeClaim { get; set; }
 
+    // Test seam: awaited before a guard's basis check, with the transition's region.
+    internal Func<NavigationRegionCore, Task>? BeforeGuardBasisCheck { get; set; }
+
     internal NavigationResultRequest<TContent, TResult> PushForResult<TContent, TResult>(NavigationRegionCore region,
         NavigationTargetCore target, NavigationRequestOptions? options, CancellationToken cancellationToken) where TContent : class
     {
@@ -853,9 +856,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             if (entry.Content is not INavigationDepartureGuard guard) continue;
             if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
+            if (BeforeGuardBasisCheck is { } beforeBasisCheck) await this.AfterUserCode(beforeBasisCheck(region));
             // A plan region changed since the basis: the commit would be
             // superseded, and the entry may already have retired.
-            if (!BasisMatches(plan)) return (NavigationOutcome.Superseded, null);
+            if (StaleOutcome(transition, plan) is { } stale) return (stale, null);
             bool allowed;
             // Guard hooks of one region never overlap across transitions (see EnterGuardHookAsync).
             switch (await this.AfterUserCode(EnterGuardHookAsync(transition, entry, plan, token)))
@@ -893,7 +897,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         transition.Phase = NavigationPhase.Preparing;
         if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
         if (IsClosing(region)) return (NavigationOutcome.Reject(NavigationRejection.Closed), null);
-        if (!BasisMatches(plan)) return (NavigationOutcome.Superseded, null);
+        if (StaleOutcome(transition, plan) is { } changed) return (changed, null);
         var failure = await this.AfterUserCode(PrepareAsync(transition, plan));
         if (failure is not null) return (failure, null);
         if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
@@ -1146,9 +1150,20 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         lock (Gate) return _closing || region.Closed;
     }
 
-    private bool BasisMatches(NavigationPlan plan)
+    // Null while the plan's basis matches. Otherwise the plan is superseded, unless the transition was already
+    // closed, superseded or cancelled: closing a region bumps its version and records Closed on its transitions in
+    // one gate section (MarkClosedLocked), so a recorded reason takes precedence over the version, as in CommitTurn.
+    // A Back pending in a child region that a parent's commit closes is then rejected as Closed at every step.
+    private NavigationOutcome? StaleOutcome(NavigationTransition transition, NavigationPlan plan)
     {
-        lock (Gate) return plan.BasisMatches();
+        lock (Gate)
+        {
+            if (plan.BasisMatches()) return null;
+            if (transition.CancelReason == NavigationCancelReason.None && !_closing && !transition.Region.Closed
+                && !transition.CancellationRequested)
+                return NavigationOutcome.Superseded;
+            return CancelledOutcome(transition);
+        }
     }
 
     private static (NavigationEntryCore? Current, NavigationEntryCore[] Stack, bool CanGoBack) Snapshot(NavigationRegionCore region) =>
