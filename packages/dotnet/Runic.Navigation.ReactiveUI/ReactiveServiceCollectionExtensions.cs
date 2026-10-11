@@ -24,9 +24,10 @@ public static class ReactiveServiceCollectionExtensions
     /// context, so every resolution for one context gets the same instance. That also holds
     /// when the context is a singleton, such as a WPF dispatcher context, and a singleton
     /// ViewModel can inject it.
-    /// The CS-WebUI and Desktop hosts bind a window's root ViewModel to the scoped
-    /// context; bind independently presented children to it with
-    /// <see cref="RunicModelContextRegistry.Bind"/> before exposing them.
+    /// The CS-WebUI, Desktop and WPF hosts bind a window's root ViewModel to the scoped
+    /// context, the window binds each child ViewModel it presents, and a navigator binds
+    /// the entries it owns, so ViewModels need no <see cref="RunicModelContextRegistry.Bind"/>
+    /// call. A ViewModel bound to another context is rejected when presented.
     /// Dispose the service scope asynchronously to drain its owned context.
     /// </summary>
     public static IServiceCollection AddRunicReactiveModelContext(this IServiceCollection services)

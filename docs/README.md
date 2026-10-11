@@ -15,4 +15,8 @@ public portal routes and canonical apex schema URLs remain unchanged.
 See the [deployment cutover plan](https://github.com/Runic-Artifex/runic-site/blob/main/docs/plans/documentation-ownership.md).
 
 The [diagnostics catalog](diagnostics.md) describes every diagnostic ID that an
-SDK package reports. Diagnostics link to it at the release tag of the package.
+SDK package reports, other than the experimental API IDs. Diagnostics link to it at the release tag of the package.
+
+[Experimental APIs](experimental.md) lists the experimental diagnostic IDs
+(`RUNICNAV001`, `RUNICWPF001`), how to suppress them and the criteria for
+removing them. The diagnostics link to it at the release's tag.

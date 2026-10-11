@@ -84,7 +84,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     /// Callbacks run synchronously on the closing thread. Their exceptions are reported through
     /// <see cref="UnhandledTurnException"/> and do not interrupt shutdown. The token remains usable after disposal.
     /// </remarks>
-    [Experimental("RUNICNAV001", UrlFormat = RunicReleaseLinks.ExperimentalUrl)] // RunicNavigator.DiagnosticId, which this stable type cannot reference.
+    [Experimental("RUNICNAV001", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)] // RunicNavigator.DiagnosticId, which this stable type cannot reference.
     public CancellationToken Closed => _closedSource.Token;
 
     /// <inheritdoc />

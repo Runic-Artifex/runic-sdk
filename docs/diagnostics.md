@@ -1,15 +1,15 @@
 # Diagnostics
 
-Every diagnostic ID that a Runic SDK package reports has an entry here. Build
-errors, `dotnet runic` failures, the asset packer and IDE warnings for
-experimental APIs link to their entry at the release tag of the package that
-reported them, so the text matches the version you use. Change the tag in the
-address to read another release.
+Every diagnostic ID that a Runic SDK package reports has an entry here, except
+the experimental API IDs (`RUNICNAV001`, `RUNICWPF001`), which
+[Experimental APIs](experimental.md) describes. Build errors, `dotnet runic`
+failures, the asset packer and Runic.Create link to their entry at the release
+tag of the package that reported them, so the text matches the version you use.
+Change the tag in the address to read another release.
 
 Each entry starts with what the ID means. **Fix** says what to change.
 
 - [Bridge code generator (`RUNICBRIDGE`)](#bridge-code-generator)
-- [Experimental APIs (`RUNICNAV`, `RUNICWPF`)](#experimental-apis)
 - [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSUP`, `RTKSIZE`, `RCLI`)](#dotnet-runic)
 - [Asset packer (`RAS`)](#asset-packer)
 - [Runic.Create (`RCREATE`)](#runiccreate)
@@ -129,32 +129,18 @@ exception or `Nullable<T>`.
 a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is
 `RUNICBRIDGE003` at `{Model}.{Command}.failure`.
 
-## Experimental APIs
+### RUNICBRIDGE013
 
-The compiler reports these IDs when code uses an API marked
-`[Experimental]`. The warning links here. Experimental APIs can change in any
-preview.
+A warning. A public, concrete ViewModel in the application assembly fits a
+ViewModel content property, ViewModel collection or `NavigationRegion<TContent>`
+slot but has no View, so pushing or presenting it there throws
+`NotSupportedException`. Broad slot types are not checked. The warning repeats
+on builds that reuse the cached generation.
 
-### RUNICNAV001
-
-The API belongs to Runic.Navigation or one of its adapters, which are
-experimental: regions, the navigator, guards, results, WPF navigation hosts and
-the navigation test helpers. The model context types in Runic.Navigation are
-stable unless marked.
-
-**Fix:** suppress the warning to use the API, for example with
-`<NoWarn>$(NoWarn);RUNICNAV001</NoWarn>` in the project, and expect changes
-before navigation is supported. See the
-[Runic.Navigation guide](../packages/dotnet/Runic.Navigation/README.md).
-
-### RUNICWPF001
-
-The API belongs to Runic.Application.Wpf, the experimental WPF child
-presentation for a Runic web View.
-
-**Fix:** suppress the warning to use the API, for example with
-`<NoWarn>$(NoWarn);RUNICWPF001</NoWarn>`, and expect changes. See the
-[Runic.Application.Wpf guide](../packages/dotnet/Runic.Application.Wpf/README.md).
+**Fix:** add a View, such as
+`public sealed partial class SettingsView : RunicView<SettingsViewModel>;`, with
+the slot's `[RunicViewContract]` if it has one. If the type is never presented
+there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`.
 
 ## dotnet runic
 

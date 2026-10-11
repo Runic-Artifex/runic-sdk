@@ -2,9 +2,6 @@
 using ReactiveUI;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
-using Runic.Application.Views;
-using Runic.Application.Views.ReactiveUI;
-using Runic.Navigation;
 
 namespace RunicWindowApp;
 
@@ -12,19 +9,14 @@ public interface IWorkspacePage { }
 
 public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
 {
-    private readonly IRunicModelContextLease _modelContextLease;
     private IWorkspacePage _main;
 
     // Commands run on the Window's model context, which orders their
-    // notifications with Bridge replies. Bind every presented ViewModel to it.
-    public WorkspaceViewModel(
-        WelcomeViewModel welcome,
-        CounterViewModel counter,
-        IRunicModelContext modelContext,
-        ISequencer scheduler)
+    // notifications with Bridge replies. The Window binds this ViewModel and
+    // each page it presents to that context.
+    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter, ISequencer scheduler)
     {
         _main = welcome;
-        _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this, welcome, counter);
         ShowWelcomeCommand = ReactiveCommand.Create(() => { Main = welcome; }, scheduler);
         ShowCounterCommand = ReactiveCommand.Create(() => { Main = counter; }, scheduler);
     }
@@ -42,7 +34,6 @@ public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
     {
         ShowWelcomeCommand.Dispose();
         ShowCounterCommand.Dispose();
-        _modelContextLease.Dispose();
     }
 }
 

@@ -25,7 +25,7 @@ namespace Runic.Navigation.Wpf;
 /// clears the region once.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public class NavigationDialogHost : FrameworkElement
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>

@@ -9,7 +9,7 @@ namespace Runic.Navigation.Wpf;
 /// then an <see cref="INavigationViewLocator"/> from the region's <see cref="RunicNavigator.Services"/>, and
 /// finally fall back to the implicit <see cref="DataTemplate"/> keyed by the content's type.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationViewLocator
 {
     /// <summary>

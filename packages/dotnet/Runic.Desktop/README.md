@@ -32,7 +32,10 @@ can open. One Desktop event loop runs per process.
 
 Only `Directory` serves local files. The cases validate when constructed: an
 entry must stay inside its root, and an external URL must be absolute `http`
-or `https`. A missing root fails `CreateSurfaceAsync` with
+or `https`. An entry names a file, not a URL: one with a `?query` or `#hash`
+throws `DesktopConfigurationException` with the diagnostic code
+`content-entry-invalid`; pass startup state through the ViewModel or route
+inside the frontend instead. A missing root fails `CreateSurfaceAsync` with
 `DirectoryNotFoundException`.
 
 Content handlers receive request-scoped services and may return fixed or

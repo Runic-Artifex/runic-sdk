@@ -67,3 +67,13 @@ internal sealed class NavViewLocator : IRunicViewLocator
         : typeof(TView) == typeof(NavEditorView) ? (TView)(object)new NavEditorView()
         : throw new InvalidOperationException($"Unexpected View {typeof(TView).Name}.");
 }
+
+// A region page without a View. The generator warns about it (RUNICBRIDGE013,
+// suppressed in this project) and presenting it fails with a message that
+// names the region and the type.
+public sealed class NavOrphanViewModel : INavPageViewModel
+{
+    public string Title => "orphan";
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+}

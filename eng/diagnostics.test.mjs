@@ -6,6 +6,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dir, '..');
 const catalog = readFileSync(join(root, 'docs/diagnostics.md'), 'utf8');
+const experimental = readFileSync(join(root, 'docs/experimental.md'), 'utf8');
 // A diagnostic ID is a quoted run of at least three capitals and three digits,
 // such as "RUNICBRIDGE003", "RAPPDEV1005" or Code="RUNICBRIDGE014".
 const idPattern = /["']([A-Z]{3,}\d{3,})["']/g;
@@ -30,6 +31,8 @@ function projectOf(file) {
   throw new Error(`${relative(root, file)} belongs to no project`);
 }
 
+// IDs of [Experimental] attributes have their entries in docs/experimental.md,
+// which eng/experimental.test.mjs checks.
 const reports = new Map(); // ID -> files that report it
 const projects = new Map(); // project -> {experimental, other}
 for (const file of [...sources(join(root, 'packages/dotnet')), ...sources(join(root, 'tools'))]) {
@@ -39,9 +42,9 @@ for (const file of [...sources(join(root, 'packages/dotnet')), ...sources(join(r
   projects.set(project, usage);
   for (const [line] of text.matchAll(/^.*$/gm)) {
     for (const [, id] of line.matchAll(idPattern)) {
+      if (/\[Experimental\(/.test(line)) { usage.experimental.add(id); continue; }
       reports.set(id, [...(reports.get(id) ?? []), relative(root, file)]);
-      if (/\[Experimental\(/.test(line)) usage.experimental.add(id);
-      else if (/\.(targets|props)$/.test(file)) usage.targets.add(id);
+      if (/\.(targets|props)$/.test(file)) usage.targets.add(id);
       else usage.other.add(id);
     }
   }
@@ -51,12 +54,13 @@ const property = (project, name) =>
 
 test('the scan finds every diagnostic family', () => {
   const families = new Set([...reports.keys()].map(id => id.replace(/\d+$/, '')));
-  for (const family of ['RUNICBRIDGE', 'RUNICNAV', 'RUNICWPF', 'RAPPCLI', 'RAPPDEV', 'RAPPSUP', 'RAS', 'RTKSIZE', 'RCLI', 'RCREATE'])
+  for (const family of ['RUNICBRIDGE', 'RAPPCLI', 'RAPPDEV', 'RAPPSUP', 'RAS', 'RTKSIZE', 'RCLI', 'RCREATE'])
     expect(families).toContain(family);
 });
 
 test('every reported diagnostic ID has a catalog entry', () => {
-  const missing = [...reports].filter(([id]) => !catalog.includes(`\n### ${id}\n`))
+  // Experimental API IDs, also declared as constants, are described in docs/experimental.md.
+  const missing = [...reports].filter(([id]) => !catalog.includes(`\n### ${id}\n`) && !experimental.includes(`${id}`))
     .map(([id, files]) => `${id} (${files[0]})`);
   expect(missing).toEqual([]);
 });
@@ -74,22 +78,8 @@ test('reporting projects link to the catalog at the release tag', () => {
       errors.push(`${name} reports ${[...usage.other][0]} and must set RunicGenerateReleaseLinks`);
     if (usage.targets.size && property(project, 'RunicPackDiagnosticsHelpLinks') !== 'true')
       errors.push(`${name} reports ${[...usage.targets][0]} from MSBuild and must set RunicPackDiagnosticsHelpLinks`);
-    if (usage.experimental.size) {
-      const id = property(project, 'RunicExperimentalDiagnosticId');
-      if (property(project, 'RunicGenerateReleaseLinks') !== 'true' || !usage.experimental.has(id) || usage.experimental.size !== 1)
-        errors.push(`${name} marks ${[...usage.experimental].join(', ')} experimental and must set RunicGenerateReleaseLinks and that RunicExperimentalDiagnosticId`);
-    }
   }
   expect(errors).toEqual([]);
-});
-
-test('experimental APIs name their catalog entry', () => {
-  const unlinked = [];
-  for (const file of [...sources(join(root, 'packages/dotnet')), ...sources(join(root, 'tools'))]) {
-    for (const [attribute] of readFileSync(file, 'utf8').matchAll(/\[Experimental\([^\]]*\)\]/g))
-      if (!attribute.includes('UrlFormat = RunicReleaseLinks.ExperimentalUrl')) unlinked.push(`${relative(root, file)}: ${attribute}`);
-  }
-  expect(unlinked).toEqual([]);
 });
 
 test('MSBuild diagnostics of packages carry a help link', () => {

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace Runic.Navigation.Wpf;
 
 /// <summary>Registers window navigation on the WPF dispatcher.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class RunicWpfNavigationServiceCollectionExtensions
 {
     /// <summary>

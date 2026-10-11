@@ -25,7 +25,7 @@ namespace Runic.Navigation;
 /// that a UI-thread guard calls (a message box or a modal dialog) runs on that thread.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class LeaveConfirmation
 {
     private readonly Func<bool> _hasUnsavedChanges;

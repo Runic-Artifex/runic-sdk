@@ -4,10 +4,9 @@
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- ExperimentalAttribute.UrlFormat links RUNICNAV001 to its catalog entry at the release tag. -->
-    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
-    <RunicExperimentalDiagnosticId>RUNICNAV001</RunicExperimentalDiagnosticId>
     <PackageId>Runic.Application.Testing</PackageId>
+    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>Headless Window and View test host for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>

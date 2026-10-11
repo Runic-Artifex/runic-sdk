@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Runic.Navigation;
 
 /// <summary>Registers the experimental window navigator.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class RunicNavigationServiceCollectionExtensions
 {
     /// <summary>
