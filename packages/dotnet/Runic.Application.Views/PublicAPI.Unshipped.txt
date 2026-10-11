@@ -91,3 +91,7 @@ override Runic.Application.Views.RunicWindowValidationResult.ToString() -> strin
 Runic.Application.Views.RunicWindowValidationResult.Warnings.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
 static Runic.Application.Views.RunicWindowValidationResult.operator !=(Runic.Application.Views.RunicWindowValidationResult? left, Runic.Application.Views.RunicWindowValidationResult? right) -> bool
 static Runic.Application.Views.RunicWindowValidationResult.operator ==(Runic.Application.Views.RunicWindowValidationResult? left, Runic.Application.Views.RunicWindowValidationResult? right) -> bool
+Runic.Application.Views.IRunicWindowService
+Runic.Application.Views.IRunicWindowService.OpenWindowAsync<TWindow>(Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.RunicWindowServiceCollectionExtensions
+static Runic.Application.Views.RunicWindowServiceCollectionExtensions.AddRunicWindowService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

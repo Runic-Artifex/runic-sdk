@@ -158,6 +158,27 @@ The same Window and `async host => ...` body run on CS-WebUI with
   describes the document-view mechanism and the GTK 3 opt-in. CS-WebUI's
   `AddRunicPlatformServices()` registers the same services, which return
   `OwnerUnavailable`.
+- `AddRunicPlatformServices()` also registers `IDesktopSettings`, the
+  desktop's appearance preferences (color scheme, accent color, high contrast,
+  reduced motion). They belong to the application, not to a window, so there
+  is one singleton, which `PlatformServices.CreateSettings()` creates when it
+  is first resolved and the service provider disposes. Windows reads its
+  settings, macOS reads AppKit, and Linux reads xdg-desktop-portal with either
+  GTK version, without loading GTK. On other systems every read returns
+  `Unavailable(ProviderNotConfigured)`, and so does CS-WebUI's registration. A
+  ViewModel or service takes it in its constructor and watches it off the
+  model context:
+
+  ```csharp
+  await foreach (var result in settings.WatchAsync(cancellationToken))
+      if (result is PlatformResult<DesktopAppearance>.Success { Value: var appearance })
+          await context.InvokeAsync(() => DesktopScheme = appearance.ColorScheme.ToString(), cancellationToken);
+  ```
+
+  The [multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
+  stores the app's own theme in a settings file and follows this preference
+  when the theme is "system". Register your own `IDesktopSettings` before
+  calling `AddRunicPlatformServices()`, for example in tests, to replace it.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativePickerOwner`, which the services above bind to. The
   provider APIs that take it directly, such as

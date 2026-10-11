@@ -89,7 +89,10 @@ instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformService
 `IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
 ViewModels that take them resolve on both hosts. CS-WebUI windows have no native
 owner, so every operation and the capability snapshot report
-`Unavailable(OwnerUnavailable)`.
+`Unavailable(OwnerUnavailable)`. It also registers one `IDesktopSettings`
+whose reads return `Unavailable(ProviderNotConfigured)`; register a platform
+provider's settings, such as `WindowsPlatformProvider.CreateSettings()`, before
+it to read the desktop's preferences on CS-WebUI.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Runic multi-window project</title>
+    <script src="webui.js"></script>
+    <script src="runic-desktop-views.js"></script>
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <h1 id="title">Connecting</h1>
+    <form id="rename">
+      <label>Project title <input id="new-title" required /></label>
+      <button type="submit">Rename in every Window</button>
+    </form>
+    <p><button id="new-window" type="button">New Window</button></p>
+    <fieldset>
+      <legend>Theme, saved in the app's settings file</legend>
+      <button type="button" data-theme="system">System</button>
+      <button type="button" data-theme="light">Light</button>
+      <button type="button" data-theme="dark">Dark</button>
+      <p>Chosen: <output id="theme"></output>; desktop preference: <output id="desktop-scheme"></output></p>
+    </fieldset>
+  </body>
+</html>

@@ -225,9 +225,10 @@ jobs:
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime
           dotnet run --no-build -c Release --project examples/notes-view-first/NotesViewFirst.csproj -- --check-view-lifetime --splat
           node examples/notes-view-first/window-smoke.mjs
-      - name: Run the Notes example unit tests
+      - name: Run the Notes and multi-window example unit tests
         run: |
           dotnet run --project examples/notes-view-first/Tests -c Release --no-build
+          dotnet run --project examples/multi-window/Tests -c Release --no-build
           (cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
       - name: Exercise CommunityToolkit and ReactiveUI typed clients
         run: |

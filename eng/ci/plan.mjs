@@ -9,7 +9,7 @@ export const managedGroups = ["platform", "assets", "navigation", "application"]
 // with the example's other checks.
 export const jobSuites = {
   native: ["tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj"],
-  views: ["examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj"],
+  views: ["examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj", "examples/multi-window/Tests/MultiWindow.Tests.csproj"],
 };
 export function managedTests(base = root, platform = process.platform) {
   return [...readFileSync(resolve(base, "RunicSdk.Core.slnx"), "utf8").matchAll(/<Project Path="([^"]+)"/g)]

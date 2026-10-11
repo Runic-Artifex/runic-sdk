@@ -290,6 +290,11 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1050, EventName = "WindowRegistrationMissing", Level = LogLevel.Error,
         Message = "Window check {Code} failed: {DiagnosticMessage} {Remediation}")]
     internal static partial void WindowRegistrationMissing(ILogger logger, string code, string diagnosticMessage, string remediation);
+
+    // IRunicWindowService releases each Window it opened once it closes; nothing awaits that release.
+    [LoggerMessage(EventId = 1051, EventName = "WindowReleaseFailed", Level = LogLevel.Error,
+        Message = "Releasing the closed Window {Window} failed with {ErrorType}.")]
+    internal static partial void WindowReleaseFailed(ILogger logger, Exception? exception, string window, string errorType);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace
