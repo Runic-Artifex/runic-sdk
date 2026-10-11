@@ -86,8 +86,9 @@ test('MSBuild diagnostics of packages carry a help link', () => {
   const unlinked = [];
   for (const file of sources(join(root, 'packages/dotnet'))) {
     if (!/\.(targets|props)$/.test(file)) continue;
-    for (const [task] of readFileSync(file, 'utf8').matchAll(/<(?:Error|Warning)\b[^>]*\bCode="[^"]+"[^>]*>/g))
-      if (!/HelpLink="\$\(RunicDiagnosticsHelpLinkBase\)[a-z0-9]+"/.test(task)) unlinked.push(`${relative(root, file)}: ${task}`);
+    // Attributes are matched as quoted values, since message text may contain '>' (item transforms).
+    for (const [task] of readFileSync(file, 'utf8').matchAll(/<(?:Error|Warning)\b(?:\s+[\w.]+="[^"]*")*\s*\/?>/g))
+      if (/\bCode="[^"]+"/.test(task) && !/HelpLink="\$\(RunicDiagnosticsHelpLinkBase\)[a-z0-9]+"/.test(task)) unlinked.push(`${relative(root, file)}: ${task}`);
   }
   expect(unlinked).toEqual([]);
 });

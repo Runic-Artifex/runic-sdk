@@ -142,6 +142,30 @@ on builds that reuse the cached generation.
 the slot's `[RunicViewContract]` if it has one. If the type is never presented
 there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`.
 
+### RUNICBRIDGE014
+
+The `Runic.Application` build targets report this error, not the generator. A
+project declares Runic Views and builds its frontend, but `RunicBridgeFrontendDir`
+does not exist or, with the default frontend build command, has no
+`package.json`. The generated TypeScript client would have no package to build
+in.
+
+**Fix:** create the frontend in that directory, set `RunicBridgeFrontendDir` to
+your frontend package directory, or set `RunicBridgeBuildFrontend=false` when
+another tool builds the frontend.
+
+### RUNICBRIDGE015
+
+A warning from the `Runic.Application` build targets. A project declares a Runic
+Window or View, but Bridge generation is off by default because it references no
+host adapter (`Runic.Application.Desktop`, `Runic.Application.CsWebUi` or
+`Runic.Application.Wpf`) and does not reference `Runic.Application` directly. No
+bridge, `AddRunicViews()` or TypeScript client is generated for it.
+
+**Fix:** set `RunicBridgeBuildEnabled=true` to generate in that project, or
+`RunicBridgeBuildEnabled=false` when another project generates its Views, which
+also silences the warning.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
