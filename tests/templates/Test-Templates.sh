@@ -253,6 +253,10 @@ verify_template() {
   package_name="$(sed -E -e 's/([a-z0-9])([A-Z])/\1-\2/g' -e 's/([a-zA-Z])([0-9])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
   grep -Fq "\"name\": \"$package_name\"" "$output/Frontend/package.json"
   grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
+  # A Svelte config keeps vite-plugin-svelte from reporting a missing config on every build.
+  [[ "$framework" != svelte ]] || grep -Fq 'vitePreprocess()' "$output/Frontend/svelte.config.js"
+  # The window exposes its typed ViewModel to the startup code.
+  grep -Eq 'ViewModel => [Hh]ost\.ViewModel|ReactiveRunicWindow<' "$output/Views.cs"
   local index_html="$output/Frontend/index.html"
   [[ "$framework" == angular ]] && index_html="$output/Frontend/src/index.html"
   case "$host" in

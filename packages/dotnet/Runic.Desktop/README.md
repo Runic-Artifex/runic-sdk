@@ -92,7 +92,8 @@ the same by overriding `GetAvailabilityDiagnostics()`.
 | --- | --- | --- |
 | `linux-embedded-backend-not-selected`, `gtk4-provider-missing`, `gtk4-runtime-missing`, `webkitgtk6-runtime-missing`, `webkitgtk-runtime-missing`, `webview2-runtime-missing`, `browser-not-found`, … | Error | The presentation or a native prerequisite is unavailable (`DesktopPlatform.GetAvailability()` lists them). |
 | `browser-unsupported` | Error | `Browser` is Safari or Opera, which Runic Desktop cannot launch. |
-| `window-option-invalid` | Error | An option has an undefined value, or `ConfirmCloseAsync` is set for a browser presentation. |
+| `window-option-invalid` | Error | An option has an undefined value. |
+| `close-confirmation-unavailable` | Error or Warning | `ConfirmCloseAsync` is set for an explicitly selected browser (Error; opening throws a `DesktopException` with this code), or an `EmbeddedThenBrowser` fallback opens without close confirmation (Warning). |
 | `window-option-unsupported` | Error or Warning | The window host rejects an option (Error, such as GTK4 placement) or the presentation ignores it (Warning, such as `Frameless` in a browser). |
 | `window-option-incomplete` | Warning | Only one of `X`/`Y` or `MinimumWidth`/`MinimumHeight` is set. |
 | `permission-grant-unsupported` | Warning | The presentation does not apply `MediaCapture` and asks the user instead (WKWebView, Firefox). |

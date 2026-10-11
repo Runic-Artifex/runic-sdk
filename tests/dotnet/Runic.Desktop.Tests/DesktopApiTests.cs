@@ -1052,17 +1052,32 @@ public sealed class DesktopApiTests
         Assert.False(unguarded.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation));
     }
 
-    [Theory]
-    [InlineData(BrowserKind.Any, (DesktopPresentationPolicy)0)]
-    [InlineData(BrowserKind.Embedded, DesktopPresentationPolicy.EmbeddedThenBrowser)]
-    public void BrowserPresentationCannotSilentlyIgnoreConfirmation(BrowserKind browser, DesktopPresentationPolicy policy)
+    [Fact]
+    public async Task BrowserPresentationCannotSilentlyIgnoreConfirmation()
     {
-        Assert.Throws<ArgumentException>(() => DesktopSurface.ValidateWindowOptions(new DesktopWindowOptions
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
         {
-            Browser = browser,
-            PresentationPolicy = policy,
+            DiagnosticSink = diagnostics.Enqueue,
+            WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+
+        var error = await Assert.ThrowsAsync<DesktopException>(async () => await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Any,
             ConfirmCloseAsync = _ => ValueTask.FromResult(false),
         }));
+
+        Assert.Equal("close-confirmation-unavailable", error.Code);
+        Assert.Equal(DesktopErrorCategory.CapabilityDenied, error.Category);
+        Assert.Contains(diagnostics, item => item.Code == error.Code && item.CorrelationId == error.CorrelationId);
+        // The embedded window with an explicit browser fallback is valid; only the fallback opens unconfirmed.
+        DesktopSurface.ValidateWindowOptions(new DesktopWindowOptions
+        {
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            ConfirmCloseAsync = _ => ValueTask.FromResult(false),
+        });
     }
 
     private sealed class RecordingWindowHostFactory : IDesktopWindowHostFactory

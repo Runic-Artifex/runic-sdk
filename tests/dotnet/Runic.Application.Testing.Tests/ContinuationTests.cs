@@ -1,3 +1,4 @@
+using ReactiveUI.Primitives;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
@@ -15,6 +16,7 @@ internal static class ContinuationTests
     {
         await ToolkitCommandResumesOnTheModelContext();
         await ReactiveCommandResumesOnTheModelContext();
+        await AwaitedInteractionResumesOnTheModelContext();
     }
 
     private static async Task ToolkitCommandResumesOnTheModelContext()
@@ -40,6 +42,29 @@ internal static class ContinuationTests
             new TestViewLocator());
         await RunProbeAsync(host.Transport, "reactiveContinuation", probe, "ReactiveUI");
         Require(model.Status == "b:released", $"The ReactiveUI command's last write was lost: {model.Status}");
+    }
+
+    // A ReactiveUI interaction that a frontend answers completes on a bridge
+    // thread. Awaiting it in a body that runs in a turn still resumes in the
+    // context, so the body sets state after it directly.
+    private static async Task AwaitedInteractionResumesOnTheModelContext()
+    {
+        await using var context = new RunicModelContext();
+        var interaction = new ReactiveUI.Binding.Interaction<int, bool>();
+        using var handler = interaction.RegisterHandler(async request =>
+        {
+            await Task.Delay(20).ConfigureAwait(false);
+            request.SetOutput(request.Input > 0);
+        });
+        Task<bool>? body = null;
+        await context.InvokeAsync(() => body = Body());
+        Require(await body!.WaitAsync(TimeSpan.FromSeconds(5)), "The code after the awaited interaction ran outside the model context.");
+
+        async Task<bool> Body()
+        {
+            var approved = await interaction.Handle(1);
+            return approved && context.IsExecuting;
+        }
     }
 
     // Runs "a" through the awaited command route and "b" through an admitted
