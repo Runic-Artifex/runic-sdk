@@ -57,6 +57,14 @@ namespace Runic.Application.Testing.Tests
 
         [RelayCommand]
         private void Show(string view) => Label = view;
+
+        // A command named New is rejected (RUNICBRIDGE004): `new()` would be a
+        // construct signature. A state property and a longer command name are
+        // ordinary members of the generated types.
+        public string New { get; } = "new";
+
+        [RelayCommand]
+        private void NewItem() => Label = "item";
     }
 
     public sealed partial class NamingWindow(NamingViewModel model) : RunicWindow<NamingViewModel>(model);

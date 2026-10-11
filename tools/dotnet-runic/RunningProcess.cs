@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,13 +11,15 @@ namespace Runic.Application.Tool;
 internal sealed class RunningProcess : IAsyncDisposable
 {
     private readonly Process _process;
+    private readonly string _label;
     private readonly TaskCompletionSource<int> _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _stopping;
 
-    private RunningProcess(Process process)
+    private RunningProcess(Process process, string label)
     {
         _process = process;
+        _label = label;
         _process.EnableRaisingEvents = true;
         _process.Exited += (_, _) => _completion.TrySetResult(_process.ExitCode);
     }
@@ -53,7 +56,7 @@ internal sealed class RunningProcess : IAsyncDisposable
         }
 
         var process = new Process { StartInfo = startInfo };
-        var running = new RunningProcess(process);
+        var running = new RunningProcess(process, label);
         process.OutputDataReceived += (_, eventArgs) =>
         {
             if (eventArgs.Data is not null)
@@ -94,6 +97,45 @@ internal sealed class RunningProcess : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Asks the application to stop as Ctrl+C in a terminal would, waits up to <paramref name="grace"/> for it to
+    /// exit, then kills whatever remains of the process tree.
+    /// </summary>
+    internal async Task StopGracefullyAsync(TimeSpan grace)
+    {
+        if (Interlocked.Exchange(ref _stopping, 1) != 0)
+        {
+            await Completion.ConfigureAwait(false);
+            return;
+        }
+
+        using var timeout = new CancellationTokenSource(grace);
+        try
+        {
+            if (!Completion.IsCompleted)
+            {
+                IReadOnlyList<int> targets = await ProcessTreeSignal
+                    .RequestStopAsync(_process.Id, timeout.Token).ConfigureAwait(false);
+                while (!Completion.IsCompleted && !targets.All(ProcessTreeSignal.HasExited))
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(50), timeout.Token).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            Console.Error.WriteLine(
+                $"[{_label}] The application did not stop within {grace.TotalSeconds:0.#} seconds; ending it.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException
+            or System.ComponentModel.Win32Exception or DevUsageException)
+        {
+            Console.Error.WriteLine($"[{_label}] Could not ask the application to stop: {exception.Message}");
+        }
+
+        await TerminateAsync().ConfigureAwait(false);
+    }
+
     internal async Task StopAsync()
     {
         if (Interlocked.Exchange(ref _stopping, 1) != 0)
@@ -102,6 +144,11 @@ internal sealed class RunningProcess : IAsyncDisposable
             return;
         }
 
+        await TerminateAsync().ConfigureAwait(false);
+    }
+
+    private async Task TerminateAsync()
+    {
         CommandRunner.TryTerminate(_process);
         try
         {

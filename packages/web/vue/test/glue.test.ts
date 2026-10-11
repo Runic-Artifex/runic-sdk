@@ -2,8 +2,8 @@
 
 import { createApp, defineComponent, effectScope, h, nextTick, shallowRef, watchEffect, type PropType } from "vue";
 import { describe, expect, test, expectTypeOf } from "vitest";
-import { useCollectionViewport, useCommand, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
-import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
+import { useCollectionViewport, useCommand, useOperation, useView, ViewOutlet, type ViewRegistry } from "../dist/index.js";
+import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
 type State = { readonly count: number };
 
@@ -171,6 +171,68 @@ describe("useCollectionViewport", () => {
     await nextTick();
     expect(list.viewport.value).toEqual({ start: 0, size: 5, offset: 0, totalSize: 100 });
     list.attach(null);
+    scope.stop();
+  });
+});
+
+function fakeOperation(requestId: string) {
+  let finish!: (status: BridgeOperationStatus<number>) => void;
+  const terminal = new Promise<BridgeOperationStatus<number>>(resolve => { finish = resolve; });
+  let cancels = 0;
+  const operation: BridgeOperation<number> = {
+    requestId,
+    status: () => terminal,
+    completion: terminal,
+    wait: () => terminal,
+    async cancel() { cancels++; return { contract: "test", requestId, kind: "cancellation-requested" }; },
+    async outcome() {
+      const status = await terminal;
+      if (status.kind === "succeeded") return bridgeSuccess(status.result as number);
+      throw new BridgeError(status.kind === "cancelled" ? "cancelled" : status.kind === "timedOut" ? "timeout" : "failed", status.kind);
+    },
+  };
+  return { operation, finish, cancels: () => cancels };
+}
+
+describe("useOperation", () => {
+  test("Cancel ends in a cancelled state without an error; failed and timed-out runs are errors", async () => {
+    let current = fakeOperation("first");
+    const scope = effectScope();
+    const seen: boolean[] = [];
+    const operation = scope.run(() => {
+      const handle = useOperation(() => current.operation);
+      watchEffect(() => { seen.push(handle.cancelled); });
+      return handle;
+    })!;
+    expectTypeOf(operation.cancelled).toEqualTypeOf<boolean>();
+    const result = operation.run();
+    expect(operation.pending).toBe(true);
+    await settle();
+    await operation.cancel();
+    expect(current.cancels()).toBe(1);
+    expect(operation.cancellationRequested).toBe(true);
+    current.finish({ contract: "test", requestId: "first", kind: "cancelled" });
+    expect(await result).toBeUndefined();
+    await nextTick();
+    expect(operation.cancelled).toBe(true);
+    expect(operation.error).toBeUndefined();
+    expect(operation.pending).toBe(false);
+    expect(seen.at(-1)).toBe(true);
+
+    for (const [status, kind] of [
+      [{ contract: "test", requestId: "next", kind: "failed", error: { kind: "failed", message: "boom" } }, "failed"],
+      [{ contract: "test", requestId: "next", kind: "timedOut", cancellation: "cancellation-requested" }, "timeout"],
+    ] as const) {
+      current = fakeOperation("next");
+      const run = operation.run();
+      expect(operation.cancelled).toBe(false);
+      current.finish(status);
+      expect(await run).toBeUndefined();
+      expect(operation.cancelled).toBe(false);
+      expect((operation.error as BridgeError).kind).toBe(kind);
+    }
+    operation.reset();
+    expect(operation.error).toBeUndefined();
     scope.stop();
   });
 });

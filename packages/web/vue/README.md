@@ -43,6 +43,36 @@ Returns shallow refs `{ state, client, error, pending }` and `retry()`:
 - `pending` is true while a reference connects. `error` holds a failed
   connection; `retry()` connects again.
 
+### Read-only state and `v-model`
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from `state`. A property with a public C# setter also gets a
+`set<Property>` client method; wrap it in a writable `computed` to use
+`v-model`. Status with a `private set`, such as `IsDirty` or `Error`, has no
+setter and is only rendered:
+
+```vue
+<script setup lang="ts">
+// C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+import { computed } from "vue";
+import { useCommand, useView } from "@runic-artifex/vue";
+import type { CounterPageReference } from "./generated/counter.js";
+
+const props = defineProps<{ page: CounterPageReference }>();
+const { state, client } = useView(() => props.page);
+const setStep = useCommand((value: number) => client.value?.setStep(value));
+const step = computed({ get: () => state.value?.step ?? 1, set: value => void setStep.run(value) });
+</script>
+
+<template>
+  <p>{{ state?.count ?? "…" }}</p>
+  <select v-model.number="step">
+    <option :value="1">1</option>
+    <option :value="5">5</option>
+  </select>
+</template>
+```
+
 ## `ViewOutlet`
 
 Renders the component registered for a generated reference's `kind` and
@@ -87,6 +117,33 @@ For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves
 from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
+
+## `useOperation(start, options?)`
+
+Observes a generated `start<Command>()` operation through the framework-neutral
+[operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
+and returns a reactive object; read its state from the object rather than destructuring it:
+
+```vue
+<script setup lang="ts">
+const push = useOperation((remote: string) => client.value?.startPush(remote));
+</script>
+
+<template>
+  <button :disabled="!client || push.pending" @click="push.run('origin')">Push</button>
+  <button v-if="push.pending" :disabled="push.cancellationRequested" @click="push.cancel()">Cancel</button>
+  <p v-if="push.cancelled" role="status">Push cancelled.</p>
+  <p v-if="push.error !== undefined" role="alert">{{ String(push.error) }}</p>
+</template>
+```
+
+The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
+`cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
+run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
+without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
+stays true after a Cancel response until the operation reaches its terminal status.
+Disposing the effect scope settles run promises without cancelling accepted work.
 
 ## `useCollectionViewport(options)`
 

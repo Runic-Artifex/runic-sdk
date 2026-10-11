@@ -3,8 +3,8 @@ import { Component, effect, Injector, NgZone, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
-import { injectCollectionViewport, injectCommand, injectView, RunicViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
-import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "@runic-artifex/views";
+import { injectCollectionViewport, injectCommand, injectOperation, injectView, RunicViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
+import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
 type Page =
   | { readonly kind: "counter"; connect(): Promise<unknown> }
@@ -199,5 +199,60 @@ describe("injectCollectionViewport", () => {
     injectCollectionViewport(target, () => ({ totalCount: 10, rowHeight: 20 }), { injector });
     TestBed.tick();
     expect(outside).toBe(1);
+  });
+});
+
+function fakeOperation(requestId: string) {
+  let finish!: (status: BridgeOperationStatus<number>) => void;
+  const terminal = new Promise<BridgeOperationStatus<number>>(resolve => { finish = resolve; });
+  let cancels = 0;
+  const operation: BridgeOperation<number> = {
+    requestId,
+    status: () => terminal,
+    completion: terminal,
+    wait: () => terminal,
+    async cancel() { cancels++; return { contract: "test", requestId, kind: "cancellation-requested" }; },
+    async outcome() {
+      const status = await terminal;
+      if (status.kind === "succeeded") return bridgeSuccess(status.result as number);
+      throw new BridgeError(status.kind === "cancelled" ? "cancelled" : status.kind === "timedOut" ? "timeout" : "failed", status.kind);
+    },
+  };
+  return { operation, finish, cancels: () => cancels };
+}
+
+describe("injectOperation", () => {
+  test("Cancel ends in a cancelled state without an error; failed and timed-out runs are errors", async () => {
+    let current = fakeOperation("first");
+    const operation = TestBed.runInInjectionContext(() => injectOperation(() => current.operation));
+    expectTypeOf(operation.cancelled()).toEqualTypeOf<boolean>();
+    expectTypeOf(operation.run).returns.resolves.toEqualTypeOf<BridgeOutcome<number, never> | undefined>();
+    const result = operation.run();
+    expect(operation.pending()).toBe(true);
+    await Promise.resolve();
+    await operation.cancel();
+    expect(current.cancels()).toBe(1);
+    expect(operation.cancellationRequested()).toBe(true);
+    current.finish({ contract: "test", requestId: "first", kind: "cancelled" });
+    expect(await result).toBeUndefined();
+    expect(operation.cancelled()).toBe(true);
+    expect(operation.status()?.kind).toBe("cancelled");
+    expect(operation.error()).toBeUndefined();
+    expect(operation.pending()).toBe(false);
+
+    for (const [status, kind] of [
+      [{ contract: "test", requestId: "next", kind: "failed", error: { kind: "failed", message: "boom" } }, "failed"],
+      [{ contract: "test", requestId: "next", kind: "timedOut", cancellation: "cancellation-requested" }, "timeout"],
+    ] as const) {
+      current = fakeOperation("next");
+      const run = operation.run();
+      expect(operation.cancelled()).toBe(false);
+      current.finish(status);
+      expect(await run).toBeUndefined();
+      expect(operation.cancelled()).toBe(false);
+      expect((operation.error() as BridgeError).kind).toBe(kind);
+    }
+    operation.reset();
+    expect(operation.error()).toBeUndefined();
   });
 });

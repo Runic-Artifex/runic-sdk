@@ -47,6 +47,34 @@ already connected client is observed and left to its owner. Outside an
 injection context, pass `{ injector }`; pass `{ release }` to defer disposal,
 for example until queued commands finish.
 
+### Read-only state and two-way binding
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from the `state` signal. A property with a public C# setter
+also gets a `set<Property>` client method: bind the control's value from
+`state` and call the setter from its change event. Status with a
+`private set`, such as `IsDirty` or `Error`, has no setter and is only rendered:
+
+```ts
+// C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+@Component({
+  selector: "counter-page",
+  template: `
+    <p>{{ counter.state()?.count ?? "…" }}</p>
+    <select #step (change)="setStep.run(+step.value)">
+      @for (value of [1, 5]; track value) {
+        <option [value]="value" [selected]="value === (counter.state()?.step ?? 1)">{{ value }}</option>
+      }
+    </select>
+  `,
+})
+export class CounterPage {
+  readonly page = input.required<CounterPageReference>();
+  readonly counter = injectView(this.page);
+  readonly setStep = injectCommand((step: number) => this.counter.client()?.setStep(step));
+}
+```
+
 ## Outlet
 
 Register a component for each generated View kind and pass the current
@@ -100,6 +128,32 @@ by dispatch instead: start the next one once the previous one has been sent,
 as the Notes example's
 [`WindowOperations.runDispatched`](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first/Angular/src/app/window-operations.ts)
 does for its navigation commands.
+
+## Operations
+
+`injectOperation(start, options?)` observes a generated `start<Command>()` operation
+through the framework-neutral
+[operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection)
+for the lifetime of the injection context:
+
+```ts
+readonly push = injectOperation((remote: string) => this.workspace.client()?.startPush(remote));
+// <button [disabled]="!workspace.client() || push.pending()" (click)="push.run('origin')">Push</button>
+// @if (push.pending()) { <button [disabled]="push.cancellationRequested()" (click)="push.cancel()">Cancel</button> }
+// @if (push.cancelled()) { <p role="status">Push cancelled.</p> }
+// @if (push.error() !== undefined) { <p role="alert">{{ push.error() }}</p> }
+```
+
+It returns `run(...args)`, `cancel()` and `reset()`, which never reject, and the
+`pending`, `admitting`, `operation`, `status`, `outcome`, `failure`, `error`,
+`cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and `cancelError`
+signals. A run that ends with a `cancelled` status sets `cancelled` and resolves to
+`undefined` without an `error`; `failed` and `timedOut` statuses are still `error`.
+`pending` stays true after a Cancel response until the operation reaches its terminal
+status. Destroying the injection context settles run promises without cancelling
+accepted work. The options also take the controller's `cancel(operation)` and
+`waitForCompletion(operation, status)` callbacks, and `injector` outside an injection
+context.
 
 ## Collection viewports
 

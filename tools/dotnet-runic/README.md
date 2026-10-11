@@ -39,6 +39,12 @@ file does not exist stops `dev` with `RAPPDEV1009: Window entry not found:
 The Window runs with `DOTNET_ENVIRONMENT=Development` unless you set
 `DOTNET_ENVIRONMENT` or `ASPNETCORE_ENVIRONMENT` yourself, so failed Bridge
 calls carry the exception type, message and stack to the browser.
+Ctrl+C or SIGTERM stops `dev` the way closing the last window stops the
+application: the Window gets SIGTERM on Linux and macOS, or Ctrl+C on Windows,
+and up to 5 seconds to close its windows and finish its work before `dev` kills
+it. A restart after a C# or frontend compiler edit gets the same grace;
+`dev` sets `DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS=5000` for `dotnet watch`
+unless you set it yourself.
 
 `doctor` checks the Views Window opt-in, the .NET SDK, the declared JavaScript
 runtime and package manager, the matching lock file, the configured

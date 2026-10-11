@@ -61,6 +61,31 @@ render, so each render reconnects. In development `useView` logs a warning when
 this repeats. Pass the generated function itself, a generated page reference,
 or memoize the source with `useMemo`.
 
+### Read-only state and two-way binding
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from `state`. A property with a public C# setter also gets a
+`set<Property>` client method, so a control can bind it two way; status with a
+`private set`, such as `IsDirty` or `Error`, has no setter and is only rendered:
+
+```tsx
+// C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+export function CounterPage({ page }: { page: CounterPageReference }) {
+  const { state, client } = useView(page);
+  const setStep = useCommand((step: number) => client?.setStep(step));
+  return <>
+    <p>{state?.count ?? "…"}</p>
+    <select value={state?.step ?? 1} onChange={event => void setStep.run(Number(event.currentTarget.value))}>
+      <option value={1}>1</option>
+      <option value={5}>5</option>
+    </select>
+  </>;
+}
+```
+
+The control shows the ViewModel's value, so it reverts when the setter throws
+or keeps a different value.
+
 ## `useSuspenseView(source)`
 
 Suspends the component until a reference connects, then returns
@@ -111,6 +136,30 @@ For a command that declares a failure (`[RunicFailure]` in .NET), `run` resolves
 from the outcome, while `error` keeps unexpected failures. Starting a run and
 `reset()` clear both, and a run superseded by a later run or by `reset()` sets
 neither.
+
+## `useOperation(start, options?)`
+
+Observes a generated `start<Command>()` operation through the framework-neutral
+[operation controller](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection).
+`run(...args)` calls the latest `start`, so it may close over the current client:
+
+```tsx
+const push = useOperation((remote: string) => client?.startPush(remote));
+<button disabled={!client || push.pending} onClick={() => void push.run("origin")}>Push</button>
+{push.pending && <button disabled={push.cancellationRequested} onClick={() => void push.cancel()}>Cancel</button>}
+{push.cancelled && <p role="status">Push cancelled.</p>}
+{push.error !== undefined && <p role="alert">{String(push.error)}</p>}
+```
+
+The result has `pending`, `admitting`, `operation`, `status`, `outcome`, `failure`,
+`error`, `cancelled`, `cancellationRequested`, `cancelling`, `cancellation` and
+`cancelError`, with `run(...args)`, `cancel()` and `reset()`, which never reject. A
+run that ends with a `cancelled` status sets `cancelled` and resolves to `undefined`
+without an `error`; `failed` and `timedOut` statuses are still `error`. `pending`
+stays true after a Cancel response until the operation reaches its terminal status.
+Unmounting stops rendering feedback but never cancels accepted work. The optional
+`cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
+controller's options.
 
 ## `useCollectionViewport(options)`
 

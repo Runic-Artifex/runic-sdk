@@ -199,7 +199,8 @@ public static class BridgeContractShape
         for (var current = type; current is not null && current != typeof(object) && !IsFrameworkBase(current); current = current.BaseType) hierarchy.Push(current);
         return hierarchy.SelectMany(current => current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)).Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod is not null);
     }
-    private static bool IsFrameworkBase(Type type) => type.FullName is "ReactiveUI.ReactiveObject" or "CommunityToolkit.Mvvm.ComponentModel.ObservableObject" || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
+    // The generator also uses it to recognise a framework slot type.
+    internal static bool IsFrameworkBase(Type type) => type.FullName is "ReactiveUI.ReactiveObject" or "CommunityToolkit.Mvvm.ComponentModel.ObservableObject" || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
     // Same rule as the generator: a ReactiveUI command or interaction argument
     // is annotated only when the declared property type closes the contract.
     private static NullabilityInfo? ContractAnnotation(PropertyInfo property, Type contract, NullabilityInfoContext nullability, int index) =>
