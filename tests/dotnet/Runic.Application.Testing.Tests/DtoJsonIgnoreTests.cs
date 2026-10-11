@@ -20,7 +20,7 @@ internal static partial class CodegenDiagnosticsTests
                 [JsonIgnore] public bool IsFiltered => Message.Length != 0 || Author.Length != 0;
             }
             public sealed class HistoryViewModel : FixtureModel { public HistoryQuery Query { get; } = new("", ""); }
-            public sealed partial class HistoryWindow(HistoryViewModel model) : RunicWindow<HistoryViewModel>(model);
+            public sealed partial class HistoryWindow : RunicWindow<HistoryViewModel>;
             """;
 
         var rejected = await GenerateAsync(generator, temporaryRoot, "JsonIgnoreComputedOff", preamble + Computed).ConfigureAwait(false);
@@ -132,7 +132,7 @@ internal static partial class CodegenDiagnosticsTests
                 public Dictionary<string, SharedCore.HistoryQuery> Lookup { get; } = new() { ["key"] = new() };
                 [RunicAlias("validationDto")] public SharedCore.ValidationDto Validation { get; } = new();
             }
-            public sealed partial class IndependentWindow(IndependentViewModel model) : RunicWindow<IndependentViewModel>(model);
+            public sealed partial class IndependentWindow : RunicWindow<IndependentViewModel>;
             """;
         var source = optedInPreamble + Consumer;
         var (exit, output, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "IndependentJsonIgnoreConsumer", source, references).ConfigureAwait(false);
@@ -179,8 +179,8 @@ internal static partial class CodegenDiagnosticsTests
         MetadataReference[] references = [.. coreReferences, MetadataReference.CreateFromFile(modelPath)];
         var source = optedInPreamble + """
             public sealed class MixedJsonIgnoreViewModel : FixtureModel { public SharedCore.PolicyDto Value { get; } = new(); }
-            public sealed partial class MixedJsonIgnoreWindow(MixedJsonIgnoreViewModel model) : RunicWindow<MixedJsonIgnoreViewModel>(model);
-            public sealed partial class MixedDefaultWindow(SharedModels.MixedDefaultViewModel model) : RunicWindow<SharedModels.MixedDefaultViewModel>(model);
+            public sealed partial class MixedJsonIgnoreWindow : RunicWindow<MixedJsonIgnoreViewModel>;
+            public sealed partial class MixedDefaultWindow : RunicWindow<SharedModels.MixedDefaultViewModel>;
             """;
         var (exit, output, directory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "MixedJsonIgnoreConsumer", source, references).ConfigureAwait(false);
         Require(exit == 0, $"Mixed-policy ViewModels were rejected.\n{output}");
@@ -237,7 +237,7 @@ internal static partial class CodegenDiagnosticsTests
             public ReactiveUI.Binding.Interaction<JsonIgnoreFieldDto, JsonIgnoreFieldDto> Confirm { get; } = new();
             public JsonIgnoreViewModel() => ApplyCommand = new RelayCommand<JsonIgnoreFieldDto>(input => Current.Single = input!);
         }
-        public sealed partial class JsonIgnoreWindow(JsonIgnoreViewModel model) : RunicWindow<JsonIgnoreViewModel>(model);
+        public sealed partial class JsonIgnoreWindow : RunicWindow<JsonIgnoreViewModel>;
         """;
 
     private const string JsonIgnoreProbe = """"

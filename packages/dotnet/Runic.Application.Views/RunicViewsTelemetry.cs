@@ -285,6 +285,11 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1033, EventName = "ModelContextReleaseFailed", Level = LogLevel.Error,
         Message = "Releasing a model context failed with {ErrorType}.")]
     internal static partial void ModelContextReleaseFailed(ILogger logger, Exception? exception, string errorType);
+
+    // OpenWindowAsync or ValidateWindow found a missing registration, on any host.
+    [LoggerMessage(EventId = 1050, EventName = "WindowRegistrationMissing", Level = LogLevel.Error,
+        Message = "Window check {Code} failed: {DiagnosticMessage} {Remediation}")]
+    internal static partial void WindowRegistrationMissing(ILogger logger, string code, string diagnosticMessage, string remediation);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

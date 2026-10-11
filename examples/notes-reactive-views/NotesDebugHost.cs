@@ -57,7 +57,7 @@ internal sealed class NotesDebugHost : IDisposable
         }
         // WebUI reports a localhost URL but listens on IPv4 loopback only. Windows
         // waits about two seconds on the refused ::1 attempt, so proxy to 127.0.0.1.
-        var backendUrl = new UriBuilder(window.StartServer("index.html")) { Host = "127.0.0.1" }
+        var backendUrl = new UriBuilder(window.NativeWindow.StartServer("index.html")) { Host = "127.0.0.1" }
             .Uri.GetLeftPart(UriPartial.Authority);
         var frontendPort = AvailablePort();
         var frontendUrl = $"http://127.0.0.1:{frontendPort}/";

@@ -48,7 +48,7 @@ internal static partial class ShutdownSignalFixture
                     // Ignores the shutdown request, so only a second signal can end the process.
                     await Task.Delay(Timeout.Infinite);
                 }
-                window.WaitForClose();
+                await window.WaitForCloseAsync();
                 Report("window-closed");
                 await work;
                 Report("work-drained");
@@ -142,7 +142,7 @@ internal sealed class ClosableWindowHost : IDesktopWindowHost
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 }

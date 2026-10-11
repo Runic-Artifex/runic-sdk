@@ -42,7 +42,7 @@ public sealed class AotProofViewModel : ReactiveObject
     public IReactiveCommand<AotSaveRequest, AotSaveResult> SaveCommand { get; }
 }
 
-public sealed partial class AotProofWindow(AotProofViewModel model) : RunicWindow<AotProofViewModel>(model);
+public sealed partial class AotProofWindow : RunicWindow<AotProofViewModel>;
 
 internal sealed class AotArguments(string json) : IBridgeArguments
 {

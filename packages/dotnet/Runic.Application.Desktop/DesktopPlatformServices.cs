@@ -31,7 +31,7 @@ public enum DesktopPlatformProvider
 
 /// <summary>Selects the native platform-service provider for the running Desktop backend.</summary>
 /// <remarks>
-/// Applications that open windows with <c>OpenDesktopWindowAsync</c> call
+/// Applications that open windows with <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> call
 /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices"/> instead and take
 /// <see cref="IWindowPlatformServices"/> or <see cref="IFileDialogs"/> in a ViewModel constructor. The explicit
 /// providers, such as <c>WindowsPlatformProvider</c>, remain available for custom composition.
@@ -171,7 +171,7 @@ public static class PlatformServices
 /// <remarks>
 /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices"/> registers one instance per window
 /// scope. Before the window opens every service reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>;
-/// <c>OpenDesktopWindowAsync</c> binds it to the window as soon as the presentation opens, and closing the window
+/// <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> binds it to the window as soon as the presentation opens, and closing the window
 /// stops it. After that every service reports <see cref="PlatformUnavailableReason.OwnerClosed"/>.
 /// </remarks>
 public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFileDialogs, ITextClipboard, IDesktopFileLauncher, IAsyncDisposable
@@ -253,7 +253,7 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <see cref="IDesktopFileLauncher"/>.
     /// </summary>
     /// <remarks>
-    /// A ViewModel resolved in the scope that <c>OpenDesktopWindowAsync</c> creates can take any of these services in
+    /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
     /// its constructor. They bind to the window's native owner when the window opens, using
     /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. Resolved in any other scope
     /// they stay unbound and report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. Existing registrations

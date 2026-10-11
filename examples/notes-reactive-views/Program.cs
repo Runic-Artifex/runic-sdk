@@ -10,23 +10,24 @@ var webRoot = webRootOption >= 0
         : throw new ArgumentException("--web-root requires a directory.")
     : Path.Combine(AppContext.BaseDirectory, "www");
 
-using var app = NotesApplication.Create();
-await using var window = app.OpenWindow();
+ushort? port = null;
 var portOption = Array.IndexOf(args, "--port");
 if (portOption >= 0)
 {
-    if (portOption + 1 >= args.Length || !ushort.TryParse(args[portOption + 1], out var port) || port == 0)
+    if (portOption + 1 >= args.Length || !ushort.TryParse(args[portOption + 1], out var value) || value == 0)
         throw new ArgumentException("--port requires a TCP port from 1 to 65535.");
-    window.SetPort(port);
+    port = value;
 }
-window.SetRootFolder(webRoot);
-window.SetSize(1000, 660);
 var devFrontend = Environment.GetEnvironmentVariable("RUNIC_DEV_FRONTEND");
 var serveOnly = args.Contains("--serve-only", StringComparer.Ordinal);
+
+using var app = NotesApplication.Create();
+// Server and frontend development modes show the window, or only start its server, below.
+await using var window = await app.OpenWindowAsync(webRoot, 1000, 660, port, show: !serveOnly && devFrontend is null);
 using var debugHost = devFrontend is null ? null : await NotesDebugHost.StartAsync(window, devFrontend, !serveOnly);
 if (serveOnly)
 {
-    Console.WriteLine($"Main: {debugHost?.Url ?? window.StartServer("index.html")}");
+    Console.WriteLine($"Main: {debugHost?.Url ?? window.NativeWindow.StartServer("index.html")}");
     Console.Out.Flush();
     var editor = window.DataContext?.Editor
         ?? throw new InvalidOperationException("The Notes Window has no Editor ViewModel.");
@@ -56,9 +57,12 @@ if (serveOnly)
 }
 else
 {
-    window.Show(debugHost?.Url ?? "index.html");
-    debugHost?.RecordWindow();
-    app.Wait();
+    if (debugHost is not null)
+    {
+        window.NativeWindow.Show(debugHost.Url);
+        debugHost.RecordWindow();
+    }
+    await window.WaitForCloseAsync();
 }
 // Server mode can still have a native worker after the final client disconnects.
 // Stop WebUI before the window's async disposal destroys its native state.

@@ -288,16 +288,16 @@ public sealed record DesktopWindowOptions
     public uint? MinimumHeight { get; init; }
 
     /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
-    /// <remarks>Applies only together with <see cref="Y"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.
+    /// <remarks>Applies only together with <see cref="Y"/>; <see cref="Centered"/> takes precedence. Firefox ignores it, and installed browsers ignore a negative position.
     /// When unset, the Windows WebView2 window opens at (100, 100). Windows scales <see cref="Width"/> and
     /// <see cref="Height"/> for the monitor DPI, but not the position.</remarks>
-    public uint? X { get; init; }
+    public int? X { get; init; }
 
     /// <summary>Gets the initial vertical screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
-    /// <remarks>Applies only together with <see cref="X"/>; <see cref="Centered"/> takes precedence. Firefox ignores it.
+    /// <remarks>Applies only together with <see cref="X"/>; <see cref="Centered"/> takes precedence. Firefox ignores it, and installed browsers ignore a negative position.
     /// When unset, the Windows WebView2 window opens at (100, 100). Windows scales <see cref="Width"/> and
     /// <see cref="Height"/> for the monitor DPI, but not the position.</remarks>
-    public uint? Y { get; init; }
+    public int? Y { get; init; }
 
     /// <summary>Gets whether the embedded window opens centered on the screen, replacing <see cref="X"/> and <see cref="Y"/>.</summary>
     public bool Centered { get; init; }

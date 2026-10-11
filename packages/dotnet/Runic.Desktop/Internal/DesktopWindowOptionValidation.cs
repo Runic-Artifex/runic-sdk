@@ -160,6 +160,13 @@ internal static class DesktopWindowOptionValidation
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.X), remediation));
         }
+        // A browser window position is unsigned, so WebUiBrowserHost skips a negative one.
+        else if (options.X is int x && options.Y is int y && (x < 0 || y < 0))
+        {
+            diagnostics.Add(Ignored(presentation,
+                x < 0 ? nameof(DesktopWindowOptions.X) : nameof(DesktopWindowOptions.Y),
+                "Use a non-negative position. " + remediation));
+        }
         if (firefox && !string.IsNullOrWhiteSpace(options.ProxyServer))
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.ProxyServer), remediation));

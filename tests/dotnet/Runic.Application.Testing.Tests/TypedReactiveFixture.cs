@@ -239,4 +239,4 @@ public sealed class TypedReactiveViewModel : ReactiveObject
     }
 }
 
-public sealed partial class TypedReactiveWindow(TypedReactiveViewModel model) : RunicWindow<TypedReactiveViewModel>(model);
+public sealed partial class TypedReactiveWindow : RunicWindow<TypedReactiveViewModel>;

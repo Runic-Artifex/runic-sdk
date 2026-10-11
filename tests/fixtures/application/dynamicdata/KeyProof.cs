@@ -28,4 +28,4 @@ public sealed class KeyProofViewModel : INotifyPropertyChanged, IDisposable
     }
 }
 
-public sealed partial class KeyProofWindow(KeyProofViewModel model) : RunicWindow<KeyProofViewModel>(model);
+public sealed partial class KeyProofWindow : RunicWindow<KeyProofViewModel>;

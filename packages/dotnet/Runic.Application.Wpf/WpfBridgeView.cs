@@ -21,6 +21,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     private readonly IDisposable _attachment;
     private DesktopWindow? _presentation;
     private Task<BridgeWindowCloseResult>? _close;
+    private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _opening;
 
     internal WpfBridgeView(DesktopSurface surface, DesktopBridgeTransport transport, WindowContentSession content,
@@ -84,21 +85,27 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     }
 
     /// <inheritdoc />
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout)
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan) throw new ArgumentOutOfRangeException(nameof(timeout));
         TaskCompletionSource<BridgeWindowCloseResult> close;
         lock (_gate)
         {
-            if (_close is not null) return new(_close);
+            if (_close is not null) return new(_close.WaitAsync(cancellationToken));
             // Publish the close before running any of it: disposal and WebView2/COM calls can
             // pump messages and re-enter CloseAsync or DisposeAsync on this thread.
             close = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _close = close.Task;
         }
+        _closeStarted.TrySetResult();
         _ = RunCloseAsync(close, timeout);
-        return new(close.Task);
+        return new(close.Task.WaitAsync(cancellationToken));
     }
+
+    /// <summary>Completes when this view starts closing, including when its presentation closes.</summary>
+    /// <param name="cancellationToken">Stops the wait without closing the view.</param>
+    public ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default) =>
+        new(_closeStarted.Task.WaitAsync(cancellationToken));
 
     private async Task RunCloseAsync(TaskCompletionSource<BridgeWindowCloseResult> close, TimeSpan timeout)
     {
@@ -129,7 +136,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
         }
         Capture(_transport.Dispose);
         if (_presentation is { } presentation)
-            try { await presentation.CloseAsync().ConfigureAwait(false); } catch (Exception error) { errors.Add(error); }
+            try { await presentation.CloseAsync(CancellationToken.None).ConfigureAwait(false); } catch (Exception error) { errors.Add(error); }
         var completion = CompleteAsync(result.Completion);
         return new(result.Drained, result.RemainingOperations, completion);
 

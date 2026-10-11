@@ -153,7 +153,7 @@ public interface IDesktopWindowHost : IAsyncDisposable
     /// <param name="y">The new vertical position in pixels.</param>
     /// <param name="cancellationToken">Cancels the operation.</param>
     /// <returns>A task that completes when the window has been moved.</returns>
-    ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default);
+    ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default);
 
     /// <summary>Shows or hides the window without closing it.</summary>
     /// <param name="visible"><see langword="true"/> to show the window; <see langword="false"/> to hide it.</param>
@@ -191,10 +191,10 @@ public sealed record DesktopWindowHostOptions
     public uint? MinimumHeight { get; init; }
 
     /// <summary>Gets the initial horizontal screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
-    public uint? X { get; init; }
+    public int? X { get; init; }
 
     /// <summary>Gets the initial vertical screen position in pixels, or <see langword="null"/> to let the platform choose.</summary>
-    public uint? Y { get; init; }
+    public int? Y { get; init; }
 
     /// <summary>Gets whether the window opens centered on the screen.</summary>
     public bool Centered { get; init; }
@@ -314,7 +314,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
         _host.ResizeAsync(width, height, cancellationToken);
 
-    public ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
+    public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default) =>
         _host.MoveAsync(x, y, cancellationToken);
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) =>

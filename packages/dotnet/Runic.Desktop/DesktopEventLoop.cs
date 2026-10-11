@@ -39,7 +39,7 @@ public static class DesktopEventLoop
     /// <para>
     /// Ctrl+C, SIGTERM and a closed Windows console stop the application in the same order as closing its last
     /// window: <see cref="DesktopHost.ShutdownRequested"/> is cancelled, the open windows close so
-    /// <see cref="DesktopWindow.WaitForClose"/> returns, the application releases its work and returns, and the host
+    /// <see cref="DesktopWindow.WaitForCloseAsync"/> returns, the application releases its work and returns, and the host
     /// is disposed before the loop ends. A second Ctrl+C, a second or later after the first signal, ends the process
     /// immediately; copies forwarded by dotnet run or dotnet watch do not. Set
     /// <see cref="DesktopHostOptions.HandleShutdownSignals"/> to <see langword="false"/> to keep the default signal

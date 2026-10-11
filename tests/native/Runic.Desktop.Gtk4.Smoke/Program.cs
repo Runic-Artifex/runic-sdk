@@ -180,7 +180,7 @@ static void RunEventLoopSmoke()
     }
 }
 
-// SIGTERM must run the shutdown of a closed last window: the GTK window closes on the GTK thread, WaitForClose
+// SIGTERM must run the shutdown of a closed last window: the GTK window closes on the GTK thread, WaitForCloseAsync
 // returns, the application returns and DesktopEventLoop.Run disposes the host before GTK quits.
 [SupportedOSPlatform("linux")]
 static void RunSignalSmoke()
@@ -203,7 +203,7 @@ static void RunSignalSmoke()
         {
             throw new InvalidOperationException("The smoke could not send SIGTERM to itself.");
         }
-        window.WaitForClose();
+        await window.WaitForCloseAsync();
         closed = host.ShutdownRequested.IsCancellationRequested;
         return 43;
     });

@@ -21,4 +21,4 @@ public sealed class DtoInteractionViewModel : ReactiveObject, IDisposable
     public void Dispose() => PickCommand.Dispose();
 }
 
-public sealed partial class DtoInteractionWindow(DtoInteractionViewModel model) : RunicWindow<DtoInteractionViewModel>(model);
+public sealed partial class DtoInteractionWindow : RunicWindow<DtoInteractionViewModel>;

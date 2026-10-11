@@ -83,8 +83,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private uint? _height;
     private uint? _minimumWidth;
     private uint? _minimumHeight;
-    private uint? _x;
-    private uint? _y;
+    private int? _x;
+    private int? _y;
     private string? _iconFile;
     private WebUiBrowser _currentBrowser;
     private int _requestedPort;
@@ -899,7 +899,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     }
 
     /// <summary>Sets the initial browser position in pixels.</summary>
-    public void SetPosition(uint x, uint y)
+    public void SetPosition(uint x, uint y) => SetPosition(checked((int)x), checked((int)y));
+
+    internal void SetPosition(int x, int y)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         _x = x;
@@ -1244,7 +1246,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         return GetEmbeddedHost().SetSizeAsync(width, height, cancellationToken);
     }
 
-    internal ValueTask MovePresentationAsync(uint x, uint y, CancellationToken cancellationToken)
+    internal ValueTask MovePresentationAsync(int x, int y, CancellationToken cancellationToken)
     {
         _x = x;
         _y = y;

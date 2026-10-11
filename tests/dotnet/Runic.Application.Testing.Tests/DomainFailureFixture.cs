@@ -138,5 +138,5 @@ public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
     }
 }
 
-public sealed partial class FailureToolkitWindow(FailureToolkitViewModel model) : RunicWindow<FailureToolkitViewModel>(model);
-public sealed partial class FailureReactiveWindow(FailureReactiveViewModel model) : RunicWindow<FailureReactiveViewModel>(model);
+public sealed partial class FailureToolkitWindow : RunicWindow<FailureToolkitViewModel>;
+public sealed partial class FailureReactiveWindow : RunicWindow<FailureReactiveViewModel>;

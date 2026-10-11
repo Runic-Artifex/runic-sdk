@@ -281,7 +281,7 @@ async function verifyConsumers(directory, packageName) {
 using Runic.Application.Views;
 using PackageConsumer;
 var model = new ConsumerViewModel();
-var window = new ConsumerWindow(model);
+var window = new ConsumerWindow { DataContext = model };
 if (!ReferenceEquals(window.DataContext, model)) throw new Exception("Window DataContext was lost.");
 using var host = new RunicWindowTestHost<ConsumerViewModel>(model, "consumer",
     (transport, content, vm) => new ConsumerBridge(transport, vm, content: content));
@@ -307,7 +307,7 @@ Console.WriteLine("Packaged Window/View test host passed.");`
 using System.ComponentModel;
 using Runic.Application.Views;
 namespace PackageConsumer;
-public sealed partial class ConsumerWindow(ConsumerViewModel model) : RunicWindow<ConsumerViewModel>(model);
+public sealed partial class ConsumerWindow : RunicWindow<ConsumerViewModel>;
 public sealed class ConsumerViewModel : INotifyPropertyChanged
 {
     private int _value = 7;

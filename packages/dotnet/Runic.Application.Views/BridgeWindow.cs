@@ -12,6 +12,7 @@ public sealed record BridgeWindowCloseResult(bool Drained, int RemainingOperatio
 /// <summary>
 /// The lifetime contract shared by every Window host adapter, such as
 /// <c>CsWebUiBridgeWindow&lt;TViewModel&gt;</c> and <c>DesktopBridgeWindow&lt;TViewModel&gt;</c>.
+/// <see cref="RunicWindow{TViewModel}.Host"/> returns the adapter of an open Window.
 /// </summary>
 /// <remarks>
 /// Hosts release asynchronously: accepted operations may still be running when the
@@ -27,6 +28,19 @@ public interface IBridgeWindow : IAsyncDisposable
     /// promptly, while the host keeps its scope until the remaining operations finish.
     /// The first call selects the timeout; later calls return the same result.
     /// </summary>
+    /// <param name="timeout">How long accepted operations may run before the window closes anyway.</param>
+    /// <param name="cancellationToken">
+    /// Stops this caller's wait. The close itself continues, and other callers still receive its result.
+    /// </param>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="timeout"/> is negative and not infinite.</exception>
-    ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout);
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Completes when the window closes: the user closed it, or <see cref="CloseAsync"/> or
+    /// <see cref="IAsyncDisposable.DisposeAsync"/> started closing it. It does not release the window; dispose it afterwards.
+    /// </summary>
+    /// <param name="cancellationToken">Stops the wait without closing the window.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default);
 }

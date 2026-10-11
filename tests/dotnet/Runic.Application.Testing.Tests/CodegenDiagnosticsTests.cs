@@ -71,7 +71,7 @@ internal static partial class CodegenDiagnosticsTests
 
             await RejectAt("HashSetValue", """
                 public sealed class SetViewModel : FixtureModel { public HashSet<string> Tags { get; } = []; }
-                public sealed partial class SetWindow(SetViewModel model) : RunicWindow<SetViewModel>(model);
+                public sealed partial class SetWindow : RunicWindow<SetViewModel>;
                 """, "RUNICBRIDGE003", "public sealed class SetViewModel",
                 "System.Collections.Generic.HashSet`1", "is not a supported bridge collection").ConfigureAwait(false);
             // A nested DTO member points at the DTO property, not the ViewModel.
@@ -82,19 +82,19 @@ internal static partial class CodegenDiagnosticsTests
                     public object Value { get; init; } = new();
                 }
                 public sealed class RowViewModel : FixtureModel { public Row Current { get; } = new(); }
-                public sealed partial class RowWindow(RowViewModel model) : RunicWindow<RowViewModel>(model);
+                public sealed partial class RowWindow : RunicWindow<RowViewModel>;
                 """, "RUNICBRIDGE003", "public object Value", "RowViewModel.Current.value").ConfigureAwait(false);
             // A navigation result, typically from an exposed back command, names the mapping that fixes it (W250-014).
             await RejectAt("NavigationResultValue", """
                 #pragma warning disable RUNICNAV001
                 public sealed class BackViewModel : FixtureModel { public NavigationResult<BackViewModel>? LastBack { get; } }
-                public sealed partial class BackWindow(BackViewModel model) : RunicWindow<BackViewModel>(model);
+                public sealed partial class BackWindow : RunicWindow<BackViewModel>;
                 """, "RUNICBRIDGE003", "public NavigationResult<BackViewModel>? LastBack",
                 "BackViewModel.LastBack", "A NavigationResult holds .NET content and cannot cross the Bridge",
                 "return its Outcome (a NavigationOutcome) instead").ConfigureAwait(false);
             await RejectAt("InternalWindow", """
                 public sealed class HiddenViewModel : FixtureModel { public string Title { get; } = ""; }
-                internal sealed partial class HiddenWindow(HiddenViewModel model) : RunicWindow<HiddenViewModel>(model)
+                internal sealed partial class HiddenWindow : RunicWindow<HiddenViewModel>
                 {
                     public string Caption => "hidden";
                 }
@@ -104,15 +104,15 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     internal string Hidden => "";
                 }
-                public sealed partial class EmptyWindow(EmptyViewModel model) : RunicWindow<EmptyViewModel>(model);
-                """, "RUNICBRIDGE007", "internal string Hidden",
+                public sealed partial class EmptyWindow : RunicWindow<EmptyViewModel>;
+                """, "RUNICBRIDGE007", "public sealed class EmptyViewModel",
                 "EmptyViewModel: a ViewModel needs at least one state property, command, or interaction.").ConfigureAwait(false);
             await RejectAt("WriteOnlyState", """
                 public sealed class WriteOnlyViewModel : FixtureModel
                 {
                     public string Name { set { } }
                 }
-                public sealed partial class WriteOnlyWindow(WriteOnlyViewModel model) : RunicWindow<WriteOnlyViewModel>(model);
+                public sealed partial class WriteOnlyWindow : RunicWindow<WriteOnlyViewModel>;
                 """, "RUNICBRIDGE008", "public string Name { set { } }",
                 "WriteOnlyViewModel.Name: a public getter is required.").ConfigureAwait(false);
             // NavigationRegion<TContent> slots (W230-002): a known content type, get-only.
@@ -123,7 +123,7 @@ internal static partial class CodegenDiagnosticsTests
                     public AnyRegionViewModel(RunicNavigator navigator) => Main = navigator.CreateRegion<object>(this);
                     public NavigationRegion<object> Main { get; }
                 }
-                public sealed partial class AnyRegionWindow(AnyRegionViewModel model) : RunicWindow<AnyRegionViewModel>(model);
+                public sealed partial class AnyRegionWindow : RunicWindow<AnyRegionViewModel>;
                 """, "RUNICBRIDGE008", "public NavigationRegion<object> Main",
                 "AnyRegionViewModel.Main: a NavigationRegion<object> slot has no known content.").ConfigureAwait(false);
             await RejectAt("SettableRegion", """
@@ -135,7 +135,7 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     public NavigationRegion<IRegionPage>? Main { get; set; }
                 }
-                public sealed partial class SettableRegionWindow(SettableRegionViewModel model) : RunicWindow<SettableRegionViewModel>(model);
+                public sealed partial class SettableRegionWindow : RunicWindow<SettableRegionViewModel>;
                 """, "RUNICBRIDGE008", "public NavigationRegion<IRegionPage>? Main",
                 "SettableRegionViewModel.Main: a NavigationRegion slot must be get-only").ConfigureAwait(false);
             await RejectAt("UnknownRegionContent", """
@@ -145,7 +145,7 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     public NavigationRegion<IMissingPage>? Main { get; }
                 }
-                public sealed partial class MissingRegionWindow(MissingRegionViewModel model) : RunicWindow<MissingRegionViewModel>(model);
+                public sealed partial class MissingRegionWindow : RunicWindow<MissingRegionViewModel>;
                 """, "RUNICBRIDGE008", "public NavigationRegion<IMissingPage>? Main",
                 "no ViewModel with a registered View is a IMissingPage").ConfigureAwait(false);
             await RejectAt("UnkeyedCollection", """
@@ -154,7 +154,7 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     [RunicCollection("Id")] public IReadOnlyList<Item> Items { get; } = [];
                 }
-                public sealed partial class ItemsWindow(ItemsViewModel model) : RunicWindow<ItemsViewModel>(model);
+                public sealed partial class ItemsWindow : RunicWindow<ItemsViewModel>;
                 """, "RUNICBRIDGE010", "[RunicCollection(\"Id\")]",
                 "ItemsViewModel.Items: the collection key 'Id' must name").ConfigureAwait(false);
             await RejectAt("SettableInteraction", """
@@ -162,13 +162,13 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     public ReactiveUI.Binding.Interaction<string, bool> Confirm { get; set; } = new();
                 }
-                public sealed partial class PromptWindow(PromptViewModel model) : RunicWindow<PromptViewModel>(model);
+                public sealed partial class PromptWindow : RunicWindow<PromptViewModel>;
                 """, "RUNICBRIDGE011", "public ReactiveUI.Binding.Interaction<string, bool> Confirm",
                 "PromptViewModel.Confirm: interactions are application-owned").ConfigureAwait(false);
             // RUNICBRIDGE012: a misplaced, repeated or unsupported failure declaration.
             await RejectAt("FailureOnState", """
                 public sealed class StateFailureViewModel : FixtureModel { [RunicFailure(typeof(string))] public string Title { get; set; } = ""; }
-                public sealed partial class StateFailureWindow(StateFailureViewModel model) : RunicWindow<StateFailureViewModel>(model);
+                public sealed partial class StateFailureWindow : RunicWindow<StateFailureViewModel>;
                 """, "RUNICBRIDGE012", "public string Title",
                 "StateFailureViewModel.Title: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method.").ConfigureAwait(false);
             await RejectAt("FailureOnBoth", """
@@ -178,7 +178,7 @@ internal static partial class CodegenDiagnosticsTests
                     [RunicFailure(typeof(Missing))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
                     [RelayCommand, RunicFailure(typeof(Missing))] private void Save() { }
                 }
-                public sealed partial class BothFailureWindow(BothFailureViewModel model) : RunicWindow<BothFailureViewModel>(model);
+                public sealed partial class BothFailureWindow : RunicWindow<BothFailureViewModel>;
                 """, "RUNICBRIDGE012", "[RelayCommand, RunicFailure(typeof(Missing))] private void Save()",
                 "BothFailureViewModel.SaveCommand: declare RunicFailure once, on the command property or on its [RelayCommand] method, not on both.").ConfigureAwait(false);
             foreach (var (name, type, shown) in new[] { ("FailureException", "InvalidOperationException", "System.InvalidOperationException"),
@@ -188,7 +188,7 @@ internal static partial class CodegenDiagnosticsTests
                     {
                         [RunicFailure(typeof({{type}}))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
                     }
-                    public sealed partial class {{name}}Window({{name}}ViewModel model) : RunicWindow<{{name}}ViewModel>(model);
+                    public sealed partial class {{name}}Window : RunicWindow<{{name}}ViewModel>;
                     """, "RUNICBRIDGE012", "public IRelayCommand SaveCommand",
                     $"{name}ViewModel.SaveCommand: the failure type {shown} must be a Bridge value type other than object, an exception or Nullable<T>.").ConfigureAwait(false);
             // A declaration on an inherited member is reported too: only the model's own commands are bridged.
@@ -198,7 +198,7 @@ internal static partial class CodegenDiagnosticsTests
                     [RunicFailure(typeof(string))] public IRelayCommand ResetCommand { get; } = new RelayCommand(() => { });
                 }
                 public sealed class InheritedFailureViewModel : EditorBase { public string Title { get; set; } = ""; }
-                public sealed partial class InheritedFailureWindow(InheritedFailureViewModel model) : RunicWindow<InheritedFailureViewModel>(model);
+                public sealed partial class InheritedFailureWindow : RunicWindow<InheritedFailureViewModel>;
                 """, "RUNICBRIDGE012", "public IRelayCommand ResetCommand",
                 "InheritedFailureViewModel.ResetCommand: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method; EditorBase declares it on a member the Bridge does not expose.").ConfigureAwait(false);
             // An override of a declared abstract command keeps the declaration and is valid.
@@ -211,7 +211,7 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     public override IRelayCommand ResetCommand { get; } = new RelayCommand(() => { });
                 }
-                public sealed partial class OverrideFailureWindow(OverrideFailureViewModel model) : RunicWindow<OverrideFailureViewModel>(model);
+                public sealed partial class OverrideFailureWindow : RunicWindow<OverrideFailureViewModel>;
                 """).ConfigureAwait(false);
             Require(Directory.GetFiles(overridden, "*OverrideFailureViewModel.Bridge.g.cs").Select(File.ReadAllText)
                     .Any(text => text.Contains("EncodeFailure: failure => failure is global::System.String declared", StringComparison.Ordinal)),
@@ -223,29 +223,29 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     [RunicFailure(typeof(Opaque))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
                 }
-                public sealed partial class PayloadFailureWindow(PayloadFailureViewModel model) : RunicWindow<PayloadFailureViewModel>(model);
+                public sealed partial class PayloadFailureWindow : RunicWindow<PayloadFailureViewModel>;
                 """, "RUNICBRIDGE003", "public object Value", "PayloadFailureViewModel.SaveCommand.failure.value").ConfigureAwait(false);
             await Reject("ObjectValue", """
                 public sealed class ObjectViewModel : FixtureModel { public object Value { get; } = new(); }
-                public sealed partial class ObjectWindow(ObjectViewModel model) : RunicWindow<ObjectViewModel>(model);
+                public sealed partial class ObjectWindow : RunicWindow<ObjectViewModel>;
                 """, "System.Object is not an explicitly supported bridge value").ConfigureAwait(false);
             await Reject("FrameworkValue", """
                 public sealed class BuilderViewModel : FixtureModel { public StringBuilder Text { get; } = new(); }
-                public sealed partial class BuilderWindow(BuilderViewModel model) : RunicWindow<BuilderViewModel>(model);
+                public sealed partial class BuilderWindow : RunicWindow<BuilderViewModel>;
                 """, "System.Text.StringBuilder is not an explicitly supported bridge value").ConfigureAwait(false);
             await Reject("IntegerDictionary", """
                 public sealed class LookupViewModel : FixtureModel { public Dictionary<int, string> Lookup { get; } = []; }
-                public sealed partial class LookupWindow(LookupViewModel model) : RunicWindow<LookupViewModel>(model);
+                public sealed partial class LookupWindow : RunicWindow<LookupViewModel>;
                 """, "is not a supported bridge dictionary").ConfigureAwait(false);
             await Reject("EmptyDto", """
                 public sealed class Marker { }
                 public sealed class MarkerViewModel : FixtureModel { public Marker Value { get; } = new(); }
-                public sealed partial class MarkerWindow(MarkerViewModel model) : RunicWindow<MarkerViewModel>(model);
+                public sealed partial class MarkerWindow : RunicWindow<MarkerViewModel>;
                 """, "Fixture.Marker has no public readable properties").ConfigureAwait(false);
             await Reject("DerivedCollection", """
                 public sealed class Names : List<string> { }
                 public sealed class NamesViewModel : FixtureModel { public Names Values { get; } = []; }
-                public sealed partial class NamesWindow(NamesViewModel model) : RunicWindow<NamesViewModel>(model);
+                public sealed partial class NamesWindow : RunicWindow<NamesViewModel>;
                 """, "Fixture.Names is not a supported bridge collection").ConfigureAwait(false);
 
             // Generated wire, member and route names are checked at build time.
@@ -255,20 +255,20 @@ internal static partial class CodegenDiagnosticsTests
                     [RunicAlias("canSave")] public bool Ready { get; }
                     public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
                 }
-                public sealed partial class AliasWindow(AliasViewModel model) : RunicWindow<AliasViewModel>(model);
+                public sealed partial class AliasWindow : RunicWindow<AliasViewModel>;
                 """, "error RUNICBRIDGE004:", "generated state name 'canSave' conflicts between Ready and SaveCommand availability").ConfigureAwait(false);
 
             // Every ViewModel's problem is reported in one run.
             await Reject("SeveralErrors", """
                 public sealed class FirstViewModel : FixtureModel { public HashSet<int> Values { get; } = []; }
                 public sealed class SecondViewModel : FixtureModel { public object Value { get; } = new(); }
-                public sealed partial class FirstWindow(FirstViewModel model) : RunicWindow<FirstViewModel>(model);
-                public sealed partial class SecondWindow(SecondViewModel model) : RunicWindow<SecondViewModel>(model);
+                public sealed partial class FirstWindow : RunicWindow<FirstViewModel>;
+                public sealed partial class SecondWindow : RunicWindow<SecondViewModel>;
                 """, "FirstViewModel.Values", "SecondViewModel.Value").ConfigureAwait(false);
             // A short ReactiveUI command name was sliced before its suffix check.
             await RejectAt("ShortReactiveCommand", """
                 public sealed class GoViewModel : FixtureModel { public ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, ReactiveUI.Primitives.RxVoid> Go { get; } = null!; }
-                public sealed partial class GoWindow(GoViewModel model) : RunicWindow<GoViewModel>(model);
+                public sealed partial class GoWindow : RunicWindow<GoViewModel>;
                 """, "RUNICBRIDGE009", "public sealed class GoViewModel", "GoViewModel.Go: Bridge commands must end with Command.").ConfigureAwait(false);
             await Reject("ErrorsCollision", """
                 public sealed class ErrorsViewModel : FixtureModel, INotifyDataErrorInfo
@@ -279,23 +279,23 @@ internal static partial class CodegenDiagnosticsTests
                     public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }
                     public System.Collections.IEnumerable GetErrors(string? propertyName) => Array.Empty<string>();
                 }
-                public sealed partial class ErrorsWindow(ErrorsViewModel model) : RunicWindow<ErrorsViewModel>(model);
+                public sealed partial class ErrorsWindow : RunicWindow<ErrorsViewModel>;
                 """, "generated state name 'nameErrors' conflicts").ConfigureAwait(false);
             await Reject("MountRoute", """
                 public sealed class MountViewModel : FixtureModel { public IRelayCommand MountCommand { get; } = new RelayCommand(() => { }); }
-                public sealed partial class MountWindow(MountViewModel model) : RunicWindow<MountViewModel>(model);
+                public sealed partial class MountWindow : RunicWindow<MountViewModel>;
                 """, "generated route name 'Mount' conflicts between the View mount route and MountCommand").ConfigureAwait(false);
             await Reject("SnapshotRoute", """
                 public sealed class SnapshotViewModel : FixtureModel { public IRelayCommand SnapshotCommand { get; } = new RelayCommand(() => { }); }
-                public sealed partial class SnapshotWindow(SnapshotViewModel model) : RunicWindow<SnapshotViewModel>(model);
+                public sealed partial class SnapshotWindow : RunicWindow<SnapshotViewModel>;
                 """, "name 'snapshot' conflicts between the generated snapshot property and SnapshotCommand").ConfigureAwait(false);
             await Reject("UnmountRoute", """
                 public sealed class UnmountViewModel : FixtureModel { public IRelayCommand<string> UnmountCommand { get; } = new RelayCommand<string>(_ => { }); }
-                public sealed partial class UnmountWindow(UnmountViewModel model) : RunicWindow<UnmountViewModel>(model);
+                public sealed partial class UnmountWindow : RunicWindow<UnmountViewModel>;
                 """, "generated route name 'Unmount' conflicts between the View unmount route and UnmountCommand").ConfigureAwait(false);
             await Reject("ThenableView", """
                 public sealed class ThenViewModel : FixtureModel { public IRelayCommand ThenCommand { get; } = new RelayCommand(() => { }); }
-                public sealed partial class ThenWindow(ThenViewModel model) : RunicWindow<ThenViewModel>(model);
+                public sealed partial class ThenWindow : RunicWindow<ThenViewModel>;
                 """, "error RUNICBRIDGE004:", "ThenViewModel.ThenCommand: the generated client member 'then'", "thenable",
                 "Rename the command, for example to ContinueCommand").ConfigureAwait(false);
             // A command's bare name is a client member: `new()` in the client
@@ -305,17 +305,17 @@ internal static partial class CodegenDiagnosticsTests
                 {
                     public IRelayCommand NewCommand { get; } = new RelayCommand(() => { });
                 }
-                public sealed partial class NewWindow(NewViewModel model) : RunicWindow<NewViewModel>(model);
+                public sealed partial class NewWindow : RunicWindow<NewViewModel>;
                 """, "RUNICBRIDGE004", "public IRelayCommand NewCommand",
                 "NewViewModel.NewCommand: the generated client member 'new' declares a construct signature",
                 "Rename the command, for example to CreateCommand (client member 'create')").ConfigureAwait(false);
             await Reject("ConstructorCommand", """
                 public sealed class ConstructorViewModel : FixtureModel { public IRelayCommand<string> ConstructorCommand { get; } = new RelayCommand<string>(_ => { }); }
-                public sealed partial class ConstructorWindow(ConstructorViewModel model) : RunicWindow<ConstructorViewModel>(model);
+                public sealed partial class ConstructorWindow : RunicWindow<ConstructorViewModel>;
                 """, "error RUNICBRIDGE004:", "the generated client member 'constructor'").ConfigureAwait(false);
             await Reject("ToJsonCommand", """
                 public sealed class ToJsonViewModel : FixtureModel { public IAsyncRelayCommand ToJSONCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask); }
-                public sealed partial class ToJsonWindow(ToJsonViewModel model) : RunicWindow<ToJsonViewModel>(model);
+                public sealed partial class ToJsonWindow : RunicWindow<ToJsonViewModel>;
                 """, "error RUNICBRIDGE004:", "the generated client member 'toJSON'").ConfigureAwait(false);
             await Reject("AvailabilityRoute", """
                 public sealed class AvailabilityViewModel : FixtureModel
@@ -323,7 +323,7 @@ internal static partial class CodegenDiagnosticsTests
                     public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
                     public IRelayCommand CanSaveCommand { get; } = new RelayCommand(() => { });
                 }
-                public sealed partial class AvailabilityWindow(AvailabilityViewModel model) : RunicWindow<AvailabilityViewModel>(model);
+                public sealed partial class AvailabilityWindow : RunicWindow<AvailabilityViewModel>;
                 """, "generated route name 'CanSave' conflicts between SaveCommand availability query and CanSaveCommand").ConfigureAwait(false);
 
             // Toolkit commands have no result, so a result cardinality is a mistake.
@@ -335,7 +335,7 @@ internal static partial class CodegenDiagnosticsTests
                     public IAsyncRelayCommand SaveCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                     public System.Windows.Input.ICommand SaveCancelCommand => SaveCommand.CreateCancelCommand();
                 }
-                public sealed partial class ManualCancelWindow(ManualCancelViewModel model) : RunicWindow<ManualCancelViewModel>(model);
+                public sealed partial class ManualCancelWindow : RunicWindow<ManualCancelViewModel>;
                 """, "RUNICBRIDGE009", "public System.Windows.Input.ICommand SaveCancelCommand",
                 "ManualCancelViewModel.SaveCancelCommand: unsupported command shape").ConfigureAwait(false);
             // GeneratedCode alone is insufficient: the source method must
@@ -357,7 +357,7 @@ internal static partial class CodegenDiagnosticsTests
                         [System.CodeDom.Compiler.GeneratedCode("CommunityToolkit.Mvvm.SourceGenerators.RelayCommandGenerator", "8.4.0.0")]
                         public System.Windows.Input.ICommand SaveCancelCommand { get; } = null!;
                     }
-                    public sealed partial class InvalidCancelWindow(InvalidCancelViewModel model) : RunicWindow<InvalidCancelViewModel>(model);
+                    public sealed partial class InvalidCancelWindow : RunicWindow<InvalidCancelViewModel>;
                     """, "RUNICBRIDGE009", "public System.Windows.Input.ICommand SaveCancelCommand",
                     "InvalidCancelViewModel.SaveCancelCommand: unsupported command shape").ConfigureAwait(false);
 
@@ -367,7 +367,7 @@ internal static partial class CodegenDiagnosticsTests
                     [RunicCommandResult(BridgeCommandResultCardinality.Last)]
                     public IAsyncRelayCommand LoadCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask);
                 }
-                public sealed partial class ResultWindow(ResultViewModel model) : RunicWindow<ResultViewModel>(model);
+                public sealed partial class ResultWindow : RunicWindow<ResultViewModel>;
                 """, "RUNICBRIDGE009", "public IAsyncRelayCommand LoadCommand",
                 "LoadCommand: RunicCommandResult selects a ReactiveUI command's result cardinality").ConfigureAwait(false);
 
@@ -378,7 +378,7 @@ internal static partial class CodegenDiagnosticsTests
                 using var image = new MemoryStream();
                 var emitted = Compile(name, Preamble + $$"""
                     public sealed class EchoViewModel : FixtureModel { public {{commandType}} EchoCommand { get; } = null!; }
-                    public sealed partial class EchoWindow(EchoViewModel model) : RunicWindow<EchoViewModel>(model);
+                    public sealed partial class EchoWindow : RunicWindow<EchoViewModel>;
                     """).Emit(image);
                 Require(emitted.Success, $"{name}: the fingerprint fixture did not compile.");
                 var model = System.Reflection.Assembly.Load(image.ToArray()).GetType("Fixture.EchoViewModel")!;
@@ -395,7 +395,7 @@ internal static partial class CodegenDiagnosticsTests
             File.WriteAllText(handWritten, "export type Mine = string;\n");
             await Reject("HandWrittenTypes", """
                 public sealed class PlainTitleViewModel : FixtureModel { public string Title { get; } = ""; }
-                public sealed partial class PlainTitleWindow(PlainTitleViewModel model) : RunicWindow<PlainTitleViewModel>(model);
+                public sealed partial class PlainTitleWindow : RunicWindow<PlainTitleViewModel>;
                 """, "error RUNICBRIDGE004:", "types.ts is not generated").ConfigureAwait(false);
             Require(File.ReadAllText(handWritten) == "export type Mine = string;\n",
                 "The generator overwrote a hand-written types.ts.");
@@ -414,8 +414,8 @@ internal static partial class CodegenDiagnosticsTests
             var composition = await GenerateValidAsync(generator, temporaryRoot, "InteractionComposition", Preamble + """
                 public sealed class AskViewModel : FixtureModel { public ReactiveUI.Binding.Interaction<string, bool> Confirm { get; } = new(); }
                 public sealed class PlainViewModel : FixtureModel { public string Title { get; } = ""; }
-                public sealed partial class AskWindow(AskViewModel model) : RunicWindow<AskViewModel>(model);
-                public sealed partial class PlainWindow(PlainViewModel model) : RunicWindow<PlainViewModel>(model);
+                public sealed partial class AskWindow : RunicWindow<AskViewModel>;
+                public sealed partial class PlainWindow : RunicWindow<PlainViewModel>;
                 """, "--di-composition", "Fixture.Composition").ConfigureAwait(false);
             var registration = File.ReadAllText(Path.Combine(composition, "RunicBridgeComposition.g.cs"));
             Require(!registration.Contains("Func<IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
@@ -457,7 +457,7 @@ internal static partial class CodegenDiagnosticsTests
                 public sealed class OrphanViewModel : FixtureModel, IPage { public string Title => "orphan"; }
                 internal sealed class HiddenPageViewModel : FixtureModel, IPage { }
                 public abstract class AbstractPageViewModel : FixtureModel, IPage { }
-                public sealed partial class ShellWindow(ShellViewModel model) : RunicWindow<ShellViewModel>(model);
+                public sealed partial class ShellWindow : RunicWindow<ShellViewModel>;
                 public sealed partial class HomeView : RunicView<HomeViewModel>;
                 """;
             var (missingViewExit, missingViewOutput, missingViewDirectory) = await RunGeneratorAsync(generator, temporaryRoot,
@@ -501,8 +501,8 @@ internal static partial class CodegenDiagnosticsTests
                 public sealed class MainViewModel : FixtureModel { public IReadOnlyList<IPane> Panes { get; } = []; }
                 public sealed class ListPaneViewModel : FixtureModel, IPane { public string Title => "list"; }
                 public sealed class InspectorViewModel : FixtureModel, IPane { public string Title => "inspector"; }
-                public sealed partial class MainWindow(MainViewModel model) : RunicWindow<MainViewModel>(model);
-                public sealed partial class InspectorWindow(InspectorViewModel model) : RunicWindow<InspectorViewModel>(model);
+                public sealed partial class MainWindow : RunicWindow<MainViewModel>;
+                public sealed partial class InspectorWindow : RunicWindow<InspectorViewModel>;
                 public sealed partial class ListPaneView : RunicView<ListPaneViewModel>;
                 """).ConfigureAwait(false);
             Require(windowModelExit == 0 && !windowModelOutput.Contains("RUNICBRIDGE013", StringComparison.Ordinal),
@@ -522,7 +522,7 @@ internal static partial class CodegenDiagnosticsTests
             // Views that were removed leave no stale generated C# or TypeScript.
             var staleCs = await GenerateValidAsync(generator, temporaryRoot, "StaleOutput", Preamble + """
                 public sealed class StaleViewModel : FixtureModel { public string Title { get; } = ""; }
-                public sealed partial class StaleWindow(StaleViewModel model) : RunicWindow<StaleViewModel>(model);
+                public sealed partial class StaleWindow : RunicWindow<StaleViewModel>;
                 """).ConfigureAwait(false);
             var staleTs = Path.Combine(Path.GetDirectoryName(staleCs)!, "ts");
             Require(Directory.GetFiles(staleCs, "*.g.cs").Length > 0 && Directory.GetFiles(staleTs, "*.ts").Length > 0,
@@ -541,7 +541,7 @@ internal static partial class CodegenDiagnosticsTests
             // Optional only forgives a missing Window: an invalid View still fails.
             var (optionalViewExit, invalidViewOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "OptionalInvalidView", Preamble + """
                 public sealed class HiddenViewModel : FixtureModel { public string Title { get; } = ""; }
-                internal sealed partial class HiddenWindow(HiddenViewModel model) : RunicWindow<HiddenViewModel>(model);
+                internal sealed partial class HiddenWindow : RunicWindow<HiddenViewModel>;
                 """, "--optional").ConfigureAwait(false);
             Require(optionalViewExit != 0 && invalidViewOutput.Contains("error RUNICBRIDGE006:", StringComparison.Ordinal),
                 $"Optional generation accepted an invalid View.\n{invalidViewOutput}");

@@ -5,7 +5,7 @@ using Runic.Application.Views.Desktop;
 using Runic.Desktop;
 
 // RUNIC_APPLICATION_CLOSE_AFTER_OPEN lets a harness start an unchanged Desktop application: the
-// opened presentation is reported on standard output and closed, so WaitForClose returns. An active
+// opened presentation is reported on standard output and closed, so WaitForCloseAsync returns. An active
 // switch is announced on standard error and logged as event 2002.
 static class CloseAfterOpenChecks
 {
@@ -59,19 +59,14 @@ static class CloseAfterOpenChecks
         var errorConsole = Console.Error;
         Console.SetOut(output);
         Console.SetError(error);
-        DesktopBridgeWindow<OrderedCollectionModel>? bridge = null;
         try
         {
-            await using var window = await provider.OpenDesktopWindowAsync<ProbeWindow, OrderedCollectionModel>(host,
-                new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-                owner => { bridge = owner; return new ProbeWindow(owner); },
-                new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-            bool isOpen = bridge!.Presentation.IsOpen;
+            await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<ProbeWindow>();
+            bool isOpen = ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Presentation.IsOpen;
             if (!isOpen)
             {
                 // The application's own wait returns at once for a closed presentation.
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                bridge.Presentation.WaitForClose(deadline.Token);
+                await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
             }
             return (isOpen, output.ToString(), error.ToString(), logger.Events);
         }
@@ -127,7 +122,7 @@ static class CloseAfterOpenChecks
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-        public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask DisposeAsync() { _open = false; return ValueTask.CompletedTask; }

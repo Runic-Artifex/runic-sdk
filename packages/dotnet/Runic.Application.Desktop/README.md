@@ -26,50 +26,57 @@ var services = new ServiceCollection();
 services.AddScoped<MainViewModel>();
 services.AddRunicViews();
 await using var provider = services.BuildServiceProvider();
-await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
-{
-    // Windows uses WebView2 and macOS WKWebView; Linux selects a toolkit explicitly.
-    Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
-});
-var windowOptions = new DesktopWindowOptions { Width = 800, Height = 600 };
-// Stops at startup when a registration, WebView runtime or window option is missing.
-provider.ValidateDesktopWindow<MainViewModel>(desktop, windowOptions).ThrowIfInvalid();
-await using var window = await provider.OpenDesktopWindowAsync<MainWindow, MainViewModel>(
-    desktop,
-    new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") },
-    host => new MainWindow(host),
-    windowOptions);
-window.Presentation.WaitForClose();
+// Windows uses WebView2 and macOS WKWebView; Linux selects a toolkit explicitly.
+var options = new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } };
 
-public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
-    : RunicWindow<MainViewModel>(host.ViewModel), IAsyncDisposable
+return RunicDesktopHost.Run(provider, options, async host =>
 {
-    public DesktopWindow Presentation => host.Presentation;
-    public ValueTask DisposeAsync() => host.DisposeAsync();
-}
+    // Stops at startup when a registration, WebView runtime or window option is missing.
+    host.ValidateWindow<MainWindow>().ThrowIfInvalid();
+    await using var window = await host.OpenWindowAsync<MainWindow>(new RunicWindowOptions { Width = 800, Height = 600 });
+    await window.WaitForCloseAsync();
+    return 0;
+});
+
+public sealed partial class MainWindow : RunicWindow<MainViewModel>;
 ```
+
+The same Window and `async host => ...` body run on CS-WebUI with
+`RunicCsWebUiHost.Run(provider, ...)` from `Runic.Application.CsWebUi`.
 
 ## Entry points
 
-- `OpenDesktopWindowAsync<TWindow, TViewModel>` creates the Window's DI scope,
-  resolves its ViewModel, opens a `DesktopSurface` and its presentation, and
-  attaches the generated Bridge.
-- `ValidateDesktopWindow<TViewModel>` checks, before any window opens, that the
-  generated Bridge for the ViewModel is registered and that
+- `RunicDesktopHost.Run(provider, options, application)` starts a
+  `DesktopHost` and runs the asynchronous application on the event loop the
+  platform needs (`DesktopEventLoop`): the process main thread on macOS and with
+  GTK 4. Call it from `Main` before any `await` and return its result. Ctrl+C
+  and SIGTERM close the open windows, so `WaitForCloseAsync` returns.
+- `host.OpenWindowAsync<TWindow>(options, cancellationToken)`, from
+  `Runic.Application.Views`, creates the Window's DI scope, resolves its
+  ViewModel, opens a `DesktopSurface` and its presentation, and attaches the
+  generated Bridge. The surface serves `RunicWindowOptions.ContentRoot` (`www`
+  by default) and opens `StartPage`; `Width` and `Height` replace the window
+  size. For other surface or window options, create
+  `new RunicDesktopHost(provider, desktop) { SurfaceOptions = ..., WindowOptions = ... }`
+  inside `DesktopEventLoop.Run`. `RunicDesktopHost.DefaultWindowOptions` opens
+  the embedded WebView and falls back to an installed browser.
+- `host.ValidateWindow<TWindow>(options)` checks, before any window opens, that
+  the generated Bridge for the ViewModel is registered and that
   `DesktopHost.Validate` accepts the window options. It returns every problem
-  as a `DesktopDiagnostic` with a stable code and remediation: an error
+  as a `RunicWindowDiagnostic` with a stable code and remediation: an error
   `bridge-not-registered`, the
   [Runic Desktop codes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md),
   and a warning `viewmodel-not-registered` when the container does not report
   the ViewModel through `IServiceProviderIsService`. A container can resolve
   services it does not report, so only the Bridge check fails; a container
   without `IServiceProviderIsService` is not checked. `ThrowIfInvalid()` throws
-  a `DesktopConfigurationException`. `OpenDesktopWindowAsync` runs the Bridge
-  check itself before it creates a surface, so a missing `AddRunicViews()`
-  fails with that exception instead of a dependency-injection error. A missing
-  Bridge is logged as event 2001 through the provider's `ILoggerFactory`.
-- `DesktopBridgeWindow<TViewModel>` owns the Window's scope, surface, and attachment.
-  It exposes `ViewModel`, `Surface`, `Presentation`, and `CloseAsync`, which
+  a `RunicWindowConfigurationException`. `OpenWindowAsync` runs the same checks
+  before it creates a surface and throws the same exception; a
+  `DesktopConfigurationException` from Runic Desktop becomes its
+  `InnerException`. A missing Bridge is logged as event 1050 through the
+  provider's `ILoggerFactory`.
+- `DesktopBridgeWindow<TViewModel>`, the Window's `Host`, owns the Window's scope, surface, and attachment.
+  It exposes `ViewModel`, `Surface`, `Presentation`, `WaitForCloseAsync`, and `CloseAsync`, which
   stops new operations and waits for accepted ones before releasing the scope.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
@@ -188,7 +195,7 @@ to choose between this host and CS-WebUI.
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped
-application without a user. With it set, `OpenDesktopWindowAsync` closes every
+application without a user. With it set, `RunicDesktopHost` closes every
 window it opens, as soon as the presentation has opened and, with
 `DesktopHostOptions.WaitForConnection`, its bridge has connected. Before
 closing, it writes:
@@ -198,7 +205,7 @@ closing, it writes:
 - `RUNIC_APPLICATION_OPENED=<presentation>` (for example `Embedded`, or the
   browser it fell back to) to standard output.
 
-An application shaped like the `runic-app` template then sees `WaitForClose`
+An application shaped like the `runic-app` template then sees `WaitForCloseAsync`
 return and exits normally. Applications that keep running after a window
 closes, or that open further windows, are not meant to use it. This is the
 Desktop counterpart of CS-WebUI's `RUNIC_APPLICATION_SERVE_ONLY`. The template

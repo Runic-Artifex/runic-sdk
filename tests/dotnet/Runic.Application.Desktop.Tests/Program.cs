@@ -22,6 +22,8 @@ await using (var host = await DesktopHost.StartAsync())
 }
 await NativeOwnerFollowsOnlyItsOpenEmbeddedWindow();
 await OpenedWindowExposesItsNativeOwner();
+await WindowLifecycleIsAsyncAndCancellable();
+await DesktopConfigurationErrorsUseTheSharedException();
 await CancelledQueuedOwnerWorkReportsCancellation();
 await PresentationWithoutNativeDispatchHasAnUnavailableOwner();
 await PlatformServicesChecks.RunAsync();
@@ -161,20 +163,19 @@ static async Task MissingRegistrationsFailBeforeASurfaceExists(DesktopHost host)
     var empty = new ServiceCollection().BuildServiceProvider();
     await using (empty)
     {
-        var validation = empty.ValidateDesktopWindow<OrderedCollectionModel>(host);
+        var windows = new RunicDesktopHost(empty, host);
+        var validation = windows.ValidateWindow<ProbeWindow>();
         Require(validation.Warnings.Any(static item => item.Code == "viewmodel-not-registered") &&
             validation.Errors.Any(static item => item.Code == "bridge-not-registered"),
             "Validation did not report the missing Bridge as an error and the unconfirmed ViewModel as a warning.");
-        var created = false;
         try
         {
-            await empty.OpenDesktopWindowAsync<ProbeWindow, OrderedCollectionModel>(host, new DesktopSurfaceOptions(),
-                owner => { created = true; return new ProbeWindow(owner); });
+            await windows.OpenWindowAsync<ProbeWindow>();
             throw new InvalidOperationException("A Window opened without its Bridge registration.");
         }
-        catch (DesktopConfigurationException error)
+        catch (RunicWindowConfigurationException error)
         {
-            Require(!created && error.Diagnostics.Single().Code == "bridge-not-registered" && error.Message.Contains("AddRunicViews()", StringComparison.Ordinal),
+            Require(error.Diagnostics.Single().Code == "bridge-not-registered" && error.Message.Contains("AddRunicViews()", StringComparison.Ordinal),
                 "Opening without registrations did not fail early with an actionable message.");
         }
     }
@@ -184,7 +185,7 @@ static async Task MissingRegistrationsFailBeforeASurfaceExists(DesktopHost host)
     services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
         _ => (transport, model) => new OrderedCollectionBridge(transport, model));
     await using var provider = services.BuildServiceProvider();
-    var registered = provider.ValidateDesktopWindow<OrderedCollectionModel>(host);
+    var registered = new RunicDesktopHost(provider, host).ValidateWindow<ProbeWindow>();
     Require(!registered.Diagnostics.Any(static item => item.Code is "viewmodel-not-registered" or "bridge-not-registered"),
         "Validation reported registrations that exist.");
 }
@@ -242,14 +243,86 @@ static async Task OpenedWindowExposesItsNativeOwner()
         _ => (transport, model) => new OrderedCollectionBridge(transport, model));
     await using var provider = services.BuildServiceProvider();
     await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
-    DesktopBridgeWindow<OrderedCollectionModel>? bridge = null;
-    await using var window = await provider.OpenDesktopWindowAsync<ProbeWindow, OrderedCollectionModel>(host,
-        new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-        owner => { bridge = owner; try { _ = owner.NativeOwner; throw new InvalidOperationException("unexpected"); } catch (InvalidOperationException error) when (error.Message != "unexpected") { } return new ProbeWindow(owner); },
-        new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-    Require(bridge!.NativeOwner.IsAvailable && ReferenceEquals(bridge.NativeOwner.Window, bridge.Presentation)
+    await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<ProbeWindow>();
+    var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
+    Require(bridge.NativeOwner.IsAvailable && ReferenceEquals(bridge.NativeOwner.Window, bridge.Presentation)
         && ReferenceEquals(bridge.NativeOwner, bridge.NativeOwner),
         "The opened Desktop window did not expose one available native owner for its presentation.");
+}
+
+// The one Window lifecycle: OpenWindowAsync assigns the scoped ViewModel, a cancelled WaitForCloseAsync stops only
+// the wait, and a native close completes it.
+static async Task WindowLifecycleIsAsyncAndCancellable()
+{
+    var services = new ServiceCollection();
+    services.AddScoped<OrderedCollectionModel>();
+    services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+        _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+    await using var provider = services.BuildServiceProvider();
+    var factory = new NativeDispatchFactory();
+    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+    var windows = TestWindows.EmbeddedHtml(provider, host);
+
+    await using (var window = await windows.OpenWindowAsync<ProbeWindow>(new RunicWindowOptions { Width = 640, Height = 480 }))
+    {
+        var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
+        Require(ReferenceEquals(window.DataContext, bridge.ViewModel) && bridge.Presentation.IsOpen,
+            "OpenWindowAsync did not assign the scoped ViewModel and open the presentation.");
+        using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
+        {
+            try
+            {
+                await window.WaitForCloseAsync(stop.Token);
+                throw new InvalidOperationException("WaitForCloseAsync returned while the window was open.");
+            }
+            catch (OperationCanceledException) { }
+        }
+        Require(bridge.Presentation.IsOpen, "Cancelling WaitForCloseAsync closed the window.");
+
+        var closed = window.WaitForCloseAsync().AsTask();
+        Require(!closed.IsCompleted, "WaitForCloseAsync completed before the window closed.");
+        await factory.Hosts[^1].CloseAsync();
+        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    await using (var window = await windows.OpenWindowAsync<ProbeWindow>())
+    {
+        var closed = window.WaitForCloseAsync().AsTask();
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        // The token stops only the caller's wait: a close with nothing to drain completes anyway, and either way
+        // the window closes.
+        try { _ = await window.CloseAsync(TimeSpan.FromSeconds(5), cancelled.Token); }
+        catch (OperationCanceledException) { }
+        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+}
+
+// A Runic Desktop configuration error surfaces as the exception every host throws, with the Desktop one inside,
+// and releases the Window's scope.
+static async Task DesktopConfigurationErrorsUseTheSharedException()
+{
+    var services = new ServiceCollection();
+    services.AddScoped<ScopeProbe>();
+    services.AddScoped<OrderedCollectionModel>(provider => { _ = provider.GetRequiredService<ScopeProbe>(); return new(); });
+    services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+        _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+    await using var provider = services.BuildServiceProvider();
+    await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
+    var windows = new RunicDesktopHost(provider, host);
+    try
+    {
+        await using var window = await windows.OpenWindowAsync<ProbeWindow>(
+            new RunicWindowOptions { ContentRoot = AppContext.BaseDirectory, StartPage = "index.html?debug" });
+        throw new InvalidOperationException("A start page with a query string opened.");
+    }
+    catch (RunicWindowConfigurationException error)
+    {
+        Require(error.InnerException is DesktopConfigurationException
+            && error.Diagnostics.Single() is { Code: "content-entry-invalid", Option: "DesktopContent.Directory.Entry" },
+            $"A Desktop configuration error did not become the shared exception: {error}");
+    }
+    Require(ScopeProbe.Last is { Disposed: true }, "A failed open kept the Window's scope.");
 }
 
 static async Task CancelledQueuedOwnerWorkReportsCancellation()
@@ -312,12 +385,9 @@ static async Task PresentationWithoutNativeDispatchHasAnUnavailableOwner()
         WindowHostFactory = new NativeDispatchFactory { SupportsDispatch = false },
         WaitForConnection = false,
     });
-    DesktopBridgeWindow<OrderedCollectionModel>? bridge = null;
-    await using var window = await provider.OpenDesktopWindowAsync<ProbeWindow, OrderedCollectionModel>(host,
-        new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-        owner => { bridge = owner; return new ProbeWindow(owner); },
-        new DesktopWindowOptions { Browser = BrowserKind.Embedded });
-    var owner = bridge!.NativeOwner;
+    await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<ProbeWindow>();
+    var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)window.Host;
+    var owner = bridge.NativeOwner;
     Require(bridge.Presentation.IsOpen && ReferenceEquals(owner.Window, bridge.Presentation),
         "A presentation without native dispatch did not expose its owner.");
     Require(!owner.IsAvailable && !owner.CheckAccess(), "An owner without native dispatch reported itself available.");
@@ -338,6 +408,8 @@ static void Require(bool condition, string message)
 
 sealed class ScopeProbe : IAsyncDisposable
 {
+    public ScopeProbe() => Last = this;
+    public static ScopeProbe? Last { get; private set; }
     public bool Disposed { get; private set; }
 
     public ValueTask DisposeAsync()
@@ -396,10 +468,16 @@ sealed class NoopCommand : ICommand
     public void Execute(object? parameter) { }
 }
 
-sealed class ProbeWindow(DesktopBridgeWindow<OrderedCollectionModel> owner)
-    : RunicWindow<OrderedCollectionModel>(owner.ViewModel), IAsyncDisposable
+sealed class ProbeWindow : RunicWindow<OrderedCollectionModel>;
+
+static class TestWindows
 {
-    public ValueTask DisposeAsync() => owner.DisposeAsync();
+    // A Window host that serves a blank page in an embedded window.
+    public static RunicDesktopHost EmbeddedHtml(IServiceProvider services, DesktopHost host) => new(services, host)
+    {
+        SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+        WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+    };
 }
 
 sealed class NativeDispatchFactory : IDesktopWindowHostFactory
@@ -453,7 +531,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
-    public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+    public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask DisposeAsync() { _open = false; return ValueTask.CompletedTask; }

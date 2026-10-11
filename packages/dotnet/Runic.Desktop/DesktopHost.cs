@@ -37,7 +37,7 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <remarks>
     /// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> cancels it on Ctrl+C,
     /// SIGTERM or a closed Windows console, then closes every open window without close confirmation, so
-    /// <see cref="DesktopWindow.WaitForClose"/> returns and the application shuts down as if the user had closed its
+    /// <see cref="DesktopWindow.WaitForCloseAsync"/> returns and the application shuts down as if the user had closed its
     /// last window. Use the token to end application work that does not wait for a window.
     /// See <see cref="DesktopHostOptions.HandleShutdownSignals"/>.
     /// </remarks>

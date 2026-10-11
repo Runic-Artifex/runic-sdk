@@ -9,8 +9,8 @@ services described in the
 | File | What it does |
 | --- | --- |
 | [`CounterViewModel.cs`](CounterViewModel.cs) | A ReactiveUI ViewModel with a count and an increment command. |
-| [`CounterWindow.cs`](CounterWindow.cs) | The partial Window that selects the ViewModel and forwards the Desktop host's surface and close. |
-| [`Program.cs`](Program.cs) | Starts a `DesktopHost`, opens the Window with `OpenDesktopWindowAsync`, and waits for it to close. |
+| [`CounterWindow.cs`](CounterWindow.cs) | The partial Window that selects the ViewModel. The same declaration opens on CS-WebUI. |
+| [`Program.cs`](Program.cs) | Runs `RunicDesktopHost.Run`, opens the Window with `OpenWindowAsync<CounterWindow>()`, and awaits `WaitForCloseAsync()`. |
 | [`Frontend/src/app.ts`](Frontend/src/app.ts) | Uses the same generated client contract as the CS-WebUI examples. |
 
 The Desktop surface serves `webui.js`, and `Runic.Application.Desktop` copies

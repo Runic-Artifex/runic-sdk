@@ -7,8 +7,11 @@ CommunityToolkit dependency. It provides:
 - model-context scheduling: `AddRunicReactiveModelContext()` makes commands
   created without a scheduler deliver on the Window's model context (see
   [Model-context scheduling](#model-context-scheduling));
-- `ReactiveRunicView<T>` and `ReactiveRunicWindow<T>`, which implement
-  `IViewFor<T>` over a typed Runic `DataContext`;
+- `ReactiveRunicView<T>`, which implements `IViewFor<T>` over a typed Runic
+  `DataContext`. Windows derive from `RunicWindow<T>` in
+  `Runic.Application.Views` with ReactiveUI ViewModels too: the
+  `ReactiveRunicWindow<T>` base was removed in 0.7.0-preview.7, so the same Window
+  class opens on every host with either MVVM library;
 - `ReactiveRunicViewLocator`, adapting explicit ReactiveUI view mappings and
   contracts;
 - `ReactiveRoutedRegion<T>`, projecting `RoutingState.CurrentViewModel` into

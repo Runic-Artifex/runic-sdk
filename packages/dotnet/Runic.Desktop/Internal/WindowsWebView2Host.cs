@@ -166,9 +166,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         => InvokeAsync(() => Native.SetWindowPos(
             _window, 0, 0, 0, ScaleForWindow(width, _window), ScaleForWindow(height, _window), SwpNoZOrder | SwpNoActivate | SwpNoMove), cancellationToken);
 
-    public ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default)
+    public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.SetWindowPos(
-            _window, 0, checked((int)x), checked((int)y), 0, 0, SwpNoZOrder | SwpNoActivate | SwpNoSize), cancellationToken);
+            _window, 0, x, y, 0, 0, SwpNoZOrder | SwpNoActivate | SwpNoSize), cancellationToken);
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
@@ -257,8 +257,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
             var width = checked((int)options.Width);
             var height = checked((int)options.Height);
-            var x = options.X is { } configuredX ? checked((int)configuredX) : 100;
-            var y = options.Y is { } configuredY ? checked((int)configuredY) : 100;
+            var x = options.X ?? 100;
+            var y = options.Y ?? 100;
             if (options.Centered)
             {
                 x = Math.Max(0, (Native.GetSystemMetrics(SmCxScreen) - width) / 2);

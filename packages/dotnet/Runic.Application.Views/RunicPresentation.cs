@@ -32,11 +32,84 @@ public abstract class RunicView<TViewModel> : IRunicView where TViewModel : clas
     }
 }
 
-/// <summary>The native window owner and root typed context for one Bridge session.</summary>
-public abstract class RunicWindow<TViewModel> : RunicView<TViewModel> where TViewModel : class
+/// <summary>
+/// An application Window that any host can open. <see cref="RunicWindow{TViewModel}"/> implements it.
+/// </summary>
+/// <remarks>Only <see cref="RunicWindow{TViewModel}"/> can implement this interface.</remarks>
+public interface IRunicWindow : IRunicView, IAsyncDisposable
 {
-    /// <summary>Creates a window for its root ViewModel.</summary>
-    protected RunicWindow(TViewModel dataContext) : base(dataContext) { }
+    /// <summary>The host adapter of the open window, such as <c>DesktopBridgeWindow&lt;TViewModel&gt;</c>.</summary>
+    /// <exception cref="InvalidOperationException">The window has not opened.</exception>
+    IBridgeWindow Host { get; }
+
+    /// <inheritdoc cref="IBridgeWindow.WaitForCloseAsync"/>
+    ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default);
+
+    /// <inheritdoc cref="IBridgeWindow.CloseAsync"/>
+    ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
+
+    internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken);
+
+    internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
+}
+
+/// <summary>
+/// The native window and root typed context for one Bridge session. Declare one partial subclass per
+/// Window; the same declaration opens on every host and with either MVVM library:
+/// <code>
+/// public sealed partial class MainWindow : RunicWindow&lt;MainViewModel&gt;;
+/// </code>
+/// Open it with <c>await host.OpenWindowAsync&lt;MainWindow&gt;()</c>, wait with
+/// <see cref="WaitForCloseAsync"/>, and release it with <c>await using</c> or <see cref="DisposeAsync"/>.
+/// </summary>
+/// <remarks>
+/// <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/> creates the Window, resolves its
+/// ViewModel in a new DI scope, assigns it to <see cref="RunicView{TViewModel}.DataContext"/>, and opens the
+/// window on the host. The generated Bridge and TypeScript client are named after the Window class.
+/// </remarks>
+public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWindow where TViewModel : class
+{
+    private IBridgeWindow? _host;
+    private int _opened;
+
+    /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
+    protected RunicWindow() { }
+
+    /// <summary>The window's scoped root ViewModel.</summary>
+    /// <exception cref="InvalidOperationException">The window has not opened.</exception>
+    public TViewModel ViewModel => DataContext ?? throw NotOpen();
+
+    /// <inheritdoc/>
+    public IBridgeWindow Host => Volatile.Read(ref _host) ?? throw NotOpen();
+
+    /// <inheritdoc/>
+    public ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default) =>
+        Host.WaitForCloseAsync(cancellationToken);
+
+    /// <inheritdoc/>
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        Host.CloseAsync(timeout, cancellationToken);
+
+    /// <summary>Closes the window immediately and waits until its resources are released. Does nothing before it opens.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (Volatile.Read(ref _host) is { } host) await host.DisposeAsync().ConfigureAwait(false);
+        GC.SuppressFinalize(this);
+    }
+
+    async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken)
+    {
+        if (Interlocked.Exchange(ref _opened, 1) != 0)
+            throw new InvalidOperationException($"{GetType().Name} has already been opened; open a new instance for another window.");
+        var opened = await RunicWindowOpening.OpenAsync(host, this, options, cancellationToken).ConfigureAwait(false);
+        Volatile.Write(ref _host, opened);
+    }
+
+    RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>
+        RunicWindowOpening.Validate<TViewModel>(host, options);
+
+    private InvalidOperationException NotOpen() =>
+        new($"{GetType().Name} has not opened. Open it with OpenWindowAsync<{GetType().Name}>().");
 }
 
 /// <summary>Selects a named .NET and web View for a content property.</summary>

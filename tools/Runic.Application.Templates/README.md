@@ -41,7 +41,7 @@ and a local `dotnet-runic` tool manifest.
 What each host opens:
 
 - `desktop` opens a native window with the platform's embedded WebView, native
-  file dialogs and the clipboard, through `DesktopEventLoop.Run`, which picks
+  file dialogs and the clipboard, through `RunicDesktopHost.Run`, which picks
   the event loop each platform needs.
 - `desktop-gtk4` is `desktop` on GTK 4 and WebKitGTK 6 on Linux (`WithGtk4()`,
   with the GTK 4 portal and clipboard packages); on Windows and macOS it is the

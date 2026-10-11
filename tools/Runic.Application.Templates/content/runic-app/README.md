@@ -29,30 +29,36 @@ commands build the production frontend instead of starting a development server.
 
 ## What opens
 
+`RunAsync` in `Program.cs` opens `WorkspaceWindow` with
+`host.OpenWindowAsync<WorkspaceWindow>()` and waits for it with
+`WaitForCloseAsync()`. The Window declaration in `Views.cs` and this body are
+the same on every host; only the `Run` call and its options choose the host.
+
 <!--#if (gtk4) -->
-`Program.cs` runs the application with `DesktopEventLoop.Run`, which starts a
+`Program.cs` runs the application with `RunicDesktopHost.Run`, which starts a
 Runic Desktop host on the event loop each platform needs, and opens the Window
 in a native window with the platform's embedded WebView: the Edge WebView2
 Runtime on Windows, WKWebView on macOS, or GTK 4 with WebKitGTK 6 on Linux.
 `WithGtk4()` selects the GTK 4 backend and its window provider together, and
-on Linux `DesktopEventLoop.Run` runs GTK on the process main thread. Linux needs
+on Linux `RunicDesktopHost.Run` runs GTK on the process main thread. Linux needs
 GTK 4.12 or newer and WebKitGTK 6.0 (for example `libgtk-4-1` and
 `libwebkitgtk-6.0-4`); `dotnet runic doctor` lists anything missing.
 Without an embedded WebView it falls back to an installed browser. See the
 [Runic.Desktop.Gtk4 guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop.Gtk4/README.md)
 for the GTK 4 backend and platform services.
 <!--#elif (desktopHost) -->
-`Program.cs` runs the application with `DesktopEventLoop.Run`, which starts a
+`Program.cs` runs the application with `RunicDesktopHost.Run`, which starts a
 Runic Desktop host on the event loop each platform needs, and opens the Window
 in a native window with the platform's embedded WebView: the Edge WebView2
 Runtime on Windows, WKWebView on macOS, or GTK 3 with WebKitGTK 4.1 on Linux.
-Without an embedded WebView it falls back to an installed browser. Change
-`DesktopWindowOptions` to choose another presentation, and see the
+Without an embedded WebView it falls back to an installed browser. To choose
+another presentation, call `DesktopEventLoop.Run` and create a
+`RunicDesktopHost` with other `WindowOptions`; see the
 [Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop/README.md)
 for native prerequisites and platform services. Create the project with
 `--host desktop-gtk4` to use GTK 4 and WebKitGTK 6 on Linux.
 <!--#else -->
-`window.Show("index.html")` in `Program.cs` uses CS-WebUI. It opens the app
+`RunicCsWebUiHost.Run` in `Program.cs` uses CS-WebUI. It opens the app
 in an installed browser in app mode (Chrome, Edge or another Chromium-based
 browser works best; Firefox works without app mode), falls back to the default
 browser, and then to the platform WebView: the Edge WebView2 Runtime on

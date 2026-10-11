@@ -296,21 +296,28 @@ verify_template() {
   grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
   # A Svelte config keeps vite-plugin-svelte from reporting a missing config on every build.
   [[ "$framework" != svelte ]] || grep -Fq 'vitePreprocess()' "$output/Frontend/svelte.config.js"
-  # The window exposes its typed ViewModel to the startup code.
-  grep -Eq 'ViewModel => [Hh]ost\.ViewModel|ReactiveRunicWindow<' "$output/Views.cs"
+  # One Window declaration and one application body serve every host and MVVM library.
+  grep -Fq 'public sealed partial class WorkspaceWindow : RunicWindow<WorkspaceViewModel>;' "$output/Views.cs"
+  if grep -nE 'Views\.(Desktop|CsWebUi)|(Desktop|CsWebUi)BridgeWindow|CsWebUiWindow' "$output/Views.cs"; then
+    echo "The $host Window declaration depends on its host." >&2
+    exit 1
+  fi
+  grep -Fq 'await using var window = await host.OpenWindowAsync<WorkspaceWindow>(' "$output/Program.cs"
+  grep -Fq 'await window.WaitForCloseAsync();' "$output/Program.cs"
   local index_html="$output/Frontend/index.html"
   [[ "$framework" == angular ]] && index_html="$output/Frontend/src/index.html"
   case "$host" in
     cswebui)
       grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
       grep -Fq 'runic-cswebui.js' "$index_html"
+      grep -Fq 'return RunicCsWebUiHost.Run(provider, RunAsync);' "$output/Program.cs"
       [[ "$framework" == angular ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
       ;;
     desktop|desktop-gtk4)
       grep -Fq 'Runic.Application.Desktop' "$output/$project_name.csproj"
       grep -Fq 'runic-desktop-views.js' "$index_html"
       [[ "$framework" == angular ]] || grep -Fq 'runic({ desktop: true })' "$output/Frontend/vite.config.ts"
-      grep -Fq 'DesktopEventLoop.Run(options' "$output/Program.cs"
+      grep -Fq 'return RunicDesktopHost.Run(provider, options, RunAsync);' "$output/Program.cs"
       grep -Fq 'DiagnosticSink = ReportDiagnostic' "$output/Program.cs"
       ;;
   esac

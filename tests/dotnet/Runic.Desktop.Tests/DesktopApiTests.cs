@@ -996,7 +996,85 @@ public sealed class DesktopApiTests
         Assert.Equal(WebSocketState.Open, socket.State);
         Assert.False(window.IsOpen);
         Assert.Equal(0, window.NativeHandle);
-        window.WaitForClose(timeout.Token);
+        await window.WaitForCloseAsync(timeout.Token);
+    }
+
+    [Fact]
+    public async Task WaitForCloseAsyncReturnsAfterCloseAndHonoursCancellation()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory, WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+
+        using (var cancelled = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => window.WaitForCloseAsync(cancelled.Token).AsTask());
+        }
+        Assert.True(window.IsOpen);
+
+        var wait = window.WaitForCloseAsync().AsTask();
+        Assert.False(wait.IsCompleted);
+        await window.CloseAsync();
+        await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(window.IsOpen);
+        Assert.False(factory.Host!.IsOpen);
+    }
+
+    [Fact]
+    public async Task CloseAsyncCancellationStopsOnlyTheCallersWait()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory, WaitForConnection = false,
+        });
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        var native = factory.Host!;
+        native.ReleaseClose = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var caller = new CancellationTokenSource();
+
+        var cancelledClose = window.CloseAsync(caller.Token).AsTask();
+        await native.CloseEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var sharedClose = window.CloseAsync().AsTask();
+        try
+        {
+            await caller.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => cancelledClose);
+            Assert.False(sharedClose.IsCompleted);
+            Assert.True(native.IsOpen);
+        }
+        finally { native.ReleaseClose.TrySetResult(); }
+
+        await sharedClose.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(native.IsOpen);
+        Assert.False(window.IsOpen);
+        await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task EmbeddedWindowAcceptsNegativeCoordinates()
+    {
+        var factory = new RecordingWindowHostFactory();
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory, WaitForConnection = false,
+        });
+        var options = new DesktopWindowOptions { Browser = BrowserKind.Embedded, X = -1280, Y = -40 };
+        Assert.DoesNotContain(host.Validate(options).Diagnostics,
+            static item => item.Option is "DesktopWindowOptions.X" or "DesktopWindowOptions.Y");
+        await using var surface = await host.CreateSurfaceAsync();
+        await using var window = await surface.OpenWindowAsync(options);
+
+        Assert.Equal(-1280, factory.Host!.Options!.X);
+        Assert.Equal(-40, factory.Host.Options.Y);
+        Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.Move));
+        await window.MoveAsync(-300, -20);
+        Assert.Equal((-300, -20), factory.Host.Position);
     }
 
     [Fact]
@@ -1122,12 +1200,17 @@ public sealed class DesktopApiTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask CloseAsync(CancellationToken cancellationToken = default)
+        internal TaskCompletionSource CloseEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource? ReleaseClose { get; set; }
+        internal (int X, int Y)? Position { get; private set; }
+
+        public async ValueTask CloseAsync(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            CloseEntered.TrySetResult();
+            if (ReleaseClose is { } release) await release.Task;
             IsOpen = false;
             Closed?.Invoke(this, EventArgs.Empty);
-            return ValueTask.CompletedTask;
         }
 
         public ValueTask FocusAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
@@ -1135,8 +1218,11 @@ public sealed class DesktopApiTests
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
-        public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
-            ValueTask.CompletedTask;
+        public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default)
+        {
+            Position = (x, y);
+            return ValueTask.CompletedTask;
+        }
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;

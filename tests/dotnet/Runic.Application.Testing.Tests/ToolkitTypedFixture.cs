@@ -95,5 +95,5 @@ public sealed class ToolkitTypedViewModel : ObservableObject
     }
 }
 
-public sealed partial class ToolkitTypedWindow(ToolkitTypedViewModel model)
-    : RunicWindow<ToolkitTypedViewModel>(model);
+public sealed partial class ToolkitTypedWindow
+    : RunicWindow<ToolkitTypedViewModel>;

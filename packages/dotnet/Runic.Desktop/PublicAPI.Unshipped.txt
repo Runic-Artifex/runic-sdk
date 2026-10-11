@@ -2,3 +2,25 @@
 Runic.Desktop.DesktopHost.ShutdownRequested.get -> System.Threading.CancellationToken
 Runic.Desktop.DesktopHostOptions.HandleShutdownSignals.get -> bool
 Runic.Desktop.DesktopHostOptions.HandleShutdownSignals.init -> void
+*REMOVED*Runic.Desktop.DesktopWindow.CloseAsync() -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.DesktopWindow.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Desktop.DesktopWindow.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.DesktopWindow.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Desktop.DesktopWindow.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.DesktopWindow.MoveAsync(uint x, uint y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.DesktopWindow.ToggleMaximizedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
+Runic.Desktop.DesktopWindow.ToggleMaximizedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.DesktopWindow.WaitForClose(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> void
+Runic.Desktop.DesktopWindow.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+*REMOVED*Runic.Desktop.DesktopWindowHostOptions.X.get -> uint?
+Runic.Desktop.DesktopWindowHostOptions.X.get -> int?
+*REMOVED*Runic.Desktop.DesktopWindowHostOptions.Y.get -> uint?
+Runic.Desktop.DesktopWindowHostOptions.Y.get -> int?
+*REMOVED*Runic.Desktop.DesktopWindowOptions.X.get -> uint?
+Runic.Desktop.DesktopWindowOptions.X.get -> int?
+*REMOVED*Runic.Desktop.DesktopWindowOptions.Y.get -> uint?
+Runic.Desktop.DesktopWindowOptions.Y.get -> int?
+*REMOVED*Runic.Desktop.IDesktopWindowHost.MoveAsync(uint x, uint y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.IDesktopWindowHost.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

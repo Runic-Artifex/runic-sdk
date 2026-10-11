@@ -22,7 +22,7 @@ public sealed class CollectionDeltaViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public sealed partial class CollectionDeltaWindow(CollectionDeltaViewModel model) : RunicWindow<CollectionDeltaViewModel>(model);
+public sealed partial class CollectionDeltaWindow : RunicWindow<CollectionDeltaViewModel>;
 
 public sealed class MutableCollectionRow(int id, string label) : INotifyPropertyChanged
 {
@@ -47,7 +47,7 @@ public sealed class MutableCollectionViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public sealed partial class MutableCollectionWindow(MutableCollectionViewModel model) : RunicWindow<MutableCollectionViewModel>(model);
+public sealed partial class MutableCollectionWindow : RunicWindow<MutableCollectionViewModel>;
 
 public sealed record KeyedRow(string Key, string Label);
 
@@ -66,7 +66,7 @@ public sealed class KeyedCollectionViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed partial class KeyedCollectionWindow(KeyedCollectionViewModel model) : RunicWindow<KeyedCollectionViewModel>(model);
+public sealed partial class KeyedCollectionWindow : RunicWindow<KeyedCollectionViewModel>;
 
 // Validation keeps collections on full states; their keys are still checked.
 public sealed class ValidatedCollectionViewModel : INotifyPropertyChanged, INotifyDataErrorInfo
@@ -82,7 +82,7 @@ public sealed class ValidatedCollectionViewModel : INotifyPropertyChanged, INoti
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed partial class ValidatedCollectionWindow(ValidatedCollectionViewModel model) : RunicWindow<ValidatedCollectionViewModel>(model);
+public sealed partial class ValidatedCollectionWindow : RunicWindow<ValidatedCollectionViewModel>;
 
 public sealed class MutableKeyedRow(string key, string label) : INotifyPropertyChanged
 {
@@ -106,4 +106,4 @@ public sealed class MutableKeyedViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed partial class MutableKeyedWindow(MutableKeyedViewModel model) : RunicWindow<MutableKeyedViewModel>(model);
+public sealed partial class MutableKeyedWindow : RunicWindow<MutableKeyedViewModel>;

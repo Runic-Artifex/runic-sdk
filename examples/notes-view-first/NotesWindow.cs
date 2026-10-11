@@ -4,18 +4,8 @@ using Runic.Application.Views.CsWebUi;
 
 namespace NotesWindowViews;
 
-public sealed partial class NotesWindow : RunicWindow<ShellViewModel>, IBridgeWindow
+public sealed partial class NotesWindow : RunicWindow<ShellViewModel>
 {
-    private readonly CsWebUiBridgeWindow<ShellViewModel> _host;
-
-    internal NotesWindow(CsWebUiBridgeWindow<ShellViewModel> host) : base(host.ViewModel) => _host = host;
-
-    public WebUiWindow NativeWindow => _host.NativeWindow;
-    public void SetRootFolder(string path) => _host.SetRootFolder(path);
-    public void SetPort(ushort port) => _host.SetPort(port);
-    public void SetSize(uint width, uint height) => _host.SetSize(width, height);
-    public void Show(string entry) => _host.Show(entry);
-    public string StartServer(string entry) => _host.StartServer(entry);
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout) => _host.CloseAsync(timeout);
-    public ValueTask DisposeAsync() => _host.DisposeAsync();
+    // This example runs on CS-WebUI only: its server and development modes use the native window.
+    public WebUiWindow NativeWindow => ((CsWebUiBridgeWindow<ShellViewModel>)Host).NativeWindow;
 }

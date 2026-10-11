@@ -32,6 +32,13 @@ if (args is ["--accepted-work"])
     return;
 }
 
+if (args is ["--window-host"])
+{
+    await RunicWindowHostTests.RunAsync();
+    Console.WriteLine("Window host tests passed.");
+    return;
+}
+
 if (args is ["--model-context"])
 {
     await ModelContextTests.RunAsync();
@@ -181,6 +188,7 @@ TrackerConformanceTests.Run();
 await NavigationPresentationTests.RunAsync();
 await ContentLifecycleTests.RunAsync();
 await WindowCloseTests.RunAsync();
+await RunicWindowHostTests.RunAsync();
 await AcceptedWorkScopeTests.RunAsync();
 await InteractionFixture.VerifyAsync();
 await GeneratedInteractionTests.RunAsync();

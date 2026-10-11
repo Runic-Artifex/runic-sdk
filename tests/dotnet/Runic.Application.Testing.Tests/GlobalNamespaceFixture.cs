@@ -10,5 +10,5 @@ public sealed class GlobalNamespaceViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-public sealed partial class GlobalNamespaceWindow(GlobalNamespaceViewModel model) : RunicWindow<GlobalNamespaceViewModel>(model);
+public sealed partial class GlobalNamespaceWindow : RunicWindow<GlobalNamespaceViewModel>;
 #pragma warning restore CA1050

@@ -111,8 +111,8 @@ public sealed partial class ToolkitContinuationViewModel : ObservableObject
     }
 }
 
-public sealed partial class ToolkitContinuationWindow(ToolkitContinuationViewModel model)
-    : RunicWindow<ToolkitContinuationViewModel>(model);
+public sealed partial class ToolkitContinuationWindow
+    : RunicWindow<ToolkitContinuationViewModel>;
 
 public sealed class ReactiveContinuationViewModel : ReactiveObject
 {
@@ -146,5 +146,5 @@ public sealed class ReactiveContinuationViewModel : ReactiveObject
     public IReactiveCommand<string, RxVoid> RunNextCommand { get; }
 }
 
-public sealed partial class ReactiveContinuationWindow(ReactiveContinuationViewModel model)
-    : RunicWindow<ReactiveContinuationViewModel>(model);
+public sealed partial class ReactiveContinuationWindow
+    : RunicWindow<ReactiveContinuationViewModel>;

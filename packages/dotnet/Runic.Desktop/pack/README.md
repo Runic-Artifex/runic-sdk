@@ -49,7 +49,7 @@ using var greeting = surface.RegisterCapability(
     static (invocation, _) =>
         ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!"));
 await using var window = await surface.OpenWindowAsync();
-window.WaitForClose();
+await window.WaitForCloseAsync();
 ```
 
 Run the included sample from source:

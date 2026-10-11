@@ -67,5 +67,5 @@ namespace Runic.Application.Testing.Tests
         private void NewItem() => Label = "item";
     }
 
-    public sealed partial class NamingWindow(NamingViewModel model) : RunicWindow<NamingViewModel>(model);
+    public sealed partial class NamingWindow : RunicWindow<NamingViewModel>;
 }

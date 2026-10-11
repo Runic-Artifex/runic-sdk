@@ -77,4 +77,4 @@ public sealed class DataShapeViewModel : ReactiveObject
     public DataShapeItem Whole { get; set; } = new() { Name = "whole" };
 }
 
-public sealed partial class DataShapeWindow(DataShapeViewModel model) : RunicWindow<DataShapeViewModel>(model);
+public sealed partial class DataShapeWindow : RunicWindow<DataShapeViewModel>;

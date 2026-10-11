@@ -1,6 +1,6 @@
-using CsWebUi;
 using FirstWindow;
 using Microsoft.Extensions.DependencyInjection;
+using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
 
 var services = new ServiceCollection();
@@ -13,11 +13,10 @@ using var provider = services.BuildServiceProvider(new ServiceProviderOptions
     ValidateOnBuild = true
 });
 
-// The window releases asynchronously, before WebUI cleans up its native state.
-await using (var window = provider.OpenWindow<CounterWindow, CounterViewModel>(host => new CounterWindow(host)))
+// The main thread waits for WebUI while the application runs; Run cleans up WebUI's native state at the end.
+return RunicCsWebUiHost.Run(provider, async host =>
 {
-    window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
-    window.Show("index.html");
-    WebUiApplication.Wait();
-}
-WebUiApplication.Clean();
+    await using var window = await host.OpenWindowAsync<CounterWindow>();
+    await window.WaitForCloseAsync();
+    return 0;
+});

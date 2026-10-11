@@ -169,7 +169,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         }
         // A shutdown requested while this window opened closes it too. The gate release orders this check after
         // the window was published, so either the shutdown sees the window or the window sees the shutdown.
-        if (_host.IsShutdownRequested) await window.CloseAsync().ConfigureAwait(false);
+        if (_host.IsShutdownRequested) await window.CloseAsync(CancellationToken.None).ConfigureAwait(false);
         return window;
     }
 
@@ -625,10 +625,10 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public Task FocusAsync(CancellationToken cancellationToken = default)
+    public ValueTask FocusAsync(CancellationToken cancellationToken = default)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Focus,
-            () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken).AsTask();
+            () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken);
     }
 
     /// <summary>Minimizes the window.</summary>
@@ -638,10 +638,10 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public Task MinimizeAsync(CancellationToken cancellationToken = default)
+    public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Minimize,
-            () => new ValueTask(_engine.MinimizeAsync(cancellationToken)), cancellationToken).AsTask();
+            () => new ValueTask(_engine.MinimizeAsync(cancellationToken)), cancellationToken);
     }
 
     /// <summary>Maximizes the window, or restores it when it is already maximized.</summary>
@@ -651,10 +651,10 @@ public sealed class DesktopWindow : IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public Task ToggleMaximizedAsync(CancellationToken cancellationToken = default)
+    public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Maximize,
-            () => new ValueTask(_engine.MaximizeAsync(cancellationToken)), cancellationToken).AsTask();
+            () => new ValueTask(_engine.MaximizeAsync(cancellationToken)), cancellationToken);
     }
 
     /// <summary>Resizes the window.</summary>
@@ -670,46 +670,53 @@ public sealed class DesktopWindow : IAsyncDisposable
         RequireAndResize(width, height, cancellationToken);
 
     /// <summary>Moves the window to a screen position.</summary>
-    /// <param name="x">The new horizontal position in pixels.</param>
-    /// <param name="y">The new vertical position in pixels.</param>
+    /// <param name="x">The new horizontal position in pixels; negative values are left of the primary screen's origin.</param>
+    /// <param name="y">The new vertical position in pixels; negative values are above the primary screen's origin.</param>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window has been moved.</returns>
     /// <remarks>Requires <see cref="DesktopWindowCapabilities.Move"/>.</remarks>
     /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
     /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
-    public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
+    public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) =>
         RequireAndMove(x, y, cancellationToken);
 
-    /// <summary>Blocks until this presentation closes while servicing platform window events.</summary>
-    public void WaitForClose(CancellationToken cancellationToken = default)
+    /// <summary>Waits until this presentation closes while servicing platform window events.</summary>
+    /// <param name="cancellationToken">Stops this caller's wait; it does not close the window.</param>
+    /// <returns>A task that completes when the window has closed and its native resources have been released.</returns>
+    /// <remarks>
+    /// On macOS and with the GTK 4 host the process main thread must run <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>,
+    /// which services native window events while the application awaits this method.
+    /// </remarks>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public async ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default)
     {
         while ((Volatile.Read(ref _disposed) != 0 && !_closed.Task.IsCompleted)
             || IsOpen)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (OperatingSystem.IsMacOS())
-            {
-                Internal.MacOsWkWebViewHost.ProcessPendingMainThreadWork();
-            }
-            _engine.ProcessEmbeddedHostEvents();
-            Thread.Sleep(10);
+            ServiceNativeEvents();
+            await Task.Delay(10, cancellationToken).ConfigureAwait(false);
         }
 
         // Native destruction can precede asynchronously queued native release work.
         // Join that cleanup while the process main thread can still service it.
-        var close = CloseAsync().AsTask();
+        var close = CloseAsync(CancellationToken.None).AsTask();
         while (!close.IsCompleted)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (OperatingSystem.IsMacOS())
-            {
-                Internal.MacOsWkWebViewHost.ProcessPendingMainThreadWork();
-            }
-            _engine.ProcessEmbeddedHostEvents();
-            Thread.Sleep(10);
+            ServiceNativeEvents();
+            await Task.Delay(10, cancellationToken).ConfigureAwait(false);
         }
-        close.GetAwaiter().GetResult();
+        await close.ConfigureAwait(false);
+    }
+
+    // Both calls are no-ops away from the thread that owns the native event loop.
+    private void ServiceNativeEvents()
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            Internal.MacOsWkWebViewHost.ProcessPendingMainThreadWork();
+        }
+        _engine.ProcessEmbeddedHostEvents();
     }
 
     /// <summary>Requests closing, awaiting the same confirmation as the native close button.</summary>
@@ -718,31 +725,35 @@ public sealed class DesktopWindow : IAsyncDisposable
         => IsOpen ? _surface.RequestCloseWindowAsync(this, cancellationToken) : ValueTask.FromResult(true);
 
     /// <summary>Forcibly closes this window without awaiting confirmation. Use RequestCloseAsync for user actions.</summary>
-    public async ValueTask CloseAsync()
+    /// <param name="cancellationToken">Stops this caller's wait. The close itself always proceeds and is shared by every caller.</param>
+    /// <returns>A task that completes when the window has closed.</returns>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before the close completed.</exception>
+    public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            try
-            {
-                await _surface.CloseWindowAsync(this).ConfigureAwait(false);
-                _closed.TrySetResult();
-            }
-            catch (Exception exception)
-            {
-                _closed.TrySetException(exception);
-                throw;
-            }
+            _ = CloseCoreAsync();
         }
-        else
+        return new ValueTask(_closed.Task.WaitAsync(cancellationToken));
+    }
+
+    private async Task CloseCoreAsync()
+    {
+        try
         {
-            await _closed.Task.ConfigureAwait(false);
+            await _surface.CloseWindowAsync(this).ConfigureAwait(false);
+            _closed.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            _closed.TrySetException(exception);
         }
     }
 
-    /// <summary>Forcibly closes the window, like <see cref="CloseAsync"/>.</summary>
+    /// <summary>Forcibly closes the window, like <see cref="CloseAsync(CancellationToken)"/>.</summary>
     public async ValueTask DisposeAsync()
     {
-        await CloseAsync().ConfigureAwait(false);
+        await CloseAsync(CancellationToken.None).ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 
@@ -752,7 +763,7 @@ public sealed class DesktopWindow : IAsyncDisposable
             () => _engine.ResizePresentationAsync(width, height, cancellationToken), cancellationToken);
     }
 
-    private ValueTask RequireAndMove(uint x, uint y, CancellationToken cancellationToken)
+    private ValueTask RequireAndMove(int x, int y, CancellationToken cancellationToken)
     {
         return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Move,
             () => _engine.MovePresentationAsync(x, y, cancellationToken), cancellationToken);
