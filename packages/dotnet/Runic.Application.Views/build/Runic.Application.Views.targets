@@ -171,7 +171,7 @@
         Condition="Exists('%(Compile.FullPath)') and $([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('%(Compile.FullPath)')), ':\s*(global::)?(Runic\.Application\.Views\.)?Runic(Window|View)\s*&lt;'))" />
     </ItemGroup>
     <Warning Code="RUNICBRIDGE015" Condition="'@(_RunicBridgeViewSource)' != ''"
-             File="$(MSBuildProjectFullPath)"
+             File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge015"
              Text="$(AssemblyName) declares a Runic Window or View (@(_RunicBridgeViewSource->'%(Filename)%(Extension)', ', ')), but Bridge generation is off because the project references no host adapter (Runic.Application.Desktop, Runic.Application.CsWebUi or Runic.Application.Wpf) and not Runic.Application directly. No bridge, AddRunicViews() or TypeScript client is generated. Set RunicBridgeBuildEnabled=true to generate them here, or false when another project generates them." />
   </Target>
 
@@ -315,7 +315,7 @@
        RUNICBRIDGE014 rather than a failed command. -->
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
           Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
-    <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)"
+    <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge014"
            Condition="!Exists('$(RunicBridgeFrontendDir)') or ('$(RunicBridgeFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)' and !Exists('$(RunicBridgeFrontendDir)/package.json'))"
            Text="$(AssemblyName) declares Runic Views, but the frontend directory $([System.IO.Path]::GetFullPath('$(RunicBridgeFrontendDir)')) has no package.json to build the generated client in $([System.IO.Path]::GetFullPath('$(RunicBridgeTypescriptDir)')). Create the frontend there, set RunicBridgeFrontendDir to your frontend package directory, or set RunicBridgeBuildFrontend=false when another tool builds it." />
     <ItemGroup>

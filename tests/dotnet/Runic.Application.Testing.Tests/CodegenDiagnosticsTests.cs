@@ -60,6 +60,10 @@ internal static partial class CodegenDiagnosticsTests
                 Require(output.Split('\n').Any(text => text.StartsWith(location, StringComparison.Ordinal)
                         && text.Contains($": error {code}: ", StringComparison.Ordinal)),
                     $"{name}: expected 'error {code}' at line {line} of the fixture.\n{output}");
+                // Every report links to the ID's catalog entry at the release tag.
+                Require(output.Split('\n').Any(text => text.Contains($": error {code}: ", StringComparison.Ordinal)
+                        && text.TrimEnd().EndsWith($" See {HelpLink(code)}", StringComparison.Ordinal)),
+                    $"{name}: expected 'error {code}' to end with its help link {HelpLink(code)}.\n{output}");
                 foreach (var text in expected)
                     Require(output.Contains(text, StringComparison.Ordinal),
                         $"{name}: the generator output did not contain '{text}'.\n{output}");
@@ -467,10 +471,20 @@ internal static partial class CodegenDiagnosticsTests
                     && !missingViewOutput.Contains("ShellViewModel.Anything", StringComparison.Ordinal)
                     && !missingViewOutput.Contains("HomeViewModel is assignable", StringComparison.Ordinal),
                 $"A region ViewModel without a View was not reported once per slot as RUNICBRIDGE013.\n{missingViewOutput}");
+            Require(warnings.All(text => text.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE013")}", StringComparison.Ordinal)),
+                $"RUNICBRIDGE013 does not end with its help link {HelpLink("RUNICBRIDGE013")}.\n{missingViewOutput}");
             var shellBridge = File.ReadAllText(Path.Combine(missingViewDirectory, "cs", "Fixture.ShellViewModel.Bridge.g.cs"));
             Require(shellBridge.Contains("The navigation region ShellViewModel.Main cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal)
                     && shellBridge.Contains("The ShellViewModel.Tabs cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal),
                 $"The generated content failure does not name the slot and the presented type.\n{shellBridge}");
+            // Generated code is not a use site of the experimental navigation API (W250-015): a
+            // Bridge that observes a region slot suppresses RUNICNAV001 itself, before its code.
+            var regionBridges = Directory.GetFiles(Path.Combine(missingViewDirectory, "cs"), "*.g.cs")
+                .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("static vm => vm.", StringComparison.Ordinal))).ToArray();
+            Require(regionBridges.Length > 0 && regionBridges.All(lines =>
+                    Array.IndexOf(lines, "#pragma warning disable RUNICNAV001") is var pragma and >= 0
+                    && pragma < Array.FindIndex(lines, line => line.StartsWith("internal sealed class ", StringComparison.Ordinal))),
+                $"A generated Bridge with a navigation region slot does not suppress RUNICNAV001.\n{shellBridge}");
             // A Window's ViewModel has a Window, not a View: it is not reported
             // for a slot whose content type it shares.
             var (windowModelExit, windowModelOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "MissingViewWindowModel",
@@ -621,6 +635,14 @@ internal static partial class CodegenDiagnosticsTests
         Require(!text.Contains("Unhandled exception", StringComparison.Ordinal),
             $"{assembly}: the generator crashed instead of reporting a diagnostic.\n{text}");
         return (process.ExitCode, text);
+    }
+
+    // The generator and this test assembly build with the same version.
+    private static string HelpLink(string code)
+    {
+        var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)!.InformationalVersion.Split('+')[0];
+        return $"https://github.com/Runic-Artifex/runic-sdk/blob/v{version}/docs/diagnostics.md#{code.ToLowerInvariant()}";
     }
 
     private static string FindWorkspaceRoot()

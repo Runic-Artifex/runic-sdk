@@ -13,6 +13,8 @@
          globalization every interpolation is culture-neutral, so CA1305 is moot. -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <NoWarn>$(NoWarn);CA1305</NoWarn>
+    <!-- Diagnostics link to their catalog entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />

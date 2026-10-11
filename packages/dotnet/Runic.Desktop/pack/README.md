@@ -116,6 +116,28 @@ stable empty compatibility result while the host emits a redacted,
 correlation-bearing diagnostic. Runic Application Views hosted through
 `Runic.Application.Desktop` report their own typed, redacted, correlation-bearing errors.
 
+## Troubleshooting
+
+Run `dotnet runic doctor` in the project, with `--rid` for a target machine,
+to list the native runtime it needs. At startup, `host.Validate(windowOptions)`
+reports each missing prerequisite with a stable code and remediation:
+
+- **`webview2-runtime-missing` (Windows).** Install the Microsoft Edge WebView2
+  Runtime on the machine. NativeAOT publishes need no `WebView2Loader.dll`.
+- **`linux-embedded-backend-not-selected`.** Set
+  `DesktopHostOptions.Linux.EmbeddedBackend`, as in the example above. No
+  toolkit is selected by default.
+- **`webkitgtk-runtime-missing`, `gtk4-runtime-missing` or
+  `webkitgtk6-runtime-missing` (Linux).** Install GTK 3 and WebKitGTK 4.1, or
+  GTK 4.12 or newer and WebKitGTK 6.0 for `Runic.Desktop.Gtk4`, and run in a
+  graphical session.
+- **`gtk4-provider-missing`.** A GTK4 backend needs the `Runic.Desktop.Gtk4`
+  package and its main-thread entry point.
+- **GTK 3 loaded in a GTK 4 process.** A process cannot change GTK versions
+  after claiming a backend, and a GTK 4 process must not load GTK 3. Replace
+  `Runic.Platform.Linux` with `Runic.Platform.Linux.Gtk4` in a GTK4
+  application; doctor's `gtk4-profile` check lists what is missing.
+
 ## Relationship to WebUI and CS-WebUI
 
 Runic Desktop began as a behavioral port of WebUI. WebUI remains a compatibility

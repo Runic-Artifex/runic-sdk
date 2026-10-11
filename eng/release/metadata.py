@@ -15,7 +15,8 @@ if kind == 'npm':
                 if key in deps and deps[key] != value: raise ValueError('Conflicting dependency ranges')
                 deps[key] = value
         if p.get('private'): raise ValueError('Private package')
-        result = dict(name=p['name'], version=p['version'], repository=repo, source=p.get('gitHead', ''), dependencies=deps)
+        readme = archive.extractfile('package/README.md').read().decode('utf-8') if 'package/README.md' in names else None
+        result = dict(name=p['name'], version=p['version'], repository=repo, source=p.get('gitHead', ''), dependencies=deps, readme=readme)
 else:
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
@@ -32,5 +33,7 @@ else:
             deps[key] = value
         # NuGet adds a repository signature; compare every other file exactly when resuming.
         content = {n: hashlib.sha256(archive.read(n)).hexdigest() for n in sorted(names) if n != '.signature.p7s'}
-        result = dict(name=m.findtext('id'), version=m.findtext('version'), repository=repo.get('url', '') if repo is not None else '', source=repo.get('commit', '') if repo is not None else '', dependencies=deps, content=content)
+        readme = m.findtext('readme')
+        readme = archive.read(readme.replace('\\', '/')).decode('utf-8-sig') if readme else None
+        result = dict(name=m.findtext('id'), version=m.findtext('version'), repository=repo.get('url', '') if repo is not None else '', source=repo.get('commit', '') if repo is not None else '', dependencies=deps, content=content, readme=readme)
 print(json.dumps(result))
