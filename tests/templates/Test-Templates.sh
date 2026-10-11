@@ -15,6 +15,9 @@ repository_root="$(cd "$script_directory/../.." && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-views-templates.XXXXXXXXXX)"
 registry_pid=""
+# The process that keeps the shared virtual display open, if one was started.
+display_holder_pid=""
+display_holder_child=""
 # Process group of a running serve-only application or dotnet runic dev.
 served_group=""
 
@@ -34,6 +37,15 @@ stop_served() {
 
 cleanup() {
   stop_served
+  if [[ -n "$display_holder_pid" ]]; then
+    # Ending the holder lets xvfb-run stop Xvfb; ending xvfb-run itself would leave Xvfb running.
+    if [[ -n "$display_holder_child" ]]; then
+      kill "$display_holder_child" 2>/dev/null || true
+    else
+      kill "$display_holder_pid" 2>/dev/null || true
+    fi
+    wait "$display_holder_pid" 2>/dev/null || true
+  fi
   if [[ -n "$registry_pid" ]]; then
     kill "$registry_pid" 2>/dev/null || true
     wait "$registry_pid" 2>/dev/null || true
@@ -51,6 +63,25 @@ for required in "$template_package" "${npm_archives[@]}"; do
     exit 1
   fi
 done
+
+# On Linux, WebUI loads GTK 3 and WebKitGTK 4.1 when it creates a CS-WebUI
+# window, if both are installed, and calls gtk_init, which ends the process
+# when no display opens, also with RUNIC_APPLICATION_SERVE_ONLY. Without a
+# display, such as in the CI lane that installs WebKitGTK for the Desktop
+# smoke, every application therefore shares one virtual display.
+if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]] && command -v xvfb-run > /dev/null; then
+  display_file="$template_tmp/virtual-display"
+  # The holder prints its PID; ending it lets xvfb-run stop Xvfb and remove its authority file.
+  xvfb-run -a bash -c 'printf "%s %s %s\n" "$$" "$DISPLAY" "$XAUTHORITY" > "$1"; exec sleep infinity' _ "$display_file" &
+  display_holder_pid=$!
+  for _ in $(seq 1 300); do
+    [[ -s "$display_file" ]] && break
+    sleep 0.1
+  done
+  [[ -s "$display_file" ]]
+  read -r display_holder_child DISPLAY XAUTHORITY < "$display_file"
+  export DISPLAY XAUTHORITY
+fi
 
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"
@@ -213,8 +244,19 @@ verify_template() {
   local manager="$2"
   local host="$3"
   local view_models="$4"
-  # "tests" adds the TUnit test project and runs it.
-  local tests="${5:-}"
+  # Trailing flags: "defaults" omits --host and --view-models, so the checks
+  # below prove that the template's defaults are this host and ViewModel
+  # library; "tests" adds the TUnit test project and runs it.
+  local defaults="" tests="" flag
+  for flag in "${@:5}"; do
+    case "$flag" in
+      defaults) defaults=defaults ;;
+      tests) tests=tests ;;
+      *) echo "Unknown verify_template flag: $flag" >&2; exit 2 ;;
+    esac
+  done
+  local selection=(--host "$host" --view-models "$view_models")
+  [[ "$defaults" == defaults ]] && selection=()
   local tests_options=()
   [[ "$tests" == tests ]] && tests_options=(--tests)
   # desktop-gtk4 becomes DesktopGtk4.
@@ -237,8 +279,7 @@ verify_template() {
     --output "$output" \
     --frontend "$framework" \
     --package-manager "$manager" \
-    --host "$host" \
-    --view-models "$view_models" \
+    "${selection[@]}" \
     "${tests_options[@]}" \
     --runic-version "$package_version" \
     --runic-npm-version "$views_npm_version"
@@ -353,7 +394,7 @@ verify_template() {
     sed 's|<title>[^<]*</title>|<title>Second window</title>|' "$output/Frontend/index.html" > "$output/Frontend/settings.html"
   fi
   # RUNIC_APPLICATION_SERVE_ONLY is a CS-WebUI host contract. Desktop variants
-  # open a native window, so automation covers their generation, build, and types.
+  # open a native window; the smoke lane opens them under Xvfb (run_desktop_smoke).
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
@@ -444,8 +485,11 @@ verify_template() {
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   fi
-  if [[ "$host" == desktop-gtk4 && "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]]; then
-    run_desktop_smoke "$output" "$project_name"
+  # The smoke lane opens the default Runic Desktop (GTK 3) project once, with
+  # npm, and every GTK 4 variant.
+  if [[ "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]] &&
+    [[ "$host" == desktop-gtk4 || ( "$host" == desktop && "$manager" == npm ) ]]; then
+    run_desktop_smoke "$output" "$project_name" "$host"
   fi
   if [[ "$tests" == tests ]]; then
     run_generated_tests "$output" "$project_name"
@@ -484,11 +528,13 @@ run_generated_tests() {
 }
 
 # Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:
-# the generated Program must open the embedded GTK 4 window, connect its bridge, and exit 0
-# without manual wiring. Needs GTK 4.12+, WebKitGTK 6, Xvfb and dbus-run-session.
+# the generated Program must open its embedded window, connect its bridge, and exit 0 without
+# manual wiring. Needs Xvfb, dbus-run-session and WebKitGTK 4.1 (GTK 3) or GTK 4.12+ with
+# WebKitGTK 6 (desktop-gtk4).
 run_desktop_smoke() {
   local output="$1"
   local project_name="$2"
+  local host="$3"
   local log="$output/desktop-smoke.log"
   local status=0
   # The application runs directly, not through dotnet run, so no build server keeps the session open.
@@ -496,7 +542,7 @@ run_desktop_smoke() {
     timeout -k 10 180 dbus-run-session -- xvfb-run -a \
     dotnet "$output/bin/Release/net10.0/$project_name.dll" > "$log" 2>&1 < /dev/null || status=$?
   if [[ "$status" != 0 ]] || ! grep -Fq 'RUNIC_APPLICATION_OPENED=Embedded' "$log"; then
-    echo "The GTK 4 Desktop application did not open its embedded window and exit (status $status)." >&2
+    echo "The $host application did not open its embedded window and exit (status $status)." >&2
     tail -n 80 "$log" >&2
     exit 1
   fi
@@ -507,7 +553,7 @@ run_desktop_smoke() {
 # produces, using the packaged tool and the candidate template.
 verify_creator() {
   local creator_directory="$template_tmp/creator"
-  local options=(--frontend vue --package-manager pnpm --host desktop --view-models reactiveui --tests)
+  local options=(--frontend vue --package-manager pnpm --host cswebui --view-models toolkit --tests)
   dotnet tool install Runic.Create \
     --tool-path "$tool_directory" \
     --version "$package_version" \
@@ -530,6 +576,11 @@ verify_creator() {
     exit 1
   fi
   grep -Fq 'react, vue, svelte, angular' "$creator_directory/invalid.txt"
+  # Accepting every default selects Runic Desktop and ReactiveUI.
+  (cd "$creator_directory/guided" && "$tool_directory/runic-create" Defaults --yes --dry-run) \
+    > "$creator_directory/defaults.txt"
+  grep -Fq 'dotnet new runic-app --name Defaults --frontend react --package-manager npm --host desktop --view-models reactiveui' \
+    "$creator_directory/defaults.txt"
   echo 'CREATOR_OK'
 }
 
@@ -558,19 +609,21 @@ verify_package_names() {
 
 frameworks=(react vue svelte angular)
 managers=(npm pnpm bun)
-# Every frontend and package manager uses the default host and ViewModels.
-# Pairwise variants then cover each frontend and package manager with Runic
-# Desktop and ReactiveUI, and every host and ViewModel pairing. Variants and
-# the npm projects add the test project and run it, so the tests pass with
-# every host and ViewModel library.
+# Every frontend and package manager uses the default host and ViewModels,
+# Runic Desktop and ReactiveUI, created without --host and --view-models.
+# Pairwise variants then cover each frontend with CS-WebUI and npm, whose
+# served documents the checks fetch, each frontend with CommunityToolkit.Mvvm,
+# and every host and ViewModel pairing. Variants and the npm projects add the
+# test project and run it, so the tests pass with every host and ViewModel
+# library.
 variants=(
-  "react pnpm desktop reactiveui tests"
-  "vue bun desktop reactiveui tests"
-  "svelte npm desktop reactiveui tests"
-  "angular pnpm desktop reactiveui tests"
-  "svelte bun desktop toolkit tests"
-  "vue npm desktop-gtk4 toolkit tests"
+  "react npm cswebui toolkit tests"
+  "vue npm cswebui reactiveui tests"
+  "svelte npm cswebui toolkit tests"
   "angular npm cswebui reactiveui tests"
+  "svelte bun desktop toolkit tests"
+  "angular pnpm desktop toolkit tests"
+  "vue npm desktop-gtk4 toolkit tests"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
@@ -613,9 +666,9 @@ esac
 for manager in "${managers[@]}"; do
   for framework in "${frameworks[@]}"; do
     if [[ "$manager" == npm ]]; then
-      verify_template "$framework" "$manager" cswebui toolkit tests
+      verify_template "$framework" "$manager" desktop reactiveui defaults tests
     else
-      verify_template "$framework" "$manager" cswebui toolkit
+      verify_template "$framework" "$manager" desktop reactiveui defaults
     fi
   done
 done

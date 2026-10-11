@@ -58,7 +58,8 @@ browser works best; Firefox works without app mode), falls back to the default
 browser, and then to the platform WebView: the Edge WebView2 Runtime on
 Windows, GTK 3 with WebKitGTK 4.1 on Linux, or WKWebView on macOS.
 Applications that need native windows, dialogs, or platform services can use
-the Runic Desktop host (`--host desktop` when creating a project); see the
+the template's default Runic Desktop host (create the project without
+`--host`); see the
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/).
 <!--#endif -->
 
@@ -85,7 +86,8 @@ has an open, read and atomic-save example.
 <!--#else -->
 CS-WebUI windows have no native owner, so these services return
 `Unavailable(OwnerUnavailable)`. The same ViewModels get native dialogs and the
-clipboard on the Runic Desktop host (`--host desktop`); see the
+clipboard on the default Runic Desktop host (create the project without
+`--host`); see the
 [Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Desktop/README.md).
 <!--#endif -->
 

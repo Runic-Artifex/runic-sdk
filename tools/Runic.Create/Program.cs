@@ -51,6 +51,7 @@ internal static class Program
         [
             "dnx Runic.Create",
             "dnx Runic.Create -- MyApp --frontend svelte --package-manager bun",
+            "dnx Runic.Create -- MyApp --host cswebui --view-models toolkit",
             "dnx Runic.Create -- MyApp --yes --dry-run",
             "dnx Runic.Create -- MyApp -o apps/MyApp --yes",
         ])]
@@ -64,7 +65,7 @@ internal static class Program
         [Option("--directory", ValueName = "PATH", Hidden = true, Description = "Former name of --output.")] string? directory = null,
         [Option("--frontend", Description = "Frontend framework.")] string? frontend = null,
         [Option("--package-manager", Description = "JavaScript package manager.")] string? packageManager = null,
-        [Option("--host", Description = "Window host.")] string? host = null,
+        [Option("--host", Description = "Window host: desktop opens a native window, cswebui opens a browser window.")] string? host = null,
         [Option("--view-models", Description = "MVVM library for the C# ViewModels.")] string? viewModels = null,
         [Option("--tests", Description = "Add a TUnit test project for the Window.")] bool tests = false,
         [Option("--yes", "-y", Description = "Use the default for every option you do not pass instead of asking.")] bool yes = false,

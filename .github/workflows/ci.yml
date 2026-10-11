@@ -370,7 +370,8 @@ jobs:
       matrix:
         framework: [react, vue, svelte, angular]
         # The guided creator check is framework-independent; run it once.
-        # The vue lane owns the desktop-gtk4 variant and runs it under Xvfb.
+        # The vue lane owns the desktop-gtk4 variant and opens it and the default
+        # Runic Desktop project under Xvfb.
         include:
           - framework: react
             creator: "1"
@@ -387,9 +388,9 @@ jobs:
         with:
           name: runic-sdk-${{ github.run_id }}
           path: artifacts/packages
-      - name: Install the GTK 4 Desktop template runtime
+      - name: Install the Desktop template runtimes
         if: matrix.desktop-smoke == '1'
-        run: eng/ci/apt-install.sh libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
+        run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
       - name: Permit the WebKit sandbox on Ubuntu
         if: matrix.desktop-smoke == '1'
         run: eng/ci/permit-webkit-sandbox.sh

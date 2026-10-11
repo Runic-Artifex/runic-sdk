@@ -16,8 +16,9 @@ dotnet runic dev
 ```
 
 The creator asks for the frontend (React, Vue, Svelte or Angular), package
-manager (npm, pnpm or Bun), Window host (CS-WebUI or Runic Desktop) and
-ViewModel library (CommunityToolkit.Mvvm or ReactiveUI), then prints a command
+manager (npm, pnpm or Bun), Window host (the default Runic Desktop opens a
+native window, CS-WebUI opens a browser window) and ViewModel library
+(ReactiveUI by default, or CommunityToolkit.Mvvm), then prints a command
 that recreates the project without questions. The
 [project creator](https://docs.runic-artifex.eu/create/) builds the same command
 in the browser, and `dotnet new runic-app --help` lists the template options.
@@ -27,8 +28,8 @@ the install command for the capability you need from the
 [package catalog](https://docs.runic-artifex.eu/packages/).
 
 Explore the [first Window](examples/first-window/README.md),
-[CommunityToolkit Notes](examples/notes-view-first/README.md), and
-[Reactive Notes](examples/notes-reactive-views/README.md) for the current
+[Reactive Notes](examples/notes-reactive-views/README.md), and
+[CommunityToolkit Notes](examples/notes-view-first/README.md) for the current
 Window and View model. The instructions below are for contributing to the SDK itself.
 
 ## Supported platforms
@@ -124,8 +125,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for ownership, development and verificati
 ## Migrating existing applications
 
 Start with the [first Window](examples/first-window/README.md), then compare the
-[CommunityToolkit Notes](examples/notes-view-first/README.md) and
-[Reactive Notes](examples/notes-reactive-views/README.md) examples. They use
+[Reactive Notes](examples/notes-reactive-views/README.md) and
+[CommunityToolkit Notes](examples/notes-view-first/README.md) examples. They use
 explicit .NET Window and View types, generated TypeScript clients, and ordinary
 frontend components. See the [Views guide](https://docs.runic-artifex.eu/guides/application/)
 and [host selection](https://docs.runic-artifex.eu/guides/desktop/host-selection/).
