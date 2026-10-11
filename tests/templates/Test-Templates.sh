@@ -15,6 +15,9 @@ repository_root="$(cd "$script_directory/../.." && pwd)"
 template_package="$package_directory/Runic.Application.Templates.$package_version.nupkg"
 template_tmp="$(mktemp -d /tmp/runic-views-templates.XXXXXXXXXX)"
 registry_pid=""
+# The process that keeps the shared virtual display open, if one was started.
+display_holder_pid=""
+display_holder_child=""
 # Process group of a running serve-only application or dotnet runic dev.
 served_group=""
 
@@ -34,6 +37,15 @@ stop_served() {
 
 cleanup() {
   stop_served
+  if [[ -n "$display_holder_pid" ]]; then
+    # Ending the holder lets xvfb-run stop Xvfb; ending xvfb-run itself would leave Xvfb running.
+    if [[ -n "$display_holder_child" ]]; then
+      kill "$display_holder_child" 2>/dev/null || true
+    else
+      kill "$display_holder_pid" 2>/dev/null || true
+    fi
+    wait "$display_holder_pid" 2>/dev/null || true
+  fi
   if [[ -n "$registry_pid" ]]; then
     kill "$registry_pid" 2>/dev/null || true
     wait "$registry_pid" 2>/dev/null || true
@@ -51,6 +63,25 @@ for required in "$template_package" "${npm_archives[@]}"; do
     exit 1
   fi
 done
+
+# On Linux, WebUI loads GTK 3 and WebKitGTK 4.1 when it creates a CS-WebUI
+# window, if both are installed, and calls gtk_init, which ends the process
+# when no display opens, also with RUNIC_APPLICATION_SERVE_ONLY. Without a
+# display, such as in the CI lane that installs WebKitGTK for the Desktop
+# smoke, every application therefore shares one virtual display.
+if [[ -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]] && command -v xvfb-run > /dev/null; then
+  display_file="$template_tmp/virtual-display"
+  # The holder prints its PID; ending it lets xvfb-run stop Xvfb and remove its authority file.
+  xvfb-run -a bash -c 'printf "%s %s %s\n" "$$" "$DISPLAY" "$XAUTHORITY" > "$1"; exec sleep infinity' _ "$display_file" &
+  display_holder_pid=$!
+  for _ in $(seq 1 300); do
+    [[ -s "$display_file" ]] && break
+    sleep 0.1
+  done
+  [[ -s "$display_file" ]]
+  read -r display_holder_child DISPLAY XAUTHORITY < "$display_file"
+  export DISPLAY XAUTHORITY
+fi
 
 export DOTNET_CLI_HOME="$template_tmp/dotnet-home"
 export NUGET_PACKAGES="$template_tmp/nuget"

@@ -82,7 +82,10 @@ Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. `Show` and `ShowWebView` then write `RUNIC_APPLICATION_URL=<url>` to
 standard output and keep serving until a line is read from standard input or
 the process ends, so a test harness or remote browser can drive the unchanged
-application.
+application. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
+GTK when it creates a window, also in serve-only mode, and GTK ends the process
+when no display opens. Give a headless run a display, for example with
+`xvfb-run`.
 
 ## Build output
 
