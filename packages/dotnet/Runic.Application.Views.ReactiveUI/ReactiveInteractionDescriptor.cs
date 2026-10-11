@@ -1,5 +1,6 @@
 // Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
 // Runic.Application.ReactiveUI.Reactive.
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 #if SYSTEM_REACTIVE
@@ -21,6 +22,7 @@ namespace Runic.Application.Views.ReactiveUI;
 /// handler per Interaction object, regardless of how many views or windows
 /// present that object.
 /// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class ReactiveInteractionDescriptor
 {
     /// <summary>Creates the descriptor for one ReactiveUI interaction of <typeparamref name="TModel"/>.</summary>
