@@ -1,3 +1,4 @@
+#pragma warning disable RUNICNAV001 // The experimental navigation API (docs/experimental.md).
 using System.ComponentModel;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;

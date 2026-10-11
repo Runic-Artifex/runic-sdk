@@ -1,0 +1,39 @@
+<Project>
+  <!-- Links that leave a package point at the release tag, v$(PackageVersion),
+       never at the main branch. See eng/build/README.md. -->
+  <PropertyGroup>
+    <RunicReleaseTag Condition="'$(RunicReleaseTag)' == ''">v$(PackageVersion)</RunicReleaseTag>
+    <RunicReleaseSourceUrl Condition="'$(RunicReleaseSourceUrl)' == ''">$(RepositoryUrl)/blob/$(RunicReleaseTag)/</RunicReleaseSourceUrl>
+    <RunicExperimentalHelpLinkBase Condition="'$(RunicExperimentalHelpLinkBase)' == ''">$(RunicReleaseSourceUrl)docs/experimental.md#</RunicExperimentalHelpLinkBase>
+    <!-- Named per project: a nested build, such as the Bridge bootstrap pass, can give
+         several projects one IntermediateOutputPath. -->
+    <_RunicReleaseLinksFile>$(IntermediateOutputPath)$(MSBuildProjectName).RunicReleaseLinks.g.cs</_RunicReleaseLinksFile>
+    <RunicReleaseLinksNamespace Condition="'$(RunicReleaseLinksNamespace)' == ''">$(RootNamespace)</RunicReleaseLinksNamespace>
+  </PropertyGroup>
+
+  <!-- RunicGenerateReleaseLinks=true compiles an internal RunicReleaseLinks class
+       with the release's documentation links, so attributes can use them. -->
+  <Target Name="RunicGenerateReleaseLinks" BeforeTargets="CoreCompile" Condition="'$(RunicGenerateReleaseLinks)' == 'true'">
+    <PropertyGroup>
+      <_RunicReleaseLinksSource>
+// &lt;auto-generated/&gt;
+namespace $(RunicReleaseLinksNamespace)%3B
+
+/// &lt;summary&gt;Documentation links for the release this assembly ships in.&lt;/summary&gt;
+internal static class RunicReleaseLinks
+{
+    /// &lt;summary&gt;The release tag.&lt;/summary&gt;
+    internal const string Tag = "$(RunicReleaseTag)"%3B
+
+    /// &lt;summary&gt;An ExperimentalAttribute.UrlFormat for docs/experimental.md at the release tag: {0} is the ID, which has an anchor of the same case.&lt;/summary&gt;
+    internal const string ExperimentalUrlFormat = "$(RunicExperimentalHelpLinkBase){0}"%3B
+}
+</_RunicReleaseLinksSource>
+    </PropertyGroup>
+    <WriteLinesToFile File="$(_RunicReleaseLinksFile)" Lines="$(_RunicReleaseLinksSource)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <Compile Include="$(_RunicReleaseLinksFile)" />
+      <FileWrites Include="$(_RunicReleaseLinksFile)" />
+    </ItemGroup>
+  </Target>
+</Project>

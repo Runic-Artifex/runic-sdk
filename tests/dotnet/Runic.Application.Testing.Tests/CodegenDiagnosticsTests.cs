@@ -471,6 +471,14 @@ internal static partial class CodegenDiagnosticsTests
             Require(shellBridge.Contains("The navigation region ShellViewModel.Main cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal)
                     && shellBridge.Contains("The ShellViewModel.Tabs cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal),
                 $"The generated content failure does not name the slot and the presented type.\n{shellBridge}");
+            // Generated code is not a use site of the experimental navigation API (W250-015): a
+            // Bridge that observes a region slot suppresses RUNICNAV001 itself, before its code.
+            var regionBridges = Directory.GetFiles(Path.Combine(missingViewDirectory, "cs"), "*.g.cs")
+                .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("static vm => vm.", StringComparison.Ordinal))).ToArray();
+            Require(regionBridges.Length > 0 && regionBridges.All(lines =>
+                    Array.IndexOf(lines, "#pragma warning disable RUNICNAV001") is var pragma and >= 0
+                    && pragma < Array.FindIndex(lines, line => line.StartsWith("internal sealed class ", StringComparison.Ordinal))),
+                $"A generated Bridge with a navigation region slot does not suppress RUNICNAV001.\n{shellBridge}");
             // A Window's ViewModel has a Window, not a View: it is not reported
             // for a slot whose content type it shares.
             var (windowModelExit, windowModelOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "MissingViewWindowModel",

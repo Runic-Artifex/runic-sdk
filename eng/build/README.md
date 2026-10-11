@@ -39,6 +39,20 @@ The project inventory in `shipping-projects.props` is generated from
 when that inventory changes. External dependency ranges are preserved. Explicit
 internal `PackageReference` entries must also use exact `[version]` ranges.
 
+## Release links
+
+`release-links.targets` builds documentation links that name the release tag,
+`v$(PackageVersion)`, instead of `main`. A project that sets
+`RunicGenerateReleaseLinks=true` compiles an internal `RunicReleaseLinks` class
+in its root namespace (or `RunicReleaseLinksNamespace`). Its
+`ExperimentalUrlFormat` is the `UrlFormat` of every `[Experimental]` attribute,
+pointing at the ID's entry in [docs/experimental.md](../../docs/experimental.md);
+`eng/experimental.test.mjs` keeps the attributes and the page in step.
+`Runic.Navigation.Wpf` and `Runic.Application.Wpf` also ship `buildTransitive`
+targets that suppress their experimental ID in the project's intermediate
+`.g.cs` files, where the WPF markup compiler declares named controls. Root
+`Directory.Build.targets` imports them for repository WPF projects.
+
 ## Public API
 
 `public-api.targets` applies to every shipping library (tools and template packages

@@ -25,7 +25,7 @@ namespace Runic.Navigation.Wpf;
 /// <c>ContentTemplateSelector</c> on it. Present entries with implicit <see cref="DataTemplate"/>s or a locator.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public class NavigationHost : ContentControl
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>

@@ -7,4 +7,5 @@ await NavigationTests.RunBackRacesAsync();
 await NavigationTests.RunContextLifetimeAsync();
 await NavigationTests.RunRetentionAsync();
 NavigationSourceScanTests.Run();
+ExperimentalHelpLinkTests.Run();
 Console.WriteLine("Runic.Navigation tests passed.");
