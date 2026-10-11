@@ -24,8 +24,8 @@ shared ViewModel stays activated while any presentation remains mounted.
 generated content routes. The [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-reactive-views/README.md)
 example covers multiple views over one ViewModel, routed content, explicit view
 contracts, and activation lifetimes.
-New projects can start with ReactiveUI ViewModels:
-`dotnet new runic-app --view-models reactiveui`.
+The `runic-app` project template uses ReactiveUI ViewModels with this adapter by
+default (`dotnet new runic-app`; `--view-models toolkit` selects CommunityToolkit.Mvvm).
 
 ## Primitives, not System.Reactive
 

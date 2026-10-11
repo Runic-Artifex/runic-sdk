@@ -19,7 +19,10 @@ dotnet add package Microsoft.Extensions.DependencyInjection  # ServiceCollection
 To start a new application, run the
 [guided creator](https://docs.runic-artifex.eu/getting-started/)
 (`dnx Runic.Create@<VERSION>`) or the `dotnet new runic-app` template, then
-`dotnet tool restore` and `dotnet runic dev`.
+`dotnet tool restore` and `dotnet runic dev`. The template defaults to a native
+Runic Desktop window and ReactiveUI ViewModels; the minimal Window below keeps
+to the shortest program, CS-WebUI (which opens a browser window) with
+CommunityToolkit.Mvvm, as in the First Window example.
 
 ## A minimal Window
 

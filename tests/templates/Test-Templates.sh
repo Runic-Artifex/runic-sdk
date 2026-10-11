@@ -213,6 +213,10 @@ verify_template() {
   local manager="$2"
   local host="$3"
   local view_models="$4"
+  # "defaults" omits --host and --view-models, so the checks below prove that
+  # the template's defaults are this host and ViewModel library.
+  local selection=(--host "$host" --view-models "$view_models")
+  [[ "${5:-}" == defaults ]] && selection=()
   # desktop-gtk4 becomes DesktopGtk4.
   local host_name="" host_part
   local -a host_parts
@@ -233,8 +237,7 @@ verify_template() {
     --output "$output" \
     --frontend "$framework" \
     --package-manager "$manager" \
-    --host "$host" \
-    --view-models "$view_models" \
+    "${selection[@]}" \
     --runic-version "$package_version" \
     --runic-npm-version "$views_npm_version"
 
@@ -328,7 +331,7 @@ verify_template() {
     sed 's|<title>[^<]*</title>|<title>Second window</title>|' "$output/Frontend/index.html" > "$output/Frontend/settings.html"
   fi
   # RUNIC_APPLICATION_SERVE_ONLY is a CS-WebUI host contract. Desktop variants
-  # open a native window, so automation covers their generation, build, and types.
+  # open a native window; the smoke lane opens them under Xvfb (run_desktop_smoke).
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \
       dotnet runic dev
@@ -419,18 +422,23 @@ verify_template() {
     serve_and_fetch "$output" "$output/serve-release.log" "$output/release-document.html" false \
       dotnet run --project "$output/$project_name.csproj" --configuration Release --no-build
   fi
-  if [[ "$host" == desktop-gtk4 && "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]]; then
-    run_desktop_smoke "$output" "$project_name"
+  # The smoke lane opens the default Runic Desktop (GTK 3) project once, with
+  # npm, and every GTK 4 variant.
+  if [[ "${RUNIC_TEMPLATE_DESKTOP_SMOKE:-0}" == 1 ]] &&
+    [[ "$host" == desktop-gtk4 || ( "$host" == desktop && "$manager" == npm ) ]]; then
+    run_desktop_smoke "$output" "$project_name" "$host"
   fi
   printf 'TEMPLATE_OK|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models"
 }
 
 # Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:
-# the generated Program must open the embedded GTK 4 window, connect its bridge, and exit 0
-# without manual wiring. Needs GTK 4.12+, WebKitGTK 6, Xvfb and dbus-run-session.
+# the generated Program must open its embedded window, connect its bridge, and exit 0 without
+# manual wiring. Needs Xvfb, dbus-run-session and WebKitGTK 4.1 (GTK 3) or GTK 4.12+ with
+# WebKitGTK 6 (desktop-gtk4).
 run_desktop_smoke() {
   local output="$1"
   local project_name="$2"
+  local host="$3"
   local log="$output/desktop-smoke.log"
   local status=0
   # The application runs directly, not through dotnet run, so no build server keeps the session open.
@@ -438,7 +446,7 @@ run_desktop_smoke() {
     timeout -k 10 180 dbus-run-session -- xvfb-run -a \
     dotnet "$output/bin/Release/net10.0/$project_name.dll" > "$log" 2>&1 < /dev/null || status=$?
   if [[ "$status" != 0 ]] || ! grep -Fq 'RUNIC_APPLICATION_OPENED=Embedded' "$log"; then
-    echo "The GTK 4 Desktop application did not open its embedded window and exit (status $status)." >&2
+    echo "The $host application did not open its embedded window and exit (status $status)." >&2
     tail -n 80 "$log" >&2
     exit 1
   fi
@@ -449,7 +457,7 @@ run_desktop_smoke() {
 # produces, using the packaged tool and the candidate template.
 verify_creator() {
   local creator_directory="$template_tmp/creator"
-  local options=(--frontend vue --package-manager pnpm --host desktop --view-models reactiveui)
+  local options=(--frontend vue --package-manager pnpm --host cswebui --view-models toolkit)
   dotnet tool install Runic.Create \
     --tool-path "$tool_directory" \
     --version "$package_version" \
@@ -472,6 +480,11 @@ verify_creator() {
     exit 1
   fi
   grep -Fq 'react, vue, svelte, angular' "$creator_directory/invalid.txt"
+  # Accepting every default selects Runic Desktop and ReactiveUI.
+  (cd "$creator_directory/guided" && "$tool_directory/runic-create" Defaults --yes --dry-run) \
+    > "$creator_directory/defaults.txt"
+  grep -Fq 'dotnet new runic-app --name Defaults --frontend react --package-manager npm --host desktop --view-models reactiveui' \
+    "$creator_directory/defaults.txt"
   echo 'CREATOR_OK'
 }
 
@@ -500,17 +513,19 @@ verify_package_names() {
 
 frameworks=(react vue svelte angular)
 managers=(npm pnpm bun)
-# Every frontend and package manager uses the default host and ViewModels.
-# Pairwise variants then cover each frontend and package manager with Runic
-# Desktop and ReactiveUI, and every host and ViewModel pairing.
+# Every frontend and package manager uses the default host and ViewModels,
+# Runic Desktop and ReactiveUI, created without --host and --view-models.
+# Pairwise variants then cover each frontend with CS-WebUI and npm, whose
+# served documents the checks fetch, each frontend with CommunityToolkit.Mvvm,
+# and every host and ViewModel pairing.
 variants=(
-  "react pnpm desktop reactiveui"
-  "vue bun desktop reactiveui"
-  "svelte npm desktop reactiveui"
-  "angular pnpm desktop reactiveui"
-  "svelte bun desktop toolkit"
-  "vue npm desktop-gtk4 toolkit"
+  "react npm cswebui toolkit"
+  "vue npm cswebui reactiveui"
+  "svelte npm cswebui toolkit"
   "angular npm cswebui reactiveui"
+  "svelte bun desktop toolkit"
+  "angular pnpm desktop toolkit"
+  "vue npm desktop-gtk4 toolkit"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
@@ -552,7 +567,7 @@ case "${RUNIC_TEMPLATE_CREATOR:-1}" in
 esac
 for manager in "${managers[@]}"; do
   for framework in "${frameworks[@]}"; do
-    verify_template "$framework" "$manager" cswebui toolkit
+    verify_template "$framework" "$manager" desktop reactiveui defaults
   done
 done
 for variant in "${variants[@]}"; do

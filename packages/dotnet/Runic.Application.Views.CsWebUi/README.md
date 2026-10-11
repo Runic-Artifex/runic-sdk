@@ -1,7 +1,9 @@
 # Runic.Application.CsWebUi
 
 Present Runic Windows and Views with [CS-WebUI](https://github.com/Runic-Artifex/cs-webui).
-This is the default host of the `runic-app` project template.
+New projects select it with `dotnet new runic-app --host cswebui`; it opens the
+app in a browser window and is supported on a best-effort basis. The template
+defaults to the native [Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md) host.
 
 ```sh
 dotnet add package Runic.Application.CsWebUi --prerelease

@@ -11,7 +11,7 @@
   ],
   "identity": "Runic.Application.Templates.App",
   "name": "Runic application",
-  "description": "A desktop application with C# ViewModels and a React, Vue, Svelte, or Angular frontend.",
+  "description": "A desktop application in a native window, with C# ViewModels and a React, Vue, Svelte, or Angular frontend.",
   "shortName": "runic-app",
   "sourceName": "RunicWindowApp",
   "preferNameDirectory": true,
@@ -101,13 +101,13 @@
     "host": {
       "type": "parameter",
       "datatype": "choice",
-      "defaultValue": "cswebui",
+      "defaultValue": "desktop",
       "displayName": "Window host",
       "description": "How the application presents its Window.",
       "choices": [
-        { "choice": "cswebui", "displayName": "CS-WebUI", "description": "An installed browser in app mode, then the platform WebView" },
-        { "choice": "desktop", "displayName": "Runic Desktop", "description": "A native window with the embedded WebView and Runic platform services" },
-        { "choice": "desktop-gtk4", "displayName": "Runic Desktop with GTK 4", "description": "Runic Desktop that uses GTK 4, WebKitGTK 6 and portal pickers on Linux" }
+        { "choice": "desktop", "displayName": "Runic Desktop", "description": "Opens a native window with the embedded WebView, native file dialogs and the clipboard" },
+        { "choice": "desktop-gtk4", "displayName": "Runic Desktop with GTK 4", "description": "Runic Desktop on GTK 4, WebKitGTK 6 and portal pickers on Linux; the same as Runic Desktop elsewhere" },
+        { "choice": "cswebui", "displayName": "CS-WebUI", "description": "Opens a browser window (an installed browser in app mode, then the platform WebView); best effort, without native dialogs or clipboard" }
       ]
     },
     "desktopHost": {
@@ -121,12 +121,12 @@
     "viewModels": {
       "type": "parameter",
       "datatype": "choice",
-      "defaultValue": "toolkit",
+      "defaultValue": "reactiveui",
       "displayName": "ViewModels",
       "description": "The MVVM library for the C# ViewModels.",
       "choices": [
-        { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" },
-        { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "ReactiveUI 26 Primitives: reactive objects and commands on the Window's model context" }
+        { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "ReactiveUI 26 Primitives: reactive objects and commands on the Window's model context" },
+        { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" }
       ]
     },
     "runicVersion": {

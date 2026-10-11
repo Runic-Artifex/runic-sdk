@@ -8,16 +8,18 @@ dnx Runic.Create@<VERSION>
 
 `dnx` ships with the .NET 10 SDK and runs the tool without installing it. The
 creator asks for the project name, frontend (React, Vue, Svelte or Angular),
-JavaScript package manager (npm, pnpm or Bun), Window host (CS-WebUI or Runic
-Desktop), and ViewModel library (CommunityToolkit.Mvvm or ReactiveUI). It then
-installs the matching `Runic.Application.Templates` version and runs
-`dotnet new runic-app`.
+JavaScript package manager (npm, pnpm or Bun), Window host (Runic Desktop, which
+opens a native window, or CS-WebUI, which opens a browser window), and ViewModel
+library (ReactiveUI or CommunityToolkit.Mvvm). Each choice is described in one
+line. It then installs the matching `Runic.Application.Templates` version and
+runs `dotnet new runic-app`. Accepting every default creates a Runic Desktop
+and ReactiveUI project.
 
 Pass an option to skip its question, or `--yes` to accept the defaults for
 every option you leave out. Arguments for the creator follow `--`:
 
 ```sh
-dnx Runic.Create@<VERSION> -- MyApp --frontend svelte --package-manager bun --host desktop --view-models reactiveui
+dnx Runic.Create@<VERSION> -- MyApp --frontend svelte --package-manager bun --host cswebui --view-models toolkit
 ```
 
 After creating a project, the creator prints the next steps and two commands
@@ -31,8 +33,8 @@ commands in the browser.
 | --- | --- | --- |
 | `--frontend` | `react`, `vue`, `svelte`, `angular` | `react` |
 | `--package-manager` | `npm`, `pnpm`, `bun` | `npm` |
-| `--host` | `cswebui`, `desktop`, `desktop-gtk4` | `cswebui` |
-| `--view-models` | `toolkit`, `reactiveui` | `toolkit` |
+| `--host` | `desktop`, `desktop-gtk4`, `cswebui` | `desktop` |
+| `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--directory` | A directory | The project name |
 | `--template-source` | An additional NuGet source for the template | |
 

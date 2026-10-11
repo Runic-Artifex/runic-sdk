@@ -53,10 +53,16 @@ internal static class Program
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         Equal("frontend,package-manager,host,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
-        Equal("react,npm,cswebui,toolkit", string.Join(',', model.Options.Select(option => option.Default.Value)));
+        // Runic Desktop and ReactiveUI are the defaults and are listed first (D018.1, D018.9).
+        Equal("react,npm,desktop,reactiveui", string.Join(',', model.Options.Select(option => option.Default.Value)));
         Equal("react,vue,svelte,angular", string.Join(',', model.Options[0].Choices.Select(choice => choice.Value)));
         Equal("npm,pnpm,bun", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
+        Equal("desktop,desktop-gtk4,cswebui", string.Join(',', model.Options[2].Choices.Select(choice => choice.Value)));
+        Equal("reactiveui,toolkit", string.Join(',', model.Options[3].Choices.Select(choice => choice.Value)));
         Equal("Runic Desktop", model.Options[2].Find("desktop")!.DisplayName);
+        True(model.Options[2].Find("desktop")!.Description.StartsWith("Opens a native window", StringComparison.Ordinal), "Runic Desktop says it opens a native window");
+        True(model.Options[2].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
+        Equal("CommunityToolkit.Mvvm", model.Options[3].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
     }
 
@@ -93,9 +99,9 @@ internal static class Program
         CreatePlan plan = new("MyApp", null, "1.2.3-preview.4",
             model.Options.Select(option => new OptionSelection(option, option.Choices[^1])).ToArray(), null);
         Equal("dotnet new install Runic.Application.Templates@1.2.3-preview.4", plan.InstallCommand);
-        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host desktop-gtk4 --view-models reactiveui", plan.CreateCommand);
-        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host desktop-gtk4 --view-models reactiveui", plan.CreatorCommand);
-        Equal("Angular · Bun · Runic Desktop with GTK 4 · ReactiveUI", plan.Summary);
+        Equal("dotnet new runic-app --name MyApp --frontend angular --package-manager bun --host cswebui --view-models toolkit", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.2.3-preview.4 -- MyApp --frontend angular --package-manager bun --host cswebui --view-models toolkit", plan.CreatorCommand);
+        Equal("Angular · Bun · CS-WebUI · CommunityToolkit.Mvvm", plan.Summary);
         Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', plan.NextSteps));
     }
 

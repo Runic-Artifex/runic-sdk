@@ -10,7 +10,8 @@ dotnet add package Runic.Application.Desktop --prerelease
 dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
-New projects can start with this host: `dotnet new runic-app --host desktop`.
+This is the default host of the `runic-app` project template: `dotnet new runic-app`
+opens a native window with this host.
 
 In a project named `MyApp`:
 
