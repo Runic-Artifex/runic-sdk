@@ -13,6 +13,8 @@ const probes = join(temporary, "probes");
 const packageProjects = [
   ["Runic.Navigation", "Runic.Navigation"],
   ["Runic.Application", "Runic.Application.Views"],
+  // Runic.Application.CsWebUi depends on Runic.Platform for its window platform services.
+  ["Runic.Platform", "Runic.Platform"],
   ["Runic.Application.CsWebUi", "Runic.Application.Views.CsWebUi"]
 ];
 let testVersion;

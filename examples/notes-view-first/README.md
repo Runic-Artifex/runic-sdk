@@ -9,6 +9,9 @@ The [ViewModels](ViewModels.cs) use CommunityToolkit.Mvvm. A partial
 typed `DataContext`, and receive attached and web-mounted lifecycle callbacks.
 The build runs after the MVVM source generators and emits C# attachments plus
 one TypeScript client module per ViewModel.
+Commands set ViewModel properties directly, also after `await`: an async
+command resumes on the window's model context (see the
+[threading rule](../../packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await)).
 
 ```text
 NotesWindow<ShellViewModel>
