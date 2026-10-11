@@ -192,8 +192,8 @@ public class RunicViewHost : Decorator
 
     private static void Reopen(DependencyObject target, DependencyPropertyChangedEventArgs args)
     {
-        var host = (RunicViewHost)target;
-        if (host.IsLoaded) host.Request();
+        // Services inherits down the tree, so WPF also calls this for descendants that are not hosts.
+        if (target is RunicViewHost { IsLoaded: true } host) host.Request();
     }
 
     private void Request() => _ = _lifecycle.RequestAsync(() => IsLoaded && Model is not null, OpenAsync, ShowFallback);
