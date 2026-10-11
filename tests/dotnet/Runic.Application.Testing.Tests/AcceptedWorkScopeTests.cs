@@ -201,7 +201,7 @@ internal static class AcceptedWorkScopeTests
                 recoveryPublished = true;
             });
             return actualWork;
-        }, new Runic.Navigation.ReactiveUI.RunicReactiveSchedulerProvider().For(context));
+        }, new Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider().For(context));
         var model = new RecoveryModel(command);
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport, rootModel: model);

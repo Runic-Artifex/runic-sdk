@@ -2,7 +2,7 @@ using FirstWindowDesktop;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
-using Runic.Navigation.ReactiveUI;
+using Runic.Application.Views.ReactiveUI;
 using Runic.Desktop;
 
 var services = new ServiceCollection();

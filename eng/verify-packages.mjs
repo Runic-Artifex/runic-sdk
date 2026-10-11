@@ -58,13 +58,16 @@ export const packageLayouts = {
   },
   // Suppresses RUNICWPF001 in XAML-generated code (docs/experimental.md).
   "Runic.Application.Wpf": { includes: ["buildTransitive/Runic.Application.Wpf.targets"] },
-  // Each Application adapter brings the navigation adapter of its own flavor.
-  "Runic.Application.ReactiveUI": { requires: ["Runic.Navigation.ReactiveUI"], exactDependencies: ["Runic.Navigation.ReactiveUI"], forbidden: [/^Runic\.Navigation\.ReactiveUI\.Reactive$/i] },
+  // The Application adapters own model-context scheduling and bring no navigation adapter, so an app
+  // without navigation has no experimental package in its graph (W250-014).
+  "Runic.Application.ReactiveUI": {
+    requires: ["Runic.Application", "ReactiveUI"],
+    forbidden: [/^Runic\.Navigation\.ReactiveUI/i, /^ReactiveUI\.Reactive$/i],
+  },
   "Runic.Application.ReactiveUI.Reactive": {
     includes: ["buildTransitive/Runic.Application.ReactiveUI.Reactive.targets"],
-    requires: ["Runic.Navigation.ReactiveUI.Reactive"],
-    exactDependencies: ["Runic.Navigation.ReactiveUI.Reactive"],
-    forbidden: [/^Runic\.Navigation\.ReactiveUI$/i],
+    requires: ["Runic.Application", "ReactiveUI.Reactive"],
+    forbidden: [/^Runic\.Navigation\.ReactiveUI/i],
   },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application": {

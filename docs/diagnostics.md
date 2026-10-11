@@ -47,6 +47,8 @@ message names the member path, for example `EditorViewModel.Current.value`.
 `[RunicBridgeCodec]` type. Exclude computed DTO properties with
 `[RunicIgnore]`, or opt into unconditional `[JsonIgnore]` as described under
 [Shared DTO exclusions](../packages/dotnet/Runic.Application.Views/README.md#shared-dto-exclusions).
+A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
+`NavigationOutcome`, instead.
 
 ### RUNICBRIDGE004
 

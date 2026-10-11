@@ -8,7 +8,6 @@ using ReactiveUI.Primitives.Concurrency;
 using ReactiveUI.Primitives.Signals;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
-using Runic.Navigation.ReactiveUI;
 using Runic.Navigation;
 
 namespace DynamicDataExample;

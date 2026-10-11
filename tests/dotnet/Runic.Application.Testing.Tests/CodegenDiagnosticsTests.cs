@@ -84,6 +84,14 @@ internal static partial class CodegenDiagnosticsTests
                 public sealed class RowViewModel : FixtureModel { public Row Current { get; } = new(); }
                 public sealed partial class RowWindow(RowViewModel model) : RunicWindow<RowViewModel>(model);
                 """, "RUNICBRIDGE003", "public object Value", "RowViewModel.Current.value").ConfigureAwait(false);
+            // A navigation result, typically from an exposed back command, names the mapping that fixes it (W250-014).
+            await RejectAt("NavigationResultValue", """
+                #pragma warning disable RUNICNAV001
+                public sealed class BackViewModel : FixtureModel { public NavigationResult<BackViewModel>? LastBack { get; } }
+                public sealed partial class BackWindow(BackViewModel model) : RunicWindow<BackViewModel>(model);
+                """, "RUNICBRIDGE003", "public NavigationResult<BackViewModel>? LastBack",
+                "BackViewModel.LastBack", "A NavigationResult holds .NET content and cannot cross the Bridge",
+                "return its Outcome (a NavigationOutcome) instead").ConfigureAwait(false);
             await RejectAt("InternalWindow", """
                 public sealed class HiddenViewModel : FixtureModel { public string Title { get; } = ""; }
                 internal sealed partial class HiddenWindow(HiddenViewModel model) : RunicWindow<HiddenViewModel>(model)

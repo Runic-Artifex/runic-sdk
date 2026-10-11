@@ -22,21 +22,29 @@ identities, so ViewModels and generated clients must be built for the selected
 pair. The package includes a build-time guard for a direct reference to both
 Runic adapters.
 
-`RunicReactiveSchedulerProvider` adapts a supplied `IRunicModelContext`
-(namespace `Runic.Navigation`) to an
-`IScheduler`. It and `AddRunicReactiveModelContext()` are in the
-`Runic.Navigation.ReactiveUI.Reactive` namespace of
-[`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md),
-which this package references (add `using Runic.Navigation.ReactiveUI.Reactive;`). Pass the scheduler to ReactiveUI.Reactive command factories as their
-`outputScheduler` when command state must be delivered in that model context:
+`AddRunicReactiveModelContext()`, `IRunicReactiveSchedulerProvider` and
+`RunicReactiveSchedulerProvider` are in this package's
+`Runic.Application.Views.ReactiveUI.Reactive` namespace; they moved from
+`Runic.Navigation.ReactiveUI.Reactive` in W250. As in the default flavor,
+`AddRunicReactiveModelContext()` installs a model-context
+`RxSchedulers.MainThreadScheduler` when ReactiveUI's is still a System.Reactive
+default, so commands created without an `outputScheduler` deliver their results
+and `IsExecuting` on the model context of the turn that runs them. Work
+scheduled outside a turn runs on the replaced scheduler and is logged once
+(Views event 1043). A scheduler the application or platform set is kept. See
+[Model-context scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#model-context-scheduling)
+for the rules and the opt-out.
 
 ```csharp
-var scheduler = new RunicReactiveSchedulerProvider().For(context);
-SaveCommand = ReactiveCommand.Create(Save, outputScheduler: scheduler);
+using Runic.Application.Views.ReactiveUI.Reactive;
+
+services.AddRunicReactiveModelContext();
+
+SaveCommand = ReactiveCommand.Create(Save);
 ```
 
-It keeps scheduled notifications in that model context and does not set a
-process-global ReactiveUI scheduler. Generated command and interaction
+For an explicit `IScheduler`, for example in an `ObserveOn`, inject it or call
+`RunicReactiveSchedulerProvider.For(context)`. Generated command and interaction
 contracts use this flavor's adapters, with the same typed data, operation
 results, cancellation, and browser interaction support as the default flavor.
 
@@ -52,8 +60,10 @@ normal `ReactiveUI.SourceGenerators` attributes with
 source-generator package.
 
 The navigation adapter (`WhenCurrentChanged`, `WhenEntryChanged` and
-`CreateBackCommand(IScheduler)`) is also in `Runic.Navigation.ReactiveUI.Reactive`, with
-`System.Reactive.Unit` as the back command's input.
+`CreateBackCommand()`) is in the separate, experimental
+`Runic.Navigation.ReactiveUI.Reactive` package, with `System.Reactive.Unit` as
+the back command's input. This package no longer references it; add it to
+navigate.
 `BatchBridgeSnapshots(model)` and `ObserveBridgeExceptions` are also available in
 this adapter's namespace; this flavor's commands implement the same
 `IHandleObservableErrors`. See

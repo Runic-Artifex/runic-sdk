@@ -2,7 +2,7 @@ using ReactiveUI;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views;
-using Runic.Navigation.ReactiveUI;
+using Runic.Application.Views.ReactiveUI;
 using System.Windows.Input;
 using Runic.Navigation;
 

@@ -625,7 +625,7 @@ internal sealed class BridgeTypeGraph
             // A concrete collection outside the supported list would
             // otherwise be treated as a DTO and silently serialize as {}.
             if (UnsupportedCollection(type) is { } collectionError) throw new BridgeTypeGraphException(path, collectionError);
-            if (!IsDto(type)) throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not an explicitly supported bridge value. Use a supported scalar, collection, public DTO, RunicUnion, or RunicBridgeCodec.");
+            if (!IsDto(type)) throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not an explicitly supported bridge value. Use a supported scalar, collection, public DTO, RunicUnion, or RunicBridgeCodec.{NavigationResultHint(type)}");
             node.Kind = BridgeWireKind.Dto;
             stack.Add(type);
             var members = DataProperties(type, path).ToArray();
@@ -827,6 +827,18 @@ internal sealed class BridgeTypeGraph
         private static bool IsDto(Type type) => type.IsPublic && (type.IsClass || type.IsValueType) && !type.IsAbstract
             && !typeof(Delegate).IsAssignableFrom(type)
             && type.Namespace != "System" && type.Namespace?.StartsWith("System.", StringComparison.Ordinal) != true;
+
+        // A navigation result holds .NET content, so it never crosses the Bridge. The usual source is a
+        // back command exposed to the View; name the bridgeable summary.
+        private static string NavigationResultHint(Type type)
+        {
+            for (var current = type; current is not null; current = current.BaseType)
+                if (current.IsGenericType && current.GetGenericTypeDefinition().FullName == "Runic.Navigation.NavigationResult`1")
+                    return " A NavigationResult holds .NET content and cannot cross the Bridge: return its Outcome"
+                        + " (a NavigationOutcome) instead. Runic.Navigation.ReactiveUI's CreateBackCommand() already returns"
+                        + " a NavigationOutcome.";
+            return "";
+        }
 
         private IEnumerable<PropertyInfo> DataProperties(Type type, string path)
         {

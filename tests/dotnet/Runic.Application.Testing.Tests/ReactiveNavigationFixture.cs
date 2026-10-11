@@ -3,6 +3,7 @@ using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
 using ReactiveUI.SourceGenerators;
 using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
 using Runic.Navigation.ReactiveUI;
 
@@ -32,6 +33,8 @@ public sealed partial class ReactiveNavShellViewModel : ReactiveObject, IDisposa
                 _ => "failed",
             }, CancellationToken.None);
         }, Main.WhenIsTransitioningChanged().Select(busy => !busy), scheduler);
+        // No scheduler: AddRunicReactiveModelContext or InstallMainThreadScheduler routes it to the turn's context.
+        BackCommand = Main.CreateBackCommand();
     }
 
     public NavigationRegion<INavPageViewModel> Main { get; }
@@ -47,9 +50,13 @@ public sealed partial class ReactiveNavShellViewModel : ReactiveObject, IDisposa
 
     public ReactiveCommand<RxVoid, RxVoid> OpenCommand { get; }
 
+    // A NavigationOutcome crosses the Bridge without RUNICBRIDGE003 (W250-014).
+    public ReactiveCommand<RxVoid, NavigationOutcome> BackCommand { get; }
+
     public void Dispose()
     {
         OpenCommand.Dispose();
+        BackCommand.Dispose();
         _busyHelper?.Dispose();
     }
 }

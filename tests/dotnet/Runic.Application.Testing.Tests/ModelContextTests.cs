@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
-using Runic.Navigation.ReactiveUI;
 using Runic.Navigation;
 
 namespace Runic.Application.Testing.Tests;

@@ -126,7 +126,7 @@
       "description": "The MVVM library for the C# ViewModels.",
       "choices": [
         { "choice": "toolkit", "displayName": "CommunityToolkit.Mvvm", "description": "Source-generated properties and relay commands" },
-        { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "Reactive objects and commands on the Window's model context" }
+        { "choice": "reactiveui", "displayName": "ReactiveUI", "description": "ReactiveUI 26 Primitives: reactive objects and commands on the Window's model context" }
       ]
     },
     "runicVersion": {

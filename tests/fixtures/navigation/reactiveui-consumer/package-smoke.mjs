@@ -43,9 +43,7 @@ for (const flavor of flavors) {
   assert.ok(!dependencies.some(id => /^runic\.application/i.test(id)), `${flavor.id} depends on ${dependencies.join(", ")}`);
 
   const directory = mkdtempSync(join(tmpdir(), "runic-navigation-reactiveui-"));
-  const container = /<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/.exec(readFileSync(join(root, "Directory.Packages.props"), "utf8"))?.[1];
-  assert.ok(container, "Directory.Packages.props has no Microsoft.Extensions.DependencyInjection version.");
-  const properties = [`-p:RunicPackageVersion=${version}`, `-p:RunicContainerVersion=${container}`, `-p:RunicNavigationFlavor=${flavor.property}`];
+  const properties = [`-p:RunicPackageVersion=${version}`, `-p:RunicNavigationFlavor=${flavor.property}`];
   const env = {
     ...process.env,
     NUGET_PACKAGES: join(directory, "nuget-cache"),

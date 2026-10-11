@@ -1,7 +1,6 @@
 // Behavioral conformance of the Runic.Navigation ReactiveUI adapter, once per flavor. It references
 // only the navigation adapter package, so it also proves the adapter needs no Runic.Application.
 using System.Windows.Input;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Navigation;
 #if SYSTEM_REACTIVE
@@ -10,7 +9,6 @@ using System.Reactive.Linq;
 using Runic.Navigation.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
 using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
-using FlavorSchedulerProvider = Runic.Navigation.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
 #else
 using ReactiveUI;
 using ReactiveUI.Binding;
@@ -19,128 +17,17 @@ using ReactiveUI.Primitives.Concurrency;
 using Runic.Navigation.ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 using FlavorScheduler = ReactiveUI.Primitives.Concurrency.ISequencer;
-using FlavorSchedulerProvider = Runic.Navigation.ReactiveUI.IRunicReactiveSchedulerProvider;
 #endif
 
-await SchedulerSemanticsAsync();
-await DependencyInjectionSemanticsAsync();
-await SchedulerLifetimeSemanticsAsync();
 await NavigationAdapterSemanticsAsync();
 await NavigationStateCompositionAsync();
 await DuplicateBackCommandKeepsOneConfirmationAsync();
 Console.WriteLine("NAVIGATION_REACTIVEUI_ADAPTER_OK");
 
-static async Task SchedulerSemanticsAsync()
-{
-    await using var context = new RunicModelContext();
-    var scheduler = new RunicReactiveSchedulerProvider().For(context);
-    var fifo = new List<int>();
-    for (var value = 0; value != 16; value++)
-        _ = Schedule(scheduler, value, current => fifo.Add(current));
-    await context.InvokeAsync(() => { });
-    Require(fifo.SequenceEqual(Enumerable.Range(0, 16)), "The adapter scheduler did not preserve FIFO delivery.");
-
-    var ambient = new AsyncLocal<string?> { Value = "captured" };
-    var observedAmbient = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-    _ = Schedule(scheduler, 0, _ => observedAmbient.TrySetResult(ambient.Value));
-    ambient.Value = null;
-    Require(await observedAmbient.Task.WaitAsync(TimeSpan.FromSeconds(5)) == "captured",
-        "The adapter scheduler lost its scheduling call's execution context.");
-
-    var cancelled = 0;
-    using (ScheduleDelayed(scheduler, TimeSpan.FromMilliseconds(150), () => Interlocked.Increment(ref cancelled)))
-    {
-    }
-    await Task.Delay(250);
-    Require(Volatile.Read(ref cancelled) == 0, "Disposing scheduled work did not cancel it.");
-}
-
-static async Task DependencyInjectionSemanticsAsync()
-{
-    var services = new ServiceCollection();
-    services.AddRunicReactiveModelContext();
-    await using var provider = services.BuildServiceProvider();
-
-    IRunicModelContext firstContext;
-    FlavorScheduler firstScheduler;
-    await using (var first = provider.CreateAsyncScope())
-    {
-        firstContext = first.ServiceProvider.GetRequiredService<IRunicModelContext>();
-        firstScheduler = first.ServiceProvider.GetRequiredService<FlavorScheduler>();
-        Require(ReferenceEquals(firstContext, first.ServiceProvider.GetRequiredService<IRunicModelContext>()),
-            "A scope did not retain its model context.");
-        Require(ReferenceEquals(firstScheduler, first.ServiceProvider.GetRequiredService<FlavorScheduler>()),
-            "A scope did not retain its model scheduler.");
-    }
-    await RequireThrowsAsync<ObjectDisposedException>(() => firstContext.InvokeAsync(() => { }).AsTask(),
-        "Disposing an async service scope did not dispose its model context.");
-
-    await using (var second = provider.CreateAsyncScope())
-    {
-        var secondContext = second.ServiceProvider.GetRequiredService<IRunicModelContext>();
-        var secondScheduler = second.ServiceProvider.GetRequiredService<FlavorScheduler>();
-        Require(!ReferenceEquals(firstContext, secondContext) && !ReferenceEquals(firstScheduler, secondScheduler),
-            "Distinct service scopes shared a model context or scheduler.");
-    }
-
-    await using var customContext = new RunicModelContext();
-    var customProvider = new RecordingProvider();
-    var customServices = new ServiceCollection();
-    customServices.AddScoped<IRunicModelContext>(_ => customContext);
-    customServices.AddSingleton<FlavorSchedulerProvider>(customProvider);
-    customServices.AddRunicReactiveModelContext();
-    await using var customContainer = customServices.BuildServiceProvider();
-    await using var customScope = customContainer.CreateAsyncScope();
-    Require(ReferenceEquals(customContext, customScope.ServiceProvider.GetRequiredService<IRunicModelContext>()),
-        "AddRunicReactiveModelContext replaced an application model context registration.");
-    _ = customScope.ServiceProvider.GetRequiredService<FlavorScheduler>();
-    Require(customProvider.Calls == 1, "AddRunicReactiveModelContext replaced an application scheduler provider registration.");
-}
-
-// The provider keeps one scheduler per context, so every resolution for a context shares its
-// ordering state (W240-001 section 9, M7).
-static async Task SchedulerLifetimeSemanticsAsync()
-{
-    await using var context = new RunicModelContext();
-    var provider = new RunicReactiveSchedulerProvider();
-    Require(ReferenceEquals(provider.For(context), provider.For(context)),
-        "The provider returned distinct schedulers for one context.");
-    await using var other = new RunicModelContext();
-    Require(!ReferenceEquals(provider.For(context), provider.For(other)),
-        "The provider shared a scheduler between contexts.");
-
-    // A transient registration returns the cached scheduler, also for a singleton context.
-    var services = new ServiceCollection();
-    services.AddSingleton<IRunicModelContext>(context);
-    services.AddRunicReactiveModelContext();
-    services.AddSingleton<SingletonViewModel>();
-    await using var container = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-    var first = container.GetRequiredService<FlavorScheduler>();
-    Require(ReferenceEquals(first, container.GetRequiredService<FlavorScheduler>()),
-        "Two resolutions for one context returned distinct schedulers.");
-    Require(ReferenceEquals(first, container.GetRequiredService<SingletonViewModel>().Scheduler),
-        "A singleton ViewModel did not receive the context's scheduler.");
-
-    // A scoped context gets its own scheduler per scope, and one within the scope.
-    var scoped = new ServiceCollection();
-    scoped.AddRunicReactiveModelContext();
-    await using var scopedContainer = scoped.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
-    FlavorScheduler inFirst;
-    await using (var one = scopedContainer.CreateAsyncScope())
-    {
-        inFirst = one.ServiceProvider.GetRequiredService<FlavorScheduler>();
-        Require(ReferenceEquals(inFirst, one.ServiceProvider.GetRequiredService<FlavorScheduler>()),
-            "A scope resolved distinct schedulers for its context.");
-    }
-    await using (var two = scopedContainer.CreateAsyncScope())
-        Require(!ReferenceEquals(inFirst, two.ServiceProvider.GetRequiredService<FlavorScheduler>()),
-            "Two scopes shared a scheduler.");
-}
-
 static async Task NavigationAdapterSemanticsAsync()
 {
     await using var context = new RunicModelContext();
-    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    var scheduler = ContextScheduler.For(context);
     await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
     var home = new NavigationPage("home");
     var region = navigator.CreateRegion<NavigationPage>(new object(), NavigationTarget.Borrow(home));
@@ -166,15 +53,15 @@ static async Task NavigationAdapterSemanticsAsync()
     var entryCount = entries.Values.Length;
 
     var back = region.CreateBackCommand(scheduler);
-    var outputs = new Recorder<NavigationResult<NavigationPage>>();
+    var outputs = new Recorder<NavigationOutcome>();
     using var outputSubscription = back.Subscribe(outputs);
     await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was disabled with history.");
     var result = await ReactiveCommandExecution.Execute(back, UnitValue(), CancellationToken.None);
-    Require(result is NavigationResult<NavigationPage>.Committed { Current.Content: var resumed } && resumed == home
+    Require(result == new NavigationOutcome(NavigationOutcomeKind.Committed) && region.Current == home
         && region.History.Count == 2 && entries.Values.Length == entryCount,
         $"The back command gave {result}; a disposed subscription must not emit.");
     await WaitUntilAsync(() => outputs.Values.Length == 1, "The back command did not emit its result.");
-    Require(outputs.Values[0] == result, "The command output was not the navigation result.");
+    Require(outputs.Values[0] == result, "The command output was not the navigation outcome.");
 
     // Disabled while a transition is in flight, also one the command did not start: a guard holds a Back.
     var guarding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -191,12 +78,29 @@ static async Task NavigationAdapterSemanticsAsync()
     await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was disabled after a push.");
     var vetoed = region.BackAsync().AsTask();
     await guarding.Task.WaitAsync(TimeSpan.FromSeconds(10));
-    await WaitUntilAsync(() => !ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was enabled while transitioning.");
+    // The region raised IsTransitioning before the guard ran, and CanExecute follows it without a scheduler hop.
+    Require(region.IsTransitioning && !ReactiveCommandExecution.CanExecute(back, UnitValue()),
+        "The back command was enabled while transitioning.");
     release.SetResult(false);
     Require(await vetoed is NavigationResult<NavigationPage>.Rejected { Reason: NavigationRejection.Guard } && region.Current == guarded,
         "A vetoed Back was not returned as a rejection.");
     await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command stayed disabled after the veto.");
+
     guarded.Guard = null;
+
+    // The command reports a vetoed Back as a rejected outcome, which a View can receive.
+    var vetoing = new NavigationPage("vetoing") { Guard = () => Task.FromResult(false) };
+    await region.PushAsync(NavigationTarget.Own(vetoing));
+    using (var defaultScheduled = region.CreateBackCommand())
+    {
+        await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(defaultScheduled, UnitValue()),
+            "A back command without a scheduler was disabled with history.");
+        var rejected = await ReactiveCommandExecution.Execute(defaultScheduled, UnitValue(), CancellationToken.None);
+        Require(rejected == new NavigationOutcome(NavigationOutcomeKind.Rejected, NavigationRejection.Guard) && region.Current == vetoing,
+            $"A vetoed back command gave {rejected}.");
+    }
+    vetoing.Guard = null;
+    await region.BackAsync();
 
     // Disabled without history; an emptied region emits null.
     await region.ClearHistoryAsync();
@@ -229,7 +133,7 @@ static async Task NavigationStateCompositionAsync()
         "State subscriptions did not emit their initial values synchronously.");
 
     // A native ReactiveUI command composes the region's state with application state.
-    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    var scheduler = ContextScheduler.For(context);
     using var push = ReactiveCommand.CreateFromTask(
         token => region.PushAsync(NavigationTarget.Own(new NavigationPage("document")), cancellationToken: token).AsTask(),
         region.WhenIsTransitioningChanged().Select(transitioning => !transitioning), scheduler);
@@ -290,7 +194,7 @@ static async Task DuplicateBackCommandKeepsOneConfirmationAsync()
         return NavigationTarget.Own(new ConfirmPage());
     }, () => true, () => discards++).CanDepartAsync;
     await main.PushAsync(NavigationTarget.Own(document));
-    using var back = main.CreateBackCommand(new RunicReactiveSchedulerProvider().For(outputContext));
+    using var back = main.CreateBackCommand(ContextScheduler.For(outputContext));
     await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "Back was not enabled.");
     using var held = new ManualResetEventSlim();
     using var release = new ManualResetEventSlim();
@@ -309,7 +213,7 @@ static async Task DuplicateBackCommandKeepsOneConfirmationAsync()
         await WaitUntilAsync(() => !main.IsTransitioning, "The confirmed Back did not commit.");
         release.Set();
         var results = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(10));
-        Require(results.All(result => result is NavigationResult<NavigationPage>.Committed) && main.Current == home
+        Require(results.All(result => result.Kind == NavigationOutcomeKind.Committed) && main.Current == home
             && prompts == 1 && discards == 1 && dialogs.Current is null,
             "Duplicate Back commands did not share one confirmation and one commit.");
     }
@@ -318,32 +222,6 @@ static async Task DuplicateBackCommandKeepsOneConfirmationAsync()
 
 static FlavorUnit UnitValue() => FlavorUnit.Default;
 
-
-static IDisposable Schedule<T>(FlavorScheduler scheduler, T value, Action<T> action)
-{
-#if SYSTEM_REACTIVE
-    return scheduler.Schedule((Value: value, Action: action), static (_, state) =>
-    {
-        state.Action(state.Value);
-        return System.Reactive.Disposables.Disposable.Empty;
-    });
-#else
-    return scheduler.Schedule((Value: value, Action: action), static state => state.Action(state.Value));
-#endif
-}
-
-static IDisposable ScheduleDelayed(FlavorScheduler scheduler, TimeSpan dueTime, Action action)
-{
-#if SYSTEM_REACTIVE
-    return scheduler.Schedule(action, dueTime, static (_, callback) =>
-    {
-        callback();
-        return System.Reactive.Disposables.Disposable.Empty;
-    });
-#else
-    return scheduler.Schedule(dueTime, action);
-#endif
-}
 
 static async Task RequireThrowsAsync<TException>(Func<Task> operation, string message) where TException : Exception
 {
@@ -357,11 +235,6 @@ static void Require(bool condition, string message)
     if (!condition) throw new InvalidOperationException(message);
 }
 
-
-sealed class SingletonViewModel(FlavorScheduler scheduler)
-{
-    public FlavorScheduler Scheduler { get; } = scheduler;
-}
 
 sealed class Recorder<T> : IObserver<T>
 {
@@ -418,18 +291,6 @@ sealed class BackJoinLog : ILoggerFactory, ILogger
     }
     public void Dispose() { }
 }
-sealed class RecordingProvider : FlavorSchedulerProvider
-{
-    private readonly RunicReactiveSchedulerProvider _inner = new();
-    public int Calls { get; private set; }
-
-    public FlavorScheduler For(IRunicModelContext context)
-    {
-        Calls++;
-        return _inner.For(context);
-    }
-}
-
 sealed class CallbackObserver<T>(Action<T> next, Action<Exception> error) : IObserver<T>
 {
     public void OnCompleted() { }
@@ -450,5 +311,24 @@ static class ReactiveCommandExecution
         using var subscription = command.Execute(input).Subscribe(new CallbackObserver<TResult>(
             value => completion.TrySetResult(value), error => completion.TrySetException(error)));
         return await completion.Task;
+    }
+}
+
+// A scheduler that posts to a model context. Runic.Application.ReactiveUI provides the production one; the
+// navigation adapter takes any scheduler, so this fixture keeps to Runic.Navigation.
+static class ContextScheduler
+{
+    public static FlavorScheduler For(IRunicModelContext context) =>
+#if SYSTEM_REACTIVE
+        new System.Reactive.Concurrency.SynchronizationContextScheduler(new ContextPost(context), alwaysPost: true);
+#else
+        new SynchronizationContextSequencer(new ContextPost(context));
+#endif
+
+    private sealed class ContextPost(IRunicModelContext context) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state) => context.TryPost(() => callback(state));
+
+        public override SynchronizationContext CreateCopy() => this;
     }
 }

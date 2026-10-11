@@ -244,7 +244,7 @@ test('the standalone navigation consumer belongs to the navigation component', (
 test('the ReactiveUI navigation adapters belong to the navigation component', () => {
   for (const file of [
     'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigation.cs',
-    'packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/ReactiveModelContextScheduler.cs',
+    'packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj',
     'tests/fixtures/navigation/reactiveui-adapter/Program.cs',
     'tests/fixtures/navigation/reactiveui-consumer/Program.cs',
   ]) {

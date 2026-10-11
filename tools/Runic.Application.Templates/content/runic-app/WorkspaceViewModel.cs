@@ -1,7 +1,6 @@
 #if (viewModels == "reactiveui")
 using ReactiveUI;
 using ReactiveUI.Primitives;
-using ReactiveUI.Primitives.Concurrency;
 
 namespace RunicWindowApp;
 
@@ -11,14 +10,14 @@ public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
 {
     private IWorkspacePage _main;
 
-    // Commands run on the Window's model context, which orders their
-    // notifications with Bridge replies. The Window binds this ViewModel and
-    // each page it presents to that context.
-    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter, ISequencer scheduler)
+    // The Window runs these commands in its model turns, and AddRunicReactiveModelContext
+    // makes ReactiveUI deliver their notifications there, ordered with Bridge replies,
+    // so a command needs no scheduler argument.
+    public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)
     {
         _main = welcome;
-        ShowWelcomeCommand = ReactiveCommand.Create(() => { Main = welcome; }, scheduler);
-        ShowCounterCommand = ReactiveCommand.Create(() => { Main = counter; }, scheduler);
+        ShowWelcomeCommand = ReactiveCommand.Create(() => { Main = welcome; });
+        ShowCounterCommand = ReactiveCommand.Create(() => { Main = counter; });
     }
 
     public IWorkspacePage Main
@@ -47,8 +46,8 @@ public sealed class CounterViewModel : ReactiveObject, IWorkspacePage, IDisposab
     private int _count;
     private int _step = 1;
 
-    public CounterViewModel(ISequencer scheduler) =>
-        IncrementCommand = ReactiveCommand.Create(() => { Count += Step; }, scheduler);
+    public CounterViewModel() =>
+        IncrementCommand = ReactiveCommand.Create(() => { Count += Step; });
 
     // As for any MVVM View, the setter's accessibility decides what the web
     // frontend may set: Count is read-only state, Step is a form field, so the

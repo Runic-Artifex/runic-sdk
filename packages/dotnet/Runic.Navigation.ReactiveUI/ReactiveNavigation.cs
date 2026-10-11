@@ -90,36 +90,41 @@ public static class ReactiveNavigation
     }
 
     /// <summary>
-    /// Creates a command that goes back in <paramref name="region"/>. It can execute while
-    /// <see cref="NavigationRegion{TContent}.CanGoBack"/> is <see langword="true"/> and
-    /// <see cref="NavigationRegion{TContent}.IsTransitioning"/> is <see langword="false"/>, and its
-    /// output is the <see cref="NavigationResult{TContent}"/>. <c>CanExecute</c> reflects this region only: a
-    /// transition of an ancestor region does not disable it.
+    /// Creates a command that goes back in <paramref name="region"/> and outputs the
+    /// <see cref="NavigationResult{TContent}.Outcome"/>, a <see cref="NavigationOutcome"/> that a Runic View can
+    /// receive. It can execute while <see cref="NavigationRegion{TContent}.CanGoBack"/> is <see langword="true"/> and
+    /// <see cref="NavigationRegion{TContent}.IsTransitioning"/> is <see langword="false"/>. <c>CanExecute</c> reflects
+    /// this region only: a transition of an ancestor region does not disable it.
     /// </summary>
     /// <remarks>
-    /// A rejected, superseded or failed Back is a result, not an exception, so <c>ThrownExceptions</c>
+    /// A rejected, superseded or failed Back is an outcome, not an exception, so <c>ThrownExceptions</c>
     /// reports only defects and cancellation. Subscribe to the command's <c>ThrownExceptions</c>; without a
     /// subscriber ReactiveUI routes them to its default exception handler. Apps that use Runic Views
     /// can use <c>RunicReactiveExceptions.ObserveBridgeExceptions</c> from <c>Runic.Application.ReactiveUI</c>.
+    /// Code that needs the full <see cref="NavigationResult{TContent}"/>, such as a failure's exception, awaits
+    /// <see cref="NavigationRegion{TContent}.BackAsync"/> in its own command.
     /// Overlapping executions to the same destination share one Back and confirmation. Cancelling one execution
     /// cancels that caller; the shared Back is cancelled only when every caller cancels before commit.
     /// The command observes the region through a <c>PropertyChanged</c> handler until the command is disposed,
     /// so dispose it with its owner, for example with <c>DisposeWith</c>.
     /// </remarks>
     /// <param name="region">The region.</param>
-    /// <param name="scheduler">
-    /// The scheduler of the command's output and <c>CanExecute</c>, such as the model context's scheduler from
-    /// <see cref="IRunicReactiveSchedulerProvider"/>.
+    /// <param name="outputScheduler">
+    /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's
+    /// main-thread scheduler, as any <c>ReactiveCommand</c> uses: in a Runic Views app,
+    /// <c>AddRunicReactiveModelContext</c> from <c>Runic.Application.ReactiveUI</c> makes that the model context of
+    /// the turn that executes the command, and in a WPF app it is the dispatcher.
     /// </param>
-    public static ReactiveCommand<FlavorUnit, NavigationResult<TContent>> CreateBackCommand<TContent>(
-        this NavigationRegion<TContent> region, FlavorScheduler scheduler) where TContent : class
+    public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateBackCommand<TContent>(
+        this NavigationRegion<TContent> region, FlavorScheduler? outputScheduler = null) where TContent : class
     {
         ArgumentNullException.ThrowIfNull(region);
-        ArgumentNullException.ThrowIfNull(scheduler);
         var canExecute = new RegionObservable<TContent, bool>(region,
             static region => region.CanGoBack && !region.IsTransitioning, null, EqualityComparer<bool>.Default);
         return ReactiveCommand.CreateFromTask(
-            cancellationToken => region.BackAsync(cancellationToken: cancellationToken).AsTask(), canExecute, scheduler);
+            // Resume where Back started, so the default scheduler is called from the same model context.
+            async cancellationToken => (await region.BackAsync(cancellationToken: cancellationToken)).Outcome,
+            canExecute, outputScheduler);
     }
 
     private sealed class Same<T> : IEqualityComparer<T> where T : class?

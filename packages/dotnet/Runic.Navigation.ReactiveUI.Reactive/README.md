@@ -14,27 +14,25 @@ The types are in the `Runic.Navigation.ReactiveUI.Reactive` namespace.
 dotnet add package Runic.Navigation.ReactiveUI.Reactive --prerelease
 ```
 
-Runic Views apps get this adapter through `Runic.Application.ReactiveUI.Reactive`.
-Choose one flavor per app: the Runic.Application adapters reject a direct reference
-to both. The two navigation adapters add extension methods with the same names in
-different namespaces, so referencing both without Runic.Application is not guarded.
+Runic Views apps reference this package next to `Runic.Application.ReactiveUI.Reactive`,
+which no longer brings it. Choose one flavor per app: the Runic.Application
+adapters reject a direct reference to both. The two navigation adapters add
+extension methods with the same names in different namespaces, so referencing
+both without Runic.Application is not guarded.
 
 ```csharp
-services.AddRunicReactiveModelContext();
-
-var scheduler = new RunicReactiveSchedulerProvider().For(context);
-SaveCommand = ReactiveCommand.Create(Save, outputScheduler: scheduler);
-BackCommand = Main.CreateBackCommand(scheduler).DisposeWith(disposables);
+BackCommand = Main.CreateBackCommand().DisposeWith(disposables);
 ```
 
-`RunicReactiveSchedulerProvider.For(context)` returns one `IScheduler` per
-context for as long as the context is alive. `AddRunicReactiveModelContext()`
-registers a scoped context, the singleton provider and a transient `IScheduler`
-that returns the provider's scheduler for the resolved context, so every
-resolution for one context shares it. `WhenCurrentChanged()`,
-`WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`
-and `CreateBackCommand(IScheduler)` are experimental (`RUNICNAV001`). The Back
-command returns a `ReactiveCommand<Unit, NavigationResult<TContent>>`.
+`WhenCurrentChanged()`, `WhenEntryChanged()`, `WhenCanGoBackChanged()`,
+`WhenIsTransitioningChanged()` and `CreateBackCommand()` are experimental
+(`RUNICNAV001`). The Back command returns a
+`ReactiveCommand<Unit, NavigationOutcome>` and, without an `outputScheduler`,
+delivers on ReactiveUI's main-thread scheduler: the model context in a Runic
+Views app that calls `AddRunicReactiveModelContext()` from
+`Runic.Application.ReactiveUI.Reactive`, the dispatcher in WPF. The scheduler
+provider and `AddRunicReactiveModelContext()` moved to that package in W250;
+see [Scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#scheduling).
 
 The [native command composition recipe](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#native-command-composition)
 also applies here. Use `ReactiveUI.Reactive`, `System.Reactive.Linq` and
@@ -44,4 +42,4 @@ the same core engine and work independently of the WPF or web presentation choic
 
 The package targets ReactiveUI.Reactive 26.0.1 and brings System.Reactive 7.0.0
 transitively. Its category is `Runic.Navigation.ReactiveUI.Reactive`, with events
-1043-1049 reserved.
+1044-1049 reserved.

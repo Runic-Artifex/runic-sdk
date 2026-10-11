@@ -391,7 +391,7 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
         return view;
     }
 
-    public Task<NavigationOutcome> Start(NavigationOperation operation, NavigationTargetCore? target,
+    public Task<TransitionOutcome> Start(NavigationOperation operation, NavigationTargetCore? target,
         NavigationEntryId? backTo, NavigationRequestOptions? options, CancellationToken cancellationToken,
         NavigationReturn? @return = null) =>
         Navigator.Start(this, operation, target, backTo, options?.ExpectedCurrent, cancellationToken, @return);

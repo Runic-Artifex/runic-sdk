@@ -118,6 +118,37 @@ export interface MutableKeyedRow {
   readonly label: string;
 }
 
+/** A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command. */
+export interface NavigationOutcome {
+  /** How the request ended. */
+  readonly kind: NavigationOutcomeKind;
+  /** Why the request was rejected, for `Rejected`; otherwise `null`. */
+  readonly rejection: NavigationRejection | null;
+}
+
+/**
+ * How a navigation request ended, as reported by `Kind`.
+ *
+ * - `Committed`: The transition committed.
+ * - `Rejected`: The transition was rejected; `Rejection` says why.
+ * - `Superseded`: A later request replaced this one before it committed.
+ * - `Failed`: The transition failed. Only the full navigation result carries the exception.
+ */
+export type NavigationOutcomeKind = "Committed" | "Rejected" | "Superseded" | "Failed";
+
+/**
+ * Why a navigation request was rejected.
+ *
+ * - `Guard`: A departure guard returned `false`.
+ * - `Cancelled`: The caller's token was cancelled before the commit.
+ * - `Closed`: The navigator or the region is closed.
+ * - `Reentrant`: The request came from a hook of an in-flight transition of the same region, or of a region that holds it or is held by it (an ancestor or a descendant region). The rejection is conservative: such a request could wait on the transition that is running the hook.
+ * - `NoHistory`: A back request found no retained entry.
+ * - `NotCurrent`: The expected current entry is not current.
+ * - `EntryNotFound`: The back-to target is not in the region.
+ */
+export type NavigationRejection = "Guard" | "Cancelled" | "Closed" | "Reentrant" | "NoHistory" | "NotCurrent" | "EntryNotFound";
+
 export type NotePublishBlock = "Locked" | "Archived";
 
 export interface NoteQuotaExceeded {

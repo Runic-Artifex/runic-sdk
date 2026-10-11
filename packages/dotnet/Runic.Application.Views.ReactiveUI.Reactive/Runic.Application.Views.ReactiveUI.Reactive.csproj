@@ -5,7 +5,7 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.ReactiveUI.Reactive</PackageId>
-    <Description>System.Reactive-flavor ReactiveUI routing, view location, activation, and scheduling for Runic Views.</Description>
+    <Description>System.Reactive-flavor ReactiveUI model-context scheduling, routing, view location, and activation for Runic Views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Selects the System.Reactive namespaces in the source shared with
          Runic.Application.ReactiveUI. Only the scheduler adapter differs. -->
@@ -15,13 +15,13 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="ReactiveUI.Reactive" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
-    <ProjectReference Include="../Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveCommandExecution.cs" Link="Shared/ReactiveCommandExecution.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/BridgeSnapshotObservableExtensions.cs" Link="Shared/BridgeSnapshotObservableExtensions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveInteractionDescriptor.cs" Link="Shared/ReactiveInteractionDescriptor.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactivePresentation.cs" Link="Shared/ReactivePresentation.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveLog.cs" Link="Shared/ReactiveLog.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/RunicReactiveExceptions.cs" Link="Shared/RunicReactiveExceptions.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Application.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>

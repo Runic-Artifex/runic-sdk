@@ -1,1 +1,9 @@
 #nullable enable
+Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
+Runic.Application.Views.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions
+Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider
+Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
+Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.RunicReactiveSchedulerProvider() -> void
+static Runic.Application.Views.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
