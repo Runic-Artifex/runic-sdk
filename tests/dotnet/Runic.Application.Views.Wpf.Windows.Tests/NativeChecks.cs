@@ -126,6 +126,8 @@ internal sealed class NativeChecks
             var failing = Host(fallback);
             window.Content = failing;
             var failed = await SettledAsync(failing);
+            // WPF raises Loaded for the fallback after layout, not when the host shows it; the check below decides.
+            try { await UntilAsync(() => fallback.IsLoaded); } catch (TimeoutException) { }
             Program.Check(failed == RunicViewHostState.Failed && failing.Error is InvalidOperationException && fallback.IsLoaded
                 && ReferenceEquals(fallback.DataContext, model), $"The host did not fall back: {failing.State} {failing.Error}");
             window.Content = null;
