@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { root, run, configuration, workspace, viewsRuntime, engineeringTestDirectories } from './run.mjs';
-import { managedGroups, managedTests, applicationFixtureCommands } from './ci/plan.mjs';
+import { managedGroups, managedTests, applicationFixtureCommands, testReportArguments } from './ci/plan.mjs';
 export function selection(scope) {
   // The application group also builds and runs the fixtures outside RunicSdk.Core.slnx, as CI does.
   if (managedGroups.includes(scope)) return {kind: 'managed', paths: managedTests().filter(p => p.group === scope).map(p => p.path),
@@ -42,8 +42,10 @@ function main() {
     // Generated-client checks import the built Views runtime package.
     if (!existsSync(resolve(root, 'packages/web/views/dist/index.js'))) viewsRuntime();
     for (const path of selected.paths) {
-      if (selected.kind === 'managed') run('dotnet', ['run', '--project', path, '-c', configuration, ...(extra.length ? ['--', ...extra] : [])]);
-      else run('dotnet', ['test', path, '-c', configuration, ...extra]);
+      if (selected.kind === 'managed') {
+        const args = [...testReportArguments(path), ...extra];
+        run('dotnet', ['run', '--project', path, '-c', configuration, ...(args.length ? ['--', ...args] : [])]);
+      } else run('dotnet', ['test', path, '-c', configuration, ...extra]);
     }
     for (const [command, args] of selected.commands ?? []) run(command, args);
   }

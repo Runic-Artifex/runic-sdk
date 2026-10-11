@@ -4,90 +4,20 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
+using TUnit.Core;
+using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 
 namespace Runic.Navigation.Tests;
 
 // W230-002 slice 1: the experimental navigator core (design record W230-001 §4-§6, §10, §13).
-internal static partial class NavigationTests
+internal sealed partial class NavigationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
-    public static async Task RunAsync()
-    {
-        await PushBackAndHistoryAsync();
-        await OperationsAsync();
-        await ExpectedCurrentAndLateCompletionAsync();
-        await InitializeOnceAndResumeOnReturnAsync();
-        await CancellationWhileWaitingAsync();
-        await CancellationWhileGuardingAsync();
-        await CancellationWhilePreparingAsync();
-        await CancellationBeforeCommitTurnAsync();
-        await PreCancelledRequestDoesNotSupersedeAsync();
-        await CloseDuringPreparationIsRejectedAsync();
-        await CloseChangesStateInsideTurnsAsync();
-        await CloseTimeoutBoundsDisposalAsync();
-        await CancellationCallbackFailureDoesNotAbortDisposalAsync();
-        await RetirementWaitsForInitializeAsync();
-        await InitializeWaitsShareOneDeadlineAsync();
-        await SharedClearingDeadlineAsync();
-        await RetiredEntryNeverInitializesAsync();
-        await GuardFailureDuringCloseIsRejectedAsync();
-        await CreateRegionDisposesFactoryInstanceAsync();
-        await SupersessionBeforeCommitAsync();
-        await NoSupersessionAfterCommitStartsAsync();
-        await HookFailuresAsync();
-        await GuardsRunForRetainAsync();
-        await ContextDisposedDuringCommitAsync();
-        await TurnThrowingObjectDisposedFailsAsync();
-        await ReentrantHooksAsync();
-        await AdmissionInsideTurnAsync();
-        await TransitioningRaisedInTurnsAsync();
-        await ThrowingHandlerDoesNotSkipOthersAsync();
-        await ChildPoliciesAsync();
-        await ParentSupersedesChildTransitionsAsync();
-        await ChildCommitSupersedesParentAsync();
-        await RetirementDoesNotAwaitChildTransitionAsync();
-        await RetirementOrderAsync();
-        await BorrowedContentIsNeverDisposedAsync();
-        await OwnershipChecksAsync();
-        await TargetValidationAsync();
-        await InitializePrecedenceAsync();
-        await DisposeMidTransitionAsync();
-        await DisposeWaitsForRunningCleanupAsync();
-        await CleanupFailureIsLoggedAsync();
-        await PresentationsForgetOwnedContentAsync();
-        await DetachDuringRetirementStillForgetsAsync();
-        await NonGenericRegionViewAsync();
-        await OverrunIsLoggedAsync();
-        await ServiceRegistrationAsync();
-        await ResultCompletedAsync();
-        await ResultFromEmptyRegionAsync();
-        await ResultDismissedWhenNotCommittedAsync();
-        await ResultDismissedOnRetirementAsync();
-        await ResultTypeChecksAsync();
-        await ResultCompleteRejectedKeepsRequestOpenAsync();
-        await ResultCallerCancelledAfterCommitAsync();
-        await ResultCallerCancelledBackRejectedAsync();
-        await ResultCallerCancelledThenPushRetiresAsync();
-        await ResultCallerCancelledDuringRetirementAsync();
-        await ResultDismissalBackRejectedKeepsEntryAsync();
-        await ResultDismissedOnCloseAsync();
-        await SiblingGuardAwaitsResultAsync(close: false);
-        await SiblingGuardAwaitsResultAsync(close: true);
-        await ResultRaceAsync(seed: 230_003);
-        await ResultRaceAsync(seed: 61, disposeDuringRace: true);
-        await RandomizedRaceAsync(seed: 230_002);
-        await RandomizedRaceAsync(seed: 61);
-        await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true);
-        await RandomizedRaceAsync(seed: 61, disposeDuringRace: true);
-        await RandomizedRaceAsync(seed: 230_002, disposeDuringRace: true, patient: true);
-        await RandomizedRaceAsync(seed: 61, disposeDuringRace: true, patient: true);
-        await RunStandaloneAsync();
-    }
-
     // ---- Basic operations ------------------------------------------------
 
-    private static async Task PushBackAndHistoryAsync()
+    [Test]
+    public async Task PushBackAndHistoryAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -113,7 +43,8 @@ internal static partial class NavigationTests
         Require(!RunicModelContextRegistry.Shared.TryGet(detail, out _), "The retired entry's model-context lease was not released.");
     }
 
-    private static async Task OperationsAsync()
+    [Test]
+    public async Task OperationsAsync()
     {
         await using var fixture = new Fixture();
         var a = new Page("a");
@@ -163,7 +94,8 @@ internal static partial class NavigationTests
         Require(fromEmpty is NavigationResult<Page>.Committed && Names(region) == "h", "A push into an empty region failed.");
     }
 
-    private static async Task ExpectedCurrentAndLateCompletionAsync()
+    [Test]
+    public async Task ExpectedCurrentAndLateCompletionAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -187,7 +119,8 @@ internal static partial class NavigationTests
             "A retired entry's late Back was not rejected.");
     }
 
-    private static async Task InitializeOnceAndResumeOnReturnAsync()
+    [Test]
+    public async Task InitializeOnceAndResumeOnReturnAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -218,7 +151,8 @@ internal static partial class NavigationTests
 
     // ---- Cancellation ----------------------------------------------------
 
-    private static async Task CancellationWhileWaitingAsync()
+    [Test]
+    public async Task CancellationWhileWaitingAsync()
     {
         await using var fixture = new Fixture();
         var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -247,7 +181,8 @@ internal static partial class NavigationTests
         Require(fixture.Navigator.UnretiredEntryCount == 1 && !region.IsTransitioning, "Admission did not recover after cancellation.");
     }
 
-    private static async Task CancellationWhileGuardingAsync()
+    [Test]
+    public async Task CancellationWhileGuardingAsync()
     {
         await using var fixture = new Fixture();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -271,7 +206,8 @@ internal static partial class NavigationTests
             $"Cancelling a guard gave {result}.");
     }
 
-    private static async Task CancellationWhilePreparingAsync()
+    [Test]
+    public async Task CancellationWhilePreparingAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -294,7 +230,8 @@ internal static partial class NavigationTests
             $"Cancelling initialize gave {result}; the pending entry was not retired.");
     }
 
-    private static async Task CancellationBeforeCommitTurnAsync()
+    [Test]
+    public async Task CancellationBeforeCommitTurnAsync()
     {
         await using var gated = new GatedContext();
         await using var fixture = new Fixture(gated);
@@ -315,7 +252,8 @@ internal static partial class NavigationTests
 
     // A request whose token is already cancelled is rejected at admission, so it
     // must not supersede the transition that is already in flight.
-    private static async Task PreCancelledRequestDoesNotSupersedeAsync()
+    [Test]
+    public async Task PreCancelledRequestDoesNotSupersedeAsync()
     {
         await using var fixture = new Fixture();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -347,7 +285,8 @@ internal static partial class NavigationTests
             $"A cancelled request superseded its predecessor: {committed}, {Names(region)}.");
     }
 
-    private static async Task CloseDuringPreparationIsRejectedAsync()
+    [Test]
+    public async Task CloseDuringPreparationIsRejectedAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -406,7 +345,8 @@ internal static partial class NavigationTests
         return new(fixture, time, region, pushed, push, disposal, release, seen);
     }
 
-    private static async Task CloseChangesStateInsideTurnsAsync()
+    [Test]
+    public async Task CloseChangesStateInsideTurnsAsync()
     {
         var blocked = await BlockedCloseAsync();
         await using (blocked.Fixture)
@@ -426,7 +366,8 @@ internal static partial class NavigationTests
         }
     }
 
-    private static async Task CloseTimeoutBoundsDisposalAsync()
+    [Test]
+    public async Task CloseTimeoutBoundsDisposalAsync()
     {
         var blocked = await BlockedCloseAsync();
         await using (blocked.Fixture)
@@ -453,7 +394,8 @@ internal static partial class NavigationTests
 
     // Disposal waits for an initialize hook that returns within the close timeout before it
     // disposes the content, and does not dispose under the hook while it runs.
-    private static async Task RetirementWaitsForInitializeAsync()
+    [Test]
+    public async Task RetirementWaitsForInitializeAsync()
     {
         var time = new FakeTimeProvider();
         var fixture = new Fixture(null, time, TimeSpan.FromSeconds(10));
@@ -491,7 +433,8 @@ internal static partial class NavigationTests
 
     // K regions whose initialize hooks ignore cancellation: disposal ends after one close timeout
     // for the transitions (no per-region re-wait), without any further advance of the clock.
-    private static async Task InitializeWaitsShareOneDeadlineAsync()
+    [Test]
+    public async Task InitializeWaitsShareOneDeadlineAsync()
     {
         const int regions = 3;
         var time = new FakeTimeProvider();
@@ -522,7 +465,8 @@ internal static partial class NavigationTests
 
     // Retirement that wins the claim keeps initialize from ever starting. The stall between the
     // cancellation check and the claim is held by a test seam while disposal retires the entry.
-    private static async Task RetiredEntryNeverInitializesAsync()
+    [Test]
+    public async Task RetiredEntryNeverInitializesAsync()
     {
         var time = new FakeTimeProvider();
         var fixture = new Fixture(null, time, TimeSpan.FromSeconds(10));
@@ -549,7 +493,8 @@ internal static partial class NavigationTests
     }
 
     // The clearing turns of two blocked regions share one deadline: one advance, one warning.
-    private static async Task SharedClearingDeadlineAsync()
+    [Test]
+    public async Task SharedClearingDeadlineAsync()
     {
         var context = new GatedContext();
         var time = new CountingTimeProvider();
@@ -569,7 +514,8 @@ internal static partial class NavigationTests
         await fixture.Context.DisposeAsync();
     }
 
-    private static async Task CancellationCallbackFailureDoesNotAbortDisposalAsync()
+    [Test]
+    public async Task CancellationCallbackFailureDoesNotAbortDisposalAsync()
     {
         await using var fixture = new Fixture();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -596,7 +542,8 @@ internal static partial class NavigationTests
             "The cancellation callback failure was not logged as a Cancel step.");
     }
 
-    private static async Task GuardFailureDuringCloseIsRejectedAsync()
+    [Test]
+    public async Task GuardFailureDuringCloseIsRejectedAsync()
     {
         await using var fixture = new Fixture();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -623,7 +570,8 @@ internal static partial class NavigationTests
             $"A guard failing during a close gave {result} and logged {fixture.Logs.Count(1060)} guard failures.");
     }
 
-    private static async Task CreateRegionDisposesFactoryInstanceAsync()
+    [Test]
+    public async Task CreateRegionDisposesFactoryInstanceAsync()
     {
         await using var fixture = new Fixture();
         // Closing starts while the factory runs.
@@ -655,7 +603,8 @@ internal static partial class NavigationTests
         await Until(() => init.Disposed == 1, "An asynchronously disposable rejected instance was not disposed.");
     }
 
-    private static async Task SupersessionBeforeCommitAsync()
+    [Test]
+    public async Task SupersessionBeforeCommitAsync()
     {
         await using var fixture = new Fixture();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -683,7 +632,8 @@ internal static partial class NavigationTests
         Require(fixture.Logs.Has(1066, LogLevel.Debug), "Superseded was not logged as 1066.");
     }
 
-    private static async Task NoSupersessionAfterCommitStartsAsync()
+    [Test]
+    public async Task NoSupersessionAfterCommitStartsAsync()
     {
         await using var gated = new GatedContext();
         await using var fixture = new Fixture(gated);
@@ -701,7 +651,8 @@ internal static partial class NavigationTests
 
     // ---- Failures and logging -------------------------------------------
 
-    private static async Task HookFailuresAsync()
+    [Test]
+    public async Task HookFailuresAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home") { Guard = (_, _) => throw new InvalidOperationException("guard-secret") };
@@ -736,7 +687,8 @@ internal static partial class NavigationTests
         Require(rejected is NavigationResult<Page>.Rejected && fixture.Logs.Has(1065, LogLevel.Debug), "Rejected was not logged as 1065.");
     }
 
-    private static async Task GuardsRunForRetainAsync()
+    [Test]
+    public async Task GuardsRunForRetainAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -754,7 +706,8 @@ internal static partial class NavigationTests
             "A Back did not ask the departing guard with Kind = Retire.");
     }
 
-    private static async Task ContextDisposedDuringCommitAsync()
+    [Test]
+    public async Task ContextDisposedDuringCommitAsync()
     {
         await using var gated = new GatedContext();
         await using var fixture = new Fixture(gated);
@@ -777,7 +730,8 @@ internal static partial class NavigationTests
     }
 
     // A commit turn that itself throws ObjectDisposedException is a failure, not a closed context.
-    private static async Task TurnThrowingObjectDisposedFailsAsync()
+    [Test]
+    public async Task TurnThrowingObjectDisposedFailsAsync()
     {
         await using var inner = new Fixture();
         await using var fixture = new Fixture(new ThrowingTurnContext(inner.Context));
@@ -793,7 +747,8 @@ internal static partial class NavigationTests
         Require(region.Current?.Name == "next", $"The region shows {region.Current} after the throwing turn.");
     }
 
-    private static async Task ReentrantHooksAsync()
+    [Test]
+    public async Task ReentrantHooksAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -830,7 +785,8 @@ internal static partial class NavigationTests
             $"Work spawned by a hook was falsely reentrant: {later}");
     }
 
-    private static async Task AdmissionInsideTurnAsync()
+    [Test]
+    public async Task AdmissionInsideTurnAsync()
     {
         await using var fixture = new Fixture();
         var context = fixture.Context;
@@ -858,7 +814,8 @@ internal static partial class NavigationTests
             "Admission inside a turn ran a hook or a continuation in a turn.");
     }
 
-    private static async Task TransitioningRaisedInTurnsAsync()
+    [Test]
+    public async Task TransitioningRaisedInTurnsAsync()
     {
         await using var fixture = new Fixture();
         var context = fixture.Context;
@@ -893,7 +850,8 @@ internal static partial class NavigationTests
         Require(raisedInline, "Admission inside a turn did not raise IsTransitioning inline.");
     }
 
-    private static async Task ThrowingHandlerDoesNotSkipOthersAsync()
+    [Test]
+    public async Task ThrowingHandlerDoesNotSkipOthersAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -915,7 +873,8 @@ internal static partial class NavigationTests
 
     // ---- Child regions ---------------------------------------------------
 
-    private static async Task ChildPoliciesAsync()
+    [Test]
+    public async Task ChildPoliciesAsync()
     {
         foreach (var policy in new[] { NavigationChildRetention.Keep, NavigationChildRetention.ResetToRoot, NavigationChildRetention.Clear })
         {
@@ -946,7 +905,8 @@ internal static partial class NavigationTests
         }
     }
 
-    private static async Task ParentSupersedesChildTransitionsAsync()
+    [Test]
+    public async Task ParentSupersedesChildTransitionsAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -972,7 +932,8 @@ internal static partial class NavigationTests
             $"A retired parent's child region accepted a request: {closed}.");
     }
 
-    private static async Task ChildCommitSupersedesParentAsync()
+    [Test]
+    public async Task ChildCommitSupersedesParentAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -995,7 +956,8 @@ internal static partial class NavigationTests
             $"A child commit during the parent's guard did not supersede the parent: {parentResult}.");
     }
 
-    private static async Task RetirementDoesNotAwaitChildTransitionAsync()
+    [Test]
+    public async Task RetirementDoesNotAwaitChildTransitionAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1033,7 +995,8 @@ internal static partial class NavigationTests
         Require(fixture.Navigator.UnretiredEntryCount == 1, $"{fixture.Navigator.UnretiredEntryCount} entries remain tracked.");
     }
 
-    private static async Task RetirementOrderAsync()
+    [Test]
+    public async Task RetirementOrderAsync()
     {
         await using var fixture = new Fixture();
         var journal = new Journal();
@@ -1056,7 +1019,8 @@ internal static partial class NavigationTests
         Require(fixture.Navigator.UnretiredEntryCount == 1, "Retired descendants are still tracked.");
     }
 
-    private static async Task BorrowedContentIsNeverDisposedAsync()
+    [Test]
+    public async Task BorrowedContentIsNeverDisposedAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -1072,7 +1036,8 @@ internal static partial class NavigationTests
         Require(borrowed.Disposed == 0 && borrowed.ChildRoot.Disposed == 0, "Navigator disposal disposed borrowed content.");
     }
 
-    private static async Task OwnershipChecksAsync()
+    [Test]
+    public async Task OwnershipChecksAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1090,7 +1055,8 @@ internal static partial class NavigationTests
             $"A factory returning an owned instance gave {reused}.");
     }
 
-    private static async Task TargetValidationAsync()
+    [Test]
+    public async Task TargetValidationAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root);
@@ -1111,7 +1077,8 @@ internal static partial class NavigationTests
             "An initializable factory initial target was accepted or not disposed.");
     }
 
-    private static async Task InitializePrecedenceAsync()
+    [Test]
+    public async Task InitializePrecedenceAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<object>(fixture.Root);
@@ -1125,7 +1092,8 @@ internal static partial class NavigationTests
 
     // ---- Disposal --------------------------------------------------------
 
-    private static async Task DisposeMidTransitionAsync()
+    [Test]
+    public async Task DisposeMidTransitionAsync()
     {
         var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Own(new Page("home")));
@@ -1155,7 +1123,8 @@ internal static partial class NavigationTests
         await fixture.Context.DisposeAsync();
     }
 
-    private static async Task DisposeWaitsForRunningCleanupAsync()
+    [Test]
+    public async Task DisposeWaitsForRunningCleanupAsync()
     {
         var fixture = new Fixture(closeTimeout: TimeSpan.FromMilliseconds(100));
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1183,7 +1152,8 @@ internal static partial class NavigationTests
 
     // ---- Presentation and content-independent views (W240-001 §4) ------
 
-    private static async Task PresentationsForgetOwnedContentAsync()
+    [Test]
+    public async Task PresentationsForgetOwnedContentAsync()
     {
         await using var fixture = new Fixture();
         Require(ReferenceEquals(fixture.Navigator.ModelContext, fixture.Context) && !fixture.Navigator.IsClosed, "ModelContext is not the configured context, or the new navigator reports IsClosed.");
@@ -1224,7 +1194,8 @@ internal static partial class NavigationTests
 
     // Retirement snapshots the attached presentations before calling Forget, so a
     // presentation detached while that runs (here by an earlier presentation) is still called.
-    private static async Task DetachDuringRetirementStillForgetsAsync()
+    [Test]
+    public async Task DetachDuringRetirementStillForgetsAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1253,7 +1224,8 @@ internal static partial class NavigationTests
         public void Forget(object content) => forget(content);
     }
 
-    private static async Task NonGenericRegionViewAsync()
+    [Test]
+    public async Task NonGenericRegionViewAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -1317,7 +1289,8 @@ internal static partial class NavigationTests
         }
     }
 
-    private static async Task CleanupFailureIsLoggedAsync()
+    [Test]
+    public async Task CleanupFailureIsLoggedAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1334,7 +1307,8 @@ internal static partial class NavigationTests
             $"1064 was logged under {entry.Category}, not Runic.Navigation.");
     }
 
-    private static async Task OverrunIsLoggedAsync()
+    [Test]
+    public async Task OverrunIsLoggedAsync()
     {
         var time = new FakeTimeProvider();
         await using var fixture = new Fixture(time: time);
@@ -1363,7 +1337,8 @@ internal static partial class NavigationTests
             "The overrun did not resolve.");
     }
 
-    private static async Task ServiceRegistrationAsync()
+    [Test]
+    public async Task ServiceRegistrationAsync()
     {
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(new FakeTimeProvider());
@@ -1390,7 +1365,8 @@ internal static partial class NavigationTests
 
     // ---- PushForResult (W230-003) ------------------------------------------
 
-    private static async Task ResultCompletedAsync()
+    [Test]
+    public async Task ResultCompletedAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -1423,7 +1399,8 @@ internal static partial class NavigationTests
     }
 
     // A result entry pushed onto an empty region (an in-page dialog) returns to the empty state.
-    private static async Task ResultFromEmptyRegionAsync()
+    [Test]
+    public async Task ResultFromEmptyRegionAsync()
     {
         await using var fixture = new Fixture();
         var dialog = fixture.Navigator.CreateRegion<Page>(fixture.Root);
@@ -1441,7 +1418,8 @@ internal static partial class NavigationTests
             && fixture.Navigator.UnretiredEntryCount == 0, "The result was not delivered from the emptied region.");
     }
 
-    private static async Task ResultDismissedWhenNotCommittedAsync()
+    [Test]
+    public async Task ResultDismissedWhenNotCommittedAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -1505,7 +1483,8 @@ internal static partial class NavigationTests
             $"Expected five 1070 NotCommitted entries, got {dismissals.Length}.");
     }
 
-    private static async Task ResultDismissedOnRetirementAsync()
+    [Test]
+    public async Task ResultDismissedOnRetirementAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1532,7 +1511,8 @@ internal static partial class NavigationTests
             "ClearHistory did not dismiss the retained result entry's request.");
     }
 
-    private static async Task ResultTypeChecksAsync()
+    [Test]
+    public async Task ResultTypeChecksAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1585,7 +1565,8 @@ internal static partial class NavigationTests
     }
 
     // A vetoed return leaves the entry current and the request open, so CompleteAsync can be repeated.
-    private static async Task ResultCompleteRejectedKeepsRequestOpenAsync()
+    [Test]
+    public async Task ResultCompleteRejectedKeepsRequestOpenAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1604,7 +1585,8 @@ internal static partial class NavigationTests
             "A repeated CompleteAsync did not deliver its value.");
     }
 
-    private static async Task ResultCallerCancelledAfterCommitAsync()
+    [Test]
+    public async Task ResultCallerCancelledAfterCommitAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -1637,7 +1619,8 @@ internal static partial class NavigationTests
     }
 
     // When the issued back is rejected, the entry stays; a later CompleteAsync still goes back and drops its value.
-    private static async Task ResultCallerCancelledBackRejectedAsync()
+    [Test]
+    public async Task ResultCallerCancelledBackRejectedAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -1665,7 +1648,8 @@ internal static partial class NavigationTests
     // The caller cancels, then at once pushes into the same region, as a superseded guard that
     // runs again does. The return Back is admitted before the dismissal is observable, so the
     // push supersedes it or follows it; either way the dismissed entry is not retained.
-    private static async Task ResultCallerCancelledThenPushRetiresAsync()
+    [Test]
+    public async Task ResultCallerCancelledThenPushRetiresAsync()
     {
         for (var round = 0; round < 50; round++)
         {
@@ -1688,7 +1672,8 @@ internal static partial class NavigationTests
 
     // Caller cancellation is watched before the commit's departing entries retire, so a slow
     // retirement does not delay the dismissal.
-    private static async Task ResultCallerCancelledDuringRetirementAsync()
+    [Test]
+    public async Task ResultCallerCancelledDuringRetirementAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root);
@@ -1720,7 +1705,8 @@ internal static partial class NavigationTests
     // turn. The return Back is admitted but rejected as NotCurrent once the push commits, so the
     // dismissed entry stays retained. A later Back resumes it, and its CompleteAsync empties the
     // region and drops the value (1071).
-    private static async Task ResultDismissalBackRejectedKeepsEntryAsync()
+    [Test]
+    public async Task ResultDismissalBackRejectedKeepsEntryAsync()
     {
         await using var gated = new GatedContext();
         await using var fixture = new Fixture(gated);
@@ -1753,7 +1739,8 @@ internal static partial class NavigationTests
             $"CompleteAsync on the resumed dismissed entry gave {late}; it did not empty the region and drop the value.");
     }
 
-    private static async Task ResultDismissedOnCloseAsync()
+    [Test]
+    public async Task ResultDismissedOnCloseAsync()
     {
         var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1789,7 +1776,11 @@ internal static partial class NavigationTests
 
     // The Notes pattern: a departure guard awaits a confirm pushed for a result into a sibling
     // region, passing its own token. Supersession and window close unblock it.
-    private static async Task SiblingGuardAwaitsResultAsync(bool close)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("SiblingGuardAwaitsResultAsync(close: $close)")]
+    public async Task SiblingGuardAwaitsResultAsync(bool close)
     {
         var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -1843,7 +1834,11 @@ internal static partial class NavigationTests
     // clears. Every completion ends; Completed only with the value of a CompleteAsync whose return
     // committed, which wins unless the caller cancelled; at most one return commits per entry;
     // result pages are disposed at most once; closing ends every request and retires every entry.
-    private static async Task ResultRaceAsync(int seed, bool disposeDuringRace = false)
+    [Test]
+    [Arguments(230003, false)]
+    [Arguments(61, true)]
+    [DisplayName("ResultRaceAsync(seed: $seed, disposeDuringRace: $disposeDuringRace)")]
+    public async Task ResultRaceAsync(int seed, bool disposeDuringRace = false)
     {
         var master = new Random(seed);
         var violations = new ConcurrentQueue<string>();
@@ -1956,7 +1951,15 @@ internal static partial class NavigationTests
 
     // disposeDuringRace disposes the navigator while the workers are still running,
     // with a zero CloseTimeout, so retirement overlaps admitted transitions.
-    private static async Task RandomizedRaceAsync(int seed, bool disposeDuringRace = false, bool patient = false)
+    [Test]
+    [Arguments(230002, false, false)]
+    [Arguments(61, false, false)]
+    [Arguments(230002, true, false)]
+    [Arguments(61, true, false)]
+    [Arguments(230002, true, true)]
+    [Arguments(61, true, true)]
+    [DisplayName("RandomizedRaceAsync(seed: $seed, disposeDuringRace: $disposeDuringRace, patient: $patient)")]
+    public async Task RandomizedRaceAsync(int seed, bool disposeDuringRace = false, bool patient = false)
     {
         RacePage.Calm = false;
         var master = new Random(seed);

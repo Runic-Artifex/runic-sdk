@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -8,8 +9,13 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- Tests exercise the experimental navigation API. -->
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <!-- Only the engine: navigation and the model context need no Views runtime. -->
