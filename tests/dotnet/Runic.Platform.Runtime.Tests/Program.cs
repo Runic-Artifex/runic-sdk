@@ -40,6 +40,8 @@ internal static class Conformance
             ("THREAD-01/02/03: worker dispatch, inline dispatch and queued cancellation", Dispatch),
             ("THREAD-04: queued rejection and running callback drain", DispatchShutdown),
             ("RESULT: failures carry optional native diagnostics", NativeDiagnostics),
+            ("RESULT: picker and platform results deconstruct", ResultsDeconstruct),
+            ("WINDOW: hosts without an owner report every window service unavailable", UnavailableWindowServices),
         ];
         int failures = 0;
         foreach (var test in tests)
@@ -68,6 +70,49 @@ internal static class Conformance
         if (new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError).Diagnostic is not null)
             throw new InvalidOperationException("A failure without native detail reported a diagnostic.");
         return Task.CompletedTask;
+    }
+
+    // Positional patterns name the selected lease and the successful value without a cast.
+    private static Task ResultsDeconstruct()
+    {
+        var lease = new ControlledLease();
+        PickerResult<IReadFileLease> picked = new PickerResult<IReadFileLease>.Selected(lease);
+        if (picked is not PickerResult<IReadFileLease>.Selected(var selected) || !ReferenceEquals(selected, lease))
+            throw new InvalidOperationException("A selected picker result did not deconstruct to its lease.");
+        PlatformResult<string?> read = new PlatformResult<string?>.Success("text");
+        if (read is not PlatformResult<string?>.Success(var text) || text != "text")
+            throw new InvalidOperationException("A successful platform result did not deconstruct to its value.");
+        return Task.CompletedTask;
+    }
+
+    private static async Task UnavailableWindowServices()
+    {
+        var services = WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        var snapshot = services.GetSnapshot();
+        if (snapshot.Generation != Guid.Empty || !snapshot.Statuses.Keys.Order().SequenceEqual(WindowPlatformServices.CapabilityIds.Order())
+            || snapshot.Statuses.Values.Any(static status => status is not CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)))
+            throw new InvalidOperationException("Unavailable window services reported another capability status.");
+        if (await services.FileDialogs.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await services.FileDialogs.SaveFileAsync(new("notes.txt")) is not PickerResult<ISaveFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await services.FileDialogs.OpenDirectoryAsync(new()) is not PickerResult<IDirectoryLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await services.Clipboard.ReadTextAsync(16) is not PlatformResult<string?>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await services.Clipboard.WriteTextAsync("x") is not PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable)
+            || await services.FileLauncher.LaunchAsync("/tmp/notes.txt") is not PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable))
+            throw new InvalidOperationException("Unavailable window services reported another outcome.");
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        try
+        {
+            await services.FileDialogs.OpenFileAsync(new(), cancelled.Token);
+            throw new InvalidOperationException("Unavailable window services ignored caller cancellation.");
+        }
+        catch (OperationCanceledException) { }
+        try
+        {
+            _ = WindowPlatformServices.Unavailable((PlatformUnavailableReason)99);
+            throw new InvalidOperationException("An undefined unavailability reason was accepted.");
+        }
+        catch (ArgumentOutOfRangeException) { }
     }
 
     private static async Task NativeOwnerDispatchRace()

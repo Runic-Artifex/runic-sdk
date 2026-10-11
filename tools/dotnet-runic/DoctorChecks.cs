@@ -48,6 +48,8 @@ internal interface IDoctorRuntime
     /// <summary>The os-release files, in order, that name the Linux distribution for package remediation.</summary>
     /// <remarks>/usr/lib/os-release is the standard fallback when /etc/os-release is absent.</remarks>
     IReadOnlyList<string> OsReleasePaths => ["/etc/os-release", "/usr/lib/os-release"];
+    /// <summary>Whether a file exists on this machine, such as a D-Bus service or socket.</summary>
+    bool FileExists(string path) => File.Exists(path);
 }
 
 internal sealed class SystemDoctorRuntime : IDoctorRuntime
@@ -175,6 +177,8 @@ internal static class DoctorChecks
         CheckFrontendDevelopment(checks, project);
         CheckBrowser(checks, project, runtime);
         await CheckGtk4ProfileAsync(checks, project, runtime, checkNativeLibraries: target is null, cancellationToken).ConfigureAwait(false);
+        // With --rid the target machine is unknown; this check inspects the machine that runs doctor.
+        if (target is null) CheckPlatformServices(checks, project, runtime);
         if (target is not null)
         {
             await DoctorTargetChecks.InspectAsync(checks, project, target, runtime, cancellationToken).ConfigureAwait(false);
@@ -389,9 +393,13 @@ internal static class DoctorChecks
     /// <summary>
     /// Lists every piece a GTK 4 Desktop application is missing in one check: the GTK 4 platform provider (portal
     /// parent and clipboard), the portal services, and, on a Linux machine, the native libraries. It also warns when
-    /// Runic.Platform.Linux is restored, because its GTK 3 portal parent loads libgtk-3 into the GTK 4 process.
+    /// the project uses Runic.Platform.Linux, whose GTK 3 portal parent loads libgtk-3 into the GTK 4 process.
     /// </summary>
-    /// <remarks>With --rid the target-presentation check reports the native libraries instead.</remarks>
+    /// <remarks>
+    /// Runic.Application.Desktop brings every platform provider and selects the GTK 4 one at run time, so with it
+    /// only a direct Runic.Platform.Linux reference, which means the application calls LinuxPlatformProvider itself,
+    /// is a conflict. With --rid the target-presentation check reports the native libraries instead.
+    /// </remarks>
     private static async Task CheckGtk4ProfileAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
         IDoctorRuntime runtime, bool checkNativeLibraries, CancellationToken cancellationToken)
     {
@@ -399,24 +407,27 @@ internal static class DoctorChecks
         if (!project.UsesGtk4) return;
         HashSet<string> available = new(project.DirectReferences, StringComparer.OrdinalIgnoreCase);
         AddRestoredLibraries(available, project.ProjectAssetsFile);
+        bool facade = available.Contains(DoctorProjectConfiguration.DesktopPackage);
         var missing = new List<string>();
         var remediation = new List<string>();
-        bool gtk3Platform = available.Contains(PlatformLinuxPackage);
+        bool gtk3Platform = facade
+            ? project.DirectReferences.Contains(PlatformLinuxPackage, StringComparer.OrdinalIgnoreCase)
+            : available.Contains(PlatformLinuxPackage);
         if (gtk3Platform)
         {
             remediation.Add($"remove {PlatformLinuxPackage}");
         }
-        if (!available.Contains(PlatformLinuxGtk4Package))
+        if (!facade && !available.Contains(PlatformLinuxGtk4Package))
         {
             missing.Add($"{PlatformLinuxGtk4Package} (Gtk4PlatformProvider: portal parent windows and the clipboard)");
             remediation.Add($"reference {PlatformLinuxGtk4Package}");
         }
-        if (!available.Contains(PlatformLinuxPortalPackage))
+        if (!facade && !available.Contains(PlatformLinuxPortalPackage))
         {
             missing.Add($"{PlatformLinuxPortalPackage} (portal file dialogs and services)");
             remediation.Add($"reference {PlatformLinuxPortalPackage}");
         }
-        else if (gtk3Platform && !project.DirectReferences.Contains(PlatformLinuxPortalPackage, StringComparer.OrdinalIgnoreCase))
+        else if (!facade && gtk3Platform && !project.DirectReferences.Contains(PlatformLinuxPortalPackage, StringComparer.OrdinalIgnoreCase))
         {
             // The portal may come only through Runic.Platform.Linux; it must stay once that is removed.
             remediation.Add($"reference {PlatformLinuxPortalPackage} directly");
@@ -456,11 +467,74 @@ internal static class DoctorChecks
         }
         if (gtk3Platform)
         {
-            problems.Add($"{PlatformLinuxPackage} is referenced: its GTK 3 portal parent windows load libgtk-3, and a GTK 4 process must not load GTK 3.");
+            problems.Add(facade
+                ? $"{PlatformLinuxPackage} is referenced directly: its LinuxPlatformProvider parents dialogs through GTK 3 and loads libgtk-3, and a GTK 4 process must not load GTK 3."
+                : $"{PlatformLinuxPackage} is referenced: its GTK 3 portal parent windows load libgtk-3, and a GTK 4 process must not load GTK 3.");
         }
-        checks.Add(Warn(id, string.Join(" ", problems),
-            $"To use native services with GTK 4: {string.Join(", ", remediation)}. Create the portal owner with " +
-            "Gtk4PlatformProvider.CreatePortalWindowOwner(owner) and select the window provider with DesktopHostOptions.WithGtk4()."));
+        checks.Add(Warn(id, string.Join(" ", problems), facade
+            ? $"To use native services with GTK 4: {string.Join(", ", remediation)}. Call services.AddRunicPlatformServices(), " +
+              "whose PlatformServices selects the GTK 4 provider, and select the window provider with DesktopHostOptions.WithGtk4()."
+            : $"To use native services with GTK 4: {string.Join(", ", remediation)}. Create the portal owner with " +
+              "Gtk4PlatformProvider.CreatePortalWindowOwner(owner) and select the window provider with DesktopHostOptions.WithGtk4()."));
+    }
+
+    internal const string PortalServiceFile = "dbus-1/services/org.freedesktop.portal.Desktop.service";
+
+    /// <summary>
+    /// Names the provider that Runic.Application.Desktop's PlatformServices selects for this machine, and on Linux
+    /// checks that the session can reach xdg-desktop-portal, which serves the file dialogs and file handoff.
+    /// CS-WebUI windows have no native owner, so their platform services report that they are unavailable.
+    /// </summary>
+    private static void CheckPlatformServices(List<DoctorCheck> checks, DoctorProjectConfiguration project, IDoctorRuntime runtime)
+    {
+        const string id = "platform-services";
+        if (project.Host == RunicViewsHost.CsWebUi)
+        {
+            checks.Add(Pass(id, "CS-WebUI windows have no native owner: AddRunicPlatformServices() registers file dialogs, " +
+                "the clipboard and file launching that report OwnerUnavailable. Native services need the Runic Desktop host."));
+            return;
+        }
+        if (project.Host != RunicViewsHost.Desktop) return;
+        switch (runtime.Platform.Os)
+        {
+            case "win":
+                checks.Add(Pass(id, "PlatformServices selects the Windows provider: Win32 file dialogs, clipboard and shell handoff."));
+                return;
+            case "osx":
+                checks.Add(Pass(id, "PlatformServices selects the macOS provider: AppKit file dialogs, clipboard and file handoff."));
+                return;
+            case not "linux":
+                return;
+        }
+        string toolkit = project.UsesGtk4 ? "GTK 4" : "GTK 3";
+        string? runtimeDirectory = runtime.GetEnvironmentVariable("XDG_RUNTIME_DIR");
+        bool sessionBus = !string.IsNullOrWhiteSpace(runtime.GetEnvironmentVariable("DBUS_SESSION_BUS_ADDRESS"))
+            || (!string.IsNullOrWhiteSpace(runtimeDirectory) && Path.IsPathFullyQualified(runtimeDirectory)
+                && runtime.FileExists(Path.Combine(runtimeDirectory, "bus")));
+        bool portal = PortalServiceDirectories(runtime).Any(directory => runtime.FileExists(Path.Combine(directory, PortalServiceFile)));
+        if (sessionBus && portal)
+        {
+            checks.Add(Pass(id, $"PlatformServices selects xdg-desktop-portal file dialogs and handoff parented through {toolkit}, " +
+                $"and the {toolkit} clipboard. The session bus and the portal service are present."));
+            return;
+        }
+        var problems = new List<string>();
+        if (!sessionBus) problems.Add("no D-Bus session bus is reachable");
+        if (!portal) problems.Add("xdg-desktop-portal is not installed");
+        checks.Add(Warn(id, $"PlatformServices selects xdg-desktop-portal file dialogs parented through {toolkit}, but {string.Join(" and ", problems)}; " +
+            "file dialogs and file handoff then report BackendUnavailable.",
+            "Install xdg-desktop-portal and a backend for the desktop (xdg-desktop-portal-gnome, -kde or -gtk), and run the application in a desktop session."));
+    }
+
+    // D-Bus activation reads services from $XDG_DATA_HOME and $XDG_DATA_DIRS, with the specification's defaults.
+    private static IEnumerable<string> PortalServiceDirectories(IDoctorRuntime runtime)
+    {
+        string? home = runtime.GetEnvironmentVariable("XDG_DATA_HOME");
+        if (string.IsNullOrWhiteSpace(home) && runtime.GetEnvironmentVariable("HOME") is { Length: > 0 } user)
+            home = Path.Combine(user, ".local/share");
+        string? dirs = runtime.GetEnvironmentVariable("XDG_DATA_DIRS");
+        IEnumerable<string> system = string.IsNullOrWhiteSpace(dirs) ? ["/usr/local/share", "/usr/share"] : dirs.Split(':', StringSplitOptions.RemoveEmptyEntries);
+        return (home is null ? system : system.Prepend(home)).Where(Path.IsPathFullyQualified);
     }
 
     // A transitive package (for example the portal through Runic.Platform.Linux) counts once restored.

@@ -5,7 +5,9 @@ namespace Runic.Application.Views.Desktop;
 
 /// <summary>Binds native platform services to one open embedded Desktop window.</summary>
 /// <remarks>
-/// Pass the owner to a platform provider, for example <c>WindowsPlatformProvider.CreateFileDialogs(owner)</c>,
+/// <see cref="PlatformServices.ForWindow"/> and <c>services.AddRunicPlatformServices()</c> select the provider for the
+/// running backend. To compose providers yourself, pass the owner to one, for example
+/// <c>WindowsPlatformProvider.CreateFileDialogs(owner)</c>,
 /// <c>LinuxPlatformProvider.CreateFileDialogs(owner)</c> on Linux with GTK 3, or
 /// <c>PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))</c> with GTK 4
 /// (<c>LinuxPlatformProvider</c> parents through GTK 3 and must not be used with a GTK 4 window).

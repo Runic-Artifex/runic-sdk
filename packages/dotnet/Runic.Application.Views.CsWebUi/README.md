@@ -70,7 +70,11 @@ app mode), then the system default browser, then the platform WebView.
 GTK 3 with WebKitGTK 4.1 on Linux, or WKWebView on macOS. For native windows
 and platform services, use
 [Runic.Application.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md)
-instead.
+instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformServices`,
+`IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
+ViewModels that take them resolve on both hosts. CS-WebUI windows have no native
+owner, so every operation and the capability snapshot report
+`Unavailable(OwnerUnavailable)`.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. `Show` and `ShowWebView` then write `RUNIC_APPLICATION_URL=<url>` to

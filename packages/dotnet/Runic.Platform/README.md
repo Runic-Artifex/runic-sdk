@@ -3,6 +3,7 @@
 Host-independent native-service contracts for Runic applications.
 
 Preview API targeting .NET 10. Native providers are explicitly selected; this package has no Desktop or ASP.NET Core dependency.
+Runic.Application.Desktop selects one for each window with `services.AddRunicPlatformServices()`.
 
 Services return `PlatformResult<T>`: `Success`, `Unavailable` with a
 `PlatformUnavailableReason`, or `Failed` with a `PlatformFailureCode`. Operations
@@ -46,3 +47,25 @@ remain compatible and report directory selection unavailable. A custom
 `SupportsDirectorySelection`; `PresentationFiles` always calls the backend's method
 and throws `InvalidOperationException` if an undeclared backend returns a result
 other than `Unavailable`.
+
+`PickerResult<T>.Selected` and `PlatformResult<T>.Success` deconstruct, so a
+caller can match and take the value in one pattern:
+
+```csharp
+if (await files.OpenFileAsync(new()) is PickerResult<IReadFileLease>.Selected(var lease))
+{
+    await using (lease) { /* read */ }
+}
+```
+
+## Window services
+
+`IWindowPlatformServices` groups the file dialogs, text clipboard and file
+launcher of one window, and reports their capabilities together under
+`WindowPlatformServices.CapabilityIds`. Host adapters register it, and its
+parts, per window scope through `services.AddRunicPlatformServices()`, so a
+ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` or
+`IWindowPlatformServices` in its constructor. Runic.Application.Desktop binds
+them to the native window when it opens. A host without a native owner
+registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
+capabilities all report that reason. Tests can use the same instance.

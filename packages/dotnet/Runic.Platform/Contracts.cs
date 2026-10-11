@@ -135,6 +135,9 @@ public abstract record PickerResult<T> where T : IAsyncDisposable
         public Selected(T value) { ArgumentNullException.ThrowIfNull(value); Value = value; }
         /// <summary>The acquired resource.</summary>
         public T Value { get; }
+        /// <summary>Deconstructs the selection, for example in <c>result is PickerResult&lt;IReadFileLease&gt;.Selected(var lease)</c>.</summary>
+        /// <param name="value">The acquired resource.</param>
+        public void Deconstruct(out T value) => value = Value;
     }
     /// <summary>The user dismissed the dialog without selecting a resource.</summary>
     public sealed record Dismissed : PickerResult<T>;

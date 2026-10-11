@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Text;
-using Runic.Application.Views.Codegen.ReactiveUI;
 
 /// <summary>
 /// Emits the optional browser-facing half of a ReactiveUI interaction.  Keeping
@@ -21,7 +20,7 @@ internal static class InteractionCodeEmitter
         var nullability = new NullabilityInfoContext();
         foreach (var property in members)
         {
-            var interaction = ReactiveInteractionInspector.InspectContract(property);
+            var interaction = MvvmCodegenConventions.InspectInteraction(property);
             if (interaction is null) continue;
             if (property.GetMethod is null)
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Interaction,
@@ -157,22 +156,18 @@ internal static class InteractionCodeEmitter
 
     /// <summary>
     /// Returns descriptor expressions for the <c>interactions:</c> base
-    /// constructor argument. The descriptor itself remains in the optional
-    /// ReactiveUI adapter and core stays ReactiveUI-free.
+    /// constructor argument. The library convention that recognised the
+    /// interaction emits a call into its own adapter, so core stays
+    /// ReactiveUI-free.
     /// </summary>
     internal static IEnumerable<string> CSharpDescriptors(IEnumerable<GeneratedInteractionPlan> plans,
         string modelType)
     {
         foreach (var plan in plans)
         {
-            var input = plan.Input.RootCSharpType();
-            var output = plan.Output.RootCSharpType();
             var inputCodec = plan.Property.Name + "InteractionInputCodec";
             var outputCodec = plan.Property.Name + "InteractionOutputCodec";
-            var adapterNamespace = plan.Contract.Flavor is ReactiveUiFlavor.SystemReactive
-                ? "global::Runic.Application.Views.ReactiveUI.Reactive"
-                : "global::Runic.Application.Views.ReactiveUI";
-            yield return $"{adapterNamespace}.ReactiveInteractionDescriptor.Create<{modelType}, {input}, {output}>(\"{LowerFirst(plan.Property.Name)}\", \"{plan.ContractId}\", vm => vm.{plan.Property.Name}, input => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {inputCodec}.Write(writer, input)), element => {outputCodec}.Read(element))";
+            yield return plan.Contract.Descriptor(plan, modelType, LowerFirst(plan.Property.Name), inputCodec, outputCodec);
         }
     }
 
@@ -233,5 +228,5 @@ internal static class InteractionCodeEmitter
     }
 }
 
-internal sealed record GeneratedInteractionPlan(PropertyInfo Property, ReactiveInteractionContract Contract,
+internal sealed record GeneratedInteractionPlan(PropertyInfo Property, MvvmInteraction Contract,
     BridgeTypeGraph Input, BridgeTypeGraph Output, string ContractId);
