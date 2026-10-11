@@ -10,7 +10,7 @@
 //  4. A library that reaches Runic.Application.Views only through the model project and
 //     declares a View gets one RUNICBRIDGE015 warning.
 //  5. A copy of the single project that still sets the 0.7.0-preview.6 property names
-//     builds with them and gets one RUNICBRIDGE016 warning per old name.
+//     builds with them and gets one RUNICBRIDGE017 warning per old name.
 // Usage: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -86,7 +86,7 @@ try {
   const library = build("Split/Library/SplitLibrary.csproj");
   assert.equal(summary(library, "Warning"), 1, "Expected exactly one warning.");
   assert.ok(count(library, /warning RUNICBRIDGE015:.*PreviewView\.cs.*RunicApplicationFrontendGenerationEnabled=true/) > 0, "Expected RUNICBRIDGE015.");
-  // 5. The old property names still apply for one preview, each with RUNICBRIDGE016.
+  // 5. The old property names still apply for one preview, each with RUNICBRIDGE017.
   cpSync(join(directory, "Single"), join(directory, "Renamed"), { recursive: true, filter: source => !/[\\/](bin|obj|Frontend)$/.test(source) });
   cpSync(join(directory, "Single/Frontend"), join(directory, "Renamed/Client"), { recursive: true, filter: source => !/[\\/](dist|generated)$/.test(source) });
   const renamedProject = join(directory, "Renamed/WpfSingle.csproj");
@@ -96,12 +96,12 @@ try {
   writeFileSync(renamedProject, renamedSource.replace(newInstall,
     "<RunicBridgeInstallFrontend>false</RunicBridgeInstallFrontend>" +
     "<RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Client</RunicBridgeFrontendDir>" +
-    "<WarningsNotAsErrors>$(WarningsNotAsErrors);RUNICBRIDGE016</WarningsNotAsErrors>" +
-    "<MSBuildWarningsNotAsErrors>$(MSBuildWarningsNotAsErrors);RUNICBRIDGE016</MSBuildWarningsNotAsErrors>"));
+    "<WarningsNotAsErrors>$(WarningsNotAsErrors);RUNICBRIDGE017</WarningsNotAsErrors>" +
+    "<MSBuildWarningsNotAsErrors>$(MSBuildWarningsNotAsErrors);RUNICBRIDGE017</MSBuildWarningsNotAsErrors>"));
   const renamed = build("Renamed/WpfSingle.csproj");
   assert.equal(summary(renamed, "Warning"), 2, "Expected one warning per old property name.");
-  assert.ok(count(renamed, /warning RUNICBRIDGE016:.*RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/) > 0, "Expected RUNICBRIDGE016 for RunicBridgeFrontendDir.");
-  assert.ok(count(renamed, /warning RUNICBRIDGE016:.*RunicBridgeInstallFrontend is renamed to RunicApplicationFrontendInstallEnabled/) > 0, "Expected RUNICBRIDGE016 for RunicBridgeInstallFrontend.");
+  assert.ok(count(renamed, /warning RUNICBRIDGE017:.*RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/) > 0, "Expected RUNICBRIDGE017 for RunicBridgeFrontendDir.");
+  assert.ok(count(renamed, /warning RUNICBRIDGE017:.*RunicBridgeInstallFrontend is renamed to RunicApplicationFrontendInstallEnabled/) > 0, "Expected RUNICBRIDGE017 for RunicBridgeInstallFrontend.");
   exists("Renamed/Client/src/generated/editor.ts");
   assert.ok(!existsSync(join(directory, "Renamed/Frontend")), "The old frontend directory name was ignored.");
   exists("Renamed/bin/Release/net10.0-windows/www/index.html");

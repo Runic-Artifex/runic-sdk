@@ -29,7 +29,7 @@ internal sealed record DevProjectConfiguration(
         "RunicApplicationFrontendWindowProject",
         "RunicApplicationFrontendDirectory",
         // Names before 0.7.0-preview.7. The package's targets map them to the new ones
-        // (RUNICBRIDGE016), but an unrestored project has not imported those targets yet.
+        // (RUNICBRIDGE017), but an unrestored project has not imported those targets yet.
         "RunicViewsWindowProject",
         "RunicBridgeFrontendDir",
         "RunicApplicationFrontendGeneratedDirectory",

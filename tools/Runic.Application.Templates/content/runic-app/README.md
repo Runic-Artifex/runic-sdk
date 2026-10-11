@@ -22,9 +22,10 @@ or Bun, __PACKAGE_MANAGER_NAME__, the lock file, and the Runic package
 versions. It works before the first restore.
 
 `dotnet build` and `dotnet run` also work without the tool. The first build
-installs missing frontend packages with __PACKAGE_MANAGER_NAME__; set
-`RunicApplicationFrontendInstallEnabled` to `false` to install them yourself. These
-commands build the production frontend instead of starting a development server.
+installs the frontend packages with __PACKAGE_MANAGER_NAME__, and later builds
+install them again when `package.json` or the lock file changes; set
+`RunicApplicationFrontendInstallEnabled` to `false` to install them yourself.
+These commands build the production frontend instead of starting a development server.
 
 ## What opens
 
@@ -234,7 +235,7 @@ The Runic packages supply defaults, so the project file only opts in with
 | `RunicApplicationFrontendGeneratedDirectory` | `Frontend/src/generated` |
 | `RunicApplicationFrontendPackageManager` | `packageManager` in `Frontend/package.json`, then the lock file |
 | `RunicApplicationFrontendBuildCommand` | `<package manager> run build` |
-| `RunicApplicationFrontendInstallEnabled` | `true`: install missing frontend packages during build |
+| `RunicApplicationFrontendInstallEnabled` | `true`: install frontend packages during build when they are missing or `package.json` or the lock file changed |
 | `RunicApplicationFrontendBuildEnabled` | `true`; `dotnet runic dev` sets `false` while its development server runs |
 
 See the [Runic.Application.Views package guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views/README.md)

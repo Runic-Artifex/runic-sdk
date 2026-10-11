@@ -48,7 +48,11 @@ or `https`. An entry names a file, not a URL: one with a `?query` or `#hash`
 throws `DesktopConfigurationException` with the diagnostic code
 `content-entry-invalid`; pass startup state through the ViewModel or route
 inside the frontend instead. A missing root fails `CreateSurfaceAsync` with
-`DirectoryNotFoundException`.
+`DirectoryNotFoundException`. A missing entry file fails it with
+`DesktopConfigurationException` and the code `content-entry-not-found`, which
+names the entry and the HTML pages the root has, instead of a window that times
+out: add the page to the frontend build inputs (for Vite,
+`build.rolldownOptions.input`) so the build emits it.
 
 Content handlers receive request-scoped services and may return fixed or
 request-owned streaming responses. Stream writes are awaited for backpressure;

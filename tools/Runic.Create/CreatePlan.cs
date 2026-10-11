@@ -41,7 +41,7 @@ internal sealed record CreatePlan(
     public string CreatorCommand => Format(
     [
         "dnx", $"Runic.Create@{Version}", "--", Name,
-        .. OutputDirectory is null ? Array.Empty<string>() : ["--directory", OutputDirectory],
+        .. OutputDirectory is null ? Array.Empty<string>() : ["--output", OutputDirectory],
         .. Selections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
         .. Toggles.Select(toggle => toggle.Flag),
     ]);

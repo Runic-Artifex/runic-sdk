@@ -22,10 +22,16 @@ frontend build and leaves the development document in `www/`
 (`RunicApplicationFrontendBuildEnabled=false`, `RunicApplicationFrontendCopyEnabled=false`); the Views
 MSBuild targets still generate the typed TypeScript clients. `dotnet watch`
 restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
-`--no-dotnet-watch`, and `--dry-run` select parts of that loop. `--no-restore`
-also passes `RunicApplicationFrontendInstallEnabled=false`, so the build does not install
-missing frontend packages either. Application arguments after `--` are passed
-to the Window process. When a restore, install or build step fails, the error
+`--no-dotnet-watch`, and `--dry-run` select parts of that loop. `dev` installs
+the frontend packages itself and passes
+`RunicApplicationFrontendInstallEnabled=false`, so the build does not install
+them a second time; with `--no-restore` nothing
+installs them, and a frontend that declares dependencies but has no
+`node_modules` stops with `RAPPDEV1008`. When `dotnet watch` restarts or `dev`
+stops the Window, the application's expected exit code after SIGTERM or Ctrl+C
+(143, 130) is not reported; any other exit code still is. Application
+arguments after `--` are passed to the Window process. When a restore, install
+or build step fails, the error
 names the program and its working directory and then points to `doctor`.
 With Vite, `dev` prepares a development document for every HTML page that
 `vite build` emits, so a second window with its own page (for example
@@ -88,10 +94,11 @@ global properties of `dotnet publish -r <rid>` (`RuntimeIdentifier=<rid>` and
 `_IsPublishing=true`), and in Release unless you pass `-c`, so RID-, publish- and
 configuration-conditioned `PublishAot`, `PublishSelfContained` and
 `SelfContained` settings apply. Doctor does not see properties passed to
-`dotnet publish` on its command line; `--aot` and `--self-contained` check a
-publish with `-p:PublishAot=true` or `--self-contained true`. A malformed RID, or
-`--aot` or `--self-contained` without `--rid`, is a usage error (`RAPPCLI1011`,
-exit code 2).
+`dotnet publish` on its command line; `--aot`, `--no-aot` and
+`--self-contained` check a publish with `-p:PublishAot=true`,
+`-p:PublishAot=false` or `--self-contained true`. A malformed RID, or `--aot`,
+`--no-aot` or `--self-contained` without `--rid`, is a usage error
+(`RAPPCLI1011`, exit code 2).
 
 | Check | What it reports |
 | --- | --- |
@@ -112,28 +119,23 @@ dotnet runic doctor --rid win-x64 --aot --fail-on fail
 
 `dotnet runic doctor --output json` (or `RUNIC_COMMANDLINE_OUTPUT=json`) writes
 one `runic.commandline/1` envelope. A `runic.commandline/1` envelope carries a
-payload only when it succeeds, so by default JSON output reports every completed
-inspection as a successful envelope (exit code 0) with the checks in the payload,
-even when checks fail; read `payload.healthy` to decide. Errors that stop the
-inspection, such as a missing project, produce a failed envelope with a `fault`
-and no payload.
+payload only when it succeeds. Errors that stop the inspection, such as a missing
+project, produce a failed envelope with a `fault` and no payload.
 
 `--fail-on <never|fail|warn>` selects when doctor fails, with the same meaning in
-both output modes. The default is `fail` for human output and `never` for JSON
-output. When a check reaches the threshold, doctor exits with code 1. In JSON
-mode that is a failed envelope with no payload: the fault has code
-`RAPPCLI1009` and `details` mapping each non-passing check id to `fail` or
-`warn`, and the diagnostics mark the checks at the threshold as errors.
+both output modes, and defaults to `fail` in both. When a check reaches the
+threshold, doctor exits with code 1. In JSON mode that is a failed envelope with
+no payload: the fault has code `RAPPCLI1009` and `details` mapping each
+non-passing check id to `fail` or `warn`, and the diagnostics mark the checks at
+the threshold as errors.
 
-Setting `RUNIC_COMMANDLINE_OUTPUT=json` therefore changes doctor's exit code:
-failing checks exit 0 unless `--fail-on` is given. Pass `--fail-on fail` in CI
-when the exit code must reflect the checks.
-
-In CI, either let the exit code decide or check the payload:
+A failing check therefore exits 1 in JSON mode too. To read every check from
+the payload even when some fail, pass `--fail-on never` and decide on
+`payload.healthy`:
 
 ```bash
-dotnet runic doctor --output json --fail-on fail > doctor.json
-dotnet runic doctor --output json | jq -e '.payload.healthy'
+dotnet runic doctor --output json > doctor.json
+dotnet runic doctor --output json --fail-on never | jq -e '.payload.healthy'
 ```
 
 The payload type is `runic.application.tool.doctor/1`:
@@ -220,6 +222,9 @@ result into a JSON report:
 ```bash
 dotnet runic size --project path/to/App.csproj --runtime linux-x64 --report measurements/linux.json
 ```
+
+As in `doctor`, the runtime identifier is `--runtime`, `--rid` or `-r`. `size`
+publishes with Native AOT unless you pass `--no-aot`; `--aot` states the default.
 
 `--verify` names any executable to run after a successful publish: a path or a
 command on `PATH`, such as `node` or `bun`. It is not looked up in the publish
