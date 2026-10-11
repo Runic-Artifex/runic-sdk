@@ -1,8 +1,35 @@
-# Generated client checks
+# Runic.Application.Testing.Tests
 
-Run this project's managed test executable in the project development environment.
-It exports actual C# wire payloads, then runs the generated data/command client
-and the interaction lifecycle harness in sequence. `GeneratedHarnessProcess`
+A TUnit test application on Microsoft.Testing.Platform. Run it from the
+repository root in the project development environment:
+
+```sh
+direnv exec . dotnet run --project tests/dotnet/Runic.Application.Testing.Tests
+```
+
+Select a subset with a tree-node filter (`/<assembly>/<namespace>/<class>/<test>`):
+
+```sh
+# Presentation of navigation regions (the engine suite is tests/dotnet/Runic.Navigation.Tests)
+direnv exec . dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -- \
+  --treenode-filter "/*/*/NavigationPresentationTests|ReactiveNavigationTests/*"
+# Model context: ModelContextTests and ModelContextPresentationTests
+direnv exec . dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -- \
+  --treenode-filter "/*/*/ModelContext*/*"
+```
+
+`ContinuationTests`, `AcceptedWorkScopeTests` and `RunicWindowHostTests` are
+selected the same way, by class name. The cases run one at a time
+(`[assembly: NotInParallel]` in `AssemblyInfo.cs`).
+
+## Generated client checks
+
+`GeneratedClientHarness` and `GeneratedInteractionClientHarness` are cases of
+this suite. The first starts this executable as a helper with
+`--export-generated-client-fixture <path>` (handled by the hand-written
+`Program.cs` before the test platform starts) to export actual C# wire payloads,
+then runs the generated data/command client harnesses; the second runs the
+interaction lifecycle harness. `GeneratedHarnessProcess`
 holds an exclusive checkout lock, bounds each child to 30 seconds and 512 MiB
 observed resident memory, retains bounded output, and kills and reaps a failed
 child before releasing the lock. Its supervisor runs outside Bun's event loop.

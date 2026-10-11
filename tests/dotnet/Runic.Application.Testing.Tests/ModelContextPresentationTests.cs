@@ -6,28 +6,22 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // #132: every way a ReactiveUI ViewModel reaches a window either binds it to the
 // window's model context or fails at once, naming the ViewModel type. None of
 // these ViewModels calls RunicModelContextRegistry.Bind.
-internal static class ModelContextPresentationTests
+internal sealed class ModelContextPresentationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
     private static RunicModelContextRegistry Registry => RunicModelContextRegistry.Shared;
 
-    public static async Task RunAsync()
-    {
-        await WindowRootAndCreatedChildAreBoundWithoutManualBind();
-        await RegionEntriesAreBoundByTheNavigatorAndWindow();
-        await HandBuiltSessionBindsTheBridgedModel();
-        await ForeignContextFailsFastNamingTheViewModel();
-    }
-
     // The host path of Desktop and CS-WebUI windows: the ViewModels come from the
     // window's service scope, and the window is given that scope's context.
-    private static async Task WindowRootAndCreatedChildAreBoundWithoutManualBind()
+    [Test]
+    public async Task WindowRootAndCreatedChildAreBoundWithoutManualBind()
     {
         var services = new ServiceCollection();
         services.AddRunicReactiveModelContext();
@@ -63,7 +57,8 @@ internal static class ModelContextPresentationTests
         Require(!Registry.TryGet(shell, out _), "Closing the window kept its root ViewModel bound.");
     }
 
-    private static async Task RegionEntriesAreBoundByTheNavigatorAndWindow()
+    [Test]
+    public async Task RegionEntriesAreBoundByTheNavigatorAndWindow()
     {
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
@@ -84,7 +79,8 @@ internal static class ModelContextPresentationTests
 
     // The session of issue #132: built by hand, without a root ViewModel. Its bridge
     // binds the model for the bridge's lifetime instead of falling back to a lock.
-    private static async Task HandBuiltSessionBindsTheBridgedModel()
+    [Test]
+    public async Task HandBuiltSessionBindsTheBridgedModel()
     {
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport, new ContextPageViewLocator());
@@ -104,7 +100,8 @@ internal static class ModelContextPresentationTests
         shell.Main?.Dispose();
     }
 
-    private static async Task ForeignContextFailsFastNamingTheViewModel()
+    [Test]
+    public async Task ForeignContextFailsFastNamingTheViewModel()
     {
         await using var context = new RunicModelContext();
         await using var other = new RunicModelContext();

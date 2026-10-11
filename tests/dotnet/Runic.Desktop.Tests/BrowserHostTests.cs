@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.Versioning;
@@ -7,9 +8,11 @@ using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
 
-public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output)
+public sealed class BrowserHostTests
 {
-    [Fact]
+    private readonly TestOutput output = new();
+
+    [Test]
     public void DiscoversBrowsersFromTheConfiguredFolder()
     {
         var folder = Directory.CreateTempSubdirectory("runic-desktop-browser-");
@@ -42,7 +45,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public void BuildsWebUiCompatibleChromiumAndFirefoxArguments()
     {
         var url = new Uri("http://127.0.0.1:12345/index.html");
@@ -104,7 +107,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         Assert.Equal(url.AbsoluteUri, firefoxArguments[^1]);
     }
 
-    [Fact]
+    [Test]
     public void ParsesQuotedCustomParametersWithoutUsingAShell()
     {
         Assert.Equal(
@@ -113,7 +116,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         Assert.Throws<ArgumentException>(() => WebUiCommandLine.Split("--flag \"unterminated"));
     }
 
-    [Fact]
+    [Test]
     public void CreatesButDoesNotOwnAnExplicitProfileFolder()
     {
         var parent = Directory.CreateTempSubdirectory("runic-desktop-profile-");
@@ -134,7 +137,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task OwnsChromiumProcessProfileRestartAndNaturalExit()
     {
         var browser = FindChromiumBrowser();
@@ -230,7 +233,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
 
     // Records each browser-launch-stalled and bridge-handshake-expired warning and
     // writes it to the test output.
-    private sealed class StalledLaunchListener(Xunit.Abstractions.ITestOutputHelper output) : TraceListener
+    private sealed class StalledLaunchListener(TestOutput output) : TraceListener
     {
         public ConcurrentQueue<string> Messages { get; } = new();
 
@@ -247,7 +250,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task RelaunchesABrowserThatStallsBeforeItsFirstRequestWithAFreshProfile()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -290,7 +293,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DoesNotRelaunchABrowserWhosePageWasRequested()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -326,7 +329,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task KeepsWaitingWhenThePageIsRequestedWhileTheRelaunchWaitsForTheGate()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -373,7 +376,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task AFailingDiagnosticSinkDoesNotStopTheRelaunch()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -413,7 +416,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DesktopHostReportsAndLogsEachStalledLaunch()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -461,7 +464,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DesktopHostLaunchesAStalledBrowserOnceWhenRelaunchingIsDisabled()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -530,7 +533,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         WebUiApplication.SetBrowserLaunchAttempts(2);
     }
 
-    [Fact]
+    [Test]
     public async Task ClosingBrowserWaitsForInheritedPipesBeforeDeletingProfile()
     {
         if (OperatingSystem.IsWindows()) return;
@@ -606,7 +609,7 @@ public sealed class BrowserHostTests(Xunit.Abstractions.ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Test]
     public async Task CanDisposeOwnedBrowserFromItsBindingCallback()
     {
         var browser = FindChromiumBrowser();

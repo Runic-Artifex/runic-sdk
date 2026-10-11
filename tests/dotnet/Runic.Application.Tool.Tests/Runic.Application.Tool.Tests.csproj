@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <AssemblyName>Runic.Application.Tool.Tests</AssemblyName>
@@ -8,9 +9,16 @@
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The cases start this executable again as a child process (see Program.cs), so the entry point is hand-written. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../tools/dotnet-runic/Runic.Application.Tool.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

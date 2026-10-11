@@ -1,23 +1,17 @@
 using System.Globalization;
 using System.Text;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // These tests cover protocol properties of the registry itself. Runtime JSON
 // parsing and generated-client receipt decoding are intentionally exercised by
 // the bridge and generated-client suites.
-internal static class CheckedWriteGuaranteeTests
+internal sealed class CheckedWriteGuaranteeTests
 {
-    internal static void Run()
-    {
-        SameIdReplaysOnlyAnIdenticalRequest();
-        CanonicalIdentityDoesNotRetainMutableRequestValues();
-        ReceiptRetentionIsBoundedByBytesAsWellAsCount();
-        OversizedReceiptLeavesAnExpiryTombstone();
-    }
-
-    private static void SameIdReplaysOnlyAnIdenticalRequest()
+    [Test]
+    public void SameIdReplaysOnlyAnIdenticalRequest()
     {
         var value = 0;
         var applies = 0;
@@ -43,7 +37,8 @@ internal static class CheckedWriteGuaranteeTests
             "A request-ID reuse with changed checked-write input invoked the setter.");
     }
 
-    private static void CanonicalIdentityDoesNotRetainMutableRequestValues()
+    [Test]
+    public void CanonicalIdentityDoesNotRetainMutableRequestValues()
     {
         var value = new MutableNumber(0);
         var applies = 0;
@@ -67,7 +62,8 @@ internal static class CheckedWriteGuaranteeTests
             "Canonical checked-write identity did not replay after callers mutated their request objects.");
     }
 
-    private static void ReceiptRetentionIsBoundedByBytesAsWellAsCount()
+    [Test]
+    public void ReceiptRetentionIsBoundedByBytesAsWellAsCount()
     {
         var value = "0000000000";
         using var registry = new BridgeFieldWriteRegistry<string>("owner", "text", () => value, next => value = next,
@@ -87,7 +83,8 @@ internal static class CheckedWriteGuaranteeTests
             "Receipt-byte retention evicted the newest receipt.");
     }
 
-    private static void OversizedReceiptLeavesAnExpiryTombstone()
+    [Test]
+    public void OversizedReceiptLeavesAnExpiryTombstone()
     {
         var value = new string('a', 128);
         var applies = 0;

@@ -5,33 +5,32 @@ using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
-using Xunit;
 
 namespace HybridNotes.Tests;
 
 public sealed class EditorTests
 {
-    [Fact]
+    [Test]
     public async Task Native_and_web_edits_share_validation_dirty_and_save_state()
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
         await app.Context.InvokeAsync(() => app.Editor.Title = " ");
-        Assert.Equal("Enter a title.", web.Root.Snapshot().Read(vm => vm.ValidationMessage));
-        Assert.False(web.Root.Snapshot().CanExecute(vm => vm.SaveCommand));
+        await Assert.That(web.Root.Snapshot().Read(vm => vm.ValidationMessage)).IsEqualTo("Enter a title.");
+        await Assert.That(web.Root.Snapshot().CanExecute(vm => vm.SaveCommand)).IsFalse();
 
         web.Root.Set(vm => vm.Title, "Updated").EnsureOk();
-        Assert.Equal("Updated", app.Editor.Title);
-        Assert.True(app.Editor.IsDirty);
+        await Assert.That(app.Editor.Title).IsEqualTo("Updated");
+        await Assert.That(app.Editor.IsDirty).IsTrue();
         var save = web.Root.Start(vm => vm.SaveCommand);
         app.Clock.Advance(TimeSpan.FromMilliseconds(350));
-        Assert.Equal("succeeded", (await save.WaitAsync()).Kind);
-        Assert.Equal("Updated", app.Store.Get(1).Title);
-        Assert.False(app.Editor.IsDirty);
-        Assert.Equal("Saved.", web.Root.Snapshot().Read(vm => vm.Status));
+        await Assert.That((await save.WaitAsync()).Kind).IsEqualTo("succeeded");
+        await Assert.That(app.Store.Get(1).Title).IsEqualTo("Updated");
+        await Assert.That(app.Editor.IsDirty).IsFalse();
+        await Assert.That(web.Root.Snapshot().Read(vm => vm.Status)).IsEqualTo("Saved.");
     }
 
-    [Fact]
+    [Test]
     public async Task Edits_made_while_saving_remain_dirty()
     {
         await using var app = await TestApp.OpenAsync();
@@ -41,12 +40,12 @@ public sealed class EditorTests
         web.Root.Set(vm => vm.Body, "Later edit").EnsureOk();
         app.Clock.Advance(TimeSpan.FromMilliseconds(350));
         await save.WaitAsync();
-        Assert.Equal("Submitted", app.Store.Get(1).Body);
-        Assert.Equal("Later edit", app.Editor.Body);
-        Assert.True(web.Root.Snapshot().Read(vm => vm.IsDirty));
+        await Assert.That(app.Store.Get(1).Body).IsEqualTo("Submitted");
+        await Assert.That(app.Editor.Body).IsEqualTo("Later edit");
+        await Assert.That(web.Root.Snapshot().Read(vm => vm.IsDirty)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task Native_cancel_command_cancels_a_web_save_without_losing_the_draft()
     {
         await using var app = await TestApp.OpenAsync();
@@ -56,13 +55,13 @@ public sealed class EditorTests
         await app.Context.InvokeAsync(() => app.Editor.SaveCancelCommand.Execute(null));
         await save.WaitAsync();
         app.Clock.Advance(TimeSpan.FromSeconds(1));
-        Assert.Equal("Groceries", app.Store.Get(1).Title);
-        Assert.Equal("Draft", app.Editor.Title);
-        Assert.True(app.Editor.IsDirty);
-        Assert.Equal("Save cancelled.", app.Editor.Status);
+        await Assert.That(app.Store.Get(1).Title).IsEqualTo("Groceries");
+        await Assert.That(app.Editor.Title).IsEqualTo("Draft");
+        await Assert.That(app.Editor.IsDirty).IsTrue();
+        await Assert.That(app.Editor.Status).IsEqualTo("Save cancelled.");
     }
 
-    [Fact]
+    [Test]
     public async Task A_cancel_after_the_store_writes_keeps_the_save()
     {
         var storage = new LateCancelStore();
@@ -71,13 +70,13 @@ public sealed class EditorTests
         using var web = app.Connect();
         web.Root.Set(vm => vm.Title, "Written").EnsureOk();
         (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
-        Assert.Equal("Written", storage.Get(1).Title);
-        Assert.False(app.Editor.IsDirty);
-        Assert.Equal("Saved.", app.Editor.Status);
-        Assert.False(web.Root.Snapshot().CanExecute(vm => vm.SaveCommand));
+        await Assert.That(storage.Get(1).Title).IsEqualTo("Written");
+        await Assert.That(app.Editor.IsDirty).IsFalse();
+        await Assert.That(app.Editor.Status).IsEqualTo("Saved.");
+        await Assert.That(web.Root.Snapshot().CanExecute(vm => vm.SaveCommand)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task A_storage_failure_is_shared_and_can_be_retried()
     {
         var storage = new FailingStore();
@@ -85,16 +84,16 @@ public sealed class EditorTests
         using var web = app.Connect();
         web.Root.Set(vm => vm.Title, "Retry").EnsureOk();
         (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
-        Assert.Equal("Disk unavailable.", web.Root.Snapshot().Read(vm => vm.Error));
-        Assert.True(app.Editor.IsDirty);
+        await Assert.That(web.Root.Snapshot().Read(vm => vm.Error)).IsEqualTo("Disk unavailable.");
+        await Assert.That(app.Editor.IsDirty).IsTrue();
         storage.Fail = false;
         (await web.Root.ExecuteAsync(vm => vm.SaveCommand)).EnsureOk();
-        Assert.Equal("", app.Editor.Error);
-        Assert.False(app.Editor.IsDirty);
-        Assert.Equal("Retry", storage.Get(1).Title);
+        await Assert.That(app.Editor.Error).IsEqualTo("");
+        await Assert.That(app.Editor.IsDirty).IsFalse();
+        await Assert.That(storage.Get(1).Title).IsEqualTo("Retry");
     }
 
-    [Fact]
+    [Test]
     public async Task Switching_and_reloading_presentation_preserve_model_and_navigation_identity()
     {
         await using var app = await TestApp.OpenAsync();
@@ -104,18 +103,18 @@ public sealed class EditorTests
         await app.Context.InvokeAsync(() => app.Editor.Title = "Native edit");
         using (var secondWeb = app.Connect())
         {
-            Assert.Equal("Native edit", secondWeb.Root.Snapshot().Read(vm => vm.Title));
-            Assert.Equal("Draft survives", secondWeb.Root.Snapshot().Read(vm => vm.Body));
+            await Assert.That(secondWeb.Root.Snapshot().Read(vm => vm.Title)).IsEqualTo("Native edit");
+            await Assert.That(secondWeb.Root.Snapshot().Read(vm => vm.Body)).IsEqualTo("Draft survives");
         }
         using var reloadedWeb = app.Connect();
-        Assert.True(reloadedWeb.Root.Snapshot().Read(vm => vm.IsDirty));
-        Assert.Same(entry, app.Regions.Main.CurrentEntry);
-        Assert.Same(app.Editor, app.Regions.Main.Current);
-        Assert.Null(app.Regions.Dialog.Current); // Presentation swaps never ask the navigation guard.
-        Assert.True(reloadedWeb.Root.Snapshot().CanExecute(vm => vm.SaveCommand));
+        await Assert.That(reloadedWeb.Root.Snapshot().Read(vm => vm.IsDirty)).IsTrue();
+        await Assert.That(app.Regions.Main.CurrentEntry).IsSameReferenceAs(entry);
+        await Assert.That(app.Regions.Main.Current).IsSameReferenceAs(app.Editor);
+        await Assert.That(app.Regions.Dialog.Current).IsNull(); // Presentation swaps never ask the navigation guard.
+        await Assert.That(reloadedWeb.Root.Snapshot().CanExecute(vm => vm.SaveCommand)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task A_native_save_survives_web_session_recreation()
     {
         await using var app = await TestApp.OpenAsync();
@@ -125,16 +124,16 @@ public sealed class EditorTests
             app.Editor.Body = "Native save";
             saving = app.Editor.SaveCommand.ExecuteAsync(null);
         });
-        using (var first = app.Connect()) Assert.True(first.Root.Snapshot().IsExecuting(vm => vm.SaveCommand));
+        using (var first = app.Connect()) await Assert.That(first.Root.Snapshot().IsExecuting(vm => vm.SaveCommand)).IsTrue();
         using var remounted = app.Connect();
-        Assert.True(remounted.Root.Snapshot().IsExecuting(vm => vm.SaveCommand));
+        await Assert.That(remounted.Root.Snapshot().IsExecuting(vm => vm.SaveCommand)).IsTrue();
         app.Clock.Advance(TimeSpan.FromMilliseconds(350));
         await saving;
-        Assert.Equal("Native save", app.Store.Get(1).Body);
-        Assert.False(remounted.Root.Snapshot().Read(vm => vm.IsDirty));
+        await Assert.That(app.Store.Get(1).Body).IsEqualTo("Native save");
+        await Assert.That(remounted.Root.Snapshot().Read(vm => vm.IsDirty)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task Closing_a_web_session_cancels_its_save_but_keeps_the_model_usable()
     {
         await using var app = await TestApp.OpenAsync();
@@ -146,12 +145,12 @@ public sealed class EditorTests
         await app.Editor.SaveCommand.ExecutionTask!;
         app.Clock.Advance(TimeSpan.FromSeconds(1));
         using var remounted = app.Connect();
-        Assert.Equal("Groceries", app.Store.Get(1).Title);
-        Assert.Equal("Uncommitted", remounted.Root.Snapshot().Read(vm => vm.Title));
-        Assert.True(remounted.Root.Snapshot().CanExecute(vm => vm.SaveCommand));
+        await Assert.That(app.Store.Get(1).Title).IsEqualTo("Groceries");
+        await Assert.That(remounted.Root.Snapshot().Read(vm => vm.Title)).IsEqualTo("Uncommitted");
+        await Assert.That(remounted.Root.Snapshot().CanExecute(vm => vm.SaveCommand)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task A_rejected_departure_keeps_the_draft_and_confirmed_departure_discards_on_commit()
     {
         await using var app = await TestApp.OpenAsync();
@@ -161,9 +160,9 @@ public sealed class EditorTests
         var back = app.Regions.Main.BackAsync().AsTask();
         await WhenAsync(app.Regions.Dialog, () => app.Regions.Dialog.Current is ConfirmViewModel);
         await ((ConfirmViewModel)app.Regions.Dialog.Current!).NoCommand.ExecuteAsync(null);
-        Assert.IsType<NavigationResult<object>.Rejected>(await back);
-        Assert.Same(entry, app.Regions.Main.CurrentEntry);
-        Assert.True(app.Editor.IsDirty);
+        await Assert.That(await back).IsTypeOf<NavigationResult<object>.Rejected>();
+        await Assert.That(app.Regions.Main.CurrentEntry).IsSameReferenceAs(entry);
+        await Assert.That(app.Editor.IsDirty).IsTrue();
 
         bool? dirtyAtCommit = null;
         app.Regions.Main.PropertyChanged += (_, e) =>
@@ -174,12 +173,12 @@ public sealed class EditorTests
         back = app.Regions.Main.BackAsync().AsTask();
         await WhenAsync(app.Regions.Dialog, () => app.Regions.Dialog.Current is ConfirmViewModel);
         await ((ConfirmViewModel)app.Regions.Dialog.Current!).YesCommand.ExecuteAsync(null);
-        Assert.IsType<NavigationResult<object>.Committed>(await back);
-        Assert.False(dirtyAtCommit);
-        Assert.Equal("Groceries", app.Editor.Title);
+        await Assert.That(await back).IsTypeOf<NavigationResult<object>.Committed>();
+        await Assert.That(dirtyAtCommit).IsFalse();
+        await Assert.That(app.Editor.Title).IsEqualTo("Groceries");
     }
 
-    [Fact]
+    [Test]
     public async Task Cancelling_a_departure_dismisses_its_native_prompt_and_keeps_the_draft()
     {
         await using var app = await TestApp.OpenAsync();
@@ -189,29 +188,29 @@ public sealed class EditorTests
         var leaving = app.Regions.Main.BackAsync(cancellationToken: cancellation.Token).AsTask();
         await WhenAsync(app.Regions.Dialog, () => app.Regions.Dialog.Current is not null);
         cancellation.Cancel();
-        var rejected = Assert.IsType<NavigationResult<object>.Rejected>(await leaving);
-        Assert.Equal(NavigationRejection.Cancelled, rejected.Reason);
+        var rejected = await Assert.That(await leaving).IsTypeOf<NavigationResult<object>.Rejected>();
+        await Assert.That(rejected!.Reason).IsEqualTo(NavigationRejection.Cancelled);
         // A cancelled Back caller completes immediately; its prompt closes in a
         // separate transition. Drain that cleanup before asserting the UI state.
         await app.Regions.Main.Navigator.WhenIdleAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Null(app.Regions.Dialog.Current);
-        Assert.Same(app.Editor, app.Regions.Main.Current);
-        Assert.Equal("Keep this", app.Editor.Body);
-        Assert.True(app.Editor.IsDirty);
+        await Assert.That(app.Regions.Dialog.Current).IsNull();
+        await Assert.That(app.Regions.Main.Current).IsSameReferenceAs(app.Editor);
+        await Assert.That(app.Editor.Body).IsEqualTo("Keep this");
+        await Assert.That(app.Editor.IsDirty).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task A_running_save_blocks_departure_until_cancelled()
     {
         await using var app = await TestApp.OpenAsync();
         using var web = app.Connect();
         web.Root.Set(vm => vm.Title, "Draft").EnsureOk();
         var save = web.Root.Start(vm => vm.SaveCommand);
-        Assert.IsType<NavigationResult<object>.Rejected>(await app.Regions.Main.BackAsync());
-        Assert.Null(app.Regions.Dialog.Current);
+        await Assert.That(await app.Regions.Main.BackAsync()).IsTypeOf<NavigationResult<object>.Rejected>();
+        await Assert.That(app.Regions.Dialog.Current).IsNull();
         (await web.Root.ExecuteAsync(vm => vm.SaveCancelCommand)).EnsureOk();
         await save.WaitAsync();
-        Assert.True(app.Editor.IsDirty);
+        await Assert.That(app.Editor.IsDirty).IsTrue();
     }
 
     private static async Task WhenAsync(INotifyPropertyChanged source, Func<bool> ready)

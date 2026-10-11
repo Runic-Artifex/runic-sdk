@@ -15,10 +15,11 @@ export function selection(scope) {
     if (item && JSON.parse(readFileSync(resolve(root, item.path, 'package.json'))).scripts?.test)
       return {kind: 'web', paths: [item.path]};
   }
+  // Every .NET suite is an executable (TUnit generates or hosts its entry point).
   if (scope?.endsWith('.csproj')) {
     const path = resolve(root, scope);
-    const executable = /<OutputType>Exe<\/OutputType>/.test(readFileSync(path, 'utf8'));
-    return {kind: executable ? 'managed' : 'dotnet-test', paths: [path]};
+    if (!/<OutputType>Exe<\/OutputType>/.test(readFileSync(path, 'utf8'))) throw new Error(`${scope} is not a test executable.`);
+    return {kind: 'managed', paths: [path]};
   }
   if (/\.test\.[cm]?[jt]s$/.test(scope ?? '')) {
     readFileSync(resolve(root, scope));
@@ -42,10 +43,8 @@ function main() {
     // Generated-client checks import the built Views runtime package.
     if (!existsSync(resolve(root, 'packages/web/views/dist/index.js'))) viewsRuntime();
     for (const path of selected.paths) {
-      if (selected.kind === 'managed') {
-        const args = [...testReportArguments(path, extra), ...extra];
-        run('dotnet', ['run', '--project', path, '-c', configuration, ...(args.length ? ['--', ...args] : [])]);
-      } else run('dotnet', ['test', path, '-c', configuration, ...extra]);
+      const args = [...testReportArguments(path, extra), ...extra];
+      run('dotnet', ['run', '--project', path, '-c', configuration, ...(args.length ? ['--', ...args] : [])]);
     }
     for (const [command, args] of selected.commands ?? []) run(command, args);
   }

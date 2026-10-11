@@ -1,12 +1,14 @@
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class GeneratedInteractionTests
+internal sealed class GeneratedInteractionTests
 {
-    public static async Task RunAsync()
+    [Test]
+    public async Task GeneratedInteractionDeliversTypedBrowserAnswersAsync()
     {
         using var model = new GeneratedInteractionViewModel();
         using var host = new RunicWindowTestHost<GeneratedInteractionViewModel>(model, "generatedInteraction",

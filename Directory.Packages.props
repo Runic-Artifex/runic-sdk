@@ -26,7 +26,6 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4258.31" />
     <PackageVersion Include="ReactiveUI" Version="26.0.1" />
     <PackageVersion Include="ReactiveUI.Reactive" Version="26.0.1" />
@@ -60,7 +59,6 @@
     <PackageVersion Include="Runic.Platform.Linux.Gtk4" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux.Portal" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Desktop" Version="$(RunicSdkVersion)" />
-    <PackageVersion Include="coverlet.collector" Version="10.1.0" />
     <!-- The runic-app template test project pins the same TUnit version. The
          TUnit suites (see CONTRIBUTING.md) keep TUnit.Core and TUnit.Engine on it too. -->
     <PackageVersion Include="TUnit" Version="1.73.19" />
@@ -68,7 +66,7 @@
     <PackageVersion Include="TUnit.Engine" Version="1.73.19" />
     <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.1" />
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <!-- Runic.Desktop.Tests runs on TUnit and keeps xUnit's assertion library for its cases. -->
+    <PackageVersion Include="xunit.assert" Version="2.9.3" />
   </ItemGroup>
 </Project>

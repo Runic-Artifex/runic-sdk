@@ -1,21 +1,31 @@
 # Linux clipboard native conformance
 
+This is a TUnit test application. Without a filter, the executable runs only the
+portable owner-race checks and never initializes GTK. Each native mode is an
+explicit case selected by its category; run one category per process, because
+each case owns the GTK loop.
+
 Build and run in the locked SDK environment with a fresh X11 display, for example
-`GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet run --project tests/dotnet/Runic.Platform.Linux.Tests -c Release -- --native`.
+`GDK_BACKEND=x11 GSETTINGS_BACKEND=memory xvfb-run -a dotnet run --project tests/dotnet/Runic.Platform.Linux.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=Native]"`.
 Always select X11 explicitly: inherited `GDK_BACKEND=wayland` otherwise overrides
-Xvfb and uses the host compositor. Without `--native`, the executable runs only
-portable owner-race checks and never initializes GTK.
+Xvfb and uses the host compositor.
 The test creates GTK directly on a dedicated owner thread, uses the shipping
-provider and reads the selection in an independent process using GTK's native API.
+provider and reads the selection in an independent process using GTK's native API
+(the executable started again with `--observer`).
 It checks absent/empty text, Unicode, length bounds, canceled writes, cancellation
 after native acquisition, canceled read drain/retry and ownership replacement.
 
-`--directory-native` checks GTK3 directory chooser cancellation, retry and owner
-destruction. `--directory-loop-stopped` stops the GTK loop while a chooser is open and
-checks that the picker completes and presentation shutdown drains.
+`--treenode-filter "/*/*/*/*[Category=DirectoryNative]"` checks GTK3 directory
+chooser cancellation, retry and owner destruction.
+`--treenode-filter "/*/*/*/*[Category=DirectoryLoopStopped]"` stops the GTK loop
+while a chooser is open and checks that the picker completes and presentation
+shutdown drains. `--treenode-filter "/*/*/*/*[Category=PortalCancel]"` is a manual
+check against a real desktop portal: it starts a file request and cancels it.
+Every native case first exports the GTK3 portal parent.
 
 Publish this same executable with `-r linux-x64 -p:PublishAot=true` for NativeAOT;
-run the published executable with `--native` under the same explicit display profile. Keep source revision,
+run the published executable without arguments (portable checks) and with
+`--treenode-filter "/*/*/*/*[Category=Native]"` under the same explicit display profile. Keep source revision,
 executable/dependency hashes, toolchain and display profile with the result. A
 headless X11 result does not certify Wayland, portal file selection, a screen
 reader, focus restoration or an installed Desktop application. No selected files

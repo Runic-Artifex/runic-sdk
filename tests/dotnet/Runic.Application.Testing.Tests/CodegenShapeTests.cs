@@ -1,12 +1,14 @@
 using System.Text.Json;
 using Runic.Application.Testing;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Exercises the generated codecs for CodegenShapeViewModel through its routes.
-internal static class CodegenShapeTests
+internal sealed class CodegenShapeTests
 {
-    internal static void Run()
+    [Test]
+    public void GeneratedCodecsRoundTripModelShapes()
     {
         var model = new CodegenShapeViewModel();
         using var host = new RunicWindowTestHost<CodegenShapeViewModel>(model, "codegenShape",
@@ -96,7 +98,8 @@ internal static class CodegenShapeTests
             $"{{\"value\":{value},\"fallback\":null,\"items\":[{item}],\"values\":[{element}],\"map\":{{\"key\":{entry}}},\"inner\":{{\"value\":{value}}}}}";
     }
 
-    internal static async Task RunNullableReactiveAsync()
+    [Test]
+    public async Task NullableReactiveTypeArgumentsReachTheClientAsync()
     {
         var client = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "nullableReactive.ts"));
         foreach (var expected in new[]
@@ -130,7 +133,8 @@ internal static class CodegenShapeTests
 
     // Generated TypeScript reads like hand-written code: named types after the
     // C# types, literal unions for enums, XML comments, and real parameter names.
-    internal static void RunTypeScriptSurface()
+    [Test]
+    public void GeneratedTypeScriptSurface()
     {
         var directory = GeneratedTypeScriptDirectory();
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");
@@ -238,7 +242,8 @@ internal static class CodegenShapeTests
     // Names that collide, generic DTOs over arrays, case-less enums, wire
     // names that are special on JavaScript objects, reserved parameter names
     // and a comment terminator inside documentation.
-    internal static async Task RunNamingAsync()
+    [Test]
+    public async Task GeneratedNamesAvoidCollisionsAndReservedWordsAsync()
     {
         var directory = GeneratedTypeScriptDirectory();
         var types = File.ReadAllText(Path.Combine(directory, "types.ts")).ReplaceLineEndings("\n");

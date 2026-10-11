@@ -12,46 +12,37 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
+using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 
 namespace Runic.Application.Testing.Tests;
 
 // W130-029: a command's declared failure ([RunicFailure] + RunicFailureException)
 // crosses the Bridge as domain-failed with its encoded value. Codegen does not
 // emit failure encoders yet, so these descriptors carry a hand-written one.
-internal static partial class DomainFailureTests
+internal sealed partial class DomainFailureTests
 {
-    public static async Task RunAsync()
+    // The former runner ran the first three cases with BridgeDiagnostics.IncludeFailureDetail off and on (D-1: a
+    // domain failure never carries detail, in either mode), the others with it off, and then restored it.
+    private bool? includeFailureDetail;
+
+    [Before(HookType.Test)]
+    public void DisableFailureDetail()
     {
-        var previous = BridgeDiagnostics.IncludeFailureDetail;
-        try
-        {
-            // D-1: a domain failure never carries detail, in either mode.
-            foreach (var development in new[] { false, true })
-            {
-                BridgeDiagnostics.IncludeFailureDetail = development;
-                await CommandsReplyWithTheDeclaredFailureAsync();
-                await OperationsEndDomainFailedAsync();
-                KeyFailureKeepsTheDomainFailure();
-            }
-            BridgeDiagnostics.IncludeFailureDetail = false;
-            await AggregatesAreUnwrappedOnlyWithOneInnerAsync();
-            await UndeclaredFailuresStayFailedAsync();
-            await CancellationRaceIsDomainFailedAsync();
-            await StreamsKeepTheirItemsAsync();
-            await RetentionCountsFailuresAsync();
-            await TelemetryTreatsDomainFailuresAsExpectedAsync();
-            FingerprintCoversOnlyDeclarations();
-            FingerprintFollowsDeclarationChanges();
-            await PortableFixturesMatchAsync();
-        }
-        finally
-        {
-            BridgeDiagnostics.IncludeFailureDetail = previous;
-        }
+        includeFailureDetail = BridgeDiagnostics.IncludeFailureDetail;
+        BridgeDiagnostics.IncludeFailureDetail = false;
     }
 
-    private static async Task CommandsReplyWithTheDeclaredFailureAsync()
+    [After(HookType.Test)]
+    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = includeFailureDetail;
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("CommandsReplyWithTheDeclaredFailureAsync(development: $development)")]
+    public async Task CommandsReplyWithTheDeclaredFailureAsync(bool development)
     {
+        BridgeDiagnostics.IncludeFailureDetail = development;
         using var host = Host(new EditorModel(), out var logs);
         // Sync plain ICommand: only a synchronous throw from Execute is seen.
         var sync = await host.Root.ExecuteAsync(vm => vm.SaveCommand);
@@ -71,8 +62,13 @@ internal static partial class DomainFailureTests
         Require(!logs.Entries.Any(entry => entry.Level >= LogLevel.Error), $"A domain failure was logged as an error: {Describe(logs)}");
     }
 
-    private static async Task OperationsEndDomainFailedAsync()
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("OperationsEndDomainFailedAsync(development: $development)")]
+    public async Task OperationsEndDomainFailedAsync(bool development)
     {
+        BridgeDiagnostics.IncludeFailureDetail = development;
         using var host = Host(new EditorModel(), out var logs);
         host.ViewModel.NextFailure = () => new RunicFailureException(new TitleTaken("Todo"));
         var operation = host.Root.Start(vm => vm.SubmitCommand, requestId: "submit-1");
@@ -100,8 +96,13 @@ internal static partial class DomainFailureTests
 
     // D-13: the reply after a command whose state cannot be sent keeps the
     // domain failure, has no state, appends the key message and has no detail.
-    private static void KeyFailureKeepsTheDomainFailure()
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("KeyFailureKeepsTheDomainFailure(development: $development)")]
+    public void KeyFailureKeepsTheDomainFailure(bool development)
     {
+        BridgeDiagnostics.IncludeFailureDetail = development;
         var model = new EditorModel();
         using var transport = new InMemoryViewTransport();
         using var bridge = new EditorBridge(transport, model, content: null, keyed: true);
@@ -116,7 +117,8 @@ internal static partial class DomainFailureTests
             && !error.TryGetProperty("detail", out _), $"The key failure did not keep the domain failure: {root}");
     }
 
-    private static async Task AggregatesAreUnwrappedOnlyWithOneInnerAsync()
+    [Test]
+    public async Task AggregatesAreUnwrappedOnlyWithOneInnerAsync()
     {
         using var host = Host(new EditorModel(), out var logs);
         host.ViewModel.NextFailure = () => new AggregateException(new AggregateException(new RunicFailureException(new TitleRequired())));
@@ -132,7 +134,8 @@ internal static partial class DomainFailureTests
             $"An operation's single-inner aggregate was not unwrapped: {operation.Json}");
     }
 
-    private static async Task UndeclaredFailuresStayFailedAsync()
+    [Test]
+    public async Task UndeclaredFailuresStayFailedAsync()
     {
         using var host = Host(new EditorModel(), out var logs);
         var huge = new string('x', BridgeDomainFailures.MaximumEncodedBytes);
@@ -179,7 +182,8 @@ internal static partial class DomainFailureTests
 
     // Classified by exception type, like success: a declared failure thrown
     // after cancellation was requested is still domain-failed.
-    private static async Task CancellationRaceIsDomainFailedAsync()
+    [Test]
+    public async Task CancellationRaceIsDomainFailedAsync()
     {
         using var host = Host(new EditorModel(), out _);
         var operation = host.Root.Start(vm => vm.RaceCommand, requestId: "race");
@@ -189,7 +193,8 @@ internal static partial class DomainFailureTests
             $"A failure thrown during cancellation was not domain-failed: {status.Json}");
     }
 
-    private static async Task StreamsKeepTheirItemsAsync()
+    [Test]
+    public async Task StreamsKeepTheirItemsAsync()
     {
         using var host = Host(new EditorModel(), out _);
         var operation = host.Root.Start(vm => vm.PublishCommand, requestId: "stream");
@@ -209,7 +214,8 @@ internal static partial class DomainFailureTests
             $"The published stream items were not readable after the domain failure: {page}");
     }
 
-    private static async Task RetentionCountsFailuresAsync()
+    [Test]
+    public async Task RetentionCountsFailuresAsync()
     {
         const string failure = """{"$case":"titleTaken","existingTitle":"Todo"}""";
         var bytes = failure.Length;
@@ -242,7 +248,8 @@ internal static partial class DomainFailureTests
 
     // Telemetry: domain_failed, span status Unset, no error.type, not counted
     // in runic.bridge.failures.
-    private static async Task TelemetryTreatsDomainFailuresAsExpectedAsync()
+    [Test]
+    public async Task TelemetryTreatsDomainFailuresAsExpectedAsync()
     {
         using var telemetry = new TelemetryCapture();
         using var host = Host(new EditorModel(), out _);
@@ -263,7 +270,8 @@ internal static partial class DomainFailureTests
 
     // Only declared commands add fingerprint lines, so the fingerprints of
     // existing models do not change.
-    private static void FingerprintCoversOnlyDeclarations()
+    [Test]
+    public void FingerprintCoversOnlyDeclarations()
     {
         // The parts also cover every View model of the assembly; check the undeclared model's own lines.
         var plain = BridgeContractShape.Parts(typeof(EditorModel)).Where(part => part.Contains(nameof(EditorModel), StringComparison.Ordinal)).ToList();
@@ -287,7 +295,8 @@ internal static partial class DomainFailureTests
     // compares it: a declaration added, moved between the property and its
     // [RelayCommand] method, or given another type changes the fingerprint;
     // the lines of the undeclared command never change.
-    private static void FingerprintFollowsDeclarationChanges()
+    [Test]
+    public void FingerprintFollowsDeclarationChanges()
     {
         var variants = new (string Name, string Property, string Method)[]
         {
@@ -345,7 +354,8 @@ internal static partial class DomainFailureTests
 
     // specs/application/fixtures/domain-failures: the producer writes the wire
     // of each scenario; the views package parses the same files.
-    private static async Task PortableFixturesMatchAsync()
+    [Test]
+    public async Task PortableFixturesMatchAsync()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "fixtures", "domain-failures");
         var files = Directory.GetFiles(directory, "*.json").OrderBy(file => file, StringComparer.Ordinal).ToArray();

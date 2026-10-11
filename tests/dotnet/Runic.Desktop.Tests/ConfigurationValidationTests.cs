@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
@@ -7,27 +8,29 @@ namespace Runic.Desktop.Tests;
 
 public sealed class ConfigurationValidationTests
 {
-    [Fact]
+    [Test]
     public void WindowsDefaultToTheEmbeddedPresentation()
     {
         Assert.Equal(BrowserKind.Embedded, new DesktopWindowOptions().Browser);
         Assert.Equal(DesktopPresentationPolicy.RequestedOnly, new DesktopWindowOptions().PresentationPolicy);
     }
 
-    public static TheoryData<string, DesktopWindowOptions> Gtk4UnsupportedOptions => new()
+    // Each row creates its options when the case runs, as xUnit's member data did.
+    public static IEnumerable<Func<(string, DesktopWindowOptions)>> Gtk4UnsupportedOptions()
     {
-        { "X", new DesktopWindowOptions { X = 10, Y = 20 } },
-        { "Y", new DesktopWindowOptions { X = 10, Y = 20 } },
-        { "Centered", new DesktopWindowOptions { Centered = true } },
-        { "Transparent", new DesktopWindowOptions { Transparent = true } },
-        { "HighContrast", new DesktopWindowOptions { HighContrast = true } },
-        { "ProfilePath", new DesktopWindowOptions { ProfilePath = "/tmp/runic-profile" } },
-        { "BrowserArguments", new DesktopWindowOptions { BrowserArguments = "--flag" } },
-        { "IconFile", new DesktopWindowOptions { IconFile = "icon.png" } },
-    };
+        yield return () => ("X", new DesktopWindowOptions { X = 10, Y = 20 });
+        yield return () => ("Y", new DesktopWindowOptions { X = 10, Y = 20 });
+        yield return () => ("Centered", new DesktopWindowOptions { Centered = true });
+        yield return () => ("Transparent", new DesktopWindowOptions { Transparent = true });
+        yield return () => ("HighContrast", new DesktopWindowOptions { HighContrast = true });
+        yield return () => ("ProfilePath", new DesktopWindowOptions { ProfilePath = "/tmp/runic-profile" });
+        yield return () => ("BrowserArguments", new DesktopWindowOptions { BrowserArguments = "--flag" });
+        yield return () => ("IconFile", new DesktopWindowOptions { IconFile = "icon.png" });
+    }
 
-    [Theory]
-    [MemberData(nameof(Gtk4UnsupportedOptions))]
+    [Test]
+    [DisplayName("Gtk4PreflightReportsEachUnsupportedOption(option: $option, requested: $requested)")]
+    [MethodDataSource(nameof(Gtk4UnsupportedOptions))]
     [SupportedOSPlatform("linux")]
     public async Task Gtk4PreflightReportsEachUnsupportedOption(string option, DesktopWindowOptions requested)
     {
@@ -49,7 +52,7 @@ public sealed class ConfigurationValidationTests
     }
 
 
-    [Fact]
+    [Test]
     [SupportedOSPlatform("linux")]
     public async Task Gtk4PreflightMapsPlacementAsOpeningDoes()
     {
@@ -72,7 +75,7 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("DesktopWindowOptions.Centered", Assert.Single(centered.OptionDiagnostics).Option);
     }
 
-    [Fact]
+    [Test]
     [SupportedOSPlatform("linux")]
     public async Task Gtk4PreflightAcceptsTheOptionsItSupports()
     {
@@ -94,7 +97,7 @@ public sealed class ConfigurationValidationTests
         Assert.Empty(preflight.OptionDiagnostics);
     }
 
-    [Fact]
+    [Test]
     public async Task BrowserPreflightReportsIgnoredWindowOptionsAsWarnings()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -114,7 +117,7 @@ public sealed class ConfigurationValidationTests
         Assert.DoesNotContain(validation.Errors, static item => item.Code == "window-option-unsupported");
     }
 
-    [Fact]
+    [Test]
     public async Task FirefoxPreflightReportsPlacementProxyAndAnUnappliedGrant()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -135,7 +138,7 @@ public sealed class ConfigurationValidationTests
         Assert.Equal(DesktopDiagnosticSeverity.Warning, grant.Severity);
     }
 
-    [Fact]
+    [Test]
     public async Task InstalledBrowsersReportANegativePositionAsIgnored()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -166,7 +169,7 @@ public sealed class ConfigurationValidationTests
             IsPosition);
     }
 
-    [Fact]
+    [Test]
     public async Task ExplicitChromiumGrantIsNotReported()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -180,7 +183,7 @@ public sealed class ConfigurationValidationTests
         Assert.Empty(preflight.OptionDiagnostics);
     }
 
-    [Fact]
+    [Test]
     public async Task BrowserFallbackReportsThatItWithholdsGrants()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -199,9 +202,10 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("DesktopWindowOptions.AllowedPermissions", withheld.Option);
     }
 
-    [Theory]
-    [InlineData(BrowserKind.Safari)]
-    [InlineData(BrowserKind.Opera)]
+    [Test]
+    [DisplayName("UnlaunchableBrowsersAreReportedAsUnsupported(browser: $browser)")]
+    [Arguments(BrowserKind.Safari)]
+    [Arguments(BrowserKind.Opera)]
     public async Task UnlaunchableBrowsersAreReportedAsUnsupported(BrowserKind browser)
     {
         await using var host = await DesktopHost.StartAsync();
@@ -213,7 +217,7 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("DesktopWindowOptions.Browser", error.Option);
     }
 
-    [Fact]
+    [Test]
     public async Task ValidationReportsInvalidValuesInsteadOfThrowing()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -223,7 +227,7 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("window-option-invalid", Assert.Single(validation.Errors).Code);
     }
 
-    [Fact]
+    [Test]
     public async Task CloseConfirmationInABrowserIsACodedDiagnostic()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -244,7 +248,7 @@ public sealed class ConfigurationValidationTests
         Assert.Contains("RequestedOnly", warning.Remediation);
     }
 
-    [Fact]
+    [Test]
     public async Task OneCoordinateOfAPairIsReported()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -260,7 +264,7 @@ public sealed class ConfigurationValidationTests
             item.Code == "window-option-incomplete" && item.Option == "DesktopWindowOptions.MinimumHeight");
     }
 
-    [Fact]
+    [Test]
     public async Task CustomProvidersReportTheirOptionsAndCloseConfirmationSupport()
     {
         var factory = new OptionsReportingFactory();
@@ -279,7 +283,7 @@ public sealed class ConfigurationValidationTests
         Assert.Contains(validation.Warnings, static item => item.Option == "DesktopWindowOptions.ProxyServer");
     }
 
-    [Fact]
+    [Test]
     public async Task ValidationLogsEachDiagnosticThroughTheDesktopLogger()
     {
         var loggers = new RecordingLoggerFactory();
@@ -298,7 +302,7 @@ public sealed class ConfigurationValidationTests
         Assert.Contains(loggers.Entries, static entry => entry.Level == LogLevel.Warning && entry.EventId.Id == 3003);
     }
 
-    [Fact]
+    [Test]
     public async Task BrowserFallbackOpensWithoutTheGrant()
     {
         if (OperatingSystem.IsWindows())
@@ -350,7 +354,7 @@ public sealed class ConfigurationValidationTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task BrowserFallbackOpensWithoutCloseConfirmation()
     {
         if (OperatingSystem.IsWindows())
@@ -395,7 +399,7 @@ public sealed class ConfigurationValidationTests
         }
     }
 
-    [Fact]
+    [Test]
     public void LinuxSelectionDiagnosticsOfferABrowserAndReportUndefinedBackends()
     {
         var unselected = DesktopPlatform.GetLinuxSelectionDiagnostic(new LinuxDesktopOptions(), factory: null);
@@ -409,7 +413,7 @@ public sealed class ConfigurationValidationTests
         Assert.Equal("DesktopHostOptions.Linux.EmbeddedBackend", undefined!.Option);
     }
 
-    [Fact]
+    [Test]
     public async Task UnselectedLinuxToolkitIsNotNamedInOptionWarnings()
     {
         await using var host = await DesktopHost.StartAsync();

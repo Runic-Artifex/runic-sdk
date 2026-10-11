@@ -4,12 +4,14 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class TypedReactiveTests
+internal sealed class TypedReactiveTests
 {
-    internal static async Task RunAsync()
+    [Test]
+    public async Task TypedReactiveCommandsAdmitRecoverAndCompleteAsync()
     {
         await using var context = new RunicModelContext();
         var model = new TypedReactiveViewModel(context);

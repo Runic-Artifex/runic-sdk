@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -10,7 +11,7 @@ namespace Runic.Application.Testing.Tests;
 /// checks its diagnostics. Valid shapes live in this project instead, so the
 /// project build itself proves that their generated C# compiles.
 /// </summary>
-internal static partial class CodegenDiagnosticsTests
+internal sealed partial class CodegenDiagnosticsTests
 {
     private const string Preamble = """
         using System;
@@ -30,7 +31,8 @@ internal static partial class CodegenDiagnosticsTests
 
         """;
 
-    internal static async Task RunAsync()
+    [Test]
+    public async Task GeneratorRejectsUnsupportedModelsWithLocatedDiagnosticsAsync()
     {
         var root = FindWorkspaceRoot();
         var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(

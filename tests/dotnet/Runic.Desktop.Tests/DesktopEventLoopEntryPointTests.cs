@@ -1,10 +1,11 @@
+using TUnit.Core;
 using Runic.Desktop.Gtk4;
 
 namespace Runic.Desktop.Tests;
 
 public sealed class DesktopEventLoopEntryPointTests
 {
-    [Fact]
+    [Test]
     public void SupportedEventLoopFactoryRunsTheApplicationAndDisposesTheHost()
     {
         var factory = new LoopFactory { IsSupported = true };
@@ -23,7 +24,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Throws<ObjectDisposedException>(() => started!.Validate());
     }
 
-    [Fact]
+    [Test]
     public void UnsupportedEventLoopFactoryIsNotStartedAndReportsWhy()
     {
         // The AppKit loop needs the process main thread, which a test worker is not.
@@ -44,7 +45,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Contains("loop-runtime-missing", reported[0].Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public void EventLoopThatCannotPrepareFallsBackToThePlainLoopAndReportsWhy()
     {
         if (OperatingSystem.IsMacOS()) return;
@@ -70,7 +71,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Throws<ObjectDisposedException>(() => started!.Validate());
     }
 
-    [Fact]
+    [Test]
     public void NestedRunThrowsOnEveryPlatform()
     {
         var factory = new LoopFactory { IsSupported = true };
@@ -90,7 +91,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Equal(2, DesktopEventLoop.Run(new DesktopHostOptions { WindowHostFactory = factory }, static _ => Task.FromResult(2)));
     }
 
-    [Fact]
+    [Test]
     public void FailingEventLoopReleasesTheHostAndTheGuard()
     {
         var factory = new LoopFactory { IsSupported = true, FailBeforeApplication = true };
@@ -102,7 +103,7 @@ public sealed class DesktopEventLoopEntryPointTests
             static _ => Task.FromResult(5)));
     }
 
-    [Fact]
+    [Test]
     public void PlainLoopReturnsTheApplicationResultAndPropagatesFailures()
     {
         if (OperatingSystem.IsMacOS()) return;
@@ -117,7 +118,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Equal("application failed", error.Message);
     }
 
-    [Fact]
+    [Test]
     public void InvalidOptionsFailBeforeTheLoopStarts()
     {
         var factory = new LoopFactory { IsSupported = true };
@@ -130,7 +131,7 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Equal(0, factory.Runs);
     }
 
-    [Fact]
+    [Test]
     public void Gtk4ProfileCarriesTheApplicationIdIntoItsEventLoop()
     {
         var options = new DesktopHostOptions().WithGtk4("org.example.App");
@@ -149,24 +150,26 @@ public sealed class DesktopEventLoopEntryPointTests
         Assert.Throws<ArgumentException>(() => new DesktopHostOptions().WithGtk4(" "));
     }
 
-    [Theory]
-    [InlineData("App")]
-    [InlineData("org..App")]
-    [InlineData(".org.App")]
-    [InlineData("org.App.")]
-    [InlineData("org.1App")]
-    [InlineData("org.example.my app")]
-    [InlineData("org.example.Äpp")]
+    [Test]
+    [DisplayName("Gtk4ProfileRejectsInvalidApplicationIdsOnEveryOs(applicationId: $applicationId)")]
+    [Arguments("App")]
+    [Arguments("org..App")]
+    [Arguments(".org.App")]
+    [Arguments("org.App.")]
+    [Arguments("org.1App")]
+    [Arguments("org.example.my app")]
+    [Arguments("org.example.Äpp")]
     public void Gtk4ProfileRejectsInvalidApplicationIdsOnEveryOs(string applicationId) =>
         Assert.Throws<ArgumentException>(() => new DesktopHostOptions().WithGtk4(applicationId));
 
-    [Theory]
-    [InlineData("org.example.App")]
-    [InlineData("dev.runic.my-app_2")]
+    [Test]
+    [DisplayName("Gtk4ProfileAcceptsReverseDnsApplicationIds(applicationId: $applicationId)")]
+    [Arguments("org.example.App")]
+    [Arguments("dev.runic.my-app_2")]
     public void Gtk4ProfileAcceptsReverseDnsApplicationIds(string applicationId) =>
         Assert.Equal(LinuxEmbeddedBackend.Gtk4WebKit6, new DesktopHostOptions().WithGtk4(applicationId).Linux.EmbeddedBackend);
 
-    [Fact]
+    [Test]
     public void Gtk4EventLoopOffTheMainThreadNamesTheDesktopEntryPoint()
     {
         if (OperatingSystem.IsLinux()) AssertOnLinux();

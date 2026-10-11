@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
@@ -19,7 +20,7 @@ public sealed class ContentAndLifecycleTests
     private const byte CheckToken = 0xF5;
     private const int HeaderSize = 8;
 
-    [Fact]
+    [Test]
     public async Task SharedHostIsolatesSurfacesAndClosingOnePreservesTheOther()
     {
         await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
@@ -50,7 +51,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal("<h1>second</h1>", await client.GetStringAsync(secondUrl));
     }
 
-    [Fact]
+    [Test]
     public async Task EmbeddedServerLeavesProcessSignalsToTheApplication()
     {
         await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
@@ -63,7 +64,7 @@ public sealed class ContentAndLifecycleTests
         Assert.IsType<ProcessOwnedLifetime>(host.Services?.GetService(typeof(IHostLifetime)));
     }
 
-    [Fact]
+    [Test]
     public async Task SafePolicyRequiresSameOriginSurfaceScopedCredential()
     {
         await using var host = new PresentationHostCore(new PresentationHostCoreOptions(
@@ -101,7 +102,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal(WebSocketState.Open, accepted.State);
     }
 
-    [Fact]
+    [Test]
     public async Task ServesFoldersIndexesFilesMimeHeadAndNoCache()
     {
         var root = Directory.CreateTempSubdirectory("runic-desktop-content-");
@@ -155,7 +156,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ExplicitFileRedirectsWithoutFolderIndexFallback()
     {
         var root = Directory.CreateTempSubdirectory("runic-desktop-file-");
@@ -191,7 +192,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ExternalUrlUsesLocalRefreshPageInServerOnlyMode()
     {
         await using var window = new WebUiWindow();
@@ -203,7 +204,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Contains("https://example.test/path?a=1&amp;b=2", html, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task VirtualContentHasFallbackAndCannotOverrideBridge()
     {
         var root = Directory.CreateTempSubdirectory("runic-desktop-virtual-");
@@ -249,7 +250,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task StreamingVirtualContentHonorsHeadCancellationAndDisposal()
     {
         await using var window = new WebUiWindow();
@@ -299,7 +300,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal(1, Volatile.Read(ref factoryCalls));
     }
 
-    [Fact]
+    [Test]
     public async Task StreamingVirtualContentCancelsAndDisposesWhenWindowCloses()
     {
         await using var window = new WebUiWindow();
@@ -324,7 +325,7 @@ public sealed class ContentAndLifecycleTests
         await stream.WaitForDisposalAsync(timeout.Token);
     }
 
-    [Fact]
+    [Test]
     public async Task RejectsTraversalAndSymlinksOutsideRoot()
     {
         if (OperatingSystem.IsWindows())
@@ -353,7 +354,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task UsesExplicitPortAndRetainsSettingsAcrossRestart()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -377,7 +378,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal("second", await client.GetStringAsync("/"));
     }
 
-    [Fact]
+    [Test]
     public async Task ServerOnlyShowReloadsContentWithoutChangingTheListener()
     {
         await using var window = new WebUiWindow();
@@ -389,7 +390,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Equal("second", await client.GetStringAsync("/"));
     }
 
-    [Fact]
+    [Test]
     public async Task ApplicationWaitTracksAllRunningWindowsAndExitClosesThem()
     {
         await using var first = new WebUiWindow();
@@ -408,7 +409,7 @@ public sealed class ContentAndLifecycleTests
         Assert.Null(second.Url);
     }
 
-    [Fact]
+    [Test]
     public async Task SingleClientRejectsConcurrentSocketAndMultiClientOwnsStableClientIds()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -455,7 +456,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task BridgeSessionsRemainOwnedByTheirWindow()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -478,7 +479,7 @@ public sealed class ContentAndLifecycleTests
         Assert.False(secondEvents.Reader.TryRead(out _));
     }
 
-    [Fact]
+    [Test]
     public async Task DefaultRootIsCopiedByNewWindowsAndRootsRemainWindowOwned()
     {
         var firstRoot = Directory.CreateTempSubdirectory("runic-desktop-root-one-");
@@ -507,7 +508,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task RunningWindowUsesRootFolderChangesImmediately()
     {
         var firstRoot = Directory.CreateTempSubdirectory("runic-desktop-live-root-one-");
@@ -532,7 +533,7 @@ public sealed class ContentAndLifecycleTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ConcurrentServerWindowChurnLeavesNoApplicationLifetimeBehind()
     {
         await Task.WhenAll(Enumerable.Range(0, 4).Select(async worker =>

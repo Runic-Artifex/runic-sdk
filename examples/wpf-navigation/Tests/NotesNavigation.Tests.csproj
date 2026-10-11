@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Drives the example on a real WPF dispatcher with off-screen windows. Windows only: CI runs it
-       against the packed packages (../package-smoke.mjs); other platforms only build it. -->
+       against the packed packages (../package-smoke.mjs); other platforms only build it.
+       A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -14,6 +15,9 @@
     <!-- Runic.Navigation is experimental. -->
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../NotesNavigation/NotesNavigation.csproj" />
   </ItemGroup>

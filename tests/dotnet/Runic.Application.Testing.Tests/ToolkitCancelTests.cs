@@ -1,15 +1,17 @@
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class ToolkitCancelTests
+internal sealed class ToolkitCancelTests
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static string Encode(object value) => JsonSerializer.Serialize(value, Json);
 
-    internal static async Task RunAsync()
+    [Test]
+    public async Task GeneratedCancelCommandsCancelToolkitOperationsAsync()
     {
         var model = new ToolkitCancelViewModel();
         using var host = CreateHost(model);

@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Collections.Concurrent;
 using System.Net;
 
@@ -5,10 +6,11 @@ namespace Runic.Desktop.Tests;
 
 public sealed class BootstrapAdmissionTests
 {
-    [Theory]
-    [InlineData("runic-desktop.js")]
-    [InlineData("webui.js")]
-    [InlineData("")]
+    [Test]
+    [DisplayName("LoopbackListenerRejectsRebindingHostNames(path: $path)")]
+    [Arguments("runic-desktop.js")]
+    [Arguments("webui.js")]
+    [Arguments("")]
     public async Task LoopbackListenerRejectsRebindingHostNames(string path)
     {
         await using var host = await DesktopHost.StartAsync();
@@ -25,7 +27,7 @@ public sealed class BootstrapAdmissionTests
         Assert.NotEqual(HttpStatusCode.MisdirectedRequest, named.StatusCode);
     }
 
-    [Fact]
+    [Test]
     public async Task CompatibilityWindowRejectsRebindingHostNames()
     {
         await using var window = new WebUiWindow();
@@ -37,12 +39,13 @@ public sealed class BootstrapAdmissionTests
         Assert.Equal(HttpStatusCode.MisdirectedRequest, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData("runic-desktop.js", "cross-site", "script")]
-    [InlineData("runic-desktop.js", "same-site", "script")]
-    [InlineData("runic-desktop.js", "same-origin", "document")]
-    [InlineData("webui.js", "cross-site", "script")]
-    [InlineData("webui.js", "same-origin", "empty")]
+    [Test]
+    [DisplayName("BootstrapScriptsRejectForeignBrowserLoads(path: $path, site: $site, destination: $destination)")]
+    [Arguments("runic-desktop.js", "cross-site", "script")]
+    [Arguments("runic-desktop.js", "same-site", "script")]
+    [Arguments("runic-desktop.js", "same-origin", "document")]
+    [Arguments("webui.js", "cross-site", "script")]
+    [Arguments("webui.js", "same-origin", "empty")]
     public async Task BootstrapScriptsRejectForeignBrowserLoads(string path, string site, string destination)
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
@@ -57,10 +60,11 @@ public sealed class BootstrapAdmissionTests
         Assert.Equal("bootstrap-origin-not-allowed", Assert.Single(diagnostics).Code);
     }
 
-    [Theory]
-    [InlineData("runic-desktop.js", "same-origin")]
-    [InlineData("runic-desktop.js", "none")]
-    [InlineData("webui.js", "same-origin")]
+    [Test]
+    [DisplayName("BootstrapScriptsAdmitSameOriginBrowserLoads(path: $path, site: $site)")]
+    [Arguments("runic-desktop.js", "same-origin")]
+    [Arguments("runic-desktop.js", "none")]
+    [Arguments("webui.js", "same-origin")]
     public async Task BootstrapScriptsAdmitSameOriginBrowserLoads(string path, string site)
     {
         await using var host = await DesktopHost.StartAsync();
@@ -73,7 +77,7 @@ public sealed class BootstrapAdmissionTests
         Assert.Contains("_webui_ws_connect", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task ExplicitAdditionalOriginMayEmbedTheBootstrapScript()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions

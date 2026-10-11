@@ -136,7 +136,7 @@ This example builds the Runic packages from source. To copy it out, replace the
 
 ## Tests
 
-[Tests](Tests/NotesWindowTests.cs) is an xUnit project that drives the real
+[Tests](Tests/NotesWindowTests.cs) is a TUnit test application that drives the real
 ViewModels and generated Bridges with `RunicWindowTestHost` from
 [Runic.Application.Testing](../../packages/dotnet/Runic.Application.Testing/README.md).
 Storage waits on the injected `TimeProvider`, so a test advances a fake clock
@@ -148,7 +148,7 @@ generated typed mocks (`src/generated/*.mock.ts`) with `bun test`, without .NET 
 a browser.
 
 ```sh
-dotnet test examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj
+dotnet run --project examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj
 (cd examples/notes-view-first/Frontend && bun install --frozen-lockfile && bun run test)
 ```
 

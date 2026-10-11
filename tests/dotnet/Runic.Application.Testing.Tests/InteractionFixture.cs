@@ -3,12 +3,14 @@ using ReactiveUI.Binding;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class InteractionFixture
+internal sealed class InteractionFixture
 {
-    public static async Task VerifyAsync()
+    [Test]
+    public async Task InteractionsReachMountedBrowsersAndFallBackAsync()
     {
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport);

@@ -7,33 +7,21 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Called by Program.cs so this executable test host can keep its ordinary end-to-end
 // fixture separate from model-lane concurrency tests.
-public static class ModelContextTests
+public sealed class ModelContextTests
 {
-    public static async Task RunAsync()
-    {
-        await SessionAcquiresAndReleasesItsRootContext();
-        await RootlessSessionReleasesForgottenContentIdentity();
-        await SessionCloseFromModelTurnDoesNotDeadlock();
-        await ReactiveSchedulerDeliversOnTheModelContext();
-        await PostedTurnsRetainTheirOwnAmbientInvocation();
-        await ScheduledInteractionsRetainTheirOwnAmbientInvocation();
-        await SessionBindsTheSuppliedApplicationContext();
-        await DisposedApplicationContextStillReleasesBridgesAndViews();
-        await ThirdPartyContextRunsNestedWorkInline();
-        await SessionContextShutdownFailureIsLoggedToTheSession();
-    }
-
     // A window session that owns its context closes it from inside one of its turns without
     // waiting, and observes the shutdown in the background. A failure is logged as 1033 with
     // the session's own logger (category Runic.Application.Views), not the context's. The
     // session only owns a RunicModelContext, whose shutdown does not fault, so the test drives
     // the session's disposal helper with a context whose shutdown it controls.
-    private static async Task SessionContextShutdownFailureIsLoggedToTheSession()
+    [Test]
+    public async Task SessionContextShutdownFailureIsLoggedToTheSession()
     {
         var logs = new CategoryLog();
         using var transport = new InMemoryViewTransport();
@@ -89,7 +77,8 @@ public static class ModelContextTests
         }
     }
 
-    private static async Task SessionBindsTheSuppliedApplicationContext()
+    [Test]
+    public async Task SessionBindsTheSuppliedApplicationContext()
     {
         await using var applicationContext = new RunicModelContext();
         await using var otherContext = new RunicModelContext();
@@ -110,7 +99,8 @@ public static class ModelContextTests
         await applicationContext.InvokeAsync(() => { }); // still owned by the application
     }
 
-    private static async Task DisposedApplicationContextStillReleasesBridgesAndViews()
+    [Test]
+    public async Task DisposedApplicationContextStillReleasesBridgesAndViews()
     {
         var applicationContext = new RunicModelContext();
         var model = new NotifyingModel();
@@ -137,7 +127,8 @@ public static class ModelContextTests
         Require(transport.Routes.Count == 0, $"Window teardown retained routes: {string.Join(", ", transport.Routes)}");
     }
 
-    private static async Task ThirdPartyContextRunsNestedWorkInline()
+    [Test]
+    public async Task ThirdPartyContextRunsNestedWorkInline()
     {
         await using var context = new DedicatedThreadContext();
         var model = new object();
@@ -150,7 +141,8 @@ public static class ModelContextTests
         _ = await exposure;
     }
 
-    private static async Task SessionAcquiresAndReleasesItsRootContext()
+    [Test]
+    public async Task SessionAcquiresAndReleasesItsRootContext()
     {
         var registry = RunicModelContextRegistry.Shared;
         var model = new object();
@@ -175,7 +167,8 @@ public static class ModelContextTests
         await ThrowsAsync<ObjectDisposedException>(context.InvokeAsync(() => { }).AsTask());
     }
 
-    private static async Task ReactiveSchedulerDeliversOnTheModelContext()
+    [Test]
+    public async Task ReactiveSchedulerDeliversOnTheModelContext()
     {
         await using var context = new RunicModelContext();
         ISequencer scheduler = new RunicReactiveSchedulerProvider().For(context);
@@ -185,7 +178,8 @@ public static class ModelContextTests
         Require(delivered == 1, "The ReactiveUI scheduler did not deliver through the model context.");
     }
 
-    private static async Task PostedTurnsRetainTheirOwnAmbientInvocation()
+    [Test]
+    public async Task PostedTurnsRetainTheirOwnAmbientInvocation()
     {
         await using var context = new RunicModelContext();
         using var transport = new InMemoryViewTransport();
@@ -221,7 +215,8 @@ public static class ModelContextTests
             "Queued model turns crossed, ignored suppression of, or leaked their ambient invocation scopes.");
     }
 
-    private static async Task ScheduledInteractionsRetainTheirOwnAmbientInvocation()
+    [Test]
+    public async Task ScheduledInteractionsRetainTheirOwnAmbientInvocation()
     {
         await using var context = new RunicModelContext();
         using var transport = new InMemoryViewTransport();
@@ -332,7 +327,8 @@ public static class ModelContextTests
         return await task;
     }
 
-    private static async Task RootlessSessionReleasesForgottenContentIdentity()
+    [Test]
+    public async Task RootlessSessionReleasesForgottenContentIdentity()
     {
         var registry = RunicModelContextRegistry.Shared;
         var model = new object();
@@ -351,7 +347,8 @@ public static class ModelContextTests
         await ThrowsAsync<ObjectDisposedException>(context.InvokeAsync(() => { }).AsTask());
     }
 
-    private static async Task SessionCloseFromModelTurnDoesNotDeadlock()
+    [Test]
+    public async Task SessionCloseFromModelTurnDoesNotDeadlock()
     {
         using var transport = new InMemoryViewTransport();
         var model = new object();

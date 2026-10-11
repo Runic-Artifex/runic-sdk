@@ -3,35 +3,19 @@ using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // W230-002 slice 2: a NavigationRegion<TContent> slot reaching the frontend (design record §7, §13).
-internal static class NavigationPresentationTests
+internal sealed class NavigationPresentationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
-    public static async Task RunAsync()
-    {
-        await ReactiveNavigationTests.RunAsync();
-        await ReferencesFollowTheRegionAsync();
-        await StaleRouteWindowAsync();
-        SessionTeardownIsANoOpAfterDispose();
-        await ForgetWaitsForDetachmentAsync();
-        await PresentationBindsOncePerWindowAsync();
-        await ClosedNavigatorBindsNothingAsync();
-        await WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync();
-        await DisposedSessionIsNotRetainedAsync();
-        await LiveSessionDoesNotRetainNavigatorAsync();
-        await ReconnectAndHotReloadLeaveEntriesAsync();
-        await RuntimeDescriptorsObserveTheRegionAsync();
-        GeneratedSlotContract();
-        await UnregisteredContentNamesRegionAndTypeAsync();
-    }
-
     // A pushed ViewModel without a View fails with the region and its type,
     // not an anonymous "unregistered ViewModel type".
-    private static async Task UnregisteredContentNamesRegionAndTypeAsync()
+    [Test]
+    public async Task UnregisteredContentNamesRegionAndTypeAsync()
     {
         await using var window = new Window();
         await Wait(window.Shell.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavOrphanViewModel())));
@@ -51,7 +35,8 @@ internal static class NavigationPresentationTests
         }
     }
 
-    private static async Task WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync()
+    [Test]
+    public async Task WebContextCloseRejectsNavigationWithoutWaitingForGuardAsync()
     {
         await using var window = new Window();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -84,7 +69,8 @@ internal static class NavigationPresentationTests
             "Closing the web context leaked navigation entries or bridge routes.");
     }
 
-    private static async Task ReferencesFollowTheRegionAsync()
+    [Test]
+    public async Task ReferencesFollowTheRegionAsync()
     {
         await using var window = new Window();
         var host = window.Host;
@@ -125,7 +111,8 @@ internal static class NavigationPresentationTests
             "An empty region did not present null.");
     }
 
-    private static async Task StaleRouteWindowAsync()
+    [Test]
+    public async Task StaleRouteWindowAsync()
     {
         await using var window = new Window();
         var host = window.Host;
@@ -146,7 +133,8 @@ internal static class NavigationPresentationTests
 
     // Forget must not return while another flow is still detaching the content's attachment
     // (a Present replacing the slot), or the old routes stay callable after Back completes.
-    private static async Task ForgetWaitsForDetachmentAsync()
+    [Test]
+    public async Task ForgetWaitsForDetachmentAsync()
     {
         using var transport = new InMemoryViewTransport();
         using var session = new WindowContentSession(transport);
@@ -178,7 +166,8 @@ internal static class NavigationPresentationTests
         }
     }
 
-    private static void SessionTeardownIsANoOpAfterDispose()
+    [Test]
+    public void SessionTeardownIsANoOpAfterDispose()
     {
         using var transport = new InMemoryViewTransport();
         var session = new WindowContentSession(transport);
@@ -188,7 +177,8 @@ internal static class NavigationPresentationTests
         session.ClearOwner(model);
     }
 
-    private static async Task PresentationBindsOncePerWindowAsync()
+    [Test]
+    public async Task PresentationBindsOncePerWindowAsync()
     {
         var window = new Window();
         NavigationPresentationBinding.Bind(window.Navigator, window.Host.Content);
@@ -231,7 +221,8 @@ internal static class NavigationPresentationTests
 
     // A closed navigator presents nothing: binding any session is silent, whether or not
     // another session bound it before it closed, and no presentation is attached.
-    private static async Task ClosedNavigatorBindsNothingAsync()
+    [Test]
+    public async Task ClosedNavigatorBindsNothingAsync()
     {
         await using var context = new RunicModelContext();
         var closed = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
@@ -268,7 +259,8 @@ internal static class NavigationPresentationTests
 
     // Disposing a bound session detaches it, so the static binding table and the navigator
     // do not keep a closed window's session reachable while the navigator lives on.
-    private static async Task DisposedSessionIsNotRetainedAsync()
+    [Test]
+    public async Task DisposedSessionIsNotRetainedAsync()
     {
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
@@ -285,7 +277,8 @@ internal static class NavigationPresentationTests
 
     // The reverse: a live session does not keep a navigator it presented reachable after
     // the application disposes and drops it.
-    private static async Task LiveSessionDoesNotRetainNavigatorAsync()
+    [Test]
+    public async Task LiveSessionDoesNotRetainNavigatorAsync()
     {
         await using var context = new RunicModelContext();
         using var transport = new InMemoryViewTransport();
@@ -336,7 +329,8 @@ internal static class NavigationPresentationTests
         return new WeakReference(session);
     }
 
-    private static async Task ReconnectAndHotReloadLeaveEntriesAsync()
+    [Test]
+    public async Task ReconnectAndHotReloadLeaveEntriesAsync()
     {
         await using var window = new Window();
         var host = window.Host;
@@ -357,7 +351,8 @@ internal static class NavigationPresentationTests
             "RefreshAfterHotReload changed the presented entry.");
     }
 
-    private static async Task RuntimeDescriptorsObserveTheRegionAsync()
+    [Test]
+    public async Task RuntimeDescriptorsObserveTheRegionAsync()
     {
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
@@ -388,7 +383,8 @@ internal static class NavigationPresentationTests
             "A disposed Bridge still observed the region.");
     }
 
-    private static void GeneratedSlotContract()
+    [Test]
+    public void GeneratedSlotContract()
     {
         var parts = BridgeContractShape.Parts(typeof(NavShellViewModel));
         Require(parts.Contains("content:Runic.Application.Testing.Tests.NavShellViewModel:main:contract:default:region:Runic.Application.Testing.Tests.INavPageViewModel"),

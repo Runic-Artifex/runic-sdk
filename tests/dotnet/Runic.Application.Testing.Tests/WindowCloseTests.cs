@@ -3,21 +3,16 @@ using System.Text.Json;
 using System.Windows.Input;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Graceful window close drains accepted work before cancelling it, including
 // commands invoked through their ordinary awaited route.
-public static class WindowCloseTests
+public sealed class WindowCloseTests
 {
-    public static async Task RunAsync()
-    {
-        await CloseWaitsForAnAwaitedCommand();
-        await CloseTimeoutCancelsRemainingAwaitedWork();
-        await AdmittedOperationIsNotCancelledBeforeTheTimeout();
-    }
-
-    private static async Task CloseWaitsForAnAwaitedCommand()
+    [Test]
+    public async Task CloseWaitsForAnAwaitedCommand()
     {
         var model = new SlowModel();
         using var transport = new InMemoryViewTransport();
@@ -43,7 +38,8 @@ public static class WindowCloseTests
         session.Dispose();
     }
 
-    private static async Task CloseTimeoutCancelsRemainingAwaitedWork()
+    [Test]
+    public async Task CloseTimeoutCancelsRemainingAwaitedWork()
     {
         var model = new SlowModel();
         using var transport = new InMemoryViewTransport();
@@ -64,7 +60,8 @@ public static class WindowCloseTests
         session.Dispose();
     }
 
-    private static async Task AdmittedOperationIsNotCancelledBeforeTheTimeout()
+    [Test]
+    public async Task AdmittedOperationIsNotCancelledBeforeTheTimeout()
     {
         using var registry = new BridgeOperationRegistry("close-drain-test");
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

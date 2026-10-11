@@ -1,5 +1,7 @@
 import { test, expect } from 'bun:test';
 import { selection } from './test.mjs';
+import { resolve } from 'node:path';
+import { root } from './run.mjs';
 test('focused selections include only their managed suite or web package', () => {
   const assets = selection('assets');
   expect(assets.kind).toBe('managed');
@@ -10,7 +12,9 @@ test('focused selections include only their managed suite or web package', () =>
 });
 test('single file and single .NET test project avoid full workspace execution', () => {
   expect(selection('eng/release/contracts.test.mjs').paths).toHaveLength(1);
-  expect(selection('tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj').kind).toBe('dotnet-test');
+  expect(selection('tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj')).toEqual({kind: 'managed',
+    paths: [resolve(root, 'tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj')]});
+  expect(() => selection('packages/dotnet/Runic.Desktop/Runic.Desktop.csproj')).toThrow('is not a test executable');
 });
 test('application checks run both ReactiveUI flavors through the shared conformance suite', () => {
   const application = selection('application');

@@ -4,25 +4,19 @@ using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Session-level content lifecycle: re-exposure of a still-mounted reference,
 // and release of per-item state for churning collections.
-public static class ContentLifecycleTests
+public sealed class ContentLifecycleTests
 {
-    public static async Task RunAsync()
-    {
-        await ReexposedReferenceKeepsItsBrowserMount();
-        await UnmountedSuspendedReferenceReleasesItsEndpoints();
-        ReconnectedBrowserRemountsWithItsToken();
-        CollectionChurnReleasesItemState();
-    }
-
     // A transport reconnect keeps the page, so the generated client re-sends
     // its existing mount token from the new connection. Until .NET observes
     // the former connection's disconnect that token is still owned by it.
-    private static void ReconnectedBrowserRemountsWithItsToken()
+    [Test]
+    public void ReconnectedBrowserRemountsWithItsToken()
     {
         var root = new Item();
         var views = new ViewCounter();
@@ -45,7 +39,8 @@ public static class ContentLifecycleTests
 
     // A command doing `Main = b; Main = a;` can publish a parent snapshot whose
     // reference never changed for the browser, so the browser keeps its mount.
-    private static async Task ReexposedReferenceKeepsItsBrowserMount()
+    [Test]
+    public async Task ReexposedReferenceKeepsItsBrowserMount()
     {
         var root = new Item();
         var a = new Item();
@@ -79,7 +74,8 @@ public static class ContentLifecycleTests
             && views.Detached == 2, "Unmounting the resumed presentation did not release its View.");
     }
 
-    private static async Task UnmountedSuspendedReferenceReleasesItsEndpoints()
+    [Test]
+    public async Task UnmountedSuspendedReferenceReleasesItsEndpoints()
     {
         var root = new Item();
         var a = new Item();
@@ -100,7 +96,8 @@ public static class ContentLifecycleTests
         Require(views.Attached == 1, "An unmounted browser presentation was recreated.");
     }
 
-    private static void CollectionChurnReleasesItemState()
+    [Test]
+    public void CollectionChurnReleasesItemState()
     {
         var root = new Item();
         using var transport = new InMemoryViewTransport();

@@ -1,25 +1,33 @@
 using System.Text.Json.Nodes;
 using Runic.Application.Testing;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Runs the shared collection delta fixtures through RunicStateTracker: it must reach
 // the fixture state from the producer's frames, reject a frame after a lost one, and
 // reject frames the generated client rejects.
-internal static class TrackerConformanceTests
+internal sealed class TrackerConformanceTests
 {
     private const string Route = "collectionDelta";
 
-    internal static void Run()
+    // One case per fixture case, in file order, named "<file>: <case>" as the former runner named them.
+    public static IEnumerable<Func<(string Name, JsonObject TestCase)>> Cases()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "fixtures", "collection-deltas");
         foreach (var file in Directory.GetFiles(directory, "*.json").Order(StringComparer.Ordinal))
             foreach (var testCase in JsonNode.Parse(File.ReadAllText(file))!["cases"]!.AsArray())
-                RunCase($"{Path.GetFileName(file)}: {testCase!["name"]}", testCase.AsObject());
-        RejectsWhatTheClientRejects();
+            {
+                var name = $"{Path.GetFileName(file)}: {testCase!["name"]}";
+                var json = testCase.ToJsonString();
+                yield return () => (name, JsonNode.Parse(json)!.AsObject());
+            }
     }
 
-    private static void RunCase(string name, JsonObject testCase)
+    [Test]
+    [MethodDataSource(nameof(Cases))]
+    [DisplayName("$name")]
+    public void TrackerReachesTheFixtureState(string name, JsonObject testCase)
     {
         if (testCase["error"] is not null && testCase["steps"]!.AsArray().Count == 0) return;
         var initial = CollectionDeltaConformanceTests.Expand(testCase["initial"]!).AsObject();
@@ -53,7 +61,8 @@ internal static class TrackerConformanceTests
         Require(tracker.Failures.Count == failures, $"{name}: the tracker recorded {tracker.Failures.Count} failure notices, not {failures}.");
     }
 
-    private static void RejectsWhatTheClientRejects()
+    [Test]
+    public void RejectsWhatTheClientRejects()
     {
         var initial = new JsonObject { ["revision"] = 0, ["rows"] = new JsonArray(Row(1), Row(2)), ["title"] = "rows" };
         foreach (var (change, problem) in new (JsonObject Change, string Problem)[]

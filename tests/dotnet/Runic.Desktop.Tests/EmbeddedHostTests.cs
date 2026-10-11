@@ -1,10 +1,11 @@
+using TUnit.Core;
 using Runic.Desktop;
 
 namespace Runic.Desktop.Tests;
 
 public sealed class EmbeddedHostTests
 {
-    [Fact]
+    [Test]
     public async Task PresentationCloseWaitsForNativeCallbackCleanup()
     {
         var factory = new RecordingHostFactory();
@@ -36,7 +37,7 @@ public sealed class EmbeddedHostTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task CustomHostReceivesWindowOptionsAndParticipatesInLifecycle()
     {
         var factory = new RecordingHostFactory();
@@ -112,7 +113,7 @@ public sealed class EmbeddedHostTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ReopeningReleasesAClosedHostWhoseCallbackHasNotRun()
     {
         var factory = new RecordingHostFactory();

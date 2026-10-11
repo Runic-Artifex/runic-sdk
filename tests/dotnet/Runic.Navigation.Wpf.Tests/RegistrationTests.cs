@@ -1,15 +1,18 @@
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using TUnit.Core;
+using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
 // AddRunicWpfNavigation (W240-001 §8.2, §5.1).
-internal static class RegistrationTests
+internal sealed class RegistrationTests
 {
     // Runs before the Application exists: resolution throws and never creates a dispatcher on the resolving thread.
-    public static void WithoutApplication()
+    [Test, DisplayName("registration without an Application"), NotInParallel("WpfSuite", Order = 1), STAThreadExecutor]
+    public void WithoutApplication()
     {
         Require(Application.Current is null && Dispatcher.FromThread(Thread.CurrentThread) is null, "The test must run before any dispatcher exists.");
         using (var provider = new ServiceCollection().AddRunicWpfNavigation().BuildServiceProvider())
@@ -37,7 +40,8 @@ internal static class RegistrationTests
             "A locator was registered without MapView or the convention.");
     }
 
-    public static void WithApplication()
+    [Test, DisplayName("registration"), NotInParallel("WpfSuite", Order = 2), TestExecutor<WpfDispatcherExecutor>]
+    public void WithApplication()
     {
         var provider = new ServiceCollection()
             .AddScoped<IRunicModelContext>(_ => throw new InvalidOperationException("Replaced."))

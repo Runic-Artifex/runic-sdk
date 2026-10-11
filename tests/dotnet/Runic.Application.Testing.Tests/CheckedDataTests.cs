@@ -3,22 +3,14 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class CheckedDataTests
+internal sealed class CheckedDataTests
 {
-    internal static void Run()
-    {
-        RetainedCheckedValuesAreImmutableBaselines();
-        NestedDataSubscriptionsReleaseRemovedObjects();
-        ScalarUpdatesDoNotChurnUnrelatedSubscriptions();
-        OneShotCollectionsAreNotReenumeratedForUnrelatedChanges();
-        PlainCollectionsReconcileWhenTheirOwnerNotifies();
-        NestedCollectionsReconcileAtEveryLevel();
-    }
-
-    private static void RetainedCheckedValuesAreImmutableBaselines()
+    [Test]
+    public void RetainedCheckedValuesAreImmutableBaselines()
     {
         var owner = new MutableOwner { Value = new MutableValue(1) };
         using var registry = new BridgeFieldWriteRegistry<MutableValue>(
@@ -44,7 +36,8 @@ internal static class CheckedDataTests
             "A mutation through a live DTO reference was not detected as an external change.");
     }
 
-    private static void NestedDataSubscriptionsReleaseRemovedObjects()
+    [Test]
+    public void NestedDataSubscriptionsReleaseRemovedObjects()
     {
         var oldChild = new MutableNode();
         var root = new SubscriptionRoot { Child = oldChild };
@@ -114,7 +107,8 @@ internal static class CheckedDataTests
         Require(notifications == 15, "A replacement collection item was not subscribed.");
     }
 
-    private static void ScalarUpdatesDoNotChurnUnrelatedSubscriptions()
+    [Test]
+    public void ScalarUpdatesDoNotChurnUnrelatedSubscriptions()
     {
         var left = new CountingNode();
         var right = new CountingNode();
@@ -137,7 +131,8 @@ internal static class CheckedDataTests
             "A scalar leaf update rebuilt subscriptions for retained graph branches.");
     }
 
-    private static void OneShotCollectionsAreNotReenumeratedForUnrelatedChanges()
+    [Test]
+    public void OneShotCollectionsAreNotReenumeratedForUnrelatedChanges()
     {
         var root = new EnumerableRoot { Sequence = new OneShotEnumerable([new MutableNode()]) };
         var childMembers = new[]
@@ -159,7 +154,8 @@ internal static class CheckedDataTests
             "An unrelated scalar update re-enumerated a retained one-shot collection.");
     }
 
-    private static void PlainCollectionsReconcileWhenTheirOwnerNotifies()
+    [Test]
+    public void PlainCollectionsReconcileWhenTheirOwnerNotifies()
     {
         var removed = new MutableNode();
         var root = new PlainListRoot();
@@ -187,7 +183,8 @@ internal static class CheckedDataTests
             Require(notifications == 3, "A notified plain List removal retained its nested DTO subscription.");
     }
 
-    private static void NestedCollectionsReconcileAtEveryLevel()
+    [Test]
+    public void NestedCollectionsReconcileAtEveryLevel()
     {
         var old = new MutableNode();
         var inner = new ObservableCollection<MutableNode> { old };

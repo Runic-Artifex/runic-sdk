@@ -1,3 +1,5 @@
+using TUnit.Core;
+
 namespace Runic.Application.Testing.Tests;
 
 /// <summary>
@@ -5,11 +7,12 @@ namespace Runic.Application.Testing.Tests;
 /// the build integration rather than merely testing manifest implementation
 /// details in-process.
 /// </summary>
-internal static class CodegenCacheTests
+internal sealed class CodegenCacheTests
 {
     private const string ManifestFileName = ".runic-bridge-generation-cache.json";
 
-    internal static async Task RunAsync()
+    [Test]
+    public async Task RepeatedGenerationReusesAndRepairsTheCacheAsync()
     {
         var root = FindWorkspaceRoot();
         var configuration = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyConfigurationAttribute>(

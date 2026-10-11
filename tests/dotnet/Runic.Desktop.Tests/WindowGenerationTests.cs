@@ -1,8 +1,10 @@
+using TUnit.Core;
+
 namespace Runic.Desktop.Tests;
 
 public sealed class WindowGenerationTests
 {
-    [Fact]
+    [Test]
     public async Task ClosedWindowCannotMutateItsReplacement()
     {
         var factory = new Factory();
@@ -24,7 +26,7 @@ public sealed class WindowGenerationTests
         Assert.Equal(1, replacement.Mutations);
     }
 
-    [Fact]
+    [Test]
     public async Task CloseAndReplacementWaitForAdmittedMutationAndRejectQueuedStaleWork()
     {
         var factory = new Factory();
@@ -53,7 +55,7 @@ public sealed class WindowGenerationTests
         Assert.Equal(0, factory.Hosts[1].Mutations);
     }
 
-    [Fact]
+    [Test]
     public async Task ReplacementUsesCompleteOptionsInsteadOfPreviousOptionalValues()
     {
         var factory = new Factory();
@@ -84,7 +86,7 @@ public sealed class WindowGenerationTests
         finally { File.Delete(icon); }
     }
 
-    [Fact]
+    [Test]
     public async Task SurfaceDisposalDrainsAdmittedMutationAndRejectsQueuedAdmission()
     {
         var factory = new Factory();

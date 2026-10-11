@@ -1,12 +1,24 @@
 using System.Runtime.InteropServices;
+using Microsoft.Testing.Platform.Builder;
 
 namespace Runic.Desktop.Tests;
 
-// The test assembly doubles as the application that ShutdownSignalTests stops with a signal.
+/// <summary>
+/// The test application doubles as the application that ShutdownSignalTests stops with a signal, so the
+/// entry point is hand-written: the fixture arguments run the fixture, anything else runs the tests.
+/// </summary>
 internal static class Program
 {
-    private static int Main(string[] args) =>
-        args is [ShutdownSignalFixture.Argument, var mode] ? ShutdownSignalFixture.Run(mode) : 0;
+#pragma warning disable TUnit0034 // The entry point must also start ShutdownSignalFixture.
+    public static async Task<int> Main(string[] args)
+#pragma warning restore TUnit0034
+    {
+        if (args is [ShutdownSignalFixture.Argument, var mode]) return ShutdownSignalFixture.Run(mode);
+        ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
+        builder.AddSelfRegisteredExtensions(args);
+        using ITestApplication application = await builder.BuildAsync().ConfigureAwait(false);
+        return await application.RunAsync().ConfigureAwait(false);
+    }
 }
 
 // A Desktop application shaped like the template: it opens one window, waits for it to close, then drains its

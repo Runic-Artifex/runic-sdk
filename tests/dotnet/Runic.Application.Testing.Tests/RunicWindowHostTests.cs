@@ -3,26 +3,19 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // D018.3: one Window class and one open API for every host. These run the host-neutral half of
 // OpenWindowAsync and ValidateWindow against a recording host; the Desktop and CS-WebUI adapters
 // have their own checks (tests/dotnet/Runic.Application.Views.Desktop.Tests, cswebui-window-probes).
-internal static class RunicWindowHostTests
+// The former runner's order: HostProbeViewModel.Created and ScopeProbe.Live are static, Services() resets them, and
+// the validation case, which builds its own provider, relies on the earlier cases having reset them.
+internal sealed class RunicWindowHostTests
 {
-    public static async Task RunAsync()
-    {
-        await OpenResolvesTheViewModelInANewScopeAndAssignsIt();
-        await MissingBridgeFailsBeforeTheHostOrViewModel();
-        await OpaqueContainerReportsTheMissingBridgeAndReleasesTheScope();
-        ValidationReturnsOneResultWithRegistrationOptionAndHostDiagnostics();
-        await InvalidOptionsAndCancellationStopBeforeTheHost();
-        await HostCancellationReleasesTheScope();
-        await LifecycleForwardsCancellationTokensToTheHost();
-    }
-
-    private static async Task OpenResolvesTheViewModelInANewScopeAndAssignsIt()
+    [Test, NotInParallel(Order = 1)]
+    public async Task OpenResolvesTheViewModelInANewScopeAndAssignsIt()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
         var host = new RecordingHost(provider);
@@ -52,7 +45,8 @@ internal static class RunicWindowHostTests
             "Disposing the Window did not release its scope and Bridge.");
     }
 
-    private static async Task MissingBridgeFailsBeforeTheHostOrViewModel()
+    [Test, NotInParallel(Order = 2)]
+    public async Task MissingBridgeFailsBeforeTheHostOrViewModel()
     {
         var log = new LogCapture();
         await using var provider = Services(bridge: false).AddSingleton<ILoggerFactory>(log).BuildServiceProvider();
@@ -68,7 +62,8 @@ internal static class RunicWindowHostTests
             "A missing Bridge was not logged once as event 1050 WindowRegistrationMissing.");
     }
 
-    private static async Task OpaqueContainerReportsTheMissingBridgeAndReleasesTheScope()
+    [Test, NotInParallel(Order = 3)]
+    public async Task OpaqueContainerReportsTheMissingBridgeAndReleasesTheScope()
     {
         await using var provider = Services(bridge: false).BuildServiceProvider();
         var host = new RecordingHost(new OpaqueServices(provider));
@@ -81,7 +76,8 @@ internal static class RunicWindowHostTests
             "Opening on an opaque container reached the host, constructed the ViewModel or kept the scope.");
     }
 
-    private static void ValidationReturnsOneResultWithRegistrationOptionAndHostDiagnostics()
+    [Test, NotInParallel(Order = 4)]
+    public void ValidationReturnsOneResultWithRegistrationOptionAndHostDiagnostics()
     {
         using var empty = new ServiceCollection().BuildServiceProvider();
         var host = new RecordingHost(empty)
@@ -105,7 +101,8 @@ internal static class RunicWindowHostTests
         valid.ThrowIfInvalid();
     }
 
-    private static async Task InvalidOptionsAndCancellationStopBeforeTheHost()
+    [Test, NotInParallel(Order = 5)]
+    public async Task InvalidOptionsAndCancellationStopBeforeTheHost()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
         var host = new RecordingHost(provider);
@@ -124,7 +121,8 @@ internal static class RunicWindowHostTests
             "Invalid options or a cancelled open created a scope, ViewModel or window.");
     }
 
-    private static async Task HostCancellationReleasesTheScope()
+    [Test, NotInParallel(Order = 6)]
+    public async Task HostCancellationReleasesTheScope()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
         using var cancel = new CancellationTokenSource();
@@ -138,7 +136,8 @@ internal static class RunicWindowHostTests
         Require(ScopeProbe.Live == 0, "A cancelled host open kept the Window's scope.");
     }
 
-    private static async Task LifecycleForwardsCancellationTokensToTheHost()
+    [Test, NotInParallel(Order = 7)]
+    public async Task LifecycleForwardsCancellationTokensToTheHost()
     {
         await using var provider = Services(bridge: true).BuildServiceProvider();
         var host = new RecordingHost(provider);

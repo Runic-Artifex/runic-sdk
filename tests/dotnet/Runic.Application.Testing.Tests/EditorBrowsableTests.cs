@@ -2,12 +2,13 @@ using System.ComponentModel;
 using System.Reflection;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Types that only generated bridges call stay public, because generated code
 // in application assemblies calls them, but stay out of completion lists.
-internal static class EditorBrowsableTests
+internal sealed class EditorBrowsableTests
 {
     private static readonly Type[] GeneratedCodeOnly =
     [
@@ -39,7 +40,8 @@ internal static class EditorBrowsableTests
         typeof(ReactiveInteractionDescriptor),
     ];
 
-    internal static void Run()
+    [Test]
+    public void GeneratedCodeOnlyTypesAreHiddenFromEditors()
     {
         foreach (var type in GeneratedCodeOnly)
             Require(type.IsPublic && type.GetCustomAttribute<EditorBrowsableAttribute>(false)?.State == EditorBrowsableState.Never,

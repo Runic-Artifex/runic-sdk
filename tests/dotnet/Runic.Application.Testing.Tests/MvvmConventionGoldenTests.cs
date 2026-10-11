@@ -1,4 +1,5 @@
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
@@ -7,7 +8,7 @@ namespace Runic.Application.Testing.Tests;
 // flavours, and the fingerprint inputs of their ViewModels, so moving that
 // recognition cannot change what an application receives. Set
 // RUNIC_UPDATE_GOLDEN=1 to rewrite them after an intended change.
-internal static class MvvmConventionGoldenTests
+internal sealed class MvvmConventionGoldenTests
 {
     private static readonly (Type Model, string Module)[] Models =
     [
@@ -19,7 +20,8 @@ internal static class MvvmConventionGoldenTests
         (typeof(GeneratedInteractionViewModel), "generatedInteraction"),
     ];
 
-    internal static void Run()
+    [Test]
+    public void MvvmConventionOutputMatchesTheGoldenFiles()
     {
         var project = Path.Combine(DomainFailureCodegenTests.FindWorkspaceRoot(), "tests", "dotnet", "Runic.Application.Testing.Tests");
         var generated = Path.Combine(project, "obj", "bridge-frontend", "generated");

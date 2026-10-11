@@ -1,15 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
     <OutputType>Exe</OutputType>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <AssemblyName>Runic.Create.Tests</AssemblyName>
     <RootNamespace>Runic.Create.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../tools/Runic.Create/Runic.Create.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

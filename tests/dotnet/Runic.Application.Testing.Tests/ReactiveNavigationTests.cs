@@ -4,25 +4,18 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class ReactiveNavigationTests
+internal sealed class ReactiveNavigationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    public static async Task RunAsync()
-    {
-        foreach (var web in new[] { false, true })
-        foreach (var outcome in new[] { "committed", "guard", "cancelled" })
-            await FrameworkCommandPreservesNavigationAsync(web, outcome);
-        await BridgedBackCommandReturnsOutcomeAsync();
-        await WebViewAnswersLeaveConfirmationAsync();
-    }
-
     // W250-034/035: the editor's bridged Close command asks its ReactiveLeaveConfirmation through the generated
     // interaction; the web View answers no, then yes. Save and Cancel complete and dismiss the request.
-    private static async Task WebViewAnswersLeaveConfirmationAsync()
+    [Test]
+    public async Task WebViewAnswersLeaveConfirmationAsync()
     {
         Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
             "The model-context main-thread scheduler was not installed.");
@@ -131,7 +124,8 @@ internal static class ReactiveNavigationTests
 
     // The back command needs no scheduler and returns a NavigationOutcome, which the generated web client
     // receives as a typed result (W250-014).
-    private static async Task BridgedBackCommandReturnsOutcomeAsync()
+    [Test]
+    public async Task BridgedBackCommandReturnsOutcomeAsync()
     {
         Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
             "The model-context main-thread scheduler was not installed.");
@@ -173,7 +167,15 @@ internal static class ReactiveNavigationTests
         public void OnNext(T value) => next(value);
     }
 
-    private static async Task FrameworkCommandPreservesNavigationAsync(bool web, string outcome)
+    [Test]
+    [Arguments(false, "committed")]
+    [Arguments(false, "guard")]
+    [Arguments(false, "cancelled")]
+    [Arguments(true, "committed")]
+    [Arguments(true, "guard")]
+    [Arguments(true, "cancelled")]
+    [DisplayName("FrameworkCommandPreservesNavigationAsync(web: $web, outcome: $outcome)")]
+    public async Task FrameworkCommandPreservesNavigationAsync(bool web, string outcome)
     {
         await using var context = new RunicModelContext();
         await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });

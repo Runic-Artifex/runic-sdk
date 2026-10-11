@@ -2,13 +2,17 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.Extensions.DependencyInjection;
+using TUnit.Core;
+using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
-internal static class PlainViewHostTests
+[TestExecutor<WpfDispatcherExecutor>]
+internal sealed class PlainViewHostTests
 {
-    public static void RegisteredLocationAndBorrowedLifetime()
+    [Test, DisplayName("plain view location and borrowed lifetime"), NotInParallel("WpfSuite", Order = 27)]
+    public void RegisteredLocationAndBorrowedLifetime()
     {
         var dependency = new ViewDependency();
         var provider = new ServiceCollection().AddSingleton(dependency)
@@ -46,7 +50,8 @@ internal static class PlainViewHostTests
         finally { window.Close(); Pump(provider.DisposeAsync().AsTask()); }
     }
 
-    public static void ExplicitLocationAndFailure()
+    [Test, DisplayName("plain view location and failure"), NotInParallel("WpfSuite", Order = 28)]
+    public void ExplicitLocationAndFailure()
     {
         var model = new PlainContent();
         var locator = new PlainLocator();

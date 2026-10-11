@@ -15,42 +15,24 @@ using Runic.Platform.Administration.Windows;
 using Runic.Platform.Administration.Windows.Processes;
 using Runic.Platform.Administration.Windows.Services;
 using Runic.Platform.Administration.Windows.Shortcuts;
+using TUnit.Core;
+using TUnit.Core.Enums;
 
-if (!OperatingSystem.IsWindows())
-{
-    Console.WriteLine("SKIP Windows native administration tests.");
-    return;
-}
-await NativeTests.RunAsync();
+namespace Runic.Platform.Administration.Windows.Tests;
 
+// The former runner printed "SKIP Windows native administration tests." and ran nothing on other operating systems;
+// RunOn reports these cases as skipped there in the same way.
 [SupportedOSPlatform("windows")]
-internal static class NativeTests
+[RunOn(OS.Windows)]
+internal sealed class NativeTests
 {
-    internal static async Task RunAsync()
-    {
-        CheckDuplicateShareError();
-        await CheckShortcutsAsync();
-        CheckProcesses();
-        await CheckServicesAsync();
-        await CheckTaskInspectionAsync();
-        await CheckFirewallInspectionAsync();
-        await CheckGeneratedClientsAsync();
-        CheckLdapTransport();
-        await CheckInventoryAsync();
-        await CheckNativeWmiAsync();
-        await CheckTaskDefinitionsAsync();
-        CheckLinkOrder();
-        await CheckGpmcPrerequisiteAsync();
-        await CheckBackupEnumerationAsync();
-        Console.WriteLine("PASS Windows administration: native shortcuts, process snapshots and read-only service queries.");
-    }
-
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    private static async Task CheckGeneratedClientsAsync()
+    [Test]
+    public async Task CheckGeneratedClientsAsync()
     {
         var firewall = new WindowsFirewallClient();
         Check((await firewall.GetProfilesAsync()).Length == 3, "Expected all firewall profiles.");
@@ -78,7 +60,8 @@ internal static class NativeTests
         Console.WriteLine("PASS Generated firewall and SMB inspection, missing lookups and validation.");
     }
 
-    private static void CheckDuplicateShareError()
+    [Test]
+    public void CheckDuplicateShareError()
     {
         var error = NativeError.Win32("Create SMB share", 2118); // NERR_DuplicateShare
         Check(error.Category == AdministrationErrorCategory.Conflict, "Duplicate SMB share must be a conflict.");
@@ -86,7 +69,8 @@ internal static class NativeTests
             error.Operation == "Create SMB share", "Conflict classification must retain the native error identity.");
     }
 
-    private static async Task CheckShortcutsAsync()
+    [Test]
+    public async Task CheckShortcutsAsync()
     {
         var folder = Path.Combine(Path.GetTempPath(), "RunicAdmin-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
@@ -137,7 +121,8 @@ internal static class NativeTests
         finally { Directory.Delete(folder, true); }
     }
 
-    private static async Task CheckTaskInspectionAsync()
+    [Test]
+    public async Task CheckTaskInspectionAsync()
     {
         var client = new WindowsTaskSchedulerClient();
         var folders = await client.EnumerateFoldersAsync();
@@ -146,7 +131,8 @@ internal static class NativeTests
         Check(await client.FindAsync("\\RunicMissing-" + Guid.NewGuid().ToString("N")) is null, "Missing task must return null.");
         Console.WriteLine("PASS Native Task Scheduler connection, folder/task enumeration and missing lookup.");
     }
-    private static async Task CheckFirewallInspectionAsync()
+    [Test]
+    public async Task CheckFirewallInspectionAsync()
     {
         var client = new WindowsFirewallClient();
         Check((await client.GetProfilesAsync()).Length == 3, "Expected all firewall profiles.");
@@ -154,7 +140,8 @@ internal static class NativeTests
         Check(await client.FindAsync("RunicMissing-" + Guid.NewGuid().ToString("N")) is null, "Missing firewall rule must return null.");
         Console.WriteLine("PASS Native firewall profile and rule enumeration; missing rule lookup.");
     }
-    private static void CheckLdapTransport()
+    [Test]
+    public void CheckLdapTransport()
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
@@ -167,7 +154,8 @@ internal static class NativeTests
         catch (LdapException error) { Check(error.ErrorCode is 81 or 82 or 85 or 91, "Unexpected LDAP failure: " + error.ErrorCode); }
         Console.WriteLine("PASS LDAP native transport initialization and unavailable-endpoint failure; domain operations require a fixture.");
     }
-    private static async Task CheckInventoryAsync()
+    [Test]
+    public async Task CheckInventoryAsync()
     {
         var system = new WindowsSystemInformationClient();
         var nativeVersion = system.GetOperatingSystem().Version; var managedVersion = Environment.OSVersion.Version;
@@ -180,7 +168,8 @@ internal static class NativeTests
         Check(shares.Find("RunicMissing-" + Guid.NewGuid().ToString("N")) is null, "Missing share must return null.");
         Console.WriteLine("PASS Native OS/BIOS, domain membership, networks and SMB share inspection.");
     }
-    private static async Task CheckNativeWmiAsync()
+    [Test]
+    public async Task CheckNativeWmiAsync()
     {
         await ComApartment.RunAsync(() =>
         {
@@ -197,7 +186,8 @@ internal static class NativeTests
         Check(DirectoryNames.EscapeRdnValue(" x,y ") == @"\ x\,y\ ", "RDN escaping mismatch.");
         Console.WriteLine("PASS Native WMI local query/object read/read-only method and LDAP name escaping.");
     }
-    private static async Task CheckTaskDefinitionsAsync()
+    [Test]
+    public async Task CheckTaskDefinitionsAsync()
     {
         var client = new WindowsTaskSchedulerClient();
         ImmutableArray<TaskTrigger> triggers = [
@@ -223,7 +213,8 @@ internal static class NativeTests
         Console.WriteLine("PASS Windows validates all typed task trigger definitions and selected-field updates without registration.");
     }
 
-    private static async Task CheckGpmcPrerequisiteAsync()
+    [Test]
+    public async Task CheckGpmcPrerequisiteAsync()
     {
         await ComApartment.RunAsync(() =>
         {
@@ -243,7 +234,8 @@ internal static class NativeTests
     }
 
 
-    private static async Task CheckBackupEnumerationAsync()
+    [Test]
+    public async Task CheckBackupEnumerationAsync()
     {
         var directory = Path.Combine(Path.GetTempPath(), "RunicBackupEnumeration-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -270,7 +262,8 @@ internal static class NativeTests
         finally { Directory.Delete(directory); }
     }
 
-    private static void CheckLinkOrder()
+    [Test]
+    public void CheckLinkOrder()
     {
         var first = Guid.NewGuid(); var second = Guid.NewGuid();
         var low = $"[LDAP://CN={first:B},CN=Policies,CN=System,DC=example,DC=test;2]";
@@ -281,7 +274,8 @@ internal static class NativeTests
         Check(WindowsGroupPolicyClient.ReorderLinks(" ", [], []) == " ", "Whitespace-only gPLink must be an empty link list.");
         Console.WriteLine("PASS GPO link ordering preserves raw flags and rejects incomplete replacements; no directory write performed.");
     }
-    private static void CheckProcesses()
+    [Test]
+    public void CheckProcesses()
     {
         var client = new WindowsProcessClient();
         var snapshot = client.Enumerate();
@@ -290,7 +284,8 @@ internal static class NativeTests
         Check(client.GetChildren((uint)Environment.ProcessId).All(row => row.ParentProcessId == (uint)Environment.ProcessId), "Child filter mismatch.");
     }
 
-    private static async Task CheckServicesAsync()
+    [Test]
+    public async Task CheckServicesAsync()
     {
         var client = new WindowsServiceClient();
         var missing = "RunicMissing-" + Guid.NewGuid().ToString("N");

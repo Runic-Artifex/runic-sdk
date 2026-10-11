@@ -1,3 +1,4 @@
+using TUnit.Core;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
@@ -6,7 +7,7 @@ namespace Runic.Desktop.Tests;
 // check and a deadline expiry are exercised without timers (#35).
 public sealed class WebUiHandshakeStateTests
 {
-    [Fact]
+    [Test]
     public void ATokenCheckBeforeTheDeadlineKeepsTheSocket()
     {
         var handshake = new WebUiHandshake();
@@ -17,7 +18,7 @@ public sealed class WebUiHandshakeStateTests
         Assert.False(handshake.IsClosing);
     }
 
-    [Fact]
+    [Test]
     public void AnExpiryBeforeTheTokenCheckClosesTheSocketAndTheCheckCannotRevertIt()
     {
         var handshake = new WebUiHandshake();
@@ -28,7 +29,7 @@ public sealed class WebUiHandshakeStateTests
         Assert.True(handshake.IsClosing);
     }
 
-    [Fact]
+    [Test]
     public void AnEndedSocketCannotBeExpired()
     {
         var handshake = new WebUiHandshake();
@@ -39,7 +40,7 @@ public sealed class WebUiHandshakeStateTests
         Assert.Equal(WebUiHandshake.Ended, handshake.CheckToken(tokenIsValid: true));
     }
 
-    [Fact]
+    [Test]
     public void AnExpiredSocketCannotEnd()
     {
         var handshake = new WebUiHandshake();
@@ -49,7 +50,7 @@ public sealed class WebUiHandshakeStateTests
         Assert.Equal(WebUiHandshake.Expired, handshake.State);
     }
 
-    [Fact]
+    [Test]
     public void AWrongTokenRejectsThePendingSocketPermanently()
     {
         var handshake = new WebUiHandshake();
@@ -62,7 +63,7 @@ public sealed class WebUiHandshakeStateTests
         Assert.Equal(WebUiHandshake.Rejected, handshake.State);
     }
 
-    [Fact]
+    [Test]
     public void AWrongTokenAfterAMatchRejectsAnAuthenticatedSocket()
     {
         var handshake = new WebUiHandshake();

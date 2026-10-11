@@ -2,22 +2,17 @@ using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // W130-029 slice 3: declared failures through generated bridges for a sync
 // RelayCommand, an AsyncRelayCommand, a plain ICommand and a ReactiveCommand,
 // on the awaited route and as operations, plus golden generated output.
-internal static class DomainFailureCodegenTests
+internal sealed class DomainFailureCodegenTests
 {
-    internal static async Task RunAsync()
-    {
-        await ToolkitCommandsAsync();
-        await ReactiveCommandAsync();
-        GoldenOutput();
-    }
-
-    private static async Task ToolkitCommandsAsync()
+    [Test]
+    public async Task ToolkitCommandsAsync()
     {
         var model = new FailureToolkitViewModel();
         using var host = new RunicWindowTestHost<FailureToolkitViewModel>(model, "failureToolkit",
@@ -56,7 +51,8 @@ internal static class DomainFailureCodegenTests
             new(StringValue: "fingerprint"))), "The generated fingerprint differs from BridgeContractShape for declared failures.");
     }
 
-    private static async Task ReactiveCommandAsync()
+    [Test]
+    public async Task ReactiveCommandAsync()
     {
         await using var context = new RunicModelContext();
         using var model = new FailureReactiveViewModel(context);
@@ -90,7 +86,8 @@ internal static class DomainFailureCodegenTests
     // region slot (W240-003: NavigationRegion<T> now comes from Runic.Navigation),
     // checked in under golden/. Set RUNIC_UPDATE_GOLDEN=1 to rewrite them after an
     // intended change.
-    private static void GoldenOutput()
+    [Test]
+    public void GoldenOutput()
     {
         var root = FindWorkspaceRoot();
         var project = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests");

@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Diagnostics;
 using System.Net.WebSockets;
 using System.Text;
@@ -6,11 +7,14 @@ using Runic.Desktop;
 
 namespace Runic.Desktop.Tests;
 
-public sealed class BrowserBridgeTests(Xunit.Abstractions.ITestOutputHelper output)
+public sealed class BrowserBridgeTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
+    private readonly TestOutput output = new();
+
+    [Test]
+    [DisplayName("UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium(delayedPageLoad: $delayedPageLoad)")]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task UpstreamStyleCallbackAndJavaScriptRoundTripRunsInChromium(bool delayedPageLoad)
     {
         var chrome = FindChrome();

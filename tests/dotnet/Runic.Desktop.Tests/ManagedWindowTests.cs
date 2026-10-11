@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Globalization;
@@ -22,7 +23,7 @@ public sealed class ManagedWindowTests
     private const byte CheckToken = 0xF5;
     private const int HeaderSize = 8;
 
-    [Fact]
+    [Test]
     public async Task ServesEmbeddedContentAndWebUiCompatibleBridge()
     {
         await using var window = new WebUiWindow();
@@ -39,7 +40,7 @@ public sealed class ManagedWindowTests
         Assert.DoesNotContain("__PORT__", bridge, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task CanRestartAfterClose()
     {
         await using var window = new WebUiWindow();
@@ -53,7 +54,7 @@ public sealed class ManagedWindowTests
         Assert.Equal("second", await client.GetStringAsync("/"));
     }
 
-    [Fact]
+    [Test]
     public async Task CloseCompletesWithAnAuthenticatedBridgeConnection()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -68,7 +69,7 @@ public sealed class ManagedWindowTests
         Assert.Null(window.Url);
     }
 
-    [Fact]
+    [Test]
     public async Task UsesWebUiHandshakeAndCallFraming()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -99,7 +100,7 @@ public sealed class ManagedWindowTests
         AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 65534, "managed:True");
     }
 
-    [Fact]
+    [Test]
     public async Task AwaitedCallbackAllowsAnotherCallbackBeforeCompletion()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -134,7 +135,7 @@ public sealed class ManagedWindowTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task RejectsAnInvalidProtocolToken()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -151,7 +152,7 @@ public sealed class ManagedWindowTests
         Assert.Equal(0, response[HeaderSize]);
     }
 
-    [Fact]
+    [Test]
     public async Task AnnouncesBindingsAddedAfterAuthentication()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -168,7 +169,7 @@ public sealed class ManagedWindowTests
         Assert.Equal("lateBinding", ReadNullTerminatedString(response, HeaderSize));
     }
 
-    [Fact]
+    [Test]
     public async Task EncodesTypedResultsAsWebUiResponseStrings()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -197,7 +198,7 @@ public sealed class ManagedWindowTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DispatchesConnectionClickNavigationAndDisconnectionEvents()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -230,7 +231,7 @@ public sealed class ManagedWindowTests
         Assert.Equal(WebUiEventType.Disconnected, (await events.Reader.ReadAsync(timeout.Token)).Type);
     }
 
-    [Fact]
+    [Test]
     public async Task SendsQuickJavaScriptRawDataAndNavigationPackets()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -257,7 +258,7 @@ public sealed class ManagedWindowTests
         Assert.Equal("https://example.test/next", ReadNullTerminatedString(navigation, HeaderSize));
     }
 
-    [Fact]
+    [Test]
     public async Task CorrelatesJavaScriptResultsAndReportsErrors()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -288,7 +289,7 @@ public sealed class ManagedWindowTests
         await Assert.ThrowsAsync<TimeoutException>(() => timedOut);
     }
 
-    [Fact]
+    [Test]
     public async Task CallbackCanSynchronouslyExecuteJavaScriptWithoutDeadlock()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -308,7 +309,7 @@ public sealed class ManagedWindowTests
         AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 19, "42");
     }
 
-    [Fact]
+    [Test]
     public async Task ReassemblesWebUiMultiPackets()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -331,7 +332,7 @@ public sealed class ManagedWindowTests
         AssertCallResult(await ReceiveBinaryAsync(socket, timeout.Token), 23, "150000");
     }
 
-    [Fact]
+    [Test]
     public async Task UnauthenticatedPeerCannotOpenAMultiPacketBuffer()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -345,7 +346,7 @@ public sealed class ManagedWindowTests
         await AuthenticateAsync(socket, token, ["__webui_core_api__"], timeout.Token);
     }
 
-    [Fact]
+    [Test]
     public async Task AcceptsAReconnectedBridgeAndRaisesNewConnectionEvents()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

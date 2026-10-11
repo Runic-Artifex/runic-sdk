@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
@@ -12,13 +13,14 @@ public sealed class DesktopApiTests
 {
     private const int PacketHeaderSize = 8;
 
-    [Theory]
-    [InlineData(true, false, true, null)] // Application.Run worker, AppKit loop active.
-    [InlineData(true, false, false, "macos-main-thread-required")]
-    [InlineData(true, true, false, null)] // Direct synchronous main-thread startup.
-    [InlineData(true, true, true, null)]
-    [InlineData(false, false, true, "webkit-runtime-missing")]
-    [InlineData(false, true, false, "webkit-runtime-missing")]
+    [Test]
+    [DisplayName("MacOsDiscoveryRequiresFrameworkAndAnAvailableMainThread(frameworkAvailable: $frameworkAvailable, isMainThread: $isMainThread, eventLoopRunning: $eventLoopRunning, diagnosticCode: $diagnosticCode)")]
+    [Arguments(true, false, true, null)] // Application.Run worker, AppKit loop active.
+    [Arguments(true, false, false, "macos-main-thread-required")]
+    [Arguments(true, true, false, null)] // Direct synchronous main-thread startup.
+    [Arguments(true, true, true, null)]
+    [Arguments(false, false, true, "webkit-runtime-missing")]
+    [Arguments(false, true, false, "webkit-runtime-missing")]
     public void MacOsDiscoveryRequiresFrameworkAndAnAvailableMainThread(
         bool frameworkAvailable, bool isMainThread, bool eventLoopRunning, string? diagnosticCode)
     {
@@ -28,7 +30,7 @@ public sealed class DesktopApiTests
             Assert.Contains("DesktopEventLoop.Run()", diagnostic!.Remediation, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task LinuxEmbeddedSelectionIsRequiredAndActionable()
     {
         if (!OperatingSystem.IsLinux()) return;
@@ -41,7 +43,7 @@ public sealed class DesktopApiTests
         Assert.Equal("linux-embedded-backend-not-selected", error.Code);
     }
 
-    [Fact]
+    [Test]
     public async Task Gtk4SelectionRequiresItsOptionalProvider()
     {
         if (!OperatingSystem.IsLinux()) return;
@@ -49,7 +51,7 @@ public sealed class DesktopApiTests
         Assert.Equal("gtk4-provider-missing", host.GetPresentationPreflight(new() { Browser = BrowserKind.Embedded }).Diagnostic?.Code);
     }
 
-    [Fact]
+    [Test]
     public async Task LinuxFactoryMustMatchTheDeclaredBackend()
     {
         await Assert.ThrowsAsync<ArgumentException>(async () => await DesktopHost.StartAsync(new()
@@ -66,7 +68,7 @@ public sealed class DesktopApiTests
         public IDesktopWindowHost Create() => throw new NotSupportedException();
     }
 
-    [Fact]
+    [Test]
     public void StructuredPayloadRejectsDuplicateKeysWithStableRedactedError()
     {
         var error = Assert.Throws<DesktopException>(() => StructuredPayload.Parse(
@@ -79,7 +81,7 @@ public sealed class DesktopApiTests
         Assert.False(error.Retryable);
     }
 
-    [Fact]
+    [Test]
     public void PublicApiContainsNoWebUiCompatibilityIdentity()
     {
         // The full surface is tracked by PublicAPI.Shipped.txt and PublicApiAnalyzers.
@@ -88,7 +90,7 @@ public sealed class DesktopApiTests
             static type => type.FullName!.Contains("WebUi", StringComparison.OrdinalIgnoreCase));
     }
 
-    [Fact]
+    [Test]
     public async Task PublicNetworkExposureRequiresAnExplicitSecurityPolicy()
     {
         var error = await Assert.ThrowsAsync<ArgumentException>(async () =>
@@ -108,7 +110,7 @@ public sealed class DesktopApiTests
         });
     }
 
-    [Fact]
+    [Test]
     public async Task PublicSurfaceServesRunicDesktopBootstrapIdentity()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -124,7 +126,7 @@ public sealed class DesktopApiTests
         Assert.DoesNotContain("Object.defineProperty(globalThis, \"webui\"", script, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task CapabilityFailuresProduceOnlyStableRedactedDiagnostics()
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
@@ -168,7 +170,7 @@ public sealed class DesktopApiTests
         Assert.DoesNotContain("secret-stack", diagnostic.ToString(), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task PresentationSessionIdentityIsUniquePerAuthenticatedConnection()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -204,7 +206,7 @@ public sealed class DesktopApiTests
         Assert.NotEqual(identities[0].Session.Id, identities[1].Session.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task HostSharesListenerAndCreatesARequestScopePerRequest()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -245,7 +247,7 @@ public sealed class DesktopApiTests
         Assert.StartsWith("second:", await client.GetStringAsync(second.Url), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task ContentRequestExposesAnImmutableCaseInsensitiveHeaderSnapshot()
     {
         IReadOnlyDictionary<string, string>? observed = null;
@@ -268,7 +270,7 @@ public sealed class DesktopApiTests
         Assert.Throws<NotSupportedException>(() => ((IDictionary<string, string>)observed).Add("x", "y"));
     }
 
-    [Fact]
+    [Test]
     public async Task OpeningAndClosingWindowPreservesSurfaceContentAndLifetime()
     {
         var factory = new RecordingWindowHostFactory();
@@ -293,7 +295,7 @@ public sealed class DesktopApiTests
         Assert.Equal("original", await client.GetStringAsync(surface.Url));
     }
 
-    [Fact]
+    [Test]
     public async Task EmbeddedPresentationReceivesExplicitPermissionPolicy()
     {
         var factory = new RecordingWindowHostFactory();
@@ -315,7 +317,7 @@ public sealed class DesktopApiTests
         Assert.Equal(BrowserKind.Embedded, window.RequestedBrowser);
     }
 
-    [Fact]
+    [Test]
     public async Task EmbeddedPresentationDeniesSensitivePermissionsByDefault()
     {
         var factory = new RecordingWindowHostFactory();
@@ -333,7 +335,7 @@ public sealed class DesktopApiTests
         Assert.Equal(DesktopPermissionGrant.None, factory.Host?.Options?.AllowedPermissions);
     }
 
-    [Fact]
+    [Test]
     public async Task UnavailablePresentationFailsEarlyWithCorrelatedRemediation()
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
@@ -355,7 +357,7 @@ public sealed class DesktopApiTests
         Assert.False(string.IsNullOrWhiteSpace(diagnostic.Remediation));
     }
 
-    [Fact]
+    [Test]
     public async Task PreflightReportsTheRequestedPolicyAndConcreteCapabilityLimit()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -385,7 +387,7 @@ public sealed class DesktopApiTests
             explicitFallback.WouldFallBack);
     }
 
-    [Fact]
+    [Test]
     public async Task PreflightRejectsUnknownPresentationPolicies()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -396,7 +398,7 @@ public sealed class DesktopApiTests
         }));
     }
 
-    [Fact]
+    [Test]
     public async Task ExplicitEmbeddedThenBrowserFallbackIsObservable()
     {
         if (OperatingSystem.IsWindows())
@@ -439,7 +441,7 @@ public sealed class DesktopApiTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task EmbeddedConnectionTimeoutIsReportedInsteadOfFallingBack()
     {
         var factory = new RecordingWindowHostFactory();
@@ -474,7 +476,7 @@ public sealed class DesktopApiTests
         Assert.Equal("never connects", await client.GetStringAsync(surface.Url));
     }
 
-    [Fact]
+    [Test]
     public async Task ConnectionTimeoutReportsHowFarThePageGot()
     {
         var factory = new RecordingWindowHostFactory();
@@ -500,7 +502,7 @@ public sealed class DesktopApiTests
         Assert.Contains("the page was requested, but not /webui.js", timeout.Message);
     }
 
-    [Fact]
+    [Test]
     public void AvailabilityReportsConcretePresentationsAndActionableFailures()
     {
         var availability = DesktopPlatform.GetAvailability(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
@@ -513,7 +515,7 @@ public sealed class DesktopApiTests
             static diagnostic => Assert.False(string.IsNullOrWhiteSpace(diagnostic.Remediation)));
     }
 
-    [Fact]
+    [Test]
     public async Task PublicStreamingResponseDoesNotOpenForHead()
     {
         var factoryCalls = 0;
@@ -543,18 +545,19 @@ public sealed class DesktopApiTests
         Assert.Equal(1, Volatile.Read(ref factoryCalls));
     }
 
-    [Theory]
-    [InlineData("http://127.0.0.1:4100/entry/index.html", true)]
-    [InlineData("HTTP://127.0.0.1:4100/", true)]
-    [InlineData("http://127.0.0.1:4101/", false)]
-    [InlineData("http://localhost:4100/", false)]
-    [InlineData("https://127.0.0.1:4100/", false)]
-    [InlineData("about:blank", false)]
-    [InlineData(null, false)]
+    [Test]
+    [DisplayName("MediaCaptureGrantIsBoundToThePresentedOrigin(requester: $requester, expected: $expected)")]
+    [Arguments("http://127.0.0.1:4100/entry/index.html", true)]
+    [Arguments("HTTP://127.0.0.1:4100/", true)]
+    [Arguments("http://127.0.0.1:4101/", false)]
+    [Arguments("http://localhost:4100/", false)]
+    [Arguments("https://127.0.0.1:4100/", false)]
+    [Arguments("about:blank", false)]
+    [Arguments(null, false)]
     public void MediaCaptureGrantIsBoundToThePresentedOrigin(string? requester, bool expected) =>
         Assert.Equal(expected, Internal.PresentationSecurityPolicy.IsSameOrigin(new Uri("http://127.0.0.1:4100/surface/"), requester));
 
-    [Fact]
+    [Test]
     public async Task LocalContentDeniesMediaCaptureByDefault()
     {
         await using var host = await DesktopHost.StartAsync();
@@ -566,7 +569,7 @@ public sealed class DesktopApiTests
         Assert.Equal("camera=(), microphone=()", response.Headers.GetValues("Permissions-Policy").Single());
     }
 
-    [Fact]
+    [Test]
     public async Task DirectoryContentOpensItsEntryAndServesItsFiles()
     {
         var root = Directory.CreateTempSubdirectory("runic-desktop-typed-");
@@ -607,7 +610,7 @@ public sealed class DesktopApiTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task OnlyDirectoryContentServesLocalFiles()
     {
         // Before 0.7, every surface also served the current directory.
@@ -647,7 +650,7 @@ public sealed class DesktopApiTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ExternalUrlContentOpensTheUrl()
     {
         var factory = new RecordingWindowHostFactory();
@@ -666,7 +669,7 @@ public sealed class DesktopApiTests
         Assert.Equal(external, factory.Host?.Url);
     }
 
-    [Fact]
+    [Test]
     public async Task TypedContentRejectsInvalidValuesWhenConstructed()
     {
         Assert.Throws<ArgumentException>(() => new DesktopContent.ExternalUrl(new Uri("file:///tmp/index.html")));
@@ -742,7 +745,7 @@ public sealed class DesktopApiTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ClosingSurfaceReportsCauseAndReleasesPublicStream()
     {
         ContentRequest? observedRequest = null;
@@ -898,7 +901,7 @@ public sealed class DesktopApiTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task NativeAndManagedCloseRequestsUseTheConfiguredGuard()
     {
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -935,7 +938,7 @@ public sealed class DesktopApiTests
         Assert.True(reopened.IsOpen);
     }
 
-    [Fact]
+    [Test]
     public async Task DocumentStartHostReceivesCredentialsWithheldFromFetchableScripts()
     {
         var factory = new RecordingWindowHostFactory { SupportsDocumentStartScript = true };
@@ -968,7 +971,7 @@ public sealed class DesktopApiTests
         Assert.Contains(credential, await client.GetStringAsync(new Uri(surface.Url, "webui.js")), StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task ClosedNativeWindowDoesNotRemainOpenBecauseItsSocketIsStillAuthenticated()
     {
         var factory = new RecordingWindowHostFactory { SupportsCloseConfirmation = true };
@@ -999,7 +1002,7 @@ public sealed class DesktopApiTests
         await window.WaitForCloseAsync(timeout.Token);
     }
 
-    [Fact]
+    [Test]
     public async Task WaitForCloseAsyncReturnsAfterCloseAndHonoursCancellation()
     {
         var factory = new RecordingWindowHostFactory();
@@ -1024,7 +1027,7 @@ public sealed class DesktopApiTests
         Assert.False(factory.Host!.IsOpen);
     }
 
-    [Fact]
+    [Test]
     public async Task CloseAsyncCancellationStopsOnlyTheCallersWait()
     {
         var factory = new RecordingWindowHostFactory();
@@ -1056,7 +1059,7 @@ public sealed class DesktopApiTests
         await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    [Fact]
+    [Test]
     public async Task EmbeddedWindowAcceptsNegativeCoordinates()
     {
         var factory = new RecordingWindowHostFactory();
@@ -1077,7 +1080,7 @@ public sealed class DesktopApiTests
         Assert.Equal((-300, -20), factory.Host.Position);
     }
 
-    [Fact]
+    [Test]
     public async Task ForcedCloseBypassesPendingConfirmationAndNewWindowHasNoStaleGuard()
     {
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1108,7 +1111,7 @@ public sealed class DesktopApiTests
         Assert.Equal(System.Net.HttpStatusCode.OK, (await client.GetAsync(new Uri(surface.Url, "webui.js"))).StatusCode);
     }
 
-    [Fact]
+    [Test]
     public async Task UnsupportedCustomHostCannotSilentlyIgnoreConfirmation()
     {
         var factory = new RecordingWindowHostFactory();
@@ -1130,7 +1133,7 @@ public sealed class DesktopApiTests
         Assert.False(unguarded.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation));
     }
 
-    [Fact]
+    [Test]
     public async Task BrowserPresentationCannotSilentlyIgnoreConfirmation()
     {
         var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();

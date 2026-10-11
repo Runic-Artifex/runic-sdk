@@ -1,21 +1,14 @@
 using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // The typed drivers, fake clock, sequential ids and state tracker of RunicWindowTestHost.
-internal static class HostDriverTests
+internal sealed class HostDriverTests
 {
-    internal static async Task RunAsync()
-    {
-        SettersAndWritesEncodeLikeTheClient();
-        await DriversUseMembersAndStableIdsAsync();
-        await OperationsAndCommandsAsync();
-        await TrackerFollowsCollectionDeltasAsync();
-        await ClockDrivesCloseTimeoutsAsync();
-    }
-
-    private static void SettersAndWritesEncodeLikeTheClient()
+    [Test]
+    public void SettersAndWritesEncodeLikeTheClient()
     {
         var model = new ScalarSetterViewModel();
         using var host = new RunicWindowTestHost<ScalarSetterViewModel>(model,
@@ -56,7 +49,9 @@ internal static class HostDriverTests
             "A typed checked write did not set its value.");
     }
 
-    private static async Task DriversUseMembersAndStableIdsAsync()
+    [Test]
+    [DependsOn<WindowViewHostTests>(nameof(WindowViewHostTests.GeneratedRootHostPresentsAndReleasesEachBrowserViewAsync), ProceedOnFailure = true)]
+    public async Task DriversUseMembersAndStableIdsAsync()
     {
         var model = new RootViewModel();
         using var host = new RunicWindowTestHost<RootViewModel>(model,
@@ -94,7 +89,8 @@ internal static class HostDriverTests
         Require(child.Unmount(token) == "ok", "The driver did not unmount the View.");
     }
 
-    private static async Task OperationsAndCommandsAsync()
+    [Test]
+    public async Task OperationsAndCommandsAsync()
     {
         var model = new ToolkitTypedViewModel();
         using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model,
@@ -121,7 +117,8 @@ internal static class HostDriverTests
         Require((await waiting.WaitAsync()).Kind == "cancelled" && model.CancelledCount == 1, "The operation did not end cancelled.");
     }
 
-    private static async Task TrackerFollowsCollectionDeltasAsync()
+    [Test]
+    public async Task TrackerFollowsCollectionDeltasAsync()
     {
         var model = new CollectionDeltaViewModel();
         using var host = new RunicWindowTestHost<CollectionDeltaViewModel>(model,
@@ -147,7 +144,8 @@ internal static class HostDriverTests
         tracker.Verify();
     }
 
-    private static async Task ClockDrivesCloseTimeoutsAsync()
+    [Test]
+    public async Task ClockDrivesCloseTimeoutsAsync()
     {
         var model = new ToolkitTypedViewModel();
         var clock = new FakeTimeProvider();
