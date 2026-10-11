@@ -9,6 +9,7 @@ namespace Runic.Application.Views;
 // Keeping the shape in generated code means subscriptions require neither
 // reflection nor runtime type discovery (and therefore remain AOT-safe).
 /// <summary>Describes one observable member of a bridged data graph. Created by generated bridges.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class BridgeDataSubscriptionMember
 {
     /// <summary>Describes a member and, optionally, its observable children.</summary>

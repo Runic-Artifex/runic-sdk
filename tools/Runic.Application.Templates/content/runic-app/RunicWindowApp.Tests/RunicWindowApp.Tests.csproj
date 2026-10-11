@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit" Version="1.73.19" />
+    <PackageReference Include="Runic.Application.Testing" Version="__RUNIC_NUGET_VERSION__" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The tests need the application's assembly, not its built frontend. -->
+    <ProjectReference Include="../RunicWindowApp.csproj" AdditionalProperties="RunicBridgeBuildFrontend=false" />
+  </ItemGroup>
+</Project>

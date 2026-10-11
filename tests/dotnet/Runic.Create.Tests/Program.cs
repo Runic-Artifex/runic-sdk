@@ -26,6 +26,7 @@ internal static class Program
             ("-o and --output choose the destination as they do for dotnet new", OutputChoosesTheDestination),
             ("--directory remains a hidden alias of --output", DirectoryIsAFormerAlias),
             ("--format selects JSON output", FormatSelectsJson),
+            ("the test project toggle is a presence flag in every command", TestsTogglePassesThrough),
             ("faults link to their catalog entry at the release tag", FaultsLinkToCatalog),
         ];
 
@@ -67,6 +68,10 @@ internal static class Program
         Equal("npm,pnpm,bun", string.Join(',', model.Options[1].Choices.Select(choice => choice.Value)));
         Equal("Runic Desktop", model.Options[2].Find("desktop")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
+        Equal("tests", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
+        Equal("Test project", model.Toggles[0].DisplayName);
+        True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
+        Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
 
     private static void CreatorExposesEveryOption()
@@ -195,6 +200,31 @@ internal static class Program
             Output.Append(Encoding.UTF8.GetString(value.Span));
             return ValueTask.CompletedTask;
         }
+    }
+
+    private static void TestsTogglePassesThrough()
+    {
+        TemplateOptionModel model = TemplateOptionModel.Load();
+        OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
+        CreatePlan plan = new("MyApp", null, "1.0.0", defaults, null, model.Toggles);
+        Equal("dotnet new runic-app --name MyApp --frontend react --package-manager npm --host cswebui --view-models toolkit --tests", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.0.0 -- MyApp --frontend react --package-manager npm --host cswebui --view-models toolkit --tests", plan.CreatorCommand);
+        True(plan.Summary.EndsWith(" · Test project", StringComparison.Ordinal), plan.Summary);
+        Equal("dotnet test --project MyApp.Tests", plan.NextSteps[^1]);
+
+        CreatePlan without = new("MyApp", null, "1.0.0", defaults, null);
+        True(!without.CreateCommand.Contains("--tests", StringComparison.Ordinal), without.CreateCommand);
+        Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', without.NextSteps));
+
+        True(Throws(() => TemplateOptionModel.Parse(
+            """{ "symbols": { "tests": { "type": "parameter", "datatype": "bool", "defaultValue": "true" } } }""", "{}")),
+            "a Boolean parameter that defaults to true is rejected");
+    }
+
+    private static bool Throws(Action action)
+    {
+        try { action(); return false; }
+        catch (System.IO.InvalidDataException) { return true; }
     }
 
     private static void Equal(string? expected, string? actual)

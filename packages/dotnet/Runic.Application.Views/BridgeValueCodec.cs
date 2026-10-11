@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.ComponentModel;
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -15,6 +16,7 @@ namespace Runic.Application.Views;
 /// This keeps application execution independent of reflection-based JSON
 /// metadata, which is important for trimming and Native AOT.
 /// </remarks>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class BridgeValueCodec<T>(Func<JsonElement, T> read, Action<Utf8JsonWriter, T> write)
 {
     private readonly Func<JsonElement, T> _read = read ?? throw new ArgumentNullException(nameof(read));
@@ -54,6 +56,7 @@ public sealed class BridgeValueCodec<T>(Func<JsonElement, T> read, Action<Utf8Js
 /// codecs. Values whose JavaScript number representation can lose precision
 /// are represented as invariant strings on the wire.
 /// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class BridgeWire
 {
     /// <summary>Creates a consistent invalid-wire exception for generated readers.</summary>

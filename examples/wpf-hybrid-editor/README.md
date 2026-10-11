@@ -52,20 +52,22 @@ its `www/` folder.
 The logical View describes the web presentation contract; WPF's
 `MapView<EditorViewModel, EditorView>()` independently selects its native page.
 
-[EditorView.xaml.cs](App/EditorView.xaml.cs) adds a `RunicWebView` to the existing
-WPF page before opening its embedded presentation. It passes the existing
-model, application services and dispatcher model context to
-`CreateWpfViewAsync`. The resulting binding owns its bridge, content session and
-desktop surface, and borrows those application objects. The frontend connects
-with generated `connectEditor()`. Its field writes run before Save; Cancel runs
-immediately so it can interrupt a pending Save.
+[EditorView.xaml.cs](App/EditorView.xaml.cs) places a `RunicViewHost` in the
+existing WPF page when the web editor is selected. It binds the host's `Model`
+to the page's `DataContext` and passes the application services and the
+dispatcher model context. The host opens the embedded presentation once it is
+loaded, and owns its bridge, content session and desktop surface while
+borrowing those application objects. The frontend connects with generated
+`connectEditor()`. Its field writes run before Save; Cancel runs immediately so
+it can interrupt a pending Save.
 
-The WPF page serializes presentation changes, closes the previous binding
-before removing its native control, and closes it again on unload. Reload and
-native/web switching create fresh presentation sessions. They do not push,
-replace or reset a navigation region, initialize the editor again, run a
-departure guard or dispose the model. The example falls back to the native
-editor if the embedded host fails to open, preserving the same draft.
+The host serializes presentation changes, closes the binding before its Desktop
+host and native control, and closes it again on unload. Reload calls the host's
+`ReloadAsync()`; native/web switching replaces the host. Both create fresh
+presentation sessions. They do not push, replace or reset a navigation region,
+initialize the editor again, run a departure guard or dispose the model. The
+host's fallback content, a `NativeEditorView`, takes over with the same draft if
+the embedded host fails to open.
 
 A web session owns the operations it starts. Closing it cancels an unfinished
 web Save while keeping the model and draft alive; a Save started natively
@@ -83,8 +85,13 @@ native notes list, which refreshes its rows from the same store.
 The editor's `LeaveConfirmation.InDialog` asks the native dialog region before
 discarding unsaved work. The discard runs when the departure commits; rejecting
 or cancelling the question preserves the draft. Back and closing the WPF window
-use the same departure guard. A running save rejects departure until it finishes
-or the user cancels it, so saving cannot race disposal of the note editor.
+use the same departure guard: [MainWindow.xaml](App/MainWindow.xaml) sets
+`GuardWindowClose="True"` on the main `NavigationHost`, so closing the window
+clears the region through its guards and closes only when that commits. In
+[ConfirmView.xaml](App/ConfirmView.xaml), **Keep editing** is the dialog's
+`IsDefault` and `IsCancel` button, so Enter and Esc keep the draft.
+A running save rejects departure until it finishes or the user cancels it, so
+saving cannot race disposal of the note editor.
 
 If your app retains or borrows a model across fresh navigation entries, keep its
 initialization separate from loading/resetting its draft. Navigation initializes
@@ -121,6 +128,7 @@ reload the web editor, cancel a pending save, and answer **Keep editing** then
 [WindowsSmoke](WindowsSmoke/Program.cs) starts the actual WPF shell and embedded
 frontend. It types through a native TextBox, switches presentation, edits and
 saves through browser DOM events, then switches back, reloads and unloads the
-editor. It checks model and navigation identity, the shared store, fresh web
-sessions and completed cleanup. CI runs it on Windows; other platforms build
+editor. It then closes the window with a dirty draft, keeps it, and closes again
+to discard it. It checks model and navigation identity, the shared store, fresh
+web sessions and completed cleanup. CI runs it on Windows; other platforms build
 the Windows target but cannot execute WPF.

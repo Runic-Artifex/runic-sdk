@@ -24,6 +24,10 @@ namespace Runic.Navigation.Wpf;
 /// The host sets its own <see cref="ContentControl.Content"/>: don't set <c>Content</c>, <c>ContentTemplate</c> or
 /// <c>ContentTemplateSelector</c> on it. Present entries with implicit <see cref="DataTemplate"/>s or a locator.
 /// </para>
+/// <para>
+/// With <see cref="GuardWindowClose"/>, closing the host's window clears the region first, so the departure guards that
+/// navigation asks also decide whether the window closes.
+/// </para>
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public class NavigationHost : ContentControl
@@ -50,8 +54,15 @@ public class NavigationHost : ContentControl
     public static readonly DependencyProperty HandlesBrowseBackProperty = DependencyProperty.Register(nameof(HandlesBrowseBack), typeof(bool),
         typeof(NavigationHost), new PropertyMetadata(true));
 
+    /// <summary>Identifies the <see cref="GuardWindowClose"/> dependency property.</summary>
+    public static readonly DependencyProperty GuardWindowCloseProperty = DependencyProperty.Register(nameof(GuardWindowClose), typeof(bool),
+        typeof(NavigationHost), new PropertyMetadata(false));
+
     private readonly PropertyChangedEventHandler _regionChanged;
     private INavigationRegion? _attached;
+    private Window? _window;
+    private bool _closeChecking;
+    private bool _closeApproved;
     private NavigationEntryId? _presented;
     private bool _showsEmpty;
     private int _refreshPosted;
@@ -61,8 +72,16 @@ public class NavigationHost : ContentControl
     {
         _regionChanged = OnRegionPropertyChanged;
         Focusable = false;
-        Loaded += (_, _) => Attach();
-        Unloaded += (_, _) => Detach();
+        Loaded += (_, _) =>
+        {
+            Attach();
+            AttachWindow();
+        };
+        Unloaded += (_, _) =>
+        {
+            Detach();
+            DetachWindow();
+        };
         CommandBindings.Add(new CommandBinding(NavigationCommands.BrowseBack, OnBrowseBack, OnCanBrowseBack));
     }
 
@@ -97,6 +116,30 @@ public class NavigationHost : ContentControl
         set => SetValue(HandlesBrowseBackProperty, value);
     }
 
+    /// <summary>
+    /// Gets or sets whether closing the host's window first clears the region, asking the departure guards of every entry
+    /// and of the child regions they own. The default is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// While the region has entries, the host cancels the window's close and clears the region; the window closes when the
+    /// clear commits. A guard that rejects, a cancelled clear or a superseded clear keeps the window open with its
+    /// entries, so a guard can confirm through a <see cref="NavigationDialogHost"/> in the same window. A close that
+    /// another <see cref="Window.Closing"/> handler already cancelled is left alone, and an empty region closes at once.
+    /// </para>
+    /// <para>
+    /// WPF ignores cancellation when <see cref="Application.Shutdown()"/> closes the windows, and doesn't raise
+    /// <see cref="Window.Closing"/> when the Windows session ends: those paths don't ask the guards. Close the main window
+    /// instead of calling <c>Shutdown</c> to give the guards a say, and handle <see cref="Application.SessionEnding"/>
+    /// if a draft must survive a log-off.
+    /// </para>
+    /// </remarks>
+    public bool GuardWindowClose
+    {
+        get => (bool)GetValue(GuardWindowCloseProperty);
+        set => SetValue(GuardWindowCloseProperty, value);
+    }
+
     // The entry the host presents, for tests.
     internal NavigationEntryId? PresentedEntry => _presented;
 
@@ -105,6 +148,56 @@ public class NavigationHost : ContentControl
         if (!IsLoaded) return;
         Detach();
         Attach();
+    }
+
+    private void AttachWindow()
+    {
+        var window = Window.GetWindow(this);
+        if (ReferenceEquals(window, _window)) return;
+        DetachWindow();
+        _window = window;
+        if (window is not null) window.Closing += OnWindowClosing;
+    }
+
+    private void DetachWindow()
+    {
+        if (_window is not null) _window.Closing -= OnWindowClosing;
+        _window = null;
+    }
+
+    private void OnWindowClosing(object? sender, CancelEventArgs e)
+    {
+        if (e.Cancel || _closeApproved || !GuardWindowClose || sender is not Window window || Region is not { } region) return;
+        if (region.CurrentEntry is null && !region.CanGoBack) return;
+        e.Cancel = true;
+        if (_closeChecking) return;
+        _closeChecking = true;
+        // Posted: WPF ignores the cancel during Application.Shutdown, and the window is gone when this runs.
+        Dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _ = ClearThenCloseAsync(window, region));
+    }
+
+    private async Task ClearThenCloseAsync(Window window, INavigationRegion region)
+    {
+        try
+        {
+            if (PresentationSource.FromVisual(window) is null) return;
+            // The plan of any other clear: every entry's guard and the guards of the child regions the entries own.
+            var result = await region.ClearAsync();
+            if (result is not NavigationResult<object>.Committed) return;
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (PresentationSource.FromVisual(window) is null) return;
+                _closeApproved = true;
+                try { window.Close(); }
+                finally { _closeApproved = false; }
+            });
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception error)
+        {
+            WpfNavigationLog.WindowCloseGuardFailed(WpfNavigationLog.For(region.Navigator.Services), error, WpfNavigationLog.ErrorType(error));
+        }
+        finally { _closeChecking = false; }
     }
 
     private void OnEmptyContentChanged()

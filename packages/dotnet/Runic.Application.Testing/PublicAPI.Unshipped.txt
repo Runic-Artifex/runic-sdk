@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Application.Testing.RunicWindowTestHost
+static Runic.Application.Testing.RunicWindowTestHost.Create<TViewModel>(System.IServiceProvider! services, Runic.Application.Testing.RunicWindowTestHostOptions? options = null) -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!

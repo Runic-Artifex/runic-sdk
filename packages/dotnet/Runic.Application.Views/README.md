@@ -322,10 +322,18 @@ export type DocumentPane = "Editor" | "Preview";
   the XML documentation file for this; a project that already writes one keeps
   its own. Set `RunicBridgeDocumentation=false` to skip it. A separate model
   assembly (`RunicBridgeModelAssembly`) needs its XML documentation file beside
-  it.
+  it. A command generated from a method, such as a CommunityToolkit
+  `[RelayCommand]`, uses the method's comment. The C#-only comments an MVVM
+  library's source generator writes are not copied; a generated cancel command
+  is documented as cancelling its command.
 - A command argument keeps the parameter name of its CommunityToolkit
   `[RelayCommand]` method. Other commands name it after the argument's C# type,
   or `input` for scalars.
+
+The generated C# bridge calls public runtime types such as `ViewModelBridge<T>`,
+`PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire`, `BridgeJson` and
+`ReactiveCommandExecution`. They are marked `[EditorBrowsable(Never)]`, so they
+stay out of completion lists; they are not application API.
 
 ## Generator diagnostics
 
@@ -402,7 +410,13 @@ Each adapter's build props set `RunicApplicationHostAdapter` to `true`, which is
 what the targets check. A project that reaches `Runic.Application` only through
 another project, such as a library that references a model project, does not
 generate; if it declares a Window or View anyway, the build warns with
-`RUNICBRIDGE015`. That default is optional:
+`RUNICBRIDGE015`. A test project (`IsTestProject` is `true`, which
+`Microsoft.NET.Test.Sdk` and TUnit set) that references a Runic application
+uses the application's generated Bridges: when it declares no Window or View
+of its own and has no frontend `package.json`, `RunicBridgeFrontendInput`
+items or `RunicBridgeModelAssembly`, generation stays off there without a
+diagnostic or a bootstrap build. Any other project keeps the diagnostics
+below. That default is optional:
 when the assembly declares no Runic Window or View, for example an application
 that only uses the navigator, the build generates nothing (and removes stale
 generated C# and TypeScript), skips the frontend install, build and copy steps,
@@ -413,10 +427,11 @@ without a Window, when the project sets `RunicBridgeBuildEnabled` to `true`, or
 when it shows that it expects output: a `package.json` in
 `RunicBridgeFrontendDir`, `RunicBridgeFrontendInput` items,
 `RunicBridgeCompositionType` or `RunicBridgeModelAssembly`. Projects that
-reference `Runic.Application.CsWebUi` or `Runic.Application.Desktop` always
-require generation, because the adapter sets `RunicBridgeCompositionType`. WPF
-projects (`UseWPF`) stay optional, because a WPF application often keeps its
-Views in a WPF-free model project. A navigator-only application should set
+reference `Runic.Application.CsWebUi` or `Runic.Application.Desktop`, other than
+those test projects, always require generation, because the adapter sets
+`RunicBridgeCompositionType`. WPF projects (`UseWPF`) stay optional, because a
+WPF application often keeps its Views in a WPF-free model project. A
+navigator-only application should set
 `RunicBridgeBuildEnabled` to `false`: that also skips the nested bootstrap
 build, which optional mode still pays for.
 

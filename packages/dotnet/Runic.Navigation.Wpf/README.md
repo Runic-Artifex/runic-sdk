@@ -249,6 +249,32 @@ When none presents the content, the host logs event 1082 once per type.
   while `CanGoBack` and not `IsTransitioning`. Set `HandlesBrowseBack="False"`
   to handle it yourself.
 
+### Closing the window
+
+Disposing the services on exit retires entries **without** asking their
+guards, so a dirty draft would be lost. Set `GuardWindowClose` on the main
+window's host to ask the same guards as navigation before the window closes:
+
+```xml
+<rn:NavigationDialogHost Region="{Binding Dialog}" />
+<rn:NavigationHost Region="{Binding Main}" GuardWindowClose="True" />
+```
+
+While the region has entries, closing the window (close button, Alt+F4,
+`Close()`) is cancelled, and the host clears the region. Clear asks the
+guard of every entry, top down, and of the child regions they own, as any
+other navigation would. When the clear commits, the window closes; when a
+guard rejects, the window stays open with its entries. A guard can confirm with
+`LeaveConfirmation.InDialog` through a dialog host in the same window. Set it
+on each host whose region needs a say; their clears run one after another.
+
+WPF ignores a cancelled close during `Application.Shutdown()` and doesn't
+raise `Closing` when the Windows session ends, so neither asks the guards.
+Close the main window instead of calling `Shutdown()`, and handle
+`Application.SessionEnding` yourself if drafts must survive a log-off.
+A failed guard also keeps the window open. If the clear request itself throws,
+the host logs event 1088.
+
 ## Dialogs
 
 `NavigationDialogHost` is an invisible element that you place in the owner
@@ -291,10 +317,24 @@ Return a result through the entry. A dialog pushed with
 cancels with `entry.DismissAsync()`, using the `NavigationEntryContext` it
 captured in `InitializeAsync`.
 
+`IsDefault` and `IsCancel` buttons work as in a `ShowDialog()` window, so
+a migrated dialog keeps Enter to accept:
+
+```xml
+<Button Content="Save" IsDefault="True" Command="{Binding SaveCommand}" />
+<Button Content="Cancel" IsCancel="True" />
+```
+
+- Enter clicks the `IsDefault` button, which runs its command, unless the
+  focused control handles Enter itself (a `TextBox` with `AcceptsReturn`).
+- An `IsCancel` button **without a command** dismisses the dialog, like the
+  close button. With a command, the button just runs it.
+- Esc dismisses the dialog while `CloseOnEscape` is on (the default). With
+  `CloseOnEscape="False"`, Esc clicks the `IsCancel` button instead.
+
 > [!WARNING]
-> Don't set `Window.DialogResult` and don't rely on `IsCancel` or `IsDefault`
-> buttons to close a dialog. `DialogResult` throws on a window shown with
-> `Show()`, and these buttons only close windows shown with `ShowDialog()`.
+> Don't set `Window.DialogResult`: it throws on a window shown with `Show()`.
+> Complete or dismiss through the entry instead.
 
 ### Asking before leaving
 
@@ -492,5 +532,6 @@ type name, `Runic.Navigation.Wpf.DispatcherModelContext`. Without an
 | 1085 | Error | The `UnhandledTurnException` handler threw. |
 | 1086 | Warning | A dialog host was loaded outside a `Window` (once per host). |
 | 1087 | Error | A selector request or UI reconciliation threw. |
+| 1088 | Error | Clearing a `GuardWindowClose` region threw; the window stays open. |
 
 Events up to 1089 are reserved for the package.

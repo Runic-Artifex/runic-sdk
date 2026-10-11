@@ -7,6 +7,6 @@
       <Button x:Name="Reload" Content="Reload web editor" Click="ReloadWebEditor" />
     </StackPanel>
     <TextBlock x:Name="PresentationError" DockPanel.Dock="Top" Foreground="Firebrick" TextWrapping="Wrap" Margin="0,8,0,0" />
-    <Grid x:Name="EditorHost" />
+    <ContentControl x:Name="EditorHost" Focusable="False" />
   </DockPanel>
 </UserControl>

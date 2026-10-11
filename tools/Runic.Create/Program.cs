@@ -66,6 +66,7 @@ internal static class Program
         [Option("--package-manager", Description = "JavaScript package manager.")] string? packageManager = null,
         [Option("--host", Description = "Window host.")] string? host = null,
         [Option("--view-models", Description = "MVVM library for the C# ViewModels.")] string? viewModels = null,
+        [Option("--tests", Description = "Add a TUnit test project for the Window.")] bool tests = false,
         [Option("--yes", "-y", Description = "Use the default for every option you do not pass instead of asking.")] bool yes = false,
         [Option("--dry-run", Description = "Print the commands without running them.")] bool dryRun = false,
         [Option("--template-source", ValueName = "SOURCE", Description = "An additional NuGet source for the template package.")] string? templateSource = null)
@@ -90,12 +91,16 @@ internal static class Program
             },
             yes,
             dryRun,
-            Optional(templateSource));
+            Optional(templateSource),
+            new Dictionary<string, bool>(StringComparer.Ordinal) { ["tests"] = tests });
         return CreateApplication.RunAsync(context, request, Version, cancellationToken);
     }
 
     /// <summary>The template options the creator exposes as flags, by long name.</summary>
     internal static IReadOnlyList<string> OptionFlags { get; } = ["frontend", "package-manager", "host", "view-models"];
+
+    /// <summary>The template's Boolean parameters the creator exposes as presence flags, by long name.</summary>
+    internal static IReadOnlyList<string> ToggleFlags { get; } = ["tests"];
 
     private static string? Optional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
@@ -118,7 +123,8 @@ internal sealed record CreateRequest(
     IReadOnlyDictionary<string, string> Options,
     bool UseDefaults,
     bool DryRun,
-    string? TemplateSource);
+    string? TemplateSource,
+    IReadOnlyDictionary<string, bool> Toggles);
 
 internal sealed record CreateResult(
     string Name,
