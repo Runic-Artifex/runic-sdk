@@ -38,6 +38,7 @@ internal sealed class NativeChecks
             var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var observe = view.Surface.SubscribeConnectionEvents(invocation =>
             {
+                Console.WriteLine($"DIAG {DateTime.UtcNow:HH:mm:ss.fff} event {invocation.Kind} session {invocation.Session.Id} thread {Environment.CurrentManagedThreadId}");
                 if (invocation.Kind != PresentationEventKind.Connected) return;
                 lock (connectionIds)
                 {
@@ -50,7 +51,9 @@ internal sealed class NativeChecks
             await Task.WhenAny(connected.Task, Task.Delay(TimeSpan.FromSeconds(20)));
             Program.Check(window.IsVisible && child.Handle != 0, "The WebView did not remain inside the WPF shell.");
             lock (connectionIds) Program.Check(connectionIds.Count == 1, "The first document did not authenticate.");
+            Console.WriteLine($"DIAG {DateTime.UtcNow:HH:mm:ss.fff} reload");
             await view.Surface.RunJavaScriptAsync("location.reload();");
+            Console.WriteLine($"DIAG {DateTime.UtcNow:HH:mm:ss.fff} reload sent");
             await reconnected.Task.WaitAsync(TimeSpan.FromSeconds(20));
             Program.Check(!attachment.Disposed, "Browser reload retired the child session.");
             child.Width = 350;
