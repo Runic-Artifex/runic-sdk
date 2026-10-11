@@ -278,12 +278,39 @@ internal sealed class ButtonsDialog() : Page("buttons"), INavigationInitialize
     public static Button Find(DependencyObject root, string content) =>
         TryFind(root, content) ?? throw new InvalidOperationException($"No {content} button.");
 
-    private static Button? TryFind(DependencyObject node, string content)
+    public static Button? TryFind(DependencyObject node, string content)
     {
         if (node is Button { Content: string text } button && text == content) return button;
         for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); index++)
             if (TryFind(System.Windows.Media.VisualTreeHelper.GetChild(node, index), content) is { } found) return found;
         return null;
+    }
+
+    // What a failed key press needs to be diagnosed: the window, its presenter and every button WPF could target.
+    public static string Describe(Window window)
+    {
+        var source = PresentationSource.FromVisual(window);
+        var lines = new List<string>
+        {
+            $"window: visible={window.IsVisible} loaded={window.IsLoaded} active={window.IsActive} source={source is not null} " +
+                $"content={window.Content?.GetType().Name ?? "null"} dataContext={window.DataContext?.GetType().Name ?? "null"} " +
+                $"focused={Keyboard.FocusedElement?.GetType().Name ?? "null"}",
+        };
+        if (window.Content is ContentPresenter presenter)
+            lines.Add($"presenter: template={presenter.ContentTemplate is not null} children={System.Windows.Media.VisualTreeHelper.GetChildrenCount(presenter)}");
+        foreach (var button in Buttons(window))
+            lines.Add($"button '{button.Content}': default={button.IsDefault} defaulted={button.IsDefaulted} cancel={button.IsCancel} " +
+                $"visible={button.IsVisible} enabled={button.IsEnabled} loaded={button.IsLoaded} command={button.Command?.GetType().Name ?? "null"} " +
+                $"canExecute={button.Command?.CanExecute(button.CommandParameter)} sameSource={ReferenceEquals(PresentationSource.FromVisual(button), source)}");
+        if (lines.Count == (window.Content is ContentPresenter ? 2 : 1)) lines.Add("no buttons in the visual tree");
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    private static IEnumerable<Button> Buttons(DependencyObject node)
+    {
+        if (node is Button button) yield return button;
+        for (var index = 0; index < System.Windows.Media.VisualTreeHelper.GetChildrenCount(node); index++)
+            foreach (var nested in Buttons(System.Windows.Media.VisualTreeHelper.GetChild(node, index))) yield return nested;
     }
 }
 
