@@ -1,13 +1,15 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using TUnit.Core;
 
 namespace Runic.Navigation.Tests;
 
 // W250-015: RUNICNAV001 links to its docs/experimental.md entry at the release tag the assembly
 // ships in, never at main.
-internal static class ExperimentalHelpLinkTests
+internal sealed class ExperimentalHelpLinkTests
 {
-    public static void Run()
+    [Test]
+    public void ExperimentalMembersLinkToTheirReleaseDocs()
     {
         var assembly = typeof(RunicNavigator).Assembly;
         var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+')[0];

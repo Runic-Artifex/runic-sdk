@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, rmSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
 
@@ -17,6 +17,21 @@ export function managedTests(base = root, platform = process.platform) {
       : path.includes("Runic.Application.") || path.startsWith("examples/wpf-hybrid-editor/") ? "application"
       : path.includes("Runic.Assets") ? "assets"
       : "platform" }));
+}
+
+// TUnit suites run on Microsoft.Testing.Platform (CONTRIBUTING.md); the other executables take no
+// test-platform arguments. A TUnit suite writes a TRX report and Cobertura coverage to
+// artifacts/test-results/<suite>, which the managed CI job uploads. MTP rejects report options
+// next to --list-tests, --help and --info, so those runs write no reports.
+export function testReportArguments(path, extra = [], base = root) {
+  const project = resolve(base, path);
+  if (!/<PackageReference Include="TUnit\.Engine"/.test(readFileSync(project, "utf8"))
+    || extra.some(arg => ["--list-tests", "--help", "-h", "-?", "--info"].includes(arg))) return [];
+  const name = basename(project, ".csproj");
+  const results = resolve(base, "artifacts/test-results", name);
+  rmSync(results, { recursive: true, force: true });
+  return ["--results-directory", results, "--report-trx", "--report-trx-filename", `${name}.trx`,
+    "--coverage", "--coverage-output-format", "cobertura", "--coverage-output", `${name}.cobertura.xml`];
 }
 
 // Application fixtures and library test consumers. The application suite builds and

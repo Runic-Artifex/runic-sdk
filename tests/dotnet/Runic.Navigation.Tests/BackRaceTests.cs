@@ -1,35 +1,16 @@
+using TUnit.Core;
+
 namespace Runic.Navigation.Tests;
 
 // W240-007/014: two Backs before the first commits. A second Back to the same destination joins the pending one:
 // one pop, one guard prompt, the same result for both callers. Backs after a commit are stack semantics. Each join
 // logs event 1074, so the tests count joins rather than infer them from equal-looking results.
-internal static partial class NavigationTests
+internal sealed partial class NavigationTests
 {
     private const int BackJoined = 1074;
 
-    public static async Task RunBackRacesAsync()
-    {
-        await DoubleBackBeforeCommitPopsOnceAsync();
-        await BackWhileGuardAsksJoinsAsync(confirm: true);
-        await BackWhileGuardAsksJoinsAsync(confirm: false);
-        await BackWhileGuardAsksJoinsAsync(confirm: true, withTokens: true);
-        await BackWhileGuardAsksJoinsAsync(confirm: false, withTokens: true);
-        await BackCallerCancellationAsync(firstWithToken: true, secondWithToken: true, cancelFirst: true);
-        await BackCallerCancellationAsync(firstWithToken: true, secondWithToken: true, cancelFirst: false);
-        await BackCallerCancellationAsync(firstWithToken: true, secondWithToken: false, cancelFirst: true);
-        await BackCallerCancellationAsync(firstWithToken: false, secondWithToken: true, cancelFirst: false);
-        await CancellingAllBackCallersClosesPromptAsync();
-        await CancelledBackCallerDoesNotAwaitPromptCleanupAsync(joined: false);
-        await CancelledBackCallerDoesNotAwaitPromptCleanupAsync(joined: true);
-        await BackCancellationAfterCommitDoesNotChangeOutcomeAsync();
-        await BackAfterPushDoesNotJoinAsync();
-        await BackAfterChildRegionChangedDoesNotJoinAsync();
-        await ChildBackAfterSupersessionDoesNotJoinAsync(closeBeforeBasisCheck: false);
-        await ChildBackAfterSupersessionDoesNotJoinAsync(closeBeforeBasisCheck: true);
-        await BackAfterReturnDoesNotJoinAsync();
-    }
-
-    private static async Task DoubleBackBeforeCommitPopsOnceAsync()
+    [Test]
+    public async Task DoubleBackBeforeCommitPopsOnceAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -61,7 +42,13 @@ internal static partial class NavigationTests
 
     // The guard asks in a dialog region (a non-modal confirm). A second Back while it asks joins: the prompt stays
     // open, answering it settles both requests, and the history stays intact.
-    private static async Task BackWhileGuardAsksJoinsAsync(bool confirm, bool withTokens = false)
+    [Test]
+    [Arguments(true, false)]
+    [Arguments(false, false)]
+    [Arguments(true, true)]
+    [Arguments(false, true)]
+    [DisplayName("BackWhileGuardAsksJoinsAsync(confirm: $confirm, withTokens: $withTokens)")]
+    public async Task BackWhileGuardAsksJoinsAsync(bool confirm, bool withTokens = false)
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -103,7 +90,13 @@ internal static partial class NavigationTests
         Require(dialog.Current is null && prompts == 1, "The prompt did not close.");
     }
 
-    private static async Task BackCallerCancellationAsync(bool firstWithToken, bool secondWithToken, bool cancelFirst)
+    [Test]
+    [Arguments(true, true, true)]
+    [Arguments(true, true, false)]
+    [Arguments(true, false, true)]
+    [Arguments(false, true, false)]
+    [DisplayName("BackCallerCancellationAsync(firstWithToken: $firstWithToken, secondWithToken: $secondWithToken, cancelFirst: $cancelFirst)")]
+    public async Task BackCallerCancellationAsync(bool firstWithToken, bool secondWithToken, bool cancelFirst)
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -143,7 +136,8 @@ internal static partial class NavigationTests
             && asks == 1 && document.Disposed == 1, "The remaining caller did not commit the shared Back exactly once.");
     }
 
-    private static async Task CancellingAllBackCallersClosesPromptAsync()
+    [Test]
+    public async Task CancellingAllBackCallersClosesPromptAsync()
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -173,7 +167,11 @@ internal static partial class NavigationTests
 
     // Cancellation settles the last caller before the dialog's detached Back runs.
     // WhenIdle must cover that Back even when the caller observes cancellation first.
-    private static async Task CancelledBackCallerDoesNotAwaitPromptCleanupAsync(bool joined)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("CancelledBackCallerDoesNotAwaitPromptCleanupAsync(joined: $joined)")]
+    public async Task CancelledBackCallerDoesNotAwaitPromptCleanupAsync(bool joined)
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -227,7 +225,8 @@ internal static partial class NavigationTests
         finally { releaseCleanup.TrySetResult(); }
     }
 
-    private static async Task BackCancellationAfterCommitDoesNotChangeOutcomeAsync()
+    [Test]
+    public async Task BackCancellationAfterCommitDoesNotChangeOutcomeAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -248,7 +247,8 @@ internal static partial class NavigationTests
     }
 
     // A Push supersedes a pending Back; a Back after it supersedes the Push rather than joining anything.
-    private static async Task BackAfterPushDoesNotJoinAsync()
+    [Test]
+    public async Task BackAfterPushDoesNotJoinAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -273,7 +273,8 @@ internal static partial class NavigationTests
     // The departing page owns a child region. A child push commits while the first Back's guard asks, so the
     // first Back's plan is stale and it can't commit. A second Back must not join it: it makes its own plan and
     // commits once the user confirms, instead of both ending Superseded with nothing popped.
-    private static async Task BackAfterChildRegionChangedDoesNotJoinAsync()
+    [Test]
+    public async Task BackAfterChildRegionChangedDoesNotJoinAsync()
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -307,7 +308,11 @@ internal static partial class NavigationTests
     // rejected as Closed when the parent's Back closes the region. The parent's commit can land at any step of the
     // second child Back; with closeBeforeBasisCheck a test seam holds it at the step where it once read the
     // region's version bump as a supersession.
-    private static async Task ChildBackAfterSupersessionDoesNotJoinAsync(bool closeBeforeBasisCheck)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("ChildBackAfterSupersessionDoesNotJoinAsync(closeBeforeBasisCheck: $closeBeforeBasisCheck)")]
+    public async Task ChildBackAfterSupersessionDoesNotJoinAsync(bool closeBeforeBasisCheck)
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -372,7 +377,8 @@ internal static partial class NavigationTests
 
     // A result entry's return (CompleteAsync) is a Back that carries the result. A plain Back while it is pending
     // supersedes it rather than joining it, so the plain caller never receives the return's outcome.
-    private static async Task BackAfterReturnDoesNotJoinAsync()
+    [Test]
+    public async Task BackAfterReturnDoesNotJoinAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");

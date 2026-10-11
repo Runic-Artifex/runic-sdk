@@ -109,6 +109,42 @@ Keep generated contracts and locks current. Stop after relevant checks pass unle
 new changes or failures justify more verification. Manual native/UI checks and
 soaks are scoped to the behavior being changed, not every PR or release.
 
+### TUnit suites
+
+`tests/dotnet/Runic.Navigation.Tests` uses [TUnit](https://tunit.dev) on
+Microsoft.Testing.Platform (MTP). The other executable suites still run their own
+`Program.cs`, and `Runic.Desktop.Tests` uses xUnit through `dotnet test`. A suite of
+independent cases moves to the TUnit pattern:
+
+- **Project.** Keep `OutputType` `Exe`. Reference `TUnit.Core`, `TUnit.Engine`,
+  `Microsoft.Testing.Extensions.TrxReport` and `Microsoft.Testing.Extensions.CodeCoverage`,
+  pinned in `Directory.Packages.props`. The `TUnit` metapackage, which the `runic-app`
+  template uses, also adds TUnit's assertion library and MTP telemetry; the suites keep
+  their own assertion helpers. Set `TUnitImplicitUsings` to `false`, write
+  `using TUnit.Core;`, and delete `Program.cs`: TUnit generates the entry point. Commit
+  the suite's `packages.lock.json` (`bun run lock:nuget`).
+- **Cases.** Each case is a non-static `[Test]` method in a non-static class and fails when
+  it throws. A case keeps its method name; a case that ran once per value has one
+  `[Arguments]` row per value and a `[DisplayName]` with its parameters, such as
+  `ResultRaceAsync(seed: $seed, disposeDuringRace: $disposeDuringRace)`. Where
+  `System.ComponentModel` is imported, alias `DisplayNameAttribute` to
+  `TUnit.Core.DisplayNameAttribute`.
+- **Running and filtering.** `bun run test <group>` and `bun run test <suite>.csproj` pass
+  arguments after the scope to every suite they run. `--list-tests` lists the cases and
+  `--treenode-filter "/<assembly>/<namespace>/<class>/<method>"` selects them, with `*` as a
+  wildcard, for example
+  `dotnet run --project tests/dotnet/Runic.Navigation.Tests -- --treenode-filter "/*/*/NavigationTests/ResultRaceAsync"`.
+  `--filter` is not supported. The exit code is 0 when all selected cases pass, 2 when one
+  fails and 8 when none ran.
+- **Reports.** `bun run test` and the managed CI job pass `--report-trx --coverage` and
+  write `<suite>.trx` and `<suite>.cobertura.xml` to `artifacts/test-results/<suite>`, which
+  CI uploads as `managed-test-results-<group>-<run>`.
+- **Parallelism.** TUnit runs cases in parallel unless told otherwise. Allow it only when no
+  case shares static state, `Trace.Listeners`, the current directory, environment
+  variables, ports or files with another. The Navigation cases share
+  `RunicModelContextRegistry.Shared`, `Trace.Listeners` and static race switches, and
+  several are timing-sensitive, so its `AssemblyInfo.cs` runs the suite `[NotInParallel]`.
+
 ### Public API changes
 
 Shipping .NET libraries record their public API in `PublicAPI.Shipped.txt` and
