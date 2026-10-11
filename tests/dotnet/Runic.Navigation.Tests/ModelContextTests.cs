@@ -1,35 +1,17 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using TUnit.Core;
 
 namespace Runic.Navigation.Tests;
 
 // The model context and its registry (moved from Runic.Application.Testing.Tests;
 // the window-session cases stay there).
-internal static class ModelContextTests
+internal sealed class ModelContextTests
 {
-    public static async Task RunAsync()
-    {
-        await SerialTurnsPreservePostingOrder();
-        await PostedTurnFailureDoesNotStopTheQueue();
-        await RegistryRejectsConflictingOwnersAndReusesExistingOwner();
-        await ConcurrentAcquisitionUsesOneOwner();
-        await ShutdownRejectsQueuedTurnsAndWaitsForCurrentTurn();
-        await PostedTurnDroppedByDisposalIsReported();
-        await ContextLogsUnderItsOwnCategory();
-        await LosingCandidateShutdownFailureIsLogged();
-        await CloseSignalPrecedesQueuedRejection();
-        await CloseCallbackFailureDoesNotInterruptShutdown();
-        await ConcurrentDisposalWaitsForCloseNotification();
-        await AwaitsInATurnResumeInTurns();
-        await ContinuationsKeepTheirReadyOrder();
-        await ContinuationsAfterCloseRunOnThePool();
-        await AsyncVoidFailureInATurnIsReported();
-        await SendRunsInATurnOrInlineAfterClose();
-    }
-
     // D018.5: code started in a turn resumes in a turn after each await, nested or not, until it leaves
     // the context with ConfigureAwait(false).
-    private static async Task AwaitsInATurnResumeInTurns()
+    [Test]
+    public async Task AwaitsInATurnResumeInTurns()
     {
         await using var context = new RunicModelContext();
         var steps = new List<(string Step, bool InTurn, bool HasContext)>();
@@ -64,7 +46,8 @@ internal static class ModelContextTests
 
     // Continuations become turns in the order they become ready, and each runs to its next await
     // before another turn starts.
-    private static async Task ContinuationsKeepTheirReadyOrder()
+    [Test]
+    public async Task ContinuationsKeepTheirReadyOrder()
     {
         await using var context = new RunicModelContext();
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -87,7 +70,8 @@ internal static class ModelContextTests
 
     // A continuation never strands its task at shutdown: queued when the context closes, or posted
     // after it closed, it runs on the thread pool outside any turn, and is not reported as dropped.
-    private static async Task ContinuationsAfterCloseRunOnThePool()
+    [Test]
+    public async Task ContinuationsAfterCloseRunOnThePool()
     {
         var context = new RunicModelContext();
         var dropped = new List<Exception>();
@@ -129,7 +113,8 @@ internal static class ModelContextTests
 
     // An async void method started in a turn throws into the context it resumed on: the failure is
     // reported like a failed posted turn instead of escaping to the thread pool.
-    private static async Task AsyncVoidFailureInATurnIsReported()
+    [Test]
+    public async Task AsyncVoidFailureInATurnIsReported()
     {
         await using var context = new RunicModelContext();
         var reported = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -147,7 +132,8 @@ internal static class ModelContextTests
         Require(await context.InvokeAsync(() => true), "The context stopped running turns after the failure.");
     }
 
-    private static async Task SendRunsInATurnOrInlineAfterClose()
+    [Test]
+    public async Task SendRunsInATurnOrInlineAfterClose()
     {
         var context = new RunicModelContext();
         var synchronizationContext = await context.InvokeAsync(() => SynchronizationContext.Current!);
@@ -160,7 +146,8 @@ internal static class ModelContextTests
         Require(ran, "Send after close did not run inline.");
     }
 
-    private static async Task CloseSignalPrecedesQueuedRejection()
+    [Test]
+    public async Task CloseSignalPrecedesQueuedRejection()
     {
         await using var context = new RunicModelContext();
         using var running = new ManualResetEventSlim();
@@ -190,7 +177,8 @@ internal static class ModelContextTests
         finally { release.Set(); }
     }
 
-    private static async Task CloseCallbackFailureDoesNotInterruptShutdown()
+    [Test]
+    public async Task CloseCallbackFailureDoesNotInterruptShutdown()
     {
         await using var context = new RunicModelContext();
         var failures = new List<Exception>();
@@ -202,7 +190,8 @@ internal static class ModelContextTests
         await ThrowsAsync<ObjectDisposedException>(context.InvokeAsync(() => { }).AsTask());
     }
 
-    private static async Task ConcurrentDisposalWaitsForCloseNotification()
+    [Test]
+    public async Task ConcurrentDisposalWaitsForCloseNotification()
     {
         await using var context = new RunicModelContext();
         using var entered = new ManualResetEventSlim();
@@ -222,7 +211,8 @@ internal static class ModelContextTests
 
     // RunicModelContext logs 1030-1033 through ILogger<RunicModelContext>, whose category
     // moved with the type to Runic.Navigation.RunicModelContext.
-    private static async Task ContextLogsUnderItsOwnCategory()
+    [Test]
+    public async Task ContextLogsUnderItsOwnCategory()
     {
         var logs = new CategoryLog();
         var context = new RunicModelContext(new Logger<RunicModelContext>(logs));
@@ -240,7 +230,8 @@ internal static class ModelContextTests
     // candidate's own turn, the shutdown is observed in the background, and a failure is logged
     // as 1033 to the candidate's logger: the Trace fallback for a context that is not a
     // RunicModelContext.
-    private static async Task LosingCandidateShutdownFailureIsLogged()
+    [Test]
+    public async Task LosingCandidateShutdownFailureIsLogged()
     {
         var registry = RunicModelContextRegistry.Shared;
         await using var winner = new RunicModelContext();
@@ -319,7 +310,8 @@ internal static class ModelContextTests
         }
     }
 
-    private static async Task PostedTurnDroppedByDisposalIsReported()
+    [Test]
+    public async Task PostedTurnDroppedByDisposalIsReported()
     {
         var context = new RunicModelContext();
         using var started = new ManualResetEventSlim();
@@ -339,7 +331,8 @@ internal static class ModelContextTests
                 "A posted turn dropped by disposal was not reported.");
     }
 
-    private static async Task SerialTurnsPreservePostingOrder()
+    [Test]
+    public async Task SerialTurnsPreservePostingOrder()
     {
         await using var context = new RunicModelContext();
         var observed = new List<int>();
@@ -361,7 +354,8 @@ internal static class ModelContextTests
         Require(maximumConcurrent == 1, "Model turns executed concurrently.");
     }
 
-    private static async Task RegistryRejectsConflictingOwnersAndReusesExistingOwner()
+    [Test]
+    public async Task RegistryRejectsConflictingOwnersAndReusesExistingOwner()
     {
         var registry = new RunicModelContextRegistry();
         var model = new object();
@@ -385,7 +379,8 @@ internal static class ModelContextTests
             "A second attachment did not reuse the existing graph owner.");
     }
 
-    private static async Task PostedTurnFailureDoesNotStopTheQueue()
+    [Test]
+    public async Task PostedTurnFailureDoesNotStopTheQueue()
     {
         await using var context = new RunicModelContext();
         Exception? reported = null;
@@ -398,7 +393,8 @@ internal static class ModelContextTests
             "A failed fire-and-forget turn either was not reported or stopped the model queue.");
     }
 
-    private static async Task ConcurrentAcquisitionUsesOneOwner()
+    [Test]
+    public async Task ConcurrentAcquisitionUsesOneOwner()
     {
         var registry = new RunicModelContextRegistry();
         var model = new object();
@@ -422,7 +418,8 @@ internal static class ModelContextTests
         }
     }
 
-    private static async Task ShutdownRejectsQueuedTurnsAndWaitsForCurrentTurn()
+    [Test]
+    public async Task ShutdownRejectsQueuedTurnsAndWaitsForCurrentTurn()
     {
         var context = new RunicModelContext();
         using var started = new ManualResetEventSlim();

@@ -61,8 +61,13 @@
     <PackageVersion Include="Runic.Platform.Linux.Portal" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Desktop" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
-    <!-- The runic-app template test project pins the same TUnit version. -->
+    <!-- The runic-app template test project pins the same TUnit version. The
+         TUnit suites (see CONTRIBUTING.md) keep TUnit.Core and TUnit.Engine on it too. -->
     <PackageVersion Include="TUnit" Version="1.73.19" />
+    <PackageVersion Include="TUnit.Core" Version="1.73.19" />
+    <PackageVersion Include="TUnit.Engine" Version="1.73.19" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="2.5.1" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>

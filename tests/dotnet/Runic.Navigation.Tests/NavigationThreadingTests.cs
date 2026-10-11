@@ -3,61 +3,19 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using TUnit.Core;
 
 namespace Runic.Navigation.Tests;
 
 // W240-005a: hook scheduling, the await helper and closed contexts (design record W240-001 §4.4, §4.5,
 // §8.1 amendment A6 and §11). SyncContextModelContext stands in for a UI dispatcher on Linux.
-internal static partial class NavigationTests
+internal sealed partial class NavigationTests
 {
-    public static async Task RunThreadingAsync()
-    {
-        await ScheduledHooksRunOnTheModelThreadAsync();
-        await HooksWithoutSchedulerStayOffTheModelThreadAsync(admitOnModelThread: true);
-        await HooksWithoutSchedulerStayOffTheModelThreadAsync(admitOnModelThread: false);
-        await DecoratorHidesTheSchedulerAsync();
-        await ScheduledDisposalAsync(asyncDisposal: false);
-        await ScheduledDisposalAsync(asyncDisposal: true);
-        await ScheduledDisposalFallsBackToThePoolAfterCloseAsync();
-        await ForgetRunsOnThePoolAsync(scheduling: true);
-        await ForgetRunsOnThePoolAsync(scheduling: false);
-        await ScheduledHookFailuresAsync(synchronous: true);
-        await ScheduledHookFailuresAsync(synchronous: false);
-        await ScheduledHookCancelledBeforeStartAsync();
-        await ContextClosedBeforeHookStartsAsync();
-        await ClosedSignalRejectsWithoutWaitingAsync();
-        foreach (var hook in new[] { "factory", "initialize", "resume" })
-            await ContextClosedBeforeLaterHookStartsAsync(hook);
-        await ContextClosedBeforeCommitTurnAsync(scheduling: false);
-        await ContextClosedBeforeCommitTurnAsync(scheduling: true);
-        await InitializeWaitStartsWithDisposalAsync();
-        await ScheduledHookThrowingObjectDisposedFailsAsync(guard: true);
-        await ScheduledHookThrowingObjectDisposedFailsAsync(guard: false);
-        await ScheduledDisposeThrowingObjectDisposedRunsOnceAsync();
-        await SupersededWhileHookQueuedAsync();
-        await BlockedModelThreadDisposalCompletesAsync();
-        await LateFactoryContentDisposedThroughSchedulerAsync();
-        await AfterUserCodeLeavesTheModelThreadAsync();
-        foreach (var scheduling in new[] { false, true })
-        {
-            await CompletionOnModelThreadNeverNestsCommitAsync(scheduling, fromHandler: false);
-            await CompletionOnModelThreadNeverNestsCommitAsync(scheduling, fromHandler: true);
-            await AwaitingCallersResumeOnTheirContextAsync(scheduling);
-        }
-        await CommitContinuationsNeverRunInlineAsync();
-        await SyncDisposeDoesNotBlockTheModelThreadAsync();
-        await ScheduledScopedDisposalOrderAsync();
-        await BlockedModelThreadScopedDisposalCompletesAsync();
-        await ScopedFactoryCancelledBeforeStartAsync();
-        await ContextClosedBeforeScopedFactoryStartsAsync();
-        await NestedPumpHandlersAreNotTheHookAsync();
-        await YieldStyleContinuationsAreTheHookAsync();
-    }
-
     // Factories, guards, initialize and resume run on the model thread, each as its own operation:
     // never inline in a caller on that thread, never inside a turn. Their awaits resume there, and
     // the hook marker moves into the operation, so reentrancy is still detected.
-    private static async Task ScheduledHooksRunOnTheModelThreadAsync()
+    [Test]
+    public async Task ScheduledHooksRunOnTheModelThreadAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -116,7 +74,11 @@ internal static partial class NavigationTests
 
     // Without a scheduler, no hook and no owned disposal runs on the model thread, whether the
     // request is admitted there or on the pool, and when DisposeAsync is called there.
-    private static async Task HooksWithoutSchedulerStayOffTheModelThreadAsync(bool admitOnModelThread)
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [DisplayName("HooksWithoutSchedulerStayOffTheModelThreadAsync(admitOnModelThread: $admitOnModelThread)")]
+    public async Task HooksWithoutSchedulerStayOffTheModelThreadAsync(bool admitOnModelThread)
     {
         using var context = new SyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -143,7 +105,8 @@ internal static partial class NavigationTests
     }
 
     // A decorator that doesn't forward IRunicModelHookScheduler hides it: hooks run on the pool.
-    private static async Task DecoratorHidesTheSchedulerAsync()
+    [Test]
+    public async Task DecoratorHidesTheSchedulerAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(new ForwardingContext(context));
@@ -159,7 +122,11 @@ internal static partial class NavigationTests
 
     // A9: owned Dispose/DisposeAsync runs on the model thread as its own operation, outside turns,
     // before the lease is released: on retirement after a commit and on navigator disposal.
-    private static async Task ScheduledDisposalAsync(bool asyncDisposal)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("ScheduledDisposalAsync(asyncDisposal: $asyncDisposal)")]
+    public async Task ScheduledDisposalAsync(bool asyncDisposal)
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -186,7 +153,8 @@ internal static partial class NavigationTests
     }
 
     // A9: once the context is closed, owned disposal falls back to the thread pool, so cleanup still runs.
-    private static async Task ScheduledDisposalFallsBackToThePoolAfterCloseAsync()
+    [Test]
+    public async Task ScheduledDisposalFallsBackToThePoolAfterCloseAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
@@ -204,7 +172,11 @@ internal static partial class NavigationTests
             $"Disposal with a closed context took {watch.Elapsed} and logged {fixture.Logs.Count(1068)} close timeouts.");
     }
 
-    private static async Task ForgetRunsOnThePoolAsync(bool scheduling)
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [DisplayName("ForgetRunsOnThePoolAsync(scheduling: $scheduling)")]
+    public async Task ForgetRunsOnThePoolAsync(bool scheduling)
     {
         using var context = scheduling ? new SchedulingSyncContextModelContext() : new SyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -219,7 +191,11 @@ internal static partial class NavigationTests
     }
 
     // A scheduled guard that throws synchronously, or whose task faults, fails the transition with that exception.
-    private static async Task ScheduledHookFailuresAsync(bool synchronous)
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [DisplayName("ScheduledHookFailuresAsync(synchronous: $synchronous)")]
+    public async Task ScheduledHookFailuresAsync(bool synchronous)
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -241,7 +217,8 @@ internal static partial class NavigationTests
     }
 
     // An operation cancelled before it starts gives the transition's cancellation outcome; the hook never runs.
-    private static async Task ScheduledHookCancelledBeforeStartAsync()
+    [Test]
+    public async Task ScheduledHookCancelledBeforeStartAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -264,7 +241,8 @@ internal static partial class NavigationTests
 
     // A6 with IRunicModelContextLifetime: once the context reports itself closed, a request ends Rejected(Closed) at
     // once, also when it would otherwise wait behind a transition whose hook ignores its cancellation.
-    private static async Task ClosedSignalRejectsWithoutWaitingAsync()
+    [Test]
+    public async Task ClosedSignalRejectsWithoutWaitingAsync()
     {
         using var inner = new SchedulingSyncContextModelContext();
         var context = new LifetimeContext(inner);
@@ -300,7 +278,8 @@ internal static partial class NavigationTests
 
     // A6: a context that closes before a scheduled hook starts gives Rejected(Closed), logs no failure,
     // and starts closing the navigator, whose disposal then doesn't wait for the close timeout.
-    private static async Task ContextClosedBeforeHookStartsAsync()
+    [Test]
+    public async Task ContextClosedBeforeHookStartsAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
@@ -328,7 +307,12 @@ internal static partial class NavigationTests
 
     // A6 for the later hooks of a transition: the guard passed, then the context closes while the
     // factory, initialize or resume operation is queued. The hook never runs.
-    private static async Task ContextClosedBeforeLaterHookStartsAsync(string hook)
+    [Test]
+    [Arguments("factory")]
+    [Arguments("initialize")]
+    [Arguments("resume")]
+    [DisplayName("ContextClosedBeforeLaterHookStartsAsync(hook: $hook)")]
+    public async Task ContextClosedBeforeLaterHookStartsAsync(string hook)
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMinutes(1));
@@ -369,7 +353,11 @@ internal static partial class NavigationTests
     }
 
     // A6: the commit turn can't start because the context closed, with or without a scheduler.
-    private static async Task ContextClosedBeforeCommitTurnAsync(bool scheduling)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("ContextClosedBeforeCommitTurnAsync(scheduling: $scheduling)")]
+    public async Task ContextClosedBeforeCommitTurnAsync(bool scheduling)
     {
         using var context = scheduling ? new SchedulingSyncContextModelContext() : new SyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -400,7 +388,8 @@ internal static partial class NavigationTests
     // running initialize hook: retirement still waits for it, and no initialize timeout is logged.
     // Today disposal's transition wait covers the hook, so InitializeWait isn't reached here; the
     // test pins the behavior against a change that starts disposal's waits when the context closes.
-    private static async Task InitializeWaitStartsWithDisposalAsync()
+    [Test]
+    public async Task InitializeWaitStartsWithDisposalAsync()
     {
         var time = new FakeTimeProvider();
         using var context = new SyncContextModelContext();
@@ -448,7 +437,11 @@ internal static partial class NavigationTests
 
     // A scheduled guard or initialize that throws ObjectDisposedException itself fails the transition
     // like any other exception: the operation started, so the context is not taken as closed.
-    private static async Task ScheduledHookThrowingObjectDisposedFailsAsync(bool guard)
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [DisplayName("ScheduledHookThrowingObjectDisposedFailsAsync(guard: $guard)")]
+    public async Task ScheduledHookThrowingObjectDisposedFailsAsync(bool guard)
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -467,7 +460,8 @@ internal static partial class NavigationTests
 
     // With a scheduler, an owned Dispose that throws ObjectDisposedException ran: it is logged (1064)
     // and not retried on the thread pool.
-    private static async Task ScheduledDisposeThrowingObjectDisposedRunsOnceAsync()
+    [Test]
+    public async Task ScheduledDisposeThrowingObjectDisposedRunsOnceAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -483,7 +477,8 @@ internal static partial class NavigationTests
 
     // A request superseded while its guard operation is still queued ends Superseded; the queued
     // guard never runs, and the next request's guard runs once.
-    private static async Task SupersededWhileHookQueuedAsync()
+    [Test]
+    public async Task SupersededWhileHookQueuedAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -508,7 +503,8 @@ internal static partial class NavigationTests
     // A host that blocks the model's thread on DisposeAsync (WPF OnExit calling GetResult) still gets
     // a completed disposal, bounded by the close timeout: owned disposal that can't start on the model's
     // thread runs on the pool instead, once. The abandoned operation does nothing when the thread frees.
-    private static async Task BlockedModelThreadDisposalCompletesAsync()
+    [Test]
+    public async Task BlockedModelThreadDisposalCompletesAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMilliseconds(300));
@@ -533,7 +529,8 @@ internal static partial class NavigationTests
 
     // Content that a factory returns after disposal already retired its pending entry is disposed
     // through the scheduler on the model's thread: disposal is over, so nothing bounds the wait.
-    private static async Task LateFactoryContentDisposedThroughSchedulerAsync()
+    [Test]
+    public async Task LateFactoryContentDisposedThroughSchedulerAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context, closeTimeout: TimeSpan.FromMilliseconds(200));
@@ -568,7 +565,8 @@ internal static partial class NavigationTests
     }
 
     // The helper continues on the thread pool when the awaited task completes on the model thread, also on failure.
-    private static async Task AfterUserCodeLeavesTheModelThreadAsync()
+    [Test]
+    public async Task AfterUserCodeLeavesTheModelThreadAsync()
     {
         using var context = new SyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -594,7 +592,13 @@ internal static partial class NavigationTests
 
     // H2: a guard completed on the model thread (inside a turn, or inside another commit's
     // PropertyChanged handler) never lets the engine run its commit nested in that frame.
-    private static async Task CompletionOnModelThreadNeverNestsCommitAsync(bool scheduling, bool fromHandler)
+    [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    [DisplayName("CompletionOnModelThreadNeverNestsCommitAsync(scheduling: $scheduling, fromHandler: $fromHandler)")]
+    public async Task CompletionOnModelThreadNeverNestsCommitAsync(bool scheduling, bool fromHandler)
     {
         using var context = scheduling ? new SchedulingSyncContextModelContext() : new SyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -634,7 +638,11 @@ internal static partial class NavigationTests
             $"gave {result} with commit depths [{string.Join(",", depths)}] and max depth {context.MaxTurnDepth}.");
     }
 
-    private static async Task AwaitingCallersResumeOnTheirContextAsync(bool scheduling)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("AwaitingCallersResumeOnTheirContextAsync(scheduling: $scheduling)")]
+    public async Task AwaitingCallersResumeOnTheirContextAsync(bool scheduling)
     {
         using var context = scheduling ? new SchedulingSyncContextModelContext() : new SyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -650,7 +658,8 @@ internal static partial class NavigationTests
     }
 
     // A context whose turn results complete inline: nothing after the commit runs on the model thread.
-    private static async Task CommitContinuationsNeverRunInlineAsync()
+    [Test]
+    public async Task CommitContinuationsNeverRunInlineAsync()
     {
         using var context = new SyncContextModelContext(inlineCompletions: true);
         await using var fixture = new Fixture(context);
@@ -665,7 +674,8 @@ internal static partial class NavigationTests
     }
 
     // M2: Dispose() on the model thread returns at once; scheduled disposal then runs there.
-    private static async Task SyncDisposeDoesNotBlockTheModelThreadAsync()
+    [Test]
+    public async Task SyncDisposeDoesNotBlockTheModelThreadAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         await using var fixture = new Fixture(context);
@@ -691,7 +701,8 @@ internal static partial class NavigationTests
     // in its frame and on its ExecutionContext. Those handlers are not the hook's code: their requests
     // are admitted. The hook's own code, before and after the pump, after an await on the model
     // thread and on the pool, is still rejected as Reentrant.
-    private static async Task NestedPumpHandlersAreNotTheHookAsync()
+    [Test]
+    public async Task NestedPumpHandlersAreNotTheHookAsync()
     {
         using var context = new SchedulingSyncContextModelContext(freshContexts: true);
         await using var fixture = new Fixture(context);
@@ -739,7 +750,8 @@ internal static partial class NavigationTests
     // A hook's continuation that resumes in a new operation on the model thread, not through the
     // hook's SynchronizationContext (await Dispatcher.Yield(), BeginInvoke, ObserveOn(DispatcherScheduler)),
     // is still the hook's code: it carries the hook's ExecutionContext outside any nested pump.
-    private static async Task YieldStyleContinuationsAreTheHookAsync()
+    [Test]
+    public async Task YieldStyleContinuationsAreTheHookAsync()
     {
         using var context = new SchedulingSyncContextModelContext(freshContexts: true);
         await using var fixture = new Fixture(context);
@@ -921,7 +933,8 @@ internal static partial class NavigationTests
 
     // Under a scheduler, retirement disposes the content, then its entry scope, then releases the
     // lease: the content and the scope each as their own operation on the model's thread, outside turns.
-    private static async Task ScheduledScopedDisposalOrderAsync()
+    [Test]
+    public async Task ScheduledScopedDisposalOrderAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         var probe = new Probe(context);
@@ -949,7 +962,8 @@ internal static partial class NavigationTests
     // A host that blocks the model's thread on DisposeAsync while a scoped entry is live: disposal
     // completes within about twice the close timeout, and the content and then its scope are each
     // disposed once on the pool.
-    private static async Task BlockedModelThreadScopedDisposalCompletesAsync()
+    [Test]
+    public async Task BlockedModelThreadScopedDisposalCompletesAsync()
     {
         var closeTimeout = TimeSpan.FromMilliseconds(300);
         using var context = new SchedulingSyncContextModelContext();
@@ -982,7 +996,8 @@ internal static partial class NavigationTests
 
     // A factory operation cancelled before it starts: the push is Rejected(Cancelled), the factory never
     // runs, and the entry scope created for it is disposed once.
-    private static async Task ScopedFactoryCancelledBeforeStartAsync()
+    [Test]
+    public async Task ScopedFactoryCancelledBeforeStartAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         var services = new ScopeCountingServices();
@@ -1018,7 +1033,8 @@ internal static partial class NavigationTests
 
     // A6 with an entry scope: the context closes before the factory operation starts. The push is
     // Rejected(Closed), the factory never runs, and the entry scope is disposed once, on the pool.
-    private static async Task ContextClosedBeforeScopedFactoryStartsAsync()
+    [Test]
+    public async Task ContextClosedBeforeScopedFactoryStartsAsync()
     {
         using var context = new SchedulingSyncContextModelContext();
         var probe = new Probe(context);
