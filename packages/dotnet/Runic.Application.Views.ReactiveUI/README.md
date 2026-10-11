@@ -128,7 +128,9 @@ const unregister = view.interactions.confirmDiscard.handle(
 );
 ```
 
-The disposer, replacement handler, view disposal, unmount, and disconnect
+The disposer, replacement handler, view disposal, unmount, disconnect, the
+cancellation of the command that asked, and the end of a navigation guard that
+asked (see [Leave confirmation in a web View](#leave-confirmation-in-a-web-view))
 abort the handler signal as appropriate. Requests go only to a selected mounted
 endpoint through a pull route. With no eligible browser handler, the adapter
 does not consume the interaction, preserving normal ReactiveUI .NET handler
@@ -274,7 +276,70 @@ BackCommand.ObserveBridgeExceptions(logger).DisposeWith(disposables);
 ```
 
 ReactiveUI activation follows a mounted View, not a navigation entry's lifetime:
-put per-presentation subscriptions in `WhenActivated`.
+put per-presentation subscriptions in `WhenActivated`, and per-entry ones in the
+adapter's `entry.WhenNavigatedTo(...)`.
+
+The adapter's entry commands (`CreateCompleteCommand`, `CreateDismissCommand`,
+`CreateCloseCommand`) also output a `NavigationOutcome`, so a View binds them
+without `RUNICBRIDGE003`; see
+[entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands-experimental).
+
+### Leave confirmation in a web View
+
+`ReactiveLeaveConfirmation.WithInteraction` from the navigation adapter asks
+through a ViewModel `Interaction`, which the generator bridges like any other
+interaction. The ViewModel takes its entry context in the constructor:
+
+```csharp
+public sealed record DiscardPrompt(string ItemName);
+
+public sealed class EditViewModel : ReactiveObject, INavigationDepartureGuard, IDisposable
+{
+    private readonly LeaveConfirmation _leave;
+
+    public EditViewModel(NavigationEntryContext entry)
+    {
+        _leave = ReactiveLeaveConfirmation.WithInteraction(
+            ConfirmDiscard, () => new DiscardPrompt(Name), () => IsDirty, discard: () => Name = _savedName);
+        SaveCommand = entry.CreateCompleteCommand(_ => Task.FromResult(_savedName = Name));
+        CloseCommand = entry.CreateCloseCommand(); // asks when dirty
+    }
+
+    public Interaction<DiscardPrompt, bool> ConfirmDiscard { get; } = new();
+    public ReactiveCommand<RxVoid, NavigationOutcome> SaveCommand { get; }
+    public ReactiveCommand<RxVoid, NavigationOutcome> CloseCommand { get; }
+
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken ct) =>
+        _leave.CanDepartAsync(departure, ct);
+    // Name, IsDirty, Dispose ...
+}
+
+public sealed partial class EditView : RunicView<EditViewModel>;
+```
+
+The web View registers the handler while it is mounted and runs the commands:
+
+```ts
+const unregister = view.interactions.confirmDiscard.handle(
+  async (prompt, { signal }) => confirmDialog(`Discard the changes to ${prompt.itemName}?`, signal),
+);
+
+const close = await view.startClose();
+const settled = await close.outcome();
+if (settled.ok && settled.value.kind === "Rejected") showStillEditing(); // the user said no
+```
+
+- The browser is asked only for a navigation that one of this ViewModel's
+  bridged commands started, such as `close()` or `startClose()`, and only on the
+  connection that started it, like any interaction. A navigation started
+  elsewhere, such as the shell's Back command or .NET code, is not routed to this
+  View: register a .NET handler for it, or it fails closed.
+- When the departure is superseded (another navigation of the region wins),
+  cancelled or its navigator closes, the request ends and `signal` aborts. Close
+  the dialog when it does; a late answer is ignored.
+- With no mounted handler, the question falls back to .NET handlers, and with
+  none it fails closed: the command's outcome is `Failed`, and the navigator
+  logs event 1060 with the `UnhandledInteractionException` type.
 
 ## System.Reactive flavor
 

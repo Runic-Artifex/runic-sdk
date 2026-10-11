@@ -7,7 +7,7 @@
     <PackageId>Runic.Navigation.ReactiveUI</PackageId>
     <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
-    <Description>ReactiveUI observables and a back command for Runic.Navigation regions.</Description>
+    <Description>ReactiveUI observables, commands and interaction leave confirmation for Runic.Navigation regions and entries.</Description>
     <PackageTags>runic-artifex;navigation;reactiveui;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- First published in 0.7.0-preview.4; remove after that release (eng/release/README.md). -->

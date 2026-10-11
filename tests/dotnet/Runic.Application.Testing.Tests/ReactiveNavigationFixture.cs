@@ -63,3 +63,52 @@ public sealed partial class ReactiveNavShellViewModel : ReactiveObject, IDisposa
 
 public sealed partial class ReactiveNavShellWindow
     : RunicWindow<ReactiveNavShellViewModel>;
+
+/// <summary>The question a <see cref="ReactiveNavEditorViewModel"/> asks before it discards its draft.</summary>
+public sealed record NavDiscardPrompt(string Title, string Draft);
+
+// W250-034/035: content that takes its entry context in the constructor, ends its entry with result commands and asks
+// before leaving through an interaction that the web View answers. It bridges without diagnostics.
+public sealed class ReactiveNavEditorViewModel : ReactiveObject, INavPageViewModel, INavigationDepartureGuard, IDisposable
+{
+    private readonly LeaveConfirmation _leave;
+    private string _draft = "";
+    private string _saved = "";
+
+    public ReactiveNavEditorViewModel(NavigationEntryContext entry)
+    {
+        _leave = ReactiveLeaveConfirmation.WithInteraction(ConfirmDiscard, () => new NavDiscardPrompt(Title, Draft),
+            () => Draft != _saved, discard: () => Draft = _saved);
+        SaveCommand = entry.CreateCompleteCommand(_ => Task.FromResult(_saved = Draft));
+        CancelCommand = entry.CreateDismissCommand();
+        CloseCommand = entry.CreateCloseCommand();
+    }
+
+    public string Title => "reactive editor";
+
+    public string Draft
+    {
+        get => _draft;
+        set => this.RaiseAndSetIfChanged(ref _draft, value);
+    }
+
+    public Interaction<NavDiscardPrompt, bool> ConfirmDiscard { get; } = new();
+
+    public ReactiveCommand<RxVoid, NavigationOutcome> SaveCommand { get; }
+
+    public ReactiveCommand<RxVoid, NavigationOutcome> CancelCommand { get; }
+
+    public ReactiveCommand<RxVoid, NavigationOutcome> CloseCommand { get; }
+
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+        _leave.CanDepartAsync(departure, cancellationToken);
+
+    public void Dispose()
+    {
+        SaveCommand.Dispose();
+        CancelCommand.Dispose();
+        CloseCommand.Dispose();
+    }
+}
+
+public sealed partial class ReactiveNavEditorView : RunicView<ReactiveNavEditorViewModel>;

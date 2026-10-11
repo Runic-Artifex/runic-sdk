@@ -34,6 +34,23 @@ Views app that calls `AddRunicReactiveModelContext()` from
 provider and `AddRunicReactiveModelContext()` moved to that package in W250;
 see [Scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#scheduling).
 
+The entry API is the same source as the default flavor's
+([entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands-experimental),
+[leave confirmation through an interaction](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#leave-confirmation-through-an-interaction)),
+also experimental:
+
+- `WhenNavigatedTo()` passes a `ContainerDisposable` scope, as `WhenActivated`
+  does in this flavor; it converts to `CompositeDisposable`.
+- `WhenNavigatedFrom()` returns an `IObservable<NavigationExit>`.
+- `CreateCompleteCommand()`, `CreateDismissCommand()` and `CreateCloseCommand()`
+  return `ReactiveCommand<Unit, NavigationOutcome>` (`ReactiveCommand<TResult,
+  NavigationOutcome>` for the overload that completes with the command's
+  parameter) and take an optional `IScheduler`.
+- `ReactiveLeaveConfirmation.WithInteraction()` takes a
+  `ReactiveUI.Binding.Reactive.IInteraction<TPrompt, bool>`. An unanswered question
+  fails the departure and is logged as `NavigationGuardFailed` (event 1060) with
+  `ErrorType` `ReactiveUI.Binding.Reactive.UnhandledInteractionException`2`.
+
 The [native command composition recipe](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#native-command-composition)
 also applies here. Use `ReactiveUI.Reactive`, `System.Reactive.Linq` and
 `Runic.Navigation.ReactiveUI.Reactive` instead of the default flavor's namespaces,

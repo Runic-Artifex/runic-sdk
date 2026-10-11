@@ -396,9 +396,9 @@ internal static class NavigationPresentationTests
         var generated = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.ts")).ReplaceLineEndings("\n");
         foreach (var expected in new[]
         {
-            "  /** The main content; the navigator changes it. */\n  readonly main: NavEditorPageReference | NavHomePageReference | null;",
-            "  readonly main: { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | null;",
-            "    main: wire.main === null ? null : wire.main.kind === \"navEditor\" ? pageNavEditor(wire.main.id)",
+            "  /** The main content; the navigator changes it. */\n  readonly main: ReactiveNavEditorPageReference | NavEditorPageReference | NavHomePageReference | null;",
+            "  readonly main: { readonly kind: \"reactiveNavEditor\"; readonly id: string } | { readonly kind: \"navEditor\"; readonly id: string } | { readonly kind: \"navHome\"; readonly id: string } | null;",
+            "    main: wire.main === null ? null : wire.main.kind === \"reactiveNavEditor\" ? pageReactiveNavEditor(wire.main.id) : wire.main.kind === \"navEditor\" ? pageNavEditor(wire.main.id)",
         })
             Require(generated.Contains(expected, StringComparison.Ordinal), $"navShell.ts is missing:\n{expected}\n---\n{generated}");
         var mock = File.ReadAllText(Path.Combine(GeneratedTypeScriptDirectory(), "navShell.mock.ts"));

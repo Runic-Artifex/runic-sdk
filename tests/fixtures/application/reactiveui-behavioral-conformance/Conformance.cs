@@ -12,6 +12,7 @@ using System.Reactive.Linq;
 using Runic.Platform;
 using ReactiveUI.Binding.Reactive;
 using Runic.Application.Views.ReactiveUI.Reactive;
+using Runic.Navigation.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
 using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
 using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
@@ -22,6 +23,7 @@ using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views.ReactiveUI;
+using Runic.Navigation.ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 using FlavorScheduler = ReactiveUI.Primitives.Concurrency.ISequencer;
 using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider;
@@ -31,6 +33,7 @@ using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.IRunicReactiv
 
 await CommandSemanticsAsync();
 await InteractionSemanticsAsync();
+await NavigationInteractionSemanticsAsync();
 await SchedulerFailureAndShutdownSemanticsAsync();
 await StreamOverflowStopsExecutionAsync();
 await AmbientMainThreadSchedulerSemanticsAsync();
@@ -138,6 +141,88 @@ static async Task InteractionSemanticsAsync()
         new(StringValue: reply, ClientKey: "client", ConnectionKey: "connection")));
     Require(response.RootElement.GetProperty("kind").GetString() == "ok" && !await answer,
         "A typed browser reply did not complete the ReactiveUI interaction.");
+}
+
+// A leave confirmation asked through a bridged interaction: the browser answers it, and a superseded departure
+// aborts the browser handler's signal (W250-035).
+static async Task NavigationInteractionSemanticsAsync()
+{
+    using var transport = new InMemoryViewTransport();
+    using var session = new WindowContentSession(transport);
+    await using var context = new RunicModelContext();
+    await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+    var region = navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(new object()));
+    var editor = new ConformanceEditorModel();
+    await region.PushAsync(NavigationTarget.Own<object>(editor));
+    const string route = "editor";
+    const string name = "confirmDiscard";
+    const string contract = "conformance.confirmDiscard.v1";
+    using var descriptor = ReactiveInteractionDescriptor.Create<ConformanceEditorModel, string, bool>(
+        name, contract, value => value.ConfirmDiscard, static value => JsonSerializer.Serialize(value), static value => value.GetBoolean())
+        .Attach(session, editor, route);
+    using var rootMount = session.AttachRootInteractionPresentation(route);
+    const string presentation = "editor:present";
+    Require(transport.Call($"{route}Mount", new(StringValue: presentation, ClientKey: "client", ConnectionKey: "connection")) == "ok",
+        "The editor's interaction presentation did not mount.");
+
+    Task<string> Wait() => transport.CallAsync(BridgeInteractionRouter.WaitRoute,
+        new(StringValue: JsonSerializer.Serialize(new { route, presentationId = presentation, handlers = new[] { new { name, contract } } }),
+            ClientKey: "client", ConnectionKey: "connection")).AsTask();
+    // The Back starts where a bridged command of the editor would, inside its invocation.
+    Task<NavigationResult<object>> Close()
+    {
+        using (RunicInteractionInvocation.Enter(session, route, "client", "connection"))
+            return region.BackAsync().AsTask();
+    }
+
+    // Superseded: the browser receives the question, then a cancellation of the same request.
+    var control = transport.CallAsync(BridgeInteractionRouter.ControlWaitRoute, new(StringValue:
+        JsonSerializer.Serialize(new { route, presentationId = presentation }), ClientKey: "client", ConnectionKey: "connection")).AsTask();
+    var wait = Wait();
+    await Task.Yield();
+    var superseded = Close();
+    using (var request = JsonDocument.Parse(await wait.WaitAsync(TimeSpan.FromSeconds(10))))
+    {
+        Require(request.RootElement.GetProperty("kind").GetString() == "request"
+            && request.RootElement.GetProperty("input").GetString() == "discard draft",
+            $"The leave confirmation did not reach the browser: {request.RootElement}.");
+        var requestId = request.RootElement.GetProperty("requestId").GetString();
+        var winner = await region.PushAsync(NavigationTarget.Own(new object())).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Require(winner is NavigationResult<object>.Committed
+            && await superseded.WaitAsync(TimeSpan.FromSeconds(10)) is NavigationResult<object>.Superseded,
+            "A push did not supersede the departure that asked the browser.");
+        using var cancelled = JsonDocument.Parse(await control.WaitAsync(TimeSpan.FromSeconds(10)));
+        Require(cancelled.RootElement.GetProperty("kind").GetString() == "cancelled"
+            && cancelled.RootElement.GetProperty("requestId").GetString() == requestId,
+            $"The superseded departure did not abort the browser handler's request: {cancelled.RootElement}.");
+    }
+    await region.BackAsync();
+
+    // Answered: the browser's yes lets the editor depart and discards once.
+    wait = Wait();
+    await Task.Yield();
+    var closing = Close();
+    using (var request = JsonDocument.Parse(await wait.WaitAsync(TimeSpan.FromSeconds(10))))
+    {
+        var root = request.RootElement;
+        var reply = JsonSerializer.Serialize(new
+        {
+            kind = "answered",
+            requestId = root.GetProperty("requestId").GetString(),
+            route,
+            presentationId = presentation,
+            ownerEpoch = root.GetProperty("ownerEpoch").GetInt64(),
+            name,
+            contract,
+            output = true,
+        });
+        using var response = JsonDocument.Parse(transport.Call(BridgeInteractionRouter.ReplyRoute,
+            new(StringValue: reply, ClientKey: "client", ConnectionKey: "connection")));
+        Require(response.RootElement.GetProperty("kind").GetString() == "ok", "The browser's answer was rejected.");
+    }
+    var closed = await closing.WaitAsync(TimeSpan.FromSeconds(10));
+    Require(closed is NavigationResult<object>.Committed && editor.Discards == 1,
+        $"A browser yes gave {closed} with {editor.Discards} discards.");
 }
 
 static async Task SchedulerFailureAndShutdownSemanticsAsync()
@@ -604,6 +689,19 @@ sealed class EmptyDisposable : IDisposable
 sealed class ConformanceInteractionModel
 {
     public Interaction<string, bool> Confirm { get; } = new();
+}
+
+sealed class ConformanceEditorModel : INavigationDepartureGuard
+{
+    private readonly LeaveConfirmation _leave;
+
+    public ConformanceEditorModel() =>
+        _leave = ReactiveLeaveConfirmation.WithInteraction(ConfirmDiscard, () => "discard draft", () => true, () => Discards++);
+
+    public Interaction<string, bool> ConfirmDiscard { get; } = new();
+    public int Discards { get; private set; }
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+        _leave.CanDepartAsync(departure, cancellationToken);
 }
 
 sealed class SingletonViewModel(FlavorScheduler scheduler)
