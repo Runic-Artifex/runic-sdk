@@ -1,19 +1,18 @@
 using System.Runtime.CompilerServices;
+using TUnit.Core;
 
 namespace Runic.Navigation.Tests;
 
 // Retired content must become collectable once it is disposed: nothing the navigator keeps for the current
 // entry, its region or its transitions may reach a retired entry.
-internal static partial class NavigationTests
+internal sealed partial class NavigationTests
 {
-    public static async Task RunRetentionAsync()
-    {
-        foreach (var operation in new[] { "Replace", "Push+Back", "Back" })
-            await RetiredContentIsCollectableAsync(operation);
-        await OnlyJoinableBacksKeepTheirPlanAsync();
-    }
-
-    private static async Task RetiredContentIsCollectableAsync(string operation)
+    [Test]
+    [Arguments("Replace")]
+    [Arguments("Push+Back")]
+    [Arguments("Back")]
+    [DisplayName("RetiredContentIsCollectableAsync(operation: $operation)")]
+    public async Task RetiredContentIsCollectableAsync(string operation)
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -69,7 +68,8 @@ internal static partial class NavigationTests
 
     // Only a plain Back keeps its admitted plan, and only while it runs: a committed push or replace never holds
     // one, and the entry it pushed does not keep the transition.
-    private static async Task OnlyJoinableBacksKeepTheirPlanAsync()
+    [Test]
+    public async Task OnlyJoinableBacksKeepTheirPlanAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
