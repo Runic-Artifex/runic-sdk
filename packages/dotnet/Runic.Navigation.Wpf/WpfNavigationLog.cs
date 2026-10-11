@@ -41,6 +41,10 @@ internal static partial class WpfNavigationLog
         Message = "An UnhandledTurnException handler failed with {ErrorType}.")]
     internal static partial void UnhandledTurnHandlerFailed(ILogger logger, Exception? exception, string errorType);
 
+    [LoggerMessage(EventId = 1088, EventName = "WindowCloseGuardFailed", Level = LogLevel.Error,
+        Message = "Clearing a NavigationHost region before its window closes threw {ErrorType}; the window stays open.")]
+    internal static partial void WindowCloseGuardFailed(ILogger logger, Exception? exception, string errorType);
+
     internal static string ErrorType(Exception error) => error.GetType().FullName ?? error.GetType().Name;
 
     internal static string TypeName(Type type) => type.FullName ?? type.Name;

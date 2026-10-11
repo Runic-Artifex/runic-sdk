@@ -1,0 +1,148 @@
+using Microsoft.Extensions.DependencyInjection;
+using Runic.Application.Views;
+using Runic.Application.Views.Wpf;
+using Runic.Desktop;
+
+// RunicViewHost's ordering, without WPF: serialised changes, cancellation, release order and fallback.
+internal static class HostLifecycleTests
+{
+    internal static async Task RunAsync()
+    {
+        await ReleasesInReverseOrder();
+        await NewerRequestCancelsOpenAndWaits();
+        await WaitingRequestIsSkipped();
+        await FailureReleasesThenFallsBack();
+        await ModelTypeResolvesFromBaseClass();
+        Console.WriteLine("RunicViewHost lifecycle checks passed.");
+    }
+
+    // Close order: session, then Desktop host, then the native control; the owner's model is never released.
+    private static async Task ReleasesInReverseOrder()
+    {
+        var lifecycle = new PresentationLifecycle();
+        List<string> log = [];
+        var wanted = true;
+        await lifecycle.RequestAsync(() => wanted, (owner, _) =>
+        {
+            owner.Own(() => log.Add("control"));
+            owner.Own(() => log.Add("desktop"));
+            owner.Own(() => log.Add("session"));
+            return Task.CompletedTask;
+        });
+        Program.Check(lifecycle.State == RunicViewHostState.Open && log.Count == 0, "The open did not settle as Open.");
+        wanted = false;
+        await lifecycle.RequestAsync(() => wanted, (_, _) => throw new InvalidOperationException("Opened while unwanted."));
+        Program.Check(log.SequenceEqual(["session", "desktop", "control"]), $"Released in the order {string.Join(", ", log)}.");
+        Program.Check(lifecycle.State == RunicViewHostState.Closed && lifecycle.Error is null, "Closing did not settle as Closed.");
+    }
+
+    // A swap during an open cancels it; the next open starts only after the cancelled one has released.
+    private static async Task NewerRequestCancelsOpenAndWaits()
+    {
+        var lifecycle = new PresentationLifecycle();
+        List<string> log = [];
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var first = lifecycle.RequestAsync(() => true, async (owner, token) =>
+        {
+            owner.Own(async () =>
+            {
+                await Task.Yield();
+                log.Add("first released");
+            });
+            started.SetResult();
+            await Task.Delay(Timeout.Infinite, token);
+        });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Program.Check(lifecycle.State == RunicViewHostState.Opening, "The open did not report Opening.");
+        var second = lifecycle.RequestAsync(() => true, (owner, _) =>
+        {
+            log.Add("second opened");
+            owner.Own(() => log.Add("second released"));
+            return Task.CompletedTask;
+        });
+        await second.WaitAsync(TimeSpan.FromSeconds(5));
+        Program.Check(first.IsCompletedSuccessfully, "The cancelled change faulted.");
+        Program.Check(log.SequenceEqual(["first released", "second opened"]), $"The swap ran as {string.Join(", ", log)}.");
+        Program.Check(lifecycle.State == RunicViewHostState.Open && ReferenceEquals(lifecycle.Settled, second), "The swap did not settle as Open.");
+    }
+
+    // Requests that queue behind a running change collapse into the latest one.
+    private static async Task WaitingRequestIsSkipped()
+    {
+        var lifecycle = new PresentationLifecycle();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var opens = 0;
+        Task Open(PresentationLifecycle owner, CancellationToken token)
+        {
+            opens++;
+            // Ignores its token, as a slow native call would.
+            return opens == 1 ? gate.Task : Task.CompletedTask;
+        }
+        _ = lifecycle.RequestAsync(() => true, Open);
+        _ = lifecycle.RequestAsync(() => true, Open);
+        var last = lifecycle.RequestAsync(() => true, Open);
+        gate.SetResult();
+        await last.WaitAsync(TimeSpan.FromSeconds(5));
+        Program.Check(opens == 2, $"Three requests opened {opens} times instead of twice.");
+        Program.Check(lifecycle.State == RunicViewHostState.Open, "The collapsed requests did not settle as Open.");
+    }
+
+    // A failed open releases what it acquired before the fallback shows; the next change removes the fallback first.
+    private static async Task FailureReleasesThenFallsBack()
+    {
+        var lifecycle = new PresentationLifecycle();
+        List<string> log = [];
+        var failure = new PlatformNotSupportedException("No WebView2.");
+        var changes = 0;
+        lifecycle.Changed += () => changes++;
+        await lifecycle.RequestAsync(() => true, (owner, _) =>
+        {
+            owner.Own(() => log.Add("control released"));
+            throw failure;
+        }, (owner, error) =>
+        {
+            log.Add($"fallback for {error.Message}");
+            owner.Own(() => log.Add("fallback removed"));
+        });
+        Program.Check(log.SequenceEqual(["control released", "fallback for No WebView2."]), $"The failure ran as {string.Join(", ", log)}.");
+        Program.Check(lifecycle.State == RunicViewHostState.Failed && ReferenceEquals(lifecycle.Error, failure) && changes == 2,
+            "The failure was not reported once as Failed with its error.");
+        await lifecycle.RequestAsync(() => true, (_, _) =>
+        {
+            log.Add("retried");
+            return Task.CompletedTask;
+        });
+        Program.Check(log.TakeLast(2).SequenceEqual(["fallback removed", "retried"]) && lifecycle.Error is null,
+            "A retry did not remove the fallback before opening.");
+    }
+
+    // RunicViewHost only knows the model at run time: the Bridge of its class or nearest base class is used.
+    private static async Task ModelTypeResolvesFromBaseClass()
+    {
+        var attachment = new Attachment();
+        var collection = new ServiceCollection();
+        collection.AddSingleton<Func<IBridgeTransport, BaseModel, IDisposable>>((_, _) => attachment);
+        await using var services = collection.BuildServiceProvider();
+        await using var host = await DesktopHost.StartAsync();
+        var model = new DerivedModel();
+        var view = await services.CreateWpfViewForModelAsync(host, Program.HtmlOptions(), model, null, CancellationToken.None);
+        Program.Check(ReferenceEquals(view.ViewModel, model) && view is WpfBridgeView<BaseModel>, "The base-class Bridge was not used.");
+        await view.DisposeAsync();
+        Program.Check(attachment.Disposed, "The session did not release its attachment.");
+        try
+        {
+            await new ServiceCollection().BuildServiceProvider()
+                .CreateWpfViewForModelAsync(host, Program.HtmlOptions(), model, null, CancellationToken.None);
+            throw new InvalidOperationException("A model without a Bridge was accepted.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("AddRunicViews", StringComparison.Ordinal)) { }
+    }
+
+    private class BaseModel;
+    private sealed class DerivedModel : BaseModel;
+    private sealed class Attachment : IDisposable
+    {
+        internal bool Disposed { get; private set; }
+        public void Dispose() => Disposed = true;
+    }
+}

@@ -7,6 +7,7 @@
     <Button DockPanel.Dock="Top" Content="Back to notes" HorizontalAlignment="Left" Margin="0,0,0,12"
       Command="NavigationCommands.BrowseBack" CommandTarget="{Binding ElementName=Main}" />
     <rn:NavigationDialogHost Region="{Binding Dialog}" />
-    <rn:NavigationHost x:Name="Main" Region="{Binding Main}" />
+    <!-- Closing the window asks the editor's departure guard, as Back does. -->
+    <rn:NavigationHost x:Name="Main" Region="{Binding Main}" GuardWindowClose="True" />
   </DockPanel>
 </Window>

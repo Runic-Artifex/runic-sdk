@@ -5,7 +5,9 @@ using System.Windows.Media;
 using HybridNotes;
 using HybridNotes.Wpf;
 using Microsoft.Extensions.DependencyInjection;
+using Runic.Application.Views.Wpf;
 using Runic.Navigation;
+using Runic.Navigation.Wpf;
 
 internal static class Program
 {
@@ -19,8 +21,8 @@ internal static class Program
         {
             try
             {
-                await RunAsync().WaitAsync(TimeSpan.FromSeconds(60));
-                Console.WriteLine("PASS WPF shell + embedded note editor: swap, web save, reload, unload");
+                await RunAsync().WaitAsync(TimeSpan.FromSeconds(120));
+                Console.WriteLine("PASS WPF shell + embedded note editor: swap, web save, reload, unload, guarded close");
             }
             catch (Exception error) { Console.Error.WriteLine(error); exit = 1; }
             finally { app.Shutdown(); }
@@ -37,7 +39,7 @@ internal static class Program
         var regions = scope.ServiceProvider.GetRequiredService<AppRegions>();
         var context = scope.ServiceProvider.GetRequiredService<IRunicModelContext>();
         var store = scope.ServiceProvider.GetRequiredService<INoteStore>();
-        var window = new MainWindow(regions) { DataContext = regions, ShowInTaskbar = false, Left = -10000, Top = -10000 };
+        var window = new MainWindow { DataContext = regions, ShowInTaskbar = false, Left = -10000, Top = -10000 };
         window.Show();
         try
         {
@@ -45,23 +47,21 @@ internal static class Program
             await regions.Main.PushAsync<EditorViewModel, int>(1);
             var model = (EditorViewModel)regions.Main.Current!;
             var entry = regions.Main.CurrentEntry;
-            await UntilAsync(() => Descendants<EditorView>(window).Any());
+            await UntilAsync(() => Descendants<NativeEditorView>(window).Any());
             var page = Descendants<EditorView>(window).Single();
-            await page.PresentationChange;
             Console.WriteLine("Hybrid smoke: native editor loaded");
             // Actual native TextBox binding, then the actual presentation toggle button.
             var native = Descendants<NativeEditorView>(page).Single();
             Descendants<TextBox>(native).First().Text = "Native draft";
             Check(model.Title == "Native draft" && model.IsDirty, "Native edit did not reach the existing model.");
-            ((Button)page.FindName("Switch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await page.PresentationChange;
-            CheckPresentation(page, "first web mount");
+            Click(page, "Switch");
+            var firstHost = await OpenedAsync(page, "first web mount");
             Console.WriteLine("Hybrid smoke: first embedded session opened");
-            var first = page.WebBinding ?? throw new InvalidOperationException("Embedded editor did not open.");
-            Check(ReferenceEquals(first.ViewModel, model) && ReferenceEquals(regions.Main.CurrentEntry, entry), "Presentation switch replaced model or entry.");
-            await UntilAsync(async () => await first.Surface.ExecuteJavaScriptAsync("return document.querySelector('#title').value;") == "Native draft");
+            var first = firstHost.Surface!;
+            Check(ReferenceEquals(firstHost.Model, model) && ReferenceEquals(regions.Main.CurrentEntry, entry), "Presentation switch replaced model or entry.");
+            await UntilAsync(async () => await first.ExecuteJavaScriptAsync("return document.querySelector('#title').value;") == "Native draft");
 
-            await first.Surface.RunJavaScriptAsync("""
+            await first.RunJavaScriptAsync("""
                 const title = document.querySelector('#title');
                 title.value = 'Saved from web'; title.dispatchEvent(new Event('input'));
                 const body = document.querySelector('#body');
@@ -72,38 +72,82 @@ internal static class Program
             Console.WriteLine("Hybrid smoke: web edits saved in shared store");
             Check(model.Body == "One shared draft", "Web edits did not reach the native model.");
 
-            ((Button)page.FindName("Switch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await page.PresentationChange;
-            CheckPresentation(page, "switch to native");
+            Click(page, "Switch");
+            await ReleasedAsync(firstHost, "switch to native");
             Console.WriteLine("Hybrid smoke: switched to native and released first session");
-            Check(page.WebBinding is null && Descendants<NativeEditorView>(page).Single().DataContext == model, "Switch to native retained the web session or replaced the model.");
-            await (await first.CloseAsync(TimeSpan.Zero)).Completion;
-            ((Button)page.FindName("Switch")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await page.PresentationChange;
-            CheckPresentation(page, "second web mount");
+            Check(page.WebHost is null && Descendants<NativeEditorView>(page).Single().DataContext == model, "Switch to native retained the web host or replaced the model.");
+            Click(page, "Switch");
+            var secondHost = await OpenedAsync(page, "second web mount");
             Console.WriteLine("Hybrid smoke: second embedded session opened");
-            var second = page.WebBinding ?? throw new InvalidOperationException("Second embedded session did not open.");
+            var second = secondHost.Surface!;
             Check(!ReferenceEquals(first, second), "Switch reused a closed web session.");
-            ((Button)page.FindName("Reload")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await page.PresentationChange;
-            CheckPresentation(page, "reload web editor");
+            Click(page, "Reload");
+            await secondHost.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            Check(secondHost.State == RunicViewHostState.Open, $"Reload did not reopen: {secondHost.Error}");
             Console.WriteLine("Hybrid smoke: reloaded embedded session");
-            var reloaded = page.WebBinding ?? throw new InvalidOperationException("Reload did not open.");
-            Check(!ReferenceEquals(second, reloaded) && ReferenceEquals(reloaded.ViewModel, model), "Reload did not preserve the same model in a fresh session.");
-            await UntilAsync(async () => await reloaded.Surface.ExecuteJavaScriptAsync("return document.querySelector('#body').value;") == "One shared draft");
+            var reloaded = secondHost.Surface!;
+            Check(!ReferenceEquals(second, reloaded) && ReferenceEquals(secondHost.Model, model), "Reload did not preserve the same model in a fresh session.");
+            await UntilAsync(async () => await reloaded.ExecuteJavaScriptAsync("return document.querySelector('#body').value;") == "One shared draft");
             Check(ReferenceEquals(regions.Main.CurrentEntry, entry), "Reload changed navigation entry.");
 
             await regions.Main.BackAsync();
-            await UntilAsync(() => !page.IsLoaded);
-            await page.PresentationChange;
-            CheckPresentation(page, "editor unload");
+            await ReleasedAsync(secondHost, "editor unload");
             Console.WriteLine("Hybrid smoke: editor unloaded and released web session");
-            Check(page.WebBinding is null, "Unload left a web binding attached.");
-            await (await reloaded.CloseAsync(TimeSpan.Zero)).Completion;
             await context.InvokeAsync(() => Check(regions.Main.Current is NotesListViewModel, "Presentation unload disposed the borrowed context or navigator."));
+
+            // Closing the shell asks the editor's departure guard through the native dialog, as Back does.
+            await regions.Main.PushAsync<EditorViewModel, int>(1);
+            var dirty = (EditorViewModel)regions.Main.Current!;
+            await context.InvokeAsync(() => dirty.Title = "Unsaved on close");
+            window.Close();
+            var keep = await QuestionAsync(regions);
+            Check(window.IsLoaded, "The shell closed before the departure guard answered.");
+            await context.InvokeAsync(() => keep.NoCommand.Execute(null));
+            await UntilAsync(() => regions.Dialog.Current is null && !regions.Main.IsTransitioning);
+            Check(window.IsLoaded && ReferenceEquals(regions.Main.Current, dirty) && dirty.IsDirty, "Keep editing lost the shell or the draft.");
+            window.Close();
+            var discard = await QuestionAsync(regions);
+            await context.InvokeAsync(() => discard.YesCommand.Execute(null));
+            await UntilAsync(() => !window.IsLoaded);
+            Check(regions.Main.CurrentEntry is null && store.Get(1).Title == "Saved from web", "Closing the shell did not clear the region or kept the discarded draft.");
+            Console.WriteLine("Hybrid smoke: shell close asked the guard, kept then discarded the draft");
         }
-        finally { window.Close(); }
+        finally
+        {
+            if (window.IsLoaded)
+            {
+                ((NavigationHost)window.FindName("Main")).GuardWindowClose = false;
+                window.Close();
+            }
+        }
         Console.WriteLine("Hybrid smoke: shell closed, disposing application scope");
+    }
+
+    private static void Click(EditorView page, string button) =>
+        ((Button)page.FindName(button)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    private static async Task<RunicViewHost> OpenedAsync(EditorView page, string phase)
+    {
+        var host = page.WebHost ?? throw new InvalidOperationException($"No web host during {phase}.");
+        await UntilAsync(() => host.State is not (RunicViewHostState.Closed or RunicViewHostState.Opening));
+        await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        if (host.State != RunicViewHostState.Open)
+            throw new InvalidOperationException($"Hybrid smoke failed during {phase}: {host.State}.", host.Error);
+        return host;
+    }
+
+    // Leaving the tree closes the host's session, then its Desktop host, then its native child.
+    private static async Task ReleasedAsync(RunicViewHost host, string phase)
+    {
+        await UntilAsync(() => !host.IsLoaded);
+        await host.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        Check(host.State == RunicViewHostState.Closed && host.Surface is null && host.Child is null, $"The web host was not released after {phase}.");
+    }
+
+    private static async Task<ConfirmViewModel> QuestionAsync(AppRegions regions)
+    {
+        await UntilAsync(() => regions.Dialog.Current is ConfirmViewModel);
+        return (ConfirmViewModel)regions.Dialog.Current!;
     }
 
     private static IEnumerable<T> Descendants<T>(DependencyObject node) where T : DependencyObject
@@ -122,7 +166,7 @@ internal static class Program
         var elapsed = Stopwatch.StartNew();
         while (!await ready())
         {
-            if (elapsed.Elapsed > TimeSpan.FromSeconds(10)) throw new TimeoutException("Hybrid editor did not reach the expected state.");
+            if (elapsed.Elapsed > TimeSpan.FromSeconds(30)) throw new TimeoutException("Hybrid editor did not reach the expected state.");
             await Task.Delay(20);
         }
     }
@@ -130,11 +174,5 @@ internal static class Program
     private static void Check(bool passed, string message)
     {
         if (!passed) throw new InvalidOperationException(message);
-    }
-
-    private static void CheckPresentation(EditorView page, string phase)
-    {
-        if (page.LastPresentationError is { } error)
-            throw new InvalidOperationException($"Hybrid smoke failed during {phase}.", error);
     }
 }
