@@ -973,7 +973,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             : valueProperties.TryGetValue(property, out var valueGraph)
                 ? valueGraph.TypeScriptType()
                 : throw new InvalidOperationException($"{model.Name}.{property.Name}: no generated TypeScript type.");
-        XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
+        var stateDocumentation = XmlDocumentation.Summary(property);
+        if (valueProperties.TryGetValue(property, out var documentedGraph))
+            stateDocumentation = BridgeTypeGraph.WithTypeScriptNote(stateDocumentation, documentedGraph.Root);
+        XmlDocumentation.Append(ts, "  ", stateDocumentation);
         ts.AppendLine($"  readonly {TsPropertyName(WireName(property))}: {propertyType};");
         if (hasErrors) ts.AppendLine($"  readonly {TsPropertyName(WireName(property) + "Errors")}: readonly string[];");
     }
@@ -1152,9 +1155,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         + (needsCheckedWriter ? ", checkedFields: checkedFieldNames" : "")
         + (interactions.Length > 0 ? ", interactions: interactionDefinitions" : "")
         + (operationPlans.Length > 0 ? ", operations: bridgeOperations" : "");
-    ts.AppendLine($"export function connect{shortName}(): Promise<{clientName}> {{ return connect{shortName}At(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}); }}");
-    ts.AppendLine($"async function connect{shortName}At(route: string, mount = false): Promise<{clientName}> {{");
-    ts.AppendLine($"  const view = await connectView({{ {connectOptions} }});");
+    XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError.");
+    ts.AppendLine($"export function connect{shortName}(options?: BridgeConnectOptions): Promise<{clientName}> {{ return connect{shortName}At(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}, options); }}");
+    ts.AppendLine($"async function connect{shortName}At(route: string, mount = false, options?: BridgeConnectOptions): Promise<{clientName}> {{");
+    ts.AppendLine($"  const view = await connectView({{ {connectOptions}, timeout: options?.timeout }});");
     OperationTypeScriptEmitter.AppendRuntime(ts, operationPlans);
     ts.AppendLine("  return {");
     ts.AppendLine("    get snapshot() { return view.snapshot; },");
@@ -1224,6 +1228,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var publicImports = new List<string>();
     if (body.Contains("new BridgeError(", StringComparison.Ordinal)) publicImports.Add("BridgeError");
     if (hasValidation) publicImports.Add("type BridgeValidationState");
+    publicImports.Add("type BridgeConnectOptions");
     publicImports.Add("type ViewClient");
     if (needsCheckedWriter) publicImports.AddRange(["type FieldBaseline", "type FieldWriteOptions", "type FieldWriteReceipt"]);
     if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type BridgeOutcome");

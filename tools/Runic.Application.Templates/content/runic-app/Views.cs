@@ -20,6 +20,7 @@ public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewMod
     : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
     public DesktopWindow Presentation => host.Presentation;
+    public DesktopSurface Surface => host.Surface;
 #if (gtk4)
     // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
     // example WindowsPlatformProvider.CreateFileDialogs(NativeOwner) on Windows or, on Linux with GTK 4,
@@ -40,6 +41,8 @@ public sealed partial class CounterView : ReactiveRunicView<CounterViewModel>;
 public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
     : RunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
 {
+    public WorkspaceViewModel ViewModel => host.ViewModel;
+    public DesktopSurface Surface => host.Surface;
     public DesktopWindow Presentation => host.Presentation;
 #if (gtk4)
     // Pass to the Runic.Platform provider for this backend for native file dialogs and the clipboard, for
@@ -70,7 +73,10 @@ public sealed partial class WelcomeView : ReactiveRunicView<WelcomeViewModel>;
 public sealed partial class CounterView : ReactiveRunicView<CounterViewModel>;
 #else
 public sealed partial class WorkspaceWindow(CsWebUiBridgeWindow<WorkspaceViewModel> host)
-    : CsWebUiWindow<WorkspaceViewModel>(host);
+    : CsWebUiWindow<WorkspaceViewModel>(host)
+{
+    public WorkspaceViewModel ViewModel => Host.ViewModel;
+}
 
 public sealed partial class WelcomeView : RunicView<WelcomeViewModel>;
 public sealed partial class CounterView : RunicView<CounterViewModel>;

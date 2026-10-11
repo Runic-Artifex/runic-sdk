@@ -26,7 +26,6 @@ public interface IPinnedItem;
 
 public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
 {
-    private readonly IRunicModelContextLease _modelContextLease;
     private readonly HomeViewModel _home;
     private readonly DocumentViewModel _document;
     private readonly ReactiveRoutedRegion<IMainPage> _main;
@@ -39,8 +38,6 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
         _pinned = [_pinnedNote, _pinnedTask];
         _home = new HomeViewModel(this);
         _document = new DocumentViewModel(this, modelContext, scheduler, loggerFactory);
-        _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext,
-            this, _home, _document, _document.Editor, _document.Preview, _pinnedNote, _pinnedTask);
         Router = new RoutingState(scheduler);
         _main = new ReactiveRoutedRegion<IMainPage>(Router, loggerFactory);
         _main.PropertyChanged += OnMainChanged;
@@ -86,7 +83,6 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
         _main.PropertyChanged -= OnMainChanged;
         _main.Dispose();
         _document.Dispose();
-        _modelContextLease.Dispose();
     }
 }
 

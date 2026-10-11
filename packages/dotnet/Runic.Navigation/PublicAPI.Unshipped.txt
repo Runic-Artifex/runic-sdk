@@ -1,3 +1,5 @@
 #nullable enable
 *REMOVED*Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
 [RUNICNAV001]Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
+[RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.IsCommitted.get -> bool
+[RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.ThrowIfFailed() -> Runic.Navigation.NavigationResult<TContent!>!

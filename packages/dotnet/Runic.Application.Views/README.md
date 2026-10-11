@@ -246,6 +246,12 @@ public DocumentPane ActivePane => ...;
 export type DocumentPane = "Editor" | "Preview";
 ```
 
+- Numbers follow JavaScript's precision: `int`, `double` and smaller numeric
+  types are `number`, but `long`, `ulong` and `BigInteger` are `bigint`,
+  because a `number` is exact only up to 2^53, and `decimal` is a `string`.
+  The wire carries 64-bit and big integers as strings; the generated client
+  converts them, and the member's TSDoc says so. Use `BigInt(value)` and
+  `Number(value)` to convert at the edges, or model a small count as `int`.
 - An enum is a union of its wire names (the C# names, or `[RunicAlias]`), so
   a `switch` over it can be exhaustive.
 - A DTO is an interface with its wire member names. A `[RunicUnion]` is a
@@ -274,9 +280,14 @@ export type DocumentPane = "Editor" | "Preview";
   `DocumentPageReference | HomePageReference`, with `| null` when it is
   nullable. A `NavigationRegion<TContent>` slot always includes `| null`,
   because a region can be empty; see [Navigation](#navigation-experimental).
+  The frameworks' `ViewRegistry<State["main"]>` accepts such a nullable type.
 - `<summary>` comments on ViewModels, state properties, commands, interactions,
-  DTO types and members, and enum cases become TSDoc. The bootstrap pass writes
-  the XML documentation file for this; a project that already writes one keeps
+  DTO types and members, and enum cases become TSDoc. A summary on a partial
+  property such as `[ObservableProperty] public partial bool IsDirty { get; private set; }`
+  or `[Reactive] public partial string Name { get; set; }` is read from its
+  declaring part in source, found through the assembly's PDB, because the XML
+  documentation file keeps the generated part's `<inheritdoc/>`. The bootstrap
+  pass writes the XML documentation file for this; a project that already writes one keeps
   its own. Set `RunicBridgeDocumentation=false` to skip it. A separate model
   assembly (`RunicBridgeModelAssembly`) needs its XML documentation file beside
   it.
@@ -540,7 +551,8 @@ generator treats it as a content slot. The snapshot presents `Current`, or
 clears the slot when the region is empty. The wire value and TypeScript type
 are those of a nullable content property (for example `DocumentPageReference | HomePageReference | null`), so
 moving a non-null content property to a region adds `| null`, and the frontend
-must render the empty state. `TContent` must be an interface or base class of
+must render the empty state. A `ViewRegistry<State["main"]>` accepts the nullable
+slot type and checks its non-null kinds. `TContent` must be an interface or base class of
 ViewModels with registered Views. A `NavigationRegion<object>` slot, or one
 with a public setter, is `RUNICBRIDGE008`.
 

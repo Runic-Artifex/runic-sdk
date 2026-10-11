@@ -9,3 +9,7 @@ export const complete = { counter: Counter, welcome: Welcome } satisfies ViewReg
 export const missing = { counter: Counter } satisfies ViewRegistry<Page>;
 // @ts-expect-error A component's page prop must accept the reference of its kind.
 export const wrong = { counter: Welcome, welcome: Welcome } satisfies ViewRegistry<Page>;
+// A region slot's reference is nullable; the registry checks its non-null kinds.
+export const slot = { counter: Counter, welcome: Welcome } satisfies ViewRegistry<Page | null>;
+// @ts-expect-error A nullable reference still needs a component for every kind.
+export const slotMissing = { counter: Counter } satisfies ViewRegistry<Page | null>;

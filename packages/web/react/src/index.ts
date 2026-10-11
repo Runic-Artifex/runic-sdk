@@ -244,9 +244,12 @@ export function useSuspenseView<TClient extends ViewClient>(source: ViewConnecto
   return { state, client };
 }
 
-/** A build-known map checks each generated reference kind against its component's `page` prop. */
-export type ViewRegistry<R extends ViewReference> = {
-  readonly [K in R["kind"]]: ComponentType<{ readonly page: Extract<R, { readonly kind: K }> }>;
+/**
+ * A build-known map checks each generated reference kind against its component's `page` prop. A nullable
+ * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
+ */
+export type ViewRegistry<R extends ViewReference | null | undefined> = {
+  readonly [K in NonNullable<R>["kind"]]: ComponentType<{ readonly page: Extract<NonNullable<R>, { readonly kind: K }> }>;
 };
 
 export interface ViewOutletProps<R extends ViewReference> {

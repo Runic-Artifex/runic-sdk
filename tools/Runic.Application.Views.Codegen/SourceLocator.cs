@@ -34,6 +34,49 @@ internal static class SourceLocator
         return null;
     }
 
+    /// <summary>
+    /// The existing source files that declare members of <paramref name="type"/>,
+    /// from its methods' sequence points and, for a type without method bodies,
+    /// the compiler's type-definition documents.
+    /// </summary>
+    internal static IReadOnlyList<string> Documents(Type type)
+    {
+        try
+        {
+            if (Reader(type.Assembly) is not { } reader) return [];
+            var documents = new HashSet<DocumentHandle>();
+            foreach (var method in type.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+                         | BindingFlags.Public | BindingFlags.NonPublic).OfType<MethodBase>())
+            {
+                var handle = MetadataTokens.MethodDefinitionHandle(method.MetadataToken);
+                if (handle.IsNil) continue;
+                var information = reader.GetMethodDebugInformation(handle);
+                if (!information.Document.IsNil) documents.Add(information.Document);
+                foreach (var point in information.GetSequencePoints()) documents.Add(point.Document);
+            }
+            var definition = MetadataTokens.TypeDefinitionHandle(type.MetadataToken);
+            foreach (var handle in reader.GetCustomDebugInformation(definition))
+            {
+                var information = reader.GetCustomDebugInformation(handle);
+                if (reader.GetGuid(information.Kind) != TypeDefinitionDocuments) continue;
+                var blob = reader.GetBlobReader(information.Value);
+                while (blob.RemainingBytes > 0) documents.Add(MetadataTokens.DocumentHandle(blob.ReadCompressedInteger()));
+            }
+            return documents.Select(document => reader.GetString(reader.GetDocument(document).Name))
+                .Where(File.Exists).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        }
+        // As for locations, a missing or unreadable PDB only means no source.
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException
+            or BadImageFormatException or InvalidOperationException or ArgumentException)
+        {
+            return [];
+        }
+    }
+
+    // PortableCustomDebugInfoKinds.TypeDefinitionDocuments: the documents of a
+    // type whose members have no sequence points.
+    private static readonly Guid TypeDefinitionDocuments = new("932E74BC-DBA9-4478-8D46-0F32A7BAB3D3");
+
     private static Location? FindDeclared(MemberInfo member)
     {
         IEnumerable<MethodBase> methods = member switch
