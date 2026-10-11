@@ -24,3 +24,31 @@ static Runic.Navigation.RunicModelContext.Current.get -> Runic.Navigation.RunicM
 [RUNICNAV001]static Runic.Navigation.NavigationOutcome.operator ==(Runic.Navigation.NavigationOutcome? left, Runic.Navigation.NavigationOutcome? right) -> bool
 [RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.IsCommitted.get -> bool
 [RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.ThrowIfFailed() -> Runic.Navigation.NavigationResult<TContent!>!
+[RUNICNAV001]override Runic.Navigation.NavigationExit.Equals(object? obj) -> bool
+[RUNICNAV001]override Runic.Navigation.NavigationExit.GetHashCode() -> int
+[RUNICNAV001]override Runic.Navigation.NavigationExit.ToString() -> string!
+[RUNICNAV001]Runic.Navigation.INavigationAware
+[RUNICNAV001]Runic.Navigation.INavigationAware.OnNavigatedFrom(Runic.Navigation.NavigationExit! exit) -> void
+[RUNICNAV001]Runic.Navigation.INavigationAware.OnNavigatedTo(Runic.Navigation.NavigationResume! arrival) -> void
+[RUNICNAV001]Runic.Navigation.NavigationEntryContext.StateChanged -> System.EventHandler<Runic.Navigation.NavigationEntryStateChangedEventArgs!>?
+[RUNICNAV001]Runic.Navigation.NavigationEntryContext.State.get -> Runic.Navigation.NavigationEntryState
+[RUNICNAV001]Runic.Navigation.NavigationEntryStateChangedEventArgs
+[RUNICNAV001]Runic.Navigation.NavigationEntryStateChangedEventArgs.NavigationEntryStateChangedEventArgs(Runic.Navigation.NavigationEntryState previousState, Runic.Navigation.NavigationEntryState state, Runic.Navigation.NavigationOperation operation) -> void
+[RUNICNAV001]Runic.Navigation.NavigationEntryStateChangedEventArgs.Operation.get -> Runic.Navigation.NavigationOperation
+[RUNICNAV001]Runic.Navigation.NavigationEntryStateChangedEventArgs.PreviousState.get -> Runic.Navigation.NavigationEntryState
+[RUNICNAV001]Runic.Navigation.NavigationEntryStateChangedEventArgs.State.get -> Runic.Navigation.NavigationEntryState
+[RUNICNAV001]Runic.Navigation.NavigationExit
+[RUNICNAV001]Runic.Navigation.NavigationExit.<Clone>$() -> Runic.Navigation.NavigationExit!
+[RUNICNAV001]Runic.Navigation.NavigationExit.Deconstruct(out Runic.Navigation.NavigationEntryId Entry, out Runic.Navigation.NavigationOperation Operation, out Runic.Navigation.NavigationDepartureKind Kind) -> void
+[RUNICNAV001]Runic.Navigation.NavigationExit.Entry.get -> Runic.Navigation.NavigationEntryId
+[RUNICNAV001]Runic.Navigation.NavigationExit.Entry.init -> void
+[RUNICNAV001]Runic.Navigation.NavigationExit.Equals(Runic.Navigation.NavigationExit? other) -> bool
+[RUNICNAV001]Runic.Navigation.NavigationExit.Kind.get -> Runic.Navigation.NavigationDepartureKind
+[RUNICNAV001]Runic.Navigation.NavigationExit.Kind.init -> void
+[RUNICNAV001]Runic.Navigation.NavigationExit.NavigationExit(Runic.Navigation.NavigationEntryId Entry, Runic.Navigation.NavigationOperation Operation, Runic.Navigation.NavigationDepartureKind Kind) -> void
+[RUNICNAV001]Runic.Navigation.NavigationExit.Operation.get -> Runic.Navigation.NavigationOperation
+[RUNICNAV001]Runic.Navigation.NavigationExit.Operation.init -> void
+[RUNICNAV001]static Runic.Navigation.NavigationExit.operator !=(Runic.Navigation.NavigationExit? left, Runic.Navigation.NavigationExit? right) -> bool
+[RUNICNAV001]static Runic.Navigation.NavigationExit.operator ==(Runic.Navigation.NavigationExit? left, Runic.Navigation.NavigationExit? right) -> bool
+[RUNICNAV001]static Runic.Navigation.NavigationTarget.Create<T>(System.Func<System.IServiceProvider!, Runic.Navigation.NavigationEntryContext!, T!>! factory) -> Runic.Navigation.INavigationTarget<T!>!
+[RUNICNAV001]static Runic.Navigation.NavigationTarget.Create<T, TInput>(System.Func<System.IServiceProvider!, Runic.Navigation.NavigationEntryContext!, T!>! factory, TInput input) -> Runic.Navigation.INavigationTarget<T!>!

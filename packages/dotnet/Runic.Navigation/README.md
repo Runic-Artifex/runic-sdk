@@ -2,8 +2,8 @@
 
 Typed, host-neutral navigation for .NET ViewModels. `RunicNavigator` owns
 navigation regions with stable entry ids, awaited departure guards,
-initialize-once and resume-on-return hooks, results from an entry, and owned or
-borrowed content. `IRunicModelContext` serializes the ViewModel changes that
+initialize-once and resume-on-return hooks, navigated-to and navigated-from
+notifications, results from an entry, and owned or borrowed content. `IRunicModelContext` serializes the ViewModel changes that
 navigation commits. The types are in the `Runic.Navigation` namespace.
 
 The package has no build targets, generator, Node or UI host, and it supports
@@ -152,6 +152,75 @@ state.
 | `Retained` | The entry is in the history below `Current` and keeps its content, draft included. |
 | `Retired` | The entry has left the region, or a push of it never committed. It never becomes active again. |
 
+**The entry's context.** Each entry has a `NavigationEntryContext`: its `Id`,
+`State`, `Services`, `Region`, `Retirement` token, and the operations it
+performs on itself (`BackAsync`, `CompleteAsync`, `DismissAsync`). Content
+that the navigator constructs receives it as a constructor parameter, so it
+holds its entry from the start:
+
+```csharp
+public sealed class ConfirmViewModel(NavigationEntryContext entry) : ObservableObject
+{
+    public Task Confirm() => entry.CompleteAsync(true).AsTask();
+    public Task Cancel() => entry.DismissAsync().AsTask();
+}
+
+await dialog.PushForResult<ConfirmViewModel, bool>().Completion; // the navigator passes the dialog its own entry
+```
+
+- `Create<T>()`, `Create<T, TInput>(input)` and the region methods that wrap
+  them (`PushAsync<T>()`, `ReplaceAsync<T>()`, `ResetAsync<T>()`,
+  `PushForResult<T, TResult>()`) pass the new entry's context to a constructor
+  parameter of type `NavigationEntryContext`. A factory target takes it as its
+  second argument: `NavigationTarget.Create<IDialogViewModel>((services, entry) => new ConfirmViewModel(entry))`.
+  Initial targets of `CreateRegion` receive it the same way.
+- The content is constructed while its entry is still `Pending`, during the
+  preparation; the entry becomes `Active` when the transition commits. Keep
+  the context for commands rather than navigating from the constructor.
+- Only that content receives the context. A service resolved from the
+  container can't: with `AddRunicNavigation()`, resolving
+  `NavigationEntryContext` from the container throws an
+  `InvalidOperationException` that says where it is available. Pass the context
+  on from the content to the objects that need it.
+- Content created with `Own` or `Borrow` exists before its entry, so it
+  receives the context in `INavigationInitialize.InitializeAsync`.
+
+**Navigated to and from.** Content that implements `INavigationAware` is told
+when its entry becomes current and when it stops being current:
+
+| Call | When | Arguments |
+| --- | --- | --- |
+| `OnNavigatedTo(NavigationResume)` | The entry becomes `Active`: its first commit (`Push`, `Replace` or `Reset`; `Reset` for an initial target) and every resume (`Back` or `BackTo`). | The entry id and the operation. |
+| `OnNavigatedFrom(NavigationExit)` | The entry stops being `Active`: it is retained (`Kind` is `Retain`) or it retires (`Retire`). A region that clears or closes reports `Clear`. | The entry id, the operation and the kind. |
+
+`NavigationEntryContext.StateChanged` reports every state change, for content
+of any kind and for the objects it passes the context to. Its arguments carry
+the previous state, the new state and the operation. A retained entry that
+retires reports `Retained` to `Retired` without another `OnNavigatedFrom`, and
+a pending entry whose transition didn't commit reports `Pending` to `Retired`.
+
+- Both are synchronous and run in the commit turn: after the new navigation
+  state is applied and after the departure's `OnCommitted` actions, before the
+  regions raise `PropertyChanged`. The departing entry is notified first, then
+  entries that retire without having been current, then the arriving entry.
+  For each entry, `StateChanged` runs before the `INavigationAware` call. So
+  `OnNavigatedTo` and `OnNavigatedFrom` alternate for an entry, starting with
+  `OnNavigatedTo`, and `State` is already the new state in both.
+- A transition that is rejected, superseded, cancelled or fails never calls
+  `OnNavigatedTo` or `OnNavigatedFrom`, and it doesn't change the state of the
+  current entry. Its pending entry reports `Pending` to `Retired` in a later
+  turn, if it has `StateChanged` handlers.
+- An initial target reports `Pending` to `Active` and `OnNavigatedTo(Reset)`
+  inline in `CreateRegion`, so it doesn't run in a model turn unless
+  `CreateRegion` was called in one.
+- Each handler is called separately. One that throws is logged (event 1075),
+  and the other handlers still run; the change stands. Handlers must not pump
+  or await navigation; start navigation after the turn instead.
+- `INavigationInitialize` and `INavigationResume` remain the asynchronous
+  preparation hooks: they run before the commit, outside turns, and can fail
+  the transition. `OnNavigatedTo` runs after `ResumeAsync`, once the resume
+  commits.
+
 Retirement runs once per entry, whichever path reaches it first: commit
 cleanup, a closing parent, a failed preparation or navigator disposal. It runs
 these steps in order, and each step runs even if an earlier one failed:
@@ -173,7 +242,7 @@ A failed step is logged as event 1064.
 | Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; or `Cancelled`, for a token that is already cancelled. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
 | Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
-| Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies and raises `PropertyChanged`. A handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
+| Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies, runs the departure's `OnCommitted` actions, raises the entries' `StateChanged` and `INavigationAware` notifications (event 1075 for a handler that throws), and raises `PropertyChanged`. A `PropertyChanged` handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released, and departing entries retire. The returned `ValueTask` completes after that cleanup. |
 
 - A `BackAsync()` that arrives while the region's
@@ -229,7 +298,7 @@ A failed step is logged as event 1064.
 | --- | --- | --- |
 | `Borrow(content)` | The caller or a container | Nothing: the content is never disposed or forgotten, and the regions it owns are left alone. |
 | `Own(content)` | The caller, with `new`, handing it over | Child regions close, presentations are forgotten, the content is disposed and its lease is released. |
-| `Create(factory)` / `Create(factory, input)` | The factory, with `new`, when the transition prepares | As `Own`, then the entry's scope is disposed. |
+| `Create(factory)` / `Create(factory, input)` | The factory, with `new`, when the transition prepares; a `(services, entry)` factory also receives the entry's context | As `Own`, then the entry's scope is disposed. |
 | `Create<T>()` / `Create<T, TInput>(input)` | The navigator, with `ActivatorUtilities`, when the transition prepares | As `Own`, then the entry's scope is disposed. |
 
 - Content resolved from a container (a window scope, the root provider or
@@ -284,6 +353,10 @@ var picked = dialog.PushForResult<bool>(NavigationTarget.Create<ConfirmViewModel
 - A navigator without `Services` uses an empty provider. A constructor that
   needs services then fails as `Failed(Preparing)` (event 1061), like a
   throwing factory.
+- A constructor parameter of type `NavigationEntryContext` receives the new
+  entry's context; see [The entry's context](#entry-lifecycle). It is never
+  resolved from the container, and a service that depends on it fails to
+  resolve.
 - `INavigationEntry.Services` and `NavigationEntryContext.Services` return the
   provider that built the entry. After an entry with its own scope retires,
   resolving from it throws `ObjectDisposedException`.
@@ -403,22 +476,27 @@ continuation can never run there, and the two deadlock. Await navigation
 results; don't block on them, as with any asynchronous code.
 
 The [Notes example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first)
-asks this way:
+asks this way. Here the navigator constructs the confirm dialog and passes
+it its entry:
 
 ```csharp
 // The document: the guard forwards to a LeaveConfirmation.
 _leave = LeaveConfirmation.InDialog(navigation.Dialog,
-    () => NavigationTarget.Own<IDialogViewModel>(new ConfirmNavigationViewModel("Discard the unsaved edits?")),
+    () => NavigationTarget.Create<IDialogViewModel>((_, entry) =>
+        new ConfirmNavigationViewModel(entry, "Discard the unsaved edits?")),
     () => Editor.IsDirty, Editor.DiscardChanges);
 
 public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken token) =>
     _leave.CanDepartAsync(departure, token);
 
-// The confirm captures its entry in InitializeAsync and answers with it.
-public ValueTask InitializeAsync(NavigationEntryContext entry, CancellationToken token)
-{ _entry = entry; return ValueTask.CompletedTask; }
-private Task Confirm() => _entry.CompleteAsync(true).AsTask();
-private Task Cancel() => _entry.DismissAsync().AsTask();
+// The confirm answers with the entry it was constructed for.
+public sealed partial class ConfirmNavigationViewModel(NavigationEntryContext entry, string message)
+    : ObservableObject, IDialogViewModel
+{
+    public string Message => message;
+    [RelayCommand] private Task Confirm() => entry.CompleteAsync(true).AsTask();
+    [RelayCommand] private Task Cancel() => entry.DismissAsync().AsTask();
+}
 ```
 
 ### Window close and disposal
@@ -549,8 +627,38 @@ through `UnhandledTurnException` (event 1030) and do not interrupt shutdown.
 
 ## Testing
 
-`RunicNavigator.UnretiredEntryCount` counts entries that have not finished
-retiring. After `DisposeAsync`, it is 0 when every entry retired.
+Test a ViewModel through a real navigator rather than a test double. The
+navigator needs no UI host: construct it with a `RunicModelContext`, push the
+ViewModel, and drive it through its commands. The ViewModel then receives a
+real `NavigationEntryContext`, and its results, Backs, guards and
+`INavigationAware` notifications behave as in the application.
+
+```csharp
+[Fact]
+public async Task ConfirmCompletesTheRequest()
+{
+    await using var model = new RunicModelContext();
+    await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = model, Services = services });
+    var dialog = navigator.CreateRegion<object>(this);
+
+    var request = dialog.PushForResult<ConfirmViewModel, bool>();
+    Assert.True((await request.Transition).IsCommitted);
+    await ((ConfirmViewModel)dialog.Current!).Confirm();
+
+    Assert.Equal(true, (await request.Completion as NavigationCompletion<bool>.Completed)?.Value);
+    Assert.Null(dialog.Current); // the dialog went back and retired
+}
+```
+
+- `Services` provides the ViewModel's constructor dependencies, fakes
+  included. Without it, constructors that need services fail as
+  `Failed(Preparing)`.
+- Every navigation result is returned, so assert on it: a guard's veto is
+  `Rejected(Guard)`, a throwing hook is `Failed`.
+- Code that reads ViewModel state the navigation changed should run in a turn
+  (`model.InvokeAsync`) when other threads write it.
+- `RunicNavigator.UnretiredEntryCount` counts entries that have not finished
+  retiring. After `DisposeAsync`, it is 0 when every entry retired.
 
 ## Logging
 
@@ -575,15 +683,17 @@ retiring. After `DisposeAsync`, it is 0 when every entry retired.
 | 1072 | `NavigationDepartureActionFailed` | Error | A `NavigationDeparture.OnCommitted` action throws; later actions still run, and the commit stands. | `Region`, `RegionId`, `Operation`, `EntryType`, `ErrorType` |
 | 1073 | `NavigatorDisposeFailed` | Error | Disposing the navigator fails unexpectedly, for example started by `Dispose`, which does not wait; entries may not have retired. | `ErrorType` |
 | 1074 | `NavigationBackJoined` | Debug | A Back joins the pending Back of its region instead of superseding it. | `Region`, `RegionId` |
+| 1075 | `NavigationEntryNotificationFailed` | Error | A `NavigationEntryContext.StateChanged` handler or an `INavigationAware` method throws; the other handlers still run, and the change stands. `Notification` is `StateChanged`, `OnNavigatedTo` or `OnNavigatedFrom`. | `Region`, `RegionId`, `Operation`, `EntryType`, `Notification`, `ErrorType` |
 
 Errors and warnings carry the exception. Rejections, supersessions, joined Backs and
 dismissed results log at Debug. The properties are `Region` (the `TContent`
 type name), `RegionId` (a per-navigator number that tells apart regions with
 the same `TContent`), `Operation`, `EntryType`, `Step`, `Reason`, `Property`
-(event 1063, the region property whose handler threw) and `ErrorType`, never
+(event 1063, the region property whose handler threw), `Notification` (event 1075)
+and `ErrorType`, never
 values.
 
-- Events 1060-1074 use the category `Runic.Navigation`
+- Events 1060-1075 use the category `Runic.Navigation`
   (`RunicNavigator.LogCategory`), from `RunicNavigatorOptions.LoggerFactory`
   or the scope's `ILoggerFactory` with `AddRunicNavigation()`.
 - Events 1030-1033 use the logger of the `RunicModelContext`:
@@ -596,6 +706,6 @@ values.
   its formatted message followed by the exception.
 
 Navigation reserves events 1060-1079: 1060-1069 for transitions and cleanup,
-and 1070-1079 for results and later navigation events, of which 1075-1079 are
+and 1070-1079 for results and later navigation events, of which 1076-1079 are
 not used yet. Events 1044-1049 are reserved for the ReactiveUI navigation
 adapter.

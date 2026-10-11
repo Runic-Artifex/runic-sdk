@@ -206,11 +206,58 @@ internal sealed class NavigationSettlementSource(NavigationTransitionId id)
     public void Settle(NavigationDepartureSettlement settlement) => _source.TrySetResult(settlement);
 }
 
-/// <summary>Describes a retained entry becoming current again.</summary>
-/// <param name="Entry">The resuming entry.</param>
-/// <param name="Operation">The operation that resumes it.</param>
+/// <summary>
+/// Describes an entry becoming current: a retained entry resuming (<see cref="INavigationResume.ResumeAsync"/>,
+/// <see cref="INavigationAware.OnNavigatedTo"/>), or a new entry's first commit (<see cref="INavigationAware.OnNavigatedTo"/>).
+/// </summary>
+/// <param name="Entry">The entry that becomes current.</param>
+/// <param name="Operation">
+/// The operation that makes it current: <see cref="NavigationOperation.Back"/> or <see cref="NavigationOperation.BackTo"/>
+/// for a resume; <see cref="NavigationOperation.Push"/>, <see cref="NavigationOperation.Replace"/> or
+/// <see cref="NavigationOperation.Reset"/> for a new entry. An initial target of
+/// <see cref="RunicNavigator.CreateRegion{TContent}"/> arrives with <see cref="NavigationOperation.Reset"/>.
+/// </param>
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record NavigationResume(NavigationEntryId Entry, NavigationOperation Operation);
+
+/// <summary>Describes the current entry stopping being current (<see cref="INavigationAware.OnNavigatedFrom"/>).</summary>
+/// <param name="Entry">The entry that stops being current.</param>
+/// <param name="Operation">
+/// The operation that committed the change. <see cref="NavigationOperation.Clear"/> when the entry's region closed,
+/// because the entry that owns the region retired or the navigator was disposed.
+/// </param>
+/// <param name="Kind">Whether the entry stays in its region's history or retires.</param>
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed record NavigationExit(NavigationEntryId Entry, NavigationOperation Operation, NavigationDepartureKind Kind);
+
+/// <summary>The data of <see cref="NavigationEntryContext.StateChanged"/>.</summary>
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public sealed class NavigationEntryStateChangedEventArgs : EventArgs
+{
+    /// <summary>Creates the data of one state change.</summary>
+    /// <param name="previousState">The state before the change.</param>
+    /// <param name="state">The state after the change.</param>
+    /// <param name="operation">The operation that caused the change.</param>
+    public NavigationEntryStateChangedEventArgs(NavigationEntryState previousState, NavigationEntryState state, NavigationOperation operation)
+    {
+        PreviousState = previousState;
+        State = state;
+        Operation = operation;
+    }
+
+    /// <summary>Gets the state before the change.</summary>
+    public NavigationEntryState PreviousState { get; }
+
+    /// <summary>Gets the state after the change.</summary>
+    public NavigationEntryState State { get; }
+
+    /// <summary>
+    /// Gets the operation that caused the change: the committed transition's operation; for a pending entry whose
+    /// transition did not commit, that transition's operation; <see cref="NavigationOperation.Reset"/> when an initial
+    /// target becomes current; <see cref="NavigationOperation.Clear"/> when the entry's region closed.
+    /// </summary>
+    public NavigationOperation Operation { get; }
+}
 
 /// <summary>Why a navigation request was rejected.</summary>
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
@@ -419,6 +466,51 @@ public interface INavigationResume
     ValueTask ResumeAsync(NavigationResume resume, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Tells content when its entry becomes its region's current entry and when it stops being current.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Both methods are synchronous notifications of a committed change. The navigator calls them inside the model turn
+/// that commits it: after the new navigation state is applied and the departure guards' <c>OnCommitted</c> actions ran,
+/// and before the regions raise <c>PropertyChanged</c>. In that turn it first notifies the entries that stopped being
+/// current, then the entry that became current; for each entry it raises <see cref="NavigationEntryContext.StateChanged"/>
+/// before calling this interface. Nothing is called for a transition that is rejected, superseded, cancelled or fails.
+/// </para>
+/// <para>
+/// The calls alternate per entry: <see cref="OnNavigatedTo"/>, then <see cref="OnNavigatedFrom"/>, then
+/// <see cref="OnNavigatedTo"/> again when a retained entry resumes. A retained entry that retires gets no second
+/// <see cref="OnNavigatedFrom"/>; its <see cref="NavigationEntryContext.StateChanged"/> reports the retirement.
+/// <see cref="INavigationInitialize"/> and <see cref="INavigationResume"/> remain the asynchronous hooks that prepare the
+/// content before the commit.
+/// </para>
+/// <para>
+/// A method that throws is logged (event 1075); the commit stands and the other notifications still run. A method
+/// runs inside a model turn, so it must not block or await navigation; a navigation request it starts is admitted
+/// after the turn.
+/// </para>
+/// </remarks>
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+public interface INavigationAware
+{
+    /// <summary>
+    /// Called when the entry becomes current: when the push, replace or reset that creates it commits, and each time a
+    /// Back or BackTo resumes it. For an initial target, <see cref="RunicNavigator.CreateRegion{TContent}"/> calls it
+    /// with <see cref="NavigationOperation.Reset"/> before it returns, on the caller's thread.
+    /// </summary>
+    /// <param name="arrival">The entry and the operation that made it current.</param>
+    void OnNavigatedTo(NavigationResume arrival);
+
+    /// <summary>
+    /// Called when the entry stops being current: a push retains it, or a Back, BackTo, Replace, Reset or Clear
+    /// retires it. When its region closes because the entry that owns the region retired, or because the navigator is
+    /// disposed, it is called in the turn that clears that region, with <see cref="NavigationOperation.Clear"/>.
+    /// </summary>
+    /// <param name="exit">The entry, the operation, and whether the entry is retained or retires.</param>
+    [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "The parameter names the exit it describes.")]
+    void OnNavigatedFrom(NavigationExit exit);
+}
+
 /// <summary>Can veto a transition that retains or retires an entry.</summary>
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationDepartureGuard
@@ -459,11 +551,24 @@ public static class NavigationTarget
     }
 
     /// <summary>
-    /// Creates owned content when the transition prepares. The factory receives the window's
-    /// service provider to resolve constructor dependencies, which stay container-owned; it
-    /// must construct the content itself with <see langword="new"/>.
+    /// Creates owned content when the transition prepares. The factory receives the entry's
+    /// service provider (<see cref="INavigationEntry.Services"/>) to resolve constructor dependencies, which stay
+    /// container-owned; it must construct the content itself with <see langword="new"/>. To pass the content its
+    /// entry's <see cref="NavigationEntryContext"/>, use <see cref="Create{T}(Func{IServiceProvider, NavigationEntryContext, T})"/>.
     /// </summary>
     public static INavigationTarget<T> Create<T>(Func<IServiceProvider, T> factory) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+        return new FactoryNavigationTarget<T>((services, _) => factory(services));
+    }
+
+    /// <summary>
+    /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, T})"/>; the factory also receives the
+    /// new entry's <see cref="NavigationEntryContext"/> to pass to the content's constructor. The context belongs to
+    /// the entry being prepared: its <see cref="NavigationEntryContext.State"/> is
+    /// <see cref="NavigationEntryState.Pending"/> until the transition commits.
+    /// </summary>
+    public static INavigationTarget<T> Create<T>(Func<IServiceProvider, NavigationEntryContext, T> factory) where T : class
     {
         ArgumentNullException.ThrowIfNull(factory);
         return new FactoryNavigationTarget<T>(factory);
@@ -477,6 +582,17 @@ public static class NavigationTarget
         where T : class, INavigationInitialize<TInput>
     {
         ArgumentNullException.ThrowIfNull(factory);
+        return new InputNavigationTarget<T, TInput>((services, _) => factory(services), input);
+    }
+
+    /// <summary>
+    /// Creates owned content like <see cref="Create{T}(Func{IServiceProvider, NavigationEntryContext, T})"/>, then
+    /// calls only <see cref="INavigationInitialize{TInput}.InitializeAsync"/> with <paramref name="input"/>.
+    /// </summary>
+    public static INavigationTarget<T> Create<T, TInput>(Func<IServiceProvider, NavigationEntryContext, T> factory, TInput input)
+        where T : class, INavigationInitialize<TInput>
+    {
+        ArgumentNullException.ThrowIfNull(factory);
         return new InputNavigationTarget<T, TInput>(factory, input);
     }
 
@@ -484,7 +600,8 @@ public static class NavigationTarget
     /// Constructs owned content of type <typeparamref name="T"/> when the transition prepares, with
     /// <see cref="ActivatorUtilities.CreateInstance{T}(IServiceProvider, object[])"/>. Constructor parameters
     /// are resolved from the entry's service provider (<see cref="INavigationEntry.Services"/>) and stay
-    /// container-owned. <typeparamref name="T"/> itself is never resolved from the container. Mark a
+    /// container-owned; a <see cref="NavigationEntryContext"/> parameter receives the new entry's context.
+    /// <typeparamref name="T"/> itself is never resolved from the container. Mark a
     /// constructor with <see cref="ActivatorUtilitiesConstructorAttribute"/> to choose it.
     /// </summary>
     /// <typeparam name="T">The content type to construct.</typeparam>
@@ -519,7 +636,8 @@ internal abstract class NavigationTargetCore
     // The target's content type, for messages.
     public abstract Type ContentType { get; }
 
-    public virtual object Create(IServiceProvider services) =>
+    // Creates the content for the entry whose context is given; services is the entry's provider.
+    public virtual object Create(IServiceProvider services, NavigationEntryContext entry) =>
         Instance ?? throw new InvalidOperationException("The navigation target has no content.");
 
     public virtual ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
@@ -536,26 +654,26 @@ internal sealed class InstanceNavigationTarget<T>(T content, NavigationOwnership
 }
 
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, T> factory)
+internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, NavigationEntryContext, T> factory)
     : NavigationTargetCore, INavigationTarget<T> where T : class
 {
     public override NavigationOwnership Ownership => NavigationOwnership.Owned;
     public override object? Instance => null;
     public override Type ContentType => typeof(T);
-    public override object Create(IServiceProvider services) =>
-        factory(services) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
+    public override object Create(IServiceProvider services, NavigationEntryContext entry) =>
+        factory(services, entry) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
 }
 
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-internal sealed class InputNavigationTarget<T, TInput>(Func<IServiceProvider, T> factory, TInput input)
+internal sealed class InputNavigationTarget<T, TInput>(Func<IServiceProvider, NavigationEntryContext, T> factory, TInput input)
     : NavigationTargetCore, INavigationTarget<T> where T : class, INavigationInitialize<TInput>
 {
     public override NavigationOwnership Ownership => NavigationOwnership.Owned;
     public override object? Instance => null;
     public override bool HasInput => true;
     public override Type ContentType => typeof(T);
-    public override object Create(IServiceProvider services) =>
-        factory(services) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
+    public override object Create(IServiceProvider services, NavigationEntryContext entry) =>
+        factory(services, entry) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
     public override ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
         ((T)content).InitializeAsync(entry, input, cancellationToken);
 }
@@ -569,7 +687,8 @@ internal sealed class ActivatedNavigationTarget<[DynamicallyAccessedMembers(Dyna
     public override NavigationOwnership Ownership => NavigationOwnership.Owned;
     public override object? Instance => null;
     public override Type ContentType => typeof(T);
-    public override object Create(IServiceProvider services) => ActivatorUtilities.CreateInstance<T>(services);
+    public override object Create(IServiceProvider services, NavigationEntryContext entry) =>
+        NavigationConstructionServices.Activate<T>(services, entry);
 }
 
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
@@ -580,7 +699,8 @@ internal sealed class ActivatedInputNavigationTarget<[DynamicallyAccessedMembers
     public override object? Instance => null;
     public override bool HasInput => true;
     public override Type ContentType => typeof(T);
-    public override object Create(IServiceProvider services) => ActivatorUtilities.CreateInstance<T>(services);
+    public override object Create(IServiceProvider services, NavigationEntryContext entry) =>
+        NavigationConstructionServices.Activate<T>(services, entry);
     public override ValueTask InitializeWithInputAsync(object content, NavigationEntryContext entry, CancellationToken cancellationToken) =>
         ((T)content).InitializeAsync(entry, input, cancellationToken);
 }

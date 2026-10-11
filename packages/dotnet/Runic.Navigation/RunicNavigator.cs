@@ -178,7 +178,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// <param name="owner">The object that owns the region, such as the ViewModel exposing it.</param>
     /// <param name="initial">
     /// Content committed synchronously as the first entry. It must implement neither
-    /// <see cref="INavigationInitialize"/> nor <see cref="INavigationInitialize{TInput}"/>.
+    /// <see cref="INavigationInitialize"/> nor <see cref="INavigationInitialize{TInput}"/>. Content that a
+    /// <c>Create</c> target constructs can take its <see cref="NavigationEntryContext"/> as a constructor parameter.
+    /// Before the method returns, the entry's <see cref="NavigationEntryContext.StateChanged"/> and
+    /// <see cref="INavigationAware.OnNavigatedTo"/> run on the caller's thread with <see cref="NavigationOperation.Reset"/>.
     /// </param>
     /// <param name="options">The region's child policy.</param>
     public NavigationRegion<TContent> CreateRegion<TContent>(object owner, INavigationTarget<TContent>? initial = null,
@@ -195,7 +198,18 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (target.Instance is { } instance) RejectInitializable(instance, nameof(initial));
         }
         if (target is { Instance: null }) ThrowIfInitialCreationCycle(owner.GetType(), target.ContentType);
-        lock (Gate) ObjectDisposedException.ThrowIf(_closing, this);
+
+        // The region and the initial entry are allocated before the content, so a created target's constructor
+        // receives its NavigationEntryContext (W250-032 §6.2). Neither is registered until the content exists.
+        NavigationRegionCore region;
+        NavigationEntryCore? entry = null;
+        lock (Gate)
+        {
+            ObjectDisposedException.ThrowIf(_closing, this);
+            region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
+                options?.WhileParentRetained ?? NavigationChildRetention.Keep);
+            if (target is not null) entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance);
+        }
 
         object? content = target?.Instance;
         IServiceScope? scope = null;
@@ -204,7 +218,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             scope = CreateEntryScope();
             var creations = s_initialCreations ??= [];
             creations.Add((owner.GetType(), target.ContentType));
-            try { content = target.Create(scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance); }
+            try { content = Construct(target, entry!, scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance); }
             catch
             {
                 DisposeUnclaimed(null, null, scope);
@@ -241,30 +255,25 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             throw;
         }
         NavigationEntryCore? retireAtOnce = null;
-        NavigationRegionCore region;
         try
         {
             lock (Gate)
             {
                 ObjectDisposedException.ThrowIf(_closing, this);
-                region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
-                    options?.WhileParentRetained ?? NavigationChildRetention.Keep);
                 // A region whose owner already started retiring is never reached
                 // by that retirement, so it starts closed.
                 region.Closed = IsRetiringOwnerLocked(owner);
                 if (!region.Closed) _regions.Add(region);
                 if (!_regionsByOwner.TryGetValue(owner, out var ownerRegions)) _regionsByOwner.Add(owner, ownerRegions = []);
                 ownerRegions.Add(region);
-                if (content is not null)
+                if (entry is not null)
                 {
-                    var entry = new NavigationEntryCore(region, NextEntryId(), target!.Ownership, content)
-                    {
-                        Phase = NavigationEntryPhase.Active,
-                        Lease = lease,
-                    };
-                    if (scope is not null) entry.PublishScope(scope);
+                    entry.Content = content;
+                    entry.Phase = NavigationEntryPhase.Active;
+                    entry.Lease = lease;
+                    entry.Scope = scope;
                     _tracked.Add(entry);
-                    if (owned) _ownedEntries[content] = entry;
+                    if (owned) _ownedEntries[content!] = entry;
                     if (region.Closed)
                     {
                         entry.Phase = NavigationEntryPhase.Removed;
@@ -280,8 +289,21 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             DisposeUnclaimed(created ? content : null, lease, scope);
             throw;
         }
+        // The initial entry arrives without a transition: its notifications run here, before the region is returned.
+        if (entry is not null)
+            RaiseEntryChanges([new(entry, NavigationEntryState.Pending, entry.State)],
+                retireAtOnce is null ? NavigationOperation.Reset : NavigationOperation.Clear);
         if (retireAtOnce is not null) _ = RetireAsync(retireAtOnce, null);
         return new NavigationRegion<TContent>(region);
+    }
+
+    // Constructs a Create target's content for its pending entry (W250-032 §3): a factory receives the entry's
+    // NavigationEntryContext as its argument, and ActivatorUtilities passes it to a constructor parameter. The
+    // entry's Services is published first, so the context's Services is right during the construction.
+    private static object Construct(NavigationTargetCore target, NavigationEntryCore entry, IServiceProvider services)
+    {
+        entry.PublishServices(services);
+        return target.Create(services, entry.Context);
     }
 
     // Best-effort disposal of an instance the factory created and no region took, then of its
@@ -946,14 +968,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             {
                 if (entry.Content is null)
                 {
-                    // The entry scope is created just before the factory, and belongs to this path until
-                    // it is published together with the content.
+                    // The entry scope is created just before the factory. Its provider is published for the
+                    // construction; the scope itself belongs to this path until it is set together with the content.
                     var scope = CreateEntryScope();
                     object content;
                     try
                     {
                         var services = scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance;
-                        content = await this.AfterUserCode(StartHook(transition, () => ValueTask.FromResult(target.Create(services)), token));
+                        content = await this.AfterUserCode(StartHook(transition, () => ValueTask.FromResult(Construct(target, entry, services)), token));
                         Claim(content);
                     }
                     catch
@@ -970,7 +992,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                         if (!retiring)
                         {
                             entry.Content = content;
-                            if (scope is not null) entry.PublishScope(scope);
+                            entry.Scope = scope;
                             _ownedEntries[content] = entry;
                         }
                     }
@@ -1079,6 +1101,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationCommit? commit = null;
         List<(NavigationRegionCore Region, NavigationRegionChanges Changes)> changed = [];
         (NavigationEntryCore Entry, Action Action)[] committed = [];
+        List<NavigationEntryChange> entryChanges = [];
         lock (Gate)
         {
             if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed)
@@ -1094,6 +1117,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             else
             {
                 commit = new NavigationCommit();
+                // The entry states before the commit, so the changes can be raised after it: the child
+                // regions' entries first, then the region's, then the new entry.
+                List<(NavigationEntryCore Entry, NavigationEntryState State)> states = [];
+                foreach (var (child, _, _) in plan.ChildResets)
+                    foreach (var entry in child.Stack) states.Add((entry, entry.State));
+                foreach (var entry in region.Stack) states.Add((entry, entry.State));
+                if (transition.Pending is { } arriving) states.Add((arriving, arriving.State));
                 foreach (var (child, stack, removed) in plan.ChildResets)
                 {
                     var before = Snapshot(child);
@@ -1123,6 +1153,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 // entries, and only a Pending entry needs the link (Dismiss).
                 transition.CommitActions.Clear();
                 if (transition.Pending is { } pushedEntry) pushedEntry.Transition = null;
+                foreach (var (entry, state) in states)
+                    if (entry.State != state) entryChanges.Add(new(entry, state, entry.State));
             }
             // Admission is released in the commit turn, so IsTransitioning
             // changes together with the committed state.
@@ -1140,6 +1172,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                     OperationName(transition.Operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
             }
         }
+        // Then the entries' StateChanged and INavigationAware calls, before the regions' notifications.
+        RaiseEntryChanges(entryChanges, transition.Operation);
         foreach (var (affected, changes) in changed) affected.RaiseChanges(changes);
         if (!changed.Any(item => ReferenceEquals(item.Region, region))) region.RaiseChanges(NavigationRegionChanges.None);
         return new NavigationCommitResult(stopped ?? TransitionOutcome.Commit(commit!.Current, []), commit);
@@ -1508,13 +1542,25 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     internal Task RetireAsync(NavigationEntryCore entry, List<NavigationEntryId>? retired)
     {
         TaskCompletionSource done;
+        NavigationEntryState previous;
+        NavigationOperation operation;
         lock (Gate)
         {
             if (entry.Retiring is { } running) return running;
             done = new(TaskCreationOptions.RunContinuationsAsynchronously);
             entry.Retiring = done.Task;
+            previous = entry.State;
+            operation = entry.Transition?.Operation ?? NavigationOperation.Clear;
             entry.Phase = NavigationEntryPhase.Retiring;
             _retirements.Add(done.Task);
+        }
+        // A commit or a region close already raised the move to Retired of a removed entry. Any other
+        // entry, typically a pending one whose transition did not commit, retires without a turn: its
+        // notifications are posted.
+        if (previous != NavigationEntryState.Retired)
+        {
+            List<NavigationEntryChange> change = [new(entry, previous, NavigationEntryState.Retired)];
+            if (HasListeners(change)) InTurn(() => RaiseEntryChanges(change, operation));
         }
         retired?.Add(entry.Id);
         _ = RetireCoreAsync(entry, done, retired);
@@ -1667,16 +1713,21 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         }
         Cancel(cancel);
 
-        // Whoever clears first, the clearing turn or the fallback, owes the notifications.
+        // Whoever clears first, the clearing turn or the fallback, owes the notifications: the entries'
+        // (StateChanged, INavigationAware), then the region's.
         var cleared = false;
-        NavigationRegionChanges? ClearOnce()
+        (NavigationRegionChanges Region, List<NavigationEntryChange> Entries)? ClearOnce()
         {
             lock (Gate)
             {
                 if (cleared) return null;
                 cleared = true;
+                List<NavigationEntryChange> entryChanges = [];
+                foreach (var entry in entries)
+                    if (entry.Phase is NavigationEntryPhase.Active or NavigationEntryPhase.Retained)
+                        entryChanges.Add(new(entry, entry.State, NavigationEntryState.Retired));
                 RemoveClosedEntries(region, entries);
-                return Changes(before, region);
+                return (Changes(before, region), entryChanges);
             }
         }
 
@@ -1690,7 +1741,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             var turn = ModelContext.InvokeAsync(() =>
             {
-                if (ClearOnce() is { } changes) region.RaiseChanges(changes);
+                if (ClearOnce() is not { } changes) return;
+                RaiseEntryChanges(changes.Entries, NavigationOperation.Clear);
+                region.RaiseChanges(changes.Region);
             }).AsTask();
             // A turn abandoned after a timeout can still fault later; observe it.
             Observe(turn);
@@ -1716,7 +1769,11 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 fallback = true;
             }
         }
-        if (fallback && ClearOnce() is { } owed && owed != NavigationRegionChanges.None) Notify(region, owed);
+        if (fallback && ClearOnce() is { } owed)
+        {
+            if (HasListeners(owed.Entries)) InTurn(() => RaiseEntryChanges(owed.Entries, NavigationOperation.Clear));
+            if (owed.Region != NavigationRegionChanges.None) Notify(region, owed.Region);
+        }
         return entries;
     }
 
@@ -1805,6 +1862,68 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             catch (ObjectDisposedException) { }
         }
     }
+
+    // Runs work inside a model turn: inline in a turn, otherwise posted. Dropped once the context is closed.
+    private void InTurn(Action action)
+    {
+        if (ModelContext.IsExecuting) action();
+        else
+        {
+            try { ModelContext.TryPost(action); }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    private static bool HasListeners(List<NavigationEntryChange> changes)
+    {
+        foreach (var change in changes)
+            if (change.Entry.Context.StateChangedHandlers is not null || change.Entry.Content is INavigationAware) return true;
+        return false;
+    }
+
+    // Raises entry state changes, in a model turn and outside the gate: first the entries that stopped being
+    // current, then the other changes, then the entry that became current. For each, StateChanged, then the
+    // content's INavigationAware call. Every handler runs separately; one that throws is logged (1075).
+    private void RaiseEntryChanges(List<NavigationEntryChange> changes, NavigationOperation operation)
+    {
+        if (changes.Count == 0) return;
+        foreach (var change in changes)
+            if (change.Previous == NavigationEntryState.Active) RaiseEntryChange(change, operation);
+        foreach (var change in changes)
+            if (change.Previous != NavigationEntryState.Active && change.State != NavigationEntryState.Active) RaiseEntryChange(change, operation);
+        foreach (var change in changes)
+            if (change.State == NavigationEntryState.Active) RaiseEntryChange(change, operation);
+    }
+
+    private void RaiseEntryChange(NavigationEntryChange change, NavigationOperation operation)
+    {
+        var entry = change.Entry;
+        if (entry.Context.StateChangedHandlers is { } handlers)
+        {
+            var args = new NavigationEntryStateChangedEventArgs(change.Previous, change.State, operation);
+            foreach (var handler in handlers.GetInvocationList())
+            {
+                try { ((EventHandler<NavigationEntryStateChangedEventArgs>)handler)(entry.Context, args); }
+                catch (Exception error) { LogEntryNotification(entry, operation, "StateChanged", error); }
+            }
+        }
+        if (entry.Content is not INavigationAware aware) return;
+        if (change.State == NavigationEntryState.Active)
+        {
+            try { aware.OnNavigatedTo(new NavigationResume(entry.Id, operation)); }
+            catch (Exception error) { LogEntryNotification(entry, operation, "OnNavigatedTo", error); }
+        }
+        else if (change.Previous == NavigationEntryState.Active)
+        {
+            var kind = change.State == NavigationEntryState.Retained ? NavigationDepartureKind.Retain : NavigationDepartureKind.Retire;
+            try { aware.OnNavigatedFrom(new NavigationExit(entry.Id, operation, kind)); }
+            catch (Exception error) { LogEntryNotification(entry, operation, "OnNavigatedFrom", error); }
+        }
+    }
+
+    private void LogEntryNotification(NavigationEntryCore entry, NavigationOperation operation, string notification, Exception error) =>
+        NavigationLog.NavigationEntryNotificationFailed(Logger, error, entry.Region.ContentTypeName, entry.Region.Id,
+            OperationName(operation), entry.ContentTypeName, notification, NavigationTelemetry.ErrorType(error));
 
     // Cancellation callbacks can run user continuations, so they never run in a turn.
     private void Cancel(List<NavigationTransition> transitions)

@@ -77,4 +77,9 @@ internal static partial class NavigationLog
     [LoggerMessage(EventId = 1074, EventName = "NavigationBackJoined", Level = LogLevel.Debug,
         Message = "Back in navigation region {Region} ({RegionId}) joined the pending Back.")]
     internal static partial void NavigationBackJoined(ILogger logger, Exception? exception, string region, int regionId);
+
+    [LoggerMessage(EventId = 1075, EventName = "NavigationEntryNotificationFailed", Level = LogLevel.Error,
+        Message = "A {Notification} handler of {EntryType} in navigation region {Region} ({RegionId}) failed during {Operation} with {ErrorType}; the change stands.")]
+    internal static partial void NavigationEntryNotificationFailed(ILogger logger, Exception? exception, string region, int regionId,
+        string operation, string entryType, string notification, string errorType);
 }

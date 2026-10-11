@@ -6,12 +6,11 @@ namespace Runic.Navigation.Examples.Notes;
 // A dialog answers through its entry: CompleteAsync(true) is the result, DismissAsync ends it without one.
 public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<string>
 {
-    private NavigationEntryContext? _entry;
-
-    public ConfirmViewModel()
+    // The navigator constructs the dialog and passes it its own entry.
+    public ConfirmViewModel(NavigationEntryContext entry)
     {
-        YesCommand = new AsyncRelayCommand(() => _entry!.CompleteAsync(true).AsTask());
-        NoCommand = new AsyncRelayCommand(() => _entry!.DismissAsync().AsTask());
+        YesCommand = new AsyncRelayCommand(() => entry.CompleteAsync(true).AsTask());
+        NoCommand = new AsyncRelayCommand(() => entry.DismissAsync().AsTask());
     }
 
     public string Message { get; private set; } = "";
@@ -20,7 +19,6 @@ public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<s
 
     public ValueTask InitializeAsync(NavigationEntryContext entry, string message, CancellationToken cancellationToken)
     {
-        _entry = entry;
         Message = message;
         return ValueTask.CompletedTask;
     }
