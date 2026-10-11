@@ -10,6 +10,8 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Navigation.Wpf</PackageId>
+    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>WPF hosts for Runic.Navigation regions: a dispatcher model context, a navigation host, an app-modal dialog host and view location.</Description>
     <PackageTags>runic-artifex;navigation;wpf;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -21,6 +23,7 @@
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
     <InternalsVisibleTo Include="Runic.Navigation.Wpf.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Navigation.Wpf.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

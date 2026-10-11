@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Runic.Assets;
+using Runic.Assets.Packer;
 using Runic.CommandLine;
 using Runic.CommandLine.Generated;
 
@@ -220,7 +221,9 @@ internal static class PackerApplication
                     cancellationToken);
             }
 
-            string message = outcome.Fault is { } fault ? HumanMessage(fault) : "The archive could not be packed.";
+            string message = outcome.Fault is { } fault
+                ? HumanMessage(fault) + Environment.NewLine + $"Help for {fault.Code}: {RunicReleaseLinks.Diagnostic(fault.Code)}"
+                : "The archive could not be packed.";
             return context.Console.WriteErrorAsync(
                 (message + Environment.NewLine).AsMemory(),
                 cancellationToken);

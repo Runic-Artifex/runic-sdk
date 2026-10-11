@@ -21,5 +21,5 @@ Desktop SPA. The `@runic-artifex/sveltekit/page-options` entry point provides
 matching route options (`runicPrerenderedPageOptions`, `runicSpaPageOptions`).
 
 Translation routing helpers moved to
-[`@runic-artifex/translations-sveltekit`](https://github.com/Runic-Artifex/runic-translations-sdk/tree/main/packages/web/translations-sveltekit).
+[`@runic-artifex/translations-sveltekit`](https://www.npmjs.com/package/@runic-artifex/translations-sveltekit).
 Use a prior SDK preview until application imports have been migrated.

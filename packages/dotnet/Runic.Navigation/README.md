@@ -49,7 +49,9 @@ show each framework's native command style.
 stable ids, and it supports awaited departure guards, initialize-once and
 resume-on-return hooks, and owned or borrowed content. The navigation API is
 experimental: every type is marked `[Experimental("RUNICNAV001")]`. Suppress
-`RUNICNAV001` to use it, and expect changes before it is supported. The model
+`RUNICNAV001` to use it, and expect changes before it is supported;
+[Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICNAV001)
+shows how and lists the criteria for stabilizing it. The model
 context types are not experimental. The navigator replaces ReactiveUI's
 `RoutingState`; it does not wrap one. See the
 [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)

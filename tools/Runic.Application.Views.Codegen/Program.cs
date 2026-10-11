@@ -1435,8 +1435,8 @@ static void WriteIfChanged(string path, string content)
 }
 
 /// <summary>
-/// Diagnostic IDs. The codegen section of the Runic.Application README
-/// documents each one with its remediation.
+/// Diagnostic IDs. Each one has an entry in docs/diagnostics.md, which every
+/// report links to at the release tag, and a row in the Runic.Application README.
 /// </summary>
 static class BridgeDiagnosticCodes
 {
@@ -1498,6 +1498,7 @@ static class Diagnostics
     internal static void Warn(string code, string message, MemberInfo? member)
     {
         var location = SourceLocator.Find(member);
+        message = WithHelpLink(code, message);
         var line = location is { } at
             ? $"{at.Path}({at.Line},{at.Column}): warning {code}: {message}"
             : $"warning {code}: {message}";
@@ -1531,10 +1532,15 @@ static class Diagnostics
             && !message.StartsWith(model.FullName ?? model.Name, StringComparison.Ordinal))
             message = $"{model.FullName}: {message}";
         var location = SourceLocator.Find(member);
+        message = WithHelpLink(code, message);
         Console.Error.WriteLine(location is { } at
             ? $"{at.Path}({at.Line},{at.Column}): error {code}: {message}"
             : $"error {code}: {message}");
     }
+
+    /// <summary>Appends the diagnostic's catalog entry at this release's tag.</summary>
+    internal static string WithHelpLink(string code, string message) =>
+        $"{message} See {Runic.Application.Views.Codegen.RunicReleaseLinks.Diagnostic(code)}";
 }
 
 /// <summary>

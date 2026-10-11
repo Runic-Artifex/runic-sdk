@@ -15,7 +15,7 @@ namespace Runic.Navigation.Wpf;
 /// selection and detaches region handlers. A TabControl gets a default NavigationHost content template
 /// if no content template or selector was supplied. Do not also navigate from a SelectedItem setter.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class NavigationSelector
 {
     /// <summary>Identifies the attached region property.</summary>

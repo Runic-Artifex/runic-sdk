@@ -9,6 +9,8 @@
     <IsPackable>false</IsPackable>
     <IsAotCompatible>true</IsAotCompatible>
     <IsTrimmable>true</IsTrimmable>
+    <!-- Faults link to their catalog entry at the release tag of Runic.Assets, which ships this tool. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
   </PropertyGroup>
 
   <ItemGroup>

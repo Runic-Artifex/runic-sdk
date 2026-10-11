@@ -35,6 +35,21 @@ test('real archives reject stale extras, source, metadata and internal dependenc
  } finally {rmSync(dir,{recursive:true,force:true});}
 });
 
+test('packed READMEs with a main-branch link are rejected',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'runic-readme-test-')), source='a'.repeat(40);
+ const inventory=[{registry:'npm',name:'@runic-artifex/test'},{registry:'nuget',name:'Runic.Test'}];
+ mkdirSync(join(dir,'npm'));mkdirSync(join(dir,'nuget'));
+ const npm={name:inventory[0].name,version:VERSION,repository:`https://github.com/${REPOSITORY}`,gitHead:source};
+ const script=`import io,json,tarfile,zipfile,sys\nd,p,v,s,r,npm_readme,nuget_readme=sys.argv[1:]\nwith tarfile.open(d+'/npm/test.tgz','w:gz') as t:\n for n,b in [('package/package.json',p.encode()),('package/README.md',npm_readme.encode())]:\n  i=tarfile.TarInfo(n);i.size=len(b);t.addfile(i,io.BytesIO(b))\nwith zipfile.ZipFile(d+'/nuget/test.nupkg','w') as z:\n z.writestr('Runic.Test.nuspec','<package><metadata><id>Runic.Test</id><version>'+v+'</version><readme>README.md</readme><repository url="https://github.com/'+r+'" commit="'+s+'" /></metadata></package>')\n z.writestr('README.md',nuget_readme)\n`;
+ const pack=(npmReadme,nugetReadme)=>execFileSync('python3',['-c',script,dir,JSON.stringify(npm),VERSION,source,REPOSITORY,npmReadme,nugetReadme]);
+ const tagged=`https://github.com/${REPOSITORY}/blob/v${VERSION}/README.md`, main=`https://github.com/${REPOSITORY}/blob/main/README.md`;
+ try {
+  pack(tagged,tagged);expect(scan(dir,inventory,source).map(p=>Object.hasOwn(p,'readme'))).toEqual([false,false]);
+  pack(main,tagged);expect(()=>scan(dir,inventory,source)).toThrow('npm/test.tgz README links to a main branch');
+  pack(tagged,'https://github.com/Runic-Artifex/runic-cli-sdk/tree/main/docs');expect(()=>scan(dir,inventory,source)).toThrow('nuget/test.nupkg README links to a main branch');
+ } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
 test('real package dependencies require registry-specific exact preview ranges',()=>{
  const dir=mkdtempSync(join(tmpdir(),'runic-exact-dependency-test-')), source='a'.repeat(40);
  const inventory=[
