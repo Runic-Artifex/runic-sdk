@@ -11,6 +11,9 @@ public sealed class DesktopHost : IAsyncDisposable
     private readonly PresentationHostCore _core;
     private readonly ConcurrentDictionary<Guid, DesktopSurface> _surfaces = new();
     private readonly ILogger? _logger;
+    // Not disposed: a late termination signal may still cancel it after the host is disposed.
+    private readonly CancellationTokenSource _shutdown = new();
+    private int _shutdownRequested;
     private int _disposed;
 
     private DesktopHost(DesktopHostOptions options)
@@ -29,6 +32,18 @@ public sealed class DesktopHost : IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult(new DesktopHost(options ?? new DesktopHostOptions()));
     }
+
+    /// <summary>Gets a token that is cancelled when a termination signal asks the application to stop.</summary>
+    /// <remarks>
+    /// <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/> cancels it on Ctrl+C,
+    /// SIGTERM or a closed Windows console, then closes every open window without close confirmation, so
+    /// <see cref="DesktopWindow.WaitForClose"/> returns and the application shuts down as if the user had closed its
+    /// last window. Use the token to end application work that does not wait for a window.
+    /// See <see cref="DesktopHostOptions.HandleShutdownSignals"/>.
+    /// </remarks>
+    public CancellationToken ShutdownRequested => _shutdown.Token;
+
+    internal bool IsShutdownRequested => Volatile.Read(ref _shutdownRequested) != 0;
 
     /// <summary>Gets the bound port, or the configured port before the first surface starts.</summary>
     public int Port => _core.Port;
@@ -274,6 +289,48 @@ public sealed class DesktopHost : IAsyncDisposable
     }
 
     internal void Detach(Guid id) => _surfaces.TryRemove(id, out _);
+
+    // Starts the orderly shutdown a termination signal requests: cancels ShutdownRequested and force-closes every
+    // open window. Each window host marshals its close to its own UI thread. The application then returns and its
+    // owner disposes the host; this never disposes it. Returns false when shutdown was already requested.
+    internal bool RequestShutdown(string reason)
+    {
+        if (Interlocked.Exchange(ref _shutdownRequested, 1) != 0) return false;
+        if (_logger is { } logger) DesktopLog.ShutdownRequested(logger, reason);
+        else System.Diagnostics.Trace.TraceInformation($"{reason} received; closing Desktop windows. Send it again to terminate immediately.");
+        // Signal handlers run on a runtime thread; keep it free.
+        _ = Task.Run(ShutdownAsync);
+        return true;
+    }
+
+    private async Task ShutdownAsync()
+    {
+        try
+        {
+            _shutdown.Cancel();
+        }
+        catch (AggregateException error)
+        {
+            ReportShutdownFailure(error);
+        }
+        foreach (var surface in _surfaces.Values.ToArray())
+        {
+            try
+            {
+                await surface.CloseWindowForShutdownAsync().ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                ReportShutdownFailure(error);
+            }
+        }
+    }
+
+    private void ReportShutdownFailure(Exception error)
+    {
+        if (_logger is { } logger) DesktopLog.ShutdownFailed(logger, error, DesktopLog.ErrorType(error));
+        else System.Diagnostics.Trace.TraceError($"Closing Desktop windows for shutdown failed: {error}");
+    }
 
     internal void Report(DesktopDiagnostic diagnostic) => _options.DiagnosticSink?.Invoke(diagnostic);
 

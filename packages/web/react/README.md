@@ -61,6 +61,31 @@ render, so each render reconnects. In development `useView` logs a warning when
 this repeats. Pass the generated function itself, a generated page reference,
 or memoize the source with `useMemo`.
 
+### Read-only state and two-way binding
+
+As in any MVVM View, the ViewModel's C# setters decide what the page may set.
+Read state one way from `state`. A property with a public C# setter also gets a
+`set<Property>` client method, so a control can bind it two way; status with a
+`private set`, such as `IsDirty` or `Error`, has no setter and is only rendered:
+
+```tsx
+// C#: public partial int Count { get; private set; }  public partial int Step { get; set; }
+export function CounterPage({ page }: { page: CounterPageReference }) {
+  const { state, client } = useView(page);
+  const setStep = useCommand((step: number) => client?.setStep(step));
+  return <>
+    <p>{state?.count ?? "…"}</p>
+    <select value={state?.step ?? 1} onChange={event => void setStep.run(Number(event.currentTarget.value))}>
+      <option value={1}>1</option>
+      <option value={5}>5</option>
+    </select>
+  </>;
+}
+```
+
+The control shows the ViewModel's value, so it reverts when the setter throws
+or keeps a different value.
+
 ## `useSuspenseView(source)`
 
 Suspends the component until a reference connects, then returns

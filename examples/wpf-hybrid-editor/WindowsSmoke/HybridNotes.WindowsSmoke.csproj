@@ -10,13 +10,14 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);RUNICNAV001;RUNICWPF001</NoWarn>
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <!-- The web View is declared and generated in the model project. -->
+    <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../App/HybridNotes.Wpf.csproj" />
   </ItemGroup>
   <Import Project="../../../packages/dotnet/Runic.Application.Desktop/build/Runic.Application.Desktop.targets" />
-  <Target Name="CopySmokeFrontend" AfterTargets="Build">
-    <ItemGroup><SmokeFrontend Include="../Frontend/dist/**/*" /></ItemGroup>
-    <Copy SourceFiles="@(SmokeFrontend)" DestinationFiles="@(SmokeFrontend->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
+  <!-- Package consumers receive the Views targets through buildTransitive.
+       They copy the model project's built frontend to www/. -->
+  <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
 </Project>

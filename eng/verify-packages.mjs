@@ -69,6 +69,11 @@ export const packageLayouts = {
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },
+  // Host adapters set RunicApplicationHostAdapter, which turns Bridge generation on
+  // in every project that references them, directly or transitively.
+  "Runic.Application.Desktop": { includes: ["buildTransitive/Runic.Application.Desktop.props"] },
+  "Runic.Application.CsWebUi": { includes: ["buildTransitive/Runic.Application.CsWebUi.props"] },
+  "Runic.Application.Wpf": { includes: ["buildTransitive/Runic.Application.Wpf.props"] },
 };
 
 export function verifyPackageLayout(nupkg, name, version, layout = packageLayouts[name]) {

@@ -14,6 +14,12 @@ internal sealed class HostProcessController : IAsyncDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TaskCompletionSource<int> _unexpectedExit =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    /// <summary>How long the application has to close its windows and release its work before it is killed.</summary>
+    internal static readonly TimeSpan StopGracePeriod = TimeSpan.FromSeconds(5);
+
+    /// <summary>Makes dotnet watch give the application the same grace when a C# edit restarts it.</summary>
+    internal const string WatchCleanupTimeoutVariable = "DOTNET_WATCH_PROCESS_CLEANUP_TIMEOUT_MS";
+
     private RunningProcess? _host;
     private int _hotReloadGeneration;
 
@@ -89,6 +95,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             {
                 RunningProcess previous = _host;
                 _host = null;
+                await previous.StopGracefullyAsync(StopGracePeriod).ConfigureAwait(false);
                 await previous.DisposeAsync().ConfigureAwait(false);
             }
 
@@ -220,6 +227,13 @@ internal sealed class HostProcessController : IAsyncDisposable
         {
             environment["DOTNET_ENVIRONMENT"] = "Development";
         }
+        // dotnet watch sends SIGTERM (Ctrl+C on Windows) before a restart, but with hot reload off it kills the
+        // application at once unless this is set.
+        if (string.IsNullOrEmpty(readEnvironment(WatchCleanupTimeoutVariable)))
+        {
+            environment[WatchCleanupTimeoutVariable] =
+                ((int)StopGracePeriod.TotalMilliseconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
         foreach ((string key, string? value) in developmentEnvironment)
         {
             environment[key] = value;
@@ -270,6 +284,7 @@ internal sealed class HostProcessController : IAsyncDisposable
             {
                 RunningProcess previous = _host;
                 _host = null;
+                await previous.StopGracefullyAsync(StopGracePeriod).ConfigureAwait(false);
                 await previous.DisposeAsync().ConfigureAwait(false);
             }
         }

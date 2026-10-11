@@ -15,8 +15,10 @@ namespace Runic.Application.Tool.Tests;
 
 internal static class Program
 {
-    public static int Main()
+    public static int Main(string[] arguments)
     {
+        if (arguments is [ProcessTreeSignal.CtrlCHelperArgument, string processId]) return ProcessTreeSignal.RunCtrlCHelper(processId);
+        if (arguments is [StopTestChild.Argument, string role, string markers]) return StopTestChild.Run(role, markers);
         (string Name, Action Body)[] tests =
         [
             ("project discovery accepts a directory", ProjectDiscoveryAcceptsDirectory),
@@ -66,6 +68,9 @@ internal static class Program
             ("compatibility authority includes the public Views packages", CompatibilityAuthorityIncludesViews),
             ("a repeated signal forces exit unless shutdown is protected", RepeatedSignalForcesExitUnlessProtected),
             ("SIGTERM cancels a running command through the tool's handler", SigtermCancelsRunningCommand),
+            ("stopping the host signals dotnet run, not dotnet watch", StopSignalsDotNetRunNotWatch),
+            ("stopping the host lets the application exit before the tree is killed", StopLetsApplicationExit),
+            ("stopping the host kills an application that ignores the signal", StopKillsApplicationAfterGrace),
         ];
 
         int failures = 0;
@@ -185,6 +190,11 @@ internal static class Program
         IReadOnlyDictionary<string, string?> unset = HostProcessController.CreateDevelopmentEnvironment(
             configuration, new Dictionary<string, string?>(), _ => null);
         Equal("Development", unset["DOTNET_ENVIRONMENT"]);
+        // dotnet watch gives the Window the same grace before a restart; a developer's value wins.
+        Equal("5000", unset[HostProcessController.WatchCleanupTimeoutVariable]);
+        Equal(false, HostProcessController.CreateDevelopmentEnvironment(configuration, new Dictionary<string, string?>(),
+            name => name == HostProcessController.WatchCleanupTimeoutVariable ? "100" : null)
+            .ContainsKey(HostProcessController.WatchCleanupTimeoutVariable));
         // A developer's environment wins: the child inherits it unchanged.
         foreach (string chosen in new[] { "DOTNET_ENVIRONMENT", "ASPNETCORE_ENVIRONMENT" })
         {
@@ -1500,11 +1510,80 @@ internal static class Program
         }
     }
 
+    private static void StopSignalsDotNetRunNotWatch()
+    {
+        // The process tree that dotnet watch --no-hot-reload starts for a Window, as ps reports it.
+        ProcessTreeSignal.ProcessEntry[] processes =
+        [
+            new(100, 1, "dotnet watch --no-hot-reload --non-interactive run --no-launch-profile"),
+            new(101, 100, "/usr/share/dotnet/dotnet /usr/share/dotnet/sdk/10.0.100/DotnetTools/dotnet-watch/10.0.100/tools/net10.0/any/dotnet-watch.dll --no-hot-reload run"),
+            new(102, 101, "/usr/share/dotnet/dotnet run --no-launch-profile"),
+            new(103, 102, "/home/user/App/bin/Debug/net10.0/App"),
+            new(104, 103, "/usr/lib/webkitgtk-6.0/WebKitWebProcess 7 12"),
+            new(105, 101, "/usr/share/dotnet/dotnet /usr/share/dotnet/sdk/10.0.100/MSBuild.dll -nodemode:1"),
+        ];
+        SequenceEqual<int>([102], ProcessTreeSignal.SelectStopTargets(100, processes));
+        // dotnet run --no-build without watch is signalled itself, and so is a tree without dotnet run.
+        SequenceEqual<int>([102], ProcessTreeSignal.SelectStopTargets(102, processes));
+        SequenceEqual<int>([103], ProcessTreeSignal.SelectStopTargets(103, processes));
+    }
+
+    private static void StopLetsApplicationExit()
+    {
+        using var workspace = new TestWorkspace();
+        // Windows raises Ctrl+C for the whole hidden console, so the stand-in for dotnet watch is Unix-only.
+        RunningProcess running = StartStopChild(OperatingSystem.IsWindows() ? "run" : "parent", workspace.Root);
+        int application = WaitForStopChild(workspace.Root);
+        var clock = Stopwatch.StartNew();
+        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(20)).Wait(TimeSpan.FromSeconds(40)), "The stop did not finish.");
+        True(clock.Elapsed < TimeSpan.FromSeconds(15), $"The stop waited {clock.Elapsed} for an application that exited.");
+        True(File.Exists(Path.Combine(workspace.Root, "stopped")), "The application was not asked to stop.");
+        if (OperatingSystem.IsWindows()) Equal(StopTestChild.ApplicationExitCode, running.Completion.Result);
+        WaitForExit(application);
+        running.DisposeAsync().AsTask().Wait();
+    }
+
+    private static void StopKillsApplicationAfterGrace()
+    {
+        using var workspace = new TestWorkspace();
+        workspace.Write("stuck", "");
+        RunningProcess running = StartStopChild(OperatingSystem.IsWindows() ? "run" : "parent", workspace.Root);
+        int application = WaitForStopChild(workspace.Root);
+        var clock = Stopwatch.StartNew();
+        True(running.StopGracefullyAsync(TimeSpan.FromSeconds(1)).Wait(TimeSpan.FromSeconds(30)), "The stop did not finish.");
+        True(clock.Elapsed >= TimeSpan.FromSeconds(1), "The stop did not wait for the grace period.");
+        False(File.Exists(Path.Combine(workspace.Root, "stopped")), "The stuck application reported a stop.");
+        WaitForExit(application);
+        running.DisposeAsync().AsTask().Wait();
+    }
+
+    private static RunningProcess StartStopChild(string role, string markers)
+    {
+        (string executable, IReadOnlyList<string> prefix) = ProcessTreeSignal.SelfCommand();
+        return RunningProcess.Start("stop-test", executable, markers, [.. prefix, StopTestChild.Argument, role, markers]);
+    }
+
+    private static int WaitForStopChild(string markers)
+    {
+        string ready = Path.Combine(markers, "ready");
+        var deadline = Stopwatch.StartNew();
+        while (!File.Exists(ready) && deadline.Elapsed < TimeSpan.FromSeconds(30)) Thread.Sleep(50);
+        True(File.Exists(ready), "The stand-in application did not start.");
+        return int.Parse(File.ReadAllText(ready), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static void WaitForExit(int pid)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (!ProcessTreeSignal.HasExited(pid) && deadline.Elapsed < TimeSpan.FromSeconds(10)) Thread.Sleep(50);
+        True(ProcessTreeSignal.HasExited(pid), $"Process {pid} is still running after the stop.");
+    }
+
     // Proves the RunAsync wiring (HandleCancelKeyPress = false plus the tool's token):
     // a SIGTERM while doctor waits for MSBuild cancels the command (RCLI4000, internal
     // failure exit code) instead of the default termination. A second signal is not
     // sent: it could coalesce with the first or arrive after the process has exited;
-    // the unit test above covers the forced exit.
+    // RepeatedSignalForcesExitUnlessProtected covers the forced exit.
     private static void SigtermCancelsRunningCommand()
     {
         if (!OperatingSystem.IsLinux())

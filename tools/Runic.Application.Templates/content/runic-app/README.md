@@ -130,6 +130,20 @@ for the drivers, a fake clock, collections and navigation, and test the frontend
 with the generated typed mocks of `@runic-artifex/views/mock`.
 
 <!--#endif -->
+## Read-only and settable state
+
+As in any MVVM View, the C# setters decide what the frontend may set. The
+Counter's `Count` has a private setter, so the page only reads it; `Step` has a
+public setter, so the generated client has `setStep` and the page binds it two
+way. Give status such as `IsDirty`, `Error` or a collection a private setter
+<!--#if (viewModels == "reactiveui") -->
+(`private set => this.RaiseAndSetIfChanged(...)`, or `[Reactive]` with
+`{ get; private set; }`), and keep form fields publicly settable.
+<!--#else -->
+(`[ObservableProperty] public partial T Name { get; private set; }`), and keep
+form fields publicly settable.
+<!--#endif -->
+
 ## Publish
 
 ```sh
