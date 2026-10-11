@@ -1,65 +1,53 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 /// <summary>
 /// Reads the <c>///</c> comment of a partial property's defining declaration
 /// from source. For a partial property the compiler writes the implementation
 /// part's comment to the XML documentation file, and MVVM source generators
 /// document their implementation as <c>&lt;inheritdoc/&gt;</c>, so the summary
-/// the developer wrote on <c>[ObservableProperty] public partial T X { get; }</c>
-/// or <c>[Reactive] public partial T X { get; }</c> is only in source.
+/// the developer wrote on <c>[ObservableProperty] public partial T X { get; set; }</c>
+/// or <c>[Reactive] public partial T X { get; set; }</c> is only in source.
 /// </summary>
-internal static class SourceDocumentation
+/// <remarks>
+/// The portable PDB names the files that declare the type. A light line scan
+/// finds the defining declaration there, which has accessors without bodies,
+/// and reads the <c>///</c> lines above it and its attributes. When the scan
+/// cannot tell one declaration apart, as for two types in one file with a
+/// partial property of the same name, it returns nothing and the client keeps
+/// the property undocumented, as before.
+/// </remarks>
+internal static partial class SourceDocumentation
 {
-    private static readonly Dictionary<string, SyntaxTree?> Trees = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, string[]?> Files = new(StringComparer.Ordinal);
 
     /// <summary>The documentation of the declaring part of a partial property, as a member element, or null.</summary>
     internal static XElement? PartialProperty(PropertyInfo property)
     {
         if (property.DeclaringType is not { } type) return null;
+        var definition = new Regex(@"\bpartial\b[^;={}]*?(?<![\w@])@?" + Regex.Escape(property.Name)
+            + @"\s*\{\s*(?:(?:public|internal|protected|private)\s+)*(?:get|set|init)\s*;", RegexOptions.CultureInvariant);
+        var matches = new List<(string[] Lines, int Line)>();
         foreach (var path in SourceLocator.Documents(type))
         {
-            if (Tree(path) is not { } tree) continue;
-            foreach (var declaration in tree.GetRoot().DescendantNodes().OfType<PropertyDeclarationSyntax>())
-            {
-                if (declaration.Identifier.ValueText != property.Name
-                    || !declaration.Modifiers.Any(SyntaxKind.PartialKeyword)
-                    || !IsDefinition(declaration)
-                    || !Declares(declaration.Parent as TypeDeclarationSyntax, type)) continue;
-                return Element(declaration);
-            }
+            if (Lines(path) is not { } lines) continue;
+            for (var line = 0; line < lines.Length; line++)
+                if (definition.IsMatch(lines[line])) matches.Add((lines, line));
         }
-        return null;
+        // Prefer declarations inside a type of the reflected name.
+        if (matches.Count > 1)
+            matches = matches.Where(match => EnclosingTypeName(match.Lines, match.Line) == SimpleName(type)).ToList();
+        return matches.Count == 1 ? Element(matches[0].Lines, matches[0].Line) : null;
     }
 
-    // The defining part has accessors without bodies; the implementation part has bodies.
-    private static bool IsDefinition(PropertyDeclarationSyntax declaration) =>
-        declaration.ExpressionBody is null && declaration.AccessorList is { } accessors
-        && accessors.Accessors.All(accessor => accessor.Body is null && accessor.ExpressionBody is null);
-
-    // Compares the containing type declarations with the reflected declaring
-    // types, innermost first, and the namespace with the outermost type's.
-    private static bool Declares(TypeDeclarationSyntax? declaration, Type type)
+    // The name in the nearest type declaration above the line.
+    private static string? EnclosingTypeName(string[] lines, int line)
     {
-        Type? current = type;
-        SyntaxNode? node = declaration;
-        while (current is not null)
-        {
-            if (node is not TypeDeclarationSyntax syntax || syntax.Identifier.ValueText != SimpleName(current)
-                || syntax.Arity != (current.IsGenericType ? current.GetGenericArguments().Length - (current.DeclaringType?.GetGenericArguments().Length ?? 0) : 0))
-                return false;
-            node = syntax.Parent;
-            current = current.DeclaringType;
-        }
-        var namespaces = new List<string>();
-        for (; node is not null; node = node.Parent)
-            if (node is BaseNamespaceDeclarationSyntax @namespace) namespaces.Insert(0, @namespace.Name.ToString());
-            else if (node is TypeDeclarationSyntax) return false;
-        return string.Join('.', namespaces) == (type.Namespace ?? "");
+        for (var index = line; index >= 0; index--)
+            if (TypeDeclaration().Match(lines[index]) is { Success: true } match) return match.Groups["name"].Value;
+        return null;
     }
 
     private static string SimpleName(Type type)
@@ -68,19 +56,21 @@ internal static class SourceDocumentation
         return tick >= 0 ? type.Name[..tick] : type.Name;
     }
 
-    private static XElement? Element(PropertyDeclarationSyntax declaration)
+    private static XElement? Element(string[] lines, int declaration)
     {
-        var comment = declaration.GetLeadingTrivia()
-            .Select(trivia => trivia.GetStructure())
-            .OfType<DocumentationCommentTriviaSyntax>()
-            .LastOrDefault();
-        if (comment is null) return null;
-        // The comment's text without the /// exterior is the XML content of its member element.
-        var text = string.Join('\n', comment.ToFullString().ReplaceLineEndings("\n").Split('\n')
-            .Select(line => line.TrimStart() is var trimmed && trimmed.StartsWith("///", StringComparison.Ordinal) ? trimmed[3..] : line));
+        // Walk up past attribute lines and blank lines to the /// block.
+        var comment = new List<string>();
+        for (var index = declaration - 1; index >= 0; index--)
+        {
+            var trimmed = lines[index].TrimStart();
+            if (trimmed.StartsWith("///", StringComparison.Ordinal)) comment.Insert(0, trimmed[3..]);
+            else if (comment.Count == 0 && (trimmed.Length == 0 || trimmed.StartsWith('['))) continue;
+            else break;
+        }
+        if (comment.Count == 0) return null;
         try
         {
-            return XElement.Parse("<member>" + text + "</member>", LoadOptions.PreserveWhitespace);
+            return XElement.Parse("<member>" + string.Join('\n', comment) + "</member>", LoadOptions.PreserveWhitespace);
         }
         // Malformed XML in a comment (CS1570) has no summary to copy.
         catch (XmlException)
@@ -89,21 +79,22 @@ internal static class SourceDocumentation
         }
     }
 
-    private static SyntaxTree? Tree(string path)
+    private static string[]? Lines(string path)
     {
-        if (Trees.TryGetValue(path, out var tree)) return tree;
+        if (Files.TryGetValue(path, out var lines)) return lines;
         try
         {
-            tree = CSharpSyntaxTree.ParseText(File.ReadAllText(path),
-                CSharpParseOptions.Default.WithDocumentationMode(DocumentationMode.Parse).WithLanguageVersion(LanguageVersion.Preview),
-                path);
+            lines = File.ReadAllText(path).ReplaceLineEndings("\n").Split('\n');
         }
         // Documentation is optional; an unreadable file only means no comment.
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            tree = null;
+            lines = null;
         }
-        Trees.Add(path, tree);
-        return tree;
+        Files.Add(path, lines);
+        return lines;
     }
+
+    [GeneratedRegex(@"\b(?:class|struct|record|interface)\s+(?:class\s+|struct\s+)?(?<name>[A-Za-z_]\w*)", RegexOptions.CultureInvariant)]
+    private static partial Regex TypeDeclaration();
 }

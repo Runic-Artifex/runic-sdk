@@ -12,12 +12,9 @@
     <!-- Generated source must not depend on the developer's locale. With invariant
          globalization every interpolation is culture-neutral, so CA1305 is moot. -->
     <InvariantGlobalization>true</InvariantGlobalization>
-    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <NoWarn>$(NoWarn);CA1305</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Parses the defining part of partial properties for their XML comments. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <ProjectReference Include="../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Application.Views.Codegen.Toolkit/Runic.Application.Views.Codegen.Toolkit.csproj" />
     <ProjectReference Include="../Runic.Application.Views.Codegen.ReactiveUI/Runic.Application.Views.Codegen.ReactiveUI.csproj" />
