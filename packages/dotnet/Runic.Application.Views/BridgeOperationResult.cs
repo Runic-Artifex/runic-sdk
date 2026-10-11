@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text;
 using System.Text.Json;
 
@@ -11,6 +12,7 @@ namespace Runic.Application.Views;
 /// <param name="EncodedJson">The encoded result value, when <paramref name="Kind"/> is <see cref="BridgeOperationResultKind.Value"/>.</param>
 /// <param name="DeliveryFailure">Why a completed result could not be retained or delivered, if it could not.</param>
 /// <param name="OperationStream">The result stream, when <paramref name="Kind"/> is <see cref="BridgeOperationResultKind.Stream"/>.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record BridgeOperationResult(
     BridgeOperationResultKind Kind,
     string? EncodedJson = null,
@@ -70,6 +72,7 @@ public sealed record BridgeOperationResult(
 }
 
 /// <summary>The shape of a <see cref="BridgeOperationResult"/>.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public enum BridgeOperationResultKind
 {
     /// <summary>The operation produced no value.</summary>
@@ -84,6 +87,7 @@ public enum BridgeOperationResultKind
 // command can have completed its side effect even when its encoded answer was
 // too large to retain for reconnect/recovery.
 /// <summary>Why a completed operation's result could not be retained or delivered.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public enum BridgeOperationDeliveryFailureKind
 {
     /// <summary>The encoded result exceeded the retention limit.</summary>
@@ -99,6 +103,7 @@ public enum BridgeOperationDeliveryFailureKind
 /// <summary>Describes a result delivery failure.</summary>
 /// <param name="Kind">The failure category.</param>
 /// <param name="Message">A diagnostic message.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record BridgeOperationDeliveryFailure(BridgeOperationDeliveryFailureKind Kind, string Message)
 {
     internal static BridgeOperationDeliveryFailure ResultTooLarge(int maximumBytes) =>
@@ -129,6 +134,7 @@ public sealed record BridgeOperationDeliveryFailure(BridgeOperationDeliveryFailu
 /// <summary>A bounded, cursor-addressed sequence of encoded operation results.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix",
     Justification = "Published name for the operation result stream protocol; it is not a System.IO.Stream.")]
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class BridgeOperationStream
 {
     /// <summary>
@@ -237,12 +243,14 @@ public sealed class BridgeOperationStream
 /// <summary>One encoded stream value.</summary>
 /// <param name="Sequence">The value's one-based position in the stream.</param>
 /// <param name="EncodedJson">The encoded value.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record BridgeOperationStreamItem(long Sequence, string EncodedJson);
 /// <summary>The result of <see cref="BridgeOperationStream.ReadAfter(long)"/>.</summary>
 /// <param name="Items">Values after the requested cursor.</param>
 /// <param name="NextCursor">The cursor to pass to the next read.</param>
 /// <param name="Completed">Whether the stream is complete.</param>
 /// <param name="Failure">The terminal delivery failure, if any.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record BridgeOperationStreamRead(
     IReadOnlyList<BridgeOperationStreamItem> Items,
     long NextCursor,

@@ -32,7 +32,7 @@ export interface EditorClient extends ViewClient<EditorState> {
   writeBody(value: string, options: FieldWriteOptions<string>): Promise<FieldWriteReceipt<string>>;
   fieldBaseline<K extends keyof EditorCheckedFields>(field: K): FieldBaseline<EditorCheckedFields[K]>;
   save(): Promise<EditorState>;
-  /** Gets an `ICommand` instance that can be used to cancel `SaveCommand`. */
+  /** Cancels the running `save` call. */
   saveCancel(): Promise<EditorState>;
   startSave(): Promise<EditorSaveOperation>;
   startSaveWithRequestId(requestId: string): Promise<EditorSaveOperation>;

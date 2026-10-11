@@ -2,7 +2,7 @@
 
 WPF hosts for [Runic.Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md)
 regions. It depends on `Runic.Navigation` and the WPF framework only: no
-`Runic.Application`, generator, build assets or web View. The package provides
+`Runic.Application`, generator or web View. The package provides
 the following types in the `Runic.Navigation.Wpf` namespace. The XAML namespace
 is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 
@@ -16,7 +16,12 @@ is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 - `AddRunicWpfNavigation()`, which registers the navigator on the dispatcher.
 
 The package targets `net10.0-windows` and isn't trimmable, because WPF isn't.
-Its API is experimental, like the navigator's: suppress `RUNICNAV001` to use it.
+Its API is experimental, like the navigator's: suppress `RUNICNAV001` to use it
+([Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICNAV001)).
+The package's only build asset suppresses `RUNICNAV001` in the code that the WPF
+markup compiler generates for a named control, such as
+`<rn:NavigationHost x:Name="Host" />`, so the diagnostic appears only in your
+own code and a per-site `#pragma warning disable RUNICNAV001` is enough.
 
 ```sh
 # Available from 0.7.0-preview.4.

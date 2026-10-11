@@ -6,7 +6,7 @@ namespace Runic.Navigation.Wpf;
 
 // Builds the presenter for one presentation of an entry (W240-001 §8.3, M3): a new ContentPresenter per entry
 // ID, never a changed Content on an existing one, so WPF can't reuse a template's visual tree across entries.
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal static class NavigationPresenters
 {
     private static readonly object MissingGate = new();

@@ -217,8 +217,11 @@ internal static partial class CreateApplication
         return values;
     }
 
-    private static CommandOutcome<CreateResult> Failure(CommandExitCategory category, string code, string message) =>
-        CommandOutcome.Failure<CreateResult>(category, new CommandFault(code, message), diagnostics: []);
+    // Human output ends with the code's catalog entry at this release's tag;
+    // Runic.CommandLine writes it before the fault line and omits it from JSON.
+    internal static CommandOutcome<CreateResult> Failure(CommandExitCategory category, string code, string message) =>
+        CommandOutcome.Failure<CreateResult>(category, new CommandFault(code, message), diagnostics: [],
+            humanOutput: $"Help for {code}: {RunicReleaseLinks.Diagnostic(code)}\n");
 
     private sealed record ProcessResult(int ExitCode, string Output);
 

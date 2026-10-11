@@ -39,6 +39,39 @@ The project inventory in `shipping-projects.props` is generated from
 when that inventory changes. External dependency ranges are preserved. Explicit
 internal `PackageReference` entries must also use exact `[version]` ranges.
 
+## Release links
+
+`release-links.targets` builds documentation links that name the release tag,
+`v$(PackageVersion)`, instead of `main`. A project that sets
+`RunicGenerateReleaseLinks=true` compiles an internal `RunicReleaseLinks` class
+in its root namespace (or `RunicReleaseLinksNamespace`). Its
+`ExperimentalUrlFormat` is the `UrlFormat` of every `[Experimental]` attribute,
+pointing at the ID's entry in [docs/experimental.md](../../docs/experimental.md);
+`eng/experimental.test.mjs` keeps the attributes and the page in step.
+`Runic.Navigation.Wpf` and `Runic.Application.Wpf` also ship `buildTransitive`
+targets that suppress their experimental ID in the project's intermediate
+`.g.cs` files, where the WPF markup compiler declares named controls. Root
+`Directory.Build.targets` imports them for repository WPF projects.
+
+It also keeps the other links that leave a package on the release tag:
+
+- Packing a project with a `PackageReadmeFile` packs a copy of the README in which
+  this repository's `blob/main` and `tree/main` links name the tag and relative
+  links become absolute links at the tag. A remaining `main` link of any Runic
+  Artifex repository fails the pack; link to the package registry or the
+  documentation portal instead. `eng/release/readme-links.mjs` applies the same
+  rules to npm packages, and `bun run pack` checks every staged README.
+- `RunicReleaseLinks.Diagnostic(id)` is the ID's entry in
+  [docs/diagnostics.md](../../docs/diagnostics.md) (`RunicDiagnosticsCatalog`) at
+  the tag, so a new diagnostic needs only its catalog entry.
+- `<RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>` packs a
+  `buildTransitive` props file that sets `RunicDiagnosticsHelpLinkBase` at the tag,
+  for `HelpLink="$(RunicDiagnosticsHelpLinkBase)<lowercase ID>"` on the package's
+  coded `Error` and `Warning` tasks.
+
+`eng/diagnostics.test.mjs` fails when a reported ID has no catalog entry, a catalog
+entry is stale, or a reporting project does not link to the catalog.
+
 ## Public API
 
 `public-api.targets` applies to every shipping library (tools and template packages

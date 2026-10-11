@@ -18,6 +18,7 @@ internal static class Program
             ("plans print the same choices for dotnet new and the creator", PlansAreReproducible),
             ("plans quote values a shell would split", PlansQuoteShellValues),
             ("the test project toggle is a presence flag in every command", TestsTogglePassesThrough),
+            ("faults link to their catalog entry at the release tag", FaultsLinkToCatalog),
         ];
 
         int failures = 0;
@@ -38,6 +39,15 @@ internal static class Program
 
         Console.WriteLine($"{tests.Length - failures}/{tests.Length} Runic.Create tests passed.");
         return failures == 0 ? 0 : 1;
+    }
+
+    private static void FaultsLinkToCatalog()
+    {
+        var outcome = CreateApplication.Failure(Runic.CommandLine.CommandExitCategory.Usage, "RCREATE002", "Invalid name.");
+        Equal("RCREATE002", outcome.Fault!.Code);
+        string help = outcome.HumanOutput ?? string.Empty;
+        True(help.StartsWith("Help for RCREATE002: https://github.com/Runic-Artifex/runic-sdk/blob/v", StringComparison.Ordinal)
+            && help.EndsWith("/docs/diagnostics.md#rcreate002\n", StringComparison.Ordinal), help);
     }
 
     private static void ModelMirrorsTemplate()

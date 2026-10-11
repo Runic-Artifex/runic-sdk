@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -630,6 +631,7 @@ internal sealed record BridgeOperationStreamLookup(BridgeOperationStatus Status,
 // bounded cursor/replay history under the operation identity.
 /// <summary>The execution context of a streaming operation.</summary>
 /// <param name="stream">The stream that receives the operation's results.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class BridgeOperationExecution(BridgeOperationStream? stream)
 {
     /// <summary>The stream that receives the operation's results, if any.</summary>
