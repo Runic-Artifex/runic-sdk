@@ -1,10 +1,21 @@
-using Runic.Platform;
-using Runic.Platform.Windows;
+using TUnit.Core;
+
+namespace Runic.Platform.Windows.Tests;
 
 // Opt-in installed-app checks. Normal CI runs the portable policy tests instead.
-internal static class NotificationTests
+// RunAsync(args) also serves --notification-activation: Windows launches the executable with it when the
+// notification is activated, and Program.Main dispatches it before the test platform parses arguments.
+internal sealed class NotificationTests
 {
     private const string NotificationId = "native-relaunch";
+
+    // The former --native-notifications <mode>: --test-parameter notification-mode=submit|live|relaunch|remove.
+    [Test, Explicit, Category("NativeNotifications")]
+    public async Task NativeNotificationsAsync()
+    {
+        string[] args = TestOptions.Value("notification-mode") is { } mode ? ["--native-notifications", mode] : ["--native-notifications"];
+        if (await RunAsync(args) != 0) throw new InvalidOperationException("Native notification checks failed; see the error output.");
+    }
 
     internal static async Task<int> RunAsync(string[] args)
     {

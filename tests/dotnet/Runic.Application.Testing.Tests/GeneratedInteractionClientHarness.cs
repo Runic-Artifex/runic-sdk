@@ -1,9 +1,12 @@
+using TUnit.Core;
+
 namespace Runic.Application.Testing.Tests;
 
 /// <summary>Runs lifecycle checks against the generated Interaction browser client.</summary>
-internal static class GeneratedInteractionClientHarness
+internal sealed class GeneratedInteractionClientHarness
 {
-    internal static async Task RunAsync()
+    [Test]
+    public async Task GeneratedInteractionClientPassesItsLifecycleHarnessAsync()
     {
         var root = FindWorkspaceRoot();
         var script = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",

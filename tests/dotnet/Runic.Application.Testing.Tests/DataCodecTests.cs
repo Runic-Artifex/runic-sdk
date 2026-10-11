@@ -1,13 +1,15 @@
 using System.Text.Json;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Invoked by the test application's top-level Program. Kept independent of
 // generated bridges so the wire primitives retain their exact-value contract.
-internal static class DataCodecTests
+internal sealed class DataCodecTests
 {
-    internal static void Run()
+    [Test]
+    public void DirectCodecsKeepExactWireValues()
     {
         var codec = new BridgeValueCodec<WireSample>(Read, Write);
         var sample = new WireSample(long.MaxValue, 1234567890.123456789m,

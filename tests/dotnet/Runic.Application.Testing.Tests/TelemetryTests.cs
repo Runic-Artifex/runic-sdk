@@ -12,37 +12,36 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using TUnit.Core;
+using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 
 namespace Runic.Application.Testing.Tests;
 
 // NET-2: a configured ILoggerFactory receives structured failure entries, and the
 // Views ActivitySource and Meter report calls, failures and snapshot frames.
-internal static class TelemetryTests
+internal sealed class TelemetryTests
 {
-    public static async Task RunAsync()
+    // The former runner ran FailingCommandIsLoggedTracedAndMeasuredAsync with BridgeDiagnostics.IncludeFailureDetail
+    // off and on, the other cases with it off, and then restored it.
+    private bool? includeFailureDetail;
+
+    [Before(HookType.Test)]
+    public void DisableFailureDetail()
     {
-        var previous = BridgeDiagnostics.IncludeFailureDetail;
-        try
-        {
-            BridgeDiagnostics.IncludeFailureDetail = false;
-            await FailingCommandIsLoggedTracedAndMeasuredAsync(development: false);
-            BridgeDiagnostics.IncludeFailureDetail = true;
-            await FailingCommandIsLoggedTracedAndMeasuredAsync(development: true);
-            BridgeDiagnostics.IncludeFailureDetail = false;
-            await FailingOperationIsLoggedAndTracedAsync();
-            await SnapshotFramesAreMeasuredAsync();
-            ModelContextLogsUnhandledTurns();
-            ReactiveRoutedRegionLogsFailures();
-            ReactiveRoutedRegionTracesFailuresWithoutLoggerFactory();
-        }
-        finally
-        {
-            BridgeDiagnostics.IncludeFailureDetail = previous;
-        }
+        includeFailureDetail = BridgeDiagnostics.IncludeFailureDetail;
+        BridgeDiagnostics.IncludeFailureDetail = false;
     }
 
-    private static async Task FailingCommandIsLoggedTracedAndMeasuredAsync(bool development)
+    [After(HookType.Test)]
+    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = includeFailureDetail;
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("FailingCommandIsLoggedTracedAndMeasuredAsync(development: $development)")]
+    public async Task FailingCommandIsLoggedTracedAndMeasuredAsync(bool development)
     {
+        BridgeDiagnostics.IncludeFailureDetail = development;
         using var telemetry = new TelemetryCapture();
         var logs = new LogCapture();
         var model = new Model();
@@ -88,7 +87,8 @@ internal static class TelemetryTests
         await Task.CompletedTask;
     }
 
-    private static async Task FailingOperationIsLoggedAndTracedAsync()
+    [Test]
+    public async Task FailingOperationIsLoggedAndTracedAsync()
     {
         using var telemetry = new TelemetryCapture();
         var logs = new LogCapture();
@@ -119,7 +119,8 @@ internal static class TelemetryTests
             $"A repeated admission was reported as ok: {duplicate.RootElement}");
     }
 
-    private static async Task SnapshotFramesAreMeasuredAsync()
+    [Test]
+    public async Task SnapshotFramesAreMeasuredAsync()
     {
         using var telemetry = new TelemetryCapture();
         var model = new Model();
@@ -142,7 +143,8 @@ internal static class TelemetryTests
             "A listener could not observe the delivery queue depth.");
     }
 
-    private static void ModelContextLogsUnhandledTurns()
+    [Test]
+    public void ModelContextLogsUnhandledTurns()
     {
         var logs = new LogCapture();
         var context = new RunicModelContext(logs.CreateLogger<RunicModelContext>());
@@ -159,7 +161,8 @@ internal static class TelemetryTests
 
     // W130-047: a ReactiveUI routed region logs an incompatible route and a
     // failed router as Views events, with the router's exception attached.
-    private static void ReactiveRoutedRegionLogsFailures()
+    [Test]
+    public void ReactiveRoutedRegionLogsFailures()
     {
         var logs = new LogCapture();
         var router = new RoutingState();
@@ -193,7 +196,8 @@ internal static class TelemetryTests
 
     // W130-050: without an ILoggerFactory the region writes the same messages,
     // and the router's exception, to Trace.
-    private static void ReactiveRoutedRegionTracesFailuresWithoutLoggerFactory()
+    [Test]
+    public void ReactiveRoutedRegionTracesFailuresWithoutLoggerFactory()
     {
         var trace = new TraceCapture();
         Trace.Listeners.Add(trace);

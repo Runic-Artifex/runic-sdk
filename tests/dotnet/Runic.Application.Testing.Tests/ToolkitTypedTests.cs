@@ -1,14 +1,16 @@
 using System.Text.Json;
 using Runic.Application.Testing;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class ToolkitTypedTests
+internal sealed class ToolkitTypedTests
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private static string Encode(object? value) => JsonSerializer.Serialize(value, Json);
 
-    internal static async Task RunAsync()
+    [Test]
+    public async Task ToolkitTypedCommandsCrossTheBridgeAsync()
     {
         var model = new ToolkitTypedViewModel();
         using var host = new RunicWindowTestHost<ToolkitTypedViewModel>(model, "toolkitTyped",

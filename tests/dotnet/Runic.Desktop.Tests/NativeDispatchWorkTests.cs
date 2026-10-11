@@ -1,10 +1,11 @@
+using TUnit.Core;
 using Runic.Desktop.Internal;
 
 namespace Runic.Desktop.Tests;
 
 public sealed class NativeDispatchWorkTests
 {
-    [Fact]
+    [Test]
     public async Task CancelledQueuedCallbackNeverRuns()
     {
         using var cancellation = new CancellationTokenSource();
@@ -17,7 +18,7 @@ public sealed class NativeDispatchWorkTests
         Assert.Equal(0, calls);
     }
 
-    [Fact]
+    [Test]
     public async Task CancellationCannotAbandonRunningNativeCallback()
     {
         using var cancellation = new CancellationTokenSource();
@@ -32,7 +33,7 @@ public sealed class NativeDispatchWorkTests
         await Task.WhenAll(waiting, running).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
-    [Fact]
+    [Test]
     public async Task ClosedOwnerFailsQueuedCallbackWithoutRunningIt()
     {
         int calls = 0;
@@ -50,7 +51,7 @@ public sealed class NativeDispatchWorkTests
         Assert.Equal(1, calls);
     }
 
-    [Fact]
+    [Test]
     public async Task NativeCallbackFailureIsObservedOnce()
     {
         int calls = 0;

@@ -1,8 +1,10 @@
+using TUnit.Core;
+
 namespace Runic.Desktop.Tests;
 
 public sealed class BrowserTestProfileTests
 {
-    [Fact]
+    [Test]
     public async Task DeletesNestedProfileAndAcceptsAnAlreadyRemovedProfile()
     {
         var profile = Directory.CreateTempSubdirectory("runic-profile-cleanup-");
@@ -20,7 +22,7 @@ public sealed class BrowserTestProfileTests
         }
     }
 
-    [WindowsFileLockFact]
+    [Test, WindowsFileLock]
     public async Task WaitsForAWindowsProfileFileToBeReleased()
     {
         var profile = Directory.CreateTempSubdirectory("runic-profile-cleanup-");
@@ -44,7 +46,7 @@ public sealed class BrowserTestProfileTests
         }
     }
 
-    [WindowsFileLockFact]
+    [Test, WindowsFileLock]
     public async Task PersistentWindowsLockStillFailsCleanupWithinTheDeadline()
     {
         var profile = Directory.CreateTempSubdirectory("runic-profile-cleanup-");
@@ -64,10 +66,8 @@ public sealed class BrowserTestProfileTests
     }
 }
 
-public sealed class WindowsFileLockFactAttribute : FactAttribute
+// Skips a case outside Windows, which has no mandatory file-sharing locks.
+public sealed class WindowsFileLockAttribute() : SkipAttribute("Requires Windows mandatory file-sharing locks.")
 {
-    public WindowsFileLockFactAttribute()
-    {
-        if (!OperatingSystem.IsWindows()) Skip = "Requires Windows mandatory file-sharing locks.";
-    }
+    public override Task<bool> ShouldSkip(TestRegisteredContext context) => Task.FromResult(!OperatingSystem.IsWindows());
 }

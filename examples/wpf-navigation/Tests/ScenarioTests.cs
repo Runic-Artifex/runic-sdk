@@ -7,25 +7,10 @@ namespace Runic.Navigation.Examples.Notes.Tests;
 
 // The four comparison scenarios, plus the failure modes the comparison found in other libraries
 // (examples/wpf-navigation/COMPARISON.md). Each test starts the app's own container and window.
-internal static class ScenarioTests
+internal sealed class ScenarioTests
 {
-    public static IEnumerable<(string Name, Func<Task> Test)> All =>
-    [
-        ("S1: the guard asks; Cancel keeps the edits, OK discards them", MasterDetailGuardAsync),
-        ("S1: saved edits leave without asking, and the list reloads", SavedEditsLeaveAsync),
-        ("S2: Delete asks and acts on the typed result", DeleteConfirmAsync),
-        ("Toolkit command cancellation closes Delete without deleting", DeleteCancellationAsync),
-        ("S3: the settings tabs are a child region of the page", NestedTabsAsync),
-        ("S4: a double click on Back pops once", DoubleClickBackAsync),
-        ("S4: two Backs from code pop once and never empty the region", DoubleBackFromCodeAsync),
-        ("S4: Back while the confirm is open joins it; answered OK", () => BackWhileConfirmOpenAsync(confirm: true)),
-        ("S4: Back while the confirm is open joins it; answered Cancel", () => BackWhileConfirmOpenAsync(confirm: false)),
-        ("A page reached by Back still asks before losing edits", GuardOnPageReachedByBackAsync),
-        ("A page keeps its argument and edits when it is shown again", ArgumentsSurviveReturnAsync),
-        ("A superseded Back doesn't discard the edits", SupersededBackKeepsEditsAsync),
-    ];
-
-    private static async Task MasterDetailGuardAsync()
+    [Test, DisplayName("S1: the guard asks; Cancel keeps the edits, OK discards them"), NotInParallel("WpfSuite", Order = 1)]
+    public async Task MasterDetailGuardAsync()
     {
         await using var scene = await StartAsync();
         var detail = await scene.OpenNoteAsync(1);
@@ -51,7 +36,8 @@ internal static class ScenarioTests
         await scene.NoDialogAsync();
     }
 
-    private static async Task SavedEditsLeaveAsync()
+    [Test, DisplayName("S1: saved edits leave without asking, and the list reloads"), NotInParallel("WpfSuite", Order = 2)]
+    public async Task SavedEditsLeaveAsync()
     {
         await using var scene = await StartAsync();
         var list = scene.List;
@@ -65,7 +51,8 @@ internal static class ScenarioTests
         Require(list.Notes.Any(note => note.Title == "Release checklist v2"), "The list didn't reload when it was shown again.");
     }
 
-    private static async Task DeleteConfirmAsync()
+    [Test, DisplayName("S2: Delete asks and acts on the typed result"), NotInParallel("WpfSuite", Order = 3)]
+    public async Task DeleteConfirmAsync()
     {
         await using var scene = await StartAsync();
         var list = scene.List;
@@ -92,7 +79,8 @@ internal static class ScenarioTests
         await scene.NoDialogAsync();
     }
 
-    private static async Task DeleteCancellationAsync()
+    [Test, DisplayName("Toolkit command cancellation closes Delete without deleting"), NotInParallel("WpfSuite", Order = 4)]
+    public async Task DeleteCancellationAsync()
     {
         await using var scene = await StartAsync();
         var list = scene.List;
@@ -110,7 +98,8 @@ internal static class ScenarioTests
         Require(scene.Store.All.Count == 3, "A late answer deleted the note after command cancellation.");
     }
 
-    private static async Task NestedTabsAsync()
+    [Test, DisplayName("S3: the settings tabs are a child region of the page"), NotInParallel("WpfSuite", Order = 5)]
+    public async Task NestedTabsAsync()
     {
         await using var scene = await StartAsync();
         await scene.List.OpenSettingsCommand.ExecuteAsync(null);
@@ -139,7 +128,8 @@ internal static class ScenarioTests
         tabs.SelectedItem == tab && ((SettingsViewModel)tabs.DataContext).Tab.Current == tab
         && Descendant<NavigationHost>(tabs) is { Content: ContentPresenter { Content: TView { IsLoaded: true } view } } && view.DataContext == tab;
 
-    private static async Task DoubleClickBackAsync()
+    [Test, DisplayName("S4: a double click on Back pops once"), NotInParallel("WpfSuite", Order = 6)]
+    public async Task DoubleClickBackAsync()
     {
         await using var scene = await StartAsync();
         var detail = await scene.OpenNoteAsync(1);
@@ -156,7 +146,8 @@ internal static class ScenarioTests
         Require(scene.Main.Current == detail && scene.Main.History.Count == 1, $"A double click popped to {scene.Path}.");
     }
 
-    private static async Task DoubleBackFromCodeAsync()
+    [Test, DisplayName("S4: two Backs from code pop once and never empty the region"), NotInParallel("WpfSuite", Order = 7)]
+    public async Task DoubleBackFromCodeAsync()
     {
         await using var scene = await StartAsync();
         await scene.OpenNoteAsync(1);
@@ -173,7 +164,10 @@ internal static class ScenarioTests
 
     // A modal confirm blocks a second click, but a non-modal or overlay confirm, or code, can still go Back. The
     // second Back joins the first: one prompt, and answering it settles both without corrupting the history.
-    private static async Task BackWhileConfirmOpenAsync(bool confirm)
+    [Test, NotInParallel("WpfSuite", Order = 8)]
+    [Arguments(true, DisplayName = "S4: Back while the confirm is open joins it; answered OK")]
+    [Arguments(false, DisplayName = "S4: Back while the confirm is open joins it; answered Cancel")]
+    public async Task BackWhileConfirmOpenAsync(bool confirm)
     {
         await using var scene = await StartAsync();
         var list = scene.List;
@@ -204,7 +198,8 @@ internal static class ScenarioTests
     }
 
     // Detail, another page, Back, edit, Back: the guard of the page reached by Back is asked.
-    private static async Task GuardOnPageReachedByBackAsync()
+    [Test, DisplayName("A page reached by Back still asks before losing edits"), NotInParallel("WpfSuite", Order = 10)]
+    public async Task GuardOnPageReachedByBackAsync()
     {
         await using var scene = await StartAsync();
         var detail = await scene.OpenNoteAsync(1);
@@ -221,7 +216,8 @@ internal static class ScenarioTests
     }
 
     // The history keeps the entry, so the same ViewModel comes back with its argument and its draft.
-    private static async Task ArgumentsSurviveReturnAsync()
+    [Test, DisplayName("A page keeps its argument and edits when it is shown again"), NotInParallel("WpfSuite", Order = 11)]
+    public async Task ArgumentsSurviveReturnAsync()
     {
         await using var scene = await StartAsync();
         var detail = await scene.OpenNoteAsync(2);
@@ -240,7 +236,8 @@ internal static class ScenarioTests
 
     // The Back's confirm is open when code navigates elsewhere: the push supersedes the Back, the prompt
     // closes, and the edits stay, because the discard runs only when a departure commits.
-    private static async Task SupersededBackKeepsEditsAsync()
+    [Test, DisplayName("A superseded Back doesn't discard the edits"), NotInParallel("WpfSuite", Order = 12)]
+    public async Task SupersededBackKeepsEditsAsync()
     {
         await using var scene = await StartAsync();
         var detail = await scene.OpenNoteAsync(1);

@@ -8,7 +8,7 @@ import { root, workspace } from '../run.mjs';
 import { sourceDigest } from './source-state.mjs';
 import { snapshot } from './snapshot.mjs';
 import { buildPaths, validateBuild } from './build-artifact.mjs';
-import { managedGroups, managedTests, webTests, plan, applicationFixtures, applicationFixtureCommands } from './plan.mjs';
+import { managedGroups, managedTests, jobSuites, webTests, plan, applicationFixtures, applicationFixtureCommands } from './plan.mjs';
 import { actArguments } from './local.mjs';
 
 const yaml = path => Bun.YAML.parse(readFileSync(resolve(root, path), 'utf8'));
@@ -91,7 +91,14 @@ test('all managed executable suites are assigned exactly once to workflow groups
     'tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj',
     'tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj'])
     assert.ok(suites.some(item => item.path === path), path);
-  assert.ok(workflow.jobs.native.steps.some(step => step.run?.includes('dotnet test tests/dotnet/Runic.Desktop.Tests')));
+  // The WPF hybrid editor example's TUnit suite runs with the application group.
+  assert.ok(suites.some(item => item.path === 'examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj' && item.group === 'application'));
+  // The suites another job runs are not managed suites, and that job runs them.
+  for (const [job, paths] of Object.entries(jobSuites))
+    for (const path of paths) {
+      assert.ok(!suites.some(item => item.path === path), path);
+      assert.ok(workflow.jobs[job].steps.some(step => step.run?.includes(`dotnet run --project ${path.slice(0, path.lastIndexOf('/'))} `)), path);
+    }
   assert.ok(workflow.jobs.native.steps.some(step =>
     step.run?.includes('dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/') && step.run.includes('PublishAot=true')));
 });
@@ -130,8 +137,7 @@ test('every executable application fixture runs in CI', () => {
   assert.ok(linux.some(line => line.startsWith('dotnet publish') && line.includes('ReactiveUi25AotProof.csproj')));
   assert.ok(linux.some(line => line.endsWith('/ReactiveUi25AotProof')));
   const windows = applicationFixtureCommands('Release', root, 'win32');
-  assert.ok(windows.every(([, args]) => args[0] === 'run' || args[0] === 'test'));
-  assert.ok(windows.some(([, args]) => args[0] === 'test' && args[1].endsWith('/examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj')));
+  assert.ok(windows.every(([, args]) => args[0] === 'run'));
   assert.equal(workflow.jobs.managed['runs-on'], 'ubuntu-24.04');
 });
 

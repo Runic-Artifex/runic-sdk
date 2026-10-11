@@ -3,19 +3,14 @@ using System.ComponentModel;
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class ValidationTests
+internal sealed class ValidationTests
 {
-    internal static async Task RunAsync()
-    {
-        WritesAliasedStructuredPaths();
-        BoundsTraversalWithoutLosingItsSignal();
-        await GeneratedBridgeWritesAndPublishesNestedValidationAsync();
-    }
-
-    private static void WritesAliasedStructuredPaths()
+    [Test]
+    public void WritesAliasedStructuredPaths()
     {
         var root = new ManualRoot();
         root.SetErrors(null, new BridgeValidationMessage("Entity failure", "entity", "warning"));
@@ -87,7 +82,8 @@ internal static class ValidationTests
             "A nested collection leaked its synthetic metadata name into the validation path.");
     }
 
-    private static void BoundsTraversalWithoutLosingItsSignal()
+    [Test]
+    public void BoundsTraversalWithoutLosingItsSignal()
     {
         var root = new ManualRoot();
         for (var index = 0; index < 5_000; index++) root.Items.Add(new());
@@ -110,7 +106,8 @@ internal static class ValidationTests
             "A validation traversal exceeding its bounded entry budget did not disclose truncation.");
     }
 
-    private static async Task GeneratedBridgeWritesAndPublishesNestedValidationAsync()
+    [Test]
+    public async Task GeneratedBridgeWritesAndPublishesNestedValidationAsync()
     {
         var model = new ValidationViewModel();
         model.SetErrors(null, new BridgeValidationMessage("Form invalid", "form", "warning"));

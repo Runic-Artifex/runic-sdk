@@ -1,11 +1,13 @@
 using Microsoft.Win32;
-using Runic.Platform;
-using Runic.Platform.Windows;
+using TUnit.Core;
+
+namespace Runic.Platform.Windows.Tests;
 
 // Interactive evidence that the provider reads the signed-in user's actual preferences.
-internal static class SettingsTests
+internal sealed class SettingsTests
 {
-    internal static async Task<int> RunAsync()
+    [Test, Explicit, Category("NativeSettings")]
+    public async Task NativeSettingsAsync()
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native settings require Windows.");
         await using var settings = WindowsPlatformProvider.CreateSettings();
@@ -23,6 +25,5 @@ internal static class SettingsTests
             Console.WriteLine($"PASS native Windows settings read: color scheme matches AppsUseLightTheme={light}; accent, high contrast and reduced motion are known.");
         }
         else Console.WriteLine("PASS native Windows settings read: all preferences known; color scheme not cross-checked.");
-        return 0;
     }
 }

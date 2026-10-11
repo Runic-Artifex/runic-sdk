@@ -93,8 +93,8 @@ bun run test tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj
 
 `bun run verify <scope>` is an alias for the same focused checks. Calling either
 without a scope lists the available checks and explicitly reports that no tests
-ran. Managed groups build/run their executable suites; single .NET test projects
-use `dotnet test` when appropriate. Package scripts own their web tests.
+ran. Managed groups build and run their test executables, and a single .NET test
+project runs with `dotnet run`. Package scripts own their web tests.
 
 GitHub CI includes package/template consumers and native checks on Linux x64,
 Windows x64 and macOS arm64. Pushes to `main` run every job. Pull requests run
@@ -111,24 +111,36 @@ soaks are scoped to the behavior being changed, not every PR or release.
 
 ### TUnit suites
 
-`tests/dotnet/Runic.Navigation.Tests` uses [TUnit](https://tunit.dev) on
-Microsoft.Testing.Platform (MTP). The other executable suites still run their own
-`Program.cs`, and `Runic.Desktop.Tests` uses xUnit through `dotnet test`. A suite of
-independent cases moves to the TUnit pattern:
+The .NET test suites in `tests/dotnet`, the ReactiveUI fixtures in `tests/fixtures`
+and the examples' tests use [TUnit](https://tunit.dev) on Microsoft.Testing.Platform
+(MTP). Each suite is an executable; run it with `dotnet run --project <suite>`. The
+repository's `global.json` does not opt in to the MTP mode of `dotnet test`.
+`tests/dotnet/Runic.Platform.Linux.Portal.Tests` and
+`tests/dotnet/Runic.Platform.Runtime.Tests` still run their own `Program.cs`.
 
 - **Project.** Keep `OutputType` `Exe`. Reference `TUnit.Core`, `TUnit.Engine`,
   `Microsoft.Testing.Extensions.TrxReport` and `Microsoft.Testing.Extensions.CodeCoverage`,
   pinned in `Directory.Packages.props`. The `TUnit` metapackage, which the `runic-app`
-  template uses, also adds TUnit's assertion library and MTP telemetry; the suites keep
-  their own assertion helpers. Set `TUnitImplicitUsings` to `false`, write
-  `using TUnit.Core;`, and delete `Program.cs`: TUnit generates the entry point. Commit
-  the suite's `packages.lock.json` (`bun run lock:nuget`).
+  template and the examples use, also adds TUnit's assertion library and MTP telemetry;
+  the suites keep their own assertion helpers, and `Runic.Desktop.Tests` keeps
+  `xunit.assert`. Set `TUnitImplicitUsings` to `false`, write `using TUnit.Core;`, and
+  delete `Program.cs`: TUnit generates the entry point. A suite that also starts its own
+  executable as a child process or helper sets `GenerateTestingPlatformEntryPoint` to
+  `false`, and its `Program.cs` runs that helper before it builds the test application
+  the way the generated entry point does. Commit the suite's `packages.lock.json`
+  (`bun run lock:nuget`).
 - **Cases.** Each case is a non-static `[Test]` method in a non-static class and fails when
-  it throws. A case keeps its method name; a case that ran once per value has one
+  it throws. A case that had a name in a former runner keeps it as its `[DisplayName]`;
+  otherwise it keeps its method name. A case that ran once per value has one
   `[Arguments]` row per value and a `[DisplayName]` with its parameters, such as
   `ResultRaceAsync(seed: $seed, disposeDuringRace: $disposeDuringRace)`. Where
   `System.ComponentModel` is imported, alias `DisplayNameAttribute` to
   `TUnit.Core.DisplayNameAttribute`.
+- **Opt-in checks.** Checks that need a native desktop, a display or a manual step are
+  `[Explicit]` cases with a `[Category]`. They are listed but run only when a filter
+  selects them, for example `--treenode-filter "/*/*/*/*[Category=Native]"`. Options of
+  such a check are `--test-parameter <name>=<value>` settings, which the cases read from
+  `TestContext.Parameters`. The suites' READMEs list their categories.
 - **Running and filtering.** `bun run test <group>` and `bun run test <suite>.csproj` pass
   arguments after the scope to every suite they run. `--list-tests` lists the cases and
   `--treenode-filter "/<assembly>/<namespace>/<class>/<method>"` selects them, with `*` as a
@@ -138,12 +150,21 @@ independent cases moves to the TUnit pattern:
   fails and 8 when none ran.
 - **Reports.** `bun run test` and the managed CI job pass `--report-trx --coverage` and
   write `<suite>.trx` and `<suite>.cobertura.xml` to `artifacts/test-results/<suite>`, which
-  CI uploads as `managed-test-results-<group>-<run>`.
+  CI uploads as `managed-test-results-<group>-<run>` without the TRX attachment copies.
+  The native job writes `Runic.Desktop.Tests`'s TRX report and MTP diagnostics to
+  `artifacts/native-tests`.
 - **Parallelism.** TUnit runs cases in parallel unless told otherwise. Allow it only when no
   case shares static state, `Trace.Listeners`, the current directory, environment
   variables, ports or files with another. The Navigation cases share
   `RunicModelContextRegistry.Shared`, `Trace.Listeners` and static race switches, and
   several are timing-sensitive, so its `AssemblyInfo.cs` runs the suite `[NotInParallel]`.
+  Most other suites came from sequential runners and run `[NotInParallel]` too; each
+  `AssemblyInfo.cs` names the shared state. `Runic.Create.Tests`, `Runic.Assets.Desktop.Tests`
+  and the `notes-view-first` and `wpf-hybrid-editor` example tests share no such state and
+  run in parallel.
+- **WPF.** The Windows WPF suites run their cases on one STA thread with a WPF `Application`, through
+  the `WpfDispatcherExecutor` in each suite, and keep the former order with
+  `[NotInParallel("WpfSuite", Order = n)]`.
 
 ### Public API changes
 

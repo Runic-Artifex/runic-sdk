@@ -3,16 +3,20 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using TUnit.Core;
+using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
 // DispatcherModelContext (W240-001 §8.1) and where hooks run with it.
-internal static class ContextTests
+[TestExecutor<WpfDispatcherExecutor>]
+internal sealed class ContextTests
 {
     private const int ProbeMessage = 0x8000 + 0x2A; // WM_APP + 42
 
-    public static void Basics()
+    [Test, DisplayName("context basics"), NotInParallel("WpfSuite", Order = 3)]
+    public void Basics()
     {
         using var fixture = new NavFixture();
         var context = fixture.Context;
@@ -68,7 +72,8 @@ internal static class ContextTests
     }
 
     // A turn dispatched inside a nested pump inside another turn logs 1081, once per context.
-    public static void NestedTurnLogsOnce()
+    [Test, DisplayName("nested turn logs 1081 once"), NotInParallel("WpfSuite", Order = 4)]
+    public void NestedTurnLogsOnce()
     {
         using var fixture = new NavFixture();
         var context = fixture.Context;
@@ -86,7 +91,8 @@ internal static class ContextTests
         Require(context.TurnDepth == 0, "The turn depth did not return to 0.");
     }
 
-    public static void HookSchedulerOutcomes()
+    [Test, DisplayName("hook scheduler outcomes"), NotInParallel("WpfSuite", Order = 5)]
+    public void HookSchedulerOutcomes()
     {
         var fixture = new NavFixture();
         var context = fixture.Context;
@@ -154,7 +160,8 @@ internal static class ContextTests
     }
 
     // Hooks change a DispatcherObject-affine model directly; owned disposal runs on the UI thread outside turns.
-    public static void HooksRunOnTheUiThread()
+    [Test, DisplayName("hooks change UI-affine models"), NotInParallel("WpfSuite", Order = 6)]
+    public void HooksRunOnTheUiThread()
     {
         using var fixture = new NavFixture();
         var region = fixture.Region();
@@ -171,7 +178,8 @@ internal static class ContextTests
     }
 
     // A guard may pump: another region commits meanwhile, and no 1081 is logged.
-    public static void GuardPumpsWhileAnotherRegionCommits()
+    [Test, DisplayName("guard pumps while another region commits"), NotInParallel("WpfSuite", Order = 7)]
+    public void GuardPumpsWhileAnotherRegionCommits()
     {
         using var fixture = new NavFixture();
         var side = fixture.Region();
@@ -192,7 +200,8 @@ internal static class ContextTests
 
     // The carried-over check: input that a guard's nested pump dispatches runs on the guard's ExecutionContext,
     // but is not the guard's code, so its requests are admitted; the guard's own requests are Reentrant.
-    public static void NestedPumpInputIsNotTheHook()
+    [Test, DisplayName("nested-pump input is not the hook"), NotInParallel("WpfSuite", Order = 8)]
+    public void NestedPumpInputIsNotTheHook()
     {
         using var fixture = new NavFixture();
         var marker = new AsyncLocal<string?>();
@@ -238,7 +247,8 @@ internal static class ContextTests
         Require(region.Current is Page { Name: "from-input" }, $"The region shows {region.Current}.");
     }
 
-    public static void PropertyChangedOnTheUiThread()
+    [Test, DisplayName("PropertyChanged on the UI thread"), NotInParallel("WpfSuite", Order = 9)]
+    public void PropertyChangedOnTheUiThread()
     {
         using var fixture = new NavFixture();
         var dispatcher = Dispatcher.CurrentDispatcher;
@@ -254,7 +264,8 @@ internal static class ContextTests
 
     // The dispatcher shuts down (on a secondary STA thread, since the main one can shut down only once): navigator
     // disposal finishes within 1 s, owned content is disposed on the pool, and later requests are Rejected(Closed).
-    public static void ShutdownOnSecondaryThread()
+    [Test, DisplayName("shutdown on a secondary thread"), NotInParallel("WpfSuite", Order = 10)]
+    public void ShutdownOnSecondaryThread()
     {
         RunicNavigator? navigator = null;
         NavigationRegion<object>? region = null;

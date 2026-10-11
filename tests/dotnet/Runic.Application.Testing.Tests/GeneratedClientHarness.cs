@@ -1,9 +1,12 @@
+using TUnit.Core;
+
 namespace Runic.Application.Testing.Tests;
 
 /// <summary>Runs the Bun harness against a transcript emitted by this built test application.</summary>
-internal static class GeneratedClientHarness
+internal sealed class GeneratedClientHarness
 {
-    internal static async Task RunAsync()
+    [Test]
+    public async Task GeneratedClientTypeChecksAndPassesTheBunHarnessesAsync()
     {
         var root = FindWorkspaceRoot();
         var generated = Path.Combine(root, "tests", "dotnet", "Runic.Application.Testing.Tests",

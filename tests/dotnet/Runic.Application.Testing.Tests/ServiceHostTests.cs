@@ -3,22 +3,16 @@ using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // RunicWindowTestHost.Create resolves what the Desktop and CS-WebUI windows resolve
 // from the window's scope, so a test needs no service lookups of its own.
-internal static class ServiceHostTests
+internal sealed class ServiceHostTests
 {
-    internal static async Task RunAsync()
-    {
-        await ReactiveWindowSharesTheScopesModelContextAsync();
-        await ToolkitWindowUsesTheRegisteredViewLocatorAsync();
-        ExplicitOptionsWinOverRegistrations();
-        MissingRegistrationsNameTheFix();
-    }
-
-    private static async Task ReactiveWindowSharesTheScopesModelContextAsync()
+    [Test]
+    public async Task ReactiveWindowSharesTheScopesModelContextAsync()
     {
         var services = new ServiceCollection();
         services.AddRunicReactiveModelContext();
@@ -46,7 +40,9 @@ internal static class ServiceHostTests
         shell.Main?.Dispose();
     }
 
-    private static async Task ToolkitWindowUsesTheRegisteredViewLocatorAsync()
+    [Test]
+    [DependsOn<WindowViewHostTests>(nameof(WindowViewHostTests.GeneratedRootHostPresentsAndReleasesEachBrowserViewAsync), ProceedOnFailure = true)]
+    public async Task ToolkitWindowUsesTheRegisteredViewLocatorAsync()
     {
         var locator = new CountingViewLocator();
         await using var provider = ToolkitServices(locator).BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
@@ -61,7 +57,9 @@ internal static class ServiceHostTests
         Require(host.ViewModel.Count == 1, "The resolved ViewModel's command did not run.");
     }
 
-    private static void ExplicitOptionsWinOverRegistrations()
+    [Test]
+    [DependsOn<WindowViewHostTests>(nameof(WindowViewHostTests.GeneratedRootHostPresentsAndReleasesEachBrowserViewAsync), ProceedOnFailure = true)]
+    public void ExplicitOptionsWinOverRegistrations()
     {
         var registered = new CountingViewLocator();
         var explicitLocator = new CountingViewLocator();
@@ -83,7 +81,8 @@ internal static class ServiceHostTests
         Require(host.Root.Snapshot().Reference(vm => vm.Child)?.Id == "only", "The explicit id source was not used.");
     }
 
-    private static void MissingRegistrationsNameTheFix()
+    [Test]
+    public void MissingRegistrationsNameTheFix()
     {
         using var empty = new ServiceCollection().BuildServiceProvider();
         var missingModel = Catch(() => RunicWindowTestHost.Create<RootViewModel>(empty));

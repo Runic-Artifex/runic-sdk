@@ -4,11 +4,18 @@ import { fileURLToPath } from "node:url";
 import { root, workspace, affectedComponents, engineeringOnly } from "../run.mjs";
 
 export const managedGroups = ["platform", "assets", "navigation", "application"];
+// Suites that another job runs instead of the managed job. Runic.Desktop.Tests drives browsers and
+// native windows, so the native job runs it on every OS; the views job runs the Notes example's tests
+// with the example's other checks.
+export const jobSuites = {
+  native: ["tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj"],
+  views: ["examples/notes-view-first/Tests/NotesViewFirst.Tests.csproj"],
+};
 export function managedTests(base = root, platform = process.platform) {
   return [...readFileSync(resolve(base, "RunicSdk.Core.slnx"), "utf8").matchAll(/<Project Path="([^"]+)"/g)]
     .map(([, path]) => path)
     .filter(path => {
-      if (!/Tests\.csproj$/.test(path)) return false;
+      if (!/Tests\.csproj$/.test(path) || Object.values(jobSuites).flat().includes(path)) return false;
       const project = readFileSync(resolve(base, path), "utf8");
       return /<OutputType>Exe<\/OutputType>/.test(project)
         && (platform === "win32" || !/<TargetFramework>[^<]*-windows<\/TargetFramework>/.test(project));
@@ -19,13 +26,14 @@ export function managedTests(base = root, platform = process.platform) {
       : "platform" }));
 }
 
-// TUnit suites run on Microsoft.Testing.Platform (CONTRIBUTING.md); the other executables take no
-// test-platform arguments. A TUnit suite writes a TRX report and Cobertura coverage to
+// TUnit suites run on Microsoft.Testing.Platform (CONTRIBUTING.md). They reference TUnit.Engine, or
+// the TUnit metapackage (the examples), which brings the same report extensions; other executables
+// take no test-platform arguments. A TUnit suite writes a TRX report and Cobertura coverage to
 // artifacts/test-results/<suite>, which the managed CI job uploads. MTP rejects report options
 // next to --list-tests, --help and --info, so those runs write no reports.
 export function testReportArguments(path, extra = [], base = root) {
   const project = resolve(base, path);
-  if (!/<PackageReference Include="TUnit\.Engine"/.test(readFileSync(project, "utf8"))
+  if (!/<PackageReference Include="TUnit(\.Engine)?"/.test(readFileSync(project, "utf8"))
     || extra.some(arg => ["--list-tests", "--help", "-h", "-?", "--info"].includes(arg))) return [];
   const name = basename(project, ".csproj");
   const results = resolve(base, "artifacts/test-results", name);
@@ -34,21 +42,19 @@ export function testReportArguments(path, extra = [], base = root) {
     "--coverage", "--coverage-output-format", "cobertura", "--coverage-output", `${name}.cobertura.xml`];
 }
 
-// Application fixtures and library test consumers. The application suite builds and
-// runs them after its test executables; each one exits non-zero when its proof fails.
+// Application fixtures. The application suite builds and runs them after its test
+// executables; each one exits non-zero when its proof fails.
 // An `aot` fixture pins linux-x64, so it is published with NativeAOT and run on Linux only.
 export const applicationFixtures = [
   { path: "tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveFlavorProof.csproj" },
   { path: "tests/fixtures/application/reactiveui-reactive-flavor/ReactiveUiReactiveSourceGeneratorProof.csproj" },
   { path: "tests/fixtures/application/reactiveui25-aot/ReactiveUi25AotProof.csproj", aot: true },
-  { path: "examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj", test: true },
 ];
 
 // The commands that build and run the application fixtures on `platform`.
 export function applicationFixtureCommands(configuration, base = root, platform = process.platform) {
-  return applicationFixtures.flatMap(({ path, aot, test }) => {
+  return applicationFixtures.flatMap(({ path, aot }) => {
     const project = resolve(base, path);
-    if (test) return [["dotnet", ["test", project, "-c", configuration]]];
     if (!aot) return [["dotnet", ["run", "--project", project, "-c", configuration]]];
     if (platform !== "linux") return [];
     const name = path.split("/").at(-1).replace(/\.csproj$/, "");

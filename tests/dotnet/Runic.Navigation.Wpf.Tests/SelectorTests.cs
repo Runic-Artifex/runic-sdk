@@ -2,13 +2,17 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using TUnit.Core;
+using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
-internal static class SelectorTests
+[TestExecutor<WpfDispatcherExecutor>]
+internal sealed class SelectorTests
 {
-    public static void GuardVetoAndExternalSelection()
+    [Test, DisplayName("selector guard veto and external navigation"), NotInParallel("WpfSuite", Order = 21)]
+    public void GuardVetoAndExternalSelection()
     {
         using var fixture = new NavFixture();
         var allow = false;
@@ -40,7 +44,8 @@ internal static class SelectorTests
         finally { window.Close(); }
     }
 
-    public static void RapidSelectionAndLateGuard()
+    [Test, DisplayName("rapid selection and late guard"), NotInParallel("WpfSuite", Order = 22)]
+    public void RapidSelectionAndLateGuard()
     {
         using var fixture = new NavFixture();
         var calls = 0;
@@ -77,7 +82,8 @@ internal static class SelectorTests
         finally { first.TrySetResult(false); window.Close(); }
     }
 
-    public static void UnloadCancelsAndRemounts()
+    [Test, DisplayName("selector unload and remount"), NotInParallel("WpfSuite", Order = 23)]
+    public void UnloadCancelsAndRemounts()
     {
         using var fixture = new NavFixture();
         var calls = 0;
@@ -107,7 +113,8 @@ internal static class SelectorTests
         finally { gate.TrySetResult(false); window.Close(); }
     }
 
-    public static void SelectingCurrentCancelsWithoutReplacing()
+    [Test, DisplayName("selecting current cancels without replacing"), NotInParallel("WpfSuite", Order = 24)]
+    public void SelectingCurrentCancelsWithoutReplacing()
     {
         using var fixture = new NavFixture();
         var calls = 0;
@@ -133,7 +140,8 @@ internal static class SelectorTests
         finally { gate.TrySetResult(false); window.Close(); }
     }
 
-    public static void InvalidSelectionRestoresAndLogs()
+    [Test, DisplayName("invalid selection restores and logs"), NotInParallel("WpfSuite", Order = 25)]
+    public void InvalidSelectionRestoresAndLogs()
     {
         using var fixture = new NavFixture();
         var home = new Page("home");
@@ -156,7 +164,8 @@ internal static class SelectorTests
 
     // A selection that ends after its dispatcher shut down skips the UI reset and disposes its token
     // source. Detaching later must not cancel that disposed source.
-    public static void DetachAfterShutdownEndedSelection()
+    [Test, DisplayName("selector detach after dispatcher shutdown"), NotInParallel("WpfSuite", Order = 26)]
+    public void DetachAfterShutdownEndedSelection()
     {
         var gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         Exception? error = null;

@@ -2,22 +2,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
+using TUnit.Core;
 
 // RunicViewHost's ordering, without WPF: serialised changes, cancellation, release order and fallback.
-internal static class HostLifecycleTests
+internal sealed class HostLifecycleTests
 {
-    internal static async Task RunAsync()
-    {
-        await ReleasesInReverseOrder();
-        await NewerRequestCancelsOpenAndWaits();
-        await WaitingRequestIsSkipped();
-        await FailureReleasesThenFallsBack();
-        await ModelTypeResolvesFromBaseClass();
-        Console.WriteLine("RunicViewHost lifecycle checks passed.");
-    }
-
     // Close order: session, then Desktop host, then the native control; the owner's model is never released.
-    private static async Task ReleasesInReverseOrder()
+    [Test, NotInParallel("WpfSuite", Order = 5)]
+    public async Task ReleasesInReverseOrder()
     {
         var lifecycle = new PresentationLifecycle();
         List<string> log = [];
@@ -37,7 +29,8 @@ internal static class HostLifecycleTests
     }
 
     // A swap during an open cancels it; the next open starts only after the cancelled one has released.
-    private static async Task NewerRequestCancelsOpenAndWaits()
+    [Test, NotInParallel("WpfSuite", Order = 6)]
+    public async Task NewerRequestCancelsOpenAndWaits()
     {
         var lifecycle = new PresentationLifecycle();
         List<string> log = [];
@@ -67,7 +60,8 @@ internal static class HostLifecycleTests
     }
 
     // Requests that queue behind a running change collapse into the latest one.
-    private static async Task WaitingRequestIsSkipped()
+    [Test, NotInParallel("WpfSuite", Order = 7)]
+    public async Task WaitingRequestIsSkipped()
     {
         var lifecycle = new PresentationLifecycle();
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -88,7 +82,8 @@ internal static class HostLifecycleTests
     }
 
     // A failed open releases what it acquired before the fallback shows; the next change removes the fallback first.
-    private static async Task FailureReleasesThenFallsBack()
+    [Test, NotInParallel("WpfSuite", Order = 8)]
+    public async Task FailureReleasesThenFallsBack()
     {
         var lifecycle = new PresentationLifecycle();
         List<string> log = [];
@@ -117,7 +112,8 @@ internal static class HostLifecycleTests
     }
 
     // RunicViewHost only knows the model at run time: the Bridge of its class or nearest base class is used.
-    private static async Task ModelTypeResolvesFromBaseClass()
+    [Test, NotInParallel("WpfSuite", Order = 9)]
+    public async Task ModelTypeResolvesFromBaseClass()
     {
         var attachment = new Attachment();
         var collection = new ServiceCollection();

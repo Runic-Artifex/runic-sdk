@@ -3,12 +3,14 @@ using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class SnapshotDeliveryTests
+internal sealed class SnapshotDeliveryTests
 {
-    public static async Task RunAsync()
+    [Test]
+    public async Task DeliveryReadsOutsideTurnsAndBoundsSlowHostsAsync()
     {
         var model = new Model();
         await using var context = new RunicModelContext();

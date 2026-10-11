@@ -1,3 +1,4 @@
+using TUnit.Core;
 using Microsoft.Extensions.Logging;
 using Runic.Desktop.Internal;
 
@@ -5,7 +6,7 @@ namespace Runic.Desktop.Tests;
 
 public sealed class WindowCloseControllerTests
 {
-    [Fact]
+    [Test]
     public async Task ConcurrentRequestsShareDecisionAndCanRetryAfterVeto()
     {
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -36,7 +37,7 @@ public sealed class WindowCloseControllerTests
         Assert.Equal(1, closes);
     }
 
-    [Fact]
+    [Test]
     public async Task CancellingOneWaitDoesNotApproveOrCancelSharedDecision()
     {
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -55,7 +56,7 @@ public sealed class WindowCloseControllerTests
         Assert.Equal(1, closes);
     }
 
-    [Fact]
+    [Test]
     public async Task ForcedShutdownCancelsPromptAndIgnoresLateApproval()
     {
         var decision = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -76,9 +77,10 @@ public sealed class WindowCloseControllerTests
         Assert.Equal(0, closes);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
+    [Test]
+    [DisplayName("FailedOrCancelledConfirmationKeepsWindowOpen(cancelled: $cancelled)")]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task FailedOrCancelledConfirmationKeepsWindowOpen(bool cancelled)
     {
         var closes = 0;
@@ -91,7 +93,7 @@ public sealed class WindowCloseControllerTests
         Assert.Equal(0, closes);
     }
 
-    [Fact]
+    [Test]
     public async Task FailedConfirmationIsLoggedWithItsException()
     {
         var logger = new CapturingLogger();

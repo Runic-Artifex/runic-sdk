@@ -1,3 +1,5 @@
+using TUnit.Core;
+
 namespace Runic.Desktop.Tests;
 
 public sealed class BrowserDebuggerPortTests : IDisposable
@@ -5,7 +7,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
     private readonly DirectoryInfo _profile = Directory.CreateTempSubdirectory("runic-debugger-port-");
     private string PortFile => Path.Combine(_profile.FullName, "DevToolsActivePort");
 
-    [Fact]
+    [Test]
     public async Task WaitsForTheFileToBePublished()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -15,13 +17,14 @@ public sealed class BrowserDebuggerPortTests : IDisposable
         Assert.Equal(52444, await pending);
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("5")]
-    [InlineData("52444")]
-    [InlineData("invalid\n")]
-    [InlineData("0\n")]
-    [InlineData("65536\n")]
+    [Test]
+    [DisplayName("WaitsForACompleteValidPortRecord(partial: $partial)")]
+    [Arguments("")]
+    [Arguments("5")]
+    [Arguments("52444")]
+    [Arguments("invalid\n")]
+    [Arguments("0\n")]
+    [Arguments("65536\n")]
     public async Task WaitsForACompleteValidPortRecord(string partial)
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -33,7 +36,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
         Assert.Equal(52444, await pending);
     }
 
-    [WindowsFileLockFact]
+    [Test, WindowsFileLock]
     public async Task WaitsForChromiumToReleaseItsPublicationLock()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
@@ -48,7 +51,7 @@ public sealed class BrowserDebuggerPortTests : IDisposable
         Assert.Equal(52444, await pending);
     }
 
-    [WindowsFileLockFact]
+    [Test, WindowsFileLock]
     public async Task PersistentPublicationLockHonorsCancellation()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
@@ -57,9 +60,10 @@ public sealed class BrowserDebuggerPortTests : IDisposable
             BrowserBridgeTests.ReadDebuggerPortAsync(_profile.FullName, deadline.Token).WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
+    [Test]
+    [DisplayName("MissingOrIncompleteRecordHonorsCancellation(incomplete: $incomplete)")]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task MissingOrIncompleteRecordHonorsCancellation(bool incomplete)
     {
         if (incomplete) await File.WriteAllTextAsync(PortFile, "5");

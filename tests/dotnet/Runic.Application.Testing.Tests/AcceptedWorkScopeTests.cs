@@ -6,27 +6,16 @@ using ReactiveUI.Primitives;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class AcceptedWorkScopeTests
+internal sealed class AcceptedWorkScopeTests
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
-    internal static async Task RunAsync()
-    {
-        await DrainIncludesAnAcceptedFactoryBeforeItReturnsItsTask();
-        await CancelledInvocationAndWindowCloseDoNotDrainRecovery();
-        await CancellingDrainObservationKeepsOwnership();
-        await FaultsAndCancellationRetainTheirOriginalOutcomes();
-        await SynchronousFactoryFailuresReleaseAdmission();
-        await ConcurrentDisposalWaitsForAcceptedWork();
-        await AcceptedWorkCanDisposeItsOwner();
-        await NestedAcceptedWorkCanDrainItsOwner();
-        await FaultsAreLoggedOnceWithoutFailingTheDrain();
-    }
-
-    private static async Task AcceptedWorkCanDisposeItsOwner()
+    [Test]
+    public async Task AcceptedWorkCanDisposeItsOwner()
     {
         var owner = new AcceptedWorkScope();
         var otherRelease = Signal();
@@ -64,7 +53,8 @@ internal static class AcceptedWorkScopeTests
         }
     }
 
-    private static async Task NestedAcceptedWorkCanDrainItsOwner()
+    [Test]
+    public async Task NestedAcceptedWorkCanDrainItsOwner()
     {
         var owner = new AcceptedWorkScope();
         using var cancellation = new CancellationTokenSource();
@@ -99,7 +89,8 @@ internal static class AcceptedWorkScopeTests
         await foreignOwner.DisposeAsync().AsTask().WaitAsync(Deadline);
     }
 
-    private static async Task FaultsAreLoggedOnceWithoutFailingTheDrain()
+    [Test]
+    public async Task FaultsAreLoggedOnceWithoutFailingTheDrain()
     {
         var log = new LogCapture();
         var owner = new AcceptedWorkScope(log);
@@ -140,7 +131,8 @@ internal static class AcceptedWorkScopeTests
         }
     }
 
-    private static async Task DrainIncludesAnAcceptedFactoryBeforeItReturnsItsTask()
+    [Test]
+    public async Task DrainIncludesAnAcceptedFactoryBeforeItReturnsItsTask()
     {
         await using var owner = new AcceptedWorkScope();
         using var releaseFactory = new ManualResetEventSlim();
@@ -184,7 +176,8 @@ internal static class AcceptedWorkScopeTests
         }
     }
 
-    private static async Task CancelledInvocationAndWindowCloseDoNotDrainRecovery()
+    [Test]
+    public async Task CancelledInvocationAndWindowCloseDoNotDrainRecovery()
     {
         await using var owner = new AcceptedWorkScope();
         await using var context = new Runic.Navigation.RunicModelContext();
@@ -231,7 +224,8 @@ internal static class AcceptedWorkScopeTests
         }
     }
 
-    private static async Task CancellingDrainObservationKeepsOwnership()
+    [Test]
+    public async Task CancellingDrainObservationKeepsOwnership()
     {
         await using var owner = new AcceptedWorkScope();
         using var cancellation = new CancellationTokenSource();
@@ -255,7 +249,8 @@ internal static class AcceptedWorkScopeTests
         }
     }
 
-    private static async Task FaultsAndCancellationRetainTheirOriginalOutcomes()
+    [Test]
+    public async Task FaultsAndCancellationRetainTheirOriginalOutcomes()
     {
         await using var owner = new AcceptedWorkScope();
         var failed = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -279,7 +274,8 @@ internal static class AcceptedWorkScopeTests
         throw new InvalidOperationException("The accepted task lost its original failure.");
     }
 
-    private static async Task SynchronousFactoryFailuresReleaseAdmission()
+    [Test]
+    public async Task SynchronousFactoryFailuresReleaseAdmission()
     {
         await using var owner = new AcceptedWorkScope();
         RequireThrows<InvalidOperationException>(() => owner.RunAsync(() => (Task)null!));
@@ -304,7 +300,8 @@ internal static class AcceptedWorkScopeTests
         RequireThrows<InvalidOperationException>(() => owner.RunAsync(() => Task.CompletedTask));
     }
 
-    private static async Task ConcurrentDisposalWaitsForAcceptedWork()
+    [Test]
+    public async Task ConcurrentDisposalWaitsForAcceptedWork()
     {
         var owner = new AcceptedWorkScope();
         var release = Signal();

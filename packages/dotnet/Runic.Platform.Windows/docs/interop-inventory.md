@@ -60,10 +60,12 @@ clipboard. The test project does not reference CsWin32, and these imports do not
   including CA1416 platform compatibility, trimming and AOT analyzers.
 - Portable: `dotnet run --project tests/dotnet/Runic.Platform.Windows.Tests` and
   `tests/dotnet/Runic.Platform.Runtime.Tests` (launcher program-extension refusal).
-- Windows CI (`Native / win-x64`) runs the native clipboard (`--native`),
-  system-sleep inhibition (`--native-inhibition --system-only`) and settings reads
-  (`--native-settings`) with JIT and the NativeAOT publish
-  (`-p:IlcTreatWarningsAsErrors=true`).
+- Windows CI (`Native / win-x64`) runs the explicit TUnit cases for the native
+  clipboard (`--treenode-filter "/*/*/*/*[Category=Native]"`), system-sleep
+  inhibition (`--treenode-filter "/*/*/*/*[Category=NativeInhibition]"
+  --test-parameter system-only=true`) and settings reads
+  (`--treenode-filter "/*/*/*/*[Category=NativeSettings]"`) with JIT and the
+  NativeAOT publish (`-p:IlcTreatWarningsAsErrors=true`).
 - Interactive: owned file launch (`Open`, `ChooseApplication`, `Reveal`), clipboard
   transfer, settings reads and notification activation on an interactive Windows
   desktop (see [Interactive evidence](#interactive-evidence)).
@@ -76,7 +78,9 @@ NativeAOT publishes of `Runic.Platform.Windows.Tests` and
 warning. Each check ran in the signed-in user's session.
 
 `Runic.Platform.Windows.Tests.exe` passed `--native-settings`, `--native`
-(clipboard) and `--native-inhibition`, each exiting with 0.
+(clipboard) and `--native-inhibition`, each exiting with 0. These were the
+command-line modes of that revision; the TUnit suite now selects the same checks
+with the `NativeSettings`, `Native` and `NativeInhibition` categories.
 
 `Runic.Platform.Runtime.Tests.exe` passed its conformance run without arguments
 (14/14). It also ran `--native-services`, with `RUNIC_TEST_SERVICE` selecting

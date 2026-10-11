@@ -2,37 +2,52 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Drives the C# producer through the shared collection delta fixtures in
 // specs/application/fixtures/collection-deltas and requires byte-identical
 // frames. The views package applies the same fixtures as a consumer.
-internal static class CollectionDeltaConformanceTests
+internal sealed class CollectionDeltaConformanceTests
 {
     private const string Route = "rows";
 
-    internal static async Task RunAsync()
+    // One case per fixture case, in file order, named "<file>: <case>" as the former runner named them.
+    public static IEnumerable<Func<(string Name, JsonObject TestCase)>> Cases()
     {
         var directory = Path.Combine(AppContext.BaseDirectory, "fixtures", "collection-deltas");
         var files = Directory.GetFiles(directory, "*.json").OrderBy(path => path, StringComparer.Ordinal).ToArray();
         Require(files.Length >= 8, $"The collection delta fixtures were not copied to {directory}.");
-        // Failure notices and replies carry no development detail, so frames are byte-identical.
-        var detail = BridgeDiagnostics.IncludeFailureDetail;
-        BridgeDiagnostics.IncludeFailureDetail = false;
-        try
+        foreach (var file in files)
         {
-            foreach (var file in files)
+            var fixture = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+            foreach (var testCase in fixture["cases"]!.AsArray())
             {
-                var fixture = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
-                foreach (var testCase in fixture["cases"]!.AsArray())
-                    await RunCaseAsync($"{Path.GetFileName(file)}: {testCase!["name"]}", testCase.AsObject());
+                var name = $"{Path.GetFileName(file)}: {testCase!["name"]}";
+                var json = testCase.ToJsonString();
+                yield return () => (name, JsonNode.Parse(json)!.AsObject());
             }
         }
-        finally { BridgeDiagnostics.IncludeFailureDetail = detail; }
     }
 
-    private static async Task RunCaseAsync(string name, JsonObject testCase)
+    // Failure notices and replies carry no development detail, so frames are byte-identical.
+    private bool? detail;
+
+    [Before(HookType.Test)]
+    public void DisableFailureDetail()
+    {
+        detail = BridgeDiagnostics.IncludeFailureDetail;
+        BridgeDiagnostics.IncludeFailureDetail = false;
+    }
+
+    [After(HookType.Test)]
+    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = detail;
+
+    [Test]
+    [MethodDataSource(nameof(Cases))]
+    [DisplayName("$name")]
+    public async Task ProducerMatchesTheFixtureAsync(string name, JsonObject testCase)
     {
         var model = new CollectionDeltaViewModel();
         var initial = Expand(testCase["initial"]!);

@@ -3,13 +3,19 @@ using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
+using TUnit.Core;
+
+// The case captures what the switch prints to standard output and error, and restores the writers in finally
+// blocks; the cases do not run in parallel (AssemblyInfo.cs), so no other case writes meanwhile.
+#pragma warning disable TUnit0055 // Overwriting the Console writer can break TUnit logging
 
 // RUNIC_APPLICATION_CLOSE_AFTER_OPEN lets a harness start an unchanged Desktop application: the
 // opened presentation is reported on standard output and closed, so WaitForCloseAsync returns. An active
 // switch is announced on standard error and logged as event 2002.
-static class CloseAfterOpenChecks
+internal sealed class CloseAfterOpenChecks
 {
-    internal static async Task RunAsync()
+    [Test, NotInParallel(Order = 1)]
+    public async Task CloseAfterOpenSwitchReportsAndClosesTheWindow()
     {
         string? previous = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_CLOSE_AFTER_OPEN");
         var console = Console.Out;

@@ -3,27 +3,17 @@ using System.Text.Json;
 using System.Windows.Input;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // Count writer invocations rather than delivery timing. BridgeSnapshotDelivery
 // captures a requested state when it delivers it; this suite proves that
 // batching avoids discarded captures and never shows a half-applied batch.
-internal static class SnapshotBatchTests
+internal sealed class SnapshotBatchTests
 {
-    public static async Task RunAsync()
-    {
-        await CoalescesBulkNotifications();
-        await NestedScopesFlushOnce();
-        await ExceptionStillFlushes();
-        await AttachesEveryBridgeAndKeepsModelsSeparate();
-        await RouteRepliesRemainImmediate();
-        await DoesNotCaptureAnOpenBatch();
-        await BurstBehindBusyHostCapturesOnce();
-        await FailedCaptureKeepsDelivering();
-    }
-
-    private static async Task CoalescesBulkNotifications()
+    [Test]
+    public async Task CoalescesBulkNotifications()
     {
         var model = new Model();
         using var transport = new InMemoryViewTransport();
@@ -43,7 +33,8 @@ internal static class SnapshotBatchTests
         Require(model.Value == 100, "The batch did not preserve the final model state.");
     }
 
-    private static async Task NestedScopesFlushOnce()
+    [Test]
+    public async Task NestedScopesFlushOnce()
     {
         var model = new Model();
         using var transport = new InMemoryViewTransport();
@@ -63,7 +54,8 @@ internal static class SnapshotBatchTests
         Require(counter.Revisions.Single() == 3, "Nested notifications did not advance their revisions.");
     }
 
-    private static async Task ExceptionStillFlushes()
+    [Test]
+    public async Task ExceptionStillFlushes()
     {
         var model = new Model();
         using var transport = new InMemoryViewTransport();
@@ -84,7 +76,8 @@ internal static class SnapshotBatchTests
         Require(counter.Revisions.Single() == 1, "Exception unwinding lost the pending notification revision.");
     }
 
-    private static async Task AttachesEveryBridgeAndKeepsModelsSeparate()
+    [Test]
+    public async Task AttachesEveryBridgeAndKeepsModelsSeparate()
     {
         var first = new Model();
         var second = new Model();
@@ -117,7 +110,8 @@ internal static class SnapshotBatchTests
             "Flushing one model changed another model's capture count.");
     }
 
-    private static async Task RouteRepliesRemainImmediate()
+    [Test]
+    public async Task RouteRepliesRemainImmediate()
     {
         var model = new Model();
         using var transport = new InMemoryViewTransport();
@@ -162,7 +156,8 @@ internal static class SnapshotBatchTests
 
     // A writer failure, including ObjectDisposedException from a getter, fails
     // that capture only. The next change requests another one.
-    private static async Task FailedCaptureKeepsDelivering()
+    [Test]
+    public async Task FailedCaptureKeepsDelivering()
     {
         var model = new Model();
         using var transport = new InMemoryViewTransport();
@@ -183,7 +178,8 @@ internal static class SnapshotBatchTests
     }
 
     // Without a batch, a busy host still costs one capture per delivered state.
-    private static async Task BurstBehindBusyHostCapturesOnce()
+    [Test]
+    public async Task BurstBehindBusyHostCapturesOnce()
     {
         var model = new Model();
         using var transport = new HeldTransport();
@@ -202,7 +198,8 @@ internal static class SnapshotBatchTests
 
     // A state requested before a batch began is captured when the host can
     // take it. If the batch is still open then, the capture waits for its end.
-    private static async Task DoesNotCaptureAnOpenBatch()
+    [Test]
+    public async Task DoesNotCaptureAnOpenBatch()
     {
         var model = new Model();
         using var transport = new HeldTransport();

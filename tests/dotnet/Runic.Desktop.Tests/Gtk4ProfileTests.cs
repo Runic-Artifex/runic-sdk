@@ -1,10 +1,11 @@
+using TUnit.Core;
 using Runic.Desktop.Gtk4;
 
 namespace Runic.Desktop.Tests;
 
 public sealed class Gtk4ProfileTests
 {
-    [Fact]
+    [Test]
     public void WithGtk4SelectsTheBackendAndTheFactoryTogether()
     {
         var original = new DesktopHostOptions { Port = 0, BrowserFolder = "/opt/browsers" };
@@ -26,7 +27,7 @@ public sealed class Gtk4ProfileTests
         }
     }
 
-    [Fact]
+    [Test]
     public void WithGtk4RejectsAnotherFactory()
     {
         var options = new DesktopHostOptions { WindowHostFactory = new UnavailableFactory([]) };
@@ -36,7 +37,7 @@ public sealed class Gtk4ProfileTests
         Assert.Contains(nameof(UnavailableFactory), error.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [Test]
     public async Task WithGtk4HostReportsEveryMissingLibrary()
     {
         if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
@@ -50,7 +51,7 @@ public sealed class Gtk4ProfileTests
         Assert.Same(embedded.Diagnostics[0], embedded.Diagnostic);
     }
 
-    [Fact]
+    [Test]
     public async Task WithGtk4HostAcceptsEitherWebKitSoname()
     {
         if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
@@ -63,7 +64,7 @@ public sealed class Gtk4ProfileTests
         Assert.Empty(embedded.Diagnostics);
     }
 
-    [Fact]
+    [Test]
     public async Task Gtk4SelectionWithoutItsProviderReportsTheProviderAndEachMissingPrerequisite()
     {
         if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
@@ -81,7 +82,7 @@ public sealed class Gtk4ProfileTests
         Assert.Equal("gtk4-provider-missing", embedded.Diagnostic?.Code);
     }
 
-    [Fact]
+    [Test]
     public async Task WithGtk4AfterGtk3ReportsTheToolkitConflictOnce()
     {
         if (!OperatingSystem.IsLinux() || !LinuxDesktopRuntime.CanUse(LinuxEmbeddedBackend.Gtk4WebKit6)) return;
@@ -107,7 +108,7 @@ public sealed class Gtk4ProfileTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task UnavailableCustomFactoryListsAllOfItsDiagnostics()
     {
         DesktopDiagnostic[] reported =
@@ -128,7 +129,7 @@ public sealed class Gtk4ProfileTests
         Assert.Contains(reported[1], host.GetAvailability().Diagnostics);
     }
 
-    [Fact]
+    [Test]
     public async Task UnavailableFactoryWithoutDiagnosticsKeepsTheGenericDiagnostic()
     {
         await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new UnavailableFactory([]) });
@@ -138,7 +139,7 @@ public sealed class Gtk4ProfileTests
         Assert.Equal("custom-window-host-unavailable", Assert.Single(embedded.Diagnostics).Code);
     }
 
-    [Fact]
+    [Test]
     public void PresentationDiagnosticsDefaultToTheSingleDiagnostic()
     {
         var diagnostic = new DesktopDiagnostic(DesktopErrorCategory.Unavailable, "missing", "Missing.", Retryable: false);
@@ -147,7 +148,7 @@ public sealed class Gtk4ProfileTests
         Assert.Empty(new DesktopPresentationAvailability(BrowserKind.Chrome, true, "/bin/chrome", DesktopWindowCapabilities.None, null).Diagnostics);
     }
 
-    [Fact]
+    [Test]
     public void PresentationAvailabilityComparesDiagnosticsByValue()
     {
         DesktopPresentationAvailability Create() => new(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, Missing("first"))
@@ -165,7 +166,7 @@ public sealed class Gtk4ProfileTests
         Assert.NotEqual(left, right with { Diagnostics = [Missing("second"), Missing("first")] });
     }
 
-    [Fact]
+    [Test]
     public async Task RepeatedAvailabilityIsEqual()
     {
         await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = new UnavailableFactory([Missing("first"), Missing("second")]) });
@@ -173,7 +174,7 @@ public sealed class Gtk4ProfileTests
         Assert.Equal(host.GetAvailability().Presentations, host.GetAvailability().Presentations);
     }
 
-    [Fact]
+    [Test]
     public void PresentationDiagnosticIsAlwaysTheFirstOfDiagnostics()
     {
         var availability = new DesktopPresentationAvailability(BrowserKind.Embedded, false, null, DesktopWindowCapabilities.None, Missing("first"))

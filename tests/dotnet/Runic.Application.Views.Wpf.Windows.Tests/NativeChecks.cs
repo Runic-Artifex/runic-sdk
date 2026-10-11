@@ -5,10 +5,13 @@ using Runic.Desktop;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using TUnit.Core;
 
-internal static class NativeChecks
+// The native WPF checks, after the portable cases (WpfDispatcherExecutor runs them on the dispatcher).
+internal sealed class NativeChecks
 {
-    internal static async Task RunAsync()
+    [Test, NotInParallel("WpfSuite", Order = 11)]
+    public async Task ChildWebViewAuthenticatesReloadsAndUnloads()
     {
         using var child = new RunicWebView();
         var window = new Window { Content = child, Width = 600, Height = 400, Title = "Runic WPF child smoke" };
@@ -60,11 +63,11 @@ internal static class NativeChecks
             Console.WriteLine("Runic.Application.Views.Wpf native authentication/reload/unload checks passed.");
         }
         finally { window.Close(); }
-        await HostAsync();
     }
 
     // RunicViewHost in XAML terms: Model bound to the DataContext, Services inherited from the window.
-    private static async Task HostAsync()
+    [Test, NotInParallel("WpfSuite", Order = 12)]
+    public async Task HostAsync()
     {
         List<Attachment> attachments = [];
         var collection = new ServiceCollection();

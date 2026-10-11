@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Diagnostics;
 using Runic.Desktop.Internal;
 using System.Runtime.InteropServices;
@@ -8,7 +9,7 @@ public sealed partial class ShutdownSignalTests
 {
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(30);
 
-    [Fact]
+    [Test]
     public async Task ShutdownRequestClosesOpenWindowsWithoutDisposingTheHost()
     {
         var factory = new ClosableWindowHostFactory();
@@ -36,7 +37,7 @@ public sealed partial class ShutdownSignalTests
         Assert.True(host.Validate().IsValid);
     }
 
-    [Fact]
+    [Test]
     public async Task WindowOpenedAfterShutdownRequestClosesAtOnce()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -53,9 +54,10 @@ public sealed partial class ShutdownSignalTests
         await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
     }
 
-    [Theory]
-    [InlineData("SIGINT")]
-    [InlineData("SIGTERM")]
+    [Test]
+    [DisplayName("SignalClosesTheWindowDrainsWorkAndDisposesTheHost(signal: $signal)")]
+    [Arguments("SIGINT")]
+    [Arguments("SIGTERM")]
     public async Task SignalClosesTheWindowDrainsWorkAndDisposesTheHost(string signal)
     {
         // Windows has no SIGTERM to send to a console application; its Ctrl+C case covers the handler.
@@ -73,7 +75,7 @@ public sealed partial class ShutdownSignalTests
         Assert.Equal(ShutdownSignalFixture.ApplicationExitCode, await fixture.WaitForExitAsync());
     }
 
-    [Fact]
+    [Test]
     public async Task OptOutKeepsTheDefaultSignalAction()
     {
         await using var fixture = Fixture.Start("opt-out");
@@ -86,9 +88,10 @@ public sealed partial class ShutdownSignalTests
         Assert.DoesNotContain("host-disposed", fixture.Output);
     }
 
-    [Theory]
-    [InlineData("SIGINT")]
-    [InlineData("SIGTERM")]
+    [Test]
+    [DisplayName("ForwardedCopiesOfTheSignalDoNotEndTheShutdown(repeat: $repeat)")]
+    [Arguments("SIGINT")]
+    [Arguments("SIGTERM")]
     public async Task ForwardedCopiesOfTheSignalDoNotEndTheShutdown(string repeat)
     {
         // A terminal Ctrl+C under dotnet watch reaches the app, then watch sends SIGTERM. Windows has no SIGTERM to
@@ -104,7 +107,7 @@ public sealed partial class ShutdownSignalTests
         Assert.Equal(ShutdownSignalFixture.ApplicationExitCode, await fixture.WaitForExitAsync());
     }
 
-    [Fact]
+    [Test]
     public async Task SecondSignalEndsAShutdownThatDoesNotFinish()
     {
         await using var fixture = Fixture.Start("stuck");

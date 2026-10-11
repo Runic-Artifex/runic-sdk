@@ -41,6 +41,7 @@ const versions = {
   "CommunityToolkit.Mvvm": pinned("CommunityToolkit.Mvvm"),
   "Microsoft.Extensions.DependencyInjection": pinned("Microsoft.Extensions.DependencyInjection"),
   "Runic.Navigation.Wpf": version,
+  TUnit: pinned("TUnit"),
 };
 
 const directory = mkdtempSync(join(tmpdir(), "runic-wpf-navigation-example-"));
@@ -94,7 +95,8 @@ ${Object.entries(versions).map(([id, v]) => `    <PackageVersion Include="${id}"
   run(["build", "--no-restore", tests, "-c", "Release", ...properties]);
   if (process.platform === "win32") {
     const output = run(["run", "--no-build", "--project", tests, "-c", "Release", ...properties]);
-    assert.ok(output.includes("Notes navigation scenarios passed."), "The WPF navigation example scenarios did not pass.");
+    // The TUnit test application exits non-zero when a case fails; the summary also shows that cases ran.
+    assert.ok(output.includes("Test run summary: Passed!"), "The WPF navigation example scenarios did not pass.");
     console.log("WPF_NAVIGATION_EXAMPLE_OK|only-navigation|scenarios");
   } else {
     console.log("WPF_NAVIGATION_EXAMPLE_OK|only-navigation|build (WPF runs on Windows only)");

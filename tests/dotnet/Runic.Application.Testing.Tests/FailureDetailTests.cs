@@ -3,33 +3,26 @@ using System.Text.Json;
 using System.Windows.Input;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // D-1: a failed route carries the exception type, message and stack only in
 // development. Production replies keep the bounded message.
-internal static class FailureDetailTests
+internal sealed class FailureDetailTests
 {
-    public static async Task RunAsync()
-    {
-        EnvironmentSelectsDevelopment();
-        var previous = BridgeDiagnostics.IncludeFailureDetail;
-        try
-        {
-            BridgeDiagnostics.IncludeFailureDetail = false;
-            ProductionKeepsTheBoundedMessage();
-            await ProductionOperationKeepsTheBoundedMessageAsync();
-            BridgeDiagnostics.IncludeFailureDetail = true;
-            DevelopmentAddsTheExceptionDetail();
-            await DevelopmentOperationAddsTheExceptionDetailAsync();
-        }
-        finally
-        {
-            BridgeDiagnostics.IncludeFailureDetail = previous;
-        }
-    }
+    // The former runner set BridgeDiagnostics.IncludeFailureDetail off for the production cases and on for the
+    // development cases, and then restored it.
+    private bool? includeFailureDetail;
 
-    private static void EnvironmentSelectsDevelopment()
+    [Before(HookType.Test)]
+    public void SaveFailureDetail() => includeFailureDetail = BridgeDiagnostics.IncludeFailureDetail;
+
+    [After(HookType.Test)]
+    public void RestoreFailureDetail() => BridgeDiagnostics.IncludeFailureDetail = includeFailureDetail;
+
+    [Test]
+    public void EnvironmentSelectsDevelopment()
     {
         static Func<string, string?> Environment(string? dotnet, string? aspnetcore) => name => name switch
         {
@@ -59,8 +52,10 @@ internal static class FailureDetailTests
         }
     }
 
-    private static void ProductionKeepsTheBoundedMessage()
+    [Test]
+    public void ProductionKeepsTheBoundedMessage()
     {
+        BridgeDiagnostics.IncludeFailureDetail = false;
         using var transport = new InMemoryViewTransport();
         using var bridge = new FailingBridge(transport, new Model());
         foreach (var route in new[] { "failingThrow", "failingSetValue" })
@@ -78,8 +73,10 @@ internal static class FailureDetailTests
             "The production message changed.");
     }
 
-    private static void DevelopmentAddsTheExceptionDetail()
+    [Test]
+    public void DevelopmentAddsTheExceptionDetail()
     {
+        BridgeDiagnostics.IncludeFailureDetail = true;
         using var transport = new InMemoryViewTransport();
         using var bridge = new FailingBridge(transport, new Model());
         using var reply = JsonDocument.Parse(transport.Call("failingThrow"));
@@ -99,16 +96,20 @@ internal static class FailureDetailTests
             == typeof(InvalidOperationException).FullName, "A failed setter did not carry its detail.");
     }
 
-    private static async Task ProductionOperationKeepsTheBoundedMessageAsync()
+    [Test]
+    public async Task ProductionOperationKeepsTheBoundedMessageAsync()
     {
+        BridgeDiagnostics.IncludeFailureDetail = false;
         using var failed = await FailOperationAsync("production-failure");
         var error = failed.RootElement.GetProperty("error");
         Require(error.GetProperty("message").GetString() == "The operation failed." && !error.TryGetProperty("detail", out _),
             $"A production operation failure leaked detail: {failed.RootElement}");
     }
 
-    private static async Task DevelopmentOperationAddsTheExceptionDetailAsync()
+    [Test]
+    public async Task DevelopmentOperationAddsTheExceptionDetailAsync()
     {
+        BridgeDiagnostics.IncludeFailureDetail = true;
         using var failed = await FailOperationAsync("development-failure");
         var error = failed.RootElement.GetProperty("error");
         Require(error.GetProperty("message").GetString() == "The operation failed."

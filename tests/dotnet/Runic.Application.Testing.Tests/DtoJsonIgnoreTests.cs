@@ -6,7 +6,7 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static partial class CodegenDiagnosticsTests
+internal sealed partial class CodegenDiagnosticsTests
 {
     private const string JsonIgnoreOptIn = "[assembly: RunicBridgeJsonIgnore]\n";
 

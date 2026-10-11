@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Net.WebSockets;
@@ -7,7 +8,7 @@ namespace Runic.Desktop.Tests;
 
 public sealed class SessionRevocationTests
 {
-    [Fact]
+    [Test]
     public async Task PublicSessionCloseRevokesIgnoringPeerAndFailsPendingScripts()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -55,7 +56,7 @@ public sealed class SessionRevocationTests
         Assert.Equal(1, Volatile.Read(ref disconnectCount));
     }
 
-    [Fact]
+    [Test]
     public async Task CallbackCanCloseItsOwnSessionWithoutDeadlockingDisconnectedEvent()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -84,7 +85,7 @@ public sealed class SessionRevocationTests
         Assert.Equal(1, Volatile.Read(ref disconnectCount));
     }
 
-    [Fact]
+    [Test]
     public async Task SessionCloseDrainsOverlappingCallbacksBeforeDisconnectedEvent()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -138,7 +139,7 @@ public sealed class SessionRevocationTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task CapabilityCanDisposeItsOwnSurfaceWithoutDeadlockingDisconnectedEvent()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));

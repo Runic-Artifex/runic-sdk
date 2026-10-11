@@ -1,12 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
     <OutputType>Exe</OutputType>
     <OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- Program.cs is hand-written: GeneratedClientHarness also starts this executable as a helper
+         with the export-generated-client-fixture argument, which writes wire payloads instead of running tests. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     <!-- Tests exercise the experimental navigation API. -->
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
     <!-- NavOrphanViewModel deliberately has no View. -->
@@ -20,6 +25,10 @@
     <DeterministicSourcePaths>true</DeterministicSourcePaths>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <!-- Compiles small invalid ViewModel assemblies for generator diagnostics tests. -->

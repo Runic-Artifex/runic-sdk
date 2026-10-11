@@ -246,7 +246,7 @@ test('the ReactiveUI navigation adapters belong to the navigation component', ()
   for (const file of [
     'packages/dotnet/Runic.Navigation.ReactiveUI/ReactiveNavigation.cs',
     'packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/Runic.Navigation.ReactiveUI.Reactive.csproj',
-    'tests/fixtures/navigation/reactiveui-adapter/Program.cs',
+    'tests/fixtures/navigation/reactiveui-adapter/NavigationAdapterTests.cs',
     'tests/fixtures/navigation/reactiveui-consumer/Program.cs',
   ]) {
     const result = plan([file]);
@@ -266,7 +266,7 @@ test('the navigation group runs the adapter tests of both ReactiveUI flavors', (
 test('navigation changes run the Windows WPF lane', () => {
   for (const file of [
     'packages/dotnet/Runic.Navigation.Wpf/NavigationHost.cs',
-    'tests/dotnet/Runic.Navigation.Wpf.Tests/Program.cs',
+    'tests/dotnet/Runic.Navigation.Wpf.Tests/HostTests.cs',
     'tests/fixtures/navigation/wpf-consumer/package-smoke.mjs',
     'examples/wpf-navigation/NotesNavigation/Notes/NoteDetailViewModel.cs',
     'packages/dotnet/Runic.Navigation/RunicNavigator.cs',
@@ -315,7 +315,8 @@ test('the WPF navigation example builds from the packed packages in the WPF lane
 test('TUnit suites write TRX and Cobertura reports; other executables and listings take no report options', () => {
   const base = mkdtempSync(resolve(tmpdir(), 'runic-test-reports-'));
   try {
-    for (const [name, reference] of [['Tunit.Tests', '<PackageReference Include="TUnit.Engine" />'], ['Probe.Tests', '']]) {
+    for (const [name, reference] of [['Tunit.Tests', '<PackageReference Include="TUnit.Engine" />'], ['Example.Tests', '<PackageReference Include="TUnit" />'],
+      ['Probe.Tests', ''], ['Other.Tests', '<PackageReference Include="TUnit.Assertions" />']]) {
       mkdirSync(resolve(base, name));
       writeFileSync(resolve(base, name, `${name}.csproj`), `<Project><ItemGroup>${reference}</ItemGroup></Project>`);
     }
@@ -324,5 +325,8 @@ test('TUnit suites write TRX and Cobertura reports; other executables and listin
     for (const option of ['--report-trx', 'Tunit.Tests.trx', '--coverage', 'cobertura', 'Tunit.Tests.cobertura.xml']) assert.ok(reports.includes(option), option);
     assert.deepEqual(testReportArguments('Tunit.Tests/Tunit.Tests.csproj', ['--list-tests'], base), []);
     assert.deepEqual(testReportArguments('Probe.Tests/Probe.Tests.csproj', [], base), []);
+    // The examples reference the TUnit metapackage, which includes the report extensions.
+    assert.ok(testReportArguments('Example.Tests/Example.Tests.csproj', [], base).includes('Example.Tests.trx'));
+    assert.deepEqual(testReportArguments('Other.Tests/Other.Tests.csproj', [], base), []);
   } finally { rmSync(base, { recursive: true, force: true }); }
 });

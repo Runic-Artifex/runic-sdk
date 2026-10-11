@@ -1,11 +1,13 @@
 using System.Text.Json;
 using Runic.Application.Testing;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class DataShapeTests
+internal sealed class DataShapeTests
 {
-    internal static async Task RunAsync()
+    [Test]
+    public async Task DataShapesReachTheWireAndPublishNestedChangesAsync()
     {
         var model = new DataShapeViewModel();
         using var host = new RunicWindowTestHost<DataShapeViewModel>(model, "dataShape",

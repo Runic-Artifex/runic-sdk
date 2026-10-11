@@ -1,12 +1,14 @@
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class OperationResultTests
+internal sealed class OperationResultTests
 {
-    internal static async Task RunAsync()
+    [Test]
+    public async Task OperationRegistryAdmitsRecoversAndBoundsResultsAsync()
     {
         var firstDigest = BridgeOperationRequest.CanonicalDigest("{\"b\":2,\"a\":1}");
         var reorderedDigest = BridgeOperationRequest.CanonicalDigest("{\"a\":1.0,\"b\":2}");

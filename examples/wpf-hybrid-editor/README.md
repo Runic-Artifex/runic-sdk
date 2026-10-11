@@ -113,7 +113,7 @@ validation, saving, edits during save, cancellation, retry after a storage error
 session recreation, and accepted, rejected and cancelled departures.
 
 ```sh
-dotnet test examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj -c Release
+dotnet run --project examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj -c Release
 dotnet build examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj -c Release
 dotnet run --project examples/wpf-hybrid-editor/WindowsSmoke/HybridNotes.WindowsSmoke.csproj -c Release
 ```

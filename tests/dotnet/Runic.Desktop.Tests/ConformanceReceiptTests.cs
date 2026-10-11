@@ -1,10 +1,11 @@
+using TUnit.Core;
 using System.Text.Json;
 
 namespace Runic.Desktop.Tests;
 
 public sealed class ConformanceReceiptTests
 {
-    [Fact]
+    [Test]
     public void DotNetReceiptPassesEveryPortableFixtureExactlyOnce()
     {
         var root = Path.Combine(AppContext.BaseDirectory, "conformance");
@@ -24,7 +25,7 @@ public sealed class ConformanceReceiptTests
         Assert.All(results, static result => Assert.Equal("pass", result.GetProperty("outcome").GetString()));
         var testNames = typeof(ConformanceReceiptTests).Assembly.GetTypes()
             .SelectMany(static type => type.GetMethods()
-                .Where(static method => method.GetCustomAttributes(typeof(FactAttribute), inherit: true).Length != 0)
+                .Where(static method => method.GetCustomAttributes(typeof(TestAttribute), inherit: true).Length != 0)
                 .Select(method => $"{type.Name}.{method.Name}"))
             .ToHashSet(StringComparer.Ordinal);
         Assert.All(results, result => Assert.Contains(result.GetProperty("evidence").GetString()!, testNames));

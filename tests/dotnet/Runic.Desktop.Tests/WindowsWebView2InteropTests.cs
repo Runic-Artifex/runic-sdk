@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -7,7 +8,7 @@ namespace Runic.Desktop.Tests;
 
 public sealed partial class WindowsWebView2InteropTests
 {
-    [Fact]
+    [Test]
     public void VtableSlotsMatchThePinnedMicrosoftSdkHeader()
     {
         var header = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "interop", "WebView2.h"));
@@ -43,12 +44,12 @@ public sealed partial class WindowsWebView2InteropTests
     [GeneratedRegex(@"STDMETHODCALLTYPE \*(\w+)")]
     private static partial Regex AbiMethodPattern();
 
-    [Fact]
+    [Test]
     public void DesktopDoesNotReferenceTheManagedWebView2Wrapper()
         => Assert.DoesNotContain(typeof(DesktopHost).Assembly.GetReferencedAssemblies(),
             name => name.Name?.StartsWith("Microsoft.Web.WebView2", StringComparison.Ordinal) == true);
 
-    [Fact]
+    [Test]
     public unsafe void GeneratedOptionsExposeTheNativeStringAndBooleanAbi()
     {
         using var options = new WebViewComReference<IWebViewEnvironmentOptions>(new WebViewEnvironmentOptions("--test-flag"));
@@ -65,7 +66,7 @@ public sealed partial class WindowsWebView2InteropTests
         finally { WindowsWebView2Interop.Release(pointer); }
     }
 
-    [Fact]
+    [Test]
     public unsafe void GeneratedEventsDispatchThroughIUnknownAndReturnFailuresAsHresults()
     {
         nint received = 0;
@@ -79,7 +80,7 @@ public sealed partial class WindowsWebView2InteropTests
         Assert.True(invokeFailure(failing.Pointer, 0, 0) < 0);
     }
 
-    [Fact]
+    [Test]
     public async Task CompletionOwnsExactlyOneReferenceToTheBorrowedNativeResult()
     {
         var (completed, expected) = ExerciseCompletionOwnership();
@@ -108,7 +109,7 @@ public sealed partial class WindowsWebView2InteropTests
         return (completion.Task, expected);
     }
 
-    [Fact]
+    [Test]
     public async Task DocumentScriptCompletionIgnoresTheBorrowedIdentifierAndReportsFailures()
     {
         var handlerGuid = new Regex(@"MIDL_INTERFACE\(""([0-9a-f-]+)""\)\s+ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler\b")
@@ -134,7 +135,7 @@ public sealed partial class WindowsWebView2InteropTests
             return ((delegate* unmanaged[Stdcall]<nint, int, nint, int>)WindowsWebView2Interop.Slot(handler, 3))(handler, 0, (nint)id);
     }
 
-    [Fact]
+    [Test]
     public async Task FailedAndNullCompletionsFailWithoutDereferencingTheResult()
     {
         var failed = new WebViewCompletion();

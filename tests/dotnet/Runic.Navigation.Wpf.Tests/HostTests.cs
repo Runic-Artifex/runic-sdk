@@ -5,15 +5,20 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TUnit.Core;
+using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
+using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 
 namespace Runic.Navigation.Wpf.Tests;
 
 // NavigationHost (W240-001 §8.3).
-internal static class HostTests
+[TestExecutor<WpfDispatcherExecutor>]
+internal sealed class HostTests
 {
     // M3: a new presenter and view per entry, also for the same type and the same borrowed instance.
-    public static void PresenterPerEntry()
+    [Test, DisplayName("presenter per entry"), NotInParallel("WpfSuite", Order = 11)]
+    public void PresenterPerEntry()
     {
         using var fixture = new NavFixture();
         var region = fixture.Region();
@@ -44,7 +49,8 @@ internal static class HostTests
     }
 
     // The host is removed and re-added; Back gives a new view for the retained model, which initialized once.
-    public static void Remount()
+    [Test, DisplayName("remount"), NotInParallel("WpfSuite", Order = 12)]
+    public void Remount()
     {
         using var fixture = new NavFixture();
         var region = fixture.Region();
@@ -75,7 +81,8 @@ internal static class HostTests
 
     // The host's locator, then the registered locator (MapView and the convention), then the implicit template;
     // 1082 once per type when none presents the content.
-    public static void LocatorOrder()
+    [Test, DisplayName("view locator order"), NotInParallel("WpfSuite", Order = 13)]
+    public void LocatorOrder()
     {
         var logs = new LogCapture();
         var provider = new ServiceCollection()
@@ -129,7 +136,8 @@ internal static class HostTests
         finally { Pump(provider.DisposeAsync().AsTask(), "provider disposal"); }
     }
 
-    public static void NamingConvention()
+    [Test, DisplayName("naming convention"), NotInParallel("WpfSuite", Order = 16)]
+    public void NamingConvention()
     {
         Require(Find(typeof(ProbeViewModel)) == typeof(ProbeView), "FooViewModel did not map to FooView.");
         Require(Find(typeof(SettingsViewModel)) == typeof(SettingsPage), "FooViewModel did not fall back to FooPage.");
@@ -148,7 +156,8 @@ internal static class HostTests
     }
 
     // W250-016: GuardWindowClose clears the region before the window closes; a veto keeps the window and its entries.
-    public static void GuardWindowClose()
+    [Test, DisplayName("GuardWindowClose"), NotInParallel("WpfSuite", Order = 17)]
+    public void GuardWindowClose()
     {
         using var fixture = new NavFixture();
         var home = new Page("home");
@@ -224,7 +233,8 @@ internal static class HostTests
     }
 
     // BrowseBack goes back when the region can and isn't transitioning.
-    public static void BrowseBack()
+    [Test, DisplayName("BrowseBack"), NotInParallel("WpfSuite", Order = 18)]
+    public void BrowseBack()
     {
         using var fixture = new NavFixture();
         var home = new Page("home");
@@ -255,7 +265,8 @@ internal static class HostTests
     // W240-007: a double click on Back, then a Back from code. The second click is ignored because BrowseBack can't
     // execute from the moment the first Back is admitted, before any dispatcher work runs: that is the host's
     // CanExecute, not the engine's join. Only the programmatic BackAsync while the guard is pending exercises the join.
-    public static void DoubleBrowseBackThenBackFromCode()
+    [Test, DisplayName("double BrowseBack, then Back from code"), NotInParallel("WpfSuite", Order = 19)]
+    public void DoubleBrowseBackThenBackFromCode()
     {
         using var fixture = new NavFixture();
         var home = new Page("home");
@@ -290,7 +301,8 @@ internal static class HostTests
         finally { window.Close(); }
     }
 
-    public static void UnloadedHostIsCollectable()
+    [Test, DisplayName("unloaded host is collectable"), NotInParallel("WpfSuite", Order = 20)]
+    public void UnloadedHostIsCollectable()
     {
         using var fixture = new NavFixture();
         var region = fixture.Region(NavigationTarget.Own<object>(new DocumentViewModel("kept")));
@@ -315,7 +327,8 @@ internal static class HostTests
     }
 
     // A view whose constructor takes the content's type gets the entry's content, never a container instance.
-    public static void LocatorPassesTheContent()
+    [Test, DisplayName("view constructors get the content"), NotInParallel("WpfSuite", Order = 14)]
+    public void LocatorPassesTheContent()
     {
         var serviceNotifier = new ServiceNotifier();
         var provider = new ServiceCollection()
@@ -369,7 +382,8 @@ internal static class HostTests
 
     // A failed view leaves no stale view behind, and rebinding to another navigator's region (whose entry ids
     // repeat) presents that region.
-    public static void FailedViewAndRebinding()
+    [Test, DisplayName("failed view and rebinding"), NotInParallel("WpfSuite", Order = 15)]
+    public void FailedViewAndRebinding()
     {
         using var first = new NavFixture();
         using var second = new NavFixture();

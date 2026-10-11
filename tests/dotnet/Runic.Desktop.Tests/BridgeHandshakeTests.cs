@@ -1,3 +1,4 @@
+using TUnit.Core;
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Net.WebSockets;
@@ -8,13 +9,15 @@ namespace Runic.Desktop.Tests;
 // The Bridge handshake from the server's side (#35). A browser's page opens the
 // WebSocket and sends a token check when the socket's open event runs. These
 // tests stand in for the page with raw sockets, so the timing is deterministic.
-public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper output)
+public sealed class BridgeHandshakeTests
 {
+    private readonly TestOutput output = new();
+
     private const byte Signature = 0xDD;
     private const byte CheckToken = 0xF5;
     private const int HeaderSize = 8;
 
-    [Fact]
+    [Test]
     public async Task ASilentSocketIsClosedAfterTheHandshakeTimeout()
     {
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 10, handshakeTimeout: TimeSpan.FromMilliseconds(500));
@@ -33,7 +36,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.Equal(WebSocketCloseStatus.PolicyViolation, silent.CloseStatus);
     }
 
-    [Fact]
+    [Test]
     public async Task ASilentSocketYieldsTheOnlyConnectionToANewerOne()
     {
         // The handshake timeout is longer than the connection timeout, so only the
@@ -49,7 +52,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.Equal(WebSocketCloseStatus.PolicyViolation, silent.CloseStatus);
     }
 
-    [Fact]
+    [Test]
     public async Task AnAuthenticatedSocketKeepsTheOnlyConnection()
     {
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 10, handshakeTimeout: TimeSpan.FromMilliseconds(100));
@@ -63,7 +66,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.Equal(WebSocketState.Open, first.State);
     }
 
-    [Fact]
+    [Test]
     public async Task ATimeoutDescribesWhatTheServerSawOfTheHandshake()
     {
         // Without the deadline (as before #35's fix), the silent socket keeps the
@@ -93,7 +96,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.DoesNotContain("WebSocket 2 opened", timeout.Message);
     }
 
-    [Fact]
+    [Test]
     public async Task AWrongTokenIsReportedAndItsSocketClosed()
     {
         await using var fixture = await HandshakeFixture.StartAsync(connectionTimeoutSeconds: 2, handshakeTimeout: TimeSpan.FromMilliseconds(200));
@@ -117,7 +120,7 @@ public sealed class BridgeHandshakeTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.Equal(WebSocketCloseStatus.PolicyViolation, socket.CloseStatus);
     }
 
-    [Fact]
+    [Test]
     public async Task AWrongTokenSocketGivesTheConnectionToAValidOne()
     {
         // The handshake timeout is long, so only the rejection can free the connection.

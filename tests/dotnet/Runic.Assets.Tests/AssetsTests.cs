@@ -17,72 +17,16 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Assets.AspNetCore;
+using TUnit.Core;
 
 [assembly: System.Runtime.Versioning.SupportedOSPlatform("linux")]
 
 namespace Runic.Assets.Tests;
 
-internal static class Program
+internal sealed class AssetsTests
 {
-    private static readonly TestCase[] Tests =
-    [
-        new("paths reject traversal and ambiguous syntax", SafePaths),
-        new("lookups return false for invalid paths", InvalidLookups),
-        new("request routing serves the root and SPA fallback by policy", RequestRouting),
-        new("manifest metadata and ordering are deterministic", DeterministicManifest),
-        new("embedded assets validate and open offline", EmbeddedAssets),
-        new("development documents replace only a bounded immutable entry", DevelopmentDocument),
-        new("portable archives round-trip deterministic metadata", ArchiveRoundTrip),
-        new("archive writes reject content mutation after validation", ArchiveWriteMutation),
-        new("directory compiler uses the canonical archive authority", DirectoryArchiveAuthority),
-        new("directory archives cache only content-hashed names immutably", DirectoryArchiveCacheModes),
-        new("archive inspection is deterministic", ArchiveInspection),
-        new("archive inspection rejects incompatible schema versions", ArchiveUnsupportedVersion),
-        new("archive manifest parsing is decompression bounded", ArchiveManifestBound),
-        new("ASP.NET Core integration preserves response metadata", AspNetCoreIntegration),
-        new("ASP.NET Core delivery binds metadata and bytes from one source snapshot", AspNetCoreSnapshotIntegration),
-        new("ASP.NET Core assets coexist with app endpoints, controllers, static files and fallbacks", AspNetCoreCoexistence),
-        new("development directory refresh preserves immutable snapshots", DirectoryRefresh),
-        new("development directory snapshots remain digest-verified while files change", DirectorySnapshot),
-        new("development directory publishes owned immutable change snapshots", DirectoryChangeNotifications),
-        new("development directory watcher coalesces one owned refresh", DirectoryWatch),
-        new("development watcher follows the pinned root after path replacement", DirectoryPinnedWatch),
-        new("concurrent watcher disposal waits for the active refresh", DirectoryWatchDispose),
-        new("development notifications serialize reentrant and unsubscribed handlers", DirectoryNotificationDispatch),
-        new("development disposal closes callback admission before returning", DirectoryDisposeDispatch),
-        new("development directory detects content drift", DirectoryDrift),
-        new("development directory rejects symbolic links", DirectoryLinks),
-        new("development directory skips names that are not asset paths", DirectorySkipsInvalidNames),
-        new("development reads reject symlink replacement races", DirectoryLinkSwap),
-        new("development source pins its root across root and ancestor swaps", DirectoryRootPinning),
-        new("sources honor cancellation", Cancellation),
-        new("packer JSON failures keep their RAS codes and redact paths", PackerJsonFaults),
-        new("shipping assembly stays framework neutral", FrameworkNeutral),
-    ];
-
-    public static async Task<int> Main()
-    {
-        int failures = 0;
-        foreach (TestCase test in Tests)
-        {
-            try
-            {
-                await test.Body().ConfigureAwait(false);
-                Console.WriteLine($"PASS {test.Name}");
-            }
-            catch (Exception exception)
-            {
-                failures++;
-                Console.Error.WriteLine($"FAIL {test.Name}");
-                Console.Error.WriteLine(exception);
-            }
-        }
-
-        Console.WriteLine($"RESULT passed={Tests.Length - failures} failed={failures}");
-        return failures == 0 ? 0 : 1;
-    }
-
-    private static Task SafePaths()
+    [Test, DisplayName("paths reject traversal and ambiguous syntax")]
+    public Task SafePaths()
     {
         Equal("assets/app.js", AssetPath.Normalize(@"assets\app.js"));
         foreach (string hostile in HostilePaths)
@@ -93,7 +37,8 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static Task InvalidLookups()
+    [Test, DisplayName("lookups return false for invalid paths")]
+    public Task InvalidLookups()
     {
         AssetManifest manifest = NewRoutingManifest();
         foreach (string hostile in HostilePaths)
@@ -115,7 +60,8 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static Task RequestRouting()
+    [Test, DisplayName("request routing serves the root and SPA fallback by policy")]
+    public Task RequestRouting()
     {
         AssetManifest manifest = NewRoutingManifest();
         var exact = new AssetRoutingOptions { ServeEntryPointAtRoot = false, EnableSinglePageApplicationFallback = false };
@@ -153,7 +99,8 @@ internal static class Program
         new AssetDescriptor("assets/app.js", "text/javascript", 1, new string('b', 64)),
     ]);
 
-    private static Task DeterministicManifest()
+    [Test, DisplayName("manifest metadata and ordering are deterministic")]
+    public Task DeterministicManifest()
     {
         var first = new AssetDescriptor(
             "z.js",
@@ -180,7 +127,8 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static async Task EmbeddedAssets()
+    [Test, DisplayName("embedded assets validate and open offline")]
+    public async Task EmbeddedAssets()
     {
         var source = NewEmbeddedSource();
         var repeatedSource = NewEmbeddedSource();
@@ -201,7 +149,8 @@ internal static class Program
             async () => await source.OpenReadAsync("missing.txt").ConfigureAwait(false)).ConfigureAwait(false);
     }
 
-    private static async Task DevelopmentDocument()
+    [Test, DisplayName("development documents replace only a bounded immutable entry")]
+    public async Task DevelopmentDocument()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("dev.html", "<html>Vite entry</html>");
@@ -221,7 +170,8 @@ internal static class Program
         Throws<InvalidDataException>(() => original.WithDevelopmentDocument(System.IO.Path.Combine(directory.Path, "large.html")));
     }
 
-    private static async Task ArchiveRoundTrip()
+    [Test, DisplayName("portable archives round-trip deterministic metadata")]
+    public async Task ArchiveRoundTrip()
     {
         var source = NewEmbeddedSource();
         using var first = new MemoryStream();
@@ -245,7 +195,8 @@ internal static class Program
             new AssetArchiveReadOptions { MaxArchiveBytes = 1 }));
     }
 
-    private static async Task DirectoryArchiveAuthority()
+    [Test, DisplayName("directory compiler uses the canonical archive authority")]
+    public async Task DirectoryArchiveAuthority()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "entry");
@@ -271,7 +222,8 @@ internal static class Program
         True(!source.Manifest.TryGetAsset("excluded.txt", out _));
     }
 
-    private static async Task DirectoryArchiveCacheModes()
+    [Test, DisplayName("directory archives cache only content-hashed names immutably")]
+    public async Task DirectoryArchiveCacheModes()
     {
         (string Path, AssetCacheMode Expected)[] cases =
         [
@@ -310,7 +262,8 @@ internal static class Program
         }
     }
 
-    private static async Task ArchiveWriteMutation()
+    [Test, DisplayName("archive writes reject content mutation after validation")]
+    public async Task ArchiveWriteMutation()
     {
         var source = new MutationAfterValidationSource("first", "other");
         using var archive = new MemoryStream();
@@ -319,7 +272,8 @@ internal static class Program
             .ConfigureAwait(false);
     }
 
-    private static async Task ArchiveInspection()
+    [Test, DisplayName("archive inspection is deterministic")]
+    public async Task ArchiveInspection()
     {
         using var archive = new MemoryStream();
         await AssetArchive.WriteAsync(NewEmbeddedSource(), archive).ConfigureAwait(false);
@@ -330,7 +284,8 @@ internal static class Program
         Contains("asset=assets/app.css|text/css|", first.ToDeterministicReport());
     }
 
-    private static async Task ArchiveUnsupportedVersion()
+    [Test, DisplayName("archive inspection rejects incompatible schema versions")]
+    public async Task ArchiveUnsupportedVersion()
     {
         using var archive = new MemoryStream();
         using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
@@ -345,7 +300,8 @@ internal static class Program
         Throws<InvalidDataException>(() => AssetArchive.Inspect(archive));
     }
 
-    private static async Task ArchiveManifestBound()
+    [Test, DisplayName("archive manifest parsing is decompression bounded")]
+    public async Task ArchiveManifestBound()
     {
         using var archive = new MemoryStream();
         using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, leaveOpen: true))
@@ -361,7 +317,8 @@ internal static class Program
         Throws<InvalidDataException>(() => AssetArchive.Inspect(archive, options));
     }
 
-    private static async Task AspNetCoreIntegration()
+    [Test, DisplayName("ASP.NET Core integration preserves response metadata")]
+    public async Task AspNetCoreIntegration()
     {
         var source = NewEmbeddedSource();
         AssetDescriptor descriptor = source.Manifest.EntryPoint;
@@ -459,7 +416,8 @@ internal static class Program
         SequenceEqual(full, ((MemoryStream)multiRange.Response.Body).ToArray());
     }
 
-    private static async Task AspNetCoreCoexistence()
+    [Test, DisplayName("ASP.NET Core assets coexist with app endpoints, controllers, static files and fallbacks")]
+    public async Task AspNetCoreCoexistence()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("wwwroot/site.css", "static");
@@ -511,7 +469,8 @@ internal static class Program
         }
     }
 
-    private static async Task AspNetCoreSnapshotIntegration()
+    [Test, DisplayName("ASP.NET Core delivery binds metadata and bytes from one source snapshot")]
+    public async Task AspNetCoreSnapshotIntegration()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -542,7 +501,8 @@ internal static class Program
         Equal("678", Encoding.UTF8.GetString(((MemoryStream)range.Response.Body).ToArray()));
     }
 
-    private static async Task DirectorySkipsInvalidNames()
+    [Test, DisplayName("development directory skips names that are not asset paths")]
+    public async Task DirectorySkipsInvalidNames()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "entry");
@@ -563,7 +523,8 @@ internal static class Program
         Equal(3, source.SkippedEntries.Count);
     }
 
-    private static async Task DirectoryRefresh()
+    [Test, DisplayName("development directory refresh preserves immutable snapshots")]
+    public async Task DirectoryRefresh()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -587,7 +548,8 @@ internal static class Program
         Equal("two", await reader.ReadToEndAsync().ConfigureAwait(false));
     }
 
-    private static async Task DirectorySnapshot()
+    [Test, DisplayName("development directory snapshots remain digest-verified while files change")]
+    public async Task DirectorySnapshot()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -607,7 +569,8 @@ internal static class Program
         Equal("two", await refreshedReader.ReadToEndAsync().ConfigureAwait(false));
     }
 
-    private static async Task DirectoryWatch()
+    [Test, DisplayName("development directory watcher coalesces one owned refresh")]
+    public async Task DirectoryWatch()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -642,7 +605,8 @@ internal static class Program
         True(ReferenceEquals(stopped, source.Manifest));
     }
 
-    private static async Task DirectoryWatchDispose()
+    [Test, DisplayName("concurrent watcher disposal waits for the active refresh")]
+    public async Task DirectoryWatchDispose()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -670,7 +634,8 @@ internal static class Program
         True(!watch.IsWatching);
     }
 
-    private static async Task DirectoryPinnedWatch()
+    [Test, DisplayName("development watcher follows the pinned root after path replacement")]
+    public async Task DirectoryPinnedWatch()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -697,7 +662,8 @@ internal static class Program
         Equal("two", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
     }
 
-    private static Task DirectoryChangeNotifications()
+    [Test, DisplayName("development directory publishes owned immutable change snapshots")]
+    public Task DirectoryChangeNotifications()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -735,7 +701,8 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static async Task DirectoryNotificationDispatch()
+    [Test, DisplayName("development notifications serialize reentrant and unsubscribed handlers")]
+    public async Task DirectoryNotificationDispatch()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -778,7 +745,8 @@ internal static class Program
         Equal(3, calls);
     }
 
-    private static async Task DirectoryDisposeDispatch()
+    [Test, DisplayName("development disposal closes callback admission before returning")]
+    public async Task DirectoryDisposeDispatch()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -810,7 +778,8 @@ internal static class Program
         Throws<ObjectDisposedException>(() => source.Refresh());
     }
 
-    private static async Task DirectoryDrift()
+    [Test, DisplayName("development directory detects content drift")]
+    public async Task DirectoryDrift()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("index.html", "one");
@@ -820,7 +789,8 @@ internal static class Program
             async () => await source.ValidateAsync().ConfigureAwait(false)).ConfigureAwait(false);
     }
 
-    private static Task DirectoryLinks()
+    [Test, DisplayName("development directory rejects symbolic links")]
+    public Task DirectoryLinks()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -837,7 +807,8 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static async Task DirectoryLinkSwap()
+    [Test, DisplayName("development reads reject symlink replacement races")]
+    public async Task DirectoryLinkSwap()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -868,7 +839,8 @@ internal static class Program
         }
     }
 
-    private static async Task DirectoryRootPinning()
+    [Test, DisplayName("development source pins its root across root and ancestor swaps")]
+    public async Task DirectoryRootPinning()
     {
         if (!OperatingSystem.IsLinux())
         {
@@ -904,7 +876,8 @@ internal static class Program
         Equal("pinned", await ReadTextAsync(source, "index.html").ConfigureAwait(false));
     }
 
-    private static async Task Cancellation()
+    [Test, DisplayName("sources honor cancellation")]
+    public async Task Cancellation()
     {
         var source = NewEmbeddedSource();
         using var cancellation = new CancellationTokenSource();
@@ -915,7 +888,8 @@ internal static class Program
             async () => await source.OpenReadAsync("index.html", cancellation.Token).ConfigureAwait(false)).ConfigureAwait(false);
     }
 
-    private static Task FrameworkNeutral()
+    [Test, DisplayName("shipping assembly stays framework neutral")]
+    public Task FrameworkNeutral()
     {
         Assembly assembly = typeof(AssetManifest).Assembly;
         string[] references = assembly.GetReferencedAssemblies().Select(static reference => reference.Name ?? "").ToArray();
@@ -935,7 +909,7 @@ internal static class Program
 
     private static EmbeddedAssetSource NewEmbeddedSource() =>
         new(
-            typeof(Program).Assembly,
+            typeof(AssetsTests).Assembly,
             [
                 new("index.html", "Runic.Assets.Tests.index.html", IsEntryPoint: true),
                 new(
@@ -1014,7 +988,6 @@ internal static class Program
         throw new InvalidOperationException($"Expected {typeof(TException).Name}.");
     }
 
-    private sealed record TestCase(string Name, Func<Task> Body);
 
     private sealed class ThrowingAssetSource : IAssetSource
     {
@@ -1137,7 +1110,8 @@ internal static class Program
     // text, so the source directory is redacted only where the temporary
     // directory looks like one; macOS /var/folders is shown. Human output still
     // names the path.
-    private static async Task PackerJsonFaults()
+    [Test, DisplayName("packer JSON failures keep their RAS codes and redact paths")]
+    public async Task PackerJsonFaults()
     {
         using var directory = new TemporaryDirectory();
         directory.Write("site/index.html", "<p>x</p>");

@@ -3,23 +3,18 @@ using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Navigation;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
 // D018.5: a command body resumes on the model context after await, so state it
 // writes after await is applied in a model turn and in order, in both MVVM flavours.
-internal static class ContinuationTests
+internal sealed class ContinuationTests
 {
     private static readonly string[] Body = ["start", "yield", "delay", "inner", "nested"];
 
-    internal static async Task RunAsync()
-    {
-        await ToolkitCommandResumesOnTheModelContext();
-        await ReactiveCommandResumesOnTheModelContext();
-        await AwaitedInteractionResumesOnTheModelContext();
-    }
-
-    private static async Task ToolkitCommandResumesOnTheModelContext()
+    [Test]
+    public async Task ToolkitCommandResumesOnTheModelContext()
     {
         var probe = new ContinuationProbe();
         var model = new ToolkitContinuationViewModel(probe);
@@ -31,7 +26,8 @@ internal static class ContinuationTests
         Require(model.Status == "b:released", $"The Toolkit command's last write was lost: {model.Status}");
     }
 
-    private static async Task ReactiveCommandResumesOnTheModelContext()
+    [Test]
+    public async Task ReactiveCommandResumesOnTheModelContext()
     {
         await using var context = new RunicModelContext();
         var probe = new ContinuationProbe { Context = context };
@@ -47,7 +43,8 @@ internal static class ContinuationTests
     // A ReactiveUI interaction that a frontend answers completes on a bridge
     // thread. Awaiting it in a body that runs in a turn still resumes in the
     // context, so the body sets state after it directly.
-    private static async Task AwaitedInteractionResumesOnTheModelContext()
+    [Test]
+    public async Task AwaitedInteractionResumesOnTheModelContext()
     {
         await using var context = new RunicModelContext();
         var interaction = new ReactiveUI.Binding.Interaction<int, bool>();

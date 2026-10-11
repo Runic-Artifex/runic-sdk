@@ -5,14 +5,18 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using TUnit.Core;
+using TUnit.Core.Executors;
 using static Runic.Navigation.Wpf.Tests.Ui;
 
 namespace Runic.Navigation.Wpf.Tests;
 
 // NavigationDialogHost (W240-001 §8.4 and the §15 re-review resolutions).
-internal static class DialogTests
+[TestExecutor<WpfDispatcherExecutor>]
+internal sealed class DialogTests
 {
-    public static void Results()
+    [Test, DisplayName("dialog results"), NotInParallel("WpfSuite", Order = 29)]
+    public void Results()
     {
         using var scene = new DialogScene();
         // Completed through the entry.
@@ -38,7 +42,8 @@ internal static class DialogTests
         Require(scene.Region.CurrentEntry is null, "The dialog entry stayed.");
     }
 
-    public static void GuardVetoKeepsTheWindow()
+    [Test, DisplayName("dialog guard veto"), NotInParallel("WpfSuite", Order = 30)]
+    public void GuardVetoKeepsTheWindow()
     {
         using var scene = new DialogScene();
         var vm = new DialogViewModel("veto") { Allow = () => false };
@@ -54,7 +59,8 @@ internal static class DialogTests
         PumpUntil(() => !IsOpen(window), "the window to close");
     }
 
-    public static void NestedDialogsCloseTopDown()
+    [Test, DisplayName("nested dialogs"), NotInParallel("WpfSuite", Order = 31)]
+    public void NestedDialogsCloseTopDown()
     {
         using var scene = new DialogScene();
         Pump(scene.Region.PushAsync(NavigationTarget.Own<object>(new DialogViewModel("lower"))));
@@ -78,7 +84,8 @@ internal static class DialogTests
     }
 
     // An entry dismissed after its commit but before the posted reconcile never gets a window.
-    public static void DismissedBeforeReconcile()
+    [Test, DisplayName("dismissed before reconcile"), NotInParallel("WpfSuite", Order = 32)]
+    public void DismissedBeforeReconcile()
     {
         SignallingContext? signalling = null;
         var fixture = new NavFixture(DispatcherPriority.Send, inner => signalling = new SignallingContext(inner));
@@ -112,7 +119,8 @@ internal static class DialogTests
     }
 
     // Show() throws: 1083 and exactly one ClearAsync; with a vetoing guard, no second 1083 or clear.
-    public static void ShowFailureClearsOnce()
+    [Test, DisplayName("Show failure"), NotInParallel("WpfSuite", Order = 33)]
+    public void ShowFailureClearsOnce()
     {
         var failing = new Style(typeof(Window));
         failing.Setters.Add(new Setter(Window.AllowsTransparencyProperty, true));
@@ -132,7 +140,8 @@ internal static class DialogTests
         stubborn.Allow = () => true;
     }
 
-    public static void ApplicationModality()
+    [Test, DisplayName("application modality"), NotInParallel("WpfSuite", Order = 34)]
+    public void ApplicationModality()
     {
         var other = ShowWindow();
         try
@@ -154,7 +163,8 @@ internal static class DialogTests
         finally { other.Close(); }
     }
 
-    public static void OwnerModality()
+    [Test, DisplayName("owner modality"), NotInParallel("WpfSuite", Order = 35)]
+    public void OwnerModality()
     {
         var other = ShowWindow();
         try
@@ -172,7 +182,8 @@ internal static class DialogTests
     }
 
     // A window the app disabled stays disabled; two hosts re-enable a shared owner only after both close.
-    public static void SharedRefcount()
+    [Test, DisplayName("shared refcount"), NotInParallel("WpfSuite", Order = 36)]
+    public void SharedRefcount()
     {
         var appDisabled = ShowWindow();
         EnableWindow(Handle(appDisabled), false);
@@ -212,7 +223,8 @@ internal static class DialogTests
 
     // The table counts a window that something re-enabled while held, and an entry dies with its window, so a
     // recycled handle never inherits counts.
-    public static void ModalityTableHolds()
+    [Test, DisplayName("modality table holds"), NotInParallel("WpfSuite", Order = 37)]
+    public void ModalityTableHolds()
     {
         var window = ShowWindow();
         var hwnd = Handle(window);
@@ -240,7 +252,8 @@ internal static class DialogTests
     }
 
     // W250-016: IsDefault and IsCancel as in ShowDialog. Enter and Esc go through WPF's access keys, as from the keyboard.
-    public static void DefaultAndCancelButtons()
+    [Test, DisplayName("IsDefault and IsCancel buttons"), NotInParallel("WpfSuite", Order = 38)]
+    public void DefaultAndCancelButtons()
     {
         using var scene = new DialogScene(host => host.Resources.Add(new DataTemplateKey(typeof(ButtonsDialog)), ButtonsDialog.Template()));
         // Enter clicks the default button, whose command completes the dialog.
@@ -284,7 +297,8 @@ internal static class DialogTests
         AccessKeyManager.ProcessKey(PresentationSource.FromVisual(window), key, false);
     }
 
-    public static void Escape()
+    [Test, DisplayName("Esc"), NotInParallel("WpfSuite", Order = 39)]
+    public void Escape()
     {
         using var scene = new DialogScene();
         var request = scene.Region.PushForResult<bool>(NavigationTarget.Own<object>(new DialogViewModel("esc")));
@@ -303,7 +317,8 @@ internal static class DialogTests
 
     // The host never cancels its owner's close: the owner and its dialogs close, and one ClearAsync follows. With a
     // vetoing guard the entries stay without windows, and get windows again under a new owner.
-    public static void OwnerClose()
+    [Test, DisplayName("owner close"), NotInParallel("WpfSuite", Order = 40)]
+    public void OwnerClose()
     {
         using var fixture = new NavFixture();
         using (var scene = new DialogScene(fixture: new NavFixture()))
@@ -343,7 +358,8 @@ internal static class DialogTests
     }
 
     // An async guard confirms through the dialog host with a real window.
-    public static void LeaveConfirmationInDialog()
+    [Test, DisplayName("leave confirmation in a dialog"), NotInParallel("WpfSuite", Order = 41)]
+    public void LeaveConfirmationInDialog()
     {
         using var scene = new DialogScene();
         var home = new Page("home");
@@ -364,7 +380,8 @@ internal static class DialogTests
     }
 
     // Last: Application.Shutdown with open dialogs closes everything, and the navigator retires every entry.
-    public static void ApplicationShutdown()
+    [Test, DisplayName("Application.Shutdown"), NotInParallel("WpfSuite", Order = 42)]
+    public void ApplicationShutdown()
     {
         var scene = new DialogScene();
         Pump(scene.Region.PushAsync(NavigationTarget.Own<object>(new DialogViewModel("lower"))));

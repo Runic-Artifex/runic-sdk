@@ -1,12 +1,14 @@
 using System.Text.Json;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
 
-internal static class CollectionDeltaTests
+internal sealed class CollectionDeltaTests
 {
-    internal static async Task RunAsync()
+    [Test]
+    public async Task CollectionChangesPublishOrderedDeltasAsync()
     {
         var model = new CollectionDeltaViewModel();
         using var transport = new InMemoryViewTransport();

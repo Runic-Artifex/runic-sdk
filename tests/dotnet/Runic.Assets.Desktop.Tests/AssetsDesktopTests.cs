@@ -14,36 +14,14 @@ using Microsoft.Extensions.Logging;
 using Runic.Assets.AspNetCore;
 using Runic.Desktop;
 using Runic.Assets.Desktop;
+using TUnit.Core;
 
 namespace Runic.Assets.Desktop.Tests;
 
-internal static class Program
+internal sealed class AssetsDesktopTests
 {
-    public static async Task<int> Main()
-    {
-        int failures = 0;
-        foreach ((string name, Func<Task> body) in new (string, Func<Task>)[]
-        {
-            ("Desktop delivery preserves asset streams, cache metadata, ranges, and HEAD", DesktopDelivery),
-            ("Desktop and ASP.NET Core route one manifest identically", RoutingParity),
-        })
-        {
-            try
-            {
-                await body().ConfigureAwait(false);
-                Console.WriteLine($"ok - {name}");
-            }
-            catch (Exception exception)
-            {
-                failures++;
-                Console.Error.WriteLine($"not ok - {name}\n{exception}");
-            }
-        }
-
-        return failures == 0 ? 0 : 1;
-    }
-
-    private static async Task DesktopDelivery()
+    [Test, DisplayName("Desktop delivery preserves asset streams, cache metadata, ranges, and HEAD")]
+    public async Task DesktopDelivery()
     {
         byte[] content = "hello"u8.ToArray();
         var source = new MemorySource(content);
@@ -87,7 +65,8 @@ internal static class Program
         Equal(source.Opened, source.Disposed);
     }
 
-    private static async Task RoutingParity()
+    [Test, DisplayName("Desktop and ASP.NET Core route one manifest identically")]
+    public async Task RoutingParity()
     {
         var source = new RoutingSource(
             ("index.html", "entry", true),

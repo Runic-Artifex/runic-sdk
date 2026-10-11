@@ -130,12 +130,12 @@ Packages are materialized after the build independently of test completion.
 Separate package-consumer and template jobs validate these candidates.
 Only the final `verify` gate succeeding means all required jobs have passed.
 
-Desktop conformance uses
-`desktop.runsettings`: xUnit reports tests running longer than 30 seconds and
-VSTest records diagnostics and TRX results. A two-minute hang limit aborts the
-test host, with a three-minute session deadline and a five-minute Actions step
-backstop for stalls outside individual tests. Failure artifacts are retained
-by the following `always()` upload step. No crash dumps are requested.
+Desktop conformance (`Runic.Desktop.Tests`, a TUnit suite) runs in the native job
+on every OS, not in the managed job. It writes Microsoft.Testing.Platform
+diagnostics and a TRX report to `artifacts/native-tests`. A case fails after two
+minutes, `--timeout 3m` ends the session, and the five-minute Actions step limit
+backs up stalls outside the test application. Failure artifacts are retained by
+the following `always()` upload step. No crash dumps are requested.
 
 ## GitHub reruns
 

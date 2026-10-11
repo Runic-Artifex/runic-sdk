@@ -8,41 +8,24 @@ using Runic.Application.Views;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
 using Runic.Navigation;
+using TUnit.Core;
 
-internal static class Program
+// The portable WPF session cases, in the former runner's order (HostLifecycleTests holds cases 5-9). The
+// Windows suite compiles this file too and runs every case on its WPF dispatcher (WpfDispatcherExecutor).
+// The class keeps the name Program: the cases and NativeChecks use its helpers as Program.Check and
+// Program.HtmlOptions.
+internal sealed class Program
 {
-#if WINDOWS
-    [STAThread]
-    private static int Main()
+    [Test, NotInParallel("WpfSuite", Order = 10)]
+    public void ValidateReportsUnsupportedLayoutOptions()
     {
-        var application = new System.Windows.Application();
-        var exitCode = 0;
-        application.Dispatcher.InvokeAsync(async () =>
-        {
-            try { await RunAsync(); await NativeChecks.RunAsync(); }
-            catch (Exception error) { Console.Error.WriteLine(error); exitCode = 1; }
-            finally { application.Shutdown(); }
-        });
-        application.Run();
-        return exitCode;
-    }
-#else
-    private static Task Main() => RunAsync();
-#endif
-    private static async Task RunAsync()
-    {
-        await MissingBridgeFailsBeforeListener();
-        await BorrowedResourcesSurviveCloseAndAcceptedWork();
-        await NativeUnloadReleasesSession();
-        await ReentrantCloseRunsOnce();
-        await HostLifecycleTests.RunAsync();
         Check(WpfPresentationOptions.Validate(new()).Count == 0, "Default options produced layout warnings.");
         var warnings = WpfPresentationOptions.Validate(new() { Width = 1200, Transparent = true, X = 20 });
         Check(warnings.Select(item => item.Option).ToHashSet().SetEquals(["Width", "Transparent", "X"]), "Unsupported layout options were not reported.");
-        Console.WriteLine("Runic.Application.Views.Wpf portable session checks passed.");
     }
 
-    private static async Task MissingBridgeFailsBeforeListener()
+    [Test, NotInParallel("WpfSuite", Order = 1)]
+    public async Task MissingBridgeFailsBeforeListener()
     {
         await using var services = new ServiceCollection().BuildServiceProvider();
         await using var host = await DesktopHost.StartAsync();
@@ -55,7 +38,8 @@ internal static class Program
         Check(host.Port == 0, "Missing registration allocated a listener.");
     }
 
-    private static async Task BorrowedResourcesSurviveCloseAndAcceptedWork()
+    [Test, NotInParallel("WpfSuite", Order = 2)]
+    public async Task BorrowedResourcesSurviveCloseAndAcceptedWork()
     {
         var model = new Model();
         var probe = new BorrowedService();
@@ -90,7 +74,8 @@ internal static class Program
         Check((await http.GetAsync(url)).StatusCode == HttpStatusCode.NotFound, "Closed view assets remained available.");
     }
 
-    private static async Task NativeUnloadReleasesSession()
+    [Test, NotInParallel("WpfSuite", Order = 3)]
+    public async Task NativeUnloadReleasesSession()
     {
         var model = new Model();
         var attachment = new BorrowedService();
@@ -118,7 +103,8 @@ internal static class Program
     }
 
     // Releasing the attachment can pump messages (WebView2/COM) and re-enter close on the same thread.
-    private static async Task ReentrantCloseRunsOnce()
+    [Test, NotInParallel("WpfSuite", Order = 4)]
+    public async Task ReentrantCloseRunsOnce()
     {
         var attachment = new ReentrantAttachment();
         var collection = new ServiceCollection();

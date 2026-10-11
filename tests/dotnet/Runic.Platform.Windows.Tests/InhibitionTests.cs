@@ -1,11 +1,17 @@
 using System.Diagnostics;
-using Runic.Platform;
-using Runic.Platform.Windows;
+using TUnit.Core;
 
-internal static class InhibitionTests
+namespace Runic.Platform.Windows.Tests;
+
+internal sealed class InhibitionTests
 {
-    internal static async Task<int> RunAsync(bool inspectPowerRequests, bool systemOnly)
+    // Options of the former --native-inhibition mode: --test-parameter inspect-power-requests=true and
+    // --test-parameter system-only=true.
+    [Test, Explicit, Category("NativeInhibition")]
+    public async Task NativeInhibitionAsync()
     {
+        bool inspectPowerRequests = TestOptions.Flag("inspect-power-requests");
+        bool systemOnly = TestOptions.Flag("system-only");
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Native inhibition requires Windows.");
         var provider = WindowsPlatformProvider.CreateInhibition();
         string firstReason = "Runic system export " + Guid.NewGuid().ToString("N");
@@ -27,7 +33,6 @@ internal static class InhibitionTests
         catch (OperationCanceledException) { }
         Console.WriteLine("PASS native Windows inhibition (" + (systemOnly ? "system sleep only; display not tested" : "system and display sleep") + "): independent acquisition, idempotent disposal and cancellation" +
             (inspectPowerRequests ? "; powercfg confirms both requests, independent removal and final cleanup." : ". OS power policy was not inspected."));
-        return 0;
     }
 
     private static async Task<IDesktopInhibitionLease> AcquireAsync(IDesktopInhibition provider, DesktopInhibitionEffects effects, string reason, CancellationToken token = default)

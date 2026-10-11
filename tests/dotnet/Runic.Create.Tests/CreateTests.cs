@@ -8,49 +8,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Runic.CommandLine;
 using Runic.Create;
+using TUnit.Core;
 
 namespace Runic.Create.Tests;
 
-internal static class Program
+internal sealed class CreateTests
 {
-    public static int Main()
-    {
-        (string Name, Action Body)[] tests =
-        [
-            ("the option model mirrors the template's visible choices", ModelMirrorsTemplate),
-            ("the creator exposes a flag for every template option", CreatorExposesEveryOption),
-            ("explicit choices match case-insensitively and reject unknown values", ExplicitChoicesAreValidated),
-            ("project names start with a letter", ProjectNamesAreValidated),
-            ("plans print the same choices for dotnet new and the creator", PlansAreReproducible),
-            ("plans quote values a shell would split", PlansQuoteShellValues),
-            ("-o and --output choose the destination as they do for dotnet new", OutputChoosesTheDestination),
-            ("--directory remains a hidden alias of --output", DirectoryIsAFormerAlias),
-            ("--format selects JSON output", FormatSelectsJson),
-            ("the test project toggle is a presence flag in every command", TestsTogglePassesThrough),
-            ("faults link to their catalog entry at the release tag", FaultsLinkToCatalog),
-        ];
-
-        int failures = 0;
-        foreach ((string name, Action body) in tests)
-        {
-            try
-            {
-                body();
-                Console.WriteLine($"PASS {name}");
-            }
-            catch (Exception exception)
-            {
-                failures++;
-                Console.Error.WriteLine($"FAIL {name}");
-                Console.Error.WriteLine(exception);
-            }
-        }
-
-        Console.WriteLine($"{tests.Length - failures}/{tests.Length} Runic.Create tests passed.");
-        return failures == 0 ? 0 : 1;
-    }
-
-    private static void FaultsLinkToCatalog()
+    [Test, DisplayName("faults link to their catalog entry at the release tag")]
+    public void FaultsLinkToCatalog()
     {
         var outcome = CreateApplication.Failure(Runic.CommandLine.CommandExitCategory.Usage, "RCREATE002", "Invalid name.");
         Equal("RCREATE002", outcome.Fault!.Code);
@@ -59,7 +24,8 @@ internal static class Program
             && help.EndsWith("/docs/diagnostics.md#rcreate002\n", StringComparison.Ordinal), help);
     }
 
-    private static void ModelMirrorsTemplate()
+    [Test, DisplayName("the option model mirrors the template's visible choices")]
+    public void ModelMirrorsTemplate()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         Equal("frontend,package-manager,host,view-models", string.Join(',', model.Options.Select(option => option.LongName)));
@@ -80,13 +46,15 @@ internal static class Program
         Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
 
-    private static void CreatorExposesEveryOption()
+    [Test, DisplayName("the creator exposes a flag for every template option")]
+    public void CreatorExposesEveryOption()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         Equal(string.Join(',', model.Options.Select(option => option.LongName)), string.Join(',', Runic.Create.Program.OptionFlags));
     }
 
-    private static void ExplicitChoicesAreValidated()
+    [Test, DisplayName("explicit choices match case-insensitively and reject unknown values")]
+    public void ExplicitChoicesAreValidated()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         True(CreateApplication.TryResolveExplicit(model,
@@ -99,7 +67,8 @@ internal static class Program
         Equal("Unknown --package-manager 'yarn'. Choose npm, pnpm, bun.", error);
     }
 
-    private static void ProjectNamesAreValidated()
+    [Test, DisplayName("project names start with a letter")]
+    public void ProjectNamesAreValidated()
     {
         foreach (string name in new[] { "MyApp", "my-app", "Company.Product", "a" })
             True(CreateApplication.IsValidName(name), name);
@@ -107,7 +76,8 @@ internal static class Program
             True(!CreateApplication.IsValidName(name), name);
     }
 
-    private static void PlansAreReproducible()
+    [Test, DisplayName("plans print the same choices for dotnet new and the creator")]
+    public void PlansAreReproducible()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         CreatePlan plan = new("MyApp", null, "1.2.3-preview.4",
@@ -119,7 +89,8 @@ internal static class Program
         Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', plan.NextSteps));
     }
 
-    private static void PlansQuoteShellValues()
+    [Test, DisplayName("plans quote values a shell would split")]
+    public void PlansQuoteShellValues()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         CreatePlan plan = new("MyApp", "My Projects/it's", "1.0.0",
@@ -130,7 +101,8 @@ internal static class Program
         Equal("cd 'My Projects/it'\"'\"'s'", plan.NextSteps[0]);
     }
 
-    private static void OutputChoosesTheDestination()
+    [Test, DisplayName("-o and --output choose the destination as they do for dotnet new")]
+    public void OutputChoosesTheDestination()
     {
         string destination = Path.Combine(Path.GetTempPath(), "runic-create-" + Guid.NewGuid().ToString("N"), "apps", "MyApp");
         foreach (string flag in new[] { "-o", "--output" })
@@ -143,7 +115,8 @@ internal static class Program
         }
     }
 
-    private static void DirectoryIsAFormerAlias()
+    [Test, DisplayName("--directory remains a hidden alias of --output")]
+    public void DirectoryIsAFormerAlias()
     {
         string destination = Path.Combine(Path.GetTempPath(), "runic-create-" + Guid.NewGuid().ToString("N"));
         (int exitCode, string output, _) = Run("MyApp", "--directory", destination, "--yes", "--dry-run", "--format", "json");
@@ -159,7 +132,8 @@ internal static class Program
         True(!help.Contains("--directory", StringComparison.Ordinal), help);
     }
 
-    private static void FormatSelectsJson()
+    [Test, DisplayName("--format selects JSON output")]
+    public void FormatSelectsJson()
     {
         (int exitCode, string output, _) = Run("MyApp", "--yes", "--dry-run", "--format", "json");
         Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -208,7 +182,8 @@ internal static class Program
         }
     }
 
-    private static void TestsTogglePassesThrough()
+    [Test, DisplayName("the test project toggle is a presence flag in every command")]
+    public void TestsTogglePassesThrough()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();

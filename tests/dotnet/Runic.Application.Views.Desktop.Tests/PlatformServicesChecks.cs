@@ -4,23 +4,15 @@ using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
 using Runic.Platform;
+using TUnit.Core;
+using TUnit.Core.Enums;
 
 // Checks for the platform-services facade: provider selection from the running backend, and per-window services a
 // ViewModel takes in its constructor that bind when the window opens and stop when it closes.
-static class PlatformServicesChecks
+internal sealed class PlatformServicesChecks
 {
-    internal static async Task RunAsync()
-    {
-        ProviderFollowsTheRunningBackend();
-        await ViewModelServicesBindWhenTheWindowOpens();
-        await WindowWithoutNativeDispatchReportsNoOwner();
-        await ForWindowBindsAnOpenWindow();
-        await ReadmeSampleReportsAnUnboundWindow();
-        // Claims GTK 4 for this process, so it runs last.
-        if (OperatingSystem.IsLinux()) await Gtk4ProcessSelectsOnlyTheGtk4Provider();
-    }
-
-    private static void ProviderFollowsTheRunningBackend()
+    [Test, NotInParallel(Order = 13)]
+    public void ProviderFollowsTheRunningBackend()
     {
         Require(PlatformServices.Select(windows: true, macOS: false, linux: false, gtk3Claimed: false, gtk4Claimed: false) == DesktopPlatformProvider.Windows,
             "Windows did not select the Windows provider.");
@@ -36,7 +28,8 @@ static class PlatformServicesChecks
             "An unknown operating system selected a provider.");
     }
 
-    private static async Task ViewModelServicesBindWhenTheWindowOpens()
+    [Test, NotInParallel(Order = 14)]
+    public async Task ViewModelServicesBindWhenTheWindowOpens()
     {
         await using var provider = CreateProvider();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
@@ -87,7 +80,8 @@ static class PlatformServicesChecks
             "Capabilities of a closed window were not all owner-closed.");
     }
 
-    private static async Task WindowWithoutNativeDispatchReportsNoOwner()
+    [Test, NotInParallel(Order = 15)]
+    public async Task WindowWithoutNativeDispatchReportsNoOwner()
     {
         await using var provider = CreateProvider();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
@@ -104,7 +98,8 @@ static class PlatformServicesChecks
             "A window without native dispatch did not report the owner unavailable.");
     }
 
-    private static async Task ForWindowBindsAnOpenWindow()
+    [Test, NotInParallel(Order = 16)]
+    public async Task ForWindowBindsAnOpenWindow()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") });
@@ -117,7 +112,8 @@ static class PlatformServicesChecks
             "Disposed window services did not report the owner closed.");
     }
 
-    private static async Task ReadmeSampleReportsAnUnboundWindow()
+    [Test, NotInParallel(Order = 17)]
+    public async Task ReadmeSampleReportsAnUnboundWindow()
     {
         // Before the window opens nothing is selected, read or saved.
         await using var provider = new ServiceCollection().AddRunicPlatformServices().BuildServiceProvider();
@@ -127,7 +123,9 @@ static class PlatformServicesChecks
         Require(notes.Text == "unchanged" && !await notes.SaveAsync(), "The README sample read or saved without a window.");
     }
 
-    private static async Task Gtk4ProcessSelectsOnlyTheGtk4Provider()
+    // Claims GTK 4 for this process, so it runs last.
+    [Test, NotInParallel(Order = 18), RunOn(OS.Linux)]
+    public async Task Gtk4ProcessSelectsOnlyTheGtk4Provider()
     {
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);
         Require(PlatformServices.CurrentProvider == DesktopPlatformProvider.LinuxGtk4, "A GTK 4 process did not select the GTK 4 provider.");
