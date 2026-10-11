@@ -1479,8 +1479,9 @@ static class BridgeDiagnosticCodes
     internal const string Failure = "RUNICBRIDGE012";
     /// <summary>Warning: a ViewModel that a content slot or navigation region admits has no View.</summary>
     internal const string MissingView = "RUNICBRIDGE013";
-    // RUNICBRIDGE014 (missing frontend) and RUNICBRIDGE015 (generation off with a
-    // declared View) are reported by Runic.Application.Views.targets.
+    // RUNICBRIDGE014 (missing frontend), RUNICBRIDGE015 (generation off with a
+    // declared View) and RUNICBRIDGE016 (failed frontend command) are reported
+    // by Runic.Application.Views.targets.
 }
 
 /// <summary>A generator diagnostic with its ID and the declaration it concerns.</summary>

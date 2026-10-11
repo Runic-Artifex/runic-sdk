@@ -364,6 +364,14 @@ for the release you use.
 `RUNICBRIDGE013` is a warning and repeats on builds that reuse the cached
 generation; every other code fails the build.
 
+The build targets run the generator and the frontend install and build
+commands without wrapping their failures in MSB3073. Errors and warnings that a
+command prints in the canonical `file(line,column): error CODE: text` form, such
+as the generator's and `tsc`'s, are logged once with their code and location. A
+failed command that reports no such error gets one summary error instead:
+`RUNICBRIDGE001` for the generator, `RUNICBRIDGE016` for the frontend
+commands.
+
 | ID | Problem | Fix |
 | --- | --- | --- |
 | `RUNICBRIDGE001` | Invalid generator invocation or build configuration, such as a malformed `RunicBridgeCompositionType`; also an internal generator error. | Correct the build property. Report an internal error with the ViewModel that triggers it. |
@@ -381,6 +389,7 @@ generation; every other code fails the build.
 | `RUNICBRIDGE013` (warning) | A public, concrete ViewModel in the application assembly can be put in a ViewModel content property, ViewModel collection or `NavigationRegion<TContent>` slot, but has no View, so pushing or presenting it throws `NotSupportedException` naming the slot and the type. Broad slot types are not checked: framework types (System, ReactiveUI, CommunityToolkit), a type the slot's owner or a Window's ViewModel also derives from or implements, and a type that more than eight ViewModels without a View could fill. | Add a View, such as `public sealed partial class SettingsView : RunicView<SettingsViewModel>;` (with the slot's `[RunicViewContract]`, if any). If the type is never presented there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`. |
 | `RUNICBRIDGE014` | A project declares Runic Views, but `RunicBridgeFrontendDir` does not exist or, with the default build command, has no `package.json`. Reported by the build targets. | Create the frontend there, point `RunicBridgeFrontendDir` at your frontend package, or set `RunicBridgeBuildFrontend=false` when another tool builds it. |
 | `RUNICBRIDGE015` (warning) | A project declares a Runic Window or View, but generation is off because it references no host adapter and not `Runic.Application` directly, so no bridge, `AddRunicViews()` or client is generated. Reported by the build targets. | Set `RunicBridgeBuildEnabled=true` to generate in that project, or `false` when another project generates its Views. |
+| `RUNICBRIDGE016` | The frontend install or build command failed without reporting an error in the canonical `file(line,column): error CODE: text` form (a Vite or package-manager error, for example), or the install created no `node_modules` for declared dependencies. The command's own output is printed above the error. Reported by the build targets. | Fix the problem the command reports, or run `dotnet runic doctor` to check the package manager and lock file. |
 
 ## Build properties
 
@@ -394,7 +403,7 @@ departs from the conventional `Frontend` folder.
 | `RunicBridgeTypescriptDir` | `<frontend>/src/generated` | Generated TypeScript clients. |
 | `RunicBridgeFrontendPackageManager` | `packageManager` in `package.json`, then `pnpm-lock.yaml`, `bun.lock`, else `npm` | Selects the default build and install commands. |
 | `RunicBridgeFrontendBuildCommand` | `npm run build`, `pnpm run build`, or `bun run --bun build` | Production frontend build. |
-| `RunicBridgeFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs when `node_modules` is missing. |
+| `RunicBridgeFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs before the frontend build when `package.json` or a lock file changed since the last install (stamp: `obj/runic-bridge-frontend-install.stamp`), or when declared dependencies have no `node_modules`. A `package.json` without dependencies needs no `node_modules`. |
 | `RunicBridgeInstallFrontend` | `true` | Set `false` when a workspace install owns the frontend packages. |
 | `RunicBridgeBuildFrontend` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
 | `RunicBridgeCopyFrontend` | `true` | Copies `<frontend>/dist` to `www/` in the build output. Publish always copies it. |

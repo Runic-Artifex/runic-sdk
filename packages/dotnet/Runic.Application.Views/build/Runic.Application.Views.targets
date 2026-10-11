@@ -11,7 +11,75 @@
          but must not generate or bootstrap again: it compiles the code that
          the real project generated before the copy was created. -->
     <_RunicBridgeMarkupTemporary Condition="'$(_TargetAssemblyProjectName)' != '' or $(MSBuildProjectName.EndsWith('_wpftmp'))">true</_RunicBridgeMarkupTemporary>
+    <!-- Output lines that report an error or warning in the canonical
+         "origin: error CODE: text" form, as the generator, tsc and vue-tsc do. -->
+    <_RunicBridgeCanonicalDiagnostic>(^|:)\s*(error|warning)\s+[A-Za-z]+\d+\s*:</_RunicBridgeCanonicalDiagnostic>
   </PropertyGroup>
+
+  <!-- The generator and the frontend commands run with IgnoreExitCode, so a
+       failure is not repeated as MSB3073 ("The command exited with code 1").
+       This task logs their canonical errors and warnings with their codes and
+       locations, and logs the summary error only when the command failed
+       without reporting one. It is compiled only when a command failed or
+       reported a diagnostic. -->
+  <UsingTask TaskName="RunicBridgeReportCommandResult" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Lines ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
+      <ExitCode ParameterType="System.Int32" Required="true" />
+      <WorkingDirectory ParameterType="System.String" />
+      <FailureCode ParameterType="System.String" Required="true" />
+      <FailureFile ParameterType="System.String" />
+      <FailureText ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Method" Language="cs"><![CDATA[
+        public override bool Execute()
+        {
+          var diagnostic = new Regex(@"^\s*(?:(?<origin>.*?)\s*:\s*)?(?<kind>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<text>.*)$");
+          var location = new Regex(@"^(?<file>.*?)\s*\((?<line>\d+)(?:[,-](?<column>\d+))?[^)]*\)$");
+          bool reportedError = false;
+          foreach (var item in Lines ?? new Microsoft.Build.Framework.ITaskItem[0])
+          {
+            Match match = diagnostic.Match(item.ItemSpec);
+            if (!match.Success) continue;
+            // A diagnostic without an origin, such as the generator's, belongs to the project.
+            string file = match.Groups["origin"].Value.Trim();
+            int line = 0, column = 0;
+            Match at = location.Match(file);
+            if (at.Success)
+            {
+              file = at.Groups["file"].Value;
+              line = int.Parse(at.Groups["line"].Value);
+              if (at.Groups["column"].Success) column = int.Parse(at.Groups["column"].Value);
+            }
+            if (file.Length > 0 && !string.IsNullOrEmpty(WorkingDirectory) && file.IndexOfAny(Path.GetInvalidPathChars()) < 0 && !Path.IsPathRooted(file))
+            {
+              file = Path.GetFullPath(Path.Combine(WorkingDirectory, file));
+            }
+            if (file.Length == 0) file = FailureFile ?? "";
+            if (match.Groups["kind"].Value == "error")
+            {
+              reportedError = true;
+              Log.LogError(null, match.Groups["code"].Value, null, file, line, column, 0, 0, match.Groups["text"].Value);
+            }
+            else
+            {
+              Log.LogWarning(null, match.Groups["code"].Value, null, file, line, column, 0, 0, match.Groups["text"].Value);
+            }
+          }
+          if (ExitCode != 0 && !reportedError)
+          {
+            Log.LogError(null, FailureCode, null, FailureFile, 0, 0, 0, 0, FailureText);
+          }
+          return !Log.HasLoggedErrors;
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
 
   <!-- The frontend package manager follows package.json "packageManager",
        then the committed lock file, then npm. It selects the default build
@@ -37,6 +105,9 @@
 
   <PropertyGroup>
     <RunicBridgeFrontendStamp>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge-frontend.stamp</RunicBridgeFrontendStamp>
+    <!-- One install serves every configuration and target framework, and
+         dotnet clean keeps it. -->
+    <RunicBridgeFrontendInstallStamp>$(MSBuildProjectDirectory)/obj/runic-bridge-frontend-install.stamp</RunicBridgeFrontendInstallStamp>
     <RunicBridgeCodegenProject>$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj</RunicBridgeCodegenProject>
     <RunicBridgeCodegenDll Condition="Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
     <RunicBridgeCodegenDll Condition="!Exists('$(RunicBridgeCodegenProject)')">$(MSBuildThisFileDirectory)../tools/net10.0/BridgeCodegen.dll</RunicBridgeCodegenDll>
@@ -219,7 +290,21 @@
       <RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicBridgeReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicBridgeReactiveUiFlavor)&quot;</RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
     <Delete Files="$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)" />
-    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument) $(RunicBridgeOptionalArgument) $(RunicBridgePathMapArgument)" />
+    <!-- The generator reports its diagnostics in canonical form. They are
+         logged once with their codes (see RunicBridgeReportCommandResult);
+         a failure that reported none is RUNICBRIDGE001. -->
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument) $(RunicBridgeOptionalArgument) $(RunicBridgePathMapArgument)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeCodegenExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeCodegenOutputLine" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicBridgeCodegenDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeCodegenOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeCodegenDiagnostics>
+    </PropertyGroup>
+    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeCodegenExitCode)' != '0' or '$(_RunicBridgeCodegenDiagnostics)' == 'true'"
+        Lines="@(_RunicBridgeCodegenOutputLine)" ExitCode="$(_RunicBridgeCodegenExitCode)"
+        FailureCode="RUNICBRIDGE001" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The Runic Bridge generator exited with code $(_RunicBridgeCodegenExitCode) without reporting an error while inspecting $(RunicBridgeInputAssembly). Its output is above." />
     <PropertyGroup>
       <_RunicBridgeSkipped Condition="Exists('$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
     </PropertyGroup>
@@ -279,24 +364,81 @@
     </ItemGroup>
   </Target>
 
-  <!-- A fresh clone or generated project has no node_modules yet. Install
-       with the selected package manager before the first frontend build, so
-       plain dotnet build and dotnet run work. Set
-       RunicBridgeInstallFrontend=false when a workspace install owns it. -->
+  <!-- A fresh clone or generated project has no node_modules yet, and a pull
+       can change the declared packages. Install with the selected package
+       manager when package.json or a lock file is newer than the install
+       stamp, or when declared packages have no node_modules, so plain
+       dotnet build and dotnet run work. A package.json without dependencies
+       needs no node_modules. Set RunicBridgeInstallFrontend=false when a
+       workspace install owns it. -->
+  <Target Name="RunicViewsCollectFrontendInstallInputs" BeforeTargets="RunicViewsInstallFrontend"
+          Condition="'$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json')">
+    <PropertyGroup>
+      <_RunicBridgeFrontendHasDependencies>false</_RunicBridgeFrontendHasDependencies>
+      <_RunicBridgeFrontendHasDependencies Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(RunicBridgeFrontendDir)/package.json')), '&quot;(dependencies|devDependencies|optionalDependencies)&quot;\s*:\s*\{\s*&quot;'))">true</_RunicBridgeFrontendHasDependencies>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicBridgeFrontendInstallInput Include="$(RunicBridgeFrontendDir)/package.json" />
+      <_RunicBridgeFrontendInstallInput Include="$(RunicBridgeFrontendDir)/%(_RunicBridgeFrontendLockFile.Identity)"
+          Condition="Exists('$(RunicBridgeFrontendDir)/%(_RunicBridgeFrontendLockFile.Identity)')" />
+    </ItemGroup>
+    <!-- Deleted node_modules installs again even though its inputs are older. -->
+    <Delete Files="$(RunicBridgeFrontendInstallStamp)"
+            Condition="'$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(RunicBridgeFrontendDir)/node_modules')" />
+  </Target>
+
+  <ItemGroup>
+    <_RunicBridgeFrontendLockFile Include="package-lock.json;npm-shrinkwrap.json;pnpm-lock.yaml;bun.lock;bun.lockb" />
+  </ItemGroup>
+
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend"
-          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json') and !Exists('$(RunicBridgeFrontendDir)/node_modules')">
+          Inputs="@(_RunicBridgeFrontendInstallInput)" Outputs="$(RunicBridgeFrontendInstallStamp)"
+          Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false' and '$(RunicBridgeInstallFrontend)' != 'false' and Exists('$(RunicBridgeFrontendDir)/package.json')">
     <Message Importance="high"
              Text="Installing frontend dependencies in $(RunicBridgeFrontendDir) with $(RunicBridgeFrontendPackageManager). Set RunicBridgeInstallFrontend=false to install them yourself." />
-    <Exec Command="$(RunicBridgeFrontendInstallCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
-    <Error Condition="!Exists('$(RunicBridgeFrontendDir)/node_modules')"
+    <Exec Command="$(RunicBridgeFrontendInstallCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeFrontendInstallExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeFrontendInstallOutputLine" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicBridgeFrontendInstallDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendInstallOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendInstallDiagnostics>
+    </PropertyGroup>
+    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeFrontendInstallExitCode)' != '0' or '$(_RunicBridgeFrontendInstallDiagnostics)' == 'true'"
+        Lines="@(_RunicBridgeFrontendInstallOutputLine)" ExitCode="$(_RunicBridgeFrontendInstallExitCode)"
+        WorkingDirectory="$(RunicBridgeFrontendDir)"
+        FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The frontend install '$(RunicBridgeFrontendInstallCommand)' in $([System.IO.Path]::GetFullPath('$(RunicBridgeFrontendDir)')) exited with code $(_RunicBridgeFrontendInstallExitCode). Its output is above. Run 'dotnet runic doctor' to check the package manager and lock file." />
+    <Error Code="RUNICBRIDGE016" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge016"
+           Condition="'$(_RunicBridgeFrontendInstallExitCode)' == '0' and '$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(RunicBridgeFrontendDir)/node_modules')"
            Text="'$(RunicBridgeFrontendInstallCommand)' did not create $(RunicBridgeFrontendDir)/node_modules. Install the frontend dependencies with $(RunicBridgeFrontendPackageManager), or run 'dotnet runic doctor' to check the package manager and lock file." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(RunicBridgeFrontendInstallStamp)'))" />
+    <Touch Files="$(RunicBridgeFrontendInstallStamp)" AlwaysCreate="true" />
   </Target>
 
   <Target Name="RunicViewsBuildFrontend" AfterTargets="RunicViewsCollectFrontendInputs"
           Inputs="@(RunicBridgeFrontendInput)" Outputs="$(RunicBridgeFrontendStamp)"
           Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicBridgeBuildFrontend)' != 'false'">
-    <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)" />
-    <Touch Files="$(RunicBridgeFrontendStamp)" AlwaysCreate="true" />
+    <!-- Compiler errors in canonical form (tsc, vue-tsc) are logged with
+         their codes and locations; any other failure, such as a Vite error,
+         gets one RUNICBRIDGE016 instead of MSB3073. -->
+    <Exec Command="$(RunicBridgeFrontendBuildCommand)" WorkingDirectory="$(RunicBridgeFrontendDir)"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeFrontendBuildExitCode" />
+      <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeFrontendBuildOutputLine" />
+    </Exec>
+    <PropertyGroup>
+      <_RunicBridgeFrontendBuildDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeFrontendBuildOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeFrontendBuildDiagnostics>
+    </PropertyGroup>
+    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeFrontendBuildExitCode)' != '0' or '$(_RunicBridgeFrontendBuildDiagnostics)' == 'true'"
+        Lines="@(_RunicBridgeFrontendBuildOutputLine)" ExitCode="$(_RunicBridgeFrontendBuildExitCode)"
+        WorkingDirectory="$(RunicBridgeFrontendDir)"
+        FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
+        FailureText="The frontend build '$(RunicBridgeFrontendBuildCommand)' in $([System.IO.Path]::GetFullPath('$(RunicBridgeFrontendDir)')) exited with code $(_RunicBridgeFrontendBuildExitCode). Its output is above." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(RunicBridgeFrontendStamp)'))"
+             Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
+    <Touch Files="$(RunicBridgeFrontendStamp)" AlwaysCreate="true"
+           Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
   </Target>
 
   <!-- Views can live in a referenced model project, for example beside a WPF

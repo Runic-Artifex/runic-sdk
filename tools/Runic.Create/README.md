@@ -36,13 +36,13 @@ commands in the browser.
 | `--host` | `desktop`, `desktop-gtk4`, `cswebui` | `desktop` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
-| `--directory` | A directory | The project name |
+| `--output`, `-o` | A directory | The project name |
 | `--template-source` | An additional NuGet source for the template | |
 
-For example, `--directory apps/MyApp` chooses the destination directory. The
-creator's global `--output human|json` option selects the command output format.
-The equivalent `dotnet new runic-app` command uses `--output` or `-o` for its
-destination directory.
+As with `dotnet new`, `--output apps/MyApp` or `-o apps/MyApp` chooses the
+destination directory. Earlier versions named this option `--directory`, which
+still works. The creator's global `--format human|json` option selects the
+command output format.
 
 The frontend, package manager, host and ViewModel choices and `--tests` come from
 the template itself, so `dotnet new runic-app --help` lists the same options.
