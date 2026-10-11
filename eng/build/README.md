@@ -58,4 +58,29 @@ A package that has never been published sets `<RunicPackageValidationBaselineMis
 which skips the baseline comparison, and `<RunicPackageFirstReleaseVersion>` to its first release.
 `eng/workspace.test.mjs` fails once the baseline reaches that release, so the opt-out cannot outlive it.
 
+## Release links
+
+`release-links.targets` keeps links that leave a package on the release tag,
+`v$(PackageVersion)`, instead of `main`:
+
+- Packing a project with a `PackageReadmeFile` packs a copy of the README in which
+  this repository's `blob/main` and `tree/main` links name the tag and relative
+  links become absolute links at the tag. A remaining `main` link of any Runic
+  Artifex repository fails the pack; link to the package registry or the
+  documentation portal instead. `eng/release/readme-links.mjs` applies the same
+  rules to npm packages, and `bun run pack` checks every staged README.
+- `<RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>` compiles an internal
+  `RunicReleaseLinks` class. `RunicReleaseLinks.Diagnostic(id)` is the ID's entry
+  in [docs/diagnostics.md](../../docs/diagnostics.md) at the tag, so a new
+  diagnostic needs only its catalog entry. With `RunicExperimentalDiagnosticId`,
+  `RunicReleaseLinks.ExperimentalUrl` is the `UrlFormat` of the project's
+  `[Experimental]` attributes.
+- `<RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>` packs a
+  `buildTransitive` props file that sets `RunicDiagnosticsHelpLinkBase` at the tag,
+  for `HelpLink="$(RunicDiagnosticsHelpLinkBase)<lowercase ID>"` on the package's
+  coded `Error` and `Warning` tasks.
+
+`eng/diagnostics.test.mjs` fails when a reported ID has no catalog entry, a catalog
+entry is stale, or a reporting project does not link to the catalog.
+
 Use root commands and the artifact/component inventory in `eng/workspace.json`.

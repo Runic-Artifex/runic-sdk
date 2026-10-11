@@ -13,3 +13,6 @@ maintains its canonical consumer guides in
 Historical SDK tags retain their original documentation and URLs. Existing
 public portal routes and canonical apex schema URLs remain unchanged.
 See the [deployment cutover plan](https://github.com/Runic-Artifex/runic-site/blob/main/docs/plans/documentation-ownership.md).
+
+The [diagnostics catalog](diagnostics.md) describes every diagnostic ID that an
+SDK package reports. Diagnostics link to it at the release tag of the package.

@@ -60,6 +60,10 @@ internal static partial class CodegenDiagnosticsTests
                 Require(output.Split('\n').Any(text => text.StartsWith(location, StringComparison.Ordinal)
                         && text.Contains($": error {code}: ", StringComparison.Ordinal)),
                     $"{name}: expected 'error {code}' at line {line} of the fixture.\n{output}");
+                // Every report links to the ID's catalog entry at the release tag.
+                Require(output.Split('\n').Any(text => text.Contains($": error {code}: ", StringComparison.Ordinal)
+                        && text.TrimEnd().EndsWith($" See {HelpLink(code)}", StringComparison.Ordinal)),
+                    $"{name}: expected 'error {code}' to end with its help link {HelpLink(code)}.\n{output}");
                 foreach (var text in expected)
                     Require(output.Contains(text, StringComparison.Ordinal),
                         $"{name}: the generator output did not contain '{text}'.\n{output}");
@@ -526,6 +530,14 @@ internal static partial class CodegenDiagnosticsTests
         Require(!text.Contains("Unhandled exception", StringComparison.Ordinal),
             $"{assembly}: the generator crashed instead of reporting a diagnostic.\n{text}");
         return (process.ExitCode, text);
+    }
+
+    // The generator and this test assembly build with the same version.
+    private static string HelpLink(string code)
+    {
+        var version = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(
+            typeof(CodegenDiagnosticsTests).Assembly)!.InformationalVersion.Split('+')[0];
+        return $"https://github.com/Runic-Artifex/runic-sdk/blob/v{version}/docs/diagnostics.md#{code.ToLowerInvariant()}";
     }
 
     private static string FindWorkspaceRoot()

@@ -2,6 +2,7 @@
   <Import Project="eng/build/nuget-lock.targets" />
   <Import Project="eng/build/package-dependencies.targets" />
   <Import Project="eng/build/public-api.targets" />
+  <Import Project="eng/build/release-links.targets" />
   <!-- Package consumers receive these targets through buildTransitive; a
        ProjectReference does not. Projects that reference Runic.Desktop set
        RunicImportDesktopTargets (checked by eng/desktop-targets.test.mjs). -->

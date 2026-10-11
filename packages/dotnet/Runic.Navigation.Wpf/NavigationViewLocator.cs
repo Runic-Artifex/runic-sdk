@@ -9,7 +9,7 @@ namespace Runic.Navigation.Wpf;
 // The locator AddRunicWpfNavigation registers: MapView pairs first, by the content type and then its base
 // types, then the naming convention when enabled. Views are created with ActivatorUtilities from the entry's
 // services, which are the entry scope when the navigator creates one, or the provider supplied by ViewHost.
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationViewLocator(IReadOnlyDictionary<Type, Type> map, bool convention, IReadOnlyList<Assembly>? viewAssemblies = null)
     : INavigationViewLocator
 {

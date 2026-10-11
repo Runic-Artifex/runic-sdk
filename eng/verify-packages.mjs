@@ -65,7 +65,7 @@ export const packageLayouts = {
   },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application": {
-    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll"],
+    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.props"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },

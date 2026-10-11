@@ -6,7 +6,7 @@ namespace Runic.Navigation;
 /// A presentation of a navigator's content, attached with <see cref="RunicNavigator.AttachPresentation"/>.
 /// Presentation integrations, such as the Runic Views runtime, implement it; applications do not.
 /// </summary>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public interface INavigationPresentation
 {
     /// <summary>

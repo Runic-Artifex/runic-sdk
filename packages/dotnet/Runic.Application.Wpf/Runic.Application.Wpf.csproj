@@ -8,6 +8,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ExperimentalAttribute.UrlFormat links RUNICWPF001 to its catalog entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <RunicExperimentalDiagnosticId>RUNICWPF001</RunicExperimentalDiagnosticId>
+    <RunicReleaseLinksNamespace>Runic.Application.Views.Wpf</RunicReleaseLinksNamespace>
     <PackageId>Runic.Application.Wpf</PackageId>
     <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
     <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>

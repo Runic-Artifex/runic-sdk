@@ -12,7 +12,7 @@ namespace Runic.Application.Views.Wpf;
 
 /// <summary>Presents a Desktop surface inside the application's existing WPF visual tree.</summary>
 /// <remarks>WPF owns placement, size, visibility, and the dispatcher. Insert the control before opening its surface.</remarks>
-[Experimental(DiagnosticId)]
+[Experimental(DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public sealed partial class RunicWebView : HwndHost
 {
     /// <summary>The diagnostic for the experimental WPF web presentation API.</summary>

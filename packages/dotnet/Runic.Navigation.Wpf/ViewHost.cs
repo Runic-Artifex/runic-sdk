@@ -12,7 +12,7 @@ namespace Runic.Navigation.Wpf;
 /// The host's ViewLocator is asked first, then the locator from Services, then implicit WPF templates.
 /// Entry-specific locators can implement the plain-content overload for use with this host.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 [ContentProperty(nameof(Content))]
 public class ViewHost : Decorator
 {

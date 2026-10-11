@@ -4,6 +4,9 @@
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ExperimentalAttribute.UrlFormat links RUNICNAV001 to its catalog entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <RunicExperimentalDiagnosticId>RUNICNAV001</RunicExperimentalDiagnosticId>
     <PackageId>Runic.Navigation</PackageId>
     <Description>Typed, host-neutral navigation regions with guards, results and content ownership, and the model context that serializes ViewModel changes.</Description>
     <PackageTags>runic-artifex;navigation;mvvm;wpf;dotnet;nativeaot</PackageTags>

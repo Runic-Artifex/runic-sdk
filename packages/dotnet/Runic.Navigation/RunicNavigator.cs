@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 namespace Runic.Navigation;
 
 /// <summary>Configures a <see cref="RunicNavigator"/>.</summary>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public sealed class RunicNavigatorOptions
 {
     /// <summary>The window's model context. Commits run in its turns; owned content is bound to it.</summary>
@@ -71,7 +71,7 @@ public sealed class RunicNavigatorOptions
 /// on the thread pool. The navigator's own work between hooks always continues on the thread pool.
 /// </para>
 /// </remarks>
-[Experimental(DiagnosticId)]
+[Experimental(DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 {
     /// <summary>The diagnostic ID of the experimental navigation API.</summary>
@@ -2055,7 +2055,7 @@ internal enum NavigationCancelReason
 
 // One admitted request. Mutable fields are guarded by the navigator's gate,
 // except the cancellation source, which is cancelled outside it.
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationTransition : IDisposable
 {
     private readonly CancellationTokenSource _cancellation;
@@ -2187,14 +2187,14 @@ internal sealed class NavigationTransition : IDisposable
     }
 }
 
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationBackCaller(CancellationToken token)
 {
     public CancellationToken Token { get; } = token;
     public TaskCompletionSource<NavigationOutcome> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 }
 
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationPlan
 {
     public List<NavigationRegionCore> Regions { get; } = [];
@@ -2223,7 +2223,7 @@ internal sealed class NavigationPlan
     }
 }
 
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationCommit
 {
     public NavigationEntryCore? Current { get; set; }
@@ -2231,7 +2231,7 @@ internal sealed class NavigationCommit
     public List<NavigationTransition> Cancel { get; } = [];
 }
 
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed record NavigationCommitResult(NavigationOutcome Outcome, NavigationCommit? Commit);
 
 internal enum NavigationOutcomeKind
@@ -2242,7 +2242,7 @@ internal enum NavigationOutcomeKind
     Superseded,
 }
 
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationOutcome
 {
     public static readonly NavigationOutcome Superseded = new() { Kind = NavigationOutcomeKind.Superseded };
@@ -2265,7 +2265,7 @@ internal sealed class NavigationOutcome
         new() { Kind = NavigationOutcomeKind.Failed, Error = error, Phase = phase };
 }
 
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal static class NavigationResults
 {
     public static ValueTask<NavigationResult<T>> MapAsync<T>(Task<NavigationOutcome> outcome) where T : class =>

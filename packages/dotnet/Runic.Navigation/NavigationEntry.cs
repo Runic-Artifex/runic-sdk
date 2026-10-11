@@ -7,7 +7,7 @@ namespace Runic.Navigation;
 /// The content-type-independent view of a <see cref="NavigationEntry{TContent}"/>, for hosts that present
 /// a region without knowing its content type. Only <see cref="NavigationEntry{TContent}"/> implements it.
 /// </summary>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public interface INavigationEntry
 {
     /// <summary>Gets the entry's id, unique within its navigator.</summary>
@@ -33,7 +33,7 @@ public interface INavigationEntry
 
 /// <summary>One entry of a navigation region: its stable id, content, ownership and state.</summary>
 /// <typeparam name="TContent">The region's content type.</typeparam>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public sealed class NavigationEntry<TContent> : INavigationEntry where TContent : class
 {
     internal NavigationEntry(NavigationEntryCore core) => Core = core;
@@ -62,7 +62,7 @@ public sealed class NavigationEntry<TContent> : INavigationEntry where TContent 
 }
 
 /// <summary>Gives an entry's hooks its identity, retirement signal, model context and late-completion operations.</summary>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public sealed class NavigationEntryContext
 {
     private readonly NavigationEntryCore _entry;
@@ -170,7 +170,7 @@ internal enum NavigationEntryPhase
 }
 
 // The non-generic entry shared by a region's typed views.
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 internal sealed class NavigationEntryCore
 {
     private object? _typedView;

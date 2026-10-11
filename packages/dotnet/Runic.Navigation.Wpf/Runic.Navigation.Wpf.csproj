@@ -9,6 +9,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- ExperimentalAttribute.UrlFormat links RUNICNAV001 to its catalog entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <RunicExperimentalDiagnosticId>RUNICNAV001</RunicExperimentalDiagnosticId>
     <PackageId>Runic.Navigation.Wpf</PackageId>
     <Description>WPF hosts for Runic.Navigation regions: a dispatcher model context, a navigation host, an app-modal dialog host and view location.</Description>
     <PackageTags>runic-artifex;navigation;wpf;mvvm;dotnet</PackageTags>

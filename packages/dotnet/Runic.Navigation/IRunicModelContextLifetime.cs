@@ -20,7 +20,7 @@ namespace Runic.Navigation;
 /// <see cref="Closed"/> until it is disposed.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrl)]
 public interface IRunicModelContextLifetime
 {
     /// <summary>
