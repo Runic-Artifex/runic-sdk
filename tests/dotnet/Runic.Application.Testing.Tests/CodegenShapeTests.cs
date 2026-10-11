@@ -162,7 +162,13 @@ internal static class CodegenShapeTests
             // C# accessibility is the contract: a public setter, and only a
             // public setter, becomes a set… member that names it.
             ("documented.ts", documented, "  /**\n   * The note being edited.\n   *\n   * Calls the public C# setter of `DocumentedViewModel.Note`.\n   */\n  setNote(value: string): Promise<DocumentedState>;"),
-            ("documented.ts", documented, "  readonly item: DocumentedItem;\n  readonly isDirty: boolean;"),
+            ("documented.ts", documented, "  readonly item: DocumentedItem;\n  /** Whether the note has `unsaved` changes. */\n  readonly isDirty: boolean;"),
+            // C# `long` is a TypeScript bigint, and the generated comment says so.
+            ("dataShape.ts", File.ReadAllText(Path.Combine(directory, "dataShape.ts")).ReplaceLineEndings("\n"),
+                "  /** A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53. */\n  readonly \"exact-id\": bigint;"),
+            // The connect timeout is an option of the generated connect function (default 5000 ms).
+            ("documented.ts", documented, "export function connectDocumented(options?: BridgeConnectOptions): Promise<DocumentedClient> {"),
+            ("documented.ts", documented, "hydrate, checkedFields: checkedFieldNames, timeout: options?.timeout });"),
             ("documented.ts", documented, " * Generated TypeScript names its enum and DTO types after the C# types,"),
             ("documented.ts", documented, "layout: bridgeWire.enumName<DocumentedLayout>(wire.layout, [\"List\", \"Grid\"]),"),
             ("collectionDelta.ts", collection, "rows: defineCollection<CollectionRow>(wire => bridgeWire.object<CollectionRow>(wire,"),
@@ -172,8 +178,10 @@ internal static class CodegenShapeTests
         var generatedReactive = File.ReadAllText(Path.Combine(directory, "generatedReactive.ts")).ReplaceLineEndings("\n");
         Require(!documented.Contains("setIsDirty", StringComparison.Ordinal) && !documented.Contains("setLayout", StringComparison.Ordinal),
             "A Toolkit property with a private setter became settable from the web View.");
-        Require(generatedReactive.Contains("  /** Calls the public C# setter of `GeneratedReactiveViewModel.Name`. */\n  setName(value: string)", StringComparison.Ordinal)
-            && generatedReactive.Contains("readonly isDirty: boolean;", StringComparison.Ordinal)
+        // The summaries on [Reactive] and [ObservableProperty] partial properties are on their
+        // defining parts, which the XML documentation file omits (runic-sdk #169).
+        Require(generatedReactive.Contains("  /**\n   * The name to save.\n   *\n   * Calls the public C# setter of `GeneratedReactiveViewModel.Name`.\n   */\n  setName(value: string)", StringComparison.Ordinal)
+            && generatedReactive.Contains("  /** Whether the name changed since the last save. */\n  readonly isDirty: boolean;", StringComparison.Ordinal)
             && !generatedReactive.Contains("setIsDirty", StringComparison.Ordinal),
             $"A ReactiveUI [Reactive] property's setter accessibility did not decide its set… member:\n{generatedReactive}");
         Require(!documented.Contains("instance wrapping", StringComparison.Ordinal),
@@ -198,7 +206,7 @@ internal static class CodegenShapeTests
             ("documented.ts", documented, "import { connectView, viewReferences } from \"@runic-artifex/views/generated\";\nimport * as bridgeWire from \"@runic-artifex/views/generated/wire\";\n"),
             ("nullableReactive.ts", reactive, "import { connectView, viewReferences, defineInteractions, bridgeOperations } from \"@runic-artifex/views/generated\";\n"),
             ("nullableReactive.ts", reactive, "const interactionDefinitions = defineInteractions({"),
-            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations });"),
+            ("nullableReactive.ts", reactive, "interactions: interactionDefinitions, operations: bridgeOperations, timeout: options?.timeout });"),
             ("collectionDelta.ts", collection, "import { connectView, viewReferences, defineCollection, defineCollections } from \"@runic-artifex/views/generated\";\n"),
             ("collectionDelta.ts", collection, "const collectionDefinitions = defineCollections({"),
         })

@@ -91,6 +91,11 @@ internal static partial class NavigationTests
         Require(pushed is NavigationResult<Page>.Failed { Phase: NavigationPhase.Preparing, Error: InvalidOperationException }
             && fixture.Logs.Has(1061, LogLevel.Error) && Names(region) == "home",
             $"A container target without services gave {pushed}.");
+        // The outcome helpers: a failure rethrows its error, every other outcome passes through.
+        Require(!pushed.IsCommitted && Throws<InvalidOperationException>(() => pushed.ThrowIfFailed()),
+            "ThrowIfFailed() did not rethrow the failed transition's error.");
+        var home = await Wait(region.ReplaceAsync(NavigationTarget.Borrow(new Page("home"))));
+        Require(home.IsCommitted && ReferenceEquals(home.ThrowIfFailed(), home), $"A committed outcome gave {home}.");
         var parameterless = await Wait(region.PushAsync<TwoCtorPage>());
         Require(parameterless is NavigationResult<Page>.Failed, "The marked constructor was not preferred without services.");
         Require(region.CurrentEntry!.Services.GetService(typeof(Clock)) is null, "An entry without services did not get an empty provider.");

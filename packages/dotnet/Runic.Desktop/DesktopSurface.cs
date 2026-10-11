@@ -108,6 +108,7 @@ public sealed class DesktopSurface : IAsyncDisposable
             }
 
             ValidateWindowOptions(configured);
+            RequireCloseConfirmationSupport(configured);
             ApplyWindowOptions(configured);
             var requestedBrowser = configured.Browser;
             var actualBrowser = requestedBrowser;
@@ -141,6 +142,7 @@ public sealed class DesktopSurface : IAsyncDisposable
                     });
                     actualBrowser = requestedBrowser == BrowserKind.Embedded ? BrowserKind.Any : requestedBrowser;
                     WithholdGrantsFromFallback(configured, correlationId);
+                    WithholdCloseConfirmationFromFallback(configured, correlationId);
                     await OpenCheckedAsync(actualBrowser, cancellationToken).ConfigureAwait(false);
                 }
             }
@@ -389,6 +391,43 @@ public sealed class DesktopSurface : IAsyncDisposable
         });
     }
 
+    // The embedded window confirms close requests; a browser fallback cannot, so it opens without confirmation.
+    private void WithholdCloseConfirmationFromFallback(DesktopWindowOptions options, string correlationId)
+    {
+        if (options.ConfirmCloseAsync is null)
+        {
+            return;
+        }
+        _engine.SetCloseConfirmation(null);
+        _host.ReportConfiguration(Internal.DesktopWindowOptionValidation.CloseConfirmationUnavailable(
+            "The browser fallback", isFallback: true) with
+        {
+            CorrelationId = correlationId,
+        });
+    }
+
+    // An explicitly selected browser cannot honour close confirmation; fail before anything opens.
+    private void RequireCloseConfirmationSupport(DesktopWindowOptions options)
+    {
+        if (options.ConfirmCloseAsync is null || options.Browser == BrowserKind.Embedded ||
+            options.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser)
+        {
+            return;
+        }
+        var diagnostic = Internal.DesktopWindowOptionValidation.CloseConfirmationUnavailable(
+            $"The {options.Browser} browser", isFallback: false) with
+        {
+            CorrelationId = Guid.NewGuid().ToString("N"),
+        };
+        _host.ReportConfiguration(diagnostic);
+        throw new DesktopException(
+            diagnostic.Category,
+            diagnostic.Code,
+            diagnostic.Message + " " + diagnostic.Remediation,
+            diagnostic.Retryable,
+            correlationId: diagnostic.CorrelationId);
+    }
+
     private async Task OpenCheckedAsync(BrowserKind browser, CancellationToken cancellationToken)
     {
         var availability = _host.FindAvailability(browser);
@@ -458,11 +497,6 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal static void ValidateWindowOptions(DesktopWindowOptions options)
     {
-        if (options.ConfirmCloseAsync is not null &&
-            (options.Browser != BrowserKind.Embedded || options.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser))
-        {
-            throw new ArgumentException("Close confirmation requires BrowserKind.Embedded without browser fallback.", nameof(options));
-        }
         const DesktopPermissionGrant supported = DesktopPermissionGrant.MediaCapture;
         if (!Enum.IsDefined(options.Browser))
         {

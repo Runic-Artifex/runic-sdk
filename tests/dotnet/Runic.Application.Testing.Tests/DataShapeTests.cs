@@ -34,6 +34,24 @@ internal static class DataShapeTests
             "A nullable collection item did not preserve its declared element type.");
         Require(state.GetProperty("lookup").GetProperty("__proto__").GetProperty("__proto__").GetString() == "prototype-safe",
             "A dictionary key named __proto__ was not retained on the C# wire payload.");
+        // Read converts scalars only; a record or DTO property names the JSON alternative.
+        var typed = host.Root.Snapshot();
+        Require(typed.Read(vm => vm.ExactId) == 9007199254740993L, "Read did not convert an exact Int64.");
+        foreach (var misuse in new Action[] { () => typed.Read(vm => vm.Whole), () => typed.Read(vm => vm.Payload) })
+        {
+            try
+            {
+                misuse();
+                throw new InvalidOperationException("Read converted a non-scalar property.");
+            }
+            catch (NotSupportedException error)
+            {
+                Require(error.Message.Contains("DataShapeViewModel.", StringComparison.Ordinal)
+                    && error.Message.Contains("Get(vm => vm.", StringComparison.Ordinal),
+                    $"Read misuse did not name the property and the alternative: {error.Message}");
+            }
+        }
+        Require(typed.Get(vm => vm.Whole).GetProperty("__proto__").GetString() == "whole", "Get did not return the DTO JSON.");
         _ = host.Transport.Call("dataShapeSetOptional", new(StringValue: "4"));
         Require(model.Optional == 4, "Nullable scalar setter did not use generated codec decoding.");
 

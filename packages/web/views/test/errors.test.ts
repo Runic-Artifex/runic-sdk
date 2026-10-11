@@ -66,6 +66,25 @@ test("waitForBridge tells a missing Bridge from one that does not connect", asyn
   }
 });
 
+test("a connect timeout bounds the wait for the host Bridge", async () => {
+  const { restore } = observe();
+  try {
+    const bridge = freshBridge();
+    bridge.view("counter", { state: { count: 1, label: "one" } });
+    bridge.disconnect();
+    const started = Date.now();
+    await assert.rejects(connectView({ contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate, timeout: 60 }),
+      (error: unknown) => error instanceof BridgeError && error.kind === "timeout" && /within 60 ms/.test(error.message));
+    assert.ok(Date.now() - started < 4_000, "The connect timeout did not replace the 5000 ms default.");
+    // A later connection within the timeout succeeds.
+    setTimeout(() => bridge.reconnect(), 20);
+    const client = await connectView({ contract: "Tests.CounterViewModel:fingerprint", route: "counter", mount: false, hydrate, timeout: 2_000 });
+    client.dispose();
+  } finally {
+    restore();
+  }
+});
+
 test("a failed route keeps its route, .NET detail and transport cause, and is reported once", async () => {
   const bridge = freshBridge();
   bridge.view("counter", { state: { count: 1, label: "one" } });

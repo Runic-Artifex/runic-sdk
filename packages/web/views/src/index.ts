@@ -32,7 +32,7 @@ export {
   type ViewControllerState,
   type ViewSource,
 } from "./controller.js";
-export type { FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
+export type { BridgeConnectOptions, FieldBaseline, FieldWriteOptions, FieldWriteReceipt, ViewClient } from "./connection.js";
 export {
   createOperationController,
   createLatestOperationController,

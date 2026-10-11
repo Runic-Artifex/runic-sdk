@@ -187,13 +187,30 @@ public sealed class ConfigurationValidationTests
     {
         await using var host = await DesktopHost.StartAsync();
 
-        var validation = host.Validate(new DesktopWindowOptions
-        {
-            Browser = BrowserKind.Chrome,
-            ConfirmCloseAsync = static _ => ValueTask.FromResult(true),
-        });
+        var validation = host.Validate(new DesktopWindowOptions { Browser = (BrowserKind)999 });
 
         Assert.Equal("window-option-invalid", Assert.Single(validation.Errors).Code);
+    }
+
+    [Fact]
+    public async Task CloseConfirmationInABrowserIsACodedDiagnostic()
+    {
+        await using var host = await DesktopHost.StartAsync();
+        static ValueTask<bool> Confirm(CancellationToken _) => ValueTask.FromResult(true);
+
+        var explicitBrowser = host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Chrome, ConfirmCloseAsync = Confirm });
+        var fallback = host.GetPresentationPreflight(new DesktopWindowOptions
+        {
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            ConfirmCloseAsync = Confirm,
+        });
+
+        var error = Assert.Single(explicitBrowser.Errors, static item => item.Code == "close-confirmation-unavailable");
+        Assert.Equal("DesktopWindowOptions.ConfirmCloseAsync", error.Option);
+        Assert.Contains("BrowserKind.Embedded", error.Remediation);
+        var warning = Assert.Single(fallback.OptionDiagnostics, static item => item.Code == "close-confirmation-unavailable");
+        Assert.Equal(DesktopDiagnosticSeverity.Warning, warning.Severity);
+        Assert.Contains("RequestedOnly", warning.Remediation);
     }
 
     [Fact]
@@ -295,6 +312,51 @@ public sealed class ConfigurationValidationTests
             var launched = await File.ReadAllLinesAsync(arguments);
             Assert.Contains("--deny-permission-prompts", launched);
             Assert.DoesNotContain("--auto-accept-camera-and-microphone-capture", launched);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task BrowserFallbackOpensWithoutCloseConfirmation()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var folder = Directory.CreateTempSubdirectory("runic-desktop-close-fallback-");
+        try
+        {
+            var executable = Path.Combine(folder.FullName, OperatingSystem.IsMacOS()
+                ? "Google Chrome.app/Contents/MacOS/Google Chrome"
+                : "google-chrome");
+            Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+            await File.WriteAllTextAsync(executable, "#!/bin/sh\nexit 0\n");
+            File.SetUnixFileMode(executable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                BrowserFolder = folder.FullName,
+                WindowHostFactory = new OptionsReportingFactory { IsSupported = false },
+                DiagnosticSink = diagnostics.Enqueue,
+                WaitForConnection = false,
+            });
+            await using var surface = await host.CreateSurfaceAsync();
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+            {
+                Browser = BrowserKind.Chrome,
+                PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+                ConfirmCloseAsync = static _ => ValueTask.FromResult(false),
+            });
+
+            Assert.True(window.FellBack);
+            var unavailable = Assert.Single(diagnostics, static item => item.Code == "close-confirmation-unavailable");
+            Assert.Equal(DesktopDiagnosticSeverity.Warning, unavailable.Severity);
+            Assert.False(string.IsNullOrEmpty(unavailable.CorrelationId));
+            Assert.False(window.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation));
         }
         finally
         {

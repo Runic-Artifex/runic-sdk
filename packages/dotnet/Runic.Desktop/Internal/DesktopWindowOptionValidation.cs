@@ -11,6 +11,7 @@ internal static class DesktopWindowOptionValidation
     internal const string GrantUnsupportedCode = "permission-grant-unsupported";
     internal const string GrantWithheldCode = "permission-grant-withheld";
     internal const string BrowserUnsupportedCode = "browser-unsupported";
+    internal const string CloseConfirmationUnavailableCode = "close-confirmation-unavailable";
 
     private const string Prefix = "DesktopWindowOptions.";
 
@@ -144,6 +145,11 @@ internal static class DesktopWindowOptionValidation
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.IconFile), remediation));
         }
 
+        if (options.ConfirmCloseAsync is not null)
+        {
+            diagnostics.Add(CloseConfirmationUnavailable(presentation, isFallback));
+        }
+
         var firefox = browser == BrowserKind.Firefox;
         if (browser is not null && !firefox && !string.IsNullOrWhiteSpace(options.ProfileName))
         {
@@ -182,6 +188,23 @@ internal static class DesktopWindowOptionValidation
             });
         }
     }
+
+    // A browser cannot veto a user close, so ConfirmCloseAsync is never asked there. An explicit browser fails;
+    // an EmbeddedThenBrowser fallback opens without confirmation, because the preferred window honours it.
+    internal static DesktopDiagnostic CloseConfirmationUnavailable(string presentation, bool isFallback) => new(
+        DesktopErrorCategory.CapabilityDenied,
+        CloseConfirmationUnavailableCode,
+        isFallback
+            ? $"{presentation} opens without close confirmation: a browser cannot keep its window open, so ConfirmCloseAsync is not called."
+            : $"{presentation} cannot confirm a user close request: a browser cannot keep its window open.",
+        Retryable: false,
+        Remediation: isFallback
+            ? "Use DesktopPresentationPolicy.RequestedOnly to require the embedded window, or remove ConfirmCloseAsync."
+            : "Select BrowserKind.Embedded, or remove ConfirmCloseAsync.")
+    {
+        Severity = isFallback ? DesktopDiagnosticSeverity.Warning : DesktopDiagnosticSeverity.Error,
+        Option = Prefix + nameof(DesktopWindowOptions.ConfirmCloseAsync),
+    };
 
     internal static DesktopDiagnostic GrantWithheld(string presentation) => new(
         DesktopErrorCategory.CapabilityDenied,

@@ -5,10 +5,11 @@ interactions. Its explicit [Window](NotesWindow.cs) and [Views](Views.cs)
 select the generated client contracts; [ViewModels](ViewModels.cs) use
 ReactiveUI routing and commands.
 
-The scoped application composition binds the whole routed ViewModel graph to
-one `IRunicModelContext` (namespace `Runic.Navigation`). The editor captures
-state and commits it on that
-lane around asynchronous work. Its **Discard changes** command is a typed
+The window binds its ViewModels to its `IRunicModelContext` (namespace
+`Runic.Navigation`) as it presents them. The bridge starts each command in a
+turn of that context, and the editor's async commands resume there after
+`await`, so they set state directly without `InvokeAsync`.
+The editor's **Discard changes** command is a typed
 `Interaction<DiscardNoteRequest, bool>`: a mounted browser confirms or
 declines it, while the regular .NET fallback declines when no browser endpoint
 is available. The browser smoke check covers both answers.

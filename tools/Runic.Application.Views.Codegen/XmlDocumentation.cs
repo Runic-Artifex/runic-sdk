@@ -17,12 +17,19 @@ internal static partial class XmlDocumentation
     internal static string? Summary(MemberInfo member)
     {
         var element = Find(member);
+        var inherits = element?.Element("inheritdoc") is not null;
         // CommunityToolkit's [ObservableProperty] documents the generated
         // property as <inheritdoc cref="F:...field"/>; follow such references.
         for (var depth = 0; depth < 4 && element is not null && element.Element("summary") is null
              && (string?)element.Element("inheritdoc")?.Attribute("cref") is { } cref; depth++)
             element = Load((member as Type ?? member.DeclaringType)!.Assembly)?.GetValueOrDefault(cref);
         if (element?.Element("summary") is { } summary) return Render(summary);
+        // A generated partial property implementation's <inheritdoc/> (cref-less,
+        // or a cref to itself) hides the defining part's comment from the XML
+        // file; read that comment from source instead.
+        if (inherits && member is PropertyInfo partial
+            && SourceDocumentation.PartialProperty(partial)?.Element("summary") is { } declared)
+            return Render(declared);
         // A positional record documents its properties as primary-constructor parameters.
         if (member is PropertyInfo property && property.DeclaringType is { } declaring
             && Find(declaring)?.Elements("param").FirstOrDefault(param => (string?)param.Attribute("name") == property.Name) is { } parameter)

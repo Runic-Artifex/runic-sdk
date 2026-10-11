@@ -35,8 +35,17 @@ export type FieldWriteReceipt<T> =
   | { readonly kind: "rejected"; readonly message: string }
   | { readonly kind: "conflict"; readonly incoming: FieldBaseline<T>; readonly message: string };
 
+/** Options of a generated `connect<Name>()` function. */
+export interface BridgeConnectOptions {
+  /**
+   * Milliseconds to wait for the host Bridge to connect to .NET before the
+   * client rejects with a `timeout` BridgeError. Defaults to 5000.
+   */
+  readonly timeout?: number | undefined;
+}
+
 /** How a generated module connects one ViewModel route. */
-export interface ViewConnectOptions<TState> {
+export interface ViewConnectOptions<TState> extends BridgeConnectOptions {
   /** `{ViewModel full name}:{contract fingerprint}`. */
   readonly contract: string;
   /** The route prefix: the root name, or `content{id}` for presented content. */
@@ -322,7 +331,7 @@ async function observed<T>(route: string, run: () => Promise<T>): Promise<T> {
 
 async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promise<ViewConnection<TState>> {
   const { route } = options;
-  const bridge = await waitForBridge();
+  const bridge = await waitForBridge(options.timeout);
   const runtime = sharedRuntimeFor(bridge);
   const contractId = `${options.contract}:${route}`;
   const routeEntry = sharedRouteFor(runtime, bridge, route);
