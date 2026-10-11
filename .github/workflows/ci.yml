@@ -350,7 +350,7 @@ jobs:
       - name: Test the WPF navigation hosts
         run: dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release
       - name: Test the WPF embedded Runic View host
-        run: dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release -- --output detailed
+        run: dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release
       - name: Test the hybrid WPF editor migration example
         run: |
           bun run --cwd packages/web/views --bun build
