@@ -30,9 +30,20 @@ public sealed class RunicViewState<TModel> where TModel : class
 
     /// <summary>
     /// Reads a scalar state property: a string, Boolean, Int32, Int64, double, decimal, GUID or
-    /// enum. Use <see cref="Get{TValue}"/> for other values.
+    /// enum, or a nullable one. Use <see cref="Get{TValue}"/> for other values, such as records,
+    /// collections and content.
     /// </summary>
-    public TValue Read<TValue>(Expression<Func<TModel, TValue>> property) => (TValue)Convert(Get(property), typeof(TValue))!;
+    /// <exception cref="NotSupportedException">The property is not a scalar. The message names
+    /// the property and the call to use instead.</exception>
+    public TValue Read<TValue>(Expression<Func<TModel, TValue>> property)
+    {
+        var member = RunicMembers.Property(property);
+        if (!IsScalar(typeof(TValue)))
+            throw new NotSupportedException(
+                $"Read cannot convert {typeof(TModel).Name}.{member.Name} ({typeof(TValue).Name}): it reads only a string, Boolean, Int32, Int64, double, decimal, GUID or enum. " +
+                $"Read a record or collection as JSON with Get(vm => vm.{member.Name}), for example Get(vm => vm.{member.Name}).GetProperty(\"field\"), or assert on the ViewModel itself.");
+        return (TValue)Convert(this[RunicMembers.WireName(member)], typeof(TValue))!;
+    }
 
     /// <summary>The content reference a ViewModel content property presents, or null.</summary>
     public PageReference? Reference(Expression<Func<TModel, object?>> property)
@@ -75,6 +86,13 @@ public sealed class RunicViewState<TModel> where TModel : class
 
     private static PageReference ReferenceOf(JsonElement value) =>
         new(value.GetProperty("kind").GetString()!, value.GetProperty("id").GetString()!);
+
+    private static bool IsScalar(Type type)
+    {
+        var target = Nullable.GetUnderlyingType(type) ?? type;
+        return target == typeof(string) || target == typeof(bool) || target == typeof(int) || target == typeof(double)
+            || target == typeof(long) || target == typeof(decimal) || target == typeof(Guid) || target.IsEnum;
+    }
 
     private static object? Convert(JsonElement value, Type type)
     {

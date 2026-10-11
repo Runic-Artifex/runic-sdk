@@ -121,9 +121,12 @@ The constructor without options keeps the system clock and random ids.
 and check that they present `T`; `host.View<T>(reference)` drives a reference you
 already have. A `RunicViewDriver<T>` has:
 
-- `Snapshot()`: a `RunicViewState<T>` with `Read(vm => vm.Title)` for scalars,
-  `Get` for the raw JSON, `Reference`, `References`, `Keys` of a
-  `[RunicCollection]`, `CanExecute`, `IsExecuting` and `FieldVersion`.
+- `Snapshot()`: a `RunicViewState<T>` with `Read(vm => vm.Title)` for scalars
+  (a string, Boolean, Int32, Int64, double, decimal, GUID or enum), `Get` for the
+  raw JSON of other values, `Reference`, `References`, `Keys` of a
+  `[RunicCollection]`, `CanExecute`, `IsExecuting` and `FieldVersion`. `Read` of a
+  record, DTO or collection throws `NotSupportedException` naming the property;
+  use `Get(vm => vm.Item).GetProperty("wireField")` instead.
 - `Set(vm => vm.Title, value)`, encoded as the generated client encodes it: an `int`,
   `bool` or non-nullable `string` as is, and other scalars as wire JSON (`Int64` and
   `decimal` as strings, enums by wire name, `null` for nullable values). Use

@@ -23,10 +23,12 @@ public sealed partial class GeneratedReactiveViewModel : ReactiveObject, IDispos
             .ToProperty(this, model => model.Summary);
     }
 
+    /// <summary>The name to save.</summary>
     [Reactive]
     public partial string Name { get; set; } = string.Empty;
 
     // Read-only to every View: the generated client has no setIsDirty.
+    /// <summary>Whether the name changed since the last save.</summary>
     [Reactive]
     public partial bool IsDirty { get; private set; }
 

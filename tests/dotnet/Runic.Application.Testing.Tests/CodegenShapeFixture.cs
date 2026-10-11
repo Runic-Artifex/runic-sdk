@@ -123,6 +123,7 @@ public sealed partial class DocumentedViewModel : CommunityToolkit.Mvvm.Componen
     private string _note = "";
 
     // Read-only to every View: the generated client has no setIsDirty.
+    /// <summary>Whether the note has <c>unsaved</c> changes.</summary>
     [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
     public partial bool IsDirty { get; private set; }
 

@@ -265,6 +265,25 @@ public abstract record NavigationResult<TContent> where TContent : class
     {
     }
 
+    /// <summary>Gets whether the transition committed, so that code after the request may continue.</summary>
+    public bool IsCommitted => this is Committed;
+
+    /// <summary>
+    /// Rethrows the error of a <see cref="Failed"/> outcome, with its original stack trace, and returns
+    /// every other outcome unchanged.
+    /// </summary>
+    /// <remarks>
+    /// A rejected or superseded transition is an expected outcome and does not throw. Combine it with
+    /// <see cref="IsCommitted"/> to handle a request in one line:
+    /// <c>if (!(await region.PushAsync(target)).ThrowIfFailed().IsCommitted) return;</c>
+    /// </remarks>
+    /// <returns>This outcome.</returns>
+    public NavigationResult<TContent> ThrowIfFailed()
+    {
+        if (this is Failed failed) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed.Error);
+        return this;
+    }
+
     /// <summary>The transition committed.</summary>
     /// <param name="Current">The region's current entry after the commit, or <see langword="null"/> when it is empty.</param>
     /// <param name="Retired">The entries whose retirement this transition performed.</param>

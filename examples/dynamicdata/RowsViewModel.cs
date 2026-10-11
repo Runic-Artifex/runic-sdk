@@ -51,14 +51,12 @@ public sealed class RowsViewModel : ReactiveObject, IDisposable
     private readonly ObservableCollection<Row> _rows = [];
     private readonly StateSignal<IVirtualRequest> _requests;
     private readonly IDisposable _binding;
-    private readonly IRunicModelContextLease? _modelContextLease;
     private int _totalCount;
     private int _start;
 
     public RowsViewModel(RowStore store, IRunicModelContext context)
         : this(store, new RunicReactiveSchedulerProvider().For(context), 30)
     {
-        _modelContextLease = RunicModelContextRegistry.Shared.Bind(context, this);
     }
 
     internal RowsViewModel(RowStore store, ISequencer sequencer, int size, bool batch = true)
@@ -95,6 +93,5 @@ public sealed class RowsViewModel : ReactiveObject, IDisposable
         _requests.Dispose();
         SetViewportCommand.Dispose();
         UpdateCommand.Dispose();
-        _modelContextLease?.Dispose();
     }
 }

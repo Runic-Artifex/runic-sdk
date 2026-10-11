@@ -475,14 +475,19 @@ A `BridgeError` names what failed and why:
   `BridgeDiagnostics.IncludeFailureDetail = true`. Production replies carry
   only the bounded message, such as `"Save failed."`.
 
-Generated clients wait up to five seconds for the host Bridge. To wait longer,
-call `waitForBridge` before the first `connect<Name>()`:
+A generated `connect<Name>()` waits up to five seconds (5000 ms) for the host
+Bridge, then rejects with a `timeout` `BridgeError`. Pass `timeout` to wait
+longer, for example while a slow machine starts the .NET host:
 
 ```ts
-import { waitForBridge } from "@runic-artifex/views";
-
-await waitForBridge({ timeout: 30_000 }); // waitForBridge(30_000) also works
+const client = await connectWorkspace({ timeout: 30_000 });
 ```
+
+A framework hook takes the same option through a connect function declared
+once, outside the component: `const connectSlowly = () => connectWorkspace({ timeout: 30_000 });`
+then `useView({ connect: connectSlowly })`.
+`waitForBridge({ timeout })` (or `waitForBridge(30_000)`) waits for the Bridge
+without connecting a client.
 
 An operation's `wait({ timeout })` bounds how long the client waits. When the
 timeout passes, the client asks .NET to cancel the operation and resolves to a

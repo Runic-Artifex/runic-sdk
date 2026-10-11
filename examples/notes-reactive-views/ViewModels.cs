@@ -26,7 +26,6 @@ public interface IPinnedItem;
 
 public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
 {
-    private readonly IRunicModelContextLease _modelContextLease;
     private readonly HomeViewModel _home;
     private readonly DocumentViewModel _document;
     private readonly ReactiveRoutedRegion<IMainPage> _main;
@@ -34,13 +33,11 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
     private readonly PinnedTaskViewModel _pinnedTask = new();
     private IReadOnlyList<IPinnedItem> _pinned;
 
-    public ShellViewModel(IRunicModelContext modelContext, ISequencer scheduler, ILoggerFactory loggerFactory)
+    public ShellViewModel(ISequencer scheduler, ILoggerFactory loggerFactory)
     {
         _pinned = [_pinnedNote, _pinnedTask];
         _home = new HomeViewModel(this);
-        _document = new DocumentViewModel(this, modelContext, scheduler, loggerFactory);
-        _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext,
-            this, _home, _document, _document.Editor, _document.Preview, _pinnedNote, _pinnedTask);
+        _document = new DocumentViewModel(this, scheduler, loggerFactory);
         Router = new RoutingState(scheduler);
         _main = new ReactiveRoutedRegion<IMainPage>(Router, loggerFactory);
         _main.PropertyChanged += OnMainChanged;
@@ -86,7 +83,6 @@ public sealed class ShellViewModel : ReactiveObject, IScreen, IDisposable
         _main.PropertyChanged -= OnMainChanged;
         _main.Dispose();
         _document.Dispose();
-        _modelContextLease.Dispose();
     }
 }
 
@@ -113,11 +109,11 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, IScreen, IDis
     private readonly PreviewViewModel _preview;
     private readonly ReactiveRoutedRegion<IDocumentPane> _pane;
 
-    public DocumentViewModel(ShellViewModel host, IRunicModelContext modelContext, ISequencer scheduler,
+    public DocumentViewModel(ShellViewModel host, ISequencer scheduler,
         ILoggerFactory loggerFactory)
     {
         HostScreen = host;
-        _editor = new EditorViewModel(this, modelContext, scheduler, loggerFactory.CreateLogger<EditorViewModel>());
+        _editor = new EditorViewModel(this, scheduler, loggerFactory.CreateLogger<EditorViewModel>());
         _preview = new PreviewViewModel(this, _editor);
         Router = new RoutingState(scheduler);
         _pane = new ReactiveRoutedRegion<IDocumentPane>(Router, loggerFactory);
@@ -170,7 +166,6 @@ public sealed record TitleTooLong(int MaximumLength) : SaveFailure;
 
 public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatableViewModel, IDisposable
 {
-    private readonly IRunicModelContext _modelContext;
     private const int MaximumTitleLength = 120;
     private readonly IDisposable _fallbackDiscardHandler;
     private readonly IDisposable _saveExceptions;
@@ -181,10 +176,9 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
     private int _activationCount;
     private int _deactivationCount;
 
-    public EditorViewModel(DocumentViewModel host, IRunicModelContext modelContext, ISequencer scheduler, ILogger logger)
+    public EditorViewModel(DocumentViewModel host, ISequencer scheduler, ILogger logger)
     {
         HostScreen = host;
-        _modelContext = modelContext;
         _fallbackDiscardHandler = ConfirmDiscard.RegisterHandler(context =>
         {
             // A native or headless invocation has no mounted browser endpoint.
@@ -221,33 +215,32 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
 
     private async Task SaveAsync(CancellationToken token)
     {
-        var input = await _modelContext.InvokeAsync(() => new { Title, Body }, token);
-        if (string.IsNullOrWhiteSpace(input.Title)) throw new RunicFailureException(new TitleRequired());
-        if (input.Title.Length > MaximumTitleLength) throw new RunicFailureException(new TitleTooLong(MaximumTitleLength));
+        // The bridge starts the body in a model-context turn, and every await
+        // resumes in that context, so the body reads and sets state directly.
+        var title = Title;
+        if (string.IsNullOrWhiteSpace(title)) throw new RunicFailureException(new TitleRequired());
+        if (title.Length > MaximumTitleLength) throw new RunicFailureException(new TitleTooLong(MaximumTitleLength));
         await Task.Delay(120, token);
-        await _modelContext.InvokeAsync(() => SavedMessage = $"Saved {input.Title}", token);
+        SavedMessage = $"Saved {title}";
     }
 
     private async Task DiscardAsync(CancellationToken token)
     {
-        var request = await _modelContext.InvokeAsync(() => new DiscardNoteRequest(Title, Body.Length), token);
+        var request = new DiscardNoteRequest(Title, Body.Length);
         if (request.BodyLength == 0)
         {
-            await _modelContext.InvokeAsync(() => SavedMessage = "Nothing to discard.", token);
+            SavedMessage = "Nothing to discard.";
             return;
         }
 
         bool approved = await ConfirmDiscard.Handle(request);
         token.ThrowIfCancellationRequested();
-        await _modelContext.InvokeAsync(() =>
+        if (approved)
         {
-            if (approved)
-            {
-                Body = "";
-                SavedMessage = $"Discarded {request.Title}";
-            }
-            else SavedMessage = "Kept current changes.";
-        }, token);
+            Body = "";
+            SavedMessage = $"Discarded {request.Title}";
+        }
+        else SavedMessage = "Kept current changes.";
     }
 
     public void Dispose()

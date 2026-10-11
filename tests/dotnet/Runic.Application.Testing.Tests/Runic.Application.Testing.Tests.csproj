@@ -15,6 +15,9 @@
     <RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand>
     <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicBridgeFrontendDir>
     <RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/generated</RunicBridgeTypescriptDir>
+    <!-- Map PDB source paths to /_/ as a CI build does, so local runs also
+         check that the generator resolves them to the source it documents. -->
+    <DeterministicSourcePaths>true</DeterministicSourcePaths>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />

@@ -79,9 +79,12 @@ export function useView<TClient extends ViewClient>(source: MaybeRefOrGetter<Vie
   return { state, client, error, pending, retry: () => controller.retry() };
 }
 
-/** A build-known map checks each generated reference kind against its component's `page` prop. */
-export type ViewRegistry<R extends ViewReference> = {
-  readonly [K in R["kind"]]: Component<{ page: Extract<R, { readonly kind: K }> }>;
+/**
+ * A build-known map checks each generated reference kind against its component's `page` prop. A nullable
+ * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
+ */
+export type ViewRegistry<R extends ViewReference | null | undefined> = {
+  readonly [K in NonNullable<R>["kind"]]: Component<{ page: Extract<NonNullable<R>, { readonly kind: K }> }>;
 };
 
 export interface ViewOutletProps<R extends ViewReference> {
