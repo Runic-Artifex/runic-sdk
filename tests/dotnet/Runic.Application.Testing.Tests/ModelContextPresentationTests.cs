@@ -6,7 +6,6 @@ using Runic.Application.Testing;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
-using Runic.Navigation.ReactiveUI;
 
 namespace Runic.Application.Testing.Tests;
 

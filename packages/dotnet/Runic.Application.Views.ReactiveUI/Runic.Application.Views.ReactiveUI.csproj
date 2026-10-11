@@ -5,7 +5,7 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.ReactiveUI</PackageId>
-    <Description>ReactiveUI routing, view location, and activation for Runic Views.</Description>
+    <Description>ReactiveUI 26 (Primitives flavor) model-context scheduling, routing, view location, and activation for Runic Views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
@@ -13,7 +13,6 @@
     <PackageReference Include="ReactiveUI" />
     <InternalsVisibleTo Include="Runic.Application.Testing.Tests" />
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
-    <ProjectReference Include="../Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

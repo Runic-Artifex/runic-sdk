@@ -26,6 +26,8 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
+    <!-- The navigation adapter is a separate package since W250-014. -->
+    <ProjectReference Include="../../../packages/dotnet/Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../../specs/application/fixtures/collection-deltas/*.json" Link="fixtures/collection-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

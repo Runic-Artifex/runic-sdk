@@ -13,7 +13,6 @@ const projects = [
   ["Runic.Desktop", "Runic.Desktop"],
   ["Runic.Navigation", "Runic.Navigation"],
   ["Runic.Application", "Runic.Application.Views"],
-  ["Runic.Navigation.ReactiveUI", "Runic.Navigation.ReactiveUI"],
   ["Runic.Application.ReactiveUI", "Runic.Application.Views.ReactiveUI"],
   // Runic.Application.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner) and on every platform provider
   // package, which AddRunicPlatformServices selects from at run time.

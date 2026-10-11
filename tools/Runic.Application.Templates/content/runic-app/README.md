@@ -94,7 +94,7 @@ clipboard on the Runic Desktop host (`--host desktop`); see the
 | Path | Purpose |
 | --- | --- |
 <!--#if (viewModels == "reactiveui") -->
-| `WorkspaceViewModel.cs` | ReactiveUI ViewModels: the workspace, its Welcome page, and a Counter. Commands run on the Window's model context. |
+| `WorkspaceViewModel.cs` | ReactiveUI 26 ViewModels (the Primitives flavour): the workspace, its Welcome page, and a Counter. Their commands need no scheduler: they run on the Window's model context. |
 <!--#else -->
 | `WorkspaceViewModel.cs` | CommunityToolkit.Mvvm ViewModels: the workspace, its Welcome page, and a Counter. |
 <!--#endif -->
@@ -164,6 +164,32 @@ at a time and in order. Only code that leaves the context, after
 `ConfigureAwait(false)` or in `Task.Run`, commits its result with
 `IRunicModelContext.InvokeAsync`. See the
 [threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await).
+<!--#if (viewModels == "reactiveui") -->
+
+## ReactiveUI 26 Primitives
+
+This project uses ReactiveUI 26 in its default flavour, which is built on
+`ReactiveUI.Primitives`, not on System.Reactive. If you know ReactiveUI from
+System.Reactive:
+
+- `RxVoid` replaces `System.Reactive.Unit`, so a command without input or
+  output is a `ReactiveCommand<RxVoid, RxVoid>`.
+- `ISequencer` replaces `IScheduler`: `RxSchedulers.MainThreadScheduler`, formerly
+  `RxApp.MainThreadScheduler`, is an `ISequencer`.
+- To await a command, add `using ReactiveUI.Primitives.Signals;`; without it,
+  `await command.Execute()` does not compile (CS1061).
+  `command.Execute().ToTask()` from `ReactiveUI.Primitives` also works and
+  returns the last value.
+
+`AddRunicReactiveModelContext()` in `Program.cs` makes ReactiveUI's main-thread
+scheduler deliver a command's results and `IsExecuting` on the model context
+of the Window that runs it. Create commands without a scheduler, as
+`WorkspaceViewModel.cs` does. Code that schedules from outside a model turn, for
+example after `ConfigureAwait(false)`, runs on ReactiveUI's default scheduler;
+Runic logs that once. For System.Reactive, use `Runic.Application.ReactiveUI.Reactive`
+instead; see the
+[ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md).
+<!--#endif -->
 
 ## Read-only and settable state
 

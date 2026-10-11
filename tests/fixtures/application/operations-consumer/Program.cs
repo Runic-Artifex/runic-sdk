@@ -3,7 +3,7 @@ using OperationsConsumer;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
-using Runic.Navigation.ReactiveUI;
+using Runic.Application.Views.ReactiveUI;
 
 var services = new ServiceCollection();
 services.AddRunicReactiveModelContext();

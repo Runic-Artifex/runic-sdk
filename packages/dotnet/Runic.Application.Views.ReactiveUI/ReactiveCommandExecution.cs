@@ -7,6 +7,7 @@ using System.Runtime.ExceptionServices;
 using System.Windows.Input;
 using ReactiveUI;
 using Runic.Application.Views;
+using Runic.Navigation;
 
 #if SYSTEM_REACTIVE
 namespace Runic.Application.Views.ReactiveUI.Reactive;
@@ -37,7 +38,7 @@ public static class ReactiveCommandExecution
         TResult? result = default;
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = command.Execute(input).Subscribe(new Observer<TResult>(
+        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
             value =>
             {
                 count++;
@@ -67,7 +68,7 @@ public static class ReactiveCommandExecution
         TResult? result = default;
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = command.Execute(input).Subscribe(new Observer<TResult>(
+        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
             value => { count++; result = value; },
             error => completion.TrySetException(error),
             () =>
@@ -91,7 +92,7 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = command.Execute(input).Subscribe(new Observer<TResult>(
+        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
             _ => { },
             error => completion.TrySetException(error),
             () => completion.TrySetResult()));
@@ -119,7 +120,7 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
-        using var subscription = command.Execute(input).Subscribe(new Observer<TResult>(
+        using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
             value =>
             {
                 bool published;
@@ -298,5 +299,27 @@ public static class ReactiveCommandExecution
                 second.Dispose();
             }
         }
+    }
+}
+
+// Carries the model context of the turn that executes a bridged command to the
+// command's later notifications. ReactiveUI's token-taking CreateFromTask
+// completes its execution from the task's continuation, outside the turn, even
+// when the body resumed in it; the execution context captured by Subscribe in
+// the turn still flows there, so the main-thread scheduler can route the result
+// and IsExecuting back to this context.
+internal static class ModelTurnFlow
+{
+    private static readonly AsyncLocal<RunicModelContext?> Flowed = new();
+
+    internal static RunicModelContext? Current => RunicModelContext.Current ?? Flowed.Value;
+
+    internal static IDisposable Subscribe<T>(IObservable<T> source, IObserver<T> observer)
+    {
+        if (RunicModelContext.Current is not { } context) return source.Subscribe(observer);
+        var previous = Flowed.Value;
+        Flowed.Value = context;
+        try { return source.Subscribe(observer); }
+        finally { Flowed.Value = previous; }
     }
 }

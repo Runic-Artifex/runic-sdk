@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Navigation.ReactiveUI.IRunicReactiveSchedulerProvider</Target>
+    <Left>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Navigation.ReactiveUI.ReactiveServiceCollectionExtensions</Target>
+    <Left>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Navigation.ReactiveUI.RunicReactiveSchedulerProvider</Target>
+    <Left>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Runic.Navigation.ReactiveUI.ReactiveNavigation.CreateBackCommand``1(Runic.Navigation.NavigationRegion{``0},ReactiveUI.Primitives.Concurrency.ISequencer)</Target>
+    <Left>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.ReactiveUI.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

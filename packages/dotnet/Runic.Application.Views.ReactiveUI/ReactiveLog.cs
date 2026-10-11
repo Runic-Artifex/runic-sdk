@@ -24,6 +24,10 @@ internal static partial class ReactiveLog
     [LoggerMessage(EventId = 1042, EventName = "ReactiveCommandFailed", Level = LogLevel.Error,
         Message = "{Source} reported {ErrorType} on ThrownExceptions.")]
     internal static partial void CommandFailed(ILogger logger, Exception? exception, string source, string errorType);
+
+    [LoggerMessage(EventId = 1043, EventName = "ReactiveSchedulerOutsideModelTurn", Level = LogLevel.Warning,
+        Message = "Work was scheduled on ReactiveUI's main-thread scheduler outside a Runic model turn, so it runs on {Fallback}, not on a model context. Later occurrences are not logged.")]
+    internal static partial void OutsideModelTurn(ILogger logger, string fallback);
 }
 
 // The fallback when a component has no ILoggerFactory, matching the Views

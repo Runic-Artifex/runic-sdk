@@ -12,10 +12,6 @@
     <!-- The fixture exercises the experimental navigation API. -->
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
   </PropertyGroup>
-  <ItemGroup>
-    <!-- The container; the adapter itself needs only the abstractions. -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(RunicContainerVersion)" />
-  </ItemGroup>
   <ItemGroup Condition="'$(RunicNavigationFlavor)' != 'Reactive'">
     <PackageReference Include="Runic.Navigation.ReactiveUI" Version="$(RunicPackageVersion)" />
   </ItemGroup>

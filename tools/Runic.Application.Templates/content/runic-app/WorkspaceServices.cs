@@ -5,7 +5,7 @@ using Runic.Application.Views.Desktop;
 using Runic.Application.Views.CsWebUi;
 #endif
 #if (viewModels == "reactiveui")
-using Runic.Navigation.ReactiveUI;
+using Runic.Application.Views.ReactiveUI;
 #endif
 
 namespace RunicWindowApp;

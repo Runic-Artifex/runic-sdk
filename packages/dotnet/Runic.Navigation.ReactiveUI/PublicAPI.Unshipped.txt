@@ -1,1 +1,10 @@
 #nullable enable
+*REMOVED*Runic.Navigation.ReactiveUI.IRunicReactiveSchedulerProvider
+*REMOVED*Runic.Navigation.ReactiveUI.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+*REMOVED*Runic.Navigation.ReactiveUI.ReactiveServiceCollectionExtensions
+*REMOVED*Runic.Navigation.ReactiveUI.RunicReactiveSchedulerProvider
+*REMOVED*Runic.Navigation.ReactiveUI.RunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> ReactiveUI.Primitives.Concurrency.ISequencer!
+*REMOVED*Runic.Navigation.ReactiveUI.RunicReactiveSchedulerProvider.RunicReactiveSchedulerProvider() -> void
+*REMOVED*static Runic.Navigation.ReactiveUI.ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+*REMOVED*[RUNICNAV001]static Runic.Navigation.ReactiveUI.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region, ReactiveUI.Primitives.Concurrency.ISequencer! scheduler) -> ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, Runic.Navigation.NavigationResult<TContent!>!>!
+[RUNICNAV001]static Runic.Navigation.ReactiveUI.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region, ReactiveUI.Primitives.Concurrency.ISequencer? outputScheduler = null) -> ReactiveUI.ReactiveCommand<ReactiveUI.Primitives.RxVoid, Runic.Navigation.NavigationOutcome!>!

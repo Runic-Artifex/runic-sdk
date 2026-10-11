@@ -4,60 +4,39 @@
 regions to ReactiveUI 26 (the `ReactiveUI.Primitives` flavor). It depends on
 `Runic.Navigation` and `ReactiveUI` only: no `Runic.Application`, generator or
 host, so it works in a WPF or console app. It provides, in the
-`Runic.Navigation.ReactiveUI` namespace:
-
-- `WhenCurrentChanged()`, `WhenEntryChanged()`, `WhenCanGoBackChanged()`,
-  `WhenIsTransitioningChanged()` and `CreateBackCommand(scheduler)`
-  for `NavigationRegion<TContent>` (experimental, `RUNICNAV001`);
-- `RunicReactiveSchedulerProvider`, which returns an `ISequencer` that runs
-  scheduled work through an `IRunicModelContext`; and
-- `AddRunicReactiveModelContext()`, which registers the context and its
-  scheduler.
+`Runic.Navigation.ReactiveUI` namespace, `WhenCurrentChanged()`,
+`WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`
+and `CreateBackCommand()` for `NavigationRegion<TContent>` (experimental,
+`RUNICNAV001`).
 
 Apps that use the System.Reactive distribution of ReactiveUI reference
 [`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md)
-instead. Runic Views apps get the adapter of their flavor through
-`Runic.Application.ReactiveUI` and need no extra reference.
+instead. Runic Views apps reference this package next to
+`Runic.Application.ReactiveUI`, which no longer brings it, so an app without
+navigation has no experimental package.
 
 ```sh
 dotnet add package Runic.Navigation.ReactiveUI --prerelease
 ```
 
-## Model-context scheduler
+## Scheduling
 
-`RunicReactiveSchedulerProvider.For(context)` returns a context-backed
-`ISequencer`. It serializes scheduled notifications with short model turns and
-deliberately does not set ReactiveUI's process-global scheduler. Use the host's
-dispatcher for native UI, and marshal background state changes through the
-model context.
+The adapter neither sets nor needs a scheduler. Like any `ReactiveCommand`, the
+back command delivers its output and `IsExecuting` on ReactiveUI's
+`RxSchedulers.MainThreadScheduler` unless you pass an `outputScheduler`:
 
-The sequencer keeps ordering state, so the provider returns **one sequencer per
-context** for as long as the context is alive.
+- In a Runic Views app, `AddRunicReactiveModelContext()` from
+  `Runic.Application.ReactiveUI` makes that scheduler the model context of the
+  turn that executes the command. See its
+  [model-context scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#model-context-scheduling).
+- In a WPF app, it is the dispatcher.
+- Elsewhere, such as a console app or a test, pass a scheduler that runs work on
+  the model context when the notifications must be ordered with model state.
 
-`AddRunicReactiveModelContext()` uses `TryAdd`, so it preserves custom
-registrations:
-
-| Service | Lifetime |
-| --- | --- |
-| `IRunicModelContext` | scoped (`RunicModelContext`) |
-| `IRunicReactiveSchedulerProvider` | singleton |
-| `ISequencer` | transient; returns the provider's scheduler for the resolved context |
-
-Every resolution for one context therefore gets the same scheduler. That holds
-for a scoped context (each scope has its own) and for a singleton context that
-a host registers instead, and a singleton ViewModel that injects `ISequencer`
-passes `ValidateScopes`. Dispose a scope asynchronously to drain its owned
-context. Each queued item captures its own `ExecutionContext`, so deferred work
-does not leak an ambient scope to another operation.
-
-```csharp
-services.AddRunicReactiveModelContext();
-
-public EditorViewModel(IRunicModelContext modelContext, ISequencer scheduler)
-{
-    SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync, outputScheduler: scheduler);
-}
-```
+`RunicReactiveSchedulerProvider`, `IRunicReactiveSchedulerProvider` and
+`AddRunicReactiveModelContext()` moved from this package to
+`Runic.Application.ReactiveUI` (namespace `Runic.Application.Views.ReactiveUI`)
+in W250, with no type forwards.
 
 ## Navigation (experimental)
 
@@ -67,12 +46,10 @@ which `RoutingState`'s mutable stack and synchronous `Navigate` cannot enforce.
 The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
 
 ```csharp
-var scheduler = new RunicReactiveSchedulerProvider().For(context);
-BackCommand = Main.CreateBackCommand(scheduler).DisposeWith(disposables); // holds a region handler
+BackCommand = Main.CreateBackCommand().DisposeWith(disposables); // holds a region handler
 
-Main.WhenCurrentChanged()          // TContent?, distinct by instance
+Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the model turn
     .Select(current => current is DocumentViewModel)
-    .ObserveOn(scheduler)
     .Subscribe(isDocument => IsDocumentOpen = isDocument)
     .DisposeWith(disposables);
 ```
@@ -91,10 +68,16 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance
   and later values on the model turn that raises the change. Content changes
   arrive on the navigation's commit turn. Use `ObserveOn` to deliver elsewhere.
   They never complete, and stop when the subscription is disposed.
-- `CreateBackCommand(scheduler)` returns a
-  `ReactiveCommand<RxVoid, NavigationResult<TContent>>`. It can execute
-  while `CanGoBack` is true and `IsTransitioning` is false, including
-  transitions it did not start. It reflects this region only: a transition of
+- `CreateBackCommand()` returns a `ReactiveCommand<RxVoid, NavigationOutcome>`;
+  pass an `outputScheduler` to choose where it delivers. `NavigationOutcome` is
+  the result's `Kind` (`Committed`, `Rejected`, `Superseded` or `Failed`) and,
+  for a rejection, its `Rejection` reason, without .NET content, so a Runic View
+  can bind the command. For the full `NavigationResult<TContent>`, such as a
+  failure's exception, await `BackAsync` in your own command. The command can
+  execute while `CanGoBack` is true and `IsTransitioning` is false, including
+  transitions it did not start. `CanExecute` turns false in the same
+  notification that starts a transition, without a scheduler hop.
+  It reflects this region only: a transition of
   an ancestor region does not disable it. The command observes the region
   until it is disposed, so dispose it with its owner. A rejected, superseded
   or failed Back is its output, not an exception, so `ThrownExceptions`
@@ -135,7 +118,7 @@ OpenCommand = ReactiveCommand.CreateFromTask(async token =>
 {
     var result = await Main.PushAsync<DocumentViewModel>(cancellationToken: token);
     HandleNavigationOutcome(result); // resumes on the model context
-}, canOpen, scheduler).DisposeWith(disposables);
+}, canOpen).DisposeWith(disposables);
 
 _isNavigatingHelper = Main.WhenIsTransitioningChanged()
     .ToProperty(this, vm => vm.IsNavigating)
@@ -158,13 +141,14 @@ availability is advisory; the engine still validates every request. Forward
 the token for cancellation during guards or preparation. For result requests,
 forward it to `PushForResult` to also dismiss a committed prompt on cancellation.
 
-Use a model-context scheduler for model state and the presentation's dispatcher
-for native UI state. Own command/property subscriptions with the ViewModel;
+Deliver model state on the model context (the default in a Runic Views app) and
+native UI state on the presentation's dispatcher. Own command/property subscriptions with the ViewModel;
 subscriptions specific to a mounted View belong in `WhenActivated`.
 This command/property shape works in WPF and through Runic's web bridge. The
 example exposes a completion-only command and handles navigation results inside
 the ViewModel, so the web boundary does not need to encode navigation's content
-and ownership objects.
+and ownership objects. To return an outcome to the View, return
+`result.Outcome`, a `NavigationOutcome`.
 
 Runic's `ReactiveRoutedRegion<T>` in `Runic.Application.ReactiveUI` is a separate
 interoperability path for an externally owned `RoutingState`. It presents that
@@ -177,7 +161,14 @@ These types moved from the `Runic.Application.Views.ReactiveUI` namespace of
 `Runic.Application.ReactiveUI` to `Runic.Navigation.ReactiveUI` in
 0.7.0-preview.4, without type forwards. Replace the `using` and recompile.
 
+In W250 the model-context scheduling moved back to `Runic.Application.ReactiveUI`
+(see [Scheduling](#scheduling)), and `CreateBackCommand` outputs a
+`NavigationOutcome` instead of a `NavigationResult<TContent>`: compare
+`outcome.Kind` with `NavigationOutcomeKind.Committed` where you matched
+`NavigationResult<TContent>.Committed`.
+
 ## Logging
 
-The adapter's category is `Runic.Navigation.ReactiveUI`. Events 1043-1049 are
-reserved for it; it logs none today.
+The adapter's category is `Runic.Navigation.ReactiveUI`. Events 1044-1049 are
+reserved for it; it logs none today. Event 1043 is the Views
+`ReactiveSchedulerOutsideModelTurn`.

@@ -15,6 +15,51 @@ internal static class ReactiveNavigationTests
         foreach (var web in new[] { false, true })
         foreach (var outcome in new[] { "committed", "guard", "cancelled" })
             await FrameworkCommandPreservesNavigationAsync(web, outcome);
+        await BridgedBackCommandReturnsOutcomeAsync();
+    }
+
+    // The back command needs no scheduler and returns a NavigationOutcome, which the generated web client
+    // receives as a typed result (W250-014).
+    private static async Task BridgedBackCommandReturnsOutcomeAsync()
+    {
+        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
+            "The model-context main-thread scheduler was not installed.");
+        await using var context = new RunicModelContext();
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var home = new NavHomeViewModel();
+        using var model = new ReactiveNavShellViewModel(navigator, context, home);
+        using var host = new RunicWindowTestHost<ReactiveNavShellViewModel>(model,
+            (transport, content, vm) => new ReactiveNavShellBridge(transport, vm, content: content),
+            new RunicWindowTestHostOptions { ModelContext = context, ViewLocator = new NavViewLocator() });
+        Require(!ReactiveCommandExecution.CanExecute(model.BackCommand, RxVoid.Default), "Back was enabled without history.");
+        await model.Main.PushAsync(NavigationTarget.Own<INavPageViewModel>(new NavEditorViewModel("editor")));
+        await Until(() => ReactiveCommandExecution.CanExecute(model.BackCommand, RxVoid.Default));
+
+        var executing = new List<RunicModelContext?>();
+        using var observed = model.BackCommand.IsExecuting.Subscribe(new Observer<bool>(_ => { lock (executing) executing.Add(RunicModelContext.Current); }));
+        const string requestId = "back";
+        using var admission = JsonDocument.Parse(host.Transport.Call("reactiveNavShellStartBack", new(StringValue: requestId)));
+        Require(admission.RootElement.GetProperty("kind").GetString() == "accepted", "The web back command was not admitted.");
+        var contract = admission.RootElement.GetProperty("contract").GetString()!;
+        using var completion = JsonDocument.Parse(await host.Transport.CallAsync("__runicOperationWait",
+            new(StringValue: JsonSerializer.Serialize(new { contract, requestId }))).AsTask().WaitAsync(Timeout));
+        var root = completion.RootElement;
+        Require(root.GetProperty("kind").GetString() == "succeeded"
+            && root.GetProperty("result").GetProperty("kind").GetString() is "committed" or "Committed"
+            && root.GetProperty("result").GetProperty("rejection").ValueKind == JsonValueKind.Null,
+            $"The back command did not return a committed outcome: {root}.");
+        Require(model.Main.Current == home, "The bridged back command did not go back.");
+        await Until(() => { lock (executing) return executing.Count >= 3; });
+        lock (executing)
+            Require(executing.Skip(1).All(current => current == context),
+                $"The back command's IsExecuting was not delivered on the window's model context: {string.Join(", ", executing.Select(c => c is null ? "null" : c == context ? "window" : "other"))}.");
+    }
+
+    private sealed class Observer<T>(Action<T> next) : IObserver<T>
+    {
+        public void OnCompleted() { }
+        public void OnError(Exception error) => throw new InvalidOperationException("The sequence failed.", error);
+        public void OnNext(T value) => next(value);
     }
 
     private static async Task FrameworkCommandPreservesNavigationAsync(bool web, string outcome)

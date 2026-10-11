@@ -1,8 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
-using Runic.Navigation.ReactiveUI;
 
 namespace Runic.Application.Testing.Tests;
 

@@ -8,23 +8,23 @@ using Runic.Navigation;
 using System.Reactive;
 using ReactiveUI.Reactive;
 using ReactiveUI.Reactive.Builder;
+using System.Reactive.Linq;
 using Runic.Platform;
 using ReactiveUI.Binding.Reactive;
 using Runic.Application.Views.ReactiveUI.Reactive;
-using Runic.Navigation.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
 using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
-using FlavorSchedulerProvider = Runic.Navigation.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
+using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
 #elif DEFAULT_FLAVOR
 using ReactiveUI;
 using ReactiveUI.Builder;
 using ReactiveUI.Binding;
+using ReactiveUI.Primitives;
 using ReactiveUI.Primitives.Concurrency;
 using Runic.Application.Views.ReactiveUI;
-using Runic.Navigation.ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 using FlavorScheduler = ReactiveUI.Primitives.Concurrency.ISequencer;
-using FlavorSchedulerProvider = Runic.Navigation.ReactiveUI.IRunicReactiveSchedulerProvider;
+using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider;
 #else
 #error A ReactiveUI flavor must be selected.
 #endif
@@ -33,6 +33,10 @@ await CommandSemanticsAsync();
 await InteractionSemanticsAsync();
 await SchedulerFailureAndShutdownSemanticsAsync();
 await StreamOverflowStopsExecutionAsync();
+await AmbientMainThreadSchedulerSemanticsAsync();
+await SchedulerSemanticsAsync();
+await DependencyInjectionSemanticsAsync();
+await SchedulerLifetimeSemanticsAsync();
 PlatformImportSemantics();
 // Last: it replaces ReactiveUI's global default exception handler.
 await BridgeExceptionSemanticsAsync();
@@ -278,6 +282,196 @@ static async Task BridgeExceptionSemanticsAsync()
     }
 }
 
+// A command created without an output scheduler delivers its output and IsExecuting on the model context
+// of the turn that executes it; two contexts never cross, and work outside a turn uses the replaced
+// scheduler and is logged once (W250-014, design note W250-031 N1).
+static async Task AmbientMainThreadSchedulerSemanticsAsync()
+{
+    var logs = new RecordingLoggerFactory();
+    Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(logs),
+        "The model-context main-thread scheduler was not installed over ReactiveUI's default.");
+    Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(),
+        "A second install did not report the installed scheduler.");
+
+    await using var first = new RunicModelContext();
+    await using var second = new RunicModelContext();
+    var runs = await Task.WhenAll(ExecuteInTurnAsync(first), ExecuteInTurnAsync(second), ExecuteInTurnAsync(first));
+    Require(runs[0].All(observed => observed == first) && runs[2].All(observed => observed == first)
+        && runs[1].All(observed => observed == second) && runs.All(run => run.Count >= 3),
+        "A command without an output scheduler did not deliver on the model context of its turn.");
+    Require(logs.Logger.Entries.IsEmpty, "Work scheduled in a model turn was reported as outside a turn.");
+
+    // ReactiveUI's token-taking CreateFromTask completes from the task's continuation, outside the turn. A bridged
+    // execution carries its turn's context there, so its result and IsExecuting still arrive on that context.
+    var bridged = await Task.WhenAll(ExecuteBridgedWithTokenAsync(first), ExecuteBridgedWithTokenAsync(second));
+    Require(bridged[0].All(observed => observed == first) && bridged[1].All(observed => observed == second)
+        && bridged.All(run => run.Count >= 3),
+        "A bridged token-taking command did not deliver on the model context of its turn.");
+    Require(logs.Logger.Entries.IsEmpty, "A bridged token-taking command was reported as outside a turn.");
+
+    // Outside a turn: the replaced scheduler runs the work, and the warning is logged once.
+    for (var attempt = 0; attempt != 2; attempt++)
+    {
+        var command = ReactiveCommand.Create(() => 1);
+        var outside = new TaskCompletionSource<RunicModelContext?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (command.Subscribe(new TurnObserver<int>(_ => outside.TrySetResult(RunicModelContext.Current))))
+        using (await Task.Run(() => command.Execute().Subscribe(new TurnObserver<int>(_ => { }))))
+            Require(await outside.Task.WaitAsync(TimeSpan.FromSeconds(5)) is null,
+                "Work scheduled outside a model turn ran on a model context.");
+    }
+    Require(logs.Logger.Entries.Count(entry => entry.Id == 1043) == 1,
+        "Work scheduled outside a model turn was not logged exactly once.");
+}
+
+// Creates a command without a scheduler, as a ViewModel does, and executes it from a turn of the context.
+// The body awaits, so its result is produced in the turn its continuation resumes in.
+static async Task<List<RunicModelContext?>> ExecuteInTurnAsync(RunicModelContext context)
+{
+    var observed = new List<RunicModelContext?>();
+    var command = ReactiveCommand.CreateFromTask(async () =>
+    {
+        await Task.Delay(10);
+        return 1;
+    });
+    var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    using var output = command.Subscribe(new TurnObserver<int>(_ => { lock (observed) observed.Add(RunicModelContext.Current); }));
+    using var executing = command.IsExecuting.Skip(1)
+        .Subscribe(new TurnObserver<bool>(_ => { lock (observed) observed.Add(RunicModelContext.Current); }));
+    await context.InvokeAsync(() => { _ = command.Execute().Subscribe(new TurnObserver<int>(_ => { }, () => done.TrySetResult())); });
+    await done.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    await WaitUntilAsync(() => { lock (observed) return observed.Count >= 3; }, "The command did not report its execution.");
+    await context.InvokeAsync(() => { });
+    lock (observed) return [.. observed];
+}
+
+
+// Executes a token-taking command the way a generated bridge does, from a turn of the context.
+static async Task<List<RunicModelContext?>> ExecuteBridgedWithTokenAsync(RunicModelContext context)
+{
+    var observed = new List<RunicModelContext?>();
+    var command = ReactiveCommand.CreateFromTask(async (CancellationToken cancellationToken) =>
+    {
+        await Task.Delay(10, cancellationToken);
+        return 1;
+    });
+    using var output = command.Subscribe(new TurnObserver<int>(_ => { lock (observed) observed.Add(RunicModelContext.Current); }));
+    using var executing = command.IsExecuting.Skip(1)
+        .Subscribe(new TurnObserver<bool>(_ => { lock (observed) observed.Add(RunicModelContext.Current); }));
+    Task<int>? execution = null;
+    await context.InvokeAsync(() => execution = ReactiveCommandExecution.Execute(command, default(FlavorUnit), CancellationToken.None));
+    Require(await execution!.WaitAsync(TimeSpan.FromSeconds(5)) == 1, "The bridged token-taking command returned the wrong result.");
+    await WaitUntilAsync(() => { lock (observed) return observed.Count >= 3; }, "The command did not report its execution.");
+    await context.InvokeAsync(() => { });
+    lock (observed) return [.. observed];
+}
+static async Task SchedulerSemanticsAsync()
+{
+    await using var context = new RunicModelContext();
+    var scheduler = new RunicReactiveSchedulerProvider().For(context);
+    var fifo = new List<int>();
+    for (var value = 0; value != 16; value++)
+        _ = Schedule(scheduler, value, current => fifo.Add(current));
+    await context.InvokeAsync(() => { });
+    Require(fifo.SequenceEqual(Enumerable.Range(0, 16)), "The adapter scheduler did not preserve FIFO delivery.");
+
+    var ambient = new AsyncLocal<string?> { Value = "captured" };
+    var observedAmbient = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+    _ = Schedule(scheduler, 0, _ => observedAmbient.TrySetResult(ambient.Value));
+    ambient.Value = null;
+    Require(await observedAmbient.Task.WaitAsync(TimeSpan.FromSeconds(5)) == "captured",
+        "The adapter scheduler lost its scheduling call's execution context.");
+
+    var cancelled = 0;
+    using (ScheduleDelayed(scheduler, TimeSpan.FromMilliseconds(150), () => Interlocked.Increment(ref cancelled)))
+    {
+    }
+    await Task.Delay(250);
+    Require(Volatile.Read(ref cancelled) == 0, "Disposing scheduled work did not cancel it.");
+}
+
+static async Task DependencyInjectionSemanticsAsync()
+{
+    var services = new ServiceCollection();
+    services.AddRunicReactiveModelContext();
+    await using var provider = services.BuildServiceProvider();
+
+    IRunicModelContext firstContext;
+    FlavorScheduler firstScheduler;
+    await using (var first = provider.CreateAsyncScope())
+    {
+        firstContext = first.ServiceProvider.GetRequiredService<IRunicModelContext>();
+        firstScheduler = first.ServiceProvider.GetRequiredService<FlavorScheduler>();
+        Require(ReferenceEquals(firstContext, first.ServiceProvider.GetRequiredService<IRunicModelContext>()),
+            "A scope did not retain its model context.");
+        Require(ReferenceEquals(firstScheduler, first.ServiceProvider.GetRequiredService<FlavorScheduler>()),
+            "A scope did not retain its model scheduler.");
+    }
+    await RequireThrowsAsync<ObjectDisposedException>(() => firstContext.InvokeAsync(() => { }).AsTask(),
+        "Disposing an async service scope did not dispose its model context.");
+
+    await using (var second = provider.CreateAsyncScope())
+    {
+        var secondContext = second.ServiceProvider.GetRequiredService<IRunicModelContext>();
+        var secondScheduler = second.ServiceProvider.GetRequiredService<FlavorScheduler>();
+        Require(!ReferenceEquals(firstContext, secondContext) && !ReferenceEquals(firstScheduler, secondScheduler),
+            "Distinct service scopes shared a model context or scheduler.");
+    }
+
+    await using var customContext = new RunicModelContext();
+    var customProvider = new RecordingProvider();
+    var customServices = new ServiceCollection();
+    customServices.AddScoped<IRunicModelContext>(_ => customContext);
+    customServices.AddSingleton<FlavorSchedulerProvider>(customProvider);
+    customServices.AddRunicReactiveModelContext();
+    await using var customContainer = customServices.BuildServiceProvider();
+    await using var customScope = customContainer.CreateAsyncScope();
+    Require(ReferenceEquals(customContext, customScope.ServiceProvider.GetRequiredService<IRunicModelContext>()),
+        "AddRunicReactiveModelContext replaced an application model context registration.");
+    _ = customScope.ServiceProvider.GetRequiredService<FlavorScheduler>();
+    Require(customProvider.Calls == 1, "AddRunicReactiveModelContext replaced an application scheduler provider registration.");
+}
+
+// The provider keeps one scheduler per context, so every resolution for a context shares its
+// ordering state (W240-001 section 9, M7).
+static async Task SchedulerLifetimeSemanticsAsync()
+{
+    await using var context = new RunicModelContext();
+    var provider = new RunicReactiveSchedulerProvider();
+    Require(ReferenceEquals(provider.For(context), provider.For(context)),
+        "The provider returned distinct schedulers for one context.");
+    await using var other = new RunicModelContext();
+    Require(!ReferenceEquals(provider.For(context), provider.For(other)),
+        "The provider shared a scheduler between contexts.");
+
+    // A transient registration returns the cached scheduler, also for a singleton context.
+    var services = new ServiceCollection();
+    services.AddSingleton<IRunicModelContext>(context);
+    services.AddRunicReactiveModelContext();
+    services.AddSingleton<SingletonViewModel>();
+    await using var container = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+    var first = container.GetRequiredService<FlavorScheduler>();
+    Require(ReferenceEquals(first, container.GetRequiredService<FlavorScheduler>()),
+        "Two resolutions for one context returned distinct schedulers.");
+    Require(ReferenceEquals(first, container.GetRequiredService<SingletonViewModel>().Scheduler),
+        "A singleton ViewModel did not receive the context's scheduler.");
+
+    // A scoped context gets its own scheduler per scope, and one within the scope.
+    var scoped = new ServiceCollection();
+    scoped.AddRunicReactiveModelContext();
+    await using var scopedContainer = scoped.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+    FlavorScheduler inFirst;
+    await using (var one = scopedContainer.CreateAsyncScope())
+    {
+        inFirst = one.ServiceProvider.GetRequiredService<FlavorScheduler>();
+        Require(ReferenceEquals(inFirst, one.ServiceProvider.GetRequiredService<FlavorScheduler>()),
+            "A scope resolved distinct schedulers for its context.");
+    }
+    await using (var two = scopedContainer.CreateAsyncScope())
+        Require(!ReferenceEquals(inFirst, two.ServiceProvider.GetRequiredService<FlavorScheduler>()),
+            "Two scopes shared a scheduler.");
+}
+
+
 static async Task WaitUntilAsync(Func<bool> condition, string message)
 {
     for (var attempt = 0; attempt < 200 && !condition(); attempt++) await Task.Delay(10);
@@ -410,4 +604,38 @@ sealed class EmptyDisposable : IDisposable
 sealed class ConformanceInteractionModel
 {
     public Interaction<string, bool> Confirm { get; } = new();
+}
+
+sealed class SingletonViewModel(FlavorScheduler scheduler)
+{
+    public FlavorScheduler Scheduler { get; } = scheduler;
+}
+
+
+sealed class RecordingProvider : FlavorSchedulerProvider
+{
+    private readonly RunicReactiveSchedulerProvider _inner = new();
+    public int Calls { get; private set; }
+
+    public FlavorScheduler For(IRunicModelContext context)
+    {
+        Calls++;
+        return _inner.For(context);
+    }
+}
+
+
+sealed class TurnObserver<T>(Action<T> next, Action? completed = null) : IObserver<T>
+{
+    public void OnCompleted() => completed?.Invoke();
+    public void OnError(Exception error) => throw new InvalidOperationException("The sequence failed.", error);
+    public void OnNext(T value) => next(value);
+}
+
+sealed class RecordingLoggerFactory : Microsoft.Extensions.Logging.ILoggerFactory
+{
+    public RecordingLogger Logger { get; } = new();
+    public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => Logger;
+    public void AddProvider(Microsoft.Extensions.Logging.ILoggerProvider provider) => throw new NotSupportedException();
+    public void Dispose() { }
 }

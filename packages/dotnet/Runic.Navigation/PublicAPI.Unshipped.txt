@@ -1,5 +1,26 @@
 #nullable enable
 *REMOVED*Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
 [RUNICNAV001]Runic.Navigation.RunicModelContext.Closed.get -> System.Threading.CancellationToken
+static Runic.Navigation.RunicModelContext.Current.get -> Runic.Navigation.RunicModelContext?
+[RUNICNAV001]override Runic.Navigation.NavigationOutcome.Equals(object? obj) -> bool
+[RUNICNAV001]override Runic.Navigation.NavigationOutcome.GetHashCode() -> int
+[RUNICNAV001]override Runic.Navigation.NavigationOutcome.ToString() -> string!
+[RUNICNAV001]Runic.Navigation.NavigationOutcome
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.<Clone>$() -> Runic.Navigation.NavigationOutcome!
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.Deconstruct(out Runic.Navigation.NavigationOutcomeKind Kind, out Runic.Navigation.NavigationRejection? Rejection) -> void
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.Equals(Runic.Navigation.NavigationOutcome? other) -> bool
+[RUNICNAV001]Runic.Navigation.NavigationOutcomeKind
+[RUNICNAV001]Runic.Navigation.NavigationOutcomeKind.Committed = 0 -> Runic.Navigation.NavigationOutcomeKind
+[RUNICNAV001]Runic.Navigation.NavigationOutcomeKind.Failed = 3 -> Runic.Navigation.NavigationOutcomeKind
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.Kind.get -> Runic.Navigation.NavigationOutcomeKind
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.Kind.init -> void
+[RUNICNAV001]Runic.Navigation.NavigationOutcomeKind.Rejected = 1 -> Runic.Navigation.NavigationOutcomeKind
+[RUNICNAV001]Runic.Navigation.NavigationOutcomeKind.Superseded = 2 -> Runic.Navigation.NavigationOutcomeKind
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.NavigationOutcome(Runic.Navigation.NavigationOutcomeKind Kind, Runic.Navigation.NavigationRejection? Rejection = null) -> void
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.Rejection.get -> Runic.Navigation.NavigationRejection?
+[RUNICNAV001]Runic.Navigation.NavigationOutcome.Rejection.init -> void
+[RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.Outcome.get -> Runic.Navigation.NavigationOutcome!
+[RUNICNAV001]static Runic.Navigation.NavigationOutcome.operator !=(Runic.Navigation.NavigationOutcome? left, Runic.Navigation.NavigationOutcome? right) -> bool
+[RUNICNAV001]static Runic.Navigation.NavigationOutcome.operator ==(Runic.Navigation.NavigationOutcome? left, Runic.Navigation.NavigationOutcome? right) -> bool
 [RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.IsCommitted.get -> bool
 [RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.ThrowIfFailed() -> Runic.Navigation.NavigationResult<TContent!>!

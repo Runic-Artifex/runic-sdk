@@ -31,7 +31,7 @@ Presentation hosts and MVVM integrations are independent choices:
 | --- | --- |
 | WPF presentation | `Runic.Navigation.Wpf` presents regions with native Views and a dispatcher context. |
 | Web presentation | `Runic.Application` presents the same regions through generated Window/View bridges. |
-| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides observables, a Back command and model-context scheduling. Compose native ReactiveUI commands for other operations. |
+| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides observables and a Back command whose `NavigationOutcome` a View can bind. Model-context scheduling comes from `Runic.Application.ReactiveUI` in a Views app. Compose native ReactiveUI commands for other operations. |
 | CommunityToolkit ViewModels | Use the core's async operations directly with `AsyncRelayCommand` or `[RelayCommand]`, forwarding the command's cancellation token. No additional navigation adapter is needed. |
 
 An integration can optimize its framework's API without duplicating navigation
@@ -114,6 +114,10 @@ See [Container-resolved targets](#container-resolved-targets).
   outcome's `Error` with its original stack trace and returns the result
   otherwise, so a caller that treats failures as bugs can write
   `if ((await main.PushAsync<EditorViewModel>()).ThrowIfFailed().IsCommitted) { ... }`.
+- `result.Outcome` is a `NavigationOutcome`: the `Kind` (`Committed`,
+  `Rejected`, `Superseded` or `Failed`) and, for a rejection, its `Rejection`
+  reason. It holds no .NET content or exception, so a ViewModel can return it to
+  a Runic View, which cannot receive a `NavigationResult<TContent>`.
 - `NavigationRequestOptions.ExpectedCurrent` makes a request conditional. It
   is rejected as `NotCurrent` if that entry is not current at admission or at
   commit. Use it, or `NavigationEntryContext.BackAsync`, for work that
@@ -521,7 +525,10 @@ waiting. `RunicModelContext` is the default implementation, and
 queues posted callbacks as new turns, so an `await` in async code started in a
 turn, such as a command body, resumes in a later turn, as on a UI thread.
 Continuations are queued in the order they become ready. Code after
-`ConfigureAwait(false)` or in `Task.Run` leaves the context. Once the context
+`ConfigureAwait(false)` or in `Task.Run` leaves the context.
+`RunicModelContext.Current` is the context whose turn is running on the current
+thread, or `null` outside a turn; adapters use it to route work scheduled in a
+turn back to that turn's context. Once the context
 is closed, continuations run on the thread pool outside any turn, so the code
 still finishes. Navigation hooks don't run in turns (see
 [Threading](#threading)).
@@ -590,5 +597,5 @@ values.
 
 Navigation reserves events 1060-1079: 1060-1069 for transitions and cleanup,
 and 1070-1079 for results and later navigation events, of which 1075-1079 are
-not used yet. Events 1043-1049 are reserved for the ReactiveUI navigation
+not used yet. Events 1044-1049 are reserved for the ReactiveUI navigation
 adapter.

@@ -301,6 +301,15 @@ public abstract record NavigationResult<TContent> where TContent : class
 
     /// <summary>A later request of the region, or of its parent, replaced this one before it committed.</summary>
     public sealed record Superseded : NavigationResult<TContent>;
+
+    /// <summary>Gets a summary of this result that a Runic View can receive.</summary>
+    public NavigationOutcome Outcome => this switch
+    {
+        Committed => new(NavigationOutcomeKind.Committed),
+        Rejected rejected => new(NavigationOutcomeKind.Rejected, rejected.Reason),
+        Superseded => new(NavigationOutcomeKind.Superseded),
+        _ => new(NavigationOutcomeKind.Failed),
+    };
 }
 
 /// <summary>How a <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/> request ended.</summary>

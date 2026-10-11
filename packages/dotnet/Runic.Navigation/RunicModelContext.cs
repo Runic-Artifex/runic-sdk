@@ -72,7 +72,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
 #pragma warning restore RUNICNAV001
 {
     [ThreadStatic]
-    private static RunicModelContext? Current;
+    private static RunicModelContext? Executing;
     private readonly object _gate = new();
     private readonly Queue<IWorkItem> _queued = new();
     private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -105,7 +105,19 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     public event Action<Exception>? UnhandledTurnException;
 
     /// <inheritdoc />
-    public bool IsExecuting => ReferenceEquals(Current, this);
+    public bool IsExecuting => ReferenceEquals(Executing, this);
+
+    /// <summary>
+    /// Gets the context whose turn is executing on the calling thread, or <see langword="null"/> outside a turn of a
+    /// <see cref="RunicModelContext"/>.
+    /// </summary>
+    /// <remarks>
+    /// An <c>await</c> started in a turn resumes in a later turn, where this returns the context again. MVVM adapters
+    /// use it to deliver work scheduled in a turn back to the same context, as a UI framework's main-thread scheduler
+    /// does for its dispatcher. Another <see cref="IRunicModelContext"/> implementation, such as a dispatcher context,
+    /// is not reported.
+    /// </remarks>
+    public static RunicModelContext? Current => Executing;
 
     /// <summary>Gets a token cancelled after the context stops accepting work and before queued work is rejected.</summary>
     /// <remarks>
@@ -213,14 +225,14 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
 
     private void Drain()
     {
-        var previous = Current;
+        var previous = Executing;
         // Unsafe queueing prevents the caller's ambient values from becoming
         // this worker's baseline. A suppressed-flow item must nevertheless
         // run in this clean baseline even when it follows an item that did
         // capture an AsyncLocal scope.
         var baselineExecutionContext = ExecutionContext.Capture();
         var previousSynchronizationContext = SynchronizationContext.Current;
-        Current = this;
+        Executing = this;
         try
         {
             while (true)
@@ -244,7 +256,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
         }
         finally
         {
-            Current = previous;
+            Executing = previous;
             SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
         }
     }
