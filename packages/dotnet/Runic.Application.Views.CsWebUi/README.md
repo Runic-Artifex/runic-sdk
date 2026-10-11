@@ -1,12 +1,12 @@
-# Runic.Application.CsWebUi
+# Runic.Application.Views.CsWebUi
 
 Present Runic Windows and Views with [CS-WebUI](https://github.com/Runic-Artifex/cs-webui).
 New projects select it with `dotnet new runic-app --host cswebui`; it opens the
 app in a browser window and is supported on a best-effort basis. The template
-defaults to the native [Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md) host.
+defaults to the native [Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md) host.
 
 ```sh
-dotnet add package Runic.Application.CsWebUi --prerelease
+dotnet add package Runic.Application.Views.CsWebUi --prerelease
 dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
@@ -33,7 +33,7 @@ public sealed partial class MainWindow : RunicWindow<MainViewModel>;
 ```
 
 The same Window and `async host => ...` body run natively with
-`RunicDesktopHost.Run(provider, ...)` from `Runic.Application.Desktop`.
+`RunicDesktopHost.Run(provider, ...)` from `Runic.Application.Views.Desktop`.
 
 `RunicCsWebUiHost.Run` runs the asynchronous application on the thread pool
 while the process main thread shows its windows and waits in WebUI's wait loop,
@@ -84,7 +84,7 @@ Linux, or WKWebView on macOS. `ConfigureWindow` configures each `WebUiWindow`
 before it is shown, for example `SetPort`, and `ShowWindow` replaces how it is
 shown, for example to open a frontend development server's URL. For native
 windows and platform services, use
-[Runic.Application.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md)
+[Runic.Application.Views.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md)
 instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformServices`,
 `IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
 ViewModels that take them resolve on both hosts. CS-WebUI windows have no native
@@ -125,5 +125,5 @@ returns `disconnected`. CS-WebUI cannot remove a native route registration
 before its window closes. Retained page references reuse routes; new page
 identities still add routes.
 
-See the [Runic.Application package guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
+See the [Runic.Application.Views package guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
 for Windows, Views, generated clients, and build properties.

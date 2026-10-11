@@ -29,7 +29,7 @@ export const mvvmAllowList = {
   "tools/Runic.Application.Views.Codegen.Toolkit/Runic.Application.Views.Codegen.Toolkit.csproj":
     { libraries: ["CommunityToolkit.Mvvm"], reason: "CommunityToolkit generator plug-in" },
   // The generator host composes the plug-ins through its Conventions/ modules. It
-  // ships only as the private build tool under tools/ in Runic.Application and is
+  // ships only as the private build tool under tools/ in Runic.Application.Views and is
   // never part of an application's compile or runtime closure.
   "tools/Runic.Application.Views.Codegen/Runic.Application.Views.Codegen.csproj":
     { libraries: ["ReactiveUI", "CommunityToolkit.Mvvm"], reason: "generator host for the plug-ins above" },
@@ -102,7 +102,7 @@ export function mvvmLayeringErrors(projects, inspect, allowList = mvvmAllowList)
     for (const [library, via] of closure(project))
       if (!allowed.includes(library))
         errors.push(`${project} depends on ${library} (${via}). General-purpose projects must stay free of MVVM libraries (D018.9): `
-          + `move the library-specific code into an adapter such as Runic.Application.ReactiveUI, or, for a new adapter, add it to mvvmAllowList in eng/mvvm-layering.test.mjs.`);
+          + `move the library-specific code into an adapter such as Runic.Application.Views.ReactiveUI, or, for a new adapter, add it to mvvmAllowList in eng/mvvm-layering.test.mjs.`);
   }
   return errors;
 }

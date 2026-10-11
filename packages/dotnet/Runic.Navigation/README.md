@@ -10,7 +10,7 @@ The package has no build targets, generator, Node or UI host, and it supports
 trimming and NativeAOT. Its only dependencies are
 `Microsoft.Extensions.DependencyInjection.Abstractions` and
 `Microsoft.Extensions.Logging.Abstractions`.
-[Runic.Application](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
+[Runic.Application.Views](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
 depends on it and presents regions in web Views.
 
 ## Install
@@ -19,7 +19,7 @@ depends on it and presents regions in web Views.
 dotnet add package Runic.Navigation --prerelease
 ```
 
-Runic.Application apps already have it through that package.
+Runic.Application.Views apps already have it through that package.
 
 ## One engine, idiomatic integrations
 
@@ -30,8 +30,8 @@ Presentation hosts and MVVM integrations are independent choices:
 | Choice | Integration |
 | --- | --- |
 | WPF presentation | `Runic.Navigation.Wpf` presents regions with native Views and a dispatcher context. |
-| Web presentation | `Runic.Application` presents the same regions through generated Window/View bridges. |
-| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides observables and a Back command whose `NavigationOutcome` a View can bind. Model-context scheduling comes from `Runic.Application.ReactiveUI` in a Views app. Compose native ReactiveUI commands for other operations. |
+| Web presentation | `Runic.Application.Views` presents the same regions through generated Window/View bridges. |
+| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides observables and a Back command whose `NavigationOutcome` a View can bind. Model-context scheduling comes from `Runic.Application.Views.ReactiveUI` in a Views app. Compose native ReactiveUI commands for other operations. |
 | CommunityToolkit ViewModels | Use the core's async operations directly with `AsyncRelayCommand` or `[RelayCommand]`, forwarding the command's cancellation token. No additional navigation adapter is needed. |
 
 An integration can optimize its framework's API without duplicating navigation
@@ -306,7 +306,7 @@ it off; a window scope already bounds those dependencies.
 
 ### Presenting regions
 
-A host presents a region's `Current`. In Runic.Application, a get-only
+A host presents a region's `Current`. In Runic.Application.Views, a get-only
 `NavigationRegion<TContent>` property of a ViewModel is a content slot that
 the generated Bridge presents in the window's web View; see
 [Content slots](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#content-slots).
@@ -588,7 +588,7 @@ values.
   or the scope's `ILoggerFactory` with `AddRunicNavigation()`.
 - Events 1030-1033 use the logger of the `RunicModelContext`:
   `ILogger<RunicModelContext>` (category `Runic.Navigation.RunicModelContext`)
-  when DI or a Runic.Application window session with a logger factory created
+  when DI or a Runic.Application.Views window session with a logger factory created
   it. Event 1033 is also logged by the registry when a context it created
   fails to shut down.
 - Without a logger factory, each entry is written to

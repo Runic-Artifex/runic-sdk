@@ -4,7 +4,7 @@ The root `Directory.Build.props` supplies workspace identity and `RunicSdkRoot`.
 Managed projects explicitly import their policy from this directory, so moving a
 project does not silently change its language, analyzer or package settings.
 
-- `application`: View runtime (`Runic.Application`), CS-WebUI, Desktop, ReactiveUI and
+- `application`: View runtime (`Runic.Application.Views`), CS-WebUI, Desktop, ReactiveUI and
   testing adapters, the BridgeCodegen tools, `dotnet-runic`, templates, the
   `Runic.Platform*` native-service packages and their tests.
 - `assets`: archive/runtime adapters and asset packer.
@@ -48,7 +48,7 @@ in its root namespace (or `RunicReleaseLinksNamespace`). Its
 `ExperimentalUrlFormat` is the `UrlFormat` of every `[Experimental]` attribute,
 pointing at the ID's entry in [docs/experimental.md](../../docs/experimental.md);
 `eng/experimental.test.mjs` keeps the attributes and the page in step.
-`Runic.Navigation.Wpf` and `Runic.Application.Wpf` also ship `buildTransitive`
+`Runic.Navigation.Wpf` and `Runic.Application.Views.Wpf` also ship `buildTransitive`
 targets that suppress their experimental ID in the project's intermediate
 `.g.cs` files, where the WPF markup compiler declares named controls. Root
 `Directory.Build.targets` imports them for repository WPF projects.

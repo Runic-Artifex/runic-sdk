@@ -7,7 +7,7 @@
     <AssemblyName>BridgeCodegen</AssemblyName>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Internal build tool shipped inside Runic.Application; it has no public API surface. -->
+    <!-- Internal build tool shipped inside Runic.Application.Views; it has no public API surface. -->
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <!-- Generated source must not depend on the developer's locale. With invariant
          globalization every interpolation is culture-neutral, so CA1305 is moot. -->

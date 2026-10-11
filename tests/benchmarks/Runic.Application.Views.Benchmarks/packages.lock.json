@@ -139,19 +139,19 @@
         "resolved": "4.7.0",
         "contentHash": "VybpaOQQhqE6siHppMktjfGBw1GCwvCqiufqmP8F1nj7fTUNtW35LOEt3UZTEsECfo+ELAl/9o9nJx3U91i7vA=="
       },
-      "Runic.Application": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
-        }
-      },
       "runic.application.testing": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, )",
-          "Runic.Application": "[0.7.0-preview.4, )"
+          "Runic.Application.Views": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.application.views": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
+          "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
       "runic.navigation": {

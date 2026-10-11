@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using Runic.Navigation;
 using StandaloneConsumer;
 
-// A consumer of the packed Runic.Navigation alone: no Runic.Application, Bridge
+// A consumer of the packed Runic.Navigation alone: no Runic.Application.Views, Bridge
 // generator, Node or UI host. The same program runs with JIT and as a NativeAOT
 // publish (package-smoke.mjs). Scenarios use the API of W240-003 (target-form
 // push, PushForResult, Back, and DisposeAsync that retires every entry) and of

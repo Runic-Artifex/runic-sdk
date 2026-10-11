@@ -1,5 +1,5 @@
-// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
-// Runic.Application.ReactiveUI.Reactive.
+// Shared by Runic.Application.Views.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Application.Views.ReactiveUI.Reactive.
 using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;

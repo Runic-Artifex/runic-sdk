@@ -6,9 +6,9 @@
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
-    <RunicBridgeCompositionType>HybridNotes.RunicBridgeComposition</RunicBridgeCompositionType>
-    <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/../Frontend</RunicBridgeFrontendDir>
-    <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
+    <RunicApplicationFrontendCompositionType>HybridNotes.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/../Frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" />

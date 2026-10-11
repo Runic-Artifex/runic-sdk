@@ -18,7 +18,7 @@ namespace Runic.Application.Views.CsWebUi;
 ///     return 0;
 /// });
 /// </code>
-/// Replacing <c>RunicCsWebUiHost</c> with <c>RunicDesktopHost</c> (package <c>Runic.Application.Desktop</c>) runs the
+/// Replacing <c>RunicCsWebUiHost</c> with <c>RunicDesktopHost</c> (package <c>Runic.Application.Views.Desktop</c>) runs the
 /// same application in a native window.
 /// </summary>
 /// <remarks>

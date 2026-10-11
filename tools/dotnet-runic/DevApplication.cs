@@ -432,12 +432,12 @@ internal static class DevApplication
         DevOptions options,
         string prefix) =>
         options.WatchFrontend && configuration.HasDevelopmentServer
-            ? [$"{prefix}RunicBridgeBuildFrontend=false", $"{prefix}RunicBridgeCopyFrontend=false"]
+            ? [$"{prefix}RunicApplicationFrontendBuildEnabled=false", $"{prefix}RunicApplicationFrontendCopyEnabled=false"]
             : [];
 
     /// <summary>
     /// Development server properties plus, with <c>--no-restore</c>,
-    /// <c>RunicBridgeInstallFrontend=false</c> so MSBuild does not install
+    /// <c>RunicApplicationFrontendInstallEnabled=false</c> so MSBuild does not install
     /// missing frontend packages behind the caller's back.
     /// </summary>
     internal static IReadOnlyList<string> CreateBuildProperties(
@@ -448,7 +448,7 @@ internal static class DevApplication
         var properties = new List<string>(CreateDevelopmentServerProperties(configuration, options, prefix));
         if (!options.Restore)
         {
-            properties.Add($"{prefix}RunicBridgeInstallFrontend=false");
+            properties.Add($"{prefix}RunicApplicationFrontendInstallEnabled=false");
         }
         return properties;
     }

@@ -5,7 +5,7 @@ using Runic.Application.Views.Codegen.ReactiveUI;
 
 /// <summary>
 /// ReactiveUI commands and interactions. Generated code calls the
-/// Runic.Application.ReactiveUI adapter (or its System.Reactive flavour), so
+/// Runic.Application.Views.ReactiveUI adapter (or its System.Reactive flavour), so
 /// the Bridge runtime itself stays ReactiveUI-free.
 /// </summary>
 internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention

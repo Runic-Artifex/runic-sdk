@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.Desktop.DesktopBridgeTransport</Target>
+    <Left>lib/net10.0/Runic.Application.Desktop.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.Desktop.DesktopBridgeWindow`1</Target>
+    <Left>lib/net10.0/Runic.Application.Desktop.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions</Target>
+    <Left>lib/net10.0/Runic.Application.Desktop.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0001</DiagnosticId>
+    <Target>T:Runic.Application.Views.Desktop.DesktopNativeOwner</Target>
+    <Left>lib/net10.0/Runic.Application.Desktop.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0004</DiagnosticId>
+    <Target>Runic.Application.Desktop, Version=0.7.0.0, Culture=neutral, PublicKeyToken=null</Target>
+    <Left>lib/net10.0/Runic.Application.Desktop.dll</Left>
+    <Right>right</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

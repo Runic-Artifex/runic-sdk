@@ -18,8 +18,8 @@ const dependencyInjection = (await readFile(join(sdk, "Directory.Packages.props"
   .match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
 assert.ok(dependencyInjection, "Dependency injection version was not found.");
 const archives = ["views", "svelte"].map(name => join(npmFeed, `runic-artifex-${name}-${version}.tgz`));
-for (const file of [join(nugetFeed, `Runic.Application.Desktop.${version}.nupkg`),
-  join(nugetFeed, `Runic.Application.ReactiveUI.${version}.nupkg`), ...archives])
+for (const file of [join(nugetFeed, `Runic.Application.Views.Desktop.${version}.nupkg`),
+  join(nugetFeed, `Runic.Application.Views.ReactiveUI.${version}.nupkg`), ...archives])
   await readFile(file); // There is deliberately no workspace-package fallback.
 
 const directory = await mkdtemp(join(tmpdir(), "runic-operations-consumer-"));
@@ -73,7 +73,7 @@ try {
   // Opt-in is a deliberate compatibility boundary. Default generation retains
   // the existing diagnostic instead of silently changing shared contracts.
   const baseline = await run("dotnet", ["build", "OperationsConsumer.csproj", "-c", "Release", ...properties,
-    "-p:EnableJsonIgnoreOptIn=false", "-p:RunicBridgeBuildFrontend=false"], directory, true);
+    "-p:EnableJsonIgnoreOptIn=false", "-p:RunicApplicationFrontendBuildEnabled=false"], directory, true);
   assert.notEqual(baseline.code, 0, "Generation unexpectedly accepted the computed DTO without opt-in.");
   assert.match(baseline.output, /RUNICBRIDGE003/);
   await run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], frontend);

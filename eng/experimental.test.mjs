@@ -42,7 +42,7 @@ test("experimental help links name the release tag, not main", () => {
 });
 
 test("the WPF packages suppress their experimental IDs only in intermediate .g.cs files", () => {
-  for (const [project, id] of [["Runic.Navigation.Wpf", "RUNICNAV001"], ["Runic.Application.Wpf", "RUNICWPF001"]]) {
+  for (const [project, id] of [["Runic.Navigation.Wpf", "RUNICNAV001"], ["Runic.Application.Views.Wpf", "RUNICWPF001"]]) {
     const targets = readFileSync(resolve(root, `packages/dotnet/${project}/buildTransitive/${project}.targets`), "utf8");
     assert.match(targets, new RegExp(`dotnet_diagnostic\\.${id}\\.severity = none`));
     assert.equal([...targets.matchAll(/dotnet_diagnostic\./g)].length, 1, `${project} suppresses more than ${id}`);

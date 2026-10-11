@@ -8,8 +8,8 @@ your project accepts changes to that API before it is supported.
 
 | ID | API family | Packages |
 |---|---|---|
-| [`RUNICNAV001`](#RUNICNAV001) | Standalone navigation | `Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`, parts of `Runic.Application` and `Runic.Application.Testing` |
-| [`RUNICWPF001`](#RUNICWPF001) | WPF child web presentation | `Runic.Application.Wpf` |
+| [`RUNICNAV001`](#RUNICNAV001) | Standalone navigation | `Runic.Navigation`, `Runic.Navigation.Wpf`, `Runic.Navigation.ReactiveUI`, `Runic.Navigation.ReactiveUI.Reactive`, parts of `Runic.Application.Views` and `Runic.Application.Testing` |
+| [`RUNICWPF001`](#RUNICWPF001) | WPF child web presentation | `Runic.Application.Views.Wpf` |
 
 ## Suppressing a diagnostic
 
@@ -32,7 +32,7 @@ await regions.Main.PushAsync<NotesViewModel>();
 
 Code that Runic or the WPF markup compiler generates for you needs no
 suppression. The generated Bridge suppresses `RUNICNAV001` for its navigation
-region slots, and `Runic.Navigation.Wpf` and `Runic.Application.Wpf` suppress
+region slots, and `Runic.Navigation.Wpf` and `Runic.Application.Views.Wpf` suppress
 their IDs in the project's intermediate `.g.cs` files, where WPF declares a
 named control such as `<rn:NavigationHost x:Name="Host" />`. The diagnostic is
 reported only in your own code, so a per-site suppression is enough with
@@ -56,7 +56,7 @@ reported only in your own code, so a per-site suppression is enough with
   `DispatcherModelContext` and `AddRunicWpfNavigation()`.
 - `Runic.Navigation.ReactiveUI` and `Runic.Navigation.ReactiveUI.Reactive`:
   `ReactiveNavigation`, the region observables and `CreateBackCommand`.
-- `Runic.Application`: the `PropertyDescriptor<T>` constructor that observes a
+- `Runic.Application.Views`: the `PropertyDescriptor<T>` constructor that observes a
   region slot. Generated Bridges call it; applications do not.
 - `Runic.Application.Testing`: `RunicNavigationTestExtensions`.
 
@@ -95,7 +95,7 @@ removed in a preview or at 1.0.
 ## RUNICWPF001
 
 **Covers:** the WPF child presentation of a Runic web View in
-`Runic.Application.Wpf`: `RunicWebView`, `WpfBridgeView<TViewModel>` and
+`Runic.Application.Views.Wpf`: `RunicWebView`, `WpfBridgeView<TViewModel>` and
 `WpfBridgeViewExtensions` (`CreateWpfViewAsync`).
 
 **Status:** experimental. It hosts Runic Desktop's WebView2 controller inside an

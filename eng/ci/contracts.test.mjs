@@ -186,7 +186,7 @@ test('Views replace the Bridge application gates', () => {
   // W240-003: the packed Runic.Navigation alone, with no Runic build assets or Node, with JIT and NativeAOT.
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run === 'bun tests/fixtures/navigation/standalone-consumer/package-smoke.mjs'));
-  // W240-006: the packed ReactiveUI navigation adapters pull in no Runic.Application.
+  // W240-006: the packed ReactiveUI navigation adapters pull in no Runic.Application.Views.
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run === 'bun tests/fixtures/navigation/reactiveui-consumer/package-smoke.mjs'));
   assert.ok(workflow.jobs.native.steps.some(step =>

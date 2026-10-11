@@ -1,14 +1,16 @@
 // Proves that WPF applications generate their Runic bridge from the packed packages
-// alone, with no RunicBridgeBuildEnabled, on every platform (EnableWindowsTargeting):
-//  1. Single: one UseWPF project that references only Runic.Application.Wpf, declares a
+// alone, with no RunicApplicationFrontendGenerationEnabled, on every platform (EnableWindowsTargeting):
+//  1. Single: one UseWPF project that references only Runic.Application.Views.Wpf, declares a
 //     RunicView and calls AddRunicViews(). Its local XAML type makes WPF compile a
 //     temporary *_wpftmp assembly, which must not generate again. The client lands in
 //     Frontend/src/generated and the built frontend in www/.
 //  2. Split: the View lives in a WPF-free model project; the WPF application copies
 //     the model's built frontend to its own www/.
 //  3. Without a Frontend folder, the single project fails with one RUNICBRIDGE014.
-//  4. A library that reaches Runic.Application only through the model project and
+//  4. A library that reaches Runic.Application.Views only through the model project and
 //     declares a View gets one RUNICBRIDGE015 warning.
+//  5. A copy of the single project that still sets the 0.7.0-preview.6 property names
+//     builds with them and gets one RUNICBRIDGE016 warning per old name.
 // Usage: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -25,7 +27,7 @@ const feed = resolve(args.find(arg => !arg.startsWith("--")) ?? join(root, "arti
 const { version } = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "utf8"));
 const container = /<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/.exec(readFileSync(join(root, "Directory.Packages.props"), "utf8"))?.[1];
 assert.ok(container, "Directory.Packages.props has no Microsoft.Extensions.DependencyInjection version.");
-for (const id of ["Runic.Application", "Runic.Application.Desktop", "Runic.Application.Wpf"])
+for (const id of ["Runic.Application.Views", "Runic.Application.Views.Desktop", "Runic.Application.Views.Wpf"])
   assert.ok(existsSync(join(feed, `${id}.${version}.nupkg`)), `Pack ${id} ${version} into ${feed} first.`);
 
 const directory = mkdtempSync(join(tmpdir(), "runic-wpf-bridge-"));
@@ -77,14 +79,33 @@ try {
   cpSync(join(directory, "Single"), join(directory, "NoFrontend"), { recursive: true, filter: source => !/[\\/](bin|obj|Frontend)$/.test(source) });
   const missing = build("NoFrontend/WpfSingle.csproj", { fail: true });
   assert.equal(summary(missing, "Error"), 1, "Expected exactly one error.");
-  assert.ok(count(missing, /error RUNICBRIDGE014:.*RunicBridgeFrontendDir/) > 0, "Expected RUNICBRIDGE014.");
+  assert.ok(count(missing, /error RUNICBRIDGE014:.*RunicApplicationFrontendDirectory/) > 0, "Expected RUNICBRIDGE014.");
   assert.equal(count(missing, /MSB6003|MSB3073/), 0, "A frontend command ran without a frontend.");
 
   // 4. Generation off by default with a declared View is one coded warning.
   const library = build("Split/Library/SplitLibrary.csproj");
   assert.equal(summary(library, "Warning"), 1, "Expected exactly one warning.");
-  assert.ok(count(library, /warning RUNICBRIDGE015:.*PreviewView\.cs.*RunicBridgeBuildEnabled=true/) > 0, "Expected RUNICBRIDGE015.");
-  console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off");
+  assert.ok(count(library, /warning RUNICBRIDGE015:.*PreviewView\.cs.*RunicApplicationFrontendGenerationEnabled=true/) > 0, "Expected RUNICBRIDGE015.");
+  // 5. The old property names still apply for one preview, each with RUNICBRIDGE016.
+  cpSync(join(directory, "Single"), join(directory, "Renamed"), { recursive: true, filter: source => !/[\\/](bin|obj|Frontend)$/.test(source) });
+  cpSync(join(directory, "Single/Frontend"), join(directory, "Renamed/Client"), { recursive: true, filter: source => !/[\\/](dist|generated)$/.test(source) });
+  const renamedProject = join(directory, "Renamed/WpfSingle.csproj");
+  const renamedSource = readFileSync(renamedProject, "utf8");
+  const newInstall = "<RunicApplicationFrontendInstallEnabled>false</RunicApplicationFrontendInstallEnabled>";
+  assert.ok(renamedSource.includes(newInstall), "WpfSingle.csproj no longer sets RunicApplicationFrontendInstallEnabled.");
+  writeFileSync(renamedProject, renamedSource.replace(newInstall,
+    "<RunicBridgeInstallFrontend>false</RunicBridgeInstallFrontend>" +
+    "<RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Client</RunicBridgeFrontendDir>" +
+    "<WarningsNotAsErrors>$(WarningsNotAsErrors);RUNICBRIDGE016</WarningsNotAsErrors>" +
+    "<MSBuildWarningsNotAsErrors>$(MSBuildWarningsNotAsErrors);RUNICBRIDGE016</MSBuildWarningsNotAsErrors>"));
+  const renamed = build("Renamed/WpfSingle.csproj");
+  assert.equal(summary(renamed, "Warning"), 2, "Expected one warning per old property name.");
+  assert.ok(count(renamed, /warning RUNICBRIDGE016:.*RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/) > 0, "Expected RUNICBRIDGE016 for RunicBridgeFrontendDir.");
+  assert.ok(count(renamed, /warning RUNICBRIDGE016:.*RunicBridgeInstallFrontend is renamed to RunicApplicationFrontendInstallEnabled/) > 0, "Expected RUNICBRIDGE016 for RunicBridgeInstallFrontend.");
+  exists("Renamed/Client/src/generated/editor.ts");
+  assert.ok(!existsSync(join(directory, "Renamed/Frontend")), "The old frontend directory name was ignored.");
+  exists("Renamed/bin/Release/net10.0-windows/www/index.html");
+  console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off|renamed-properties");
 } finally {
   if (keep) console.log(`Kept ${directory}`);
   else rmSync(directory, { recursive: true, force: true, maxRetries: 5 });

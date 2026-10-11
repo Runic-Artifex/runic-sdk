@@ -9,16 +9,17 @@ export type ViewRegistry<R extends ViewReference | null | undefined> = {
   readonly [K in NonNullable<R>["kind"]]: Type<{ readonly page: InputSignal<Extract<NonNullable<R>, { readonly kind: K }>> }>;
 };
 
-/** Headless host for a selected logical .NET View. A changed reference remounts its component. */
-@Component({
-  selector: "runic-view-outlet",
-  standalone: true,
-  template: `
+const outletTemplate = `
     <ng-container #mount />
     @if (error(); as issue) { <p role="alert">{{ issue }}</p> }
-  `,
-})
-export class RunicViewOutlet<R extends ViewReference = ViewReference> {
+  `;
+
+/**
+ * Headless host for a selected logical .NET View. A changed reference remounts its component.
+ * The element keeps Angular's prefix convention: `<runic-view-outlet [content]="…" [registry]="…" />`.
+ */
+@Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
+export class ViewOutlet<R extends ViewReference = ViewReference> {
   readonly content = input<R | null | undefined>();
   readonly registry = input.required<ViewRegistry<R>>();
   readonly error = signal<string | undefined>(undefined);
@@ -51,3 +52,11 @@ export class RunicViewOutlet<R extends ViewReference = ViewReference> {
     });
   }
 }
+
+/**
+ * The name of {@link ViewOutlet} before 0.7.0-preview.7, where React, Vue and Svelte already used
+ * `ViewOutlet`. It renders the same `<runic-view-outlet>` element.
+ * @deprecated Import `ViewOutlet` instead; this alias is removed in the next preview.
+ */
+@Component({ selector: "runic-view-outlet", standalone: true, template: outletTemplate })
+export class RunicViewOutlet<R extends ViewReference = ViewReference> extends ViewOutlet<R> {}

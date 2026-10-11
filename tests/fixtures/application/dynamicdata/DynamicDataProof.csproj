@@ -1,14 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>
+    <OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled>
-    <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/obj/frontend</RunicBridgeFrontendDir>
-    <RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/generated</RunicBridgeTypescriptDir>
-    <RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
+    <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
@@ -16,9 +16,9 @@
     <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../../../../packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj" />
     <Compile Include="../../../../examples/dynamicdata/RowsViewModel.cs" Link="RowsViewModel.cs" />
-    <Compile Include="../../../../examples/dynamicdata/Benchmarks.cs" Link="Benchmarks.cs" Condition="'$(RunicBridgeBootstrap)' != 'true'" />
+    <Compile Include="../../../../examples/dynamicdata/Benchmarks.cs" Link="Benchmarks.cs" Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'" />
   </ItemGroup>
-  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />
   </ItemGroup>
   <Import Project="../../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />

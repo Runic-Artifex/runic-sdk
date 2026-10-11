@@ -10,11 +10,11 @@
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <!-- No project-wide RUNICNAV001 suppression: the sources suppress it where they use the
          experimental navigation API, and generated code must need none (package-smoke.mjs). -->
-    <RunicBridgeBuildFrontend>false</RunicBridgeBuildFrontend>
-    <RunicBridgeTypescriptDir>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicBridgeTypescriptDir>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendGeneratedDirectory>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicApplicationFrontendGeneratedDirectory>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(DependencyInjectionVersion)" />
-    <PackageReference Include="Runic.Application.CsWebUi" Version="$(RunicPackageVersion)" />
+    <PackageReference Include="Runic.Application.Views.CsWebUi" Version="$(RunicPackageVersion)" />
   </ItemGroup>
 </Project>

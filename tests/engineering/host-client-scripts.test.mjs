@@ -6,7 +6,7 @@ import { runInNewContext } from "node:vm";
 const root = resolve(import.meta.dir, "../..");
 const scripts = [
   "packages/dotnet/Runic.Application.Views.CsWebUi/www/runic-cswebui.js",
-  "packages/dotnet/Runic.Application.Desktop/www/runic-desktop-views.js",
+  "packages/dotnet/Runic.Application.Views.Desktop/www/runic-desktop-views.js",
 ];
 
 // A connected bridge that subscribes to all events cancels navigations,

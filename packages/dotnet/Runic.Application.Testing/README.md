@@ -65,11 +65,11 @@ is a larger xUnit project.
 
 A test project that references the application project builds the application, and
 by default that build installs and builds the frontend too. The host needs only the
-.NET assembly, so pass `RunicBridgeBuildFrontend=false` to the reference, as the
+.NET assembly, so pass `RunicApplicationFrontendBuildEnabled=false` to the reference, as the
 template's test project does:
 
 ```xml
-<ProjectReference Include="../MyApp/MyApp.csproj" AdditionalProperties="RunicBridgeBuildFrontend=false" />
+<ProjectReference Include="../MyApp/MyApp.csproj" AdditionalProperties="RunicApplicationFrontendBuildEnabled=false" />
 ```
 
 The generated TypeScript clients are still written. In a solution that also builds

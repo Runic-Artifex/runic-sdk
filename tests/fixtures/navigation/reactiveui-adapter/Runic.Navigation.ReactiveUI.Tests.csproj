@@ -7,7 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="ReactiveUI" />
-    <!-- Only the navigation adapter: it needs no Runic.Application. -->
+    <!-- Only the navigation adapter: it needs no Runic.Application.Views. -->
     <ProjectReference Include="../../../../packages/dotnet/Runic.Navigation.ReactiveUI/Runic.Navigation.ReactiveUI.csproj" />
   </ItemGroup>
 </Project>

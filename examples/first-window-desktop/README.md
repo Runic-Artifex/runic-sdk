@@ -13,7 +13,7 @@ services described in the
 | [`Program.cs`](Program.cs) | Runs `RunicDesktopHost.Run`, opens the Window with `OpenWindowAsync<CounterWindow>()`, and awaits `WaitForCloseAsync()`. |
 | [`Frontend/src/app.ts`](Frontend/src/app.ts) | Uses the same generated client contract as the CS-WebUI examples. |
 
-The Desktop surface serves `webui.js`, and `Runic.Application.Desktop` copies
+The Desktop surface serves `webui.js`, and `Runic.Application.Views.Desktop` copies
 `runic-desktop-views.js` into `www`; `Frontend/index.html` loads both before
 the generated client. The
 [Runic.Desktop guide](../../packages/dotnet/Runic.Desktop/README.md) lists the
@@ -27,5 +27,5 @@ dotnet run --project examples/first-window-desktop -c Release
 an external browser test can drive the generated client; `--probe-owner`
 checks that closing the Window releases its ViewModel scope. CI runs both. The
 example builds the Runic packages from source; replace its `ProjectReference`
-and `Import` lines with `Runic.Application.Desktop` and
-`Runic.Application.ReactiveUI` package references to copy it out.
+and `Import` lines with `Runic.Application.Views.Desktop` and
+`Runic.Application.Views.ReactiveUI` package references to copy it out.

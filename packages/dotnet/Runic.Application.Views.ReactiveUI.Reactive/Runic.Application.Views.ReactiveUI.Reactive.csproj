@@ -4,11 +4,14 @@
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Runic.Application.ReactiveUI.Reactive</PackageId>
+    <PackageId>Runic.Application.Views.ReactiveUI.Reactive</PackageId>
+    <!-- Published as Runic.Application.ReactiveUI.Reactive up to 0.7.0-preview.6. Package validation compares
+         with that package until this ID has a release of its own (eng/release/README.md). -->
+    <PackageValidationBaselineName>Runic.Application.ReactiveUI.Reactive</PackageValidationBaselineName>
     <Description>System.Reactive-flavor ReactiveUI model-context scheduling, routing, view location, and activation for Runic Views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Selects the System.Reactive namespaces in the source shared with
-         Runic.Application.ReactiveUI. Only the scheduler adapter differs. -->
+         Runic.Application.Views.ReactiveUI. Only the scheduler adapter differs. -->
     <DefineConstants>$(DefineConstants);SYSTEM_REACTIVE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
@@ -23,7 +26,7 @@
     <Compile Include="../Runic.Application.Views.ReactiveUI/RunicReactiveExceptions.cs" Link="Shared/RunicReactiveExceptions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
-    <None Include="buildTransitive/Runic.Application.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

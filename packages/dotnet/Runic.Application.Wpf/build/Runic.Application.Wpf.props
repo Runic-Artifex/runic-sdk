@@ -1,8 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <!-- Host adapters turn Bridge generation on in every project that
-         references them, directly or transitively. -->
-    <RunicApplicationHostAdapter>true</RunicApplicationHostAdapter>
-    <RunicBridgeCompositionType Condition="'$(RunicBridgeCompositionType)' == ''">$(MSBuildProjectName.Replace('-', '_').Replace(' ', '_')).RunicBridgeComposition</RunicBridgeCompositionType>
-  </PropertyGroup>
-</Project>

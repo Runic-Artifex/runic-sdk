@@ -17,12 +17,12 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
         }
       },
-      "Runic.Application": {
+      "runic.application.views": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
+          "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
       "runic.navigation": {

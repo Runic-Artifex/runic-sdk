@@ -46,7 +46,7 @@ This is enough to generate the client and bridge registrations. The application
 keeps its WPF `Window`; it does not need a Runic `Window`. Register the generated
 `AddRunicViews()` with your application services and build the frontend with the
 Views targets, as [HybridNotes.Model.csproj](Model/HybridNotes.Model.csproj) does.
-The WPF application sets `RunicBridgeBuildEnabled` to `false` and needs no copy
+The WPF application sets `RunicApplicationFrontendGenerationEnabled` to `false` and needs no copy
 target of its own: the Views targets copy the model project's built frontend to
 its `www/` folder.
 The logical View describes the web presentation contract; WPF's
@@ -120,7 +120,7 @@ dotnet run --project examples/wpf-hybrid-editor/WindowsSmoke/HybridNotes.Windows
 
 On Linux with Nix, prefix these commands with `direnv exec .`. The first check
 runs without WPF or a browser. Embedded HWND/WebView2 behavior runs in the
-[WPF host tests](../../tests/dotnet/Runic.Application.Wpf.Windows.Tests/NativeChecks.cs) on
+[WPF host tests](../../tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/NativeChecks.cs) on
 Windows. On a Windows desktop, open a note, switch both ways with unsaved text,
 reload the web editor, cancel a pending save, and answer **Keep editing** then
 **Discard** to exercise the visible migration flow.

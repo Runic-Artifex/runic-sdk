@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Reaches Runic.Application only through the model project and references
+  <!-- Reaches Runic.Application.Views only through the model project and references
        no host adapter, so generation stays off. Its View gets RUNICBRIDGE015. -->
   <PropertyGroup>
     <OutputType>Library</OutputType>

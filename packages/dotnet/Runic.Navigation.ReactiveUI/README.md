@@ -2,7 +2,7 @@
 
 `Runic.Navigation.ReactiveUI` connects [Runic.Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md)
 regions to ReactiveUI 26 (the `ReactiveUI.Primitives` flavor). It depends on
-`Runic.Navigation` and `ReactiveUI` only: no `Runic.Application`, generator or
+`Runic.Navigation` and `ReactiveUI` only: no `Runic.Application.Views`, generator or
 host, so it works in a WPF or console app. It provides, in the
 `Runic.Navigation.ReactiveUI` namespace, `WhenCurrentChanged()`,
 `WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`
@@ -12,7 +12,7 @@ and `CreateBackCommand()` for `NavigationRegion<TContent>` (experimental,
 Apps that use the System.Reactive distribution of ReactiveUI reference
 [`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md)
 instead. Runic Views apps reference this package next to
-`Runic.Application.ReactiveUI`, which no longer brings it, so an app without
+`Runic.Application.Views.ReactiveUI`, which no longer brings it, so an app without
 navigation has no experimental package.
 
 ```sh
@@ -26,7 +26,7 @@ back command delivers its output and `IsExecuting` on ReactiveUI's
 `RxSchedulers.MainThreadScheduler` unless you pass an `outputScheduler`:
 
 - In a Runic Views app, `AddRunicReactiveModelContext()` from
-  `Runic.Application.ReactiveUI` makes that scheduler the model context of the
+  `Runic.Application.Views.ReactiveUI` makes that scheduler the model context of the
   turn that executes the command. See its
   [model-context scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#model-context-scheduling).
 - In a WPF app, it is the dispatcher.
@@ -35,8 +35,8 @@ back command delivers its output and `IsExecuting` on ReactiveUI's
 
 `RunicReactiveSchedulerProvider`, `IRunicReactiveSchedulerProvider` and
 `AddRunicReactiveModelContext()` moved from this package to
-`Runic.Application.ReactiveUI` (namespace `Runic.Application.Views.ReactiveUI`)
-in W250, with no type forwards.
+`Runic.Application.Views.ReactiveUI` (same namespace) in W250, with no type
+forwards.
 
 ## Navigation (experimental)
 
@@ -83,7 +83,7 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   or failed Back is its output, not an exception, so `ThrownExceptions`
   carries only defects and cancellation. Subscribe to `ThrownExceptions`;
   Runic Views apps can use `ObserveBridgeExceptions` from
-  `Runic.Application.ReactiveUI`.
+  `Runic.Application.Views.ReactiveUI`.
   Overlapping executions to the same destination share one Back and confirmation.
   Each caller cancels independently; the shared Back cancels only after every
   caller cancels before commit.
@@ -150,7 +150,7 @@ the ViewModel, so the web boundary does not need to encode navigation's content
 and ownership objects. To return an outcome to the View, return
 `result.Outcome`, a `NavigationOutcome`.
 
-Runic's `ReactiveRoutedRegion<T>` in `Runic.Application.ReactiveUI` is a separate
+Runic's `ReactiveRoutedRegion<T>` in `Runic.Application.Views.ReactiveUI` is a separate
 interoperability path for an externally owned `RoutingState`. It presents that
 router's content; it does not apply RunicNavigator's guards and entry semantics
 or implement another Runic navigation engine.
@@ -158,12 +158,14 @@ or implement another Runic navigation engine.
 ## Moving from Runic.Application.ReactiveUI
 
 These types moved from the `Runic.Application.Views.ReactiveUI` namespace of
-`Runic.Application.ReactiveUI` to `Runic.Navigation.ReactiveUI` in
-0.7.0-preview.4, without type forwards. Replace the `using` and recompile.
+`Runic.Application.ReactiveUI` (now `Runic.Application.Views.ReactiveUI`) to
+`Runic.Navigation.ReactiveUI` in 0.7.0-preview.4, without type forwards. Replace
+the `using` and recompile.
 
-In W250 the model-context scheduling moved back to `Runic.Application.ReactiveUI`
-(see [Scheduling](#scheduling)), and `CreateBackCommand` outputs a
-`NavigationOutcome` instead of a `NavigationResult<TContent>`: compare
+In W250 the model-context scheduling moved back to
+`Runic.Application.Views.ReactiveUI` (see [Scheduling](#scheduling)), and
+`CreateBackCommand` outputs a `NavigationOutcome` instead of a
+`NavigationResult<TContent>`: compare
 `outcome.Kind` with `NavigationOutcomeKind.Committed` where you matched
 `NavigationResult<TContent>.Committed`.
 

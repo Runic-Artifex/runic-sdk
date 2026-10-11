@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RunicTrimmable>false</RunicTrimmable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Views.Wpf</PackageId>
+    <!-- Published as Runic.Application.Wpf up to 0.7.0-preview.6. Package validation compares
+         with that package until this ID has a release of its own (eng/release/README.md).
+         The assembly was Runic.Application.Wpf.dll, so package validation cannot pair it
+         with this one (CP0004 in CompatibilitySuppressions.xml); PublicAPI.Shipped.txt
+         still guards the public API until then. -->
+    <PackageValidationBaselineName>Runic.Application.Wpf</PackageValidationBaselineName>
+    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <RunicReleaseLinksNamespace>Runic.Application.Views.Wpf</RunicReleaseLinksNamespace>
+    <Description>Optional WPF child WebView presentation for existing Runic ViewModels.</Description>
+    <PackageTags>runic-artifex;wpf;webview;mvvm;dotnet</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <NoWarn>$(NoWarn);RUNICWPF001;RUNICNAV001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Tests" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Windows.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Application.Views.Wpf.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="build/Runic.Application.Views.Wpf.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Wpf.props" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

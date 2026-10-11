@@ -7,10 +7,10 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
-          "Runic.Application": "[0.7.0-preview.7, )"
+          "Runic.Application.Views": "[0.7.0-preview.7, )"
         }
       },
-      "Runic.Application": {
+      "runic.application.views": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
@@ -18,11 +18,11 @@
           "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
-      "runic.application.desktop": {
+      "runic.application.views.desktop": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Application": "[0.7.0-preview.7, )",
+          "Runic.Application.Views": "[0.7.0-preview.7, )",
           "Runic.Desktop": "[0.7.0-preview.7, )",
           "Runic.Platform.Linux": "[0.7.0-preview.7, )",
           "Runic.Platform.Linux.Gtk4": "[0.7.0-preview.7, )",
@@ -32,10 +32,10 @@
           "Runic.Platform.Windows": "[0.7.0-preview.7, )"
         }
       },
-      "runic.application.wpf": {
+      "runic.application.views.wpf": {
         "type": "Project",
         "dependencies": {
-          "Runic.Application.Desktop": "[0.7.0-preview.7, )"
+          "Runic.Application.Views.Desktop": "[0.7.0-preview.7, )"
         }
       },
       "runic.desktop": {

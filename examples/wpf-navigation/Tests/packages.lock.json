@@ -7,7 +7,7 @@
         "dependencies": {
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
-          "Runic.Navigation.Wpf": "[0.7.0-preview.4, )"
+          "Runic.Navigation.Wpf": "[0.7.0-preview.7, )"
         }
       },
       "runic.navigation": {
@@ -22,7 +22,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
+          "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
       "CommunityToolkit.Mvvm": {

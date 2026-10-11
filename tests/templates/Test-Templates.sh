@@ -293,7 +293,7 @@ verify_template() {
   local package_name
   package_name="$(sed -E -e 's/([a-z0-9])([A-Z])/\1-\2/g' -e 's/([a-zA-Z])([0-9])/\1-\2/g' <<< "$project_name" | tr '[:upper:]' '[:lower:]')"
   grep -Fq "\"name\": \"$package_name\"" "$output/Frontend/package.json"
-  grep -Fq 'RunicViewsWindowProject>true' "$output/$project_name.csproj"
+  grep -Fq 'RunicApplicationFrontendWindowProject>true' "$output/$project_name.csproj"
   # A Svelte config keeps vite-plugin-svelte from reporting a missing config on every build.
   [[ "$framework" != svelte ]] || grep -Fq 'vitePreprocess()' "$output/Frontend/svelte.config.js"
   # One Window declaration and one application body serve every host and MVVM library.
@@ -308,13 +308,13 @@ verify_template() {
   [[ "$framework" == angular ]] && index_html="$output/Frontend/src/index.html"
   case "$host" in
     cswebui)
-      grep -Fq 'Runic.Application.CsWebUi' "$output/$project_name.csproj"
+      grep -Fq 'Runic.Application.Views.CsWebUi' "$output/$project_name.csproj"
       grep -Fq 'runic-cswebui.js' "$index_html"
       grep -Fq 'return RunicCsWebUiHost.Run(provider, RunAsync);' "$output/Program.cs"
       [[ "$framework" == angular ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
       ;;
     desktop|desktop-gtk4)
-      grep -Fq 'Runic.Application.Desktop' "$output/$project_name.csproj"
+      grep -Fq 'Runic.Application.Views.Desktop' "$output/$project_name.csproj"
       grep -Fq 'runic-desktop-views.js' "$index_html"
       [[ "$framework" == angular ]] || grep -Fq 'runic({ desktop: true })' "$output/Frontend/vite.config.ts"
       grep -Fq 'return RunicDesktopHost.Run(provider, options, RunAsync);' "$output/Program.cs"
@@ -337,7 +337,7 @@ verify_template() {
   fi
   case "$view_models" in
     toolkit) grep -Fq 'CommunityToolkit.Mvvm' "$output/$project_name.csproj" ;;
-    reactiveui) grep -Fq 'Runic.Application.ReactiveUI' "$output/$project_name.csproj" ;;
+    reactiveui) grep -Fq 'Runic.Application.Views.ReactiveUI' "$output/$project_name.csproj" ;;
   esac
   local tests_project="$output/$project_name.Tests/$project_name.Tests.csproj"
   if [[ "$tests" == tests ]]; then
@@ -347,7 +347,7 @@ verify_template() {
     tunit_version="$(grep -o 'Include="TUnit" Version="[^"]*"' "$repository_root/Directory.Packages.props" | cut -d'"' -f4)"
     [[ -n "$tunit_version" ]]
     grep -Fq "<PackageReference Include=\"TUnit\" Version=\"$tunit_version\" />" "$tests_project"
-    grep -Fq 'AdditionalProperties="RunicBridgeBuildFrontend=false"' "$tests_project"
+    grep -Fq 'AdditionalProperties="RunicApplicationFrontendBuildEnabled=false"' "$tests_project"
     grep -Fq '"runner": "Microsoft.Testing.Platform"' "$output/global.json"
     grep -Fq "$project_name.Tests/**" "$output/$project_name.csproj"
   elif [[ -e "$output/$project_name.Tests" || -e "$output/global.json" ]] \
@@ -359,7 +359,8 @@ verify_template() {
     echo "The generated $framework project contains unprocessed template syntax." >&2
     exit 1
   fi
-  if grep -Eq 'RunicBridgeBootstrap|RunicApplicationFrontend|RunicBridgeComposition' "$output/$project_name.csproj"; then
+  # The Window project switch is the one Runic build setting the template declares.
+  if grep -vF 'RunicApplicationFrontendWindowProject>' "$output/$project_name.csproj" | grep -Eq 'RunicApplicationFrontend|RunicBridge|RunicViewsWindowProject'; then
     echo "The generated $framework project declares settings the Runic packages default." >&2
     exit 1
   fi

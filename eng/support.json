@@ -10,7 +10,7 @@
     {
       "id": "desktop",
       "name": "Runic Desktop",
-      "package": "Runic.Application.Desktop",
+      "package": "Runic.Application.Views.Desktop",
       "targets": [
         { "rid": "linux-x64", "status": "ci-verified", "reason": "Covered by the Native / linux-x64 CI job." },
         { "rid": "win-x64", "status": "ci-verified", "reason": "Covered by the Native / win-x64 CI job." },
@@ -25,7 +25,7 @@
     {
       "id": "cswebui",
       "name": "CS-WebUI",
-      "package": "Runic.Application.CsWebUi",
+      "package": "Runic.Application.Views.CsWebUi",
       "targets": [
         { "rid": "linux-x64", "status": "ci-verified", "reason": "Covered by the Native / linux-x64 CI job." },
         { "rid": "win-x64", "status": "ci-verified", "reason": "Covered by the Native / win-x64 CI job." },

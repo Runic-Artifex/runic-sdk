@@ -121,7 +121,7 @@ GTK4 also requires the main-thread entry point in
 startup example before introducing a top-level `await`.
 
 Runic Windows and Views pass the same `DesktopHostOptions` to `RunicDesktopHost.Run`
-from `Runic.Application.Desktop`, which starts the host.
+from `Runic.Application.Views.Desktop`, which starts the host.
 No Linux toolkit is selected by default. Browser-only applications need no GTK
 selection. `DesktopPlatform.GetLinuxEmbeddedBackends()` inspects both library sets
 without loading either toolkit; `host.GetPresentationPreflight(...)` evaluates the
@@ -152,7 +152,7 @@ The optional native dispatcher interface lets application platform services use 
 same owner/lifetime checks with custom hosts. Window capabilities are forwarded from
 the provider, including operations unavailable under GTK4/Wayland. For native file
 pickers and clipboard, register the matching GTK platform provider and the
-[portal service](../Runic.Platform.Linux.Portal/README.md). Runic.Application.Desktop
+[portal service](../Runic.Platform.Linux.Portal/README.md). Runic.Application.Views.Desktop
 selects the provider for the running backend from `services.AddRunicPlatformServices()`.
 
 ## Callback concurrency and ordering
@@ -160,7 +160,7 @@ selects the provider for the running backend from `services.AddRunicPlatformServ
 Each browser connection admits one callback or event at a time, but an
 asynchronous callback holds that turn only until its handler first awaits an
 incomplete task. This applies to `DesktopSurface.RegisterCapability` handlers,
-including the Bridge calls of Runic Windows and Views (`Runic.Application.Desktop`).
+including the Bridge calls of Runic Windows and Views (`Runic.Application.Views.Desktop`).
 A long command or operation wait therefore leaves Cancel, draft edits and other
 control callbacks available. For one connection:
 

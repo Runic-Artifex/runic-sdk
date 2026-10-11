@@ -4,14 +4,17 @@
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
-    <PackageId>Runic.Application</PackageId>
+    <PackageId>Runic.Application.Views</PackageId>
+    <!-- Published as Runic.Application up to 0.7.0-preview.6. Package validation compares
+         with that package until this ID has a release of its own (eng/release/README.md). -->
+    <PackageValidationBaselineName>Runic.Application</PackageValidationBaselineName>
     <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>Host-neutral Window and View runtime with generated typed TypeScript clients.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Published enum members name wire value kinds (String, Int32, Single). -->
     <NoWarn>$(NoWarn);CA1720</NoWarn>
-    <!-- buildTransitive/Runic.Application.props: help links for diagnostics of the build targets. -->
+    <!-- buildTransitive/Runic.Application.Views.props: help links for diagnostics of the build targets. -->
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
@@ -19,7 +22,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <ProjectReference Include="../Runic.Navigation/Runic.Navigation.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
-    <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.targets" />
+    <None Update="build/Runic.Application.Views.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.targets" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/*.dll"
           Pack="true" PackagePath="tools/net10.0/" />
     <None Include="../../../tools/Runic.Application.Views.Codegen/bin/$(Configuration)/net10.0/BridgeCodegen.deps.json"

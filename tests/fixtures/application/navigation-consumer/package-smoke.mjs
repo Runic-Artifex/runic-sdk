@@ -18,7 +18,7 @@ const { version } = JSON.parse(readFileSync(join(root, "eng/workspace.json"), "u
 const packages = readFileSync(join(root, "Directory.Packages.props"), "utf8");
 const dependencyInjection = packages.match(/<PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="([^"]+)"/)?.[1];
 assert.ok(dependencyInjection, "The Microsoft.Extensions.DependencyInjection version was not found.");
-for (const id of ["Runic.Application", "Runic.Application.CsWebUi"])
+for (const id of ["Runic.Application.Views", "Runic.Application.Views.CsWebUi"])
   assert.ok(existsSync(join(feed, `${id}.${version}.nupkg`)), `Pack ${id} ${version} into ${feed} first.`);
 
 // The temporary tree has no parent workspace and its own package cache, so

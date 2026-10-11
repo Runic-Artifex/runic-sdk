@@ -114,7 +114,7 @@ The retained `webui-compat/52f9e75` direct-capability profile cannot carry a
 structured invocation failure on its legacy wire response. It reports only the
 stable empty compatibility result while the host emits a redacted,
 correlation-bearing diagnostic. Runic Application Views hosted through
-`Runic.Application.Desktop` report their own typed, redacted, correlation-bearing errors.
+`Runic.Application.Views.Desktop` report their own typed, redacted, correlation-bearing errors.
 
 ## Troubleshooting
 

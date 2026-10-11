@@ -1,6 +1,6 @@
 # ReactiveUI integration for Runic Views
 
-`Runic.Application.ReactiveUI` is the default ReactiveUI 26 adapter for Runic
+`Runic.Application.Views.ReactiveUI` is the default ReactiveUI 26 adapter for Runic
 Views. It references ReactiveUI's `ReactiveUI.Primitives` flavor and has no
 CommunityToolkit dependency. It provides:
 
@@ -47,7 +47,7 @@ ReactiveUI 26 has two flavours. This package targets the default one, built on
   can do; `Create` and `CreateFromTask` commands always produce one.
 
 Both await styles resume on the model context when they start in a turn. For
-System.Reactive, use [`Runic.Application.ReactiveUI.Reactive`](#systemreactive-flavor).
+System.Reactive, use [`Runic.Application.Views.ReactiveUI.Reactive`](#systemreactive-flavor).
 
 ## ReactiveUI 26
 
@@ -286,11 +286,11 @@ updates. See the [DynamicData guide](https://docs.runic-artifex.eu/guides/applic
 
 Applications using `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`,
 `System.Reactive.Unit`, or `IScheduler` should instead reference
-[`Runic.Application.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/README.md).
+[`Runic.Application.Views.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/README.md).
 The two packages expose distinct ReactiveUI namespaces and must not be mixed in
 one application. If a generic interface command does not reveal its flavor to
 the compiled-model generator, set
-`RunicBridgeReactiveUiFlavor=reactive` in the project that generates the
+`RunicApplicationFrontendReactiveUiFlavor=reactive` in the project that generates the
 bridge.
 
 See the upstream [Binding migration guide](https://www.reactiveui.net/documentation/reactiveui/upgrading/reactiveui-binding-migration/)

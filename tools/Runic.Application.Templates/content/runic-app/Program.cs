@@ -33,11 +33,11 @@ var options = new DesktopHostOptions
 
 // Opens Windows natively with the embedded WebView, falling back to an installed browser, on the event loop
 // this platform and backend need. Call it before any await. RunicCsWebUiHost.Run(provider, RunAsync), from
-// Runic.Application.CsWebUi, runs the same application on CS-WebUI.
+// Runic.Application.Views.CsWebUi, runs the same application on CS-WebUI.
 return RunicDesktopHost.Run(provider, options, RunAsync);
 #else
 // Opens Windows in an installed browser in app mode, with the platform WebView as a fallback, while the main
-// thread waits for WebUI. RunicDesktopHost.Run(provider, RunAsync), from Runic.Application.Desktop, runs the same
+// thread waits for WebUI. RunicDesktopHost.Run(provider, RunAsync), from Runic.Application.Views.Desktop, runs the same
 // application in a native window.
 return RunicCsWebUiHost.Run(provider, RunAsync);
 #endif

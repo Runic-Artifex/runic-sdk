@@ -1,5 +1,5 @@
-// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
-// Runic.Application.ReactiveUI.Reactive. Both flavors expose IReactiveCommand
+// Shared by Runic.Application.Views.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Application.Views.ReactiveUI.Reactive. Both flavors expose IReactiveCommand
 // from the ReactiveUI namespace.
 using System.ComponentModel;
 using System.Runtime.CompilerServices;

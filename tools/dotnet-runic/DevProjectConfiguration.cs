@@ -26,10 +26,14 @@ internal sealed record DevProjectConfiguration(
     private static readonly string[] PropertyNames =
     [
         "MSBuildProjectFullPath",
+        "RunicApplicationFrontendWindowProject",
+        "RunicApplicationFrontendDirectory",
+        // Names before 0.7.0-preview.7. The package's targets map them to the new ones
+        // (RUNICBRIDGE016), but an unrestored project has not imported those targets yet.
         "RunicViewsWindowProject",
         "RunicBridgeFrontendDir",
-        "RunicBridgeTypescriptDir",
-        "RunicBridgeFrontendBuildCommand",
+        "RunicApplicationFrontendGeneratedDirectory",
+        "RunicApplicationFrontendBuildCommand",
         "RunicAssetsDist",
         "RunicAssetsFrontendDirectory",
         "RunicApplicationFrontendCompilerEnabled",
@@ -117,15 +121,19 @@ internal sealed record DevProjectConfiguration(
 
         string evaluatedProject = Normalize(Value("MSBuildProjectFullPath"), projectDirectory);
         string evaluatedDirectory = Path.GetDirectoryName(evaluatedProject) ?? projectDirectory;
-        bool viewsWindow = Flag("RunicViewsWindowProject");
+        bool viewsWindow = Flag("RunicApplicationFrontendWindowProject") || Flag("RunicViewsWindowProject");
         if (!viewsWindow)
         {
             throw new DevUsageException(
                 "RAPPDEV1005",
-                "The selected project must opt into the Runic Views Window model with RunicViewsWindowProject=true.");
+                "The selected project must opt into the Runic Views Window model with RunicApplicationFrontendWindowProject=true.");
         }
 
-        string frontend = NormalizeOptional(Value("RunicBridgeFrontendDir"), evaluatedDirectory);
+        string frontend = NormalizeOptional(Value("RunicApplicationFrontendDirectory"), evaluatedDirectory);
+        if (frontend.Length == 0)
+        {
+            frontend = NormalizeOptional(Value("RunicBridgeFrontendDir"), evaluatedDirectory);
+        }
         if (frontend.Length == 0)
         {
             frontend = NormalizeOptional(Value("RunicAssetsFrontendDirectory"), evaluatedDirectory);
@@ -139,7 +147,7 @@ internal sealed record DevProjectConfiguration(
         {
             throw new DevUsageException(
                 "RAPPDEV1005",
-                "The Runic Views Window project must define RunicBridgeFrontendDir with a package.json frontend.");
+                "The Runic Views Window project must define RunicApplicationFrontendDirectory with a package.json frontend.");
         }
 
         string packageDirectory = NormalizeOptional(Value("RunicApplicationFrontendPackageDirectory"), frontend);
