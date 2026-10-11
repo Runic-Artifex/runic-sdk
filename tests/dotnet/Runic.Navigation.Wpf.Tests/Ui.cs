@@ -48,6 +48,16 @@ internal static partial class Ui
         if (!condition()) throw new InvalidOperationException($"The dispatcher stopped before {what}.");
     }
 
+    // As PumpUntil, and a failure also reports the state described when it gave up.
+    public static void PumpUntil(Func<bool> condition, string what, Func<string> state)
+    {
+        try { PumpUntil(condition, what); }
+        catch (Exception error) when (error is TimeoutException or InvalidOperationException)
+        {
+            throw new InvalidOperationException($"{error.Message}{Environment.NewLine}{state()}", error);
+        }
+    }
+
     public static void Pump(Task task, string what = "a task")
     {
         PumpUntil(() => task.IsCompleted, what);

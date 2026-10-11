@@ -63,7 +63,7 @@ the Runic Desktop host (`--host desktop` when creating a project); see the
 
 ## File dialogs and the clipboard
 
-`services.AddRunicPlatformServices()` in `Program.cs` registers
+`services.AddRunicPlatformServices()` in `WorkspaceServices.cs` registers
 `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` and
 `IWindowPlatformServices` (from `Runic.Platform`) for each window. A ViewModel
 takes them in its constructor:
@@ -98,7 +98,8 @@ clipboard on the Runic Desktop host (`--host desktop`); see the
 | `WorkspaceViewModel.cs` | CommunityToolkit.Mvvm ViewModels: the workspace, its Welcome page, and a Counter. |
 <!--#endif -->
 | `Views.cs` | The `WorkspaceWindow` and the Views. The build generates a typed client for each. |
-| `Program.cs` | Registers the ViewModels, calls `AddRunicViews()`, and opens the Window. |
+| `WorkspaceServices.cs` | `AddWorkspace()` registers the ViewModels, the generated `AddRunicViews()` and the platform services. |
+| `Program.cs` | Opens the Window with the services from `AddWorkspace()`. |
 <!--#if (frontend == "angular") -->
 | `Frontend/src/app` | Components connect generated clients with `injectView()` and render the page that `WorkspaceViewModel.Main` selects with `RunicViewOutlet`, both from `@runic-artifex/angular`. |
 <!--#elif (frontend == "svelte") -->
@@ -114,12 +115,46 @@ clipboard on the Runic Desktop host (`--host desktop`); see the
 | `Frontend/vite.config.ts` | Adds `runic()` from `@runic-artifex/vite-plugin-runic` for Runic development diagnostics. To add its Runic DevTools dock, install `@vitejs/devtools` and register `DevTools()`. |
 <!--#endif -->
 | `Frontend/src/generated` | Typed clients generated from the ViewModels. They import the shared `@runic-artifex/views` runtime. |
+<!--#if (tests) -->
+| `RunicWindowApp.Tests/WorkspaceWindowTests.cs` | TUnit tests that drive the Window through `Runic.Application.Testing`. |
+| `global.json` | Runs `dotnet test` on Microsoft.Testing.Platform, which TUnit uses. |
+<!--#endif -->
 
 The generated clients are not committed: `.gitignore` excludes
 `Frontend/src/generated`, and `dotnet build` or `dotnet runic dev` writes
 them again. Until the first build, your editor and
 `__PACKAGE_MANAGER_NAME__ run typecheck` report the missing modules.
 
+<!--#if (tests) -->
+## Test it
+
+```sh
+dotnet test --project RunicWindowApp.Tests
+```
+
+`RunicWindowApp.Tests` drives the Window's real ViewModels and generated Bridges
+in memory, as the frontend does, without a browser or native window.
+`RunicWindowTestHost.Create` builds the Window from the services that
+`AddWorkspace()` registers, so register new ViewModels there and both the app
+and the tests use them. Tests read state by ViewModel member, set properties and
+run commands:
+
+```csharp
+(await window.Root.ExecuteAsync(vm => vm.ShowCounterCommand)).EnsureOk();
+var counter = window.Root.View<CounterViewModel>(vm => vm.Main);
+(await counter.ExecuteAsync(vm => vm.IncrementCommand)).EnsureOk();
+await Assert.That(counter.Snapshot().Read(vm => vm.Count)).IsEqualTo(1);
+```
+
+TUnit runs the tests in parallel, and each test builds its own Window. The test
+project builds the app with `RunicBridgeBuildFrontend=false`, so tests do not
+install or build the frontend. `dotnet run --project RunicWindowApp.Tests` runs
+the tests too. See the
+[Runic.Application.Testing guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md)
+for the drivers, a fake clock, collections and navigation, and test the frontend
+with the generated typed mocks of `@runic-artifex/views/mock`.
+
+<!--#endif -->
 ## State and threading
 
 Set ViewModel properties directly in commands, also after `await`: an async

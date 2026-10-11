@@ -1,1 +1,4 @@
 #nullable enable
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.get -> bool
+[RUNICNAV001]Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.set -> void
+[RUNICNAV001]static readonly Runic.Navigation.Wpf.NavigationHost.GuardWindowCloseProperty -> System.Windows.DependencyProperty!

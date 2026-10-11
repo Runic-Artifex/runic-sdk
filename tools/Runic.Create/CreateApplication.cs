@@ -47,7 +47,8 @@ internal static partial class CreateApplication
                 $"'{name}' is not a valid project name. Start with a letter and use letters, digits, '.', '_' or '-'.");
         }
 
-        if (interactive && explicitChoices.Count < model.Options.Count)
+        bool Given(TemplateToggle toggle) => request.Toggles.TryGetValue(toggle.LongName, out bool on) && on;
+        if (interactive && (explicitChoices.Count < model.Options.Count || !model.Toggles.All(Given)))
         {
             AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[bold]Create a Runic application[/] [grey]· {0}[/]", Markup.Escape(version));
         }
@@ -60,7 +61,10 @@ internal static partial class CreateApplication
             selections.Add(new OptionSelection(option, choice));
         }
 
-        var plan = new CreatePlan(name, request.Directory, version, selections, request.TemplateSource);
+        // A toggle the user did not pass is asked for, or stays off.
+        TemplateToggle[] enabled = model.Toggles.Where(toggle => Given(toggle) || (interactive && Ask(toggle))).ToArray();
+
+        var plan = new CreatePlan(name, request.Directory, version, selections, request.TemplateSource, enabled);
         string directory = Path.GetFullPath(plan.Directory);
         if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
         {
@@ -70,7 +74,7 @@ internal static partial class CreateApplication
 
         if (request.DryRun)
         {
-            return Success(plan, created: false, DescribePlan(plan));
+            return Success(model, plan, created: false, DescribePlan(plan));
         }
 
         await console.WriteAsync(new Markup(
@@ -95,7 +99,7 @@ internal static partial class CreateApplication
                 $"dotnet new {TemplateOptionModel.TemplateShortName} failed with exit code {create.ExitCode}.");
         }
 
-        return Success(plan, created: true, DescribeCreated(plan));
+        return Success(model, plan, created: true, DescribeCreated(plan));
     }
 
     internal static bool TryResolveExplicit(
@@ -149,6 +153,17 @@ internal static partial class CreateApplication
         return choice;
     }
 
+    private static bool Ask(TemplateToggle toggle)
+    {
+        bool on = AnsiConsole.Prompt(
+            new ConfirmationPrompt($"[bold]{Markup.Escape(toggle.DisplayName)}[/] [grey]{Markup.Escape(toggle.Description)}[/]")
+            {
+                DefaultValue = false,
+            });
+        AnsiConsole.MarkupLine(CultureInfo.InvariantCulture, "[grey]{0}:[/] {1}", Markup.Escape(toggle.DisplayName), on ? "Yes" : "No");
+        return on;
+    }
+
     private static string DescribePlan(CreatePlan plan) => string.Join('\n',
     [
         $"Would create {plan.Name} ({plan.Summary}) with:",
@@ -181,18 +196,26 @@ internal static partial class CreateApplication
         return string.Join('\n', lines);
     }
 
-    private static CommandOutcome<CreateResult> Success(CreatePlan plan, bool created, string humanOutput) =>
+    private static CommandOutcome<CreateResult> Success(TemplateOptionModel model, CreatePlan plan, bool created, string humanOutput) =>
         CommandOutcome.Success(new CreateResult(
             plan.Name,
             plan.Directory,
             plan.Version,
-            plan.Selections.ToDictionary(selection => selection.Option.LongName, selection => selection.Choice.Value, StringComparer.Ordinal),
+            OptionValues(model, plan),
             [plan.InstallCommand, plan.CreateCommand],
             plan.CreatorCommand,
             created)
         {
             HumanOutput = humanOutput,
         });
+
+    private static Dictionary<string, string> OptionValues(TemplateOptionModel model, CreatePlan plan)
+    {
+        var values = plan.Selections.ToDictionary(selection => selection.Option.LongName, selection => selection.Choice.Value, StringComparer.Ordinal);
+        foreach (TemplateToggle toggle in model.Toggles)
+            values[toggle.LongName] = plan.IsEnabled(toggle.LongName) ? "true" : "false";
+        return values;
+    }
 
     // Human output ends with the code's catalog entry at this release's tag;
     // Runic.CommandLine writes it before the fault line and omits it from JSON.
