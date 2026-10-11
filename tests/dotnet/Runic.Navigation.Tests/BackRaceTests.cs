@@ -24,7 +24,8 @@ internal static partial class NavigationTests
         await BackCancellationAfterCommitDoesNotChangeOutcomeAsync();
         await BackAfterPushDoesNotJoinAsync();
         await BackAfterChildRegionChangedDoesNotJoinAsync();
-        await ChildBackAfterSupersessionDoesNotJoinAsync();
+        await ChildBackAfterSupersessionDoesNotJoinAsync(closeBeforeBasisCheck: false);
+        await ChildBackAfterSupersessionDoesNotJoinAsync(closeBeforeBasisCheck: true);
         await BackAfterReturnDoesNotJoinAsync();
     }
 
@@ -303,8 +304,10 @@ internal static partial class NavigationTests
 
     // A parent Back supersedes a pending child Back, because it closes the child region. A second child Back
     // must not join the superseded one (it would end Superseded with it): it is admitted on its own and is
-    // rejected as Closed when the parent's Back closes the region.
-    private static async Task ChildBackAfterSupersessionDoesNotJoinAsync()
+    // rejected as Closed when the parent's Back closes the region. The parent's commit can land at any step of the
+    // second child Back; with closeBeforeBasisCheck a test seam holds it at the step where it once read the
+    // region's version bump as a supersession.
+    private static async Task ChildBackAfterSupersessionDoesNotJoinAsync(bool closeBeforeBasisCheck)
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -317,19 +320,54 @@ internal static partial class NavigationTests
             Interlocked.Increment(ref resumed);
             await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, token);
         };
+        var parentGuard = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The parent's guard holds its commit until the second child Back stalls before its basis check.
+        if (closeBeforeBasisCheck)
+            document.Guard = async (_, _) =>
+            {
+                await parentGuard.Task;
+                return true;
+            };
 
-        var childBack = document.Child.BackAsync().AsTask();
-        await Until(() => Volatile.Read(ref resumed) == 1, "The child Back did not start resuming.");
-        var parentBack = main.BackAsync().AsTask();
-        var secondChildBack = document.Child.BackAsync().AsTask();
-        var childResult = await Wait(childBack);
-        var secondResult = await Wait(secondChildBack);
-        var parentResult = await Wait(parentBack);
-        await Wait(fixture.Navigator.WhenIdleAsync());
-        Require(childResult is NavigationResult<Page>.Superseded && secondResult is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }
-            && parentResult is NavigationResult<Page>.Committed && Names(main) == "home" && fixture.Logs.Count(BackJoined) == 0,
-            $"A child Back after supersession gave {childResult}, {secondResult}, parent {parentResult}, {Names(main)}, "
-            + $"{fixture.Logs.Count(BackJoined)} joins.");
+        try
+        {
+            var childBack = document.Child.BackAsync().AsTask();
+            await Until(() => Volatile.Read(ref resumed) == 1, "The child Back did not start resuming.");
+            // Installed once the first child Back is past its guards, so only the second one stalls.
+            if (closeBeforeBasisCheck)
+                fixture.Navigator.BeforeGuardBasisCheck = region =>
+                {
+                    if (!ReferenceEquals(region, document.Child.Core) || !reached.TrySetResult()) return Task.CompletedTask;
+                    return proceed.Task;
+                };
+            // The parent's admission supersedes the first child Back before it returns, so the second is admitted
+            // after that and can't join it.
+            var parentBack = main.BackAsync().AsTask();
+            var secondChildBack = document.Child.BackAsync().AsTask();
+            if (closeBeforeBasisCheck)
+            {
+                await Wait(reached.Task);
+                parentGuard.SetResult();
+                await Until(() => Names(main) == "home", "The parent Back did not commit.");
+                proceed.SetResult();
+            }
+            var childResult = await Wait(childBack);
+            var secondResult = await Wait(secondChildBack);
+            var parentResult = await Wait(parentBack);
+            await Wait(fixture.Navigator.WhenIdleAsync());
+            Require(childResult is NavigationResult<Page>.Superseded
+                && secondResult is NavigationResult<Page>.Rejected { Reason: NavigationRejection.Closed }
+                && parentResult is NavigationResult<Page>.Committed && Names(main) == "home" && fixture.Logs.Count(BackJoined) == 0,
+                $"A child Back after supersession gave {childResult}, {secondResult}, parent {parentResult}, {Names(main)}, "
+                + $"{fixture.Logs.Count(BackJoined)} joins.");
+        }
+        finally
+        {
+            proceed.TrySetResult();
+            parentGuard.TrySetResult();
+        }
     }
 
     // A result entry's return (CompleteAsync) is a Back that carries the result. A plain Back while it is pending
