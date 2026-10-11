@@ -6,7 +6,7 @@ using Tmds.DBus.Protocol;
 var owner = new Owner();
 var transport = new FakeTransport(new(0, ["file:///tmp/a%20file.txt"]));
 var picker = new PortalFilePicker(owner, transport);
-Check((await picker.SelectAsync(false, null, default)) is { Path: "/tmp/a file.txt", AllowsSiblingReplacement: false }, "local URI and conservative grant");
+Check((await picker.SelectAsync(false, null, default)) is { Path: "/tmp/a file.txt", AllowsSiblingReplacement: true, Location: NativeFileLocation.Host }, "local URI");
 Check(owner.Released == 1, "parent lease released");
 const string exactDirectory = "/tmp/directory space % Ω 文本\nline";
 Check((await new PortalFilePicker(owner, new FakeTransport(new(0, ["file:///tmp/directory%20space%20%25%20%CE%A9%20%E6%96%87%E6%9C%AC%0Aline"])))
@@ -72,14 +72,45 @@ try
     string path = Path.Combine(saveDirectory, "original.txt");
     await File.WriteAllTextAsync(path, "original");
     var backend = new NativePickerBackend(owner, new PortalFilePicker(owner, new FakeTransport(new(0, [new Uri(path).AbsoluteUri]))));
-    Check(!backend.SupportsAtomicReplace && !PortalPlatformProvider.CreateFileDialogs(owner).SupportsAtomicReplace, "portal dialogs do not report atomic save support");
+    Check(backend.SupportsAtomicReplace && PortalPlatformProvider.CreateFileDialogs(owner).SupportsAtomicReplace, "portal dialogs report atomic save support");
+    await using (var lifetime = new PresentationLifetime(() => owner.IsAvailable, owner.Generation))
+        Check(new PresentationFiles(lifetime, backend).GetSnapshot().Statuses["platform.files.save"] is CapabilityStatus.Available, "facade reports Linux portal save as available");
     var selected = await backend.SaveFileAsync(new SaveFileOptions("original.txt"));
     Check(selected is PickerResult<ISaveFileLease>.Selected, "portal save destination selected");
-    await using var lease = ((PickerResult<ISaveFileLease>.Selected)selected).Value;
-    Check(await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Unavailable { Reason: PlatformUnavailableReason.AtomicReplaceUnavailable }, "portal grant does not authorize atomic sibling replacement");
-    Check(await File.ReadAllTextAsync(path) == "original" && Directory.GetFiles(saveDirectory).Length == 1, "unsupported save preserves file and creates no sibling staging");
+    await using (var lease = ((PickerResult<ISaveFileLease>.Selected)selected).Value)
+    {
+        var begun = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace);
+        Check(begun is PlatformResult<IFileWriteTransaction>.Success, "host-path portal selection stages a sibling");
+        await using var transaction = ((PlatformResult<IFileWriteTransaction>.Success)begun).Value;
+        await transaction.Content.WriteAsync("saved"u8.ToArray());
+        Check(await transaction.CommitAsync() is FileCommitResult.Committed, "host-path portal save commits");
+    }
+    Check(await File.ReadAllTextAsync(path) == "saved" && Directory.GetFiles(saveDirectory).Length == 1, "atomic save replaced the file and left no staging");
 }
 finally { Directory.Delete(saveDirectory, recursive: true); }
+
+// Classification: a document is below the Documents.GetMountPoint mount (or the
+// Flatpak alias) and on FUSE. Nothing else may skip host symlink resolution.
+string? queriedMount = "/run/user/1000/doc";
+int mountQueries = 0;
+var fuse = new DocumentPortalPaths(_ => { mountQueries++; return ValueTask.FromResult<string?>(queriedMount); }, _ => true);
+var plain = new DocumentPortalPaths(_ => { mountQueries++; return ValueTask.FromResult<string?>(queriedMount); }, _ => false);
+Check(await fuse.ClassifyAsync("/run/user/1000/doc/abc123/notes.txt", default) == NativeFileLocation.DocumentPortal, "document below the queried mount");
+Check(await fuse.ClassifyAsync("/run/user/1000/doc/by-app/org.example.App/abc123/notes.txt", default) == NativeFileLocation.DocumentPortal, "per-application document view");
+Check(await fuse.ClassifyAsync("/run/flatpak/doc/abc123/notes.txt", default) == NativeFileLocation.DocumentPortal, "Flatpak document alias");
+Check(await fuse.ClassifyAsync("/run/user/1000/document/abc123/notes.txt", default) == NativeFileLocation.Host, "a sibling prefix is not the mount");
+Check(await fuse.ClassifyAsync("/run/user/1000/doc/notes.txt", default) == NativeFileLocation.Host, "the mount root holds no documents");
+Check(await fuse.ClassifyAsync("/home/user/notes.txt", default) == NativeFileLocation.Host, "FUSE outside the mount is a host path");
+mountQueries = 0;
+Check(await plain.ClassifyAsync("/run/user/1000/doc/abc123/notes.txt", default) == NativeFileLocation.Host && mountQueries == 0,
+    "a non-FUSE directory is a host path without a portal query");
+queriedMount = null;
+Check(await fuse.ClassifyAsync("/run/user/1000/doc/abc123/notes.txt", default) == NativeFileLocation.Host, "an unconfirmed mount is a host path");
+queriedMount = "/srv/runtime/doc/";
+Check(await fuse.ClassifyAsync("/srv/runtime/doc/abc123/notes.txt", default) == NativeFileLocation.DocumentPortal, "an atypical XDG_RUNTIME_DIR mount comes from the portal");
+var documentPicker = new PortalFilePicker(owner, new FakeTransport(new(0, ["file:///srv/runtime/doc/abc123/notes.txt"])), documents: fuse);
+Check(await documentPicker.SelectAsync(true, "notes.txt", default) is { AllowsSiblingReplacement: true, Location: NativeFileLocation.DocumentPortal }, "save selection carries its document location");
+if (OperatingSystem.IsLinux()) await DocumentPortalTests.RunAsync(owner);
 Console.WriteLine("PASS portal ownership, cancellation, local URI and access-grant checks.");
 if (args.Contains("--settings"))
 {

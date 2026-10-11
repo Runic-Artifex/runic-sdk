@@ -10,7 +10,19 @@ public sealed class NativeBackendUnavailableException : Exception;
 /// <param name="Path">The acquired local path, never a bridge payload.</param>
 /// <param name="Access">Optional access grant transferred to the resulting lease.</param>
 /// <param name="AllowsSiblingReplacement">Whether access permits same-directory staging and replacement.</param>
-public sealed record NativeFileSelection(string Path, IAsyncDisposable? Access, bool AllowsSiblingReplacement);
+public sealed record NativeFileSelection(string Path, IAsyncDisposable? Access, bool AllowsSiblingReplacement)
+{
+    /// <summary>The filesystem view that holds the path. It selects how a save stages and replaces the file.</summary>
+    public NativeFileLocation Location { get; init; }
+}
+/// <summary>The filesystem view through which a native selection is reached.</summary>
+public enum NativeFileLocation
+{
+    /// <summary>An ordinary host path. A save replaces the final target of a symbolic link.</summary>
+    Host,
+    /// <summary>A document in the xdg-document-portal FUSE view. A save stages beside the exact document name and never resolves links.</summary>
+    DocumentPortal,
+}
 /// <summary>An acquired local directory, confined to C# provider infrastructure.</summary>
 /// <param name="Path">The exact local path, never a bridge payload.</param>
 /// <param name="Access">Optional native access grant transferred to the resulting lease.</param>
@@ -135,7 +147,7 @@ public sealed partial class NativePickerBackend(INativePickerOwner owner, INativ
             }
             // CreateAsync takes ownership of acquired access, including failure paths.
             var lease = await SaveFileLease.CreateAsync(selection.Path,
-                selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement() : new NoAtomicReplacement(),
+                selection.AllowsSiblingReplacement ? new LocalAtomicFileReplacement(selection.Location) : new NoAtomicReplacement(),
                 selection.Access, cancellationToken).ConfigureAwait(false);
             return new PickerResult<ISaveFileLease>.Selected(lease);
         }

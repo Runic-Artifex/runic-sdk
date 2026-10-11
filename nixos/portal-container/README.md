@@ -55,8 +55,9 @@ namespace and verified its parent's limit remained unchanged. Other nspawn proc
 masks remain in place. Both mounts are removed on service shutdown.
 
 The standard-runtime Flatpak tests verify granted document access while direct
-access to the private sibling remains denied. They also reject atomic replacement
-without changing the original destination. Runtime preparation includes the
+access to the private sibling remains denied. They also save the destination
+atomically through the document portal: new content, a new inode, the original
+mode, and no staging file left beside it. Runtime preparation includes the
 pinned GNOME Platform and Mesa GL extension; omitting the latter prevents the
 sandboxed WebView from rendering.
 

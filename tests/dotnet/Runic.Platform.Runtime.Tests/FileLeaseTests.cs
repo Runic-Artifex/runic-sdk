@@ -94,6 +94,7 @@ internal static class FileLeaseTests
                 File.Delete(link);
             }
             Check(Directory.GetFiles(directory).Length == 1, "Replacement checks leaked files.");
+            if (OperatingSystem.IsLinux()) await LinuxRenameAsync(directory, path);
 
             replacement = new Replacement { IsSupported = false };
             await using (var unsupported = await SaveFileLease.CreateAsync(path, replacement))
@@ -104,6 +105,116 @@ internal static class FileLeaseTests
             await Throws<AggregateException>(() => failingRead.DisposeAsync().AsTask());
         }
         finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    // The Linux commit is one renameat2: plain over an existing file, no-replace for
+    // a new one, and never a copy. The seam returns an errno instead of renaming.
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    private static async Task LinuxRenameAsync(string directory, string path)
+    {
+        var mode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+        File.SetUnixFileMode(path, mode);
+        long inode = Inode(path);
+        await Commit(path, "renamed");
+        Check(Inode(path) != inode && File.GetUnixFileMode(path) == mode && await File.ReadAllTextAsync(path) == "renamed",
+            "An overwrite must publish a new inode with the original mode.");
+
+        string fresh = Path.Combine(directory, "fresh.txt");
+        await Commit(fresh, "new file");
+        Check(await File.ReadAllTextAsync(fresh) == "new file", "A new file must be created.");
+        File.Delete(fresh);
+
+        uint? flags = null;
+        var observed = new LocalAtomicFileReplacement(rename: (_, _, value) => { flags = value; return 17; }); // EEXIST
+        Check(await CommitWith(fresh, observed) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.Conflict } && flags == 1 && !File.Exists(fresh),
+            "A new file must use RENAME_NOREPLACE and report a conflict.");
+
+        foreach (int error in new[] { 18, 16 }) // EXDEV, EBUSY
+        {
+            string before = await File.ReadAllTextAsync(path);
+            var refused = new LocalAtomicFileReplacement(rename: (_, _, value) => { flags = value; return error; });
+            Check(await CommitWith(path, refused) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.ResourceBusy } && flags == 0,
+                $"errno {error} must leave the overwrite uncommitted.");
+            Check(await File.ReadAllTextAsync(path) == before && Directory.GetFiles(directory).Length == 1,
+                $"errno {error} must not copy over the target and must remove staging.");
+        }
+        Check(await CommitWith(path, new LocalAtomicFileReplacement(rename: (_, _, _) => 13)) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.PermissionDenied },
+            "EACCES is a refused rename.");
+        Check(await CommitWith(path, new LocalAtomicFileReplacement(rename: (_, _, _) => 5)) is FileCommitResult.CommitUnknown { Code: PlatformFailureCode.IoError },
+            "EIO after submission is an uncertain outcome.");
+
+        // A filesystem or older document portal that rejects RENAME_NOREPLACE re-checks the name.
+        var calls = new List<uint>();
+        int Fallback(string staging, string target, uint value)
+        {
+            calls.Add(value);
+            if (value != 0) return 22; // EINVAL
+            File.Move(staging, target);
+            return 0;
+        }
+        Check(await CommitWith(fresh, new LocalAtomicFileReplacement(rename: Fallback)) is FileCommitResult.Committed
+            && calls.SequenceEqual([1u, 0u]) && await File.ReadAllTextAsync(fresh) == "replacement", "An absent name must still be created.");
+        File.Delete(fresh);
+        calls.Clear();
+        string dangling = Path.Combine(directory, "dangling.txt");
+        File.CreateSymbolicLink(dangling, Path.Combine(directory, "missing.txt"));
+        Check(await CommitWith(dangling, new LocalAtomicFileReplacement(NativeFileLocation.DocumentPortal, Fallback)) is FileCommitResult.NotCommitted { Code: PlatformFailureCode.Conflict }
+            && calls.SequenceEqual([1u]) && new FileInfo(dangling).LinkTarget is not null, "A present name, even a dangling link, must not be replaced.");
+        File.Delete(dangling);
+
+        // A document view resolves no links and stages beside the exact name.
+        string target = Path.Combine(directory, "target.txt");
+        string link = Path.Combine(directory, "view.txt");
+        await File.WriteAllTextAsync(target, "target");
+        File.CreateSymbolicLink(link, target);
+        await using (var save = await SaveFileLease.CreateAsync(link, new LocalAtomicFileReplacement(NativeFileLocation.DocumentPortal)))
+        {
+            var write = await Begin(save);
+            Check(Directory.GetFiles(directory, ".runic-*.tmp").Single() is { } staged && Path.GetDirectoryName(staged) == directory, "Staging must be a sibling of the exact name.");
+            await write.Content.WriteAsync("document"u8.ToArray());
+            Check(await write.CommitAsync() is FileCommitResult.Committed, "Document commit failed.");
+        }
+        Check(new FileInfo(link).LinkTarget is null && await File.ReadAllTextAsync(link) == "document" && await File.ReadAllTextAsync(target) == "target",
+            "A document view must replace the exact name, never a resolved host path.");
+        File.Delete(link); File.Delete(target);
+
+        // A read-only or revoked document grant refuses staging: atomic replacement is unavailable.
+        if (Environment.UserName != "root")
+        {
+            string locked = Path.Combine(directory, "locked");
+            Directory.CreateDirectory(locked);
+            string document = Path.Combine(locked, "document.txt");
+            await File.WriteAllTextAsync(document, "kept");
+            File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+            try
+            {
+                await using var save = await SaveFileLease.CreateAsync(document, new LocalAtomicFileReplacement(NativeFileLocation.DocumentPortal));
+                Check(await save.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Unavailable { Reason: PlatformUnavailableReason.AtomicReplaceUnavailable },
+                    "A refused document staging file must report AtomicReplaceUnavailable.");
+                await using var host = await SaveFileLease.CreateAsync(document, new LocalAtomicFileReplacement());
+                Check(await host.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace) is PlatformResult<IFileWriteTransaction>.Failed { Code: PlatformFailureCode.PermissionDenied },
+                    "A host directory without write access still reports permission denial.");
+                Check(await File.ReadAllTextAsync(document) == "kept" && Directory.GetFiles(locked).Length == 1, "Refused staging changed the directory.");
+            }
+            finally { File.SetUnixFileMode(locked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); Directory.Delete(locked, true); }
+        }
+        else Console.WriteLine("SKIP document staging refusal: root bypasses directory permissions.");
+    }
+
+    private static async Task<FileCommitResult> CommitWith(string path, LocalAtomicFileReplacement replacement)
+    {
+        await using var save = await SaveFileLease.CreateAsync(path, replacement);
+        var write = await Begin(save);
+        await write.Content.WriteAsync("replacement"u8.ToArray());
+        return await write.CommitAsync();
+    }
+
+    private static long Inode(string path)
+    {
+        var output = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("stat", ["-c", "%i", path]) { RedirectStandardOutput = true })!;
+        string text = output.StandardOutput.ReadToEnd();
+        output.WaitForExit();
+        return long.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static async Task Commit(string path, string text)

@@ -17,6 +17,8 @@
     <None Remove="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" />
     <None Include="Protocol/*.xml;Protocol/COPYING;Protocol/upstream.json" Pack="true" PackagePath="protocol/" />
     <InternalsVisibleTo Include="Runic.Platform.Linux.Portal.Tests" />
+    <!-- Shipping packages pin each other exactly; GTK 3 shares document-portal classification. -->
+    <InternalsVisibleTo Include="Runic.Platform.Linux" />
     <None Include="README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

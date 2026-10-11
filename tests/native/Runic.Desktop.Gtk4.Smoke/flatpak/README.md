@@ -32,8 +32,8 @@ installs the fixture inside each fresh container.
 The installer overwrites only three named test inputs in
 `~/runic-sandbox-inputs`: `granted.txt`, `private.txt`, and `save-target.txt`.
 The fixture must deny direct access to `private.txt`, open `granted.txt` through
-the portal, and reject atomic replacement of `save-target.txt` without changing
-it. Also check cancellation and closing the owner during a pending picker.
+the portal, and atomically replace `save-target.txt` through the document portal
+(new content and inode, same mode, no `.xdp-*` file left). Also check cancellation and closing the owner during a pending picker.
 The installer accepts an optional second argument, `wayland` (default) or `x11`,
 and grants only that display socket. The managed KDE `--backend x11` mode
 supplies the XIM environment for real Pinyin input. Native accessibility is
