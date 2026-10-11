@@ -220,9 +220,13 @@ dotnet publish -c Release -r linux-x64
 ```
 
 Use `win-x64`, `osx-arm64`, or another runtime identifier for other
-platforms. The publish folder contains the executable and a `www` folder with
-the built frontend; distribute the whole folder. Users need no Node.js or
-package manager, only the platform WebView or a browser described above.
+platforms. Windows builds are GUI applications (`WinExe`), so no console window
+opens and diagnostics written to standard error are not visible there. The
+publish folder holds the executable and a `www` folder with the built frontend;
+ship those two together, without debug symbols. Users need no Node.js or package
+manager, only the platform WebView or a browser described above. The
+[Ship a Desktop application](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/shipping.md)
+guide covers publish modes, signing and packaging per platform.
 
 ## Project settings
 
