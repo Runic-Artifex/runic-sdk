@@ -1,13 +1,14 @@
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using TUnit.Core;
 
 namespace Runic.Navigation.Tests;
 
 // W240-001 §4.5: every await in Runic.Navigation goes through NavigationAwait, so the engine never
 // continues on the model thread or inside a turn. The engine's sources are embedded into this
 // assembly (see the project file), so the scan sees every .cs file of the package.
-internal static class NavigationSourceScanTests
+internal sealed class NavigationSourceScanTests
 {
     private const string ResourcePrefix = "RunicNavigationSource/";
 
@@ -50,13 +51,8 @@ internal static class NavigationSourceScanTests
     private static readonly Regex Banned = new(
         @"\bTask\s*\.\s*Yield\b|\.\s*ContinueWith\s*[<(]|\.\s*(?:Unsafe)?OnCompleted\s*\(", RegexOptions.CultureInvariant);
 
-    public static void Run()
-    {
-        ScannerSeesOnlyCode();
-        EngineAwaitsGoThroughTheHelper();
-    }
-
-    private static void EngineAwaitsGoThroughTheHelper()
+    [Test]
+    public void EngineAwaitsGoThroughTheHelper()
     {
         var assembly = typeof(NavigationSourceScanTests).Assembly;
         var names = assembly.GetManifestResourceNames().Where(name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal)).ToArray();
@@ -97,7 +93,8 @@ internal static class NavigationSourceScanTests
 
     // The scanner ignores comments and literals, raw and interpolated raw strings included, and reports
     // bypassing awaits, await using, await foreach, Task.Yield, ContinueWith and OnCompleted.
-    private static void ScannerSeesOnlyCode()
+    [Test]
+    public void ScannerSeesOnlyCode()
     {
         const string sample = """"
             // await x;

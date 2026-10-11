@@ -1,38 +1,15 @@
 using System.ComponentModel;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TUnit.Core;
+using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 
 namespace Runic.Navigation.Tests;
 
 // W240-004 slice 3: container-resolved targets, entry scopes, the initial-target cycle guard,
 // departure actions, DismissAsync and LeaveConfirmation (design record W240-001 §5, §6).
-internal static partial class NavigationTests
+internal sealed partial class NavigationTests
 {
-    private static async Task RunStandaloneAsync()
-    {
-        await ContainerTargetsAsync();
-        await ContainerTargetsWithoutServicesAsync();
-        await EntryScopesAsync();
-        await EntryScopeFailuresAsync();
-        await EntryScopeOfAbandonedPushAsync();
-        await CloseDuringFactoryAsync(late: false);
-        await CloseDuringFactoryAsync(late: true);
-        await InitialTargetCycleAsync();
-        await OnCommittedAsync();
-        await OnCommittedDroppedAsync();
-        await SettlementAsync();
-        await DismissAsync();
-        await DismissFromInitializeAsync(forResult: true);
-        await DismissFromInitializeAsync(forResult: false);
-        await DismissEdgeCasesAsync();
-        await LeaveConfirmationAsync();
-        await LeaveConfirmationParentRerunAsync();
-        await LeaveConfirmationSameRegionSupersederAsync();
-        for (var seed = 0; seed < 40; seed++) await LeaveConfirmationRaceAsync(seed);
-        await LeaveConfirmationInDialogAsync(complete: true);
-        await LeaveConfirmationInDialogAsync(complete: false);
-    }
-
     private static ServiceProvider StandaloneServices(Action<ServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
@@ -46,7 +23,8 @@ internal static partial class NavigationTests
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
     }
 
-    private static async Task ContainerTargetsAsync()
+    [Test]
+    public async Task ContainerTargetsAsync()
     {
         await using var provider = StandaloneServices();
         await using var fixture = new Fixture(services: provider);
@@ -83,7 +61,8 @@ internal static partial class NavigationTests
         Require(fixture.Navigator.UnretiredEntryCount == 1, $"{fixture.Navigator.UnretiredEntryCount} entries are tracked.");
     }
 
-    private static async Task ContainerTargetsWithoutServicesAsync()
+    [Test]
+    public async Task ContainerTargetsWithoutServicesAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -101,7 +80,8 @@ internal static partial class NavigationTests
         Require(region.CurrentEntry!.Services.GetService(typeof(Clock)) is null, "An entry without services did not get an empty provider.");
     }
 
-    private static async Task EntryScopesAsync()
+    [Test]
+    public async Task EntryScopesAsync()
     {
         await using var scopeless = new RunicModelContext();
         Require(Throws<ArgumentException>(() => _ = new RunicNavigator(new RunicNavigatorOptions { ModelContext = scopeless, CreateEntryScopes = true })),
@@ -141,7 +121,8 @@ internal static partial class NavigationTests
         Require(fixture.Navigator.UnretiredEntryCount == 1, "Retired scoped entries are still tracked.");
     }
 
-    private static async Task EntryScopeFailuresAsync()
+    [Test]
+    public async Task EntryScopeFailuresAsync()
     {
         await using var provider = StandaloneServices();
         await using var fixture = new Fixture(services: provider, entryScopes: true);
@@ -183,7 +164,8 @@ internal static partial class NavigationTests
             && fixture.Navigator.UnretiredEntryCount == 1, "A failing scope disposal was not logged as DisposeScope.");
     }
 
-    private static async Task InitialTargetCycleAsync()
+    [Test]
+    public async Task InitialTargetCycleAsync()
     {
         var holder = new NavigatorHolder();
         await using var provider = StandaloneServices(services =>
@@ -223,7 +205,8 @@ internal static partial class NavigationTests
         Require(outer.Region.Current is LevelOnePage { Inner.Region.Current: LevelTwoPage }, "A holder type reused at two levels was taken for a cycle.");
     }
 
-    private static async Task OnCommittedAsync()
+    [Test]
+    public async Task OnCommittedAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -257,7 +240,8 @@ internal static partial class NavigationTests
         Require(saved!.ToString().Contains("Retire", StringComparison.Ordinal), $"The departure's text is {saved}.");
     }
 
-    private static async Task OnCommittedDroppedAsync()
+    [Test]
+    public async Task OnCommittedDroppedAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -292,7 +276,8 @@ internal static partial class NavigationTests
             $"A superseded departure ran its action: {ran}.");
     }
 
-    private static async Task SettlementAsync()
+    [Test]
+    public async Task SettlementAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -349,7 +334,8 @@ internal static partial class NavigationTests
             "A basis change named a superseder.");
     }
 
-    private static async Task DismissAsync()
+    [Test]
+    public async Task DismissAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -393,7 +379,11 @@ internal static partial class NavigationTests
             "Dismissed entries were not retired once.");
     }
 
-    private static async Task DismissFromInitializeAsync(bool forResult)
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [DisplayName("DismissFromInitializeAsync(forResult: $forResult)")]
+    public async Task DismissFromInitializeAsync(bool forResult)
     {
         await using var fixture = new Fixture();
         var home = new Page("home");
@@ -420,7 +410,8 @@ internal static partial class NavigationTests
         Require(page.Disposed == 1 && fixture.Navigator.UnretiredEntryCount == 1, "The dismissed pending entry was not retired.");
     }
 
-    private static async Task LeaveConfirmationAsync()
+    [Test]
+    public async Task LeaveConfirmationAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -483,7 +474,8 @@ internal static partial class NavigationTests
 
     // W240-001 deviation 14: a parent transition supersedes a child transition whose guard already
     // asked. The parent's transition runs the child's guard again; the standing yes answers it.
-    private static async Task LeaveConfirmationParentRerunAsync()
+    [Test]
+    public async Task LeaveConfirmationParentRerunAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -518,7 +510,11 @@ internal static partial class NavigationTests
 
     // Competing departures of one entry: whichever transition commits discards exactly once. Backs admitted while
     // another is pending join it, so every committed result reports the same pop.
-    private static async Task LeaveConfirmationRaceAsync(int seed)
+    public static IEnumerable<int> LeaveConfirmationRaceSeeds() => Enumerable.Range(0, 40);
+
+    [Test, MethodDataSource(nameof(LeaveConfirmationRaceSeeds))]
+    [DisplayName("LeaveConfirmationRaceAsync(seed: $seed)")]
+    public async Task LeaveConfirmationRaceAsync(int seed)
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -549,7 +545,11 @@ internal static partial class NavigationTests
             $"seed {seed}: {string.Join(", ", results.Select(result => result.GetType().Name))}, {prompts} prompts, {discards} discards.");
     }
 
-    private static async Task LeaveConfirmationInDialogAsync(bool complete)
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    [DisplayName("LeaveConfirmationInDialogAsync(complete: $complete)")]
+    public async Task LeaveConfirmationInDialogAsync(bool complete)
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -581,7 +581,8 @@ internal static partial class NavigationTests
 
     // A Create entry's scope is disposed when its push is superseded during the factory, or
     // cancelled during initialize.
-    private static async Task EntryScopeOfAbandonedPushAsync()
+    [Test]
+    public async Task EntryScopeOfAbandonedPushAsync()
     {
         await using var provider = StandaloneServices();
         await using var fixture = new Fixture(services: provider, entryScopes: true);
@@ -624,7 +625,11 @@ internal static partial class NavigationTests
     // Closing the navigator while a factory runs. With a short close timeout the pending entry
     // retires before the factory returns, so the late content is disposed by the preparing path;
     // its disposal throws, and the scope is still disposed.
-    private static async Task CloseDuringFactoryAsync(bool late)
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    [DisplayName("CloseDuringFactoryAsync(late: $late)")]
+    public async Task CloseDuringFactoryAsync(bool late)
     {
         await using var provider = StandaloneServices();
         var fixture = new Fixture(services: provider, entryScopes: true,
@@ -659,7 +664,8 @@ internal static partial class NavigationTests
         await fixture.Context.DisposeAsync();
     }
 
-    private static async Task DismissEdgeCasesAsync()
+    [Test]
+    public async Task DismissEdgeCasesAsync()
     {
         await using var fixture = new Fixture();
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -695,7 +701,8 @@ internal static partial class NavigationTests
 
     // A later request of the same region supersedes a departure whose guard already said yes;
     // its own guard run reuses the yes.
-    private static async Task LeaveConfirmationSameRegionSupersederAsync()
+    [Test]
+    public async Task LeaveConfirmationSameRegionSupersederAsync()
     {
         await using var fixture = new Fixture();
         var home = new Page("home");

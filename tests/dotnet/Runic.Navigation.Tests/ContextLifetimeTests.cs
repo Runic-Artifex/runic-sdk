@@ -1,8 +1,11 @@
+using TUnit.Core;
+
 namespace Runic.Navigation.Tests;
 
-internal static partial class NavigationTests
+internal sealed partial class NavigationTests
 {
-    public static async Task RunContextLifetimeAsync()
+    [Test]
+    public async Task ClosingTheContextClosesTheNavigatorAsync()
     {
         await using var fixture = new Fixture(closeTimeout: TimeSpan.FromMilliseconds(100));
         var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
