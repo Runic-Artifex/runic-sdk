@@ -4,5 +4,5 @@ internal sealed record DoctorOptions(
     string? Project,
     string Configuration,
     DoctorTargetRid? Target = null,
-    bool Aot = false,
+    bool? Aot = null,
     bool SelfContained = false);

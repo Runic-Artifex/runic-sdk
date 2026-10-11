@@ -127,6 +127,87 @@ test("emits relocatable Desktop bootstrap and asset URLs for production", async 
   }
 });
 
+test("builds host scripts from the web root without bundling warnings, also for nested pages", async () => {
+  const root = await fixtureRoot();
+  const hostScripts = [
+    `<script src="webui.js"></script>`,
+    `<script src="./runic-desktop-views.js"></script>`,
+    `<script src="/runic-cswebui.js"></script>`,
+  ].join("\n");
+  const page = (title) => `<!doctype html>
+<html><head><title>${title}</title>
+${hostScripts}
+<script src="unrelated.js"></script>
+</head><body><script type="module" src="/src/client-entry.js"></script></body></html>
+`;
+  await writeFile(join(root, "index.html"), page("Main"), "utf8");
+  await mkdir(join(root, "pages", "deep"), { recursive: true });
+  await writeFile(join(root, "pages", "settings.html"), page("Settings"), "utf8");
+  await writeFile(join(root, "pages", "deep", "about.html"), page("About"), "utf8");
+  const warnings = [];
+  const logger = {
+    hasWarned: false,
+    info: () => undefined,
+    warn: (message) => warnings.push(message),
+    warnOnce: (message) => warnings.push(message),
+    error: () => undefined,
+    clearScreen: () => undefined,
+    hasErrorLogged: () => false,
+  };
+  try {
+    await build({
+      root,
+      configFile: false,
+      customLogger: logger,
+      plugins: [runic({ devtools: false, desktop: true })],
+      build: {
+        outDir: "dist",
+        rolldownOptions: {
+          input: [join(root, "index.html"), join(root, "pages", "settings.html"), join(root, "pages", "deep", "about.html")],
+        },
+      },
+    });
+    // Other classic scripts still warn, so the logger sees the build's warnings.
+    assert.ok(warnings.some((message) => /unrelated\.js.*can't be bundled/.test(message)), warnings.join("\n"));
+    assert.equal(warnings.some((message) => /(webui|runic-desktop-views|runic-cswebui)\.js/.test(message)), false, warnings.join("\n"));
+
+    for (const [file, prefix] of [["index.html", "./"], ["pages/settings.html", "../"], ["pages/deep/about.html", "../../"]]) {
+      const html = await readFile(join(root, "dist", file), "utf8");
+      for (const script of ["runic-desktop.js", "webui.js", "runic-desktop-views.js", "runic-cswebui.js"]) {
+        assert.ok(html.replace(/<script\s+/g, "<script ").includes(`<script src="${prefix}${script}"></script>`), `${file} loads ${prefix}${script}:\n${html}`);
+      }
+      assert.doesNotMatch(html, /vite-ignore/);
+      assert.match(html, /<script src="unrelated\.js"><\/script>/);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("serves host scripts from the web root for nested pages", async () => {
+  const root = await fixtureRoot();
+  await mkdir(join(root, "pages"), { recursive: true });
+  await writeFile(join(root, "pages", "settings.html"),
+    `<!doctype html><html><head><script src="webui.js"></script><script type="module" src="/src/client-entry.js"></script></head><body></body></html>`,
+    "utf8");
+  const server = await createServer({
+    root,
+    configFile: false,
+    logLevel: "silent",
+    plugins: [runic({ devtools: false, desktop: true })],
+    server: { host: "127.0.0.1", port: 0, strictPort: false },
+  });
+  try {
+    await server.listen();
+    const html = await fetch(`http://127.0.0.1:${serverPort(server)}/pages/settings.html`).then((response) => response.text());
+    assert.match(html, /<script src="\.\.\/webui\.js"><\/script>/);
+    assert.match(html, /<script src="\.\.\/runic-desktop\.js"><\/script>/);
+  } finally {
+    await server.close();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runs the Vite, HMR, and SSR fixtures without browser-only state", async () => {
   const root = await fixtureRoot();
   const plugin = runic({ devtools: false });
@@ -439,7 +520,7 @@ test("injects the Views diagnostics client only while serving with DevTools enab
   await rm(root, { recursive: true, force: true });
   const plugin = runic();
   plugin.configResolved({ command: "build", mode: "production", root: process.cwd(), plugins: [] });
-  assert.deepEqual(plugin.transformIndexHtml.handler(), []);
+  assert.deepEqual(plugin.transformIndexHtml.handler("", { path: "/index.html", filename: "index.html" }), []);
 });
 
 test("forwards a Views BridgeError with its .NET detail to the timeline", async () => {

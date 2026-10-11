@@ -28,3 +28,11 @@ useful, but is bounded and has credential values redacted. Failures stay in
 the dock: `/__runic/state` and the copied diagnostic state leave them out, and
 the other timeline fields stay path-free. An application without a Vite-served `index.html` imports
 `virtual:runic/client` itself. `devtools: false` disables the injection.
+
+The native host serves `webui.js` and its client script (`runic-desktop.js`,
+`runic-cswebui.js` or `runic-desktop-views.js`) from the root of the web
+content, outside the Vite build. The plugin leaves those classic script tags
+unbundled, so `vite build` prints no "can't be bundled without
+type="module"" warning, and points them at the web root from every page: a
+nested page such as `pages/settings.html` loads `../webui.js` in the build and
+during `dotnet runic dev`.

@@ -65,7 +65,7 @@ internal static partial class CreateApplication
         if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
         {
             return Failure(CommandExitCategory.Usage, "RCREATE003",
-                $"The directory '{plan.Directory}' already exists and is not empty. Choose another name or --directory.");
+                $"The directory '{plan.Directory}' already exists and is not empty. Choose another name or --output.");
         }
 
         if (request.DryRun)

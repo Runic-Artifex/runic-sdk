@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -177,8 +179,11 @@ internal static class DevApplication
         try
         {
             Task completed = await Task.WhenAny(observed).ConfigureAwait(false);
-            if (completed == cancellation)
+            // A terminal Ctrl+C reaches the child processes too, so one of
+            // them can exit with 130 or 143 before the cancellation is seen.
+            if (completed == cancellation || cancellationToken.IsCancellationRequested)
             {
+                if (completed != cancellation) return Program.Success;
                 await cancellation.ConfigureAwait(false);
                 return Program.Success;
             }
@@ -264,7 +269,8 @@ internal static class DevApplication
         ArgumentNullException.ThrowIfNull(configuration);
         if (Directory.Exists(Path.Combine(configuration.FrontendPackageDirectory, "node_modules")) ||
             (!string.IsNullOrWhiteSpace(configuration.WorkspaceRoot) &&
-             Directory.Exists(Path.Combine(configuration.WorkspaceRoot, "node_modules"))))
+             Directory.Exists(Path.Combine(configuration.WorkspaceRoot, "node_modules"))) ||
+            !DeclaresDependencies(Path.Combine(configuration.FrontendPackageDirectory, "package.json")))
         {
             return;
         }
@@ -275,6 +281,32 @@ internal static class DevApplication
             "RAPPDEV1008",
             $"--no-restore needs installed frontend packages; run '{packageManager.Name} install' in the frontend directory or omit --no-restore.",
             $"Frontend directory: {configuration.FrontendPackageDirectory}\n");
+    }
+
+    /// <summary>
+    /// A package.json without dependencies installs no node_modules, so there
+    /// is nothing to require. An unreadable file is treated as declaring them.
+    /// </summary>
+    internal static bool DeclaresDependencies(string packageJsonPath)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(packageJsonPath));
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return true;
+            foreach (string section in (string[])["dependencies", "devDependencies", "optionalDependencies"])
+            {
+                if (document.RootElement.TryGetProperty(section, out JsonElement packages) &&
+                    (packages.ValueKind != JsonValueKind.Object || packages.EnumerateObject().Any()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return true;
+        }
     }
 
     private static async Task<IFrontendDevelopmentServer> StartDevelopmentServerAsync(
@@ -436,9 +468,9 @@ internal static class DevApplication
             : [];
 
     /// <summary>
-    /// Development server properties plus, with <c>--no-restore</c>,
-    /// <c>RunicBridgeInstallFrontend=false</c> so MSBuild does not install
-    /// missing frontend packages behind the caller's back.
+    /// Development server properties plus <c>RunicBridgeInstallFrontend=false</c>:
+    /// dev installs the frontend packages itself before the build, and with
+    /// <c>--no-restore</c> nothing installs them behind the caller's back.
     /// </summary>
     internal static IReadOnlyList<string> CreateBuildProperties(
         DevProjectConfiguration configuration,
@@ -446,7 +478,7 @@ internal static class DevApplication
         string prefix)
     {
         var properties = new List<string>(CreateDevelopmentServerProperties(configuration, options, prefix));
-        if (!options.Restore)
+        if (!options.Restore || configuration.NodeEnabled)
         {
             properties.Add($"{prefix}RunicBridgeInstallFrontend=false");
         }

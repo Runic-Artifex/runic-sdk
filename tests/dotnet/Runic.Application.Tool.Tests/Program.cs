@@ -56,9 +56,11 @@ internal static class Program
             ("doctor --rid checks CS-WebUI presentation", DoctorRidChecksCsWebUi),
             ("doctor --rid reports its target through the CLI", DoctorRidThroughCli),
             ("doctor --rid evaluates the project as dotnet publish -r does", DoctorRidEvaluatesLikePublish),
-            ("--no-restore keeps MSBuild from installing frontend packages", NoRestoreSkipsFrontendInstall),
+            ("dev keeps MSBuild from installing frontend packages", NoRestoreSkipsFrontendInstall),
+            ("dev hides the exit code of an application it stopped", ExpectedTerminationIsNotReported),
             ("child process failures name the program and directory", ChildFailuresNameProgramAndDirectory),
             ("every command option is described", EveryOptionIsDescribed),
+            ("--rid/--runtime and --aot/--no-aot are spelled alike in every command", RidAndAotOptionsMatchAcrossCommands),
             ("doctor JSON reports unhealthy projects through the CLI", DoctorJsonThroughCli),
             ("doctor --fail-on decides the exit in both modes", DoctorFailOnDecidesExit),
             ("--no-restore requires installed frontend packages", NoRestoreRequiresInstalledPackages),
@@ -301,6 +303,20 @@ internal static class Program
         Contains(generated, "<script src=\"runic-desktop.js\">");
         Throws<DevUsageException>(() => FrontendDevelopmentDocument.Write(configuration,
             new Uri("http://127.0.0.1:5173/"), "../escape.html", html));
+
+        // A nested page loads the host scripts from the web root and its own
+        // relative assets from its folder, whether or not the Vite plugin
+        // already pointed them at the root.
+        string nested = "<html><head><script src=\"webui.js\"></script><script src=\"../runic-desktop-views.js\"></script><script src=\"./runic-desktop.js\"></script><link href=\"settings.css\"></head><body><script type=\"module\" src=\"/src/settings.ts\"></script></body></html>";
+        FrontendDevelopmentDocument.Write(configuration,
+            new Uri("http://127.0.0.1:5173/"), "pages/settings.html", nested);
+        string page = File.ReadAllText(Path.Combine(configuration.RuntimeWebRoot, "pages", "settings.html"));
+        Contains(page, "<script src=\"../webui.js\">");
+        Contains(page, "<script src=\"../runic-desktop-views.js\">");
+        Contains(page, "<script src=\"../runic-desktop.js\">");
+        Contains(page, "http://127.0.0.1:5173/pages/settings.css");
+        Contains(page, "http://127.0.0.1:5173/src/settings.ts");
+        Equal(null, FrontendDevelopmentDocument.HostScriptName("vendor/webui.js"));
     }
 
     private static void DevelopmentDocumentsFollowViteInputs()
@@ -619,9 +635,23 @@ internal static class Program
         Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, noRestore)),
             "-property:RunicBridgeInstallFrontend=false");
 
+        // With a restore, dev has installed the packages itself before the build.
         var restore = new DevOptions(null, "Debug", true, true, true, false, []);
-        DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, restore)),
-            "RunicBridgeInstallFrontend");
+        Contains(string.Join(" ", DevApplication.CreateBuildArguments(configuration, restore)),
+            "-property:RunicBridgeInstallFrontend=false");
+    }
+
+    private static void ExpectedTerminationIsNotReported()
+    {
+        // dotnet watch stops the application with SIGTERM before each restart.
+        True(HostProcessController.IsExpectedTerminationNotice("dotnet watch ❌ [App (net10.0)] Exited with error code 143"), "143");
+        True(HostProcessController.IsExpectedTerminationNotice("dotnet watch ❌ Exited with error code 130"), "130");
+        True(HostProcessController.IsExpectedTerminationNotice("\u001b[31mdotnet watch ❌ Exited with error code 143\u001b[39m"), "coloured");
+        True(HostProcessController.IsExpectedTerminationNotice("dotnet watch ❌ Exited with error code -1073741510"), "Windows Ctrl+C");
+        True(!HostProcessController.IsExpectedTerminationNotice("dotnet watch ❌ Exited with error code 1"), "A crash stays visible.");
+        True(!HostProcessController.IsExpectedTerminationNotice("dotnet watch ❌ Exited with error code 1430"), "1430");
+        True(!HostProcessController.IsExpectedTerminationNotice("dotnet watch ❌ Exited with error code 137"), "A kill after the grace period stays visible.");
+        True(!HostProcessController.IsExpectedTerminationNotice("[app] Processed 143 items"), "Application output");
     }
 
     private static void ChildFailuresNameProgramAndDirectory()
@@ -675,12 +705,13 @@ internal static class Program
     {
         using var workspace = new TestWorkspace();
         string project = CreateCliDoctorProject(workspace);
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json");
+        Equal(1, RunCli("doctor", "--project", project, "--output", "json").ExitCode);
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never");
         Equal(0, exitCode);
         var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult);
-        True(response.Success, "JSON doctor reports a completed inspection as a successful envelope.");
+        True(response.Success, "--fail-on never reports a completed inspection as a successful envelope.");
         DoctorCommandResult payload = response.Payload!;
         False(payload.Healthy, "A missing lock file makes the project unhealthy.");
         Equal("desktop", payload.Host);
@@ -722,7 +753,7 @@ internal static class Program
     {
         using var workspace = new TestWorkspace();
         var configuration = CreateConfiguration(workspace, "vite");
-        Write(Path.Combine(configuration.FrontendPackageDirectory, "package.json"), """{"packageManager":"npm@10.0.0"}""");
+        Write(Path.Combine(configuration.FrontendPackageDirectory, "package.json"), """{"packageManager":"npm@10.0.0","devDependencies":{"vite":"8.3.2"}}""");
         try
         {
             DevApplication.RequireInstalledFrontendPackages(configuration);
@@ -736,6 +767,14 @@ internal static class Program
         }
         Directory.CreateDirectory(Path.Combine(configuration.FrontendPackageDirectory, "node_modules"));
         DevApplication.RequireInstalledFrontendPackages(configuration);
+
+        // npm creates no node_modules for a package.json without dependencies.
+        Directory.Delete(Path.Combine(configuration.FrontendPackageDirectory, "node_modules"));
+        Write(Path.Combine(configuration.FrontendPackageDirectory, "package.json"),
+            """{"packageManager":"npm@10.0.0","dependencies":{},"scripts":{"build":"node build.mjs"}}""");
+        DevApplication.RequireInstalledFrontendPackages(configuration);
+        True(DevApplication.DeclaresDependencies(Path.Combine(workspace.Root, "missing.json")),
+            "An unreadable package.json still requires installed packages.");
     }
 
     private static void JsonFaultsOmitProjectPaths()
@@ -836,6 +875,54 @@ internal static class Program
                 True(!string.IsNullOrWhiteSpace(argument.Help.Description), $"{command.Name} {argument.Name} needs a description.");
             }
         }
+    }
+
+    private static void RidAndAotOptionsMatchAcrossCommands()
+    {
+        Runic.CommandLine.CommandCatalog catalog = Runic.CommandLine.Generated.GeneratedCommandCatalog.Create();
+        string[] rid = ["--rid", "--runtime", "-r"];
+        int ridCommands = 0;
+        foreach (Runic.CommandLine.CommandDescriptor command in catalog.Commands)
+        {
+            string[] spellings = [.. command.Options.SelectMany(option => option.Aliases.Prepend(option.Name))];
+            if (spellings.Intersect(rid).Any())
+            {
+                ridCommands++;
+                foreach (string spelling in rid) True(spellings.Contains(spelling), $"{command.Name} needs {spelling}.");
+            }
+            if (spellings.Contains("--aot") || spellings.Contains("--no-aot"))
+            {
+                True(spellings.Contains("--aot") && spellings.Contains("--no-aot"), $"{command.Name} needs --aot and --no-aot.");
+            }
+        }
+        Equal(2, ridCommands);
+
+        // The spellings parse: a missing project is reported, not an unknown option.
+        string missing = Path.Combine(Path.GetTempPath(), "runic-missing-" + Guid.NewGuid().ToString("N"), "App.csproj");
+        foreach (string[] arguments in new[]
+        {
+            new[] { "size", "--rid", "linux-x64", "--aot" },
+            ["size", "--runtime", "linux-x64", "--no-aot"],
+            ["doctor", "--runtime", "linux-x64", "--no-aot"],
+        })
+        {
+            (int exitCode, string output) = RunCli([.. arguments, "--project", missing, "--output", "json"]);
+            Equal(2, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output);
+            Equal("RAPPDEV1002", document.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        }
+        foreach (string command in new[] { "size", "doctor" })
+        {
+            (int exitCode, string output) = RunCli(command, "-r", "linux-x64", "--aot", "--no-aot", "--project", missing, "--output", "json");
+            Equal(2, exitCode);
+            using JsonDocument document = JsonDocument.Parse(output);
+            DoesNotContain(document.RootElement.GetProperty("fault").GetProperty("code").GetString() ?? "", "RAPPDEV1002");
+        }
+        (int noAotExit, string noAotOutput) = RunCli("doctor", "--no-aot", "--project", missing, "--output", "json");
+        Equal(2, noAotExit);
+        using JsonDocument noAotWithoutRid = JsonDocument.Parse(noAotOutput);
+        Equal("RAPPCLI1011", noAotWithoutRid.RootElement.GetProperty("fault").GetProperty("code").GetString());
+        Contains(string.Join(',', DoctorProjectConfiguration.PublishProperties(DoctorTargetRid.Parse("linux-x64"), false, false)), "PublishAot=false");
     }
 
     private static void DoctorGuidesUnrestoredProject()
@@ -1437,7 +1524,7 @@ internal static class Program
     {
         using var workspace = new TestWorkspace();
         string project = CreateCliDoctorProject(workspace);
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "osx-arm64");
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--rid", "osx-arm64");
         Equal(0, exitCode);
         var response = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
@@ -1451,8 +1538,8 @@ internal static class Program
         Equal(2, invalidExit);
         using JsonDocument invalid = JsonDocument.Parse(invalidOutput);
         Equal("RAPPCLI1011", invalid.RootElement.GetProperty("fault").GetProperty("code").GetString());
-        Equal(0, RunCli("doctor", "--project", project, "--output", "json", "--runtime", "linux-x64").ExitCode);
-        (int aliasExit, string aliasOutput) = RunCli("doctor", "--project", project, "--output", "json", "-r", "win-x64");
+        Equal(0, RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--runtime", "linux-x64").ExitCode);
+        (int aliasExit, string aliasOutput) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "-r", "win-x64");
         Equal(0, aliasExit);
         Equal("win-x64", Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(aliasOutput), DoctorCommandResult.PayloadType,
@@ -1483,7 +1570,7 @@ internal static class Program
             </Project>
             """);
         workspace.Write("Frontend/package.json", """{"packageManager":"npm@10.0.0"}""");
-        DoctorProjectConfiguration Evaluate(string configuration, string rid, bool aot = false, bool selfContained = false) =>
+        DoctorProjectConfiguration Evaluate(string configuration, string rid, bool? aot = null, bool selfContained = false) =>
             DoctorProjectConfiguration.EvaluateAsync("dotnet", project, configuration, CancellationToken.None,
                 DoctorProjectConfiguration.PublishProperties(DoctorTargetRid.Parse(rid), aot, selfContained))
                 .GetAwaiter().GetResult();
@@ -1501,15 +1588,16 @@ internal static class Program
         DoctorProjectConfiguration switches = Evaluate("Debug", "linux-x64", aot: true, selfContained: true);
         True(switches.PublishAot, "--aot sets PublishAot.");
         True(switches.SelfContained, "--self-contained sets SelfContained.");
+        False(Evaluate("Release", "win-x64", aot: false).PublishAot, "--no-aot overrides a project PublishAot.");
 
         // Without -c, --rid evaluates Release like dotnet publish.
-        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "linux-x64");
+        (int exitCode, string output) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--rid", "linux-x64");
         Equal(0, exitCode);
         DoctorCommandResult payload = Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(output), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!;
         Contains(payload.Checks.Single(check => check.Id == "target-publish").Message, "self-contained");
-        (_, string debugOutput) = RunCli("doctor", "--project", project, "--output", "json", "--rid", "linux-x64", "-c", "Debug");
+        (_, string debugOutput) = RunCli("doctor", "--project", project, "--output", "json", "--fail-on", "never", "--rid", "linux-x64", "-c", "Debug");
         Contains(Runic.CommandLine.CommandJsonEnvelopeReader.Read(
             System.Text.Encoding.UTF8.GetBytes(debugOutput), DoctorCommandResult.PayloadType,
             DoctorCommandJsonContext.Default.DoctorCommandResult).Payload!.Checks.Single(check => check.Id == "target-publish").Message,

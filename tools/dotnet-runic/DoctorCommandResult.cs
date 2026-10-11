@@ -115,14 +115,15 @@ internal static class DoctorOutcome
     internal const string FaultCode = "RAPPCLI1009";
 
     /// <summary>
-    /// Empty selects the mode default: human output fails on failing checks,
-    /// while JSON reports every completed inspection as a payload because a
-    /// failed runic.commandline/1 envelope cannot carry one.
+    /// Empty selects the default, which fails on failing checks in both output
+    /// modes so that CI reading only the exit code sees them. A failed
+    /// runic.commandline/1 envelope cannot carry the payload; <c>--fail-on never</c>
+    /// reports every completed inspection as a payload instead.
     /// </summary>
-    internal static DoctorFailOn ParseFailOn(string value, CommandOutputMode mode) =>
+    internal static DoctorFailOn ParseFailOn(string value) =>
         value switch
         {
-            "" or null => mode == CommandOutputMode.Json ? DoctorFailOn.Never : DoctorFailOn.Fail,
+            "" or null => DoctorFailOn.Fail,
             "never" => DoctorFailOn.Never,
             "fail" => DoctorFailOn.Fail,
             "warn" => DoctorFailOn.Warn,

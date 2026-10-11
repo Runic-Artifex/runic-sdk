@@ -79,42 +79,44 @@ internal static partial class Program
     [CommandResult("runic.application.tool/1", typeof(ToolCommandJsonContext))]
     internal static Task<CommandOutcome<ToolCommandResult>> Size(
         CommandExecutionContext context,
-        [Option("--no-aot", Description = "Publish without Native AOT.")] bool noAot,
+        [Option("--aot", ConflictsWith = ["no-aot"], Description = "Publish with Native AOT, the default.")] bool aot,
+        [Option("--no-aot", ConflictsWith = ["aot"], Description = "Publish without Native AOT.")] bool noAot,
         [Option("--verify-argument", AllowMultipleValues = true, Description = "An argument for the --verify executable. Repeat it for several arguments.")] IReadOnlyList<string> verifyArguments,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
-        [Option("--runtime", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
+        [Option("--runtime", "--rid", "-r", Description = "The runtime identifier to publish for, for example linux-x64. Required.")] string runtime = "",
         [Option("--configuration", "-c", Description = "The build configuration.")] string configuration = "Release",
         [Option("--report", Description = "The JSON report to write. The file must not exist yet.")] string report = "runic-size.json",
         [Option("--verify", Description = "An executable to run after a successful publish, as a path or a command on PATH, such as node. It receives the --verify-argument values, then the publish directory and the published application's path. A nonzero exit code fails the command.")] string verify = "") =>
         ExecuteAsync(context, "size", () => SizeApplication.RunAsync(new SizeOptions(
             string.IsNullOrWhiteSpace(project) ? null : project, runtime,
-            configuration, report, !noAot, verify, verifyArguments), cancellationToken), stream: true);
+            configuration, report, aot || !noAot, verify, verifyArguments), cancellationToken), stream: true);
 
     [Command("doctor", Description = "Check the project and development environment.",
         Examples = ["dotnet runic doctor --project ./MyApp.csproj", "dotnet runic doctor --rid linux-x64 --aot", "dotnet runic doctor --output json"])]
     [CommandResult(DoctorCommandResult.PayloadType, typeof(DoctorCommandJsonContext))]
     internal static Task<CommandOutcome<DoctorCommandResult>> Doctor(
         CommandExecutionContext context,
-        [Option("--aot", Description = "With --rid, check a publish with -p:PublishAot=true.")] bool aot,
+        [Option("--aot", ConflictsWith = ["no-aot"], Description = "With --rid, check a publish with -p:PublishAot=true.")] bool aot,
+        [Option("--no-aot", ConflictsWith = ["aot"], Description = "With --rid, check a publish with -p:PublishAot=false.")] bool noAot,
         [Option("--self-contained", Description = "With --rid, check a publish with --self-contained true.")] bool selfContained,
         CancellationToken cancellationToken,
         [Option("--project", "-p", Description = ProjectDescription)] string project = "",
         [Option("--configuration", "-c", Description = "The build configuration to evaluate. Defaults to Debug, or Release with --rid as dotnet publish does.")] string configuration = "",
-        [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail for human output and never for JSON output.")] string failOn = "",
+        [Option("--fail-on", Description = "Fail when a check reaches this status: never, fail or warn. Defaults to fail in both output modes.")] string failOn = "",
         [Option("--rid", "--runtime", "-r", Description = "Also check deployment prerequisites for this runtime identifier, for example linux-x64, win-x64 or osx-arm64.")] string rid = "")
     {
         return ExecuteAsync<DoctorCommandResult>(context, stream: false, async output =>
         {
-            DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn, context.OutputMode);
+            DoctorFailOn threshold = DoctorOutcome.ParseFailOn(failOn);
             DoctorTargetRid? target = string.IsNullOrEmpty(rid) ? null : DoctorTargetRid.Parse(rid);
-            if (target is null && (aot || selfContained))
+            if (target is null && (aot || noAot || selfContained))
             {
-                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot and --self-contained require --rid.");
+                throw new DevUsageException(DoctorTargetRid.UsageCode, "--aot, --no-aot and --self-contained require --rid.");
             }
             string evaluated = configuration.Length != 0 ? configuration : target is null ? "Debug" : "Release";
             DoctorRun run = await DoctorApplication.InspectAsync(
-                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, evaluated, target, aot, selfContained),
+                new DoctorOptions(string.IsNullOrWhiteSpace(project) ? null : project, evaluated, target, aot ? true : noAot ? false : null, selfContained),
                 cancellationToken).ConfigureAwait(false);
             DoctorApplication.WriteReport(run.Project, run.Report, run.Target);
             return DoctorOutcome.Create(

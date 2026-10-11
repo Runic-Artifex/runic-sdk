@@ -33,7 +33,8 @@ internal sealed class RunningProcess : IAsyncDisposable
         string executable,
         string workingDirectory,
         IReadOnlyList<string> arguments,
-        IReadOnlyDictionary<string, string?>? environment = null)
+        IReadOnlyDictionary<string, string?>? environment = null,
+        Func<string, bool>? suppressLine = null)
     {
         ProcessStartInfo startInfo = CommandRunner.CreateStartInfo(
             executable,
@@ -62,6 +63,7 @@ internal sealed class RunningProcess : IAsyncDisposable
             if (eventArgs.Data is not null)
             {
                 running.OutputReceived?.Invoke(eventArgs.Data);
+                if (suppressLine?.Invoke(eventArgs.Data) == true) return;
                 Console.Out.WriteLine($"[{label}] {eventArgs.Data}");
             }
         };
@@ -70,6 +72,7 @@ internal sealed class RunningProcess : IAsyncDisposable
             if (eventArgs.Data is not null)
             {
                 running.OutputReceived?.Invoke(eventArgs.Data);
+                if (suppressLine?.Invoke(eventArgs.Data) == true) return;
                 Console.Error.WriteLine($"[{label}] {eventArgs.Data}");
             }
         };
