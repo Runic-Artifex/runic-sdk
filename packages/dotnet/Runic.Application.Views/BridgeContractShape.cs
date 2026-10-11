@@ -11,6 +11,7 @@ namespace Runic.Application.Views;
 
 /// <summary>Build-time/Debug reconstruction of the generated Bridge wire shape.</summary>
 [RequiresUnreferencedCode("Reflects over arbitrary model, DTO and view types; used only by code generation and Hot Reload.")]
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class BridgeContractShape
 {
     /// <summary>Computes the contract fingerprint of <paramref name="model"/> and the views in its assembly.</summary>

@@ -322,10 +322,18 @@ export type DocumentPane = "Editor" | "Preview";
   the XML documentation file for this; a project that already writes one keeps
   its own. Set `RunicBridgeDocumentation=false` to skip it. A separate model
   assembly (`RunicBridgeModelAssembly`) needs its XML documentation file beside
-  it.
+  it. A command generated from a method, such as a CommunityToolkit
+  `[RelayCommand]`, uses the method's comment. The C#-only comments an MVVM
+  library's source generator writes are not copied; a generated cancel command
+  is documented as cancelling its command.
 - A command argument keeps the parameter name of its CommunityToolkit
   `[RelayCommand]` method. Other commands name it after the argument's C# type,
   or `input` for scalars.
+
+The generated C# bridge calls public runtime types such as `ViewModelBridge<T>`,
+`PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire`, `BridgeJson` and
+`ReactiveCommandExecution`. They are marked `[EditorBrowsable(Never)]`, so they
+stay out of completion lists; they are not application API.
 
 ## Generator diagnostics
 
