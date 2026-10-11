@@ -6,8 +6,11 @@ regions to ReactiveUI 26 (the `ReactiveUI.Primitives` flavor). It depends on
 host, so it works in a WPF or console app. It provides, in the
 `Runic.Navigation.ReactiveUI` namespace, `WhenCurrentChanged()`,
 `WhenEntryChanged()`, `WhenCanGoBackChanged()`, `WhenIsTransitioningChanged()`
-and `CreateBackCommand()` for `NavigationRegion<TContent>` (experimental,
-`RUNICNAV001`).
+and `CreateBackCommand()` for `NavigationRegion<TContent>`; `WhenNavigatedTo()`,
+`WhenNavigatedFrom()`, `CreateCompleteCommand()`, `CreateDismissCommand()` and
+`CreateCloseCommand()` for an entry's `NavigationEntryContext`; and
+`ReactiveLeaveConfirmation.WithInteraction()`, a leave confirmation asked through a
+ReactiveUI `Interaction` (all experimental, `RUNICNAV001`).
 
 Apps that use the System.Reactive distribution of ReactiveUI reference
 [`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md)
@@ -91,10 +94,143 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   View. A navigation entry lives from its push until it retires: a retained
   entry stays alive and keeps its state while nothing presents it, and its View
   deactivates and activates again when the entry returns. Put per-presentation
-  subscriptions in `WhenActivated`. Use the navigator's hooks
-  (`INavigationInitialize`, `INavigationResume`, `INavigationDepartureGuard`) and
-  the entry's `Retirement` token for per-entry work, and `Dispose` for owned
-  content.
+  subscriptions in `WhenActivated`. Use `WhenNavigatedTo` (below), the
+  navigator's hooks (`INavigationInitialize`, `INavigationAware`,
+  `INavigationDepartureGuard`) and the entry's `Retirement` token for per-entry
+  work, and `Dispose` for owned content.
+
+## Entry lifecycle and result commands (experimental)
+
+Content that the navigator creates takes its `NavigationEntryContext` as a
+constructor parameter (`NavigationTarget.Create<T>()` and the region methods that
+wrap it). The extension methods on the entry context follow the entry's core
+`State`/`StateChanged`, so they keep no state or history of their own:
+
+```csharp
+public sealed record DiscardPrompt(string ItemName);
+
+public sealed class EditViewModel : ReactiveObject, IPage, INavigationDepartureGuard, IDisposable
+{
+    private readonly MultipleDisposable _disposables = new();
+    private readonly LeaveConfirmation _leave;
+
+    public EditViewModel(ItemStore store, NavigationEntryContext entry)
+    {
+        entry.WhenNavigatedTo((arrival, scope) =>
+        {
+            // Each arrival: the push that created the entry, then each Back or BackTo that resumes it.
+            if (arrival.Operation is NavigationOperation.Back) Refresh.Execute().Subscribe().DisposeWith(scope);
+        }).DisposeWith(_disposables);
+
+        _leave = ReactiveLeaveConfirmation.WithInteraction(
+            ConfirmDiscard, () => new DiscardPrompt(Name), () => IsDirty, discard: () => Name = _original.Name);
+
+        SaveCommand = entry.CreateCompleteCommand(ct => store.SaveAsync(_original with { Name = Name }, ct),
+            this.WhenAnyValue(vm => vm.IsDirty)).DisposeWith(_disposables);
+        CancelCommand = entry.CreateDismissCommand().DisposeWith(_disposables);
+        CloseCommand = entry.CreateCloseCommand().DisposeWith(_disposables); // asks when dirty
+    }
+
+    public Interaction<DiscardPrompt, bool> ConfirmDiscard { get; } = new();
+    public ReactiveCommand<RxVoid, NavigationOutcome> SaveCommand { get; }
+    public ReactiveCommand<RxVoid, NavigationOutcome> CancelCommand { get; }
+    public ReactiveCommand<RxVoid, NavigationOutcome> CloseCommand { get; }
+
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken ct) =>
+        _leave.CanDepartAsync(departure, ct);
+
+    public void Dispose() => _disposables.Dispose();
+    // ...
+}
+```
+
+- `WhenNavigatedTo(onNavigatedTo)` calls back each time the entry becomes its
+  region's current entry, with a `NavigationResume` (the entry id and the
+  operation: `Push`, `Replace`, `Reset`, `Back` or `BackTo`) and a new disposable
+  scope (`MultipleDisposable`; `ContainerDisposable` in the System.Reactive
+  flavor, as in `WhenActivated`). The scope is disposed when the entry stops being
+  current, whether a push retains it or it retires. Both run in the commit turn,
+  at the same moment as `INavigationAware`. Subscribe while the entry is pending,
+  in the constructor or `InitializeAsync`: a subscription made later starts with
+  the next arrival and does not replay the current one. Disposing the returned
+  subscription disposes the current scope.
+- `WhenNavigatedFrom()` emits a `NavigationExit` (`Kind` `Retain` or `Retire`)
+  in the commit turn of each departure, and completes when the entry retires.
+- `CreateCompleteCommand(produce)` produces a result, then calls
+  `entry.CompleteAsync(result)`; `CreateCompleteCommand<TResult>()` completes with
+  the command's parameter, for a Pick command. The Back runs the entry's guards: a
+  veto outputs `Rejected`, and the entry and its `PushForResult` request stay
+  open, so the command can run again.
+- `CreateDismissCommand()` calls `entry.DismissAsync()`: a dialog's Cancel. The
+  request ends `Dismissed` at once, before the guards run.
+- `CreateCloseCommand()` calls `entry.BackAsync()`: an editor's Close. The guards
+  may veto it; the request stays open and ends `Dismissed` only when the Back
+  commits.
+
+The commands output the Back's `NavigationOutcome`, which a Runic View can
+receive (no `RUNICBRIDGE003`). Like `CreateBackCommand`, they take an optional
+`canExecute` and `outputScheduler` and need no scheduler argument. A failure of
+`produce`, or completing an entry that was not pushed with `PushForResult`,
+reaches `ThrownExceptions`.
+
+## Leave confirmation through an interaction
+
+`ReactiveLeaveConfirmation.WithInteraction(interaction, prompt, hasUnsavedChanges,
+discard, askOnRetain)` returns a `LeaveConfirmation` whose question is
+`interaction.Handle(prompt())`. A handler's `true` lets the entry depart; `false`
+keeps it. Every `LeaveConfirmation` rule holds: a retaining push is allowed
+without asking unless `askOnRetain`; nothing is asked without unsaved changes;
+`prompt` and `hasUnsavedChanges` run inside a model turn; a yes stands while its
+departure is unsettled; and `discard` runs at most once per yes, in the commit
+turn. `LeaveConfirmation.InDialog` stays for apps that prefer a dialog region.
+
+- **Superseded or cancelled.** The guard's token disposes the `Handle`
+  subscription and the departure ends at once, without waiting for the handler.
+  ReactiveUI lets a running .NET handler finish and drops its answer. A Runic web
+  View's handler receives an aborted `signal`.
+- **Fails closed.** With no handler that answers, ReactiveUI's
+  `UnhandledInteractionException<TInput, TOutput>` fails the departure:
+  `NavigationResult.Failed` with `NavigationPhase.Guarding` (outcome `Failed`),
+  logged by the navigator as `NavigationGuardFailed` (event 1060, category
+  `Runic.Navigation`) with that exception type as `ErrorType`. A handler that
+  throws fails it the same way. The entry stays current.
+- **Threads.** The question is asked outside model turns, on the thread that
+  runs the guard: the dispatcher for a navigator on WPF's
+  `DispatcherModelContext`, the thread pool otherwise.
+
+Each presentation answers the same interaction natively. In WPF, register the
+handler in the View's `WhenActivated`:
+
+```csharp
+public partial class EditView : ReactiveUserControl<EditViewModel>
+{
+    public EditView()
+    {
+        InitializeComponent();
+        this.WhenActivated(d => ViewModel!.ConfirmDiscard
+            .RegisterHandler(context => context.SetOutput(MessageBox.Show(
+                $"Discard the changes to {context.Input.ItemName}?", "Close",
+                MessageBoxButton.YesNo) == MessageBoxResult.Yes))
+            .DisposeWith(d));
+    }
+}
+```
+
+While no View of the entry is active, such as for a retained entry, nothing
+answers and a departure that asks fails closed. When that can happen, register a
+fallback handler in the ViewModel's constructor: ReactiveUI runs the latest
+handler first, so an active View's handler still answers before it.
+
+In a test, answer in place (awaiting a command needs
+`using ReactiveUI.Primitives.Signals;` in this flavor):
+
+```csharp
+using var handler = editor.ConfirmDiscard.RegisterHandler(context => context.SetOutput(true));
+var outcome = await editor.CloseCommand.Execute(); // NavigationOutcomeKind.Committed
+```
+
+A Runic web View answers it with the generated client; see
+[Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view).
 
 ## Native command composition
 
@@ -174,3 +310,11 @@ In W250 the model-context scheduling moved back to
 The adapter's category is `Runic.Navigation.ReactiveUI`. Events 1044-1049 are
 reserved for it; it logs none today. Event 1043 is the Views
 `ReactiveSchedulerOutsideModelTurn`.
+
+The navigator logs what the adapter's hooks cause, in the `Runic.Navigation`
+category: an interaction leave confirmation that no handler answers is
+`NavigationGuardFailed` (event 1060) with `ErrorType`
+`ReactiveUI.Binding.UnhandledInteractionException`2` (in the System.Reactive
+flavor, `ReactiveUI.Binding.Reactive.UnhandledInteractionException`2`); a
+`WhenNavigatedTo` or `WhenNavigatedFrom` callback that throws is event 1075, like
+any `StateChanged` handler.

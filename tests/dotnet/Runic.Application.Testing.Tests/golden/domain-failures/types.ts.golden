@@ -118,6 +118,12 @@ export interface MutableKeyedRow {
   readonly label: string;
 }
 
+/** The question a `ReactiveNavEditorViewModel` asks before it discards its draft. */
+export interface NavDiscardPrompt {
+  readonly title: string;
+  readonly draft: string;
+}
+
 /** A summary of a `NavigationResult` without its .NET content and exception, so a ViewModel can return it to a Runic View, for example as the output of a back command. */
 export interface NavigationOutcome {
   /** How the request ended. */

@@ -52,3 +52,4 @@ static Runic.Navigation.RunicModelContext.Current.get -> Runic.Navigation.RunicM
 [RUNICNAV001]static Runic.Navigation.NavigationExit.operator ==(Runic.Navigation.NavigationExit? left, Runic.Navigation.NavigationExit? right) -> bool
 [RUNICNAV001]static Runic.Navigation.NavigationTarget.Create<T>(System.Func<System.IServiceProvider!, Runic.Navigation.NavigationEntryContext!, T!>! factory) -> Runic.Navigation.INavigationTarget<T!>!
 [RUNICNAV001]static Runic.Navigation.NavigationTarget.Create<T, TInput>(System.Func<System.IServiceProvider!, Runic.Navigation.NavigationEntryContext!, T!>! factory, TInput input) -> Runic.Navigation.INavigationTarget<T!>!
+[RUNICNAV001]static Runic.Navigation.RunicNavigator.HookCancellationToken.get -> System.Threading.CancellationToken

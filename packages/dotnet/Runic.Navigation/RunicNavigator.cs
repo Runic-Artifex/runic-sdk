@@ -80,6 +80,18 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     /// <summary>The category of the navigator's log entries (events 1060-1079).</summary>
     public const string LogCategory = "Runic.Navigation";
 
+    /// <summary>
+    /// Gets the token of the navigation hook whose code runs on the calling asynchronous flow, such as a departure
+    /// guard or an initialize or resume hook, or <see cref="CancellationToken.None"/> outside hooks. It is the token the
+    /// hook received, cancelled when the transition is superseded, cancelled or closed.
+    /// </summary>
+    /// <remarks>
+    /// The hook's continuations keep it, however they resume. Code that a hook's modal dialog pumps, such as an input
+    /// handler, is not the hook's code and sees <see cref="CancellationToken.None"/>. A presentation uses it to end work
+    /// that a hook started on its behalf; <c>Runic.Application.Views</c> ends a browser interaction request with it.
+    /// </remarks>
+    public static CancellationToken HookCancellationToken => NavigationHookMarker.Active?.Token ?? CancellationToken.None;
+
     internal static readonly TimeSpan OverrunWarningDelay = TimeSpan.FromSeconds(5);
 
     // Every instance any navigator has ever owned, live or retired.

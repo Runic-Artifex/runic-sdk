@@ -65,6 +65,7 @@ internal sealed class NavViewLocator : IRunicViewLocator
     public TView Locate<TView, TViewModel>() where TView : class, IRunicView where TViewModel : class =>
         typeof(TView) == typeof(NavHomeView) ? (TView)(object)new NavHomeView()
         : typeof(TView) == typeof(NavEditorView) ? (TView)(object)new NavEditorView()
+        : typeof(TView) == typeof(ReactiveNavEditorView) ? (TView)(object)new ReactiveNavEditorView()
         : throw new InvalidOperationException($"Unexpected View {typeof(TView).Name}.");
 }
 
