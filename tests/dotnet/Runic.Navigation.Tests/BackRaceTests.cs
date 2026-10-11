@@ -312,15 +312,20 @@ internal static partial class NavigationTests
         await Wait(main.PushAsync(NavigationTarget.Own<Page>(document)));
         await Wait(document.Child.PushAsync(NavigationTarget.Own(new Page("pane"))));
         var resumed = 0;
+        var cancelled = 0;
         document.ChildRoot.Resume = async (_, token) =>
         {
             Interlocked.Increment(ref resumed);
+            using var registration = token.Register(() => Interlocked.Increment(ref cancelled));
             await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, token);
         };
 
         var childBack = document.Child.BackAsync().AsTask();
         await Until(() => Volatile.Read(ref resumed) == 1, "The child Back did not start resuming.");
         var parentBack = main.BackAsync().AsTask();
+        // The second child Back must arrive after the parent's Back superseded the first one; before that it is
+        // still pending alongside it and is superseded with it, which is a different scenario.
+        await Until(() => Volatile.Read(ref cancelled) == 1, "The parent Back did not supersede the child Back.");
         var secondChildBack = document.Child.BackAsync().AsTask();
         var childResult = await Wait(childBack);
         var secondResult = await Wait(secondChildBack);
