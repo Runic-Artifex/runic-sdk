@@ -867,7 +867,7 @@ Events 1000-1012, 1020, 1021 and 1050 use the category `Runic.Application.Views`
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,
 or `Trace` without one.
-Navigation (1060-1074) and the model context (1030-1033) log under
+Navigation (1060-1075) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
 section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`. Events 3000-3005

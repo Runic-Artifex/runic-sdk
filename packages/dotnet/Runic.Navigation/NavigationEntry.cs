@@ -61,7 +61,18 @@ public sealed class NavigationEntry<TContent> : INavigationEntry where TContent 
     public override string ToString() => $"{Id.Value}:{Core.ContentTypeName} ({State})";
 }
 
-/// <summary>Gives an entry's hooks its identity, retirement signal, model context and late-completion operations.</summary>
+/// <summary>
+/// Gives an entry's content its identity, state, retirement signal, model context and late-completion operations.
+/// </summary>
+/// <remarks>
+/// Content that the navigator creates takes its context as a constructor parameter: with
+/// <see cref="NavigationTarget.Create{T}()"/> and the region methods that wrap it, or from the factory of
+/// <see cref="NavigationTarget.Create{T}(Func{IServiceProvider, NavigationEntryContext, T})"/>; the typed-input forms and
+/// initial targets included. Only the content receives it: a service resolved from the container can't, and
+/// resolving it there fails. Content created with
+/// <see cref="NavigationTarget.Own{T}"/> or <see cref="NavigationTarget.Borrow{T}"/> receives it in
+/// <see cref="INavigationInitialize.InitializeAsync"/>.
+/// </remarks>
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class NavigationEntryContext
 {
@@ -71,6 +82,28 @@ public sealed class NavigationEntryContext
 
     /// <summary>Gets the entry's id.</summary>
     public NavigationEntryId Id => _entry.Id;
+
+    /// <summary>
+    /// Gets the entry's current state. It is <see cref="NavigationEntryState.Pending"/> while the content is constructed
+    /// and initialized, and changes in the model turn that commits a change (see <see cref="StateChanged"/>).
+    /// </summary>
+    public NavigationEntryState State => _entry.State;
+
+    /// <summary>
+    /// Raised once for each change of <see cref="State"/>, inside a model turn: the commit turn of a navigation; the turn
+    /// that clears the entry's region when it closes; and, for a pending entry whose transition did not commit, a turn
+    /// posted when it retires. When an initial target becomes current, <see cref="RunicNavigator.CreateRegion{TContent}"/>
+    /// raises it before it returns, on the caller's thread. A change that happens after the model context closed is not raised.
+    /// </summary>
+    /// <remarks>
+    /// In the commit turn it is raised after the new navigation state is applied and before the regions raise
+    /// <c>PropertyChanged</c>, together with <see cref="INavigationAware"/> (see there for the order). Each handler is
+    /// called separately; one that throws is logged (event 1075) and does not skip the others or undo the change.
+    /// </remarks>
+    public event EventHandler<NavigationEntryStateChangedEventArgs>? StateChanged;
+
+    // The handlers, or null when there are none; read in a model turn.
+    internal EventHandler<NavigationEntryStateChangedEventArgs>? StateChangedHandlers => StateChanged;
 
     /// <summary>Gets a token that is cancelled when the entry starts retiring.</summary>
     public CancellationToken Retirement => _entry.Retirement.Token;
@@ -218,17 +251,14 @@ internal sealed class NavigationEntryCore
     // created content and taken by retirement step 4.
     public IServiceScope? Scope { get; set; }
 
-    // Read without the gate: the scope is published once, and its provider stays valid
-    // (throwing ObjectDisposedException) after retirement disposed it.
-    private IServiceProvider? _scopeServices;
+    // Read without the gate: the provider that constructs a Create target's content is published once,
+    // before the construction, and stays valid (throwing ObjectDisposedException once a scope behind it
+    // is disposed) after retirement.
+    private IServiceProvider? _services;
 
-    public IServiceProvider Services => Volatile.Read(ref _scopeServices) ?? Region.Navigator.Services ?? EmptyServiceProvider.Instance;
+    public IServiceProvider Services => Volatile.Read(ref _services) ?? Region.Navigator.Services ?? EmptyServiceProvider.Instance;
 
-    public void PublishScope(IServiceScope scope)
-    {
-        Scope = scope;
-        Volatile.Write(ref _scopeServices, scope.ServiceProvider);
-    }
+    public void PublishServices(IServiceProvider services) => Volatile.Write(ref _services, services);
 
     public NavigationEntryState State => Phase switch
     {
@@ -254,4 +284,66 @@ internal sealed class EmptyServiceProvider : IServiceProvider
 {
     public static readonly EmptyServiceProvider Instance = new();
     public object? GetService(Type serviceType) => null;
+}
+
+// One state change of an entry, raised as StateChanged and, around Active, as the INavigationAware calls.
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+internal readonly record struct NavigationEntryChange(NavigationEntryCore Entry, NavigationEntryState Previous, NavigationEntryState State);
+
+// The provider ActivatorUtilities constructs a Create<T>() target's content from (W250-032 §3): the entry's
+// provider, which also answers the entry's NavigationEntryContext until the construction returns. Only the
+// content's own constructor gets the context; services are resolved from the entry's provider, so they can't
+// receive it. It forwards the optional provider interfaces ActivatorUtilities uses (required, keyed and
+// IsService checks). The context is not passed as an ActivatorUtilities argument because ActivatorUtilities
+// then rejects the constructors that don't take it.
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+internal sealed class NavigationConstructionServices(IServiceProvider services, NavigationEntryContext context)
+    : IServiceProvider, ISupportRequiredService, IKeyedServiceProvider
+{
+    private volatile bool _constructing = true;
+
+    public static T Activate<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>(
+        IServiceProvider services, NavigationEntryContext context)
+    {
+        var construction = new NavigationConstructionServices(services, context);
+        try { return ActivatorUtilities.CreateInstance<T>(construction); }
+        finally { construction._constructing = false; }
+    }
+
+    private bool Answers(Type serviceType) => _constructing && serviceType == typeof(NavigationEntryContext);
+
+    public object? GetService(Type serviceType)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        if (Answers(serviceType)) return context;
+        if (serviceType == typeof(IServiceProviderIsService) || serviceType == typeof(IServiceProviderIsKeyedService))
+            return services.GetService(serviceType) is IServiceProviderIsService inner ? new ServiceCheck(this, inner) : null;
+        return services.GetService(serviceType);
+    }
+
+    public object GetRequiredService(Type serviceType)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        if (Answers(serviceType)) return context;
+        return services is ISupportRequiredService required
+            ? required.GetRequiredService(serviceType)
+            : services.GetService(serviceType) ?? throw new InvalidOperationException($"No service for type '{serviceType}' has been registered.");
+    }
+
+    public object? GetKeyedService(Type serviceType, object? serviceKey) => Keyed().GetKeyedService(serviceType, serviceKey);
+
+    public object GetRequiredKeyedService(Type serviceType, object? serviceKey) => Keyed().GetRequiredKeyedService(serviceType, serviceKey);
+
+    private IKeyedServiceProvider Keyed() => services as IKeyedServiceProvider
+        ?? throw new InvalidOperationException("This service provider doesn't support keyed services.");
+
+    // The entry provider's IsService check, extended with the context while the construction runs, so
+    // ActivatorUtilities considers a constructor that takes it.
+    private sealed class ServiceCheck(NavigationConstructionServices owner, IServiceProviderIsService inner) : IServiceProviderIsKeyedService
+    {
+        public bool IsService(Type serviceType) => owner.Answers(serviceType) || inner.IsService(serviceType);
+
+        public bool IsKeyedService(Type serviceType, object? serviceKey) =>
+            inner is IServiceProviderIsKeyedService keyed && keyed.IsKeyedService(serviceType, serviceKey);
+    }
 }

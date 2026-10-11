@@ -147,7 +147,8 @@ public sealed class NoteViewModel : ObservableObject, INavigationInitialize<int>
 ```
 
 **4. A dialog with a result.** Push the dialog with `PushForResult<TResult>`
-and await its completion. The dialog answers through the entry it received:
+and await its completion. The navigator constructs the dialog and passes its
+entry to the constructor; the dialog answers through it:
 
 ```csharp
 // In NotesViewModel
@@ -158,12 +159,10 @@ if (answer is NavigationCompletion<bool>.Completed { Value: true })
 
 public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<string>
 {
-    private NavigationEntryContext? _entry;
-
-    public ConfirmViewModel()
+    public ConfirmViewModel(NavigationEntryContext entry)
     {
-        YesCommand = new AsyncRelayCommand(() => _entry!.CompleteAsync(true).AsTask());
-        NoCommand = new AsyncRelayCommand(() => _entry!.DismissAsync().AsTask()); // Esc and the close button dismiss too
+        YesCommand = new AsyncRelayCommand(() => entry.CompleteAsync(true).AsTask());
+        NoCommand = new AsyncRelayCommand(() => entry.DismissAsync().AsTask()); // Esc and the close button dismiss too
     }
 
     public string Message { get; private set; } = "";
@@ -172,7 +171,7 @@ public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<s
 
     public ValueTask InitializeAsync(NavigationEntryContext entry, string message, CancellationToken token)
     {
-        (_entry, Message) = (entry, message);
+        Message = message;
         return ValueTask.CompletedTask;
     }
 }
@@ -180,7 +179,9 @@ public sealed class ConfirmViewModel : ObservableObject, INavigationInitialize<s
 
 The same `ConfirmViewModel` serves the guard in step 3: only `Completed(true)`
 leaves. To push a ViewModel you built, use `NavigationTarget.Own<object>(instance)`;
-for a factory, `NavigationTarget.Create<object>(services => ...)`. With the
+for a factory, `NavigationTarget.Create<object>(services => ...)`, or
+`NavigationTarget.Create<object>((services, entry) => ...)` to pass the entry
+to the constructor. With the
 default singleton navigator, each container-built entry gets its own service
 scope, which is disposed when the entry retires.
 
@@ -314,8 +315,8 @@ the title to the ViewModel:
 
 Return a result through the entry. A dialog pushed with
 `PushForResult<TResult>` completes with `entry.CompleteAsync(value)` and
-cancels with `entry.DismissAsync()`, using the `NavigationEntryContext` it
-captured in `InitializeAsync`.
+cancels with `entry.DismissAsync()`, using the `NavigationEntryContext` its
+constructor received.
 
 `IsDefault` and `IsCancel` buttons work as in a `ShowDialog()` window, so
 a migrated dialog keeps Enter to accept:
