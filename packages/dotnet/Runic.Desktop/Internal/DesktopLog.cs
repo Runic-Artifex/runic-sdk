@@ -34,6 +34,14 @@ internal static partial class DesktopLog
         Message = "Bridge WebSocket {ConnectionId} sent no token check in {SilentSeconds} seconds and was closed ({Reason}); the page reconnects.")]
     internal static partial void BridgeHandshakeExpired(ILogger logger, ulong connectionId, double silentSeconds, string reason);
 
+    [LoggerMessage(EventId = 3006, EventName = "DesktopShutdownRequested", Level = LogLevel.Information,
+        Message = "{Reason} received; closing Desktop windows. Send it again to terminate immediately.")]
+    internal static partial void ShutdownRequested(ILogger logger, string reason);
+
+    [LoggerMessage(EventId = 3007, EventName = "DesktopShutdownFailed", Level = LogLevel.Error,
+        Message = "Closing Desktop windows for shutdown failed with {ErrorType}.")]
+    internal static partial void ShutdownFailed(ILogger logger, Exception exception, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

@@ -36,6 +36,15 @@ public static class DesktopEventLoop
     /// reported as warnings to <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger, and the host runs on the
     /// plain loop so a browser fallback can open. The host is disposed before the loop ends.
     /// </para>
+    /// <para>
+    /// Ctrl+C, SIGTERM and a closed Windows console stop the application in the same order as closing its last
+    /// window: <see cref="DesktopHost.ShutdownRequested"/> is cancelled, the open windows close so
+    /// <see cref="DesktopWindow.WaitForClose"/> returns, the application releases its work and returns, and the host
+    /// is disposed before the loop ends. A second Ctrl+C, a second or later after the first signal, ends the process
+    /// immediately; copies forwarded by dotnet run or dotnet watch do not. Set
+    /// <see cref="DesktopHostOptions.HandleShutdownSignals"/> to <see langword="false"/> to keep the default signal
+    /// handling.
+    /// </para>
     /// </remarks>
     /// <param name="options">The host options, for example <c>new DesktopHostOptions().WithGtk4()</c>.</param>
     /// <param name="application">The application work. Its result becomes the return value.</param>
@@ -70,8 +79,12 @@ public static class DesktopEventLoop
             }
         }
 
+        ShutdownSignals? signals = null;
         try
         {
+            // A signal only closes windows and lets the application return; the host is disposed once, below or by
+            // RunHostAsync, and each loop ends on its own thread when the application completes.
+            if (options.HandleShutdownSignals) signals = ShutdownSignals.Register(host);
             if (options.WindowHostFactory is IDesktopEventLoopWindowHostFactory loop)
             {
                 var unavailable = loop.IsSupported ? loop.PrepareEventLoop() : loop.GetAvailabilityDiagnostics();
@@ -94,6 +107,7 @@ public static class DesktopEventLoop
             }
             finally
             {
+                signals?.Dispose();
                 Exit();
             }
         }
