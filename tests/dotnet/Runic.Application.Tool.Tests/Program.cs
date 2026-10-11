@@ -782,6 +782,10 @@ internal static class Program
                 Runic.CommandLine.CommandExitCategory.Usage, "RAPPDEV1002", message);
             Equal("The command could not be completed. See the local detail above.", outcome.Fault!.Message);
             Contains(outcome.HumanOutput ?? string.Empty, message);
+            // Human output ends with the code's catalog entry at the release tag.
+            True(outcome.HumanOutput!.EndsWith("/docs/diagnostics.md#rappdev1002\n", StringComparison.Ordinal)
+                && outcome.HumanOutput.Contains("Help for RAPPDEV1002: https://github.com/Runic-Artifex/runic-sdk/blob/v", StringComparison.Ordinal),
+                outcome.HumanOutput);
         }
         foreach (string message in new[]
         {

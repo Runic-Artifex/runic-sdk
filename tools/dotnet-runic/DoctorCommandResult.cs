@@ -167,7 +167,7 @@ internal static class DoctorOutcome
             CommandExitCategory.CommandFailure,
             new CommandFault(FaultCode, "Doctor checks failed.", details),
             json ? DoctorCommandResult.CreateDiagnostics(run.Report, path, threshold) : [],
-            json ? null : boundedHumanOutput);
+            json ? null : Program.WithHelpLink(boundedHumanOutput, FaultCode));
     }
 }
 

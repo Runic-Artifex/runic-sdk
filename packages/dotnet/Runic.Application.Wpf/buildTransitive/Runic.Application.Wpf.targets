@@ -1,0 +1,27 @@
+<Project>
+  <!-- The WPF web presentation API is experimental (RUNICWPF001). The WPF markup
+       compiler declares a named RunicWebView in the page's generated .g.cs, where
+       the application cannot suppress the diagnostic per site. Suppress it in the
+       intermediate .g.cs files only, so it is reported where the application's
+       own code uses the API. See docs/experimental.md. -->
+  <PropertyGroup>
+    <RunicApplicationWpfTargetsImported>true</RunicApplicationWpfTargetsImported>
+  </PropertyGroup>
+  <Target Name="RunicApplicationWpfSuppressInGeneratedCode" BeforeTargets="CoreCompile" Condition="'$(UseWPF)' == 'true'">
+    <PropertyGroup>
+      <_RunicApplicationWpfIntermediate>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)'))</_RunicApplicationWpfIntermediate>
+      <_RunicApplicationWpfConfig>$(_RunicApplicationWpfIntermediate)runic-application-wpf.globalconfig</_RunicApplicationWpfConfig>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RunicApplicationWpfGenerated Include="@(Compile->'%(FullPath)')"
+          Condition="$([System.String]::Copy('%(FullPath)').StartsWith('$(_RunicApplicationWpfIntermediate)')) and ($([System.String]::Copy('%(Filename)').EndsWith('.g')) or $([System.String]::Copy('%(Filename)').EndsWith('.g.i')))" />
+      <_RunicApplicationWpfConfigLine Include="is_global = true" />
+      <_RunicApplicationWpfConfigLine Include="[$([System.String]::Copy('%(_RunicApplicationWpfGenerated.Identity)').Replace('\', '/'))]%0Adotnet_diagnostic.RUNICWPF001.severity = none" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_RunicApplicationWpfConfig)" Lines="@(_RunicApplicationWpfConfigLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup>
+      <EditorConfigFiles Include="$(_RunicApplicationWpfConfig)" />
+      <FileWrites Include="$(_RunicApplicationWpfConfig)" />
+    </ItemGroup>
+  </Target>
+</Project>

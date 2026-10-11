@@ -5,6 +5,8 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Navigation.ReactiveUI.Reactive</PackageId>
+    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>System.Reactive-flavor observables, a back command and model-context schedulers for Runic.Navigation regions.</Description>
     <PackageTags>runic-artifex;navigation;reactiveui;system-reactive;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

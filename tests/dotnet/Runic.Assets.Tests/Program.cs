@@ -1154,7 +1154,12 @@ internal static class Program
             fault.GetProperty("details").GetProperty("sourceDirectory").GetString());
         (int humanExitCode, string _, string error) = await RunPackerAsync(missing, archive).ConfigureAwait(false);
         Equal(3, humanExitCode);
-        Equal($"Source directory '{missing}' does not exist.", error.Trim());
+        string[] errorLines = error.Trim().Split(Environment.NewLine);
+        Equal($"Source directory '{missing}' does not exist.", errorLines[0]);
+        // The message links to the code's catalog entry at the release tag.
+        True(errorLines.Length == 2
+            && errorLines[1].StartsWith("Help for RAS1001: https://github.com/Runic-Artifex/runic-sdk/blob/v", StringComparison.Ordinal)
+            && errorLines[1].EndsWith("/docs/diagnostics.md#ras1001", StringComparison.Ordinal));
 
         (exitCode, fault) = await PackJsonAsync(site, archive, "--entry-point", "missing.html", "--trusted-generated-output").ConfigureAwait(false);
         Equal(4, exitCode);

@@ -38,7 +38,7 @@ on Linux `DesktopEventLoop.Run` runs GTK on the process main thread. Linux needs
 GTK 4.12 or newer and WebKitGTK 6.0 (for example `libgtk-4-1` and
 `libwebkitgtk-6.0-4`); `dotnet runic doctor` lists anything missing.
 Without an embedded WebView it falls back to an installed browser. See the
-[Runic.Desktop.Gtk4 guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop.Gtk4/README.md)
+[Runic.Desktop.Gtk4 guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop.Gtk4/README.md)
 for the GTK 4 backend and platform services.
 <!--#elif (desktopHost) -->
 `Program.cs` runs the application with `DesktopEventLoop.Run`, which starts a
@@ -47,7 +47,7 @@ in a native window with the platform's embedded WebView: the Edge WebView2
 Runtime on Windows, WKWebView on macOS, or GTK 3 with WebKitGTK 4.1 on Linux.
 Without an embedded WebView it falls back to an installed browser. Change
 `DesktopWindowOptions` to choose another presentation, and see the
-[Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md)
+[Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Desktop/README.md)
 for native prerequisites and platform services. Create the project with
 `--host desktop-gtk4` to use GTK 4 and WebKitGTK 6 on Linux.
 <!--#else -->
@@ -79,13 +79,13 @@ xdg-desktop-portal on Linux. Before the window opens, and in a window without
 a native owner (an installed-browser fallback), they return
 `Unavailable(OwnerUnavailable)`. `dotnet runic doctor` names the provider and
 checks for the portal on Linux. The
-[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md)
+[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Desktop/README.md)
 has an open, read and atomic-save example.
 <!--#else -->
 CS-WebUI windows have no native owner, so these services return
 `Unavailable(OwnerUnavailable)`. The same ViewModels get native dialogs and the
 clipboard on the Runic Desktop host (`--host desktop`); see the
-[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md).
+[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Desktop/README.md).
 <!--#endif -->
 
 ## Project layout
@@ -127,7 +127,7 @@ command resumes on the Window's model context, so its writes are applied one
 at a time and in order. Only code that leaves the context, after
 `ConfigureAwait(false)` or in `Task.Run`, commits its result with
 `IRunicModelContext.InvokeAsync`. See the
-[threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await).
+[threading rule](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views/README.md#threading-state-after-await).
 
 ## Read-only and settable state
 
@@ -168,7 +168,7 @@ The Runic packages supply defaults, so the project file only opts in with
 | `RunicBridgeInstallFrontend` | `true`: install missing frontend packages during build |
 | `RunicBridgeBuildFrontend` | `true`; `dotnet runic dev` sets `false` while its development server runs |
 
-See the [Runic.Application package guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md)
+See the [Runic.Application package guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views/README.md)
 for every build property, and the
-[examples](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples)
+[examples](https://github.com/Runic-Artifex/runic-sdk/tree/v__RUNIC_NUGET_VERSION__/examples)
 for nested Views, routing, and multiple windows.

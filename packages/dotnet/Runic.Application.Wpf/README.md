@@ -1,9 +1,12 @@
 # Runic.Application.Wpf
 
-Experimental (`RUNICWPF001`) optional WPF child presentation for a Runic web View.
+Experimental ([`RUNICWPF001`](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICWPF001))
+optional WPF child presentation for a Runic web View.
 Targets .NET 10 and Windows. The containing WPF application owns its dispatcher,
 shell, navigation engine, ViewModels, services and native dialogs. Toolkit,
 ReactiveUI, or plain observable models can use the same presentation adapter.
+Suppress `RUNICWPF001` where you use it; the package suppresses it in the code
+that the WPF markup compiler generates for a named `RunicWebView`.
 
 ```csharp
 var webView = new RunicWebView();

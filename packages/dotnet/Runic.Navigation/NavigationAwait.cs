@@ -9,7 +9,7 @@ namespace Runic.Navigation;
 // Every await in Runic.Navigation therefore goes through AfterUserCode, which continues on the
 // thread pool whenever the completing thread is executing in the model context, or through Hop,
 // which always continues on the thread pool. NavigationSourceScanTests enforces this.
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal static class NavigationAwait
 {
     // Always continues on the thread pool, ignoring the current SynchronizationContext
