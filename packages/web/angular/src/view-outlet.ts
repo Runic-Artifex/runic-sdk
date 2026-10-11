@@ -1,9 +1,12 @@
 import { Component, computed, effect, input, signal, untracked, viewChild, ViewContainerRef, type InputSignal, type Type } from "@angular/core";
 import type { ViewReference } from "@runic-artifex/views";
 
-/** A build-known map checks each generated reference against its component input. */
-export type ViewRegistry<R extends ViewReference> = {
-  readonly [K in R["kind"]]: Type<{ readonly page: InputSignal<Extract<R, { readonly kind: K }>> }>;
+/**
+ * A build-known map checks each generated reference against its component input. A nullable
+ * reference, such as a region slot's `State["main"]`, checks its non-null kinds.
+ */
+export type ViewRegistry<R extends ViewReference | null | undefined> = {
+  readonly [K in NonNullable<R>["kind"]]: Type<{ readonly page: InputSignal<Extract<NonNullable<R>, { readonly kind: K }>> }>;
 };
 
 /** Headless host for a selected logical .NET View. A changed reference remounts its component. */

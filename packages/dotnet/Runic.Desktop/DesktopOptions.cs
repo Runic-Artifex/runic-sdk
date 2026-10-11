@@ -248,9 +248,12 @@ public enum DesktopWindowCapabilities
 /// <summary>Configures one browser or embedded-WebView presentation.</summary>
 public sealed record DesktopWindowOptions
 {
-    /// <summary>Asynchronously approves a user close request. Requires an embedded host without browser fallback.</summary>
-    /// <remarks>Runs on the thread pool. Return false to keep the window open. Exceptions and cancellation deny
-    /// closing. Concurrent requests share a decision. The token is cancelled when the window is forcibly closed.
+    /// <summary>Asynchronously approves a user close request. Requires the embedded window.</summary>
+    /// <remarks>A browser cannot keep its window open: an explicitly selected browser fails with
+    /// <c>close-confirmation-unavailable</c>, and an <see cref="DesktopPresentationPolicy.EmbeddedThenBrowser"/> fallback
+    /// opens without confirmation and reports <c>close-confirmation-unavailable</c> as a warning.
+    /// Runs on the thread pool. Return false to keep the window open. Exceptions and cancellation deny closing.
+    /// Concurrent requests share a decision. The token is cancelled when the window is forcibly closed.
     /// CloseAsync and disposal bypass confirmation; marshal native UI work to its owning thread.</remarks>
     public Func<CancellationToken, ValueTask<bool>>? ConfirmCloseAsync { get; init; }
 

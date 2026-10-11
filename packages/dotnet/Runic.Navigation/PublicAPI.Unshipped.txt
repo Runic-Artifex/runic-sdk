@@ -22,3 +22,5 @@ static Runic.Navigation.RunicModelContext.Current.get -> Runic.Navigation.RunicM
 [RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.Outcome.get -> Runic.Navigation.NavigationOutcome!
 [RUNICNAV001]static Runic.Navigation.NavigationOutcome.operator !=(Runic.Navigation.NavigationOutcome? left, Runic.Navigation.NavigationOutcome? right) -> bool
 [RUNICNAV001]static Runic.Navigation.NavigationOutcome.operator ==(Runic.Navigation.NavigationOutcome? left, Runic.Navigation.NavigationOutcome? right) -> bool
+[RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.IsCommitted.get -> bool
+[RUNICNAV001]Runic.Navigation.NavigationResult<TContent>.ThrowIfFailed() -> Runic.Navigation.NavigationResult<TContent!>!

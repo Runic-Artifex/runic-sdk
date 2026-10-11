@@ -108,6 +108,12 @@ See [Container-resolved targets](#container-resolved-targets).
   - `Superseded`.
 
   Operations throw only for argument and ownership errors.
+
+  `IsCommitted` tells code after the request whether to continue, without a
+  pattern match on the content type. `ThrowIfFailed()` rethrows a `Failed`
+  outcome's `Error` with its original stack trace and returns the result
+  otherwise, so a caller that treats failures as bugs can write
+  `if ((await main.PushAsync<EditorViewModel>()).ThrowIfFailed().IsCommitted) { ... }`.
 - `result.Outcome` is a `NavigationOutcome`: the `Kind` (`Committed`,
   `Rejected`, `Superseded` or `Failed`) and, for a rejection, its `Rejection`
   reason. It holds no .NET content or exception, so a ViewModel can return it to

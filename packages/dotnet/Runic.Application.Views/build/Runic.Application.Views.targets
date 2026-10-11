@@ -169,11 +169,31 @@
     </ItemGroup>
   </Target>
 
+  <!-- A deterministic build (ContinuousIntegrationBuild, or
+       DeterministicSourcePaths) maps source paths in the PDB, for example to
+       /_/. The generator reads source through the PDB to recover the comments
+       of MVVM partial properties, so pass it the same map as the compiler to
+       resolve them back to local files. -->
+  <Target Name="RunicViewsBridgePathMap" DependsOnTargets="InitializeSourceRootMappedPaths"
+          Condition="'$(SourceRootMappedPathsFeatureSupported)' == 'true'">
+    <ItemGroup>
+      <_RunicBridgeMappedSourceRoot Include="@(SourceRoot)" Condition="'%(SourceRoot.NestedRoot)' == '' and '%(SourceRoot.MappedPath)' != '' and '%(SourceRoot.MappedPath)' != '%(SourceRoot.Identity)'">
+        <EscapedKey>$([MSBuild]::ValueOrDefault('%(Identity)', '').Replace(',', ',,').Replace('=', '=='))</EscapedKey>
+        <EscapedValue>$([MSBuild]::ValueOrDefault('%(MappedPath)', '').Replace(',', ',,').Replace('=', '=='))</EscapedValue>
+      </_RunicBridgeMappedSourceRoot>
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicBridgePathMap>@(_RunicBridgeMappedSourceRoot->'%(EscapedKey)=%(EscapedValue)', ',')</_RunicBridgePathMap>
+      <_RunicBridgePathMap Condition="'$(PathMap)' != ''">$(_RunicBridgePathMap),$(PathMap)</_RunicBridgePathMap>
+      <RunicBridgePathMapArgument Condition="'$(_RunicBridgePathMap)' != ''">--path-map &quot;$(_RunicBridgePathMap)&quot;</RunicBridgePathMapArgument>
+    </PropertyGroup>
+  </Target>
+
   <!-- In a WPF project this runs before the temporary markup assembly, so
        that assembly can compile the generated code (see
        RunicViewsMarkupTemporaryCompile). -->
   <Target Name="RunicViewsGenerateBridge" BeforeTargets="CoreCompile;GenerateTemporaryTargetAssembly"
-          DependsOnTargets="RunicViewsDetectBridgeUse;ResolveProjectReferences"
+          DependsOnTargets="RunicViewsDetectBridgeUse;ResolveProjectReferences;RunicViewsBridgePathMap"
           Condition="'$(RunicBridgeBuildEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicBridgeBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <MSBuild Projects="$(RunicBridgeCodegenProject)" Targets="Build"
              Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
@@ -199,7 +219,7 @@
       <RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicBridgeReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicBridgeReactiveUiFlavor)&quot;</RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
     <Delete Files="$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)" />
-    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument) $(RunicBridgeOptionalArgument)" />
+    <Exec Command="dotnet &quot;$(RunicBridgeCodegenDll)&quot; --generate &quot;$(RunicBridgeInputAssembly)&quot; &quot;$(RunicBridgeGeneratedDir)&quot; &quot;$(RunicBridgeTypescriptDir)&quot; $(RunicBridgeAotArgument) $(RunicBridgeCompositionArgument) $(RunicBridgeReactiveUiFlavorArgument) $(RunicBridgeOptionalArgument) $(RunicBridgePathMapArgument)" />
     <PropertyGroup>
       <_RunicBridgeSkipped Condition="Exists('$(RunicBridgeGeneratedDir)$(RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
     </PropertyGroup>

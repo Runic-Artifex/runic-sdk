@@ -140,6 +140,23 @@ internal sealed class BridgeTypeGraph
         type.Any(character => character is ' ' or '|' or '&' or '{' or '(' or '<') ? $"({type})" : type;
 
     /// <summary>
+    /// Appends a note to a member's documentation when its C# integer type
+    /// becomes a TypeScript <c>bigint</c> rather than the <c>number</c> a
+    /// reader expects.
+    /// </summary>
+    internal static string? WithTypeScriptNote(string? documentation, BridgeTypeNode node)
+    {
+        var note = node.Kind switch
+        {
+            BridgeWireKind.Int64 => "A C# `long` is a `bigint`: a JavaScript `number` is exact only up to 2^53.",
+            BridgeWireKind.UInt64 => "A C# `ulong` is a `bigint`: a JavaScript `number` is exact only up to 2^53.",
+            BridgeWireKind.BigInteger => "A C# `BigInteger` is a `bigint`.",
+            _ => null,
+        };
+        return note is null ? documentation : documentation is null ? note : documentation + "\n\n" + note;
+    }
+
+    /// <summary>
     /// The exported declaration of a named enum, DTO or union node, with the
     /// C# XML documentation of the type and its members.
     /// </summary>
@@ -171,7 +188,7 @@ internal sealed class BridgeTypeGraph
                 source.AppendLine($"export interface {name} {{");
                 foreach (var member in node.Members)
                 {
-                    XmlDocumentation.Append(source, "  ", XmlDocumentation.Summary(member.Property));
+                    XmlDocumentation.Append(source, "  ", WithTypeScriptNote(XmlDocumentation.Summary(member.Property), member.Type));
                     source.AppendLine($"  readonly {PropertyKey(member.WireName)}: {TypeScriptType(member.Type)};");
                 }
                 source.AppendLine("}");

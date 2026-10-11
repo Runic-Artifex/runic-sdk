@@ -9,15 +9,13 @@ namespace FirstWindowDesktop;
 
 public sealed class CounterViewModel : ReactiveObject, IDisposable
 {
-    private readonly IRunicModelContextLease _modelContextLease;
     private int _count;
     private static int _disposals;
 
     public static int Disposals => Volatile.Read(ref _disposals);
 
-    public CounterViewModel(IRunicModelContext modelContext, ISequencer scheduler)
+    public CounterViewModel(ISequencer scheduler)
     {
-        _modelContextLease = RunicModelContextRegistry.Shared.Bind(modelContext, this);
         IncrementCommand = ReactiveCommand.Create(() => { Count++; }, scheduler);
     }
 
@@ -32,7 +30,6 @@ public sealed class CounterViewModel : ReactiveObject, IDisposable
     public void Dispose()
     {
         IncrementCommand.Dispose();
-        _modelContextLease.Dispose();
         Interlocked.Increment(ref _disposals);
     }
 }
