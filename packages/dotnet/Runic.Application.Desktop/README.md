@@ -72,17 +72,88 @@ public sealed partial class MainWindow(DesktopBridgeWindow<MainViewModel> host)
   stops new operations and waits for accepted ones before releasing the scope.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
+- `services.AddRunicPlatformServices()` registers native file dialogs, the
+  text clipboard, and the file launcher for each window scope:
+  `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and
+  `IDesktopFileLauncher`. A ViewModel takes them in its constructor before its
+  window opens. They bind to the window's native owner when it opens, and the
+  provider is selected from the backend that is actually running:
+  - Windows: `Runic.Platform.Windows`.
+  - macOS: `Runic.Platform.MacOS`.
+  - Linux with GTK 3: `Runic.Platform.Linux`.
+  - Linux with GTK 4 (`WithGtk4()`): xdg-desktop-portal dialogs and the file
+    launcher through `Runic.Platform.Linux.Portal`, parented with
+    `Runic.Platform.Linux.Gtk4`, plus the GTK 4 clipboard. A GTK 4 process
+    never loads the GTK 3 provider.
+
+  Until the window opens, every operation returns
+  `Unavailable(OwnerUnavailable)`. It returns the same result when the window
+  has no native owner, for example an installed browser after an
+  embedded-window fallback. After the window closes, every operation returns
+  `Unavailable(OwnerClosed)`. A Linux process without a GTK backend returns
+  `Unavailable(ProviderNotConfigured)`. `GetSnapshot()` reports the same states
+  per capability. The package references every provider package, but loads
+  only the selected provider assembly. `dotnet runic doctor` names the
+  provider and, on Linux, checks for the session bus and xdg-desktop-portal.
+  `PlatformServices.ForWindow(owner)` creates the same services for a
+  `DesktopWindow` that the application opened itself.
+
+  ```csharp
+  services.AddScoped<NotesViewModel>();
+  services.AddRunicViews();
+  services.AddRunicPlatformServices();
+
+  public sealed partial class NotesViewModel(IFileDialogs files) : ObservableObject
+  {
+      [ObservableProperty] private string _text = "";
+
+      public async Task OpenAsync()
+      {
+          if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Selected(var lease)) return;
+          await using (lease)
+          await using (var stream = await lease.OpenReadAsync())
+          using (var reader = new StreamReader(stream))
+              Text = await reader.ReadToEndAsync();
+      }
+
+      // Replaces the file atomically, or leaves it unchanged.
+      public async Task<bool> SaveAsync()
+      {
+          if (await files.SaveFileAsync(new("notes.txt")) is not PickerResult<ISaveFileLease>.Selected(var lease)) return false;
+          await using (lease)
+          {
+              if (await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace)
+                  is not PlatformResult<IFileWriteTransaction>.Success(var transaction)) return false;
+              await using (transaction)
+              {
+                  await using (var writer = new StreamWriter(transaction.Content, leaveOpen: true))
+                      await writer.WriteAsync(Text);
+                  return await transaction.CommitAsync() is FileCommitResult.Committed;
+              }
+          }
+      }
+  }
+  ```
+
+  On Windows, and for unsandboxed macOS selections, the save writes a staged
+  sibling file and replaces the selection in one step. A sandboxed macOS
+  selection cannot stage a sibling. On Linux both providers use xdg-desktop-portal
+  dialogs, and a portal selection does not grant access to sibling files. So
+  `BeginWriteAsync` returns `Unavailable(AtomicReplaceUnavailable)` in these cases
+  before it changes the file. Treat a `false` result as "not saved" and tell
+  the user. The
+  [portal guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md)
+  describes the GTK 3 opt-in for unsandboxed applications. CS-WebUI's
+  `AddRunicPlatformServices()` registers the same services, which return
+  `OwnerUnavailable`.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
-  presentation's `INativePickerOwner`. Pass it to the platform provider that
-  matches the window's backend; no custom adapter is needed:
-  - Windows: `WindowsPlatformProvider.CreateFileDialogs(owner)`.
-  - macOS: `MacOSPlatformProvider.CreateFileDialogs(owner)`.
-  - Linux with GTK 3:
-    `LinuxPlatformProvider.CreateFileDialogs(owner)`.
-  - Linux with GTK 4:
-    `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`.
-    `LinuxPlatformProvider` parents dialogs through GTK 3, so do not use it
-    with a GTK 4 window.
+  presentation's `INativePickerOwner`, which the services above bind to. The
+  provider APIs that take it directly, such as
+  `WindowsPlatformProvider.CreateFileDialogs(owner)` or
+  `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`,
+  keep working for applications that compose providers themselves.
+  `LinuxPlatformProvider` parents dialogs through GTK 3, so do not use it
+  with a GTK 4 window.
 
   The owner runs provider callbacks on the window's native thread and becomes
   unavailable when the window closes or the surface replaces it. A presentation

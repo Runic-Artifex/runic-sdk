@@ -23,6 +23,8 @@ var notifications = portals.CreateNotifications();
 Its settings, notifications, file dialogs, file handoffs and URI opening all use
 one application ID, registering each owned host connection before portal calls.
 Existing static factories remain available for desktop-inferred identity.
+Runic.Application.Desktop's `services.AddRunicPlatformServices()` uses those static
+factories for GTK 4 windows; compose the services yourself to pass a `PortalApplication`.
 
 Calls are bound to a specific portal service owner. An interrupted operation
 returns unavailable; it is never replayed automatically. Notifications detect

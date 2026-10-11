@@ -34,7 +34,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.4, )"
+          "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
       "runic.navigation": {
@@ -43,6 +43,9 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
         }
+      },
+      "runic.platform": {
+        "type": "Project"
       },
       "CsWebUi.Native": {
         "type": "CentralTransitive",

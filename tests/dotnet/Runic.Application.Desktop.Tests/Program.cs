@@ -24,6 +24,7 @@ await NativeOwnerFollowsOnlyItsOpenEmbeddedWindow();
 await OpenedWindowExposesItsNativeOwner();
 await CancelledQueuedOwnerWorkReportsCancellation();
 await PresentationWithoutNativeDispatchHasAnUnavailableOwner();
+await PlatformServicesChecks.RunAsync();
 Console.WriteLine("Runic.Application.Desktop host adapter passed.");
 
 static async Task GeneratedCollectionDeliveryPreservesPendingFrames(DesktopHost host)

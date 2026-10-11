@@ -63,7 +63,9 @@ transparent, high-contrast, profile-path, custom-argument, and icon-file
 options; `DesktopHost.Validate` reports each one as a `window-option-unsupported`
 error before a window opens. It supports independent minimum dimensions. Use
 `Runic.Platform.Linux.Portal` with `Gtk4PlatformProvider.CreatePortalWindowOwner`
-for portal-first file dialogs, so KDE uses its own picker.
+for portal-first file dialogs, so KDE uses its own picker. Runic.Application.Desktop
+applications get this composition from `services.AddRunicPlatformServices()`, which
+selects the GTK 4 provider when the process runs this backend.
 
 The native smoke runs GTK4/WebKit6 under isolated X11: bridge JavaScript,
 close veto/retry, sequential DesktopHost windows, capability reporting, GTK

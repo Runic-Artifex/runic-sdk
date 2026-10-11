@@ -15,9 +15,15 @@ const projects = [
   ["Runic.Application", "Runic.Application.Views"],
   ["Runic.Navigation.ReactiveUI", "Runic.Navigation.ReactiveUI"],
   ["Runic.Application.ReactiveUI", "Runic.Application.Views.ReactiveUI"],
-  // Runic.Application.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner), which depends on Runic.Platform.
+  // Runic.Application.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner) and on every platform provider
+  // package, which AddRunicPlatformServices selects from at run time.
   ["Runic.Platform", "Runic.Platform"],
   ["Runic.Platform.Runtime", "Runic.Platform.Runtime"],
+  ["Runic.Platform.Windows", "Runic.Platform.Windows"],
+  ["Runic.Platform.MacOS", "Runic.Platform.MacOS"],
+  ["Runic.Platform.Linux.Portal", "Runic.Platform.Linux.Portal"],
+  ["Runic.Platform.Linux", "Runic.Platform.Linux"],
+  ["Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Gtk4"],
   ["Runic.Application.Desktop", "Runic.Application.Desktop"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;

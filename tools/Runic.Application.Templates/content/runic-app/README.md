@@ -36,10 +36,8 @@ Runtime on Windows, WKWebView on macOS, or GTK 4 with WebKitGTK 6 on Linux.
 `WithGtk4()` selects the GTK 4 backend and its window provider together, and
 on Linux `DesktopEventLoop.Run` runs GTK on the process main thread. Linux needs
 GTK 4.12 or newer and WebKitGTK 6.0 (for example `libgtk-4-1` and
-`libwebkitgtk-6.0-4`); `dotnet runic doctor` lists anything missing. The
-project also references `Runic.Platform.Linux.Gtk4` and
-`Runic.Platform.Linux.Portal` for portal file dialogs and the clipboard. Without
-an embedded WebView it falls back to an installed browser. See the
+`libwebkitgtk-6.0-4`); `dotnet runic doctor` lists anything missing.
+Without an embedded WebView it falls back to an installed browser. See the
 [Runic.Desktop.Gtk4 guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop.Gtk4/README.md)
 for the GTK 4 backend and platform services.
 <!--#elif (desktopHost) -->
@@ -61,6 +59,33 @@ Windows, GTK 3 with WebKitGTK 4.1 on Linux, or WKWebView on macOS.
 Applications that need native windows, dialogs, or platform services can use
 the Runic Desktop host (`--host desktop` when creating a project); see the
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/).
+<!--#endif -->
+
+## File dialogs and the clipboard
+
+`services.AddRunicPlatformServices()` in `Program.cs` registers
+`IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` and
+`IWindowPlatformServices` (from `Runic.Platform`) for each window. A ViewModel
+takes them in its constructor:
+
+```csharp
+public sealed class NotesViewModel(IFileDialogs files, ITextClipboard clipboard)
+```
+
+<!--#if (desktopHost) -->
+They bind to the native window when it opens and use the provider for the
+running platform and backend: Win32 on Windows, AppKit on macOS, and
+xdg-desktop-portal on Linux. Before the window opens, and in a window without
+a native owner (an installed-browser fallback), they return
+`Unavailable(OwnerUnavailable)`. `dotnet runic doctor` names the provider and
+checks for the portal on Linux. The
+[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md)
+has an open, read and atomic-save example.
+<!--#else -->
+CS-WebUI windows have no native owner, so these services return
+`Unavailable(OwnerUnavailable)`. The same ViewModels get native dialogs and the
+clipboard on the Runic Desktop host (`--host desktop`); see the
+[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md).
 <!--#endif -->
 
 ## Project layout
