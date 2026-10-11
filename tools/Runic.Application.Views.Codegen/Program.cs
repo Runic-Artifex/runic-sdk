@@ -17,6 +17,7 @@ try
         var aot = false;
         var optional = false;
         string? compositionType = null;
+        var pathMap = "";
         var values = new List<string> { args[0] };
         for (var i = 1; i < args.Length; i++)
         {
@@ -27,6 +28,12 @@ try
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
+                // The compiler path map, so PDB documents of a deterministic
+                // build resolve to local source files.
+                case "--path-map" when i + 1 < args.Length:
+                    pathMap = args[++i];
+                    SourceLocator.SetPathMap(pathMap);
+                    break;
                 // MVVM library options, such as --reactiveui-flavor.
                 case var option when i + 1 < args.Length && MvvmCodegenConventions.ForOption(option) is { } convention:
                     convention.ApplyOption(option, args[++i]);
@@ -36,9 +43,9 @@ try
         }
         var positional = values.ToArray();
         if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>]");
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>] [--path-map <map>]");
 
-        string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}",
+        string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}", $"path-map={pathMap}",
             .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments)];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
         {

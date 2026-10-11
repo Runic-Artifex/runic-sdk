@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
+using System.Text;
 
 /// <summary>
 /// Maps a reflected member to its source line through the model assembly's
@@ -9,9 +10,62 @@ using System.Reflection.PortableExecutable;
 /// Members without sequence points (for example auto-property accessors of a
 /// source-generated property) fall back to the closest declaring type.
 /// </summary>
+/// <remarks>
+/// A deterministic or continuous-integration build maps source paths in the
+/// PDB, for example to <c>/_/</c>. The build passes its path map with
+/// <c>--path-map</c>, and document names are mapped back to local files.
+/// </remarks>
 internal static class SourceLocator
 {
     private static readonly Dictionary<Assembly, MetadataReaderProvider?> Providers = [];
+    private static (string Local, string Mapped)[] pathMap = [];
+
+    /// <summary>
+    /// Sets the compiler path map, in <c>-pathmap</c> syntax: comma-separated
+    /// <c>local=mapped</c> pairs, with a <c>,</c> or <c>=</c> in a path doubled.
+    /// </summary>
+    internal static void SetPathMap(string value)
+    {
+        var pairs = new List<(string Local, string Mapped)>();
+        var current = new StringBuilder();
+        string? local = null;
+        for (var i = 0; i <= value.Length; i++)
+        {
+            var c = i < value.Length ? value[i] : ',';
+            if (c is ',' or '=' && i + 1 < value.Length && value[i + 1] == c)
+            {
+                current.Append(c);
+                i++;
+            }
+            else if (c == '=' && local is null)
+            {
+                local = current.ToString();
+                current.Clear();
+            }
+            else if (c == ',')
+            {
+                if (local is { Length: > 0 } && current.Length > 0) pairs.Add((local, current.ToString()));
+                local = null;
+                current.Clear();
+            }
+            else current.Append(c);
+        }
+        // Reverse the longest mapped prefix first, so /_/a/ wins over /_/.
+        pathMap = pairs.OrderByDescending(pair => pair.Mapped.Length).ToArray();
+    }
+
+    // The local path of a PDB document name, or the name when no pair maps it
+    // to an existing file.
+    private static string LocalPath(string document)
+    {
+        foreach (var (local, mapped) in pathMap)
+        {
+            if (!document.StartsWith(mapped, StringComparison.Ordinal)) continue;
+            var path = local + document[mapped.Length..];
+            if (File.Exists(path)) return path;
+        }
+        return document;
+    }
 
     internal readonly record struct Location(string Path, int Line, int Column);
 
@@ -62,7 +116,7 @@ internal static class SourceLocator
                 var blob = reader.GetBlobReader(information.Value);
                 while (blob.RemainingBytes > 0) documents.Add(MetadataTokens.DocumentHandle(blob.ReadCompressedInteger()));
             }
-            return documents.Select(document => reader.GetString(reader.GetDocument(document).Name))
+            return documents.Select(document => LocalPath(reader.GetString(reader.GetDocument(document).Name)))
                 .Where(File.Exists).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         }
         // As for locations, a missing or unreadable PDB only means no source.
@@ -103,8 +157,8 @@ internal static class SourceLocator
         foreach (var point in reader.GetMethodDebugInformation(handle).GetSequencePoints())
         {
             if (point.IsHidden) continue;
-            var path = reader.GetString(reader.GetDocument(point.Document).Name);
-            // Source-generator documents and CI-mapped paths do not exist on
+            var path = LocalPath(reader.GetString(reader.GetDocument(point.Document).Name));
+            // Source-generator documents and unmapped CI paths do not exist on
             // disk; MSBuild can only open real files.
             if (!File.Exists(path)) continue;
             return new(path, point.StartLine, point.StartColumn);

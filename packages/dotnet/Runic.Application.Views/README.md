@@ -328,7 +328,9 @@ export type DocumentPane = "Editor" | "Preview";
   DTO types and members, and enum cases become TSDoc. A summary on a partial
   property such as `[ObservableProperty] public partial bool IsDirty { get; private set; }`
   or `[Reactive] public partial string Name { get; set; }` is read from its
-  declaring part in source, found through the assembly's PDB, because the XML
+  declaring part in source, found through the assembly's PDB (source paths
+  that a CI or deterministic build maps, such as `/_/`, resolve through the
+  project's source roots), because the XML
   documentation file keeps the generated part's `<inheritdoc/>`. The bootstrap
   pass writes the XML documentation file for this; a project that already writes one keeps
   its own. Set `RunicBridgeDocumentation=false` to skip it. A separate model
