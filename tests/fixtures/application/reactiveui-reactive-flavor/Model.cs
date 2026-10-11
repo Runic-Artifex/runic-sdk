@@ -4,6 +4,7 @@ using System.Reactive.Subjects;
 using ReactiveUI;
 using ReactiveUI.Reactive;
 using ReactiveUI.SourceGenerators;
+using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI.Reactive;
 
 namespace ReactiveUiReactiveFlavorProof
@@ -55,7 +56,7 @@ namespace ReactiveUiReactiveFlavorProof
         public ReactiveCommand<Unit, Unit> OpenCommand { get; }
     }
 
-    public sealed partial class FlavorShellWindow(FlavorShellModel model) : ReactiveRunicWindow<FlavorShellModel>(model)
+    public sealed partial class FlavorShellWindow : RunicWindow<FlavorShellModel>
     {
     }
 }

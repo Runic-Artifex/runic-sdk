@@ -114,7 +114,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidSize(_window, "setContentSize:", new CGSize(width, height)), cancellationToken);
 
-    public ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default)
+    public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, y)), cancellationToken);
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)

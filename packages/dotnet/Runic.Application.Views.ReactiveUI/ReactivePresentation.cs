@@ -58,49 +58,6 @@ public abstract class ReactiveRunicView<TViewModel> : RunicView<TViewModel>,
     public void OnWebUnmounted() => _mount.Unmount();
 }
 
-/// <summary>
-/// A native Runic Window with ReactiveUI's typed ViewModel and mount activation.
-/// Each instance owns one activation lease, so a presentation-aware content
-/// session can resolve several Views for the same ViewModel safely.
-/// </summary>
-public abstract class ReactiveRunicWindow<TViewModel> : RunicWindow<TViewModel>,
-    IViewFor<TViewModel>, IRunicViewLifetime, IRunicWebMountLifetime where TViewModel : class
-{
-    private readonly ReactiveMount<TViewModel> _mount = new();
-
-    /// <summary>Creates a window for its root ViewModel.</summary>
-    protected ReactiveRunicWindow(TViewModel dataContext) : base(dataContext) => _mount.Bind(dataContext);
-
-    /// <summary>The typed ViewModel; assigning it rebinds ReactiveUI activation.</summary>
-    public override TViewModel? DataContext
-    {
-        get => base.DataContext;
-        set
-        {
-            base.DataContext = value;
-            _mount.Bind(value);
-        }
-    }
-
-    /// <summary>The same as <see cref="DataContext"/>, as required by <see cref="IViewFor{T}"/>.</summary>
-    public TViewModel? ViewModel { get => DataContext; set => DataContext = value; }
-    object? IViewFor.ViewModel
-    {
-        get => ViewModel;
-        set => ViewModel = value is null ? null : value as TViewModel
-            ?? throw new ArgumentException($"Expected {typeof(TViewModel).FullName}.", nameof(value));
-    }
-
-    /// <inheritdoc />
-    public virtual void OnAttached() { }
-    /// <summary>Called when the view stops being presented; deactivates the ViewModel.</summary>
-    public virtual void OnDetached() => _mount.Unmount();
-    /// <summary>Activates an <see cref="IActivatableViewModel"/> when the web component mounts.</summary>
-    public void OnWebMounted() => _mount.Mount();
-    /// <summary>Deactivates the ViewModel when the web component unmounts.</summary>
-    public void OnWebUnmounted() => _mount.Unmount();
-}
-
 internal sealed class ReactiveMount<TViewModel> where TViewModel : class
 {
     private TViewModel? _viewModel;

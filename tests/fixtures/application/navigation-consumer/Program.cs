@@ -19,8 +19,10 @@ services.AddScoped<ShellViewModel>();
 services.AddRunicViews();
 await using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true }))
 {
-    provider.ValidateWindow<ShellViewModel>();
-    var window = provider.OpenWindow<ShellWindow, ShellViewModel>(host => new ShellWindow(host));
+    // The checks drive the Bridge in process, so the window is opened without being shown.
+    var host = new RunicCsWebUiHost(provider) { ShowWindow = static (_, _) => { } };
+    host.ValidateWindow<ShellWindow>().ThrowIfInvalid();
+    var window = await host.OpenWindowAsync<ShellWindow>();
     var shell = window.DataContext!;
     var navigator = shell.Navigator;
     var home = (HomeViewModel)shell.Main.Current!;

@@ -24,7 +24,7 @@ can open. One Desktop event loop runs per process.
 Ctrl+C, SIGTERM and closing the Windows console stop the application the same
 way as closing its last window. The first signal cancels
 `host.ShutdownRequested` and closes every open window without close
-confirmation, so `WaitForClose` returns. The application then releases its
+confirmation, so `WaitForCloseAsync` returns. The application then releases its
 work, for example by disposing the services that own an `AcceptedWorkScope`,
 and `DesktopEventLoop.Run` disposes the host before the loop ends. Each window
 closes on its own UI thread. A second Ctrl+C, a second or later after the first
@@ -120,8 +120,8 @@ GTK4 also requires the main-thread entry point in
 `Gtk4WebKit6` and `Gtk4WindowHostFactory`. Follow that provider's complete
 startup example before introducing a top-level `await`.
 
-Runic Windows and Views pass the same `DesktopHostOptions` to `DesktopHost.StartAsync`
-before `OpenDesktopWindowAsync` from `Runic.Application.Desktop`.
+Runic Windows and Views pass the same `DesktopHostOptions` to `RunicDesktopHost.Run`
+from `Runic.Application.Desktop`, which starts the host.
 No Linux toolkit is selected by default. Browser-only applications need no GTK
 selection. `DesktopPlatform.GetLinuxEmbeddedBackends()` inspects both library sets
 without loading either toolkit; `host.GetPresentationPreflight(...)` evaluates the

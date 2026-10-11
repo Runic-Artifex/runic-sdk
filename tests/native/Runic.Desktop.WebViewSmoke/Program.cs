@@ -258,23 +258,24 @@ static void RunEventLoopSmoke()
     }
 }
 
-static void RunMacOsSmoke()
+// The process main thread runs the AppKit loop, which services native window events while the smoke awaits.
+static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
 {
-    Console.WriteLine("macOS: starting presentation host on the main thread.");
-    var host = DesktopHost.StartAsync(CreateHostOptions()).AsTask().GetAwaiter().GetResult();
+    Console.WriteLine("macOS: starting presentation host under the AppKit event loop.");
+    var host = await DesktopHost.StartAsync(CreateHostOptions());
     try
     {
         while (SmokeSoak.NextCycle())
         {
         var closeGuard = new SmokeCloseGuard();
-        RunMacOsWindow(host, FirstPage(), FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync },
+        await RunMacOsWindowAsync(host, FirstPage(), FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync },
             async (surface, window) =>
             {
                 await ExerciseFirstWindowAsync(surface, window);
                 if (SmokeSoak.Enabled) await SmokeSoak.ExerciseAsync(surface, window, closeGuard);
                 await ExerciseCloseGuardAsync(surface, window, closeGuard);
             });
-        RunMacOsWindow(
+        await RunMacOsWindowAsync(
             host,
             RestartedPage(),
             new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true },
@@ -285,24 +286,23 @@ static void RunMacOsSmoke()
     finally
     {
         Console.WriteLine("macOS: disposing presentation host.");
-        host.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        await host.DisposeAsync();
     }
-}
+});
 
-static void RunMacOsWindow(
+static async Task RunMacOsWindowAsync(
     DesktopHost host,
     string content,
     DesktopWindowOptions options,
     Func<DesktopSurface, DesktopWindow, Task> exercise)
 {
-    var surface = host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) })
-        .AsTask().GetAwaiter().GetResult();
+    var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) });
     DesktopWindow? window = null;
     try
     {
         Console.WriteLine("macOS: opening embedded window and authenticating bridge.");
-        window = surface.OpenWindowAsync(options).AsTask().GetAwaiter().GetResult();
-        Console.WriteLine("macOS: exercising window while pumping native events.");
+        window = await surface.OpenWindowAsync(options);
+        Console.WriteLine("macOS: exercising window while the event loop services native events.");
         var activeWindow = window;
         var work = Task.Run(async () =>
         {
@@ -317,16 +317,16 @@ static void RunMacOsWindow(
                 Console.WriteLine("macOS: exercised window cleanup completed.");
             }
         });
-        activeWindow.WaitForClose();
-        Console.WriteLine("macOS: event pump returned; awaiting exercise completion.");
-        work.GetAwaiter().GetResult();
+        await activeWindow.WaitForCloseAsync();
+        Console.WriteLine("macOS: window closed; awaiting exercise completion.");
+        await work;
         AssertClosed(activeWindow);
     }
     finally
     {
         Console.WriteLine("macOS: disposing window and surface.");
-        window?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-        surface.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (window is not null) await window.DisposeAsync();
+        await surface.DisposeAsync();
     }
 }
 

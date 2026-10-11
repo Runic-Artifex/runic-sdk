@@ -1,6 +1,5 @@
-using Runic.Application.Views.CsWebUi;
+using Runic.Application.Views;
 
 namespace FirstWindow;
 
-public sealed partial class CounterWindow(CsWebUiBridgeWindow<CounterViewModel> host)
-    : CsWebUiWindow<CounterViewModel>(host);
+public sealed partial class CounterWindow : RunicWindow<CounterViewModel>;

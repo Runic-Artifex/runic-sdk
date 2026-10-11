@@ -42,4 +42,4 @@ public sealed class ScalarSetterViewModel : INotifyPropertyChanged
     }
 }
 
-public sealed partial class ScalarSetterWindow(ScalarSetterViewModel model) : RunicWindow<ScalarSetterViewModel>(model);
+public sealed partial class ScalarSetterWindow : RunicWindow<ScalarSetterViewModel>;

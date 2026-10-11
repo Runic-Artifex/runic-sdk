@@ -4,7 +4,7 @@ using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
 
-public sealed partial class RootWindow(RootViewModel model) : RunicWindow<RootViewModel>(model);
+public sealed partial class RootWindow : RunicWindow<RootViewModel>;
 
 public sealed partial class ChildView : RunicView<ChildViewModel>,
     IRunicViewLifetime, IRunicWebMountLifetime, IDisposable

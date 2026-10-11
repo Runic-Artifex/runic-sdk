@@ -36,5 +36,5 @@ public sealed partial class ToolkitCancelViewModel : ObservableObject
     }
 }
 
-public sealed partial class ToolkitCancelWindow(ToolkitCancelViewModel model)
-    : Runic.Application.Views.RunicWindow<ToolkitCancelViewModel>(model);
+public sealed partial class ToolkitCancelWindow
+    : Runic.Application.Views.RunicWindow<ToolkitCancelViewModel>;

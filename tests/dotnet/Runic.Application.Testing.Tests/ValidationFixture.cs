@@ -78,4 +78,4 @@ public abstract class ValidationNode : INotifyPropertyChanged, INotifyDataErrorI
     private static string Key(string? propertyName) => propertyName ?? string.Empty;
 }
 
-public sealed partial class ValidationWindow(ValidationViewModel model) : RunicWindow<ValidationViewModel>(model);
+public sealed partial class ValidationWindow : RunicWindow<ValidationViewModel>;

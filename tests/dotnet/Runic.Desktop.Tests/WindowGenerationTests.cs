@@ -14,9 +14,9 @@ public sealed class WindowGenerationTests
         var replacement = factory.Hosts[1];
         Assert.Equal(DesktopWindowCapabilities.None, first.Capabilities);
         Assert.Equal(0UL, first.ProcessId);
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.FocusAsync());
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.MinimizeAsync());
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.ToggleMaximizedAsync());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.FocusAsync().AsTask());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.MinimizeAsync().AsTask());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => first.ToggleMaximizedAsync().AsTask());
         await Assert.ThrowsAsync<ObjectDisposedException>(() => first.ResizeAsync(20, 30).AsTask());
         await Assert.ThrowsAsync<ObjectDisposedException>(() => first.MoveAsync(20, 30).AsTask());
         Assert.Equal(0, replacement.Mutations);
@@ -95,7 +95,7 @@ public sealed class WindowGenerationTests
         native.ReleaseMutation = new(TaskCreationOptions.RunContinuationsAsynchronously);
         var resize = window.ResizeAsync(20, 30).AsTask();
         await native.MutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        var queued = window.FocusAsync();
+        var queued = window.FocusAsync().AsTask();
         var open = surface.OpenWindowAsync(new() { Browser = BrowserKind.Embedded }).AsTask();
         var dispose = surface.DisposeAsync().AsTask();
         try
@@ -144,7 +144,7 @@ public sealed class WindowGenerationTests
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => MutateAsync();
-        public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) => MutateAsync();
+        public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => MutateAsync();
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
         public ValueTask DisposeAsync() { IsOpen = false; return ValueTask.CompletedTask; }

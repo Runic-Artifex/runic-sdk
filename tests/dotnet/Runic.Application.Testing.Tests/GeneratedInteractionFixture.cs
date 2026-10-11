@@ -33,5 +33,5 @@ public sealed class GeneratedInteractionViewModel : ReactiveObject, IDisposable
     public void Dispose() => AskCommand.Dispose();
 }
 
-public sealed partial class GeneratedInteractionWindow(GeneratedInteractionViewModel model)
-    : RunicWindow<GeneratedInteractionViewModel>(model);
+public sealed partial class GeneratedInteractionWindow
+    : RunicWindow<GeneratedInteractionViewModel>;

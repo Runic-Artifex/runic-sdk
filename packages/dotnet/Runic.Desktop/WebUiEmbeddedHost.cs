@@ -58,7 +58,7 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default);
 
     /// <summary>Changes the platform-window position.</summary>
-    ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default);
+    ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default);
 
     /// <summary>Shows or hides the platform window without destroying it.</summary>
     ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default);
@@ -81,9 +81,9 @@ internal sealed record WebUiEmbeddedHostOptions
 
     public uint? MinimumHeight { get; init; }
 
-    public uint? X { get; init; }
+    public int? X { get; init; }
 
-    public uint? Y { get; init; }
+    public int? Y { get; init; }
 
     public bool Centered { get; init; }
 

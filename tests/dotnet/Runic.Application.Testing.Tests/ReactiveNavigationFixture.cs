@@ -61,5 +61,5 @@ public sealed partial class ReactiveNavShellViewModel : ReactiveObject, IDisposa
     }
 }
 
-public sealed partial class ReactiveNavShellWindow(ReactiveNavShellViewModel model)
-    : RunicWindow<ReactiveNavShellViewModel>(model);
+public sealed partial class ReactiveNavShellWindow
+    : RunicWindow<ReactiveNavShellViewModel>;

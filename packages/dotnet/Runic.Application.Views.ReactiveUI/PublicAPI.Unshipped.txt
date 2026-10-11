@@ -7,3 +7,13 @@ Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.For(Runic.Navi
 Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.RunicReactiveSchedulerProvider() -> void
 static Runic.Application.Views.ReactiveUI.ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Runic.Application.Views.ReactiveUI.RunicReactiveSchedulerProvider.InstallMainThreadScheduler(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory = null) -> bool
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>
+*REMOVED*override Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.DataContext.get -> TViewModel?
+*REMOVED*override Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.DataContext.set -> void
+*REMOVED*virtual Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.OnAttached() -> void
+*REMOVED*virtual Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.OnDetached() -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.OnWebMounted() -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.OnWebUnmounted() -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.ReactiveRunicWindow(TViewModel! dataContext) -> void
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.ViewModel.get -> TViewModel?
+*REMOVED*Runic.Application.Views.ReactiveUI.ReactiveRunicWindow<TViewModel>.ViewModel.set -> void

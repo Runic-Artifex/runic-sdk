@@ -1,6 +1,5 @@
 using Runic.Application.Views;
-using Runic.Application.Views.ReactiveUI;
 
 namespace OperationsConsumer;
 
-public sealed partial class OperationsWindow(OperationsViewModel model) : ReactiveRunicWindow<OperationsViewModel>(model);
+public sealed partial class OperationsWindow : RunicWindow<OperationsViewModel>;

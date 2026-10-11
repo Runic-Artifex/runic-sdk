@@ -3,12 +3,16 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Text;
+using System.Text.RegularExpressions;
 
 /// <summary>
 /// Maps a reflected member to its source line through the model assembly's
 /// portable PDB, so a diagnostic points at the declaration that caused it.
 /// Members without sequence points (for example auto-property accessors of a
-/// source-generated property) fall back to the closest declaring type.
+/// source-generated property) fall back to the closest declaring type. A type
+/// maps to its declaration in its source files, because a type such as
+/// <c>public sealed partial class MainWindow : RunicWindow&lt;MainViewModel&gt;;</c>
+/// has no method bodies, and so no sequence points, of its own.
 /// </summary>
 /// <remarks>
 /// A deterministic or continuous-integration build maps source paths in the
@@ -133,6 +137,7 @@ internal static class SourceLocator
 
     private static Location? FindDeclared(MemberInfo member)
     {
+        if (member is Type declared && Declaration(declared) is { } declaration) return declaration;
         IEnumerable<MethodBase> methods = member switch
         {
             PropertyInfo property => new[] { property.GetMethod, property.SetMethod }.OfType<MethodBase>(),
@@ -147,6 +152,24 @@ internal static class SourceLocator
             .OrderBy(location => location.Path, StringComparer.Ordinal)
             .ThenBy(location => location.Line).ThenBy(location => location.Column)
             .FirstOrDefault() is { Path.Length: > 0 } found ? found : null;
+    }
+
+    // The first "class Name", "record Name", "struct Name" or "interface Name" in the type's source files.
+    private static Location? Declaration(Type type)
+    {
+        var name = type.Name;
+        if (name.IndexOf('`') is var arity and >= 0) name = name[..arity];
+        var pattern = new Regex($@"\b(?:class|record|struct|interface)\s+(?<name>{Regex.Escape(name)})\b", RegexOptions.CultureInvariant);
+        foreach (var path in Documents(type))
+        {
+            var lines = File.ReadAllLines(path);
+            for (var line = 0; line < lines.Length; line++)
+            {
+                if (pattern.Match(lines[line]) is { Success: true } match)
+                    return new(path, line + 1, match.Groups["name"].Index + 1);
+            }
+        }
+        return null;
     }
 
     private static Location? First(MethodBase method)

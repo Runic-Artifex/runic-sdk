@@ -136,6 +136,37 @@ public sealed class ConfigurationValidationTests
     }
 
     [Fact]
+    public async Task InstalledBrowsersReportANegativePositionAsIgnored()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new OptionsReportingFactory(),
+        });
+        static bool IsPosition(DesktopDiagnostic item) =>
+            item.Option is "DesktopWindowOptions.X" or "DesktopWindowOptions.Y";
+
+        var browser = host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Chrome, X = 10, Y = -20 });
+        var ignored = Assert.Single(browser.Diagnostics, IsPosition);
+        Assert.Equal("DesktopWindowOptions.Y", ignored.Option);
+        Assert.Equal("window-option-unsupported", ignored.Code);
+        Assert.Equal(DesktopDiagnosticSeverity.Warning, ignored.Severity);
+
+        var fallback = host.Validate(new DesktopWindowOptions
+        {
+            PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser,
+            X = -10,
+            Y = 20,
+        });
+        var fallbackIgnored = Assert.Single(fallback.Diagnostics, IsPosition);
+        Assert.Equal("DesktopWindowOptions.X", fallbackIgnored.Option);
+        Assert.Equal(DesktopDiagnosticSeverity.Warning, fallbackIgnored.Severity);
+        Assert.Contains("browser fallback", fallbackIgnored.Message, StringComparison.Ordinal);
+
+        Assert.DoesNotContain(host.Validate(new DesktopWindowOptions { Browser = BrowserKind.Chrome, X = 10, Y = 20 }).Diagnostics,
+            IsPosition);
+    }
+
+    [Fact]
     public async Task ExplicitChromiumGrantIsNotReported()
     {
         await using var host = await DesktopHost.StartAsync();

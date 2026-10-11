@@ -8,7 +8,7 @@ using Runic.Desktop;
 if (args.Contains("--benchmark", StringComparer.Ordinal))
 {
     await Benchmarks.RunAsync();
-    return;
+    return 0;
 }
 
 var services = new ServiceCollection();
@@ -18,14 +18,15 @@ services.AddScoped<RowsViewModel>();
 services.AddRunicBridges();
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 var serveOnly = args.Contains("--serve-only", StringComparer.Ordinal);
-await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+var hostOptions = new DesktopHostOptions
 {
     WaitForConnection = !serveOnly,
     Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 },
-});
-var surfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") };
+};
 if (serveOnly)
 {
+    await using var desktop = await DesktopHost.StartAsync(hostOptions);
+    var surfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html") };
     await using var scope = provider.CreateAsyncScope();
     await using var surface = await desktop.CreateSurfaceAsync(surfaceOptions);
     var model = scope.ServiceProvider.GetRequiredService<RowsViewModel>();
@@ -34,9 +35,11 @@ if (serveOnly)
     using var attachment = scope.ServiceProvider.GetRequiredService<Func<IBridgeTransport, WindowContentSession, RowsViewModel, IDisposable>>()(transport, content, model);
     Console.WriteLine(surface.Url);
     await Console.In.ReadLineAsync();
-    return;
+    return 0;
 }
-await using var window = await provider.OpenDesktopWindowAsync<RowsWindow, RowsViewModel>(desktop, surfaceOptions,
-    host => new RowsWindow(host),
-    new DesktopWindowOptions { PresentationPolicy = DesktopPresentationPolicy.EmbeddedThenBrowser, Width = 900, Height = 760 });
-window.Presentation.WaitForClose();
+return RunicDesktopHost.Run(provider, hostOptions, async host =>
+{
+    await using var window = await host.OpenWindowAsync<RowsWindow>(new RunicWindowOptions { Width = 900, Height = 760 });
+    await window.WaitForCloseAsync();
+    return 0;
+});

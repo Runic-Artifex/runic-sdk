@@ -70,8 +70,8 @@ public sealed class EmbeddedHostTests
             Assert.Equal(700u, host.Options.Height);
             Assert.Equal(400u, host.Options.MinimumWidth);
             Assert.Equal(300u, host.Options.MinimumHeight);
-            Assert.Equal(12u, host.Options.X);
-            Assert.Equal(34u, host.Options.Y);
+            Assert.Equal(12, host.Options.X);
+            Assert.Equal(34, host.Options.Y);
             Assert.False(host.Options.Resizable);
             Assert.True(host.Options.Frameless);
             Assert.True(host.Options.Transparent);
@@ -95,7 +95,7 @@ public sealed class EmbeddedHostTests
             window.SetHidden(false);
             await host.BeginMoveAsync();
             Assert.Equal((910u, 710u), host.LiveSize);
-            Assert.Equal((21u, 43u), host.LivePosition);
+            Assert.Equal((21, 43), host.LivePosition);
             Assert.True(host.Visible);
             Assert.Equal(1, host.BeginMoveCount);
 
@@ -173,7 +173,7 @@ public sealed class EmbeddedHostTests
 
         internal (uint Width, uint Height)? LiveSize { get; private set; }
 
-        internal (uint X, uint Y)? LivePosition { get; private set; }
+        internal (int X, int Y)? LivePosition { get; private set; }
 
         internal bool? Visible { get; private set; }
 
@@ -229,7 +229,7 @@ public sealed class EmbeddedHostTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default)
+        public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             LivePosition = (x, y);

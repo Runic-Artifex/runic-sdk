@@ -11,49 +11,59 @@ dotnet add package Microsoft.Extensions.DependencyInjection
 ```
 
 ```csharp
-public sealed partial class MainWindow(CsWebUiBridgeWindow<MainViewModel> host)
-    : CsWebUiWindow<MainViewModel>(host);
+using Microsoft.Extensions.DependencyInjection;
+using MyApp; // the generated AddRunicViews()
+using Runic.Application.Views;
+using Runic.Application.Views.CsWebUi;
 
 var services = new ServiceCollection();
 services.AddScoped<MainViewModel>();
 services.AddRunicViews(); // generated in <ProjectName>.RunicBridgeComposition
 using var provider = services.BuildServiceProvider();
-provider.ValidateWindow<MainViewModel>(); // stops at startup when the Bridge is not registered
-await using (var window = provider.OpenWindow<MainWindow, MainViewModel>(host => new MainWindow(host)))
+
+return RunicCsWebUiHost.Run(provider, async host =>
 {
-    window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
-    window.Show("index.html");
-    WebUiApplication.Wait();
-}
-WebUiApplication.Clean();
+    host.ValidateWindow<MainWindow>().ThrowIfInvalid(); // stops at startup when the Bridge is not registered
+    await using var window = await host.OpenWindowAsync<MainWindow>(new RunicWindowOptions { Width = 800, Height = 600 });
+    await window.WaitForCloseAsync();
+    return 0;
+});
+
+public sealed partial class MainWindow : RunicWindow<MainViewModel>;
 ```
 
-`OpenWindow` creates a DI scope, resolves the Window's ViewModel, constructs
-the Window, and attaches its generated Bridge; the Window owns the native
-window, scope, and attachments until it is disposed or `CloseAsync` drains its
-accepted operations. `CsWebUiWindow<TViewModel>` forwards `SetRootFolder`,
-`SetSize`, `Show`, `ShowWebView`, `StartServer`, `CloseAsync`, and `DisposeAsync`
-to its `Host`, a `CsWebUiBridgeWindow<TViewModel>`; `Host.NativeWindow` exposes
-the underlying `WebUiWindow`.
+The same Window and `async host => ...` body run natively with
+`RunicDesktopHost.Run(provider, ...)` from `Runic.Application.Desktop`.
 
-`ValidateWindow<TViewModel>` checks at startup that the generated Bridge for
-the ViewModel is registered. It returns nothing and throws on failure, unlike
-Runic Desktop's `ValidateDesktopWindow`, which returns a result to inspect,
-because the Bridge check is the only one and always fails the Window.
-`OpenWindow` repeats the check before it creates the native window. A missing
-`AddRunicViews()` throws a `CsWebUiConfigurationException` (an
-`InvalidOperationException`) with the code `bridge-not-registered`, the same
-code Runic Desktop reports, and a remediation, instead of a
-dependency-injection error. It is logged as event 1050 through the provider's
-`ILoggerFactory`. `ValidateWindow` asks the container through
-`IServiceProviderIsService`; a container without it is checked only when
-`OpenWindow` resolves the Bridge.
+`RunicCsWebUiHost.Run` runs the asynchronous application on the thread pool
+while the process main thread shows its windows and waits in WebUI's wait loop,
+as CS-WebUI expects. It calls `WebUiApplication.Clean()` before it returns.
+`OpenWindowAsync` creates a DI scope, resolves the Window's ViewModel, assigns
+it to the Window's `DataContext`, attaches the generated Bridge, sets the
+content root and size from `RunicWindowOptions`, and shows `StartPage`. The
+Window owns the native window, scope, and attachments until it is disposed or
+`CloseAsync` drains its accepted operations. Its `Host` is a
+`CsWebUiBridgeWindow<TViewModel>`; `NativeWindow` exposes the underlying
+`WebUiWindow`. `WaitForCloseAsync` completes when WebUI reports that its
+windows have closed: CS-WebUI reports closing for all of its windows at once,
+so with several windows open it waits for all of them.
+
+`ValidateWindow<TWindow>` checks at startup that the generated Bridge for the
+ViewModel is registered and returns a `RunicWindowValidationResult`, the same
+result Runic Desktop returns. `OpenWindowAsync` repeats the check before it
+creates the native window. A missing `AddRunicViews()` throws a
+`RunicWindowConfigurationException` (an `InvalidOperationException`) whose
+diagnostic has the code `bridge-not-registered`, the same code Runic Desktop
+reports, and a remediation, instead of a dependency-injection error. It is
+logged as event 1050 through the provider's `ILoggerFactory`.
+`ValidateWindow` asks the container through `IServiceProviderIsService`; a
+container without it is checked only when `OpenWindowAsync` resolves the Bridge.
 
 Both hosts share one lifetime contract, `IBridgeWindow` from
-`Runic.Application.Views`: `CloseAsync(timeout)` returns a `BridgeWindowCloseResult`,
-and disposal is asynchronous only. Accepted operations can keep the Window's DI
-scope alive after the visible window closes, so dispose the Window with
-`await using` before `WebUiApplication.Clean()`.
+`Runic.Application.Views`: `CloseAsync(timeout, cancellationToken)` returns a
+`BridgeWindowCloseResult`, and disposal is asynchronous only. Accepted
+operations can keep the Window's DI scope alive after the visible window
+closes, so dispose the Window with `await using` before the application returns.
 
 State snapshots and collection delta frames are written, in order, as WebSocket
 messages to every connected client. Runic Desktop waits until the WebView has run
@@ -63,14 +73,17 @@ the write times out. A slow browser therefore holds back delivery at the TCP lev
 Frames queue in the bridge, which sends a recovery snapshot once the queue is full,
 and sends to every other CS-WebUI window in the process wait for the same lock.
 
-## What Show opens
+## What a window opens
 
-`Show` uses WebUI's recommended presentation: an installed browser in app mode
-(Chrome, Edge and other Chromium-based browsers work best; Firefox works without
-app mode), then the system default browser, then the platform WebView.
-`ShowWebView` always uses the WebView: the Edge WebView2 Runtime on Windows,
-GTK 3 with WebKitGTK 4.1 on Linux, or WKWebView on macOS. For native windows
-and platform services, use
+By default a window uses WebUI's recommended presentation: an installed browser
+in app mode (Chrome, Edge and other Chromium-based browsers work best; Firefox
+works without app mode), then the system default browser, then the platform
+WebView. `new RunicCsWebUiHost(provider) { UseWebView = true }` always uses the
+WebView: the Edge WebView2 Runtime on Windows, GTK 3 with WebKitGTK 4.1 on
+Linux, or WKWebView on macOS. `ConfigureWindow` configures each `WebUiWindow`
+before it is shown, for example `SetPort`, and `ShowWindow` replaces how it is
+shown, for example to open a frontend development server's URL. For native
+windows and platform services, use
 [Runic.Application.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Desktop/README.md)
 instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformServices`,
 `IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
@@ -79,10 +92,10 @@ owner, so every operation and the capability snapshot report
 `Unavailable(OwnerUnavailable)`.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
-anything. `Show` and `ShowWebView` then write `RUNIC_APPLICATION_URL=<url>` to
-standard output and keep serving until a line is read from standard input or
-the process ends, so a test harness or remote browser can drive the unchanged
-application. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
+anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to
+standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
+until a line is read from standard input or the process ends, so a test
+harness or remote browser can drive the unchanged application. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
 GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.

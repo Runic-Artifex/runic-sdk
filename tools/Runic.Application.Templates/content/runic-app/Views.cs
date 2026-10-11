@@ -1,61 +1,19 @@
 using Runic.Application.Views;
-#if (desktopHost)
-using Runic.Application.Views.Desktop;
-#else
-using Runic.Application.Views.CsWebUi;
-#endif
 #if (viewModels == "reactiveui")
 using Runic.Application.Views.ReactiveUI;
-#endif
-#if (desktopHost)
-using Runic.Desktop;
 #endif
 
 namespace RunicWindowApp;
 
 // The build generates a typed TypeScript client for each Window and View
 // declared here. AddRunicViews() registers the Views for dependency injection.
-#if (desktopHost && viewModels == "reactiveui")
-public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
-    : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
-{
-    public DesktopWindow Presentation => host.Presentation;
-    public DesktopSurface Surface => host.Surface;
-    public ValueTask DisposeAsync() => host.DisposeAsync();
-}
+// The same Window declaration opens on Runic Desktop and CS-WebUI.
+public sealed partial class WorkspaceWindow : RunicWindow<WorkspaceViewModel>;
 
-public sealed partial class WelcomeView : ReactiveRunicView<WelcomeViewModel>;
-public sealed partial class CounterView : ReactiveRunicView<CounterViewModel>;
-#elif (desktopHost)
-public sealed partial class WorkspaceWindow(DesktopBridgeWindow<WorkspaceViewModel> host)
-    : RunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
-{
-    public WorkspaceViewModel ViewModel => host.ViewModel;
-    public DesktopSurface Surface => host.Surface;
-    public DesktopWindow Presentation => host.Presentation;
-    public ValueTask DisposeAsync() => host.DisposeAsync();
-}
-
-public sealed partial class WelcomeView : RunicView<WelcomeViewModel>;
-public sealed partial class CounterView : RunicView<CounterViewModel>;
-#elif (viewModels == "reactiveui")
-public sealed partial class WorkspaceWindow(CsWebUiBridgeWindow<WorkspaceViewModel> host)
-    : ReactiveRunicWindow<WorkspaceViewModel>(host.ViewModel), IAsyncDisposable
-{
-    public void SetRootFolder(string path) => host.SetRootFolder(path);
-    public void Show(string content) => host.Show(content);
-    public ValueTask DisposeAsync() => host.DisposeAsync();
-}
-
+#if (viewModels == "reactiveui")
 public sealed partial class WelcomeView : ReactiveRunicView<WelcomeViewModel>;
 public sealed partial class CounterView : ReactiveRunicView<CounterViewModel>;
 #else
-public sealed partial class WorkspaceWindow(CsWebUiBridgeWindow<WorkspaceViewModel> host)
-    : CsWebUiWindow<WorkspaceViewModel>(host)
-{
-    public WorkspaceViewModel ViewModel => Host.ViewModel;
-}
-
 public sealed partial class WelcomeView : RunicView<WelcomeViewModel>;
 public sealed partial class CounterView : RunicView<CounterViewModel>;
 #endif

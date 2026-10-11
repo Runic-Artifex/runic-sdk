@@ -1,13 +1,12 @@
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
-using Runic.Navigation;
 
 namespace Runic.Application.Views.CsWebUi;
 
 /// <summary>
 /// Owns one CS-WebUI window, its DI scope, and its Bridge attachments.
+/// <see cref="RunicCsWebUiHost"/> creates it; <see cref="RunicWindow{TViewModel}.Host"/> returns it.
 /// </summary>
 /// <remarks>
 /// Release it with <see cref="DisposeAsync"/> or <see cref="CloseAsync"/>. There is no
@@ -22,6 +21,8 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private readonly RebindableBridgeTransport _transport;
     private readonly WindowContentSession _content;
     private readonly IDisposable _connectionBinding;
+    private Task? _webUiClosed;
+    private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private IDisposable? _attachment;
     private Task<BridgeWindowCloseResult>? _closeAdmission;
     private Task? _closeCompletion;
@@ -44,51 +45,30 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         ViewModel = viewModel;
     }
 
+    // Completes when the main thread's WebUI wait that covers this window returns. Without
+    // RunicCsWebUiHost.Run there is none, and WaitForCloseAsync polls WebUI instead.
+    internal Task? WebUiClosed
+    {
+        get => Volatile.Read(ref _webUiClosed);
+        set => Volatile.Write(ref _webUiClosed, value);
+    }
+
     /// <summary>The window's scoped root ViewModel.</summary>
     public TViewModel ViewModel { get; }
 
     /// <summary>The underlying CS-WebUI window.</summary>
     public WebUiWindow NativeWindow => _window;
 
-    /// <inheritdoc cref="WebUiWindow.SetRootFolder(string)"/>
-    public void SetRootFolder(string path) => _window.SetRootFolder(path);
-
-    /// <inheritdoc cref="WebUiWindow.SetSize(uint, uint)"/>
-    public void SetSize(uint width, uint height) => _window.SetSize(width, height);
-
-    /// <inheritdoc cref="WebUiWindow.SetPort(nuint)"/>
-    public void SetPort(nuint port) => _window.SetPort(port);
-
-    /// <summary>
-    /// Shows <paramref name="content"/> with WebUI's recommended presentation:
-    /// an installed browser in app mode (Chromium-based browsers first), then
-    /// the system default browser, then the platform WebView.
-    /// </summary>
-    /// <remarks>
-    /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is
-    /// <c>1</c>, no browser is launched. The window starts its local server,
-    /// writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
-    /// keeps serving until a line is read from standard input or the process
-    /// ends. Test harnesses and remote browsers use this without changing
-    /// application code.
-    /// </remarks>
-    public void Show(string content)
+    // Shows the content with the application's presentation, WebUI's recommended presentation (an installed
+    // browser in app mode, then the system default browser, then the platform WebView) or only in the WebView.
+    // The serve-only switch replaces each of them.
+    internal void Show(string content, bool webView, Action<WebUiWindow, string>? show)
     {
-        if (!TryServeOnly(content)) _window.Show(content);
+        if (TryServeOnly(content)) return;
+        if (show is not null) show(_window, content);
+        else if (webView) _window.ShowWebView(content);
+        else _window.Show(content);
     }
-
-    /// <summary>
-    /// Shows <paramref name="content"/> in the platform WebView (WebView2,
-    /// WebKitGTK or WKWebView) instead of a browser. The serve-only
-    /// environment variable described on <see cref="Show"/> also applies.
-    /// </summary>
-    public void ShowWebView(string content)
-    {
-        if (!TryServeOnly(content)) _window.ShowWebView(content);
-    }
-
-    /// <inheritdoc cref="WebUiWindow.StartServer(string)"/>
-    public string StartServer(string content) => _window.StartServer(content);
 
     internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
 
@@ -127,14 +107,42 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     /// transport promptly, while this object retains its scope until the
     /// remaining operations finish.
     /// </summary>
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout)
+    /// <param name="timeout">How long accepted operations may run before the window closes anyway.</param>
+    /// <param name="cancellationToken">Stops this caller's wait; the close continues.</param>
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
         Task<BridgeWindowCloseResult> admission;
         lock (_closeGate)
             admission = _closeAdmission ??= BeginCloseAsync(timeout);
-        return new(admission);
+        _closeStarted.TrySetResult();
+        return new(admission.WaitAsync(cancellationToken));
+    }
+
+    /// <summary>
+    /// Completes when <see cref="CloseAsync"/> or <see cref="DisposeAsync"/> starts closing the window, or when WebUI
+    /// reports that its windows have closed.
+    /// </summary>
+    /// <remarks>
+    /// CS-WebUI reports closing for all of its windows at once: with several windows open, closing one browser
+    /// window does not complete this wait until the others close too. With
+    /// <see cref="RunicCsWebUiHost.Run(IServiceProvider, Func{RunicCsWebUiHost, Task{int}})"/> the process main thread
+    /// waits for WebUI and reports it; otherwise this method polls <see cref="WebUiApplication.WaitAsync"/>.
+    /// </remarks>
+    /// <param name="cancellationToken">Stops the wait without closing the window.</param>
+    public async ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default)
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var webUi = WebUiClosed?.WaitAsync(stop.Token) ?? WebUiApplication.WaitAsync(stop.Token);
+        if (await Task.WhenAny(webUi, _closeStarted.Task).ConfigureAwait(false) == webUi)
+        {
+            await webUi.ConfigureAwait(false);
+            return;
+        }
+        await stop.CancelAsync().ConfigureAwait(false);
+        _ = webUi.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     /// <summary>Closes the window immediately and waits until its resources are released.</summary>
@@ -245,160 +253,3 @@ public sealed class CsWebUiBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     }
 }
 
-/// <summary>Opens CS-WebUI Bridge windows from a service provider.</summary>
-public static class CsWebUiBridgeWindowExtensions
-{
-    /// <summary>
-    /// Creates the application Window in a new scope before attaching its
-    /// generated ViewModel Bridge. The Window owns the host adapter lifetime.
-    /// </summary>
-    /// <exception cref="CsWebUiConfigurationException">
-    /// No generated Bridge is registered for <typeparamref name="TViewModel"/>
-    /// (<see cref="CsWebUiConfigurationException.BridgeNotRegisteredCode"/>). The check runs before the native
-    /// window is created.
-    /// </exception>
-    public static TWindow OpenWindow<TWindow, TViewModel>(this IServiceProvider services,
-        Func<CsWebUiBridgeWindow<TViewModel>, TWindow> createWindow)
-        where TWindow : RunicWindow<TViewModel>, IAsyncDisposable
-        where TViewModel : class
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(createWindow);
-        // Fail before a scope or native window exists, naming the missing registration.
-        if (IsBridgeRegistered<TViewModel>(services) == false)
-            throw BridgeNotRegistered<TViewModel>(services);
-
-        var scope = services.CreateScope();
-        WebUiWindow? window = null;
-        RebindableBridgeTransport? transport = null;
-        WindowContentSession? content = null;
-        WebUiBinding? connectionBinding = null;
-        CsWebUiBridgeWindow<TViewModel>? host = null;
-        TWindow? applicationWindow = null;
-        try
-        {
-            // The Bridge factories come first, so a missing Bridge constructs no ViewModel.
-            var attachWithContent = scope.ServiceProvider.GetService<
-                Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>>();
-            // Containers without IServiceProviderIsService are checked here, before the ViewModel and native window.
-            var attach = attachWithContent is null
-                ? scope.ServiceProvider.GetService<Func<IBridgeTransport, TViewModel, IDisposable>>()
-                    ?? throw BridgeNotRegistered<TViewModel>(services)
-                : null;
-            var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
-            window = new WebUiWindow();
-            transport = window.CreateBridgeSession();
-            content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
-                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>(),
-                loggerFactory: scope.ServiceProvider.GetService<ILoggerFactory>());
-            // Only the all-events binding receives disconnects. runic-cswebui.js
-            // stops WebUI from also sending click events for elements with ids.
-            connectionBinding = window.Bind("", e =>
-            {
-                if (e.EventType == WebUiEventType.Disconnected)
-                    content.ReleaseConnection($"{e.ClientId}:{e.ConnectionId}");
-            });
-            host = new CsWebUiBridgeWindow<TViewModel>(
-                scope, window, transport, content, connectionBinding, viewModel);
-            applicationWindow = createWindow(host)
-                ?? throw new InvalidOperationException("The Window factory returned null.");
-            if (!ReferenceEquals(applicationWindow.DataContext, viewModel))
-                throw new InvalidOperationException("The application Window must use its scoped ViewModel as DataContext.");
-            var attachment = attachWithContent is not null
-                ? attachWithContent(transport, content, viewModel)
-                : attach!(transport, viewModel);
-            try { host.Attach(attachment); }
-            catch
-            {
-                attachment.Dispose();
-                throw;
-            }
-            return applicationWindow;
-        }
-        catch
-        {
-            if (host is not null)
-            {
-                try { applicationWindow?.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
-                finally { host.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
-                throw;
-            }
-            try
-            {
-                connectionBinding?.Dispose();
-            }
-            finally
-            {
-                try { content?.Dispose(); }
-                finally
-                {
-                    try { transport?.Dispose(); }
-                    finally
-                    {
-                        try { window?.Dispose(); }
-                        finally
-                        {
-                            if (scope is IAsyncDisposable asynchronousScope)
-                                asynchronousScope.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                            else scope.Dispose();
-                        }
-                    }
-                }
-            }
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Checks at startup, before any window opens, that <paramref name="services"/> can open a Window for
-    /// <typeparamref name="TViewModel"/>: its generated Bridge must be registered.
-    /// </summary>
-    /// <remarks>
-    /// Unlike <c>ValidateDesktopWindow</c> in <c>Runic.Application.Desktop</c>, which returns a
-    /// <c>DesktopValidationResult</c>, this method returns nothing and throws on the first failure: the Bridge
-    /// registration is the only check, and it always fails the Window.
-    /// The check asks the container through <see cref="IServiceProviderIsService"/> and constructs nothing. A
-    /// container without that service is not checked here; <see cref="OpenWindow{TWindow, TViewModel}"/> still
-    /// reports a missing Bridge before it creates the native window. A failure is logged through the provider's
-    /// <see cref="ILoggerFactory"/> (event 1050).
-    /// </remarks>
-    /// <exception cref="CsWebUiConfigurationException">
-    /// No generated Bridge is registered (<see cref="CsWebUiConfigurationException.BridgeNotRegisteredCode"/>).
-    /// </exception>
-    public static void ValidateWindow<TViewModel>(this IServiceProvider services)
-        where TViewModel : class
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        if (IsBridgeRegistered<TViewModel>(services) == false)
-            throw BridgeNotRegistered<TViewModel>(services);
-    }
-
-    // Null when the container cannot answer without constructing services.
-    private static bool? IsBridgeRegistered<TViewModel>(IServiceProvider services)
-        where TViewModel : class
-    {
-        if (services.GetService(typeof(IServiceProviderIsService)) is not IServiceProviderIsService registered)
-            return null;
-        return registered.IsService(typeof(Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>)) ||
-            registered.IsService(typeof(Func<IBridgeTransport, TViewModel, IDisposable>));
-    }
-
-    private static CsWebUiConfigurationException BridgeNotRegistered<TViewModel>(IServiceProvider services)
-        where TViewModel : class
-    {
-        var error = new CsWebUiConfigurationException(
-            CsWebUiConfigurationException.BridgeNotRegisteredCode,
-            $"No generated Bridge is registered for {typeof(TViewModel).FullName ?? typeof(TViewModel).Name}.",
-            "Call services.AddRunicViews() (or AddRunicBridges()) from the generated " +
-                "<Project>.RunicBridgeComposition class. If it is missing or has no Bridge for this ViewModel, " +
-                "check that the project references Runic.Application.CsWebUi and that the ViewModel is a public, " +
-                "top-level class implementing INotifyPropertyChanged.");
-        if (services.GetService(typeof(ILoggerFactory)) is ILoggerFactory loggers)
-        {
-            CsWebUiLog.RegistrationMissing(loggers.CreateLogger(RunicViewsTelemetry.LogCategory),
-                error.Code, error.DiagnosticMessage, error.Remediation);
-        }
-        return error;
-    }
-}

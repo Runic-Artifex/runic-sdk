@@ -24,40 +24,47 @@ var content = """
     </html>
     """;
 
-await using var host = await DesktopHost.StartAsync(new() { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } });
-await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) });
-using var multiply = surface.RegisterCapability(
-    "multiply",
-    static (invocation, _) => ValueTask.FromResult<PresentationResult>(
-        invocation.GetInt64() * invocation.GetInt64(1)));
-using var greet = surface.RegisterCapability(
-    "greet",
-    static (invocation, cancellationToken) =>
+// The process main thread runs the platform event loop, which services native window events while the
+// application awaits its window.
+return DesktopEventLoop.Run(
+    new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } },
+    async host =>
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!");
-    });
-using var increment = surface.RegisterCapability(
-    "increment",
-    async (invocation, cancellationToken) =>
-    {
-        var count = int.Parse(
-            await surface.ExecuteJavaScriptAsync("return getCount();", cancellationToken: cancellationToken),
-            CultureInfo.InvariantCulture);
-        await invocation.RunJavaScriptAsync($"setCount({count + 1});", cancellationToken);
-        return PresentationResult.None;
-    });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(content) });
+        using var multiply = surface.RegisterCapability(
+            "multiply",
+            static (invocation, _) => ValueTask.FromResult<PresentationResult>(
+                invocation.GetInt64() * invocation.GetInt64(1)));
+        using var greet = surface.RegisterCapability(
+            "greet",
+            static (invocation, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult<PresentationResult>($"Hello, {invocation.GetString()}!");
+            });
+        using var increment = surface.RegisterCapability(
+            "increment",
+            async (invocation, cancellationToken) =>
+            {
+                var count = int.Parse(
+                    await surface.ExecuteJavaScriptAsync("return getCount();", cancellationToken: cancellationToken),
+                    CultureInfo.InvariantCulture);
+                await invocation.RunJavaScriptAsync($"setCount({count + 1});", cancellationToken);
+                return PresentationResult.None;
+            });
 
-var browser = args.Contains("--webview", StringComparer.Ordinal)
-    ? BrowserKind.Embedded
-    : BrowserKind.Any;
-await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
-{
-    Browser = browser,
-    Width = 900,
-    Height = 650,
-});
+        var browser = args.Contains("--webview", StringComparer.Ordinal)
+            ? BrowserKind.Embedded
+            : BrowserKind.Any;
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = browser,
+            Width = 900,
+            Height = 650,
+        });
 
-Console.WriteLine($"Runic Desktop surface available at {surface.Url}");
-Console.WriteLine("Close the presentation window to exit.");
-window.WaitForClose();
+        Console.WriteLine($"Runic Desktop surface available at {surface.Url}");
+        Console.WriteLine("Close the presentation window to exit.");
+        await window.WaitForCloseAsync();
+        return 0;
+    });

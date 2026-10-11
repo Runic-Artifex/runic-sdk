@@ -1,12 +1,11 @@
 #pragma warning disable RUNICNAV001 // The experimental navigation API (docs/experimental.md).
 using System.ComponentModel;
 using Runic.Application.Views;
-using Runic.Application.Views.CsWebUi;
 using Runic.Navigation;
 
 namespace NavigationConsumer;
 
-public sealed partial class ShellWindow(CsWebUiBridgeWindow<ShellViewModel> host) : CsWebUiWindow<ShellViewModel>(host);
+public sealed partial class ShellWindow : RunicWindow<ShellViewModel>;
 
 public sealed partial class HomeView : RunicView<HomeViewModel>;
 

@@ -37,3 +37,6 @@
 [RUNICWPF001]static readonly Runic.Application.Views.Wpf.RunicViewHost.SurfaceOptionsProperty -> System.Windows.DependencyProperty!
 [RUNICWPF001]static Runic.Application.Views.Wpf.RunicViewHost.GetServices(System.Windows.DependencyObject! element) -> System.IServiceProvider?
 [RUNICWPF001]static Runic.Application.Views.Wpf.RunicViewHost.SetServices(System.Windows.DependencyObject! element, System.IServiceProvider? services) -> void
+*REMOVED*[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

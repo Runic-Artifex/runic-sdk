@@ -11,8 +11,8 @@ internal sealed record WebUiBrowserLaunchOptions(
     bool Hidden,
     uint? Width,
     uint? Height,
-    uint? X,
-    uint? Y,
+    int? X,
+    int? Y,
     DesktopPermissionGrant AllowedPermissions = DesktopPermissionGrant.None);
 
 internal static class WebUiBrowserHost
@@ -101,7 +101,8 @@ internal static class WebUiBrowserHost
             {
                 arguments.Add($"--window-size={width},{height}");
             }
-            if (options.X is { } x && options.Y is { } y)
+            // Installed browsers cannot honour a negative position; option validation reports it as ignored.
+            if (options.X is int x and >= 0 && options.Y is int y and >= 0)
             {
                 arguments.Add($"--window-position={x},{y}");
             }

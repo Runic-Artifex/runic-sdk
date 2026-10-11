@@ -40,20 +40,11 @@ static class PlatformServicesChecks
     {
         await using var provider = CreateProvider();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
-        FileViewModel? viewModel = null;
-        DesktopBridgeWindow<FileViewModel>? bridge = null;
-        var window = await provider.OpenDesktopWindowAsync<FileWindow, FileViewModel>(host,
-            new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-            owner =>
-            {
-                bridge = owner;
-                viewModel = owner.ViewModel;
-                return new FileWindow(owner);
-            },
-            new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+        var viewModel = window.ViewModel;
         try
         {
-            var services = (DesktopWindowPlatformServices)viewModel!.Platform;
+            var services = (DesktopWindowPlatformServices)viewModel.Platform;
             Require(viewModel.BeforeOpen is PickerResult<IReadFileLease>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                 "A file dialog before the window opened did not report the owner unavailable.");
             Require(viewModel.SnapshotBeforeOpen.Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)),
@@ -78,9 +69,7 @@ static class PlatformServicesChecks
             }
 
             // A second window has its own scope and its own services.
-            await using (var second = await provider.OpenDesktopWindowAsync<FileWindow, FileViewModel>(host,
-                new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-                owner => new FileWindow(owner), new DesktopWindowOptions { Browser = BrowserKind.Embedded }))
+            await using (var second = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>())
             {
                 Require(!ReferenceEquals(second.DataContext!.Platform, viewModel.Platform), "Two windows shared their platform services.");
             }
@@ -106,9 +95,7 @@ static class PlatformServicesChecks
             WindowHostFactory = new NativeDispatchFactory { SupportsDispatch = false },
             WaitForConnection = false,
         });
-        await using var window = await provider.OpenDesktopWindowAsync<FileWindow, FileViewModel>(host,
-            new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-            owner => new FileWindow(owner), new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
         var services = (DesktopWindowPlatformServices)window.DataContext!.Platform;
         Require(services.IsBound && services.Provider == DesktopPlatformProvider.None,
             "A window without native dispatch selected a provider.");
@@ -146,9 +133,7 @@ static class PlatformServicesChecks
         Require(PlatformServices.CurrentProvider == DesktopPlatformProvider.LinuxGtk4, "A GTK 4 process did not select the GTK 4 provider.");
         await using var provider = CreateProvider();
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false });
-        await using (var window = await provider.OpenDesktopWindowAsync<FileWindow, FileViewModel>(host,
-            new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
-            owner => new FileWindow(owner), new DesktopWindowOptions { Browser = BrowserKind.Embedded }))
+        await using (var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>())
         {
             var services = (DesktopWindowPlatformServices)window.DataContext!.Platform;
             Require(services.Provider == DesktopPlatformProvider.LinuxGtk4 && services.GetSnapshot().Statuses["platform.files.open"] is CapabilityStatus.Available,
@@ -193,10 +178,7 @@ sealed class FileViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-sealed class FileWindow(DesktopBridgeWindow<FileViewModel> owner) : RunicWindow<FileViewModel>(owner.ViewModel), IAsyncDisposable
-{
-    public ValueTask DisposeAsync() => owner.DisposeAsync();
-}
+sealed class FileWindow : RunicWindow<FileViewModel>;
 
 sealed class NoopAttachment : IDisposable
 {

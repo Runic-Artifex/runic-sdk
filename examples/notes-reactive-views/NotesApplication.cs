@@ -41,7 +41,12 @@ public sealed class NotesApplication : IDisposable
             new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }));
     }
 
-    public NotesWindow OpenWindow() => _services.OpenWindow<NotesWindow, ShellViewModel>(host => new NotesWindow(host));
-    public void Wait() => WebUiApplication.Wait();
+    // Opens a Notes window in its own scope. Without show, the caller shows it or starts its server.
+    public ValueTask<NotesWindow> OpenWindowAsync(string webRoot, int width, int height, ushort? port = null, bool show = true) =>
+        new RunicCsWebUiHost(_services)
+        {
+            ConfigureWindow = port is { } value ? native => native.SetPort(value) : null,
+            ShowWindow = show ? null : static (_, _) => { },
+        }.OpenWindowAsync<NotesWindow>(new RunicWindowOptions { ContentRoot = webRoot, Width = width, Height = height });
     public void Dispose() { _services.Dispose(); WebUiApplication.Clean(); }
 }

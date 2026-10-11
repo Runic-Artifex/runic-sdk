@@ -25,4 +25,4 @@ public sealed class DtoListViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public sealed partial class DtoListWindow(DtoListViewModel model) : RunicWindow<DtoListViewModel>(model);
+public sealed partial class DtoListWindow : RunicWindow<DtoListViewModel>;

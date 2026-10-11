@@ -195,7 +195,7 @@ public sealed partial class RunicWebView : HwndHost
         public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) => Unsupported();
-        public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) => Unsupported();
+        public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) => Unsupported();
         public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) => Unsupported();
         private static ValueTask Unsupported() => ValueTask.FromException(new NotSupportedException("WPF owns the containing window and child layout."));

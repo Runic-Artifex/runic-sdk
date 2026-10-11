@@ -27,7 +27,7 @@ public sealed partial class ShutdownSignalTests
 
         Assert.True(host.RequestShutdown("test"));
         Assert.False(host.RequestShutdown("test"));
-        await Task.Run(() => window.WaitForClose()).WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
 
         Assert.True(host.ShutdownRequested.IsCancellationRequested);
         Assert.False(window.IsOpen);
@@ -50,7 +50,7 @@ public sealed partial class ShutdownSignalTests
         var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
 
         Assert.False(window.IsOpen);
-        await Task.Run(() => window.WaitForClose()).WaitAsync(StepTimeout);
+        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
     }
 
     [Theory]

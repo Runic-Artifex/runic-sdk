@@ -53,5 +53,5 @@ public sealed partial class GeneratedReactiveViewModel : ReactiveObject, IDispos
     }
 }
 
-public sealed partial class GeneratedReactiveWindow(GeneratedReactiveViewModel model)
-    : RunicWindow<GeneratedReactiveViewModel>(model);
+public sealed partial class GeneratedReactiveWindow
+    : RunicWindow<GeneratedReactiveViewModel>;

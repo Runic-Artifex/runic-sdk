@@ -124,8 +124,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     public ValueTask SetSizeAsync(uint width, uint height, CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() => Api.GtkWindowResize(_window, checked((int)width), checked((int)height)), cancellationToken);
 
-    public ValueTask SetPositionAsync(uint x, uint y, CancellationToken cancellationToken = default)
-        => InvokeWindowAsync(() => Api.GtkWindowMove(_window, checked((int)x), checked((int)y)), cancellationToken);
+    public ValueTask SetPositionAsync(int x, int y, CancellationToken cancellationToken = default)
+        => InvokeWindowAsync(() => Api.GtkWindowMove(_window, x, y), cancellationToken);
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() =>
@@ -210,7 +210,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
         else if (options.X is { } x && options.Y is { } y)
         {
-            Api.GtkWindowMove(_window, checked((int)x), checked((int)y));
+            Api.GtkWindowMove(_window, x, y);
         }
         if (options.DocumentStartScript is { } documentStartScript)
         {

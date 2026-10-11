@@ -74,7 +74,7 @@ public sealed class CodegenShapeViewModel : INotifyPropertyChanged
     internal void Raise(string name) => PropertyChanged?.Invoke(this, new(name));
 }
 
-public sealed partial class CodegenShapeWindow(CodegenShapeViewModel model) : RunicWindow<CodegenShapeViewModel>(model);
+public sealed partial class CodegenShapeWindow : RunicWindow<CodegenShapeViewModel>;
 
 // Nullable ReactiveUI command and interaction type arguments must survive
 // into the generated codecs and TypeScript client.
@@ -89,7 +89,7 @@ public sealed class NullableReactiveViewModel : ReactiveUI.ReactiveObject, IDisp
     public void Dispose() => EchoCommand.Dispose();
 }
 
-public sealed partial class NullableReactiveWindow(NullableReactiveViewModel model) : RunicWindow<NullableReactiveViewModel>(model);
+public sealed partial class NullableReactiveWindow : RunicWindow<NullableReactiveViewModel>;
 
 /// <summary>How the documented item is shown.</summary>
 public enum DocumentedLayout
@@ -135,4 +135,4 @@ public sealed partial class DocumentedViewModel : CommunityToolkit.Mvvm.Componen
     private void ChangeLayout(DocumentedLayout layout) => Layout = layout;
 }
 
-public sealed partial class DocumentedWindow(DocumentedViewModel model) : RunicWindow<DocumentedViewModel>(model);
+public sealed partial class DocumentedWindow : RunicWindow<DocumentedViewModel>;

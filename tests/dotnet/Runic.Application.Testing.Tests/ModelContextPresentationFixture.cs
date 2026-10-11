@@ -9,8 +9,8 @@ namespace Runic.Application.Testing.Tests;
 // The template's shape without its former manual model-context Bind (#132): the
 // window binds the root and every page it presents, including a page the shell
 // creates in a command.
-public sealed partial class ContextShellWindow(ContextShellViewModel model)
-    : ReactiveRunicWindow<ContextShellViewModel>(model);
+public sealed partial class ContextShellWindow
+    : RunicWindow<ContextShellViewModel>;
 
 public sealed partial class ContextPageView : ReactiveRunicView<ContextPageViewModel>;
 

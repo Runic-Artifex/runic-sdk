@@ -32,7 +32,7 @@ In a project named `MyApp`:
 // Counter.cs
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Runic.Application.Views.CsWebUi;
+using Runic.Application.Views;
 
 namespace MyApp;
 
@@ -45,15 +45,14 @@ public sealed partial class CounterViewModel : ObservableObject
 }
 
 // Selecting the Window makes the build generate Frontend/src/generated/counter.ts.
-public sealed partial class CounterWindow(CsWebUiBridgeWindow<CounterViewModel> host)
-    : CsWebUiWindow<CounterViewModel>(host);
+public sealed partial class CounterWindow : RunicWindow<CounterViewModel>;
 ```
 
 ```csharp
 // Program.cs
-using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using MyApp;
+using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
 
 var services = new ServiceCollection();
@@ -61,13 +60,13 @@ services.AddScoped<CounterViewModel>();
 services.AddRunicViews();
 using var provider = services.BuildServiceProvider();
 
-await using (var window = provider.OpenWindow<CounterWindow, CounterViewModel>(host => new CounterWindow(host)))
+// RunicDesktopHost.Run(provider, ...) from Runic.Application.Desktop runs the same application natively.
+return RunicCsWebUiHost.Run(provider, async host =>
 {
-    window.SetRootFolder(Path.Combine(AppContext.BaseDirectory, "www"));
-    window.Show("index.html");
-    WebUiApplication.Wait();
-}
-WebUiApplication.Clean();
+    await using var window = await host.OpenWindowAsync<CounterWindow>();
+    await window.WaitForCloseAsync();
+    return 0;
+});
 ```
 
 ```ts
@@ -154,6 +153,76 @@ The runtime emits state and replies with generated and explicit
 release runtime serialization does not reflect over ViewModel members. The
 first-window example is exercised through Native AOT and Chromium in CI. The
 generator's errors are listed under [Generator diagnostics](#generator-diagnostics).
+
+### Opening a Window
+
+Every host opens Windows the same way. The application's entry point calls the
+host's `Run` method, `RunicDesktopHost.Run` (`Runic.Application.Desktop`) or
+`RunicCsWebUiHost.Run` (`Runic.Application.CsWebUi`), which runs the
+asynchronous application on the event loop the host needs and passes it an
+`IRunicWindowHost`:
+
+```csharp
+static async Task<int> RunAsync(IRunicWindowHost host)
+{
+    await using var window = await host.OpenWindowAsync<MainWindow>(new RunicWindowOptions { Width = 1000, Height = 700 });
+    await window.WaitForCloseAsync();
+    return 0;
+}
+```
+
+Switching host changes only the `Run` call, its package and its host options;
+the Window declaration and this body stay the same, with ReactiveUI or
+CommunityToolkit.Mvvm ViewModels.
+
+- `OpenWindowAsync<TWindow>(options, cancellationToken)` creates the Window,
+  checks that the generated Bridge is registered, resolves the root ViewModel in
+  a new DI scope, assigns it to `DataContext`, and opens the native window.
+  `RunicWindowOptions` sets the content root (by default `www` next to the
+  application), the start page (`index.html`) and the initial size on every host.
+  The Window owns the scope until it is disposed. A Window instance opens once.
+- `ValidateWindow<TWindow>(options)` runs the same checks at startup without
+  opening anything and returns a `RunicWindowValidationResult`: an error
+  `bridge-not-registered` when `AddRunicViews()` is missing, a warning
+  `viewmodel-not-registered` when the container does not report the ViewModel,
+  and the host's own checks, such as Runic Desktop's window options.
+  `ThrowIfInvalid()` throws a `RunicWindowConfigurationException`, the same
+  exception `OpenWindowAsync` throws on every host.
+- `WaitForCloseAsync(cancellationToken)` completes when the window closes or
+  starts closing; the token stops only the wait. `CloseAsync(timeout,
+  cancellationToken)` stops new operations, waits up to `timeout` for accepted
+  ones, and returns a `BridgeWindowCloseResult`; its token also stops only the
+  caller's wait. Disposal is asynchronous only.
+- `Host` returns the host adapter, an `IBridgeWindow`:
+  `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Presentation` and
+  `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `NativeWindow`).
+
+### Moved and renamed since 0.7.0-preview.6
+
+The Window types and entry points of the two hosts were merged into this API.
+Earlier shapes were removed rather than deprecated:
+
+| Before | Now |
+| --- | --- |
+| `RunicWindow<T>(T dataContext)` constructor | `RunicWindow<T>()`; `OpenWindowAsync` assigns `DataContext` |
+| `ReactiveRunicWindow<T>` (`Runic.Application.ReactiveUI`, `.Reactive`) | `RunicWindow<T>`; Views keep `ReactiveRunicView<T>` |
+| `CsWebUiWindow<T>` | `RunicWindow<T>` |
+| `provider.OpenWindow<TWindow, TViewModel>(factory)` (CS-WebUI) | `await host.OpenWindowAsync<TWindow>(options)` on `RunicCsWebUiHost` |
+| `provider.OpenDesktopWindowAsync<TWindow, TViewModel>(desktop, surfaceOptions, factory, windowOptions)` | `await host.OpenWindowAsync<TWindow>(options)` on `RunicDesktopHost` (`SurfaceOptions`, `WindowOptions`) |
+| `provider.ValidateWindow<TViewModel>()`, which threw | `host.ValidateWindow<TWindow>(options)`, which returns `RunicWindowValidationResult` |
+| `provider.ValidateDesktopWindow<TViewModel>(desktop, windowOptions)` | `host.ValidateWindow<TWindow>(options)` |
+| `CsWebUiConfigurationException` (`Code`, `DiagnosticMessage`, `Remediation`) | `RunicWindowConfigurationException` (`Diagnostics`) |
+| `DesktopConfigurationException` from `OpenDesktopWindowAsync` | `RunicWindowConfigurationException`, with the Desktop exception as `InnerException` |
+| `DesktopEventLoop.Run(options, async desktop => ...)` around `OpenDesktopWindowAsync` | `RunicDesktopHost.Run(provider, options, async host => ...)` |
+| `WebUiApplication.Wait()` and `WebUiApplication.Clean()` in `Program.cs` | `RunicCsWebUiHost.Run(provider, async host => ...)` |
+| `window.Presentation.WaitForClose()`, `WebUiApplication.Wait()` | `await window.WaitForCloseAsync(cancellationToken)` |
+| `IBridgeWindow.CloseAsync(TimeSpan)` | `IBridgeWindow.CloseAsync(TimeSpan, CancellationToken)` and `WaitForCloseAsync(CancellationToken)` |
+| `SetRootFolder`, `SetSize`, `SetPort`, `Show`, `ShowWebView`, `StartServer` on `CsWebUiBridgeWindow<T>` and `CsWebUiWindow<T>` | `RunicWindowOptions`, and `UseWebView`, `ConfigureWindow` and `ShowWindow` on `RunicCsWebUiHost`; `NativeWindow` remains |
+| Log events 1050 `CsWebUiWindowRegistrationMissing` and 2001 `DesktopWindowRegistrationMissing` | Event 1050 `WindowRegistrationMissing` on every host |
+
+Runic Desktop's window lifecycle is asynchronous too: see the
+[Runic.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md)
+for `DesktopWindow.WaitForCloseAsync` and signed window positions.
 
 The [First Window](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window),
 [CommunityToolkit Notes](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/notes-view-first), and
@@ -654,7 +723,7 @@ show the old View or nothing. The next capture converges.
 
 ## Logging and telemetry
 
-`OpenWindow` (CS-WebUI) and `OpenDesktopWindowAsync` (Desktop) pass the scope's
+`OpenWindowAsync` passes the scope's
 `ILoggerFactory` to the Window's `WindowContentSession` when one is registered,
 for example with `services.AddLogging(...)`. A session constructed directly
 takes it as `loggerFactory`. Without a factory, each entry is written to
@@ -690,9 +759,8 @@ output accordingly. The message properties are listed per event.
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
 | 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` or a cancellation on `ThrownExceptions`. | `Source` (the command expression or `sourceName`), `ErrorType` |
 | 1043 | `ReactiveSchedulerOutsideModelTurn` | Warning | Work is scheduled on the model-context main-thread scheduler that `AddRunicReactiveModelContext()` installs, outside a model turn, so it runs on the scheduler it replaced. Logged once per process; to `Trace` unless `InstallMainThreadScheduler(loggerFactory)` received a logger factory. | `Fallback` |
-| 1050 | `CsWebUiWindowRegistrationMissing` | Error | A CS-WebUI Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
+| 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
-| 2001 | `DesktopWindowRegistrationMissing` | Error | A Desktop Window's generated Bridge is not registered. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
 | 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |
@@ -714,7 +782,7 @@ or `Trace` without one.
 Navigation (1060-1074) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
-section. Events 2000-2002 use `Runic.Application.Desktop`. Events 3000-3005
+section. Events 2000 and 2002 use `Runic.Application.Desktop`. Events 3000-3005
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 
 Events 1040-1042 come from `Runic.Application.ReactiveUI` (and its `.Reactive`

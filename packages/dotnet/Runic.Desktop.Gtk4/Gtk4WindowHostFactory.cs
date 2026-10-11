@@ -506,7 +506,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     public ValueTask ResizeAsync(uint width, uint height, CancellationToken cancellationToken = default) =>
         new(Gtk4Dispatcher.Instance.InvokeAsync(() => GetWindow().SetDefaultSize(checked((int)width), checked((int)height)), cancellationToken));
 
-    public ValueTask MoveAsync(uint x, uint y, CancellationToken cancellationToken = default) =>
+    public ValueTask MoveAsync(int x, int y, CancellationToken cancellationToken = default) =>
         ValueTask.FromException(new NotSupportedException("GTK 4 cannot position top-level windows on native Wayland."));
 
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default) =>

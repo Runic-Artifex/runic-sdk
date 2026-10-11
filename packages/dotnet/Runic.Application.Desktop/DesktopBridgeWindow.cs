@@ -1,9 +1,6 @@
-using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Desktop;
-using Runic.Navigation;
 
 namespace Runic.Application.Views.Desktop;
 
@@ -21,6 +18,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private DesktopNativeOwner? _nativeOwner;
     private DesktopWindowPlatformServices? _platformServices;
     private Task<BridgeWindowCloseResult>? _close;
+    private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _completion;
     private bool _finalized;
 
@@ -82,11 +80,40 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     }
 
     /// <inheritdoc />
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout)
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         if (timeout < TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
             throw new ArgumentOutOfRangeException(nameof(timeout));
-        lock (_closeGate) return new(_close ??= BeginCloseAsync(timeout));
+        Task<BridgeWindowCloseResult> close;
+        lock (_closeGate) close = _close ??= BeginCloseAsync(timeout);
+        _closeStarted.TrySetResult();
+        return new(close.WaitAsync(cancellationToken));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// On macOS and with GTK 4 the process main thread must run <see cref="DesktopEventLoop"/>, which services the
+    /// native window while the application awaits; <c>RunicDesktopHost.Run</c> does.
+    /// </remarks>
+    public async ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default)
+    {
+        if (Volatile.Read(ref _presentation) is not { } presentation)
+        {
+            await _closeStarted.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var closed = presentation.WaitForCloseAsync(stop.Token).AsTask();
+        if (await Task.WhenAny(closed, _closeStarted.Task).ConfigureAwait(false) == closed)
+        {
+            // The user closed the window, the wait failed, or the caller cancelled it.
+            await closed.ConfigureAwait(false);
+            return;
+        }
+        // This window's close started first: stop the presentation's poll.
+        await stop.CancelAsync().ConfigureAwait(false);
+        _ = closed.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     /// <summary>Closes the window immediately and waits until its resources are released.</summary>
@@ -125,8 +152,8 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
         // Platform services stop with the presentation: file access ends when
         // the window closes, even for operations that are still draining.
         await StopPlatformServicesAsync(errors).ConfigureAwait(false);
-        if (_presentation is not null)
-            await CaptureAsync(_presentation.CloseAsync, errors).ConfigureAwait(false);
+        if (_presentation is { } presentation)
+            await CaptureAsync(() => presentation.CloseAsync(), errors).ConfigureAwait(false);
         Task completion;
         lock (_closeGate) completion = _completion ??= DrainThenFinalizeAsync(errors);
         return new(false, result.RemainingOperations, completion);
@@ -185,195 +212,3 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     }
 }
 
-/// <summary>Opens Desktop Views windows from a service provider.</summary>
-public static class DesktopBridgeWindowExtensions
-{
-    /// <summary>Creates an application Window in a new scope, then opens its Desktop presentation.</summary>
-    /// <remarks>
-    /// When the <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c> environment variable is <c>1</c>, every window opened through
-    /// this method is closed as soon as it has opened (and, with <see cref="DesktopHostOptions.WaitForConnection"/>,
-    /// its bridge has connected). Before closing, a warning is written to standard error (and logged as event 2002
-    /// when an <c>ILoggerFactory</c> is registered) and <c>RUNIC_APPLICATION_OPENED=&lt;presentation&gt;</c>, such as
-    /// <c>Embedded</c> or <c>Chrome</c>, is written to standard output. It is an automation switch for applications
-    /// shaped like the <c>runic-app</c> template, which exit when their one window's
-    /// <see cref="DesktopWindow.WaitForClose"/> returns; other applications may keep running or reopen windows.
-    /// </remarks>
-    public static async ValueTask<TWindow> OpenDesktopWindowAsync<TWindow, TViewModel>(
-        this IServiceProvider services,
-        DesktopHost desktop,
-        DesktopSurfaceOptions surfaceOptions,
-        Func<DesktopBridgeWindow<TViewModel>, TWindow> createWindow,
-        DesktopWindowOptions? windowOptions = null,
-        CancellationToken cancellationToken = default)
-        where TWindow : RunicWindow<TViewModel>, IAsyncDisposable
-        where TViewModel : class
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(desktop);
-        ArgumentNullException.ThrowIfNull(surfaceOptions);
-        ArgumentNullException.ThrowIfNull(createWindow);
-        // Fail before a surface or presentation exists, naming the missing registration.
-        var registrationErrors = GetRegistrationDiagnostics<TViewModel>(services)
-            .Where(static diagnostic => diagnostic.Severity == DesktopDiagnosticSeverity.Error)
-            .ToList();
-        if (registrationErrors.Count > 0)
-        {
-            LogDiagnostics(services, registrationErrors);
-            throw new DesktopConfigurationException(registrationErrors);
-        }
-
-        var scope = services.CreateAsyncScope();
-        DesktopSurface? surface = null;
-        DesktopBridgeTransport? transport = null;
-        WindowContentSession? content = null;
-        IDisposable? connectionBinding = null;
-        DesktopBridgeWindow<TViewModel>? owner = null;
-        TWindow? applicationWindow = null;
-        try
-        {
-            var viewModel = scope.ServiceProvider.GetRequiredService<TViewModel>();
-            var attachWithContent = scope.ServiceProvider.GetService<
-                Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>>();
-            var loggerFactory = scope.ServiceProvider.GetService<ILoggerFactory>();
-            surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
-            transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
-            content = new WindowContentSession(transport,
-                scope.ServiceProvider.GetService<IRunicViewLocator>(), rootModel: viewModel,
-                modelContext: scope.ServiceProvider.GetService<IRunicModelContext>(),
-                loggerFactory: loggerFactory);
-            connectionBinding = surface.SubscribeConnectionEvents(invocation =>
-            {
-                if (invocation.Kind == PresentationEventKind.Disconnected)
-                    content.ReleaseConnection(invocation.Session.Id.ToString(CultureInfo.InvariantCulture));
-            });
-            owner = new DesktopBridgeWindow<TViewModel>(scope, surface, transport, content, connectionBinding, viewModel);
-            applicationWindow = createWindow(owner)
-                ?? throw new InvalidOperationException("The Window factory returned null.");
-            if (!ReferenceEquals(applicationWindow.DataContext, viewModel))
-                throw new InvalidOperationException("The application Window must use its scoped ViewModel as DataContext.");
-            var attachment = attachWithContent is not null
-                ? attachWithContent(transport, content, viewModel)
-                : scope.ServiceProvider.GetRequiredService<
-                    Func<IBridgeTransport, TViewModel, IDisposable>>()(transport, viewModel);
-            try { owner.Attach(attachment); }
-            catch { attachment.Dispose(); throw; }
-            var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
-            owner.SetPresentation(presentation);
-            await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
-            return applicationWindow;
-        }
-        catch
-        {
-            if (owner is not null)
-            {
-                try { if (applicationWindow is not null) await applicationWindow.DisposeAsync().ConfigureAwait(false); }
-                finally { await owner.DisposeAsync().ConfigureAwait(false); }
-            }
-            else
-            {
-                connectionBinding?.Dispose();
-                content?.Dispose();
-                transport?.Dispose();
-                if (surface is not null) await surface.DisposeAsync().ConfigureAwait(false);
-                await scope.DisposeAsync().ConfigureAwait(false);
-            }
-            throw;
-        }
-    }
-
-    internal const string CloseAfterOpenEnvironmentVariable = "RUNIC_APPLICATION_CLOSE_AFTER_OPEN";
-
-    // An automation contract like CS-WebUI's RUNIC_APPLICATION_SERVE_ONLY: report the presentation that opened,
-    // then close it so the application's own WaitForClose returns.
-    // The variable is inherited by child processes, so an active switch is always announced on standard error
-    // and, when the application registered an ILoggerFactory, logged as event 2002.
-    private static async ValueTask CloseAfterOpenIfRequestedAsync(DesktopWindow presentation, ILoggerFactory? loggerFactory)
-    {
-        if (Environment.GetEnvironmentVariable(CloseAfterOpenEnvironmentVariable) != "1") return;
-        Console.Error.WriteLine(
-            $"warning: {CloseAfterOpenEnvironmentVariable}=1 is set; Runic is closing the Desktop window it just opened.");
-        Console.Error.Flush();
-        if (loggerFactory is not null)
-            DesktopLog.CloseAfterOpen(loggerFactory.CreateLogger(DesktopBridgeTransport.LogCategory), CloseAfterOpenEnvironmentVariable);
-        Console.Out.WriteLine($"RUNIC_APPLICATION_OPENED={presentation.Browser}");
-        Console.Out.Flush();
-        await presentation.CloseAsync().ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Checks at startup, before any window opens, that <paramref name="services"/> can open a Window for
-    /// <typeparamref name="TViewModel"/> and that <paramref name="desktop"/> can present it with
-    /// <paramref name="windowOptions"/>.
-    /// </summary>
-    /// <remarks>
-    /// The result combines the generated Bridge registration (an error when missing) and the ViewModel
-    /// registration (a warning when the container does not confirm it through
-    /// <see cref="IServiceProviderIsService"/>; containers without that service are not checked) with
-    /// <see cref="DesktopHost.Validate"/>. Registration failures are logged through the service provider's
-    /// <see cref="ILoggerFactory"/>. Call <see cref="DesktopValidationResult.ThrowIfInvalid"/> to stop at startup.
-    /// </remarks>
-    public static DesktopValidationResult ValidateDesktopWindow<TViewModel>(
-        this IServiceProvider services,
-        DesktopHost desktop,
-        DesktopWindowOptions? windowOptions = null)
-        where TViewModel : class
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(desktop);
-        var registrations = GetRegistrationDiagnostics<TViewModel>(services);
-        LogDiagnostics(services, registrations);
-        var presentation = desktop.Validate(windowOptions);
-        return new DesktopValidationResult([.. registrations, .. presentation.Diagnostics]);
-    }
-
-    // IServiceProviderIsService answers from registrations without constructing anything. A container
-    // without it cannot be inspected, so resolution reports a missing registration as before. Only a
-    // missing Bridge fails: a container can resolve a ViewModel it does not report, so an unconfirmed
-    // ViewModel is a warning.
-    private static List<DesktopDiagnostic> GetRegistrationDiagnostics<TViewModel>(IServiceProvider services)
-        where TViewModel : class
-    {
-        List<DesktopDiagnostic> diagnostics = [];
-        if (services.GetService(typeof(IServiceProviderIsService)) is not IServiceProviderIsService registered)
-            return diagnostics;
-        var viewModel = typeof(TViewModel).FullName ?? typeof(TViewModel).Name;
-        if (!registered.IsService(typeof(TViewModel)))
-        {
-            diagnostics.Add(new DesktopDiagnostic(
-                DesktopErrorCategory.NotFound,
-                ViewModelNotRegisteredCode,
-                $"The container does not report the ViewModel {viewModel} as registered; resolving it may fail.",
-                Retryable: false,
-                Remediation: $"Register it before building the service provider, for example services.AddScoped<{typeof(TViewModel).Name}>().")
-            {
-                Severity = DesktopDiagnosticSeverity.Warning,
-            });
-        }
-        if (!registered.IsService(typeof(Func<IBridgeTransport, WindowContentSession, TViewModel, IDisposable>)) &&
-            !registered.IsService(typeof(Func<IBridgeTransport, TViewModel, IDisposable>)))
-        {
-            diagnostics.Add(new DesktopDiagnostic(
-                DesktopErrorCategory.NotFound,
-                BridgeNotRegisteredCode,
-                $"No generated Bridge is registered for {viewModel}.",
-                Retryable: false,
-                Remediation: "Call services.AddRunicViews() (or AddRunicBridges()) from the generated " +
-                    "<Project>.RunicBridgeComposition class. If it is missing or has no Bridge for this ViewModel, " +
-                    "check that the project references Runic.Application.Desktop and that the ViewModel is a public, " +
-                    "top-level class implementing INotifyPropertyChanged."));
-        }
-        return diagnostics;
-    }
-
-    private static void LogDiagnostics(IServiceProvider services, List<DesktopDiagnostic> diagnostics)
-    {
-        if (diagnostics.Count == 0 || services.GetService(typeof(ILoggerFactory)) is not ILoggerFactory loggers)
-            return;
-        var logger = loggers.CreateLogger(DesktopBridgeTransport.LogCategory);
-        foreach (var diagnostic in diagnostics.Where(static item => item.Severity == DesktopDiagnosticSeverity.Error))
-            DesktopLog.RegistrationMissing(logger, diagnostic.Code, diagnostic.Message, diagnostic.Remediation ?? string.Empty);
-    }
-
-    private const string ViewModelNotRegisteredCode = "viewmodel-not-registered";
-    private const string BridgeNotRegisteredCode = "bridge-not-registered";
-}

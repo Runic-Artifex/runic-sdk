@@ -6,7 +6,7 @@ using Runic.Application.Views;
 // wrote the same generated file and overwrote each other.
 namespace Runic.Application.Testing.Tests
 {
-    public sealed partial class CollisionWindow(CollisionWindowViewModel model) : RunicWindow<CollisionWindowViewModel>(model);
+    public sealed partial class CollisionWindow : RunicWindow<CollisionWindowViewModel>;
 
     public sealed class CollisionWindowViewModel : INotifyPropertyChanged
     {
