@@ -725,7 +725,6 @@ class Suite:
             if self.args.gnome_pickers or self.args.kde_pickers:
                 inputs = Path.home() / "runic-sandbox-inputs"
                 target = inputs / "save-target.txt"
-                original = target.read_bytes()
                 siblings = sorted(p.name for p in inputs.iterdir())
                 if "SANDBOX PASS direct access" not in self.log.read_text():
                     raise RuntimeError("Sandbox denial was not exercised; use the Flatpak fixture")
@@ -744,13 +743,18 @@ class Suite:
                     invoke(frame, "window.close")
                 self.expect("RESULT Dismissed", offset)
                 self.passed_check("native chooser cancellation")
+                mode = target.stat().st_mode
+                inode = target.stat().st_ino
                 offset = len(self.log.read_text())
                 self.click("Choose save destination")
                 self.choose("Save file", target)
                 # Selecting an existing destination may require a native replace confirmation.
                 def save_result():
-                    if "AtomicReplaceUnavailable" in self.log.read_text()[offset:]:
+                    log = self.log.read_text()[offset:]
+                    if "RESULT Save Committed" in log:
                         return True
+                    if any(outcome in log for outcome in ("RESULT Save NotCommitted", "RESULT Save CommitUnknown", "RESULT Unavailable", "RESULT Failed")):
+                        raise RuntimeError("Portal save did not commit: " + log.strip().splitlines()[-1])
                     if self.args.kde_pickers:
                         app = unique(applications(), lambda n: n.name == "xdg-desktop-portal-kde")
                         alerts = [n for n in tree(app) if n.getRoleName() == "dialog" and n.name == "Overwrite File?"]
@@ -765,9 +769,13 @@ class Suite:
                         invoke(buttons[0], "click")
                     return False
                 self.wait(save_result)
-                if target.read_bytes() != original or sorted(p.name for p in inputs.iterdir()) != siblings:
-                    raise RuntimeError("Atomic-write rejection changed the destination or its siblings")
-                self.passed_check("atomic replacement rejected without modifying host files")
+                # The document portal stages a hidden .xdp-* tempfile and renames it onto the file.
+                stat = target.stat()
+                if target.read_bytes() != b"Runic sandbox save.\n" or stat.st_ino == inode or stat.st_mode != mode:
+                    raise RuntimeError("Portal save did not atomically replace the destination with its mode")
+                if sorted(p.name for p in inputs.iterdir()) != siblings:
+                    raise RuntimeError("Portal save left a staging file beside the destination")
+                self.passed_check("atomic replacement through the document portal")
             offset = len(self.log.read_text())
             self.click("Close owner during picker")
             self.expect("OWNER CLOSE RESULT Unavailable { Reason = OwnerClosed }", offset)

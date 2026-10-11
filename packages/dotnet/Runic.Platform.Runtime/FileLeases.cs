@@ -48,17 +48,23 @@ internal sealed class ReadFileLease(string displayName, Stream stream, IAsyncDis
 internal interface IAtomicFileReplacement
 {
     bool IsSupported { get; }
+    NativeFileLocation Location => NativeFileLocation.Host;
     // No cancellation here: once submitted, the actual outcome must be observed.
     ValueTask<FileCommitResult> ReplaceAsync(string stagingPath, string targetPath, bool existed);
 }
 
-// Only compose for a provider that grants same-directory create and local rename.
-// A picked URI/document-portal target alone does not imply these permissions.
-internal sealed partial class LocalAtomicFileReplacement : IAtomicFileReplacement
+// Only compose for a provider that grants same-directory create and local rename:
+// an ordinary host path, or a document in the xdg-document-portal FUSE view. That
+// view turns a new sibling name into a private host tempfile and renames it onto
+// the document with the host's renameat2. The rename seam returns an errno.
+internal sealed partial class LocalAtomicFileReplacement(NativeFileLocation location = NativeFileLocation.Host,
+    Func<string, string, uint, int>? rename = null) : IAtomicFileReplacement
 {
     public bool IsSupported => true;
+    public NativeFileLocation Location => location;
     public ValueTask<FileCommitResult> ReplaceAsync(string stagingPath, string targetPath, bool existed)
     {
+        if (OperatingSystem.IsLinux()) return ValueTask.FromResult(ReplaceOnLinux(stagingPath, targetPath, existed));
         try
         {
             // ReplaceFile keeps the destination's ACL, attributes and alternate streams.
@@ -79,6 +85,60 @@ internal sealed partial class LocalAtomicFileReplacement : IAtomicFileReplacemen
     private static bool IsAlreadyExists(IOException error) => OperatingSystem.IsWindows()
         ? error.HResult is unchecked((int)0x80070050) or unchecked((int)0x800700B7) // ERROR_FILE_EXISTS, ERROR_ALREADY_EXISTS
         : error.HResult == 17; // EEXIST
+
+    private const int EPERM = 1, EACCES = 13, EBUSY = 16, EEXIST = 17, EXDEV = 18, EISDIR = 21, EINVAL = 22, EROFS = 30, ENOSYS = 38, ENOTEMPTY = 39;
+    private const uint RenameNoReplace = 1; // RENAME_NOREPLACE
+
+    // Rename directly instead of File.Move: it copies and deletes on EXDEV (for
+    // example a bind-mounted file), which is a non-atomic overwrite.
+    private FileCommitResult ReplaceOnLinux(string staging, string target, bool existed)
+    {
+        // A new file never replaces a name that appeared since the conflict check,
+        // including a host symlink that a document view shows as absent.
+        int error = Rename(staging, target, existed ? 0 : RenameNoReplace);
+        if (!existed && error is EINVAL or ENOSYS)
+        {
+            // Document portals before 1.14, old kernels and some filesystems reject
+            // the flag. Re-check and rename; a name created between both steps is replaced.
+            if (Exists(target) is not false) return new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict);
+            error = Rename(staging, target, 0);
+        }
+        switch (error)
+        {
+            case 0:
+                // A document view ignores directory sync; its rename is durable once the host filesystem commits it.
+                SyncDirectory(Path.GetDirectoryName(target)!);
+                return new FileCommitResult.Committed();
+            case EEXIST or ENOTEMPTY or EISDIR: return new FileCommitResult.NotCommitted(PlatformFailureCode.Conflict);
+            // A mount point or another filesystem cannot be replaced atomically. Never copy.
+            case EXDEV or EBUSY: return new FileCommitResult.NotCommitted(PlatformFailureCode.ResourceBusy);
+            case EACCES or EPERM or EROFS: return new FileCommitResult.NotCommitted(PlatformFailureCode.PermissionDenied);
+            // A network or FUSE filesystem can report an error after it applied the rename.
+            default: return new FileCommitResult.CommitUnknown(PlatformFailureCode.IoError);
+        }
+    }
+
+    private int Rename(string staging, string target, uint flags)
+    {
+        if (rename is not null) return rename(staging, target, flags);
+        try { return RenameAt2(AtCurrentDirectory, staging, AtCurrentDirectory, target, flags) == 0 ? 0 : Marshal.GetLastPInvokeError(); }
+        catch (EntryPointNotFoundException) when (flags != 0) { return ENOSYS; } // A C library without renameat2.
+        catch (EntryPointNotFoundException) { return RenamePlain(staging, target) == 0 ? 0 : Marshal.GetLastPInvokeError(); }
+    }
+
+    // GetAttributes reports a dangling symlink as present. Unknown is not absent.
+    private static bool? Exists(string path)
+    {
+        try { _ = File.GetAttributes(path); return true; }
+        catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException) { return false; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return null; }
+    }
+
+    private const int AtCurrentDirectory = -100; // AT_FDCWD
+    [LibraryImport("libc", EntryPoint = "renameat2", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int RenameAt2(int sourceDirectory, string source, int targetDirectory, string target, uint flags);
+    [LibraryImport("libc", EntryPoint = "rename", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)]
+    private static partial int RenamePlain(string source, string target);
 
     // Persist the renamed directory entry. Best effort: the replacement is already
     // visible, and some filesystems do not support synchronizing a directory.
@@ -168,19 +228,31 @@ internal sealed class SaveFileLease : ISaveFileLease, ILaunchableFileLease
                 new PlatformResult<IFileWriteTransaction>.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable));
             if (_transaction is not null) return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(
                 new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.ResourceBusy));
+            bool document = _replacement.Location == NativeFileLocation.DocumentPortal;
             try
             {
                 // Replace a symlink's final target rather than the link itself, staging
-                // beside that target so the rename stays within one directory.
-                string target = new FileInfo(_path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? _path;
+                // beside that target so the rename stays within one directory. A
+                // document view exposes only the granted name: stage beside exactly it.
+                string target = document ? _path : ResolveTarget(_path);
                 string staging = Path.Combine(Path.GetDirectoryName(target)!, $".runic-{Guid.NewGuid():N}.tmp");
                 var content = CreateStaging(staging, target);
                 _transaction = new(staging, target, _original, content, _replacement);
                 return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Success(_transaction));
             }
+            // A read-only or revoked document grant refuses the staging file; the document is untouched.
+            catch (UnauthorizedAccessException) when (document) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(
+                new PlatformResult<IFileWriteTransaction>.Unavailable(PlatformUnavailableReason.AtomicReplaceUnavailable)); }
             catch (UnauthorizedAccessException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.PermissionDenied)); }
             catch (IOException) { return ValueTask.FromResult<PlatformResult<IFileWriteTransaction>>(new PlatformResult<IFileWriteTransaction>.Failed(PlatformFailureCode.IoError)); }
         }
+    }
+
+    // A new file has no link to resolve; ResolveLinkTarget throws for an absent name.
+    private static string ResolveTarget(string path)
+    {
+        try { return new FileInfo(path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? path; }
+        catch (FileNotFoundException) { return path; }
     }
 
     // On Unix the staging file takes the replaced file's permissions, so the rename

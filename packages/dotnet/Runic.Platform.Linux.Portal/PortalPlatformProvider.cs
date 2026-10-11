@@ -61,10 +61,13 @@ public static class PortalPlatformProvider
     }
 }
 
-internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTransport transport, Action<PortalDiagnostic>? diagnosticSink = null) : INativeFilePicker, INativeDirectoryPicker
+internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTransport transport, Action<PortalDiagnostic>? diagnosticSink = null,
+    DocumentPortalPaths? documents = null) : INativeFilePicker, INativeDirectoryPicker
 {
-    // Portal selections grant the chosen file only, never sibling staging.
-    public bool SupportsAtomicReplace => false;
+    // A host path stages beside the file as usual. A document view turns the
+    // staging name into a private host tempfile and renames it onto the document.
+    // A read-only or revoked grant is reported per save, not as a capability.
+    public bool SupportsAtomicReplace => true;
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
     {
         var result = await PortalRequest.RunAsync(owner, transport, "SelectDirectory", "", cancellationToken, diagnosticSink).ConfigureAwait(false);
@@ -127,7 +130,9 @@ internal sealed class PortalFilePicker(IPortalWindowOwner owner, IPortalTranspor
             || !uri.IsFile || !string.IsNullOrEmpty(uri.Host) && uri.Host != "localhost"
             || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.LocalPath.Contains('\0'))
             throw new IOException("The portal did not return one local file.");
-        return new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: false);
+        if (!save) return new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true);
+        var location = await (documents ?? DocumentPortalPaths.Session).ClassifyAsync(uri.LocalPath, cancellationToken).ConfigureAwait(false);
+        return new NativeFileSelection(uri.LocalPath, null, AllowsSiblingReplacement: true) { Location = location };
     }
 }
 

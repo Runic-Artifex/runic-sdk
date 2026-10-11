@@ -143,15 +143,19 @@ The same Window and `async host => ...` body run on CS-WebUI with
   }
   ```
 
-  On Windows, and for unsandboxed macOS selections, the save writes a staged
-  sibling file and replaces the selection in one step. A sandboxed macOS
-  selection cannot stage a sibling. On Linux both providers use xdg-desktop-portal
-  dialogs, and a portal selection does not grant access to sibling files. So
-  `BeginWriteAsync` returns `Unavailable(AtomicReplaceUnavailable)` in these cases
-  before it changes the file. Treat a `false` result as "not saved" and tell
-  the user. The
+  On Windows, Linux and for unsandboxed macOS selections, the save writes a staged
+  sibling file and replaces the selection in one step. On Linux this also works
+  inside Flatpak: the xdg-desktop-portal document view stages the sibling as a
+  private host file and renames it onto the chosen file. A sandboxed macOS
+  selection cannot stage a sibling yet, so there `BeginWriteAsync` returns
+  `Unavailable(AtomicReplaceUnavailable)` before it changes the file. Linux can
+  return the same result for a read-only or revoked grant, and `CommitAsync`
+  returns `NotCommitted(Conflict)` when the file changed or appeared since
+  selection. A `false` result therefore means the file was not changed: tell the
+  user and offer Save As to another destination. Runic never falls back to
+  overwriting the file in place. The
   [portal guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md)
-  describes the GTK 3 opt-in for unsandboxed applications. CS-WebUI's
+  describes the document-view mechanism and the GTK 3 opt-in. CS-WebUI's
   `AddRunicPlatformServices()` registers the same services, which return
   `OwnerUnavailable`.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the

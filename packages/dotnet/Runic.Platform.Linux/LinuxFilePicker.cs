@@ -12,11 +12,16 @@ namespace Runic.Platform.Linux;
 internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativeFilePicker, INativeDirectoryPicker
 {
     internal TaskCompletionSource Shown { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    // Sandboxed choosers return portal documents, which never permit sibling staging.
-    public bool SupportsAtomicReplace => !RequiresPortal;
+    // Host paths stage beside the file; portal document views stage through the
+    // document portal's tempfile and rename. Refusals are reported per save.
+    public bool SupportsAtomicReplace => true;
 
-    public ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
-        => SelectCoreAsync(save, false, suggestedName, cancellationToken);
+    public async ValueTask<NativeFileSelection?> SelectAsync(bool save, string? suggestedName, CancellationToken cancellationToken)
+    {
+        var selection = await SelectCoreAsync(save, false, suggestedName, cancellationToken).ConfigureAwait(false);
+        if (!save || selection is null) return selection;
+        return selection with { Location = await Portal.DocumentPortalPaths.Session.ClassifyAsync(selection.Path, cancellationToken).ConfigureAwait(false) };
+    }
 
     public async ValueTask<NativeDirectorySelection?> SelectDirectoryAsync(CancellationToken cancellationToken)
     {
@@ -155,11 +160,7 @@ internal sealed partial class LinuxFilePicker(INativePickerOwner owner) : INativ
             nint filename = Filename(dialog);
             try
             {
-                string path = ReadExactPath(filename);
-                // Portal documents grant the selected file, not sibling creation.
-                // Be conservative for all portal-backed/sandboxed selections.
-                bool sandbox = RequiresPortal || path.Contains("/doc/", StringComparison.Ordinal) && path.StartsWith("/run/user/", StringComparison.Ordinal);
-                state.Result.TrySetResult(new(path, null, !sandbox));
+                state.Result.TrySetResult(new(ReadExactPath(filename), null, true));
             }
             finally { if (filename != 0) Free(filename); }
         }

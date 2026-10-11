@@ -60,7 +60,16 @@ internal static class UsabilitySmoke
                         if (selected is PickerResult<ISaveFileLease>.Selected file)
                         {
                             await using var lease = file.Value;
-                            result = (await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace, deadline.Token)).ToString()!;
+                            var begun = await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace, deadline.Token);
+                            if (begun is PlatformResult<IFileWriteTransaction>.Success(var transaction))
+                            {
+                                await using (transaction)
+                                {
+                                    await transaction.Content.WriteAsync("Runic sandbox save.\n"u8.ToArray(), deadline.Token);
+                                    result = "Save " + (await transaction.CommitAsync(deadline.Token)).ToString();
+                                }
+                            }
+                            else result = begun.ToString()!;
                         }
                         else result = selected.ToString()!;
                     }

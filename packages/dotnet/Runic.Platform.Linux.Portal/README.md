@@ -43,12 +43,39 @@ the user may keep a healthy chooser open until cancellation or owner closure.
 
 Only one local `file://` selection is accepted. The portal owns persistent document
 grants; disposing a file lease does not revoke the user's permission store.
-Selections do not grant sibling creation/replacement. Consequently an atomic save
-transaction reports `AtomicReplaceUnavailable` before changing the selected file,
-and the `platform.files.save` capability reports the same reason.
-An unsandboxed application needing the existing sibling-staging save path can
-explicitly use `LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` with GTK3.
-There is no automatic fallback to toolkit dialogs, including when a portal fails.
+
+Saves are atomic, and `platform.files.save` is available. The provider classifies
+each save selection:
+
+- **Host path.** An unsandboxed application, or a sandbox whose filesystem access
+  already covers the path, receives the real path. The save stages
+  `.runic-<guid>.tmp` beside the final target of a symbolic link, copies the
+  permission bits, synchronizes it and renames it over the target.
+- **Document view.** Otherwise the portal returns a document below the mount that
+  `org.freedesktop.portal.Documents.GetMountPoint` reports (or `/run/flatpak/doc`),
+  confirmed as the FUSE filesystem. The save does not resolve links there. It stages
+  `.runic-<guid>.tmp` in the document directory, which the document portal stores as
+  a private host tempfile `.xdp-.runic-<guid>.tmp-XXXXXX` beside the real file, and
+  renames it onto the exact document name. The portal performs that rename with the
+  host's `renameat2`. This is how GLib's `g_file_replace` saves from a sandbox.
+
+On Linux the commit is a direct `renameat2`: a plain rename over an existing file,
+and `RENAME_NOREPLACE` for a new one, so a name that appeared since selection is a
+`Conflict`. A refused rename (`EXDEV`, `EBUSY`, for example a bind-mounted file) is
+`NotCommitted` and is never replaced by a copy. A read-only or revoked document
+grant makes `BeginWriteAsync` return `Unavailable(AtomicReplaceUnavailable)` before
+it changes anything. In every refusal the file is unchanged; offer Save As.
+
+Through the document view, extended attributes and ACLs are not carried over and
+the directory sync is a no-op: after a crash just after the rename, the previous
+content may reappear, but never a partial file. If the application or portal stops
+mid-save, a hidden `.xdp-*` tempfile can remain beside the document. Document
+portals older than 1.14 reject `RENAME_NOREPLACE`; a new file is then created after
+re-checking that the name is still absent.
+
+`LinuxPlatformProvider.CreateGtkNativeFileDialogs(owner)` remains an explicit GTK3
+opt-in for unsandboxed applications and saves the same way. There is no automatic
+fallback to toolkit dialogs, including when a portal fails.
 
 Directory selection uses `OpenDirectoryAsync` through the same providers for
 GTK3 and GTK4. It sends FileChooser `OpenFile` with `directory=true`, requiring
