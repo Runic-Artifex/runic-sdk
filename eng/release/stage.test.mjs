@@ -61,6 +61,27 @@ test('npm packing stamps gitHead into the archive without writing the source man
   expect(gunzipSync(readFileSync(archive)).length % 512).toBe(0);
 }));
 
+test('npm packing points the README and homepage at the release tag and rejects main-branch links', () => scratch(directory => {
+  const source = join(directory, 'source'), output = join(directory, 'out'), revision = 'a'.repeat(40);
+  mkdirSync(source);
+  mkdirSync(output);
+  const manifest = { name: '@runic-artifex/stage-test', version: '1.0.0', repository: 'https://github.com/Runic-Artifex/runic-sdk',
+    homepage: 'https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/stage-test#readme', files: ['README.md'] };
+  writeFileSync(join(source, 'package.json'), JSON.stringify(manifest));
+  const readme = '[Views](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#readme)\n';
+  writeFileSync(join(source, 'README.md'), readme);
+  const archive = packNpm(source, output, revision);
+  expect(readFileSync(join(source, 'README.md'), 'utf8')).toBe(readme);
+  expect(execFileSync('tar', ['-xzOf', archive, 'package/README.md'], { encoding: 'utf8' }))
+    .toBe('[Views](https://github.com/Runic-Artifex/runic-sdk/tree/v1.0.0/packages/web/views#readme)\n');
+  expect(JSON.parse(execFileSync('tar', ['-xzOf', archive, 'package/package.json'], { encoding: 'utf8' })).homepage)
+    .toBe('https://github.com/Runic-Artifex/runic-sdk/tree/v1.0.0/packages/web/stage-test#readme');
+  expect(inspect(archive, 'npm').readme).toContain('/tree/v1.0.0/');
+
+  writeFileSync(join(source, 'README.md'), '[Translations](https://github.com/Runic-Artifex/runic-translations-sdk/tree/main/docs)\n');
+  expect(() => packNpm(source, output, revision)).toThrow('@runic-artifex/stage-test README.md links to a main branch');
+}));
+
 test('staging is a sibling of the target so promotion is a rename', () => scratch(directory => {
   const target = join(directory, 'artifacts', 'packages');
   const staging = createStaging(target);

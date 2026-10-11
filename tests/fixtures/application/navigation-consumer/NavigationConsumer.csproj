@@ -8,8 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <!-- The fixture exercises the experimental navigation API. -->
-    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
+    <!-- No project-wide RUNICNAV001 suppression: the sources suppress it where they use the
+         experimental navigation API, and generated code must need none (package-smoke.mjs). -->
     <RunicBridgeBuildFrontend>false</RunicBridgeBuildFrontend>
     <RunicBridgeTypescriptDir>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicBridgeTypescriptDir>
   </PropertyGroup>

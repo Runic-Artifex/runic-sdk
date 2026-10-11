@@ -153,6 +153,7 @@ CheckedDataTests.Run();
 CheckedWriteGuaranteeTests.Run();
 DataCodecTests.Run();
 CodegenShapeTests.Run();
+EditorBrowsableTests.Run();
 await CodegenShapeTests.RunNullableReactiveAsync();
 CodegenShapeTests.RunTypeScriptSurface();
 await CodegenShapeTests.RunNamingAsync();

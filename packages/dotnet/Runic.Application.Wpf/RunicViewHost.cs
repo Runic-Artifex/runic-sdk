@@ -28,7 +28,7 @@ namespace Runic.Application.Views.Wpf;
 /// navigation entry. It manages its own <see cref="Decorator.Child"/>; set the fallback as its content instead.
 /// </para>
 /// </remarks>
-[Experimental(WpfDiagnostics.Id)]
+[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 [ContentProperty(nameof(Fallback))]
 public class RunicViewHost : Decorator
 {

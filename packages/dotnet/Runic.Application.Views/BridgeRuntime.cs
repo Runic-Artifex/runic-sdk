@@ -24,6 +24,7 @@ internal static class BridgeModelGates
 /// <param name="name">The .NET property name.</param>
 /// <param name="getter">Reads the property value.</param>
 /// <param name="setter">Writes the property from browser arguments, or <see langword="null"/> for a read-only property.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter)
 {
     /// <summary>Describes a property whose value comes from an observed sub-object, such as a navigation region slot.</summary>
@@ -37,7 +38,7 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
     /// its navigator's presentation; another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
 #pragma warning disable RUNICNAV001
-    [System.Diagnostics.CodeAnalysis.Experimental(RunicNavigator.DiagnosticId)]
+    [System.Diagnostics.CodeAnalysis.Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 #pragma warning restore RUNICNAV001
     public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
         : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
@@ -64,6 +65,7 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
 // second presentation of the same model receives the same baseline, receipt
 // history, and PropertyChanged observer.
 /// <summary>The wire value type of an acknowledged field write.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public enum CheckedFieldValueKind
 {
     /// <summary>A non-null string.</summary>
@@ -86,6 +88,7 @@ public enum CheckedFieldValueKind
 /// <param name="setter">Writes the decoded property value.</param>
 /// <param name="ReadValue">Decodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
 /// <param name="WriteValue">Encodes a <see cref="CheckedFieldValueKind.Json"/> value.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class CheckedPropertyDescriptor<T>(
     string name,
     string wireName,
@@ -135,6 +138,7 @@ public sealed class CheckedPropertyDescriptor<T>(
 /// <param name="viewModel">The ViewModel to write.</param>
 /// <param name="revision">The snapshot revision.</param>
 /// <param name="writeFieldMetadata">Writes field-write metadata while the snapshot object is open.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
     long revision, Action<Utf8JsonWriter> writeFieldMetadata);
 
@@ -154,6 +158,7 @@ public delegate void BridgeSnapshotWriter<T>(Utf8JsonWriter writer, T viewModel,
 /// failure type, and returns <see langword="null"/> otherwise. <see langword="null"/> when the
 /// command declares no failure.
 /// </param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record CommandDescriptor<T>(
     string Name,
     Func<T, object> Get,
@@ -176,6 +181,7 @@ internal sealed record BridgeFailure(string Kind, string Message, BridgeFailureD
 }
 
 /// <summary>The Views wire protocol described in specs/application/README.md.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class BridgeProtocol
 {
     /// <summary>
@@ -242,6 +248,7 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 }
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
     IBridgeSnapshotBatchParticipant where T : INotifyPropertyChanged
 {
@@ -1523,6 +1530,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 }
 
 /// <summary>JSON helpers called by generated bridges.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class BridgeJson
 {
     /// <summary>Decodes a JSON string value.</summary>

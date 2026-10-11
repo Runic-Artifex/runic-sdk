@@ -1008,7 +1008,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var plan = commandPlans[command];
         var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
-        XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command]));
+        XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command], plan.Command));
         var reply = plan.FailureGraph is { } declaredFailure
             ? $"BridgeOutcome<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
         ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;");
@@ -1361,10 +1361,12 @@ static T? InspectCommand<T>(Type model, PropertyInfo command, Func<T?> inspect) 
 static MethodInfo? CommandSourceMethod(Type model, PropertyInfo command) =>
     BridgeCommandSources.SourceMethod(model, command);
 
-// A generated command property's comment only says which method it wraps
-// ([RelayCommand]), so such a command uses its method's documentation alone.
-static string? CommandDocumentation(PropertyInfo command, MethodInfo? source) =>
-    source is null ? XmlDocumentation.Summary(command) : XmlDocumentation.Summary(source);
+// A generated command property's comment only says which method it wraps,
+// so such a command uses its method's documentation alone. Without a source
+// method, the command's MVVM convention chooses the property's comment.
+static string? CommandDocumentation(PropertyInfo command, MethodInfo? source, MvvmCommand? library) =>
+    source is not null ? XmlDocumentation.Summary(source)
+    : library is not null ? library.PropertyDocumentation(command) : XmlDocumentation.Summary(command);
 
 // The TypeScript parameter of a command with an argument: its source method's
 // parameter name, else the argument's C# type name, else "input".
@@ -1430,8 +1432,8 @@ static void WriteIfChanged(string path, string content)
 }
 
 /// <summary>
-/// Diagnostic IDs. The codegen section of the Runic.Application README
-/// documents each one with its remediation.
+/// Diagnostic IDs. Each one has an entry in docs/diagnostics.md, which every
+/// report links to at the release tag, and a row in the Runic.Application README.
 /// </summary>
 static class BridgeDiagnosticCodes
 {
@@ -1493,6 +1495,7 @@ static class Diagnostics
     internal static void Warn(string code, string message, MemberInfo? member)
     {
         var location = SourceLocator.Find(member);
+        message = WithHelpLink(code, message);
         var line = location is { } at
             ? $"{at.Path}({at.Line},{at.Column}): warning {code}: {message}"
             : $"warning {code}: {message}";
@@ -1526,10 +1529,15 @@ static class Diagnostics
             && !message.StartsWith(model.FullName ?? model.Name, StringComparison.Ordinal))
             message = $"{model.FullName}: {message}";
         var location = SourceLocator.Find(member);
+        message = WithHelpLink(code, message);
         Console.Error.WriteLine(location is { } at
             ? $"{at.Path}({at.Line},{at.Column}): error {code}: {message}"
             : $"error {code}: {message}");
     }
+
+    /// <summary>Appends the diagnostic's catalog entry at this release's tag.</summary>
+    internal static string WithHelpLink(string code, string message) =>
+        $"{message} See {Runic.Application.Views.Codegen.RunicReleaseLinks.Diagnostic(code)}";
 }
 
 /// <summary>

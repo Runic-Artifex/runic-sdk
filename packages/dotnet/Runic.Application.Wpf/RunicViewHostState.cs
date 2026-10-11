@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Runic.Application.Views.Wpf;
 
 /// <summary>The presentation state of a <c>RunicViewHost</c>.</summary>
-[Experimental(WpfDiagnostics.Id)]
+[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 public enum RunicViewHostState
 {
     /// <summary>No web presentation: the host is unloaded, has no model, or its last open was cancelled.</summary>

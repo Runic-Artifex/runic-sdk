@@ -159,7 +159,7 @@ internal static partial class Program
                     CommandExitCategory.CommandFailure,
                     new CommandFault("RAPPCLI1000", $"The {command} command did not complete successfully."),
                     diagnostics: [],
-                    humanOutput: BoundedHumanOutput(output));
+                    humanOutput: WithHelpLink(BoundedHumanOutput(output), "RAPPCLI1000"));
         });
 
     private static async Task<CommandOutcome<T>> ExecuteAsync<T>(
@@ -188,15 +188,15 @@ internal static partial class Program
         }
         catch (System.Text.Json.JsonException)
         {
-            return CommandOutcome.Failure<T>(CommandExitCategory.HostFailure, new CommandFault("RAPPCLI1003", "MSBuild returned invalid configuration JSON."));
+            return Failure<T>(CommandExitCategory.HostFailure, "RAPPCLI1003", "MSBuild returned invalid configuration JSON.");
         }
         catch (System.IO.IOException)
         {
-            return CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, new CommandFault("RAPPCLI1008", "The command could not access a required local file."));
+            return Failure<T>(CommandExitCategory.CommandFailure, "RAPPCLI1008", "The command could not access a required local file.");
         }
         catch (UnauthorizedAccessException)
         {
-            return CommandOutcome.Failure<T>(CommandExitCategory.CommandFailure, new CommandFault("RAPPCLI1008", "The command could not access a required local file."));
+            return Failure<T>(CommandExitCategory.CommandFailure, "RAPPCLI1008", "The command could not access a required local file.");
         }
         finally
         {
@@ -228,9 +228,9 @@ internal static partial class Program
         string? humanOutput = null)
     {
         bool containsPrivatePath = ContainsRootedPath(message);
-        string? detail = containsPrivatePath
+        string? detail = WithHelpLink(containsPrivatePath
             ? string.Concat(humanOutput, message, "\n")
-            : humanOutput;
+            : humanOutput, code);
         return CommandOutcome.Failure<T>(
             category,
             new CommandFault(
@@ -241,6 +241,13 @@ internal static partial class Program
             diagnostics: [],
             detail);
     }
+
+    /// <summary>
+    /// Ends human output with the fault code's catalog entry at this release's tag.
+    /// Runic.CommandLine writes it before the fault line and omits it from JSON output.
+    /// </summary>
+    internal static string WithHelpLink(string? humanOutput, string code) =>
+        string.Concat(humanOutput, $"Help for {code}: {RunicReleaseLinks.Diagnostic(code)}\n");
 
     private static string? WithDetail(string? humanOutput, string? localDetail) =>
         string.IsNullOrEmpty(localDetail) ? humanOutput : string.Concat(humanOutput, localDetail);

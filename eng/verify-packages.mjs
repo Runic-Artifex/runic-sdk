@@ -48,13 +48,16 @@ export const packageLayouts = {
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.Application/i, /^ReactiveUI$/i],
   },
-  // The WPF hosts depend on Runic.Navigation and the WPF framework only (W240-001 §8).
+  // The WPF hosts depend on Runic.Navigation and the WPF framework only (W240-001 §8). The
+  // only build asset suppresses RUNICNAV001 in XAML-generated code (docs/experimental.md).
   "Runic.Navigation.Wpf": {
-    files: ["README.md", "Runic.Navigation.Wpf.nuspec", "icon.png", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.xml"],
+    files: ["README.md", "Runic.Navigation.Wpf.nuspec", "buildTransitive/Runic.Navigation.Wpf.targets", "icon.png", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.xml"],
     requires: ["Runic.Navigation"],
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.(?!Navigation$)/i],
   },
+  // Suppresses RUNICWPF001 in XAML-generated code (docs/experimental.md).
+  "Runic.Application.Wpf": { includes: ["buildTransitive/Runic.Application.Wpf.targets"] },
   // Each Application adapter brings the navigation adapter of its own flavor.
   "Runic.Application.ReactiveUI": { requires: ["Runic.Navigation.ReactiveUI"], exactDependencies: ["Runic.Navigation.ReactiveUI"], forbidden: [/^Runic\.Navigation\.ReactiveUI\.Reactive$/i] },
   "Runic.Application.ReactiveUI.Reactive": {
@@ -65,7 +68,7 @@ export const packageLayouts = {
   },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
   "Runic.Application": {
-    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll"],
+    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.props"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },

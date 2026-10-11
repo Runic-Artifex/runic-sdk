@@ -29,7 +29,7 @@ namespace Runic.Navigation.Wpf;
 /// navigation asks also decide whether the window closes.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public class NavigationHost : ContentControl
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>

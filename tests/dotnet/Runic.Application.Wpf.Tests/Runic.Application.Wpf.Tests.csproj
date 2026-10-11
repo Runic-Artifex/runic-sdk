@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- The linked WpfDiagnostics.cs uses RunicReleaseLinks. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+    <RunicReleaseLinksNamespace>Runic.Application.Views.Wpf</RunicReleaseLinksNamespace>
     <NoWarn>$(NoWarn);RUNICWPF001;RUNICNAV001</NoWarn>
   </PropertyGroup>
   <ItemGroup>

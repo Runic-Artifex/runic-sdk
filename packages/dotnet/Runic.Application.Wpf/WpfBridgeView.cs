@@ -11,7 +11,7 @@ using Runic.Navigation;
 namespace Runic.Application.Views.Wpf;
 
 /// <summary>Owns one child presentation and Bridge session while borrowing an application's existing model and services.</summary>
-[Experimental(WpfDiagnostics.Id)]
+[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView where TViewModel : class
 {
     private readonly object _gate = new();
@@ -161,7 +161,7 @@ internal interface IWpfBridgeView : IAsyncDisposable
 }
 
 /// <summary>Creates child View sessions from the application's existing service provider.</summary>
-[Experimental(WpfDiagnostics.Id)]
+[Experimental(WpfDiagnostics.Id, UrlFormat = WpfDiagnostics.UrlFormat)]
 public static class WpfBridgeViewExtensions
 {
     private static readonly MethodInfo CreateTypedMethod = typeof(WpfBridgeViewExtensions)

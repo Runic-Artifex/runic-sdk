@@ -24,11 +24,13 @@ public sealed record BridgeValidationMessage(
 /// be a string dictionary key or an integer list index. Generated metadata
 /// supplies these entries without reflection so validation remains AOT-safe.
 /// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public readonly record struct BridgeValidationChild(object PathSegment, object? Value);
 
 /// <summary>
 /// Writes the validation projection for generated bridge snapshots.
 /// </summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public static class BridgeValidation
 {
     private const int MaximumNodes = 4_096;

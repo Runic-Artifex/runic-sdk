@@ -33,7 +33,7 @@ namespace Runic.Navigation.Wpf;
 /// dismisses the dialog while <see cref="CloseOnEscape"/> is on, and clicks the cancel button when it is off.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId)]
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public class NavigationDialogHost : FrameworkElement
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>
