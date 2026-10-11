@@ -32,6 +32,9 @@ internal sealed class NativeChecks
             });
             await using var view = await services.CreateWpfViewAsync(host, Program.HtmlOptions(), new object());
             var connectionIds = new HashSet<ulong>();
+            // OpenAsync completes when the token check succeeds; the session raises its Connected event after that,
+            // from a thread-pool thread, so the first event can arrive after OpenAsync has returned.
+            var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var observe = view.Surface.SubscribeConnectionEvents(invocation =>
             {
@@ -39,10 +42,12 @@ internal sealed class NativeChecks
                 lock (connectionIds)
                 {
                     connectionIds.Add(invocation.Session.Id);
+                    connected.TrySetResult();
                     if (connectionIds.Count > 1) reconnected.TrySetResult();
                 }
             });
             await view.OpenAsync();
+            await Task.WhenAny(connected.Task, Task.Delay(TimeSpan.FromSeconds(20)));
             Program.Check(window.IsVisible && child.Handle != 0, "The WebView did not remain inside the WPF shell.");
             lock (connectionIds) Program.Check(connectionIds.Count == 1, "The first document did not authenticate.");
             await view.Surface.RunJavaScriptAsync("location.reload();");
