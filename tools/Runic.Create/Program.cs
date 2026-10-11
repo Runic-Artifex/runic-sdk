@@ -75,10 +75,8 @@ internal static class Program
         if (destination is not null && formerDestination is not null &&
             !string.Equals(destination, formerDestination, StringComparison.Ordinal))
         {
-            return Task.FromResult(CommandOutcome.Failure<CreateResult>(
-                CommandExitCategory.Usage,
-                new CommandFault("RCREATE006", "Pass the destination once with --output (-o). --directory is its former name."),
-                diagnostics: []));
+            return Task.FromResult(CreateApplication.Failure(CommandExitCategory.Usage, "RCREATE006",
+                "Pass the destination once with --output (-o). --directory is its former name."));
         }
         var request = new CreateRequest(
             Optional(name),

@@ -166,6 +166,17 @@ bridge, `AddRunicViews()` or TypeScript client is generated for it.
 `RunicBridgeBuildEnabled=false` when another project generates its Views, which
 also silences the warning.
 
+### RUNICBRIDGE016
+
+The `Runic.Application` build targets report this error, not the generator. The
+frontend install or build command failed without reporting an error in the
+canonical `file(line,column): error CODE: text` form (a Vite or package-manager
+error, for example), or the install created no `node_modules` for declared
+dependencies. The command's own output is printed above the error.
+
+**Fix:** fix the problem the command reports, or run `dotnet runic doctor` to
+check the package manager and lock file.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
@@ -537,7 +548,7 @@ than letters, digits, `.`, `_` and `-`.
 
 The destination directory exists and is not empty.
 
-**Fix:** choose another name or `--directory`.
+**Fix:** choose another name or `--output`.
 
 ### RCREATE004
 
@@ -552,3 +563,10 @@ failed. Its output is printed before the fault.
 `dotnet new runic-app` failed. Its output is printed before the fault.
 
 **Fix:** correct the problem the template reports, then run the creator again.
+
+### RCREATE006
+
+`--output` (`-o`) and its former name `--directory` were both passed with
+different values.
+
+**Fix:** pass the destination once, with `--output`.

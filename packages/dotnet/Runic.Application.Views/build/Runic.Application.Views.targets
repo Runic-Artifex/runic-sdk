@@ -373,7 +373,7 @@
         WorkingDirectory="$(RunicBridgeFrontendDir)"
         FailureCode="RUNICBRIDGE016" FailureFile="$(MSBuildProjectFullPath)"
         FailureText="The frontend install '$(RunicBridgeFrontendInstallCommand)' in $([System.IO.Path]::GetFullPath('$(RunicBridgeFrontendDir)')) exited with code $(_RunicBridgeFrontendInstallExitCode). Its output is above. Run 'dotnet runic doctor' to check the package manager and lock file." />
-    <Error Code="RUNICBRIDGE016" File="$(MSBuildProjectFullPath)"
+    <Error Code="RUNICBRIDGE016" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge016"
            Condition="'$(_RunicBridgeFrontendInstallExitCode)' == '0' and '$(_RunicBridgeFrontendHasDependencies)' == 'true' and !Exists('$(RunicBridgeFrontendDir)/node_modules')"
            Text="'$(RunicBridgeFrontendInstallCommand)' did not create $(RunicBridgeFrontendDir)/node_modules. Install the frontend dependencies with $(RunicBridgeFrontendPackageManager), or run 'dotnet runic doctor' to check the package manager and lock file." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(RunicBridgeFrontendInstallStamp)'))" />
