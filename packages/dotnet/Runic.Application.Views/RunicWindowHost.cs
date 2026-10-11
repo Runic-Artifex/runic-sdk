@@ -255,7 +255,7 @@ internal static class RunicWindowOpening
         $"No generated Bridge is registered for {Name<TViewModel>()}.",
         "Call services.AddRunicViews() (or AddRunicBridges()) from the generated " +
             "<Project>.RunicBridgeComposition class. If it is missing or has no Bridge for this ViewModel, " +
-            "check that the project references a host package (Runic.Application.Desktop or Runic.Application.CsWebUi) " +
+            "check that the project references a host package (Runic.Application.Views.Desktop or Runic.Application.Views.CsWebUi) " +
             "and that the ViewModel is a public, top-level class implementing INotifyPropertyChanged.");
 
     private static string Name<T>() => typeof(T).FullName ?? typeof(T).Name;

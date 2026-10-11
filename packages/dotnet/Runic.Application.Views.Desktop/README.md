@@ -1,0 +1,212 @@
+# Runic.Application.Views.Desktop
+
+Present Runic Windows and Views with
+[Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md):
+native windows, embedded WebViews or browser presentations, and the Runic
+platform services.
+
+```sh
+dotnet add package Runic.Application.Views.Desktop --prerelease
+dotnet add package Microsoft.Extensions.DependencyInjection
+```
+
+This is the default host of the `runic-app` project template: `dotnet new runic-app`
+opens a native window with this host.
+
+In a project named `MyApp`:
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using MyApp; // the generated AddRunicViews()
+using Runic.Application.Views;
+using Runic.Application.Views.Desktop;
+using Runic.Desktop;
+
+var services = new ServiceCollection();
+services.AddScoped<MainViewModel>();
+services.AddRunicViews();
+await using var provider = services.BuildServiceProvider();
+// Windows uses WebView2 and macOS WKWebView; Linux selects a toolkit explicitly.
+var options = new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } };
+
+return RunicDesktopHost.Run(provider, options, async host =>
+{
+    // Stops at startup when a registration, WebView runtime or window option is missing.
+    host.ValidateWindow<MainWindow>().ThrowIfInvalid();
+    await using var window = await host.OpenWindowAsync<MainWindow>(new RunicWindowOptions { Width = 800, Height = 600 });
+    await window.WaitForCloseAsync();
+    return 0;
+});
+
+public sealed partial class MainWindow : RunicWindow<MainViewModel>;
+```
+
+The same Window and `async host => ...` body run on CS-WebUI with
+`RunicCsWebUiHost.Run(provider, ...)` from `Runic.Application.Views.CsWebUi`.
+
+## Entry points
+
+- `RunicDesktopHost.Run(provider, options, application)` starts a
+  `DesktopHost` and runs the asynchronous application on the event loop the
+  platform needs (`DesktopEventLoop`): the process main thread on macOS and with
+  GTK 4. Call it from `Main` before any `await` and return its result. Ctrl+C
+  and SIGTERM close the open windows, so `WaitForCloseAsync` returns.
+- `host.OpenWindowAsync<TWindow>(options, cancellationToken)`, from
+  `Runic.Application.Views`, creates the Window's DI scope, resolves its
+  ViewModel, opens a `DesktopSurface` and its presentation, and attaches the
+  generated Bridge. The surface serves `RunicWindowOptions.ContentRoot` (`www`
+  by default) and opens `StartPage`; `Width` and `Height` replace the window
+  size. For other surface or window options, create
+  `new RunicDesktopHost(provider, desktop) { SurfaceOptions = ..., WindowOptions = ... }`
+  inside `DesktopEventLoop.Run`. `RunicDesktopHost.DefaultWindowOptions` opens
+  the embedded WebView and falls back to an installed browser.
+- `host.ValidateWindow<TWindow>(options)` checks, before any window opens, that
+  the generated Bridge for the ViewModel is registered and that
+  `DesktopHost.Validate` accepts the window options. It returns every problem
+  as a `RunicWindowDiagnostic` with a stable code and remediation: an error
+  `bridge-not-registered`, the
+  [Runic Desktop codes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md),
+  and a warning `viewmodel-not-registered` when the container does not report
+  the ViewModel through `IServiceProviderIsService`. A container can resolve
+  services it does not report, so only the Bridge check fails; a container
+  without `IServiceProviderIsService` is not checked. `ThrowIfInvalid()` throws
+  a `RunicWindowConfigurationException`. `OpenWindowAsync` runs the same checks
+  before it creates a surface and throws the same exception; a
+  `DesktopConfigurationException` from Runic Desktop becomes its
+  `InnerException`. A missing Bridge is logged as event 1050 through the
+  provider's `ILoggerFactory`.
+- `DesktopBridgeWindow<TViewModel>`, the Window's `Host`, owns the Window's scope, surface, and attachment.
+  It exposes `ViewModel`, `Surface`, `Presentation`, `WaitForCloseAsync`, and `CloseAsync`, which
+  stops new operations and waits for accepted ones before releasing the scope.
+  It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
+  host, and returns the same `BridgeWindowCloseResult`.
+- `services.AddRunicPlatformServices()` registers native file dialogs, the
+  text clipboard, and the file launcher for each window scope:
+  `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and
+  `IDesktopFileLauncher`. A ViewModel takes them in its constructor before its
+  window opens. They bind to the window's native owner when it opens, and the
+  provider is selected from the backend that is actually running:
+  - Windows: `Runic.Platform.Windows`.
+  - macOS: `Runic.Platform.MacOS`.
+  - Linux with GTK 3: `Runic.Platform.Linux`.
+  - Linux with GTK 4 (`WithGtk4()`): xdg-desktop-portal dialogs and the file
+    launcher through `Runic.Platform.Linux.Portal`, parented with
+    `Runic.Platform.Linux.Gtk4`, plus the GTK 4 clipboard. A GTK 4 process
+    never loads the GTK 3 provider.
+
+  Until the window opens, every operation returns
+  `Unavailable(OwnerUnavailable)`. It returns the same result when the window
+  has no native owner, for example an installed browser after an
+  embedded-window fallback. After the window closes, every operation returns
+  `Unavailable(OwnerClosed)`. A Linux process without a GTK backend returns
+  `Unavailable(ProviderNotConfigured)`. `GetSnapshot()` reports the same states
+  per capability. The package references every provider package, but loads
+  only the selected provider assembly. `dotnet runic doctor` names the
+  provider and, on Linux, checks for the session bus and xdg-desktop-portal.
+  `PlatformServices.ForWindow(owner)` creates the same services for a
+  `DesktopWindow` that the application opened itself.
+
+  ```csharp
+  services.AddScoped<NotesViewModel>();
+  services.AddRunicViews();
+  services.AddRunicPlatformServices();
+
+  public sealed partial class NotesViewModel(IFileDialogs files) : ObservableObject
+  {
+      [ObservableProperty] private string _text = "";
+
+      public async Task OpenAsync()
+      {
+          if (await files.OpenFileAsync(new()) is not PickerResult<IReadFileLease>.Selected(var lease)) return;
+          await using (lease)
+          await using (var stream = await lease.OpenReadAsync())
+          using (var reader = new StreamReader(stream))
+              Text = await reader.ReadToEndAsync();
+      }
+
+      // Replaces the file atomically, or leaves it unchanged.
+      public async Task<bool> SaveAsync()
+      {
+          if (await files.SaveFileAsync(new("notes.txt")) is not PickerResult<ISaveFileLease>.Selected(var lease)) return false;
+          await using (lease)
+          {
+              if (await lease.BeginWriteAsync(FileWritePolicy.RequireAtomicReplace)
+                  is not PlatformResult<IFileWriteTransaction>.Success(var transaction)) return false;
+              await using (transaction)
+              {
+                  await using (var writer = new StreamWriter(transaction.Content, leaveOpen: true))
+                      await writer.WriteAsync(Text);
+                  return await transaction.CommitAsync() is FileCommitResult.Committed;
+              }
+          }
+      }
+  }
+  ```
+
+  On Windows, and for unsandboxed macOS selections, the save writes a staged
+  sibling file and replaces the selection in one step. A sandboxed macOS
+  selection cannot stage a sibling. On Linux both providers use xdg-desktop-portal
+  dialogs, and a portal selection does not grant access to sibling files. So
+  `BeginWriteAsync` returns `Unavailable(AtomicReplaceUnavailable)` in these cases
+  before it changes the file. Treat a `false` result as "not saved" and tell
+  the user. The
+  [portal guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform.Linux.Portal/README.md)
+  describes the GTK 3 opt-in for unsandboxed applications. CS-WebUI's
+  `AddRunicPlatformServices()` registers the same services, which return
+  `OwnerUnavailable`.
+- `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
+  presentation's `INativePickerOwner`, which the services above bind to. The
+  provider APIs that take it directly, such as
+  `WindowsPlatformProvider.CreateFileDialogs(owner)` or
+  `PortalPlatformProvider.CreateFileDialogs(Gtk4PlatformProvider.CreatePortalWindowOwner(owner))`,
+  keep working for applications that compose providers themselves.
+  `LinuxPlatformProvider` parents dialogs through GTK 3, so do not use it
+  with a GTK 4 window.
+
+  The owner runs provider callbacks on the window's native thread and becomes
+  unavailable when the window closes or the surface replaces it. A presentation
+  without native dispatch still has an owner, but it reports
+  `IsAvailable == false`. Examples are an installed browser after an
+  embedded-window fallback, or a custom host without a native handle.
+  Applications that open a `DesktopWindow` themselves create one with
+  `new DesktopNativeOwner(window)`.
+- `DesktopBridgeTransport` connects a `DesktopSurface` to a
+  `WindowContentSession` directly, for applications that compose a surface
+  themselves.
+
+The surface owns authenticated browser or embedded WebView sessions and
+removable capability bindings; the application Window owns its ViewModel scope
+and logical View lifetimes. `DesktopHostOptions` and `DesktopWindowOptions`
+select the browser or embedded backend; the Runic Desktop guide lists the
+native prerequisites for each platform.
+
+The package's build targets copy `runic-desktop-views.js` into `www/`. Load
+`webui.js` (served by the surface) and `runic-desktop-views.js` before the
+generated client in `index.html`. The adapter uses the same host-neutral client
+contract as the CS-WebUI adapter, and its build defaults match
+`Runic.Application.Views.CsWebUi`, so `AddRunicViews()` is generated in
+`<ProjectName>.RunicBridgeComposition`.
+
+The [First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window-desktop)
+example is a complete application. See the
+[host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/)
+to choose between this host and CS-WebUI.
+
+## Automation
+
+Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped
+application without a user. With it set, `RunicDesktopHost` closes every
+window it opens, as soon as the presentation has opened and, with
+`DesktopHostOptions.WaitForConnection`, its bridge has connected. Before
+closing, it writes:
+
+- a warning to standard error, and event 2002 through a registered
+  `ILoggerFactory`, so an inherited setting is visible;
+- `RUNIC_APPLICATION_OPENED=<presentation>` (for example `Embedded`, or the
+  browser it fell back to) to standard output.
+
+An application shaped like the `runic-app` template then sees `WaitForCloseAsync`
+return and exits normally. Applications that keep running after a window
+closes, or that open further windows, are not meant to use it. This is the
+Desktop counterpart of CS-WebUI's `RUNIC_APPLICATION_SERVE_ONLY`. The template
+acceptance check uses it to run the GTK 4 template under Xvfb.

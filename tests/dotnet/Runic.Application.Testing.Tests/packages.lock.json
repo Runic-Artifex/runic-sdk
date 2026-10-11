@@ -100,7 +100,14 @@
           "Splat.Core": "21.0.0"
         }
       },
-      "Runic.Application": {
+      "runic.application.testing": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, )",
+          "Runic.Application.Views": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.application.views": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
@@ -108,19 +115,12 @@
           "Runic.Navigation": "[0.7.0-preview.7, )"
         }
       },
-      "Runic.Application.ReactiveUI": {
+      "runic.application.views.reactiveui": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "ReactiveUI": "[26.0.1, )",
-          "Runic.Application": "[0.7.0-preview.7, )"
-        }
-      },
-      "runic.application.testing": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, )",
-          "Runic.Application": "[0.7.0-preview.7, )"
+          "Runic.Application.Views": "[0.7.0-preview.7, )"
         }
       },
       "runic.navigation": {

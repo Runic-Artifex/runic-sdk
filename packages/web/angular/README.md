@@ -81,15 +81,21 @@ Register a component for each generated View kind and pass the current
 reference to the outlet.
 
 ```ts
-import { RunicViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
+import { ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 import { DocumentPage } from "./document-page";
 import type { DocumentReference } from "./generated/document";
 
 const registry = { document: DocumentPage } satisfies ViewRegistry<DocumentReference>;
 
-// Add RunicViewOutlet to the parent's imports and bind:
+// Add ViewOutlet to the parent's imports and bind:
 // <runic-view-outlet [content]="current()" [registry]="registry" />
 ```
+
+`ViewOutlet` is the outlet's name in every Runic frontend package (React, Vue,
+Svelte and Angular); its element keeps Angular's prefix convention,
+`<runic-view-outlet>`. Before 0.7.0-preview.7 the Angular class was
+`RunicViewOutlet`. That name is still exported as a deprecated subclass that
+renders the same element, and is removed in the next preview.
 
 The outlet is generic over the reference union it receives, so the registry
 must have a component for every kind whose `page` input accepts that reference.

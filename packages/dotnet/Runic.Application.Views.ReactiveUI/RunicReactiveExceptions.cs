@@ -1,5 +1,5 @@
-// Shared by Runic.Application.ReactiveUI and, compiled with SYSTEM_REACTIVE,
-// Runic.Application.ReactiveUI.Reactive. Both flavors' commands and reactive
+// Shared by Runic.Application.Views.ReactiveUI and, compiled with SYSTEM_REACTIVE,
+// Runic.Application.Views.ReactiveUI.Reactive. Both flavors' commands and reactive
 // objects implement ReactiveUI.IHandleObservableErrors from ReactiveUI.Core.
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;

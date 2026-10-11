@@ -12,10 +12,10 @@ const consumer = join(temporary, "consumer");
 const probes = join(temporary, "probes");
 const packageProjects = [
   ["Runic.Navigation", "Runic.Navigation"],
-  ["Runic.Application", "Runic.Application.Views"],
-  // Runic.Application.CsWebUi depends on Runic.Platform for its window platform services.
+  ["Runic.Application.Views", "Runic.Application.Views"],
+  // Runic.Application.Views.CsWebUi depends on Runic.Platform for its window platform services.
   ["Runic.Platform", "Runic.Platform"],
-  ["Runic.Application.CsWebUi", "Runic.Application.Views.CsWebUi"]
+  ["Runic.Application.Views.CsWebUi", "Runic.Application.Views.CsWebUi"]
 ];
 let testVersion;
 
@@ -73,13 +73,13 @@ try {
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeCompositionType>FirstWindow.RunicBridgeComposition</RunicBridgeCompositionType>
+    <RunicApplicationFrontendCompositionType>FirstWindow.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
     <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
-    <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
+    <PackageReference Include="Runic.Application.Views.CsWebUi" Version="${testVersion}" />
   </ItemGroup>
 </Project>
 `);
@@ -98,14 +98,14 @@ try {
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeBuildFrontend>false</RunicBridgeBuildFrontend>
-    <RunicBridgeTypescriptDir>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicBridgeTypescriptDir>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendGeneratedDirectory>$(BaseIntermediateOutputPath)runic-bridge/typescript</RunicApplicationFrontendGeneratedDirectory>
     <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="${toolkit}" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
-    <PackageReference Include="Runic.Application.CsWebUi" Version="${testVersion}" />
+    <PackageReference Include="Runic.Application.Views.CsWebUi" Version="${testVersion}" />
   </ItemGroup>
 </Project>
 `);

@@ -8,7 +8,7 @@ namespace Runic.Application.Testing.Tests;
 
 // D018.3: one Window class and one open API for every host. These run the host-neutral half of
 // OpenWindowAsync and ValidateWindow against a recording host; the Desktop and CS-WebUI adapters
-// have their own checks (tests/dotnet/Runic.Application.Desktop.Tests, cswebui-window-probes).
+// have their own checks (tests/dotnet/Runic.Application.Views.Desktop.Tests, cswebui-window-probes).
 internal static class RunicWindowHostTests
 {
     public static async Task RunAsync()

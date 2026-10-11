@@ -116,7 +116,7 @@ function checkProtocol(reply: Envelope, entry: SharedEntry, route: string): void
   emitBridgeDiagnostic({
     kind: "error", code: "protocol", route,
     message: `The .NET host uses Views protocol ${String(reply.protocol)}, but this client was built for protocol ${bridgeProtocol}. ` +
-      "Use the same Runic.Application and @runic-artifex/views version.",
+      "Use the same Runic.Application.Views and @runic-artifex/views version.",
   });
 }
 

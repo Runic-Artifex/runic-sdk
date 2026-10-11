@@ -16,7 +16,7 @@ test('application checks run both ReactiveUI flavors through the shared conforma
   const application = selection('application');
   expect(application.kind).toBe('managed');
   for (const flavor of ['ReactiveUI', 'ReactiveUI.Reactive']) {
-    expect(application.paths).toContain(`tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.${flavor}.Conformance.Tests.csproj`);
+    expect(application.paths).toContain(`tests/fixtures/application/reactiveui-behavioral-conformance/Runic.Application.Views.${flavor}.Conformance.Tests.csproj`);
   }
 });
 test('application checks also build and run the fixtures outside the core solution', () => {

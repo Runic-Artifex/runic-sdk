@@ -1,9 +1,9 @@
 # System.Reactive ReactiveUI integration for Runic Views
 
-`Runic.Application.ReactiveUI.Reactive` is the optional Runic adapter for
+`Runic.Application.Views.ReactiveUI.Reactive` is the optional Runic adapter for
 ReactiveUI 26's System.Reactive-compatible distribution. It provides the same
 Runic View and Window mount lifecycle, typed view location and routing
-projection as `Runic.Application.ReactiveUI` (Views derive from
+projection as `Runic.Application.Views.ReactiveUI` (Views derive from
 `ReactiveRunicView<T>`; Windows from `RunicWindow<T>`, since
 `ReactiveRunicWindow<T>` was removed in 0.7.0-preview.7), while using types from
 `ReactiveUI.Reactive`, `ReactiveUI.Binding.Reactive`, `System.Reactive.Unit`,
@@ -14,10 +14,10 @@ System.Reactive's scheduler and unit types:
 
 ```xml
 <PackageReference Include="ReactiveUI.Reactive" />
-<PackageReference Include="Runic.Application.ReactiveUI.Reactive" />
+<PackageReference Include="Runic.Application.Views.ReactiveUI.Reactive" />
 ```
 
-Use the default `ReactiveUI` and `Runic.Application.ReactiveUI` pair for the
+Use the default `ReactiveUI` and `Runic.Application.Views.ReactiveUI` pair for the
 Primitives flavor. Do not reference both Runic adapters in one application.
 The System.Reactive distribution has distinct ReactiveUI namespaces and type
 identities, so ViewModels and generated clients must be built for the selected

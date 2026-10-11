@@ -34,7 +34,7 @@ export const packageLayouts = {
     dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Microsoft.Extensions.Logging.Abstractions"],
   },
   // The ReactiveUI navigation adapters depend on Runic.Navigation and ReactiveUI, never on
-  // Runic.Application (W240-001 §9). `requires` lists dependencies that must be present and
+  // Runic.Application.Views (W240-001 §9). `requires` lists dependencies that must be present and
   // `forbidden` patterns that no dependency may match.
   "Runic.Navigation.ReactiveUI": {
     files: ["README.md", "Runic.Navigation.ReactiveUI.nuspec", "icon.png", "lib/net10.0/Runic.Navigation.ReactiveUI.dll", "lib/net10.0/Runic.Navigation.ReactiveUI.xml"],
@@ -56,30 +56,29 @@ export const packageLayouts = {
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.(?!Navigation$)/i],
   },
-  // Suppresses RUNICWPF001 in XAML-generated code (docs/experimental.md).
-  "Runic.Application.Wpf": { includes: ["buildTransitive/Runic.Application.Wpf.targets"] },
   // The Application adapters own model-context scheduling and bring no navigation adapter, so an app
   // without navigation has no experimental package in its graph (W250-014).
-  "Runic.Application.ReactiveUI": {
-    requires: ["Runic.Application", "ReactiveUI"],
+  "Runic.Application.Views.ReactiveUI": {
+    requires: ["Runic.Application.Views", "ReactiveUI"],
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i, /^ReactiveUI\.Reactive$/i],
   },
-  "Runic.Application.ReactiveUI.Reactive": {
-    includes: ["buildTransitive/Runic.Application.ReactiveUI.Reactive.targets"],
-    requires: ["Runic.Application", "ReactiveUI.Reactive"],
+  "Runic.Application.Views.ReactiveUI.Reactive": {
+    includes: ["buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets"],
+    requires: ["Runic.Application.Views", "ReactiveUI.Reactive"],
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i],
   },
   // The packed generator loads region slots from Runic.Navigation (W240-001 §4.3).
-  "Runic.Application": {
-    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.props"],
+  "Runic.Application.Views": {
+    includes: ["lib/net10.0/Runic.Application.Views.dll", "tools/net10.0/Runic.Navigation.dll", "buildTransitive/Runic.Application.Views.props", "buildTransitive/Runic.Application.Views.targets"],
     // The moved types must come from the matching Runic.Navigation build (W240-001 §3).
     exactDependencies: ["Runic.Navigation"],
   },
   // Host adapters set RunicApplicationHostAdapter, which turns Bridge generation on
   // in every project that references them, directly or transitively.
-  "Runic.Application.Desktop": { includes: ["buildTransitive/Runic.Application.Desktop.props"] },
-  "Runic.Application.CsWebUi": { includes: ["buildTransitive/Runic.Application.CsWebUi.props"] },
-  "Runic.Application.Wpf": { includes: ["buildTransitive/Runic.Application.Wpf.props"] },
+  "Runic.Application.Views.Desktop": { includes: ["buildTransitive/Runic.Application.Views.Desktop.props"] },
+  "Runic.Application.Views.CsWebUi": { includes: ["buildTransitive/Runic.Application.Views.CsWebUi.props"] },
+  // The Wpf targets also suppress RUNICWPF001 in XAML-generated code (docs/experimental.md).
+  "Runic.Application.Views.Wpf": { includes: ["buildTransitive/Runic.Application.Views.Wpf.props", "buildTransitive/Runic.Application.Views.Wpf.targets"] },
 };
 
 export function verifyPackageLayout(nupkg, name, version, layout = packageLayouts[name]) {
@@ -129,7 +128,7 @@ function msbuildProjectPath(
 // Windows-only packages declare how a packed consumer uses them: it builds on every
 // platform and runs only on Windows.
 const windowsConsumerStrategies = {
-  "Runic.Application.Wpf": { useWpf: true, canaryType: "Runic.Application.Views.Wpf.RunicWebView" },
+  "Runic.Application.Views.Wpf": { useWpf: true, canaryType: "Runic.Application.Views.Wpf.RunicWebView" },
   "Runic.Navigation.Wpf": { useWpf: true, canaryType: "Runic.Navigation.Wpf.NavigationHost" },
 };
 
@@ -170,7 +169,7 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
     assert.equal(library.split("/")[1], workspace.version, `stale internal dependency ${library}`);
   }
   // Host adapters use the DI abstractions; the application chooses and references a container.
-  if (["Runic.Application.Desktop", "Runic.Application.CsWebUi", "Runic.Application.Wpf"].includes(label)) {
+  if (["Runic.Application.Views.Desktop", "Runic.Application.Views.CsWebUi", "Runic.Application.Views.Wpf"].includes(label)) {
     assert.ok(!libraries.some(library => library.split("/")[0].toLowerCase() === "microsoft.extensions.dependencyinjection"),
       `${label} unexpectedly depends on the Microsoft.Extensions.DependencyInjection container`);
   }
@@ -266,13 +265,13 @@ async function verifyConsumers(directory, packageName) {
     const consumer = join(directory, p.name);
     const viewTestConsumer = p.name === "Runic.Application.Testing";
     const bridgeProperties = viewTestConsumer
-      ? `<RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled><RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand><RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Frontend</RunicBridgeFrontendDir><RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir><OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>`
-      : ["Runic.Application.CsWebUi", "Runic.Application.ReactiveUI", "Runic.Application.ReactiveUI.Reactive", "Runic.Application.Desktop", "Runic.Application.Wpf"].includes(p.name)
-        ? "<RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>" : "";
+      ? `<RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled><RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand><RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendDirectory><RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/src/generated</RunicApplicationFrontendGeneratedDirectory><OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>`
+      : ["Runic.Application.Views.CsWebUi", "Runic.Application.Views.ReactiveUI", "Runic.Application.Views.ReactiveUI.Reactive", "Runic.Application.Views.Desktop", "Runic.Application.Views.Wpf"].includes(p.name)
+        ? "<RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>" : "";
     mkdirSync(consumer);
     writeFileSync(
       join(consumer, "Consumer.csproj"),
-      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
+      `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>${strategy.targetFramework}</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><TreatWarningsAsErrors>true</TreatWarningsAsErrors>${bridgeProperties}${strategy.enableWindowsTargeting ? "<EnableWindowsTargeting>true</EnableWindowsTargeting>" : ""}${strategy.useWpf ? "<UseWPF>true</UseWPF>" : ""}</PropertyGroup><ItemGroup><PackageReference Include="${p.name}" Version="${workspace.version}"/>${viewTestConsumer ? `<PackageReference Include="Runic.Application.Views" Version="${workspace.version}"/>` : ""}</ItemGroup>${viewTestConsumer ? `<ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs"/></ItemGroup>` : ""}</Project>`,
     );
     writeFileSync(
       join(consumer, "Program.cs"),
@@ -519,7 +518,7 @@ export async function verifyToolAndTemplatePackages(directory, nuget, env) {
   // tool manifest restores. CI's template matrix covers application builds.
   const application = join(directory, "application-template");
   run("dotnet", ["new", "runic-app", "--name", "ApplicationConsumer", "--output", application], directory, env);
-  assert.ok(readFileSync(join(application, "ApplicationConsumer.csproj"), "utf8").includes("Runic.Application"),
+  assert.ok(readFileSync(join(application, "ApplicationConsumer.csproj"), "utf8").includes("Runic.Application.Views"),
     "Installed application template did not generate the application project");
   run("dotnet", ["tool", "restore", "--configfile", config], application, env);
 }

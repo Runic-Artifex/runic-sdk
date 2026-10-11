@@ -70,6 +70,6 @@ shutdown. The dev server proxies `/webui.js` from the native host.
 
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesReactiveViews.csproj` with
-`Runic.Application.CsWebUi` and `Runic.Application.ReactiveUI` package
+`Runic.Application.Views.CsWebUi` and `Runic.Application.Views.ReactiveUI` package
 references, as described in the
 [First Window README](../first-window/README.md#copy-it-into-your-own-project).

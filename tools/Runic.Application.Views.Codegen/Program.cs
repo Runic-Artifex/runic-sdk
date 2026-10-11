@@ -138,7 +138,7 @@ try
         var namedTypesPath = Path.Combine(positional[3], $"{TypeScriptNamedTypes.ModuleName}.ts");
         if (File.Exists(namedTypesPath) && !GeneratedOutput.IsGenerated(namedTypesPath))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
-                $"{Path.GetFullPath(namedTypesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or set RunicBridgeTypescriptDir to a dedicated directory.");
+                $"{Path.GetFullPath(namedTypesPath)} is not generated, but the generator writes its named TypeScript types there. Move the file or set RunicApplicationFrontendGeneratedDirectory to a dedicated directory.");
         var expectedCsharp = csharpOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[2], output.Path)))
             .ToHashSet(StringComparer.Ordinal);
         var expectedTypescript = typescriptOutputs.Select(output => Path.GetFullPath(Path.Combine(positional[3], output.Path)))
@@ -1449,7 +1449,7 @@ static void WriteIfChanged(string path, string content)
 
 /// <summary>
 /// Diagnostic IDs. Each one has an entry in docs/diagnostics.md, which every
-/// report links to at the release tag, and a row in the Runic.Application README.
+/// report links to at the release tag, and a row in the Runic.Application.Views README.
 /// </summary>
 static class BridgeDiagnosticCodes
 {

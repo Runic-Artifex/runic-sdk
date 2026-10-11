@@ -12,7 +12,7 @@ public interface IRunicReactiveSchedulerProvider
 {
     /// <summary>Returns a scheduler that runs work on <paramref name="context"/>.</summary>
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Naming", "CA1716:Identifiers should not match keywords",
-        Justification = "Published member name shared with Runic.Application.ReactiveUI.")]
+        Justification = "Published member name shared with Runic.Application.Views.ReactiveUI.")]
     IScheduler For(IRunicModelContext context);
 }
 

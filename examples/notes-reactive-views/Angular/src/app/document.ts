@@ -5,7 +5,7 @@ import { injectView } from "../../../../../packages/web/angular/src/inject-view"
 import { EditorComponent, MirrorEditorComponent } from "./editor";
 import { CompactComponent } from "./compact";
 import { PreviewComponent } from "./preview";
-import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
+import { ViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
 
 const paneViews = { editor: EditorComponent, preview: PreviewComponent } satisfies ViewRegistry<DocumentState["currentPane"]>;
 const mirrorViews = { ...paneViews, editor: MirrorEditorComponent } satisfies ViewRegistry<DocumentState["currentPane"]>;
@@ -13,7 +13,7 @@ const compactViews = { editorCompact: CompactComponent } satisfies ViewRegistry<
 
 @Component({
   selector: "notes-document",
-  imports: [RunicViewOutlet],
+  imports: [ViewOutlet],
   template: `
     @if (document.state(); as state) {
       <h1>Document</h1>

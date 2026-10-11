@@ -100,7 +100,7 @@ public static class ReactiveNavigation
     /// A rejected, superseded or failed Back is an outcome, not an exception, so <c>ThrownExceptions</c>
     /// reports only defects and cancellation. Subscribe to the command's <c>ThrownExceptions</c>; without a
     /// subscriber ReactiveUI routes them to its default exception handler. Apps that use Runic Views
-    /// can use <c>RunicReactiveExceptions.ObserveBridgeExceptions</c> from <c>Runic.Application.ReactiveUI</c>.
+    /// can use <c>RunicReactiveExceptions.ObserveBridgeExceptions</c> from <c>Runic.Application.Views.ReactiveUI</c>.
     /// Code that needs the full <see cref="NavigationResult{TContent}"/>, such as a failure's exception, awaits
     /// <see cref="NavigationRegion{TContent}.BackAsync"/> in its own command.
     /// Overlapping executions to the same destination share one Back and confirmation. Cancelling one execution
@@ -112,7 +112,7 @@ public static class ReactiveNavigation
     /// <param name="outputScheduler">
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's
     /// main-thread scheduler, as any <c>ReactiveCommand</c> uses: in a Runic Views app,
-    /// <c>AddRunicReactiveModelContext</c> from <c>Runic.Application.ReactiveUI</c> makes that the model context of
+    /// <c>AddRunicReactiveModelContext</c> from <c>Runic.Application.Views.ReactiveUI</c> makes that the model context of
     /// the turn that executes the command, and in a WPF app it is the dispatcher.
     /// </param>
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateBackCommand<TContent>(

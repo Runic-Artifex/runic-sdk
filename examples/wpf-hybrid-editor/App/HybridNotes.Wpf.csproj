@@ -11,15 +11,15 @@
     <NoWarn>$(NoWarn);RUNICNAV001;RUNICWPF001</NoWarn>
     <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
     <!-- The web View is declared and generated in the model project. -->
-    <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
+    <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Model/HybridNotes.Model.csproj" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj" />
-    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Wpf/Runic.Application.Wpf.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj" />
     <InternalsVisibleTo Include="HybridNotes.WindowsSmoke" />
   </ItemGroup>
-  <Import Project="../../../packages/dotnet/Runic.Application.Desktop/build/Runic.Application.Desktop.targets" />
+  <Import Project="../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
   <!-- Package consumers receive the Views targets through buildTransitive.
        They copy the model project's built frontend to www/. -->
   <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />

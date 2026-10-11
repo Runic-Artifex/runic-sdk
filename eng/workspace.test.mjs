@@ -56,7 +56,7 @@ test("the WPF navigation consumer builds everywhere and runs on Windows", () => 
   }
 });
 test("the embedded WPF View consumer builds everywhere and runs on Windows", () => {
-  const packageEntry = workspace.nuget.find(entry => entry.name === "Runic.Application.Wpf");
+  const packageEntry = workspace.nuget.find(entry => entry.name === "Runic.Application.Views.Wpf");
   for (const platform of ["linux", "win32"]) {
     assert.deepEqual(packageConsumerStrategy(packageEntry, platform), {
       targetFramework: "net10.0-windows",
@@ -189,8 +189,8 @@ test("package layouts describe shipped NuGet packages", () => {
   const shipped = new Set(workspace.nuget.map(p => p.name));
   for (const name of Object.keys(packageLayouts)) assert.ok(shipped.has(name), name);
   assert.ok(packageLayouts["Runic.Navigation"].files.includes("lib/net10.0/Runic.Navigation.dll"));
-  assert.ok(packageLayouts["Runic.Application"].includes.includes("tools/net10.0/Runic.Navigation.dll"));
-  assert.deepEqual(packageLayouts["Runic.Application"].exactDependencies, ["Runic.Navigation"]);
+  assert.ok(packageLayouts["Runic.Application.Views"].includes.includes("tools/net10.0/Runic.Navigation.dll"));
+  assert.deepEqual(packageLayouts["Runic.Application.Views"].exactDependencies, ["Runic.Navigation"]);
 });
 
 // SemVer 2 precedence: release > prerelease; prerelease identifiers compare numerically or by text.
@@ -239,12 +239,12 @@ test("validation baseline opt-outs are only on packages newer than the baseline"
   }
 });
 
-test("the ReactiveUI navigation adapters ship without Runic.Application", () => {
+test("the ReactiveUI navigation adapters ship without Runic.Application.Views", () => {
   for (const [name, reactive] of [["Runic.Navigation.ReactiveUI", false], ["Runic.Navigation.ReactiveUI.Reactive", true]]) {
     const layout = packageLayouts[name];
     assert.ok(layout.files.includes(`lib/net10.0/${name}.dll`), name);
     assert.ok(layout.requires.includes("Runic.Navigation"), name);
-    assert.ok(layout.forbidden.some(pattern => pattern.test("Runic.Application")), name);
+    assert.ok(layout.forbidden.some(pattern => pattern.test("Runic.Application.Views")), name);
     assert.ok(layout.requires.includes(reactive ? "ReactiveUI.Reactive" : "ReactiveUI"), name);
     const project = readFileSync(resolve(root, `packages/dotnet/${name}/${name}.csproj`), "utf8");
     assert.doesNotMatch(project, /Runic\.Application/, name);

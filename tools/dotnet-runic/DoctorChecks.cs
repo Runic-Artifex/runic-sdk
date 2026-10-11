@@ -222,7 +222,7 @@ internal static class DoctorChecks
     {
         if (!project.IsViewsWindowProject)
         {
-            checks.Add(Fail("views-window", "The project does not opt into Runic Views Window.", "Set RunicViewsWindowProject=true and reference Runic.Application.CsWebUi or Runic.Application.Desktop."));
+            checks.Add(Fail("views-window", "The project does not opt into Runic Views Window.", "Set RunicApplicationFrontendWindowProject=true and reference Runic.Application.Views.CsWebUi or Runic.Application.Views.Desktop."));
             return;
         }
         checks.Add(Pass("views-window", "The project uses the Runic Views Window model."));
@@ -333,7 +333,7 @@ internal static class DoctorChecks
                 string identity = library.Name[..separator];
                 string version = library.Name[(separator + 1)..];
                 string type = library.Value.TryGetProperty("type", out JsonElement typeNode) ? typeNode.GetString() ?? string.Empty : string.Empty;
-                if (identity is "Runic.Application.CsWebUi" or "Runic.Application.Desktop") hasViewsHost = true;
+                if (identity is "Runic.Application.Views.CsWebUi" or "Runic.Application.Views.Desktop") hasViewsHost = true;
                 if (Authority.NuGetPackages.TryGetValue(identity, out CompatibilityPackage? expected))
                 {
                     selected++;
@@ -342,7 +342,7 @@ internal static class DoctorChecks
                 else if (type == "package" && IsRunicIdentity(identity) && !IsIndependentlyReleasedNuGetIdentity(identity))
                     mismatches.Add($"{identity} {version} (not selected by {Authority.Id})");
             }
-            if (!hasViewsHost) mismatches.Add("a Runic Views host package (Runic.Application.CsWebUi or Runic.Application.Desktop) is missing");
+            if (!hasViewsHost) mismatches.Add("a Runic Views host package (Runic.Application.Views.CsWebUi or Runic.Application.Views.Desktop) is missing");
         }
         catch (JsonException error)
         {
@@ -396,7 +396,7 @@ internal static class DoctorChecks
     /// the project uses Runic.Platform.Linux, whose GTK 3 portal parent loads libgtk-3 into the GTK 4 process.
     /// </summary>
     /// <remarks>
-    /// Runic.Application.Desktop brings every platform provider and selects the GTK 4 one at run time, so with it
+    /// Runic.Application.Views.Desktop brings every platform provider and selects the GTK 4 one at run time, so with it
     /// only a direct Runic.Platform.Linux reference, which means the application calls LinuxPlatformProvider itself,
     /// is a conflict. With --rid the target-presentation check reports the native libraries instead.
     /// </remarks>
@@ -481,7 +481,7 @@ internal static class DoctorChecks
     internal const string PortalServiceFile = "dbus-1/services/org.freedesktop.portal.Desktop.service";
 
     /// <summary>
-    /// Names the provider that Runic.Application.Desktop's PlatformServices selects for this machine, and on Linux
+    /// Names the provider that Runic.Application.Views.Desktop's PlatformServices selects for this machine, and on Linux
     /// checks that the session can reach xdg-desktop-portal, which serves the file dialogs and file handoff.
     /// CS-WebUI windows have no native owner, so their platform services report that they are unavailable.
     /// </summary>

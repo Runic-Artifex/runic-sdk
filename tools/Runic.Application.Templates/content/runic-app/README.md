@@ -24,8 +24,8 @@ versions. It works before the first restore.
 `dotnet build` and `dotnet run` also work without the tool. The first build
 installs the frontend packages with __PACKAGE_MANAGER_NAME__, and later builds
 install them again when `package.json` or the lock file changes; set
-`RunicBridgeInstallFrontend` to `false` to install them yourself. These
-commands build the production frontend instead of starting a development server.
+`RunicApplicationFrontendInstallEnabled` to `false` to install them yourself.
+These commands build the production frontend instead of starting a development server.
 
 ## What opens
 
@@ -87,14 +87,14 @@ xdg-desktop-portal on Linux. Before the window opens, and in a window without
 a native owner (an installed-browser fallback), they return
 `Unavailable(OwnerUnavailable)`. `dotnet runic doctor` names the provider and
 checks for the portal on Linux. The
-[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Desktop/README.md)
+[Runic.Application.Views.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views.Desktop/README.md)
 has an open, read and atomic-save example.
 <!--#else -->
 CS-WebUI windows have no native owner, so these services return
 `Unavailable(OwnerUnavailable)`. The same ViewModels get native dialogs and the
 clipboard on the default Runic Desktop host (create the project without
 `--host`); see the
-[Runic.Application.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Desktop/README.md).
+[Runic.Application.Views.Desktop guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views.Desktop/README.md).
 <!--#endif -->
 
 ## Project layout
@@ -110,7 +110,7 @@ clipboard on the default Runic Desktop host (create the project without
 | `WorkspaceServices.cs` | `AddWorkspace()` registers the ViewModels, the generated `AddRunicViews()` and the platform services. |
 | `Program.cs` | Opens the Window with the services from `AddWorkspace()`. |
 <!--#if (frontend == "angular") -->
-| `Frontend/src/app` | Components connect generated clients with `injectView()` and render the page that `WorkspaceViewModel.Main` selects with `RunicViewOutlet`, both from `@runic-artifex/angular`. |
+| `Frontend/src/app` | Components connect generated clients with `injectView()` and render the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/angular`. |
 <!--#elif (frontend == "svelte") -->
 | `Frontend/src/App.svelte`, `Frontend/src/pages` | Connect generated clients with `useView` and render the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/svelte/views`. |
 <!--#elif (frontend == "vue") -->
@@ -156,7 +156,7 @@ await Assert.That(counter.Snapshot().Read(vm => vm.Count)).IsEqualTo(1);
 ```
 
 TUnit runs the tests in parallel, and each test builds its own Window. The test
-project builds the app with `RunicBridgeBuildFrontend=false`, so tests do not
+project builds the app with `RunicApplicationFrontendBuildEnabled=false`, so tests do not
 install or build the frontend. `dotnet run --project RunicWindowApp.Tests` runs
 the tests too. See the
 [Runic.Application.Testing guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md)
@@ -194,7 +194,7 @@ scheduler deliver a command's results and `IsExecuting` on the model context
 of the Window that runs it. Create commands without a scheduler, as
 `WorkspaceViewModel.cs` does. Code that schedules from outside a model turn, for
 example after `ConfigureAwait(false)`, runs on ReactiveUI's default scheduler;
-Runic logs that once. For System.Reactive, use `Runic.Application.ReactiveUI.Reactive`
+Runic logs that once. For System.Reactive, use `Runic.Application.Views.ReactiveUI.Reactive`
 instead; see the
 [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md).
 <!--#endif -->
@@ -227,18 +227,18 @@ package manager, only the platform WebView or a browser described above.
 ## Project settings
 
 The Runic packages supply defaults, so the project file only opts in with
-`RunicViewsWindowProject`. Set these properties to change them:
+`RunicApplicationFrontendWindowProject`. Set these properties to change them:
 
 | Property | Default |
 | --- | --- |
-| `RunicBridgeFrontendDir` | `Frontend` |
-| `RunicBridgeTypescriptDir` | `Frontend/src/generated` |
-| `RunicBridgeFrontendPackageManager` | `packageManager` in `Frontend/package.json`, then the lock file |
-| `RunicBridgeFrontendBuildCommand` | `<package manager> run build` |
-| `RunicBridgeInstallFrontend` | `true`: install frontend packages during build when they are missing or `package.json` or the lock file changed |
-| `RunicBridgeBuildFrontend` | `true`; `dotnet runic dev` sets `false` while its development server runs |
+| `RunicApplicationFrontendDirectory` | `Frontend` |
+| `RunicApplicationFrontendGeneratedDirectory` | `Frontend/src/generated` |
+| `RunicApplicationFrontendPackageManager` | `packageManager` in `Frontend/package.json`, then the lock file |
+| `RunicApplicationFrontendBuildCommand` | `<package manager> run build` |
+| `RunicApplicationFrontendInstallEnabled` | `true`: install frontend packages during build when they are missing or `package.json` or the lock file changed |
+| `RunicApplicationFrontendBuildEnabled` | `true`; `dotnet runic dev` sets `false` while its development server runs |
 
-See the [Runic.Application package guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views/README.md)
+See the [Runic.Application.Views package guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/packages/dotnet/Runic.Application.Views/README.md)
 for every build property, and the
 [examples](https://github.com/Runic-Artifex/runic-sdk/tree/v__RUNIC_NUGET_VERSION__/examples)
 for nested Views, routing, and multiple windows.

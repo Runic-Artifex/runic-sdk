@@ -11,8 +11,8 @@ using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 #endif
 
 // A consumer of the packed navigation ReactiveUI adapter and nothing else from Runic: no
-// Runic.Application, generator or host (package-smoke.mjs checks the restored graph). Model-context
-// scheduling comes from Runic.Application.ReactiveUI, so this consumer uses ReactiveUI's default scheduler.
+// Runic.Application.Views, generator or host (package-smoke.mjs checks the restored graph). Model-context
+// scheduling comes from Runic.Application.Views.ReactiveUI, so this consumer uses ReactiveUI's default scheduler.
 await using var context = new RunicModelContext();
 await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
 var region = navigator.CreateRegion<string>(new object(), NavigationTarget.Borrow("home"));

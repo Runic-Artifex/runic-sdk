@@ -22,7 +22,7 @@ While serving, the plugin adds `virtual:runic/client` to `index.html`. It
 forwards `@runic-artifex/views` failures to the timeline: the failed route, the
 error kind and, for errors, a failure with the exception type, message and
 stack. .NET includes that detail only in development (see
-`BridgeDiagnostics` in Runic.Application). The **Last failure** card of the
+`BridgeDiagnostics` in Runic.Application.Views). The **Last failure** card of the
 dock shows the most recent one. A failure keeps file paths, so that a stack is
 useful, but is bounded and has credential values redacted. Failures stay in
 the dock: `/__runic/state` and the copied diagnostic state leave them out, and

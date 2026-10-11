@@ -9,7 +9,7 @@
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>Headless Window and View test host for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <RunicBridgeBuildEnabled>false</RunicBridgeBuildEnabled>
+    <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>
     <!-- A test-only package: it reflects over the application's ViewModels in an
          untrimmed test process. -->
     <RunicTrimmable>false</RunicTrimmable>

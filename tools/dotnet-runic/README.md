@@ -13,23 +13,25 @@ Both commands find the single `.csproj` in the current directory; pass
 selects the build configuration. `dotnet runic <command> --help` describes
 every option.
 
-`dev` requires `RunicViewsWindowProject=true` and a CS-WebUI
-(`Runic.Application.CsWebUi`) or Runic Desktop (`Runic.Application.Desktop`)
+`dev` requires `RunicApplicationFrontendWindowProject=true` and a CS-WebUI
+(`Runic.Application.Views.CsWebUi`) or Runic Desktop (`Runic.Application.Views.Desktop`)
 host. It restores the .NET and JavaScript dependencies, builds the project, and
 runs the native Window alongside the frontend's Vite or Angular development
 server. While the development server runs, the build skips the production
 frontend build and leaves the development document in `www/`
-(`RunicBridgeBuildFrontend=false`, `RunicBridgeCopyFrontend=false`); the Views
+(`RunicApplicationFrontendBuildEnabled=false`, `RunicApplicationFrontendCopyEnabled=false`); the Views
 MSBuild targets still generate the typed TypeScript clients. `dotnet watch`
 restarts the Window after C# edits. `--no-restore`, `--no-frontend-watch`,
 `--no-dotnet-watch`, and `--dry-run` select parts of that loop. `dev` installs
-the frontend packages itself and passes `RunicBridgeInstallFrontend=false`, so
-the build does not install them a second time; with `--no-restore` nothing
+the frontend packages itself and passes
+`RunicApplicationFrontendInstallEnabled=false`, so the build does not install
+them a second time; with `--no-restore` nothing
 installs them, and a frontend that declares dependencies but has no
 `node_modules` stops with `RAPPDEV1008`. When `dotnet watch` restarts or `dev`
 stops the Window, the application's expected exit code after SIGTERM or Ctrl+C
-(143, 130) is not reported; any other exit code still is. Application arguments
-after `--` are passed to the Window process. When a restore, install or build step fails, the error
+(143, 130) is not reported; any other exit code still is. Application
+arguments after `--` are passed to the Window process. When a restore, install
+or build step fails, the error
 names the program and its working directory and then points to `doctor`.
 With Vite, `dev` prepares a development document for every HTML page that
 `vite build` emits, so a second window with its own page (for example
@@ -69,13 +71,13 @@ Fedora, Arch, openSUSE and NixOS, read from `/etc/os-release`, and the library
 file names on other distributions. The check also warns when the project
 restores `Runic.Platform.Linux`: its GTK 3 portal parent loads `libgtk-3`, and a
 GTK 4 process must not load GTK 3. With `--rid`, `target-presentation` reports
-the native libraries instead. A project on `Runic.Application.Desktop` gets the
+the native libraries instead. A project on `Runic.Application.Views.Desktop` gets the
 platform providers from that package, and `services.AddRunicPlatformServices()`
 selects the GTK 4 one. For such a project the check lists only the native
 libraries, and warns about `Runic.Platform.Linux` only when the project
 references it directly.
 
-A project on `Runic.Application.Desktop` or `Runic.Application.CsWebUi` also
+A project on `Runic.Application.Views.Desktop` or `Runic.Application.Views.CsWebUi` also
 gets a `platform-services` check. It names the provider that
 `AddRunicPlatformServices()` selects on this machine. On Linux, it warns when
 there is no D-Bus session bus or no installed `xdg-desktop-portal` (the
@@ -198,7 +200,7 @@ none of them; the defaults follow the frontend directory.
 
 | Property | Default |
 | --- | --- |
-| `RunicBridgeFrontendDir` | `Frontend` |
+| `RunicApplicationFrontendDirectory` | `Frontend` |
 | `RunicApplicationFrontendPackageDirectory` | the frontend directory |
 | `RunicApplicationFrontendOutputDirectory` | `<frontend>/dist` |
 | `RunicApplicationFrontendWebRoot` | `www`, relative to the build output |

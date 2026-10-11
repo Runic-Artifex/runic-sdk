@@ -27,6 +27,7 @@ internal static class Program
             ("commands end input and tolerate invalid UTF-8", CommandsEndInputAndTolerateInvalidUtf8),
             ("package managers use locked, portable commands", PackageManagersUseLockedCommands),
             ("MSBuild evaluation requires the Views Window opt-in", EvaluationRequiresViewsWindow),
+            ("dev reads the 0.7.0-preview.6 Window and frontend property names", EvaluationReadsRenamedProperties),
             ("Views Window watch restarts the native process", ViewsWindowWatchRestartsNativeProcess),
             ("Vite and Angular bind their development servers to loopback", DevelopmentServersBindLoopback),
             ("Vite readiness reports useful failures and honors cancellation", ViteReadinessIsActionable),
@@ -172,8 +173,30 @@ internal static class Program
     {
         IReadOnlyList<string> arguments = DevProjectConfiguration.CreateEvaluationArguments("App.csproj", "Debug");
         string properties = string.Join(" ", arguments);
-        Contains(properties, "RunicViewsWindowProject");
-        Contains(properties, "RunicBridgeFrontendDir");
+        Contains(properties, "RunicApplicationFrontendWindowProject");
+        Contains(properties, "RunicApplicationFrontendDirectory");
+    }
+
+    private static void EvaluationReadsRenamedProperties()
+    {
+        // RUNICBRIDGE017 keeps the old names working for one preview; dev reads them too.
+        using var workspace = new TestWorkspace();
+        string project = workspace.Write("App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RunicViewsWindowProject>true</RunicViewsWindowProject>
+                <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/Client</RunicBridgeFrontendDir>
+              </PropertyGroup>
+            </Project>
+            """);
+        workspace.Write("Client/package.json", """{"packageManager":"npm@10.0.0"}""");
+        DevProjectConfiguration configuration = DevProjectConfiguration.EvaluateAsync(
+            "dotnet", project, "Debug", CancellationToken.None).GetAwaiter().GetResult();
+        True(configuration.IsViewsWindowProject, "RunicViewsWindowProject still opts into the Window model.");
+        // A temporary directory can resolve through a symbolic link (macOS /var), so compare the folder.
+        Equal("Client", Path.GetFileName(configuration.WorkspaceRoot));
     }
 
     private static void ViewsWindowWatchRestartsNativeProcess()
@@ -457,7 +480,7 @@ internal static class Program
         string frontend = workspace.Write("Frontend/package.json", "{}");
         string frontendDirectory = Path.GetDirectoryName(frontend)!;
         CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
-        CompatibilityPackage nuget = authority.NuGetPackages["Runic.Application.CsWebUi"];
+        CompatibilityPackage nuget = authority.NuGetPackages["Runic.Application.Views.CsWebUi"];
         CompatibilityPackage npm = authority.NpmPackages["@runic-artifex/svelte"];
         Write(Path.Combine(frontendDirectory, "package.json"), JsonSerializer.Serialize(new
         {
@@ -530,8 +553,8 @@ internal static class Program
             Path.Combine(frontendDirectory, "vite.config.ts"), true,
             hostPackage switch
             {
-                "Runic.Application.Desktop" => RunicViewsHost.Desktop,
-                "Runic.Application.CsWebUi" => RunicViewsHost.CsWebUi,
+                "Runic.Application.Views.Desktop" => RunicViewsHost.Desktop,
+                "Runic.Application.Views.CsWebUi" => RunicViewsHost.CsWebUi,
                 _ => RunicViewsHost.Unknown,
             });
     }
@@ -540,7 +563,7 @@ internal static class Program
     {
         using (var workspace = new TestWorkspace())
         {
-            DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+            DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
             DoctorReport report = DoctorChecks.InspectAsync(
                 desktop, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
                 .GetAwaiter().GetResult();
@@ -554,7 +577,7 @@ internal static class Program
 
         using (var workspace = new TestWorkspace())
         {
-            DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.CsWebUi", out var authority);
+            DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.Views.CsWebUi", out var authority);
             DoctorCheck browser = DoctorChecks.InspectAsync(
                 csWebUi, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
                 .GetAwaiter().GetResult().Checks.Single(check => check.Name == "browser");
@@ -571,10 +594,10 @@ internal static class Program
             return DoctorProjectConfiguration.DetectHost(document.RootElement);
         }
 
-        Equal(RunicViewsHost.Desktop, Detect("""{"Properties":{},"Items":{"PackageReference":[{"Identity":"Runic.Application.Desktop"}]}}"""));
-        Equal(RunicViewsHost.CsWebUi, Detect("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.CsWebUi"}]}}"""));
+        Equal(RunicViewsHost.Desktop, Detect("""{"Properties":{},"Items":{"PackageReference":[{"Identity":"Runic.Application.Views.Desktop"}]}}"""));
+        Equal(RunicViewsHost.CsWebUi, Detect("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Views.CsWebUi"}]}}"""));
         Equal(RunicViewsHost.CsWebUi, Detect("""{"Items":{"ProjectReference":[{"Identity":"..\\..\\packages\\Runic.Application.Views.CsWebUi\\Runic.Application.Views.CsWebUi.csproj"}]}}"""));
-        Equal(RunicViewsHost.Desktop, Detect("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Application.Desktop/Runic.Application.Desktop.csproj"}]}}"""));
+        Equal(RunicViewsHost.Desktop, Detect("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj"}]}}"""));
         Equal(RunicViewsHost.Unknown, Detect("""{"Properties":{}}"""));
     }
 
@@ -628,17 +651,17 @@ internal static class Program
         var configuration = CreateConfiguration(workspace, "vite");
         var noRestore = new DevOptions(null, "Debug", false, true, true, false, []);
         string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, noRestore));
-        Contains(build, "-property:RunicBridgeInstallFrontend=false");
+        Contains(build, "-property:RunicApplicationFrontendInstallEnabled=false");
         Contains(build, "--no-restore");
         Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, noRestore)),
-            "--property:RunicBridgeInstallFrontend=false");
+            "--property:RunicApplicationFrontendInstallEnabled=false");
         Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, noRestore)),
-            "-property:RunicBridgeInstallFrontend=false");
+            "-property:RunicApplicationFrontendInstallEnabled=false");
 
         // With a restore, dev has installed the packages itself before the build.
         var restore = new DevOptions(null, "Debug", true, true, true, false, []);
         Contains(string.Join(" ", DevApplication.CreateBuildArguments(configuration, restore)),
-            "-property:RunicBridgeInstallFrontend=false");
+            "-property:RunicApplicationFrontendInstallEnabled=false");
     }
 
     private static void ExpectedTerminationIsNotReported()
@@ -683,10 +706,10 @@ internal static class Program
               <PropertyGroup>
                 <OutputType>Exe</OutputType>
                 <TargetFramework>net10.0</TargetFramework>
-                <RunicViewsWindowProject>true</RunicViewsWindowProject>
+                <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
               </PropertyGroup>
               <ItemGroup>
-                <PackageReference Include="Runic.Application.Desktop" Version="0.6.0-preview.1" />
+                <PackageReference Include="Runic.Application.Views.Desktop" Version="0.6.0-preview.1" />
               </ItemGroup>
             </Project>
             """);
@@ -945,7 +968,7 @@ internal static class Program
     private static void DoctorAcceptsDesktopHost()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration project = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorProjectConfiguration project = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
         DoctorReport report = DoctorChecks.InspectAsync(
             project, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
             .GetAwaiter().GetResult();
@@ -980,16 +1003,16 @@ internal static class Program
         var configuration = CreateConfiguration(workspace, "vite");
         var watching = new DevOptions(null, "Debug", true, true, true, false, []);
         string build = string.Join(" ", DevApplication.CreateBuildArguments(configuration, watching));
-        Contains(build, "-property:RunicBridgeBuildFrontend=false");
-        Contains(build, "-property:RunicBridgeCopyFrontend=false");
+        Contains(build, "-property:RunicApplicationFrontendBuildEnabled=false");
+        Contains(build, "-property:RunicApplicationFrontendCopyEnabled=false");
         Contains(string.Join(" ", HostProcessController.CreateWatchArguments(configuration, watching)),
-            "--property:RunicBridgeBuildFrontend=false");
+            "--property:RunicApplicationFrontendBuildEnabled=false");
         Contains(string.Join(" ", HostProcessController.CreateRestartBuildArguments(configuration, watching)),
-            "-property:RunicBridgeCopyFrontend=false");
+            "-property:RunicApplicationFrontendCopyEnabled=false");
 
         var staticFrontend = new DevOptions(null, "Debug", true, false, true, false, []);
         DoesNotContain(string.Join(" ", DevApplication.CreateBuildArguments(configuration, staticFrontend)),
-            "RunicBridgeBuildFrontend");
+            "RunicApplicationFrontendBuildEnabled");
     }
 
     private sealed class FakeDoctorRuntime(CompatibilityToolchain toolchain) : IDoctorRuntime
@@ -1086,7 +1109,7 @@ internal static class Program
     private static void DoctorRidRejectsUnsupportedTargets()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
         var runtime = new FakeDoctorRuntime(authority.Toolchain);
         foreach (string rid in new[] { "android-arm64", "browser-wasm", "win-x86", "linux-arm", "ubuntu.22.04-x64", "win10-x64" })
         {
@@ -1112,7 +1135,7 @@ internal static class Program
     private static void DoctorRidFollowsSupportMatrix()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
         var runtime = new FakeDoctorRuntime(authority.Toolchain);
         SupportMatrix support = authority.Support;
         SequenceEqual(["desktop", "cswebui"], support.Hosts.Select(host => host.Id).ToArray());
@@ -1145,7 +1168,7 @@ internal static class Program
     private static void DoctorRidChecksLinuxAot()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
             with { PublishAot = true };
         var ready = new FakeDoctorRuntime(authority.Toolchain)
         {
@@ -1182,7 +1205,7 @@ internal static class Program
     private static void DoctorRidRefusesCrossOsAot()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
             with { PublishAot = true };
         var linux = new FakeDoctorRuntime(authority.Toolchain) { Executables = ["clang"] };
         foreach (string rid in new[] { "win-x64", "osx-arm64" })
@@ -1207,7 +1230,7 @@ internal static class Program
     private static void DoctorRidChecksFrameworkDependent()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
         var runtime = new FakeDoctorRuntime(authority.Toolchain);
         DoctorCheck dependent = Check(InspectTarget(desktop, "win-x64", runtime), "target-publish");
         Equal(DoctorStatus.Pass, dependent.Status);
@@ -1230,7 +1253,7 @@ internal static class Program
     private static void DoctorRidChecksGtk4()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
             with { UsesGtk4 = true };
         string[] gtk4 = ["libgtk-4.so.1", "libwebkitgtk-6.0.so.4"];
         DoctorCheck current = Check(InspectTarget(desktop, "linux-x64",
@@ -1248,7 +1271,7 @@ internal static class Program
         Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "linux-x64",
             new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"] }), "target-presentation").Status);
 
-        using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Desktop"},{"Identity":"Runic.Desktop.Gtk4"}]}}""");
+        using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Views.Desktop"},{"Identity":"Runic.Desktop.Gtk4"}]}}""");
         True(DoctorProjectConfiguration.References(evaluation.RootElement, DoctorProjectConfiguration.DesktopGtk4Package),
             "A Runic.Desktop.Gtk4 package reference selects the GTK 4 checks.");
     }
@@ -1307,10 +1330,10 @@ internal static class Program
         using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"}]}}""");
         SequenceEqual(["Runic.Platform.Linux.Gtk4"], DoctorProjectConfiguration.ReferenceIdentities(evaluation.RootElement));
 
-        // Runic.Application.Desktop brings the platform providers and selects the GTK 4 one, even before restore.
+        // Runic.Application.Views.Desktop brings the platform providers and selects the GTK 4 one, even before restore.
         using var hosted = new TestWorkspace();
         DoctorProjectConfiguration application = CreateDoctorProject(hosted, null, out _)
-            with { Host = RunicViewsHost.Desktop, UsesGtk4 = true, DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4"] };
+            with { Host = RunicViewsHost.Desktop, UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] };
         DoctorCheck libraries = Check(Inspect(application, new FakeDoctorRuntime(authority.Toolchain)), "gtk4-profile");
         Equal(DoctorStatus.Warning, libraries.Status);
         Contains(libraries.Message, "2 piece(s)");
@@ -1323,7 +1346,7 @@ internal static class Program
     private static void DoctorGtk4ProfileNamesDistributionPackages()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
             with { UsesGtk4 = true, DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal"] };
         DoctorCheck Inspect(string? osRelease, params string[] libraries)
         {
@@ -1383,7 +1406,7 @@ internal static class Program
     private static void DoctorGtk4ProfileRejectsGtk3Platform()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
             with { UsesGtk4 = true, DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux"] };
         var runtime = new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-4.so.1", "libwebkitgtk-6.0.so.4"] };
         DoctorCheck Inspect(DoctorProjectConfiguration project) =>
@@ -1414,20 +1437,20 @@ internal static class Program
         Write(desktop.ProjectAssetsFile, "{}");
         Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal"] }).Status);
 
-        // Runic.Application.Desktop restores Runic.Platform.Linux but never loads it in a GTK 4 process. Only a direct
+        // Runic.Application.Views.Desktop restores Runic.Platform.Linux but never loads it in a GTK 4 process. Only a direct
         // reference, for an application that calls LinuxPlatformProvider itself, still conflicts.
         Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
         {
             libraries = new Dictionary<string, object>
             {
-                ["Runic.Application.Desktop/1.0.0"] = new { type = "package" },
+                ["Runic.Application.Views.Desktop/1.0.0"] = new { type = "package" },
                 ["Runic.Platform.Linux/1.0.0"] = new { type = "package" },
                 ["Runic.Platform.Linux.Gtk4/1.0.0"] = new { type = "package" },
                 ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
             },
         }));
-        Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4"] }).Status);
-        DoctorCheck direct = Inspect(desktop with { DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4", "Runic.Platform.Linux"] });
+        Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] }).Status);
+        DoctorCheck direct = Inspect(desktop with { DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4", "Runic.Platform.Linux"] });
         Equal(DoctorStatus.Warning, direct.Status);
         Contains(direct.Message, "Runic.Platform.Linux is referenced directly");
         Contains(direct.Remediation ?? string.Empty, "remove Runic.Platform.Linux");
@@ -1438,7 +1461,7 @@ internal static class Program
     private static void DoctorReportsPlatformServicesProvider()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority);
         DoctorCheck Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
             Check(DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult(), "platform-services");
 
@@ -1471,7 +1494,7 @@ internal static class Program
         Equal(DoctorStatus.Pass, Inspect(desktop, custom).Status);
 
         using var webUi = new TestWorkspace();
-        DoctorCheck csWebUi = Inspect(CreateDoctorProject(webUi, "Runic.Application.CsWebUi", out _), new FakeDoctorRuntime(authority.Toolchain));
+        DoctorCheck csWebUi = Inspect(CreateDoctorProject(webUi, "Runic.Application.Views.CsWebUi", out _), new FakeDoctorRuntime(authority.Toolchain));
         Equal(DoctorStatus.Pass, csWebUi.Status);
         Contains(csWebUi.Message, "OwnerUnavailable");
         False(InspectTarget(desktop, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)).Checks.Any(static check => check.Name == "platform-services"),
@@ -1481,7 +1504,7 @@ internal static class Program
     private static void DoctorRidChecksWindows()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Views.Desktop", out var authority)
             with { PublishAot = true };
         DoctorHostPlatform windows = new("win", "x64", false, "10.0.26100");
         var bare = new FakeDoctorRuntime(authority.Toolchain) { Platform = windows };
@@ -1509,7 +1532,7 @@ internal static class Program
     private static void DoctorRidChecksCsWebUi()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.CsWebUi", out var authority);
+        DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.Views.CsWebUi", out var authority);
         DoctorCheck browser = Check(InspectTarget(csWebUi, "linux-x64",
             new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] }), "target-presentation");
         Equal(DoctorStatus.Pass, browser.Status);
@@ -1562,7 +1585,7 @@ internal static class Program
               <PropertyGroup>
                 <OutputType>Exe</OutputType>
                 <TargetFramework>net10.0</TargetFramework>
-                <RunicViewsWindowProject>true</RunicViewsWindowProject>
+                <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
               </PropertyGroup>
               <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
                 <PublishAot>true</PublishAot>
@@ -1611,7 +1634,7 @@ internal static class Program
     private static void CompatibilityAuthorityIncludesViews()
     {
         CompatibilitySetAuthority authority = CompatibilitySetAuthority.Current;
-        True(authority.NuGetPackages.ContainsKey("Runic.Application.CsWebUi"),
+        True(authority.NuGetPackages.ContainsKey("Runic.Application.Views.CsWebUi"),
             "The certified NuGet set must include the Views Window host package.");
         True(authority.NpmPackages.ContainsKey("@runic-artifex/svelte"),
             "The certified npm set must include the Svelte Views outlet.");

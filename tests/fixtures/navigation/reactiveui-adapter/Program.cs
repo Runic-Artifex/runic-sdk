@@ -1,5 +1,5 @@
 // Behavioral conformance of the Runic.Navigation ReactiveUI adapter, once per flavor. It references
-// only the navigation adapter package, so it also proves the adapter needs no Runic.Application.
+// only the navigation adapter package, so it also proves the adapter needs no Runic.Application.Views.
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using Runic.Navigation;
@@ -314,7 +314,7 @@ static class ReactiveCommandExecution
     }
 }
 
-// A scheduler that posts to a model context. Runic.Application.ReactiveUI provides the production one; the
+// A scheduler that posts to a model context. Runic.Application.Views.ReactiveUI provides the production one; the
 // navigation adapter takes any scheduler, so this fixture keeps to Runic.Navigation.
 static class ContextScheduler
 {

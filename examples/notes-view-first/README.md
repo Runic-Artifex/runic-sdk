@@ -131,7 +131,7 @@ helper's `failure`, Svelte from `useCommand` too, and the Effect editor from the
 
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesViewFirst.csproj` with a
-`Runic.Application.CsWebUi` package reference, as described in the
+`Runic.Application.Views.CsWebUi` package reference, as described in the
 [First Window README](../first-window/README.md#copy-it-into-your-own-project).
 
 ## Tests

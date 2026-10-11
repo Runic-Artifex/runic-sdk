@@ -9,7 +9,7 @@ internal static class NavigationTelemetry
     internal static string ErrorType(Exception error) => error.GetType().FullName ?? error.GetType().Name;
 }
 
-// Model-context event IDs 1030-1033. Runic.Application logs its own 1033 when a
+// Model-context event IDs 1030-1033. Runic.Application.Views logs its own 1033 when a
 // window session's context shutdown fails in the background.
 internal static partial class ModelContextLog
 {

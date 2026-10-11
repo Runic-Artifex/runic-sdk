@@ -1,7 +1,7 @@
 // Proves that the packed Runic.Navigation.ReactiveUI and Runic.Navigation.ReactiveUI.Reactive
-// install and run without Runic.Application (W240-001 §9, §11). For each flavor it checks the
+// install and run without Runic.Application.Views (W240-001 §9, §11). For each flavor it checks the
 // package layout, restores the consumer in a temporary copy from the packed feed, asserts that
-// the restored graph holds Runic.Navigation and the adapter and no Runic.Application* package,
+// the restored graph holds Runic.Navigation and the adapter and no Runic.Application.Views* package,
 // that NuGet imports no Runic build assets, and runs the scenario.
 // Usage: bun tests/fixtures/navigation/reactiveui-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
@@ -37,7 +37,7 @@ assert.ok(dotnet, "dotnet is not on PATH.");
 for (const flavor of flavors) {
   const nupkg = join(feed, `${flavor.id}.${version}.nupkg`);
   assert.ok(existsSync(nupkg), `Pack ${flavor.id} ${version} into ${feed} first.`);
-  // 1. Layout, and a dependency list without any Runic.Application package.
+  // 1. Layout, and a dependency list without any Runic.Application.Views package.
   verifyPackageLayout(nupkg, flavor.id, version);
   const dependencies = nupkgDependencies(nupkg);
   assert.ok(!dependencies.some(id => /^runic\.application/i.test(id)), `${flavor.id} depends on ${dependencies.join(", ")}`);

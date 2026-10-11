@@ -29,8 +29,8 @@ internal sealed record DoctorProjectConfiguration(
     bool ViteDevServerEnabled,
     RunicViewsHost Host = RunicViewsHost.Unknown)
 {
-    internal const string CsWebUiPackage = "Runic.Application.CsWebUi";
-    internal const string DesktopPackage = "Runic.Application.Desktop";
+    internal const string CsWebUiPackage = "Runic.Application.Views.CsWebUi";
+    internal const string DesktopPackage = "Runic.Application.Views.Desktop";
     internal const string DesktopGtk4Package = "Runic.Desktop.Gtk4";
 
     /// <summary>The semicolon-separated RuntimeIdentifiers property.</summary>
@@ -114,7 +114,7 @@ internal sealed record DoctorProjectConfiguration(
     /// </summary>
     internal static RunicViewsHost DetectHost(JsonElement evaluation)
     {
-        bool csWebUi = References(evaluation, CsWebUiPackage) || References(evaluation, "Runic.Application.Views.CsWebUi");
+        bool csWebUi = References(evaluation, CsWebUiPackage);
         bool desktop = References(evaluation, DesktopPackage);
         return csWebUi ? RunicViewsHost.CsWebUi : desktop ? RunicViewsHost.Desktop : RunicViewsHost.Unknown;
     }

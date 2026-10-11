@@ -6,14 +6,14 @@ import { HomeComponent } from "./home";
 import { DocumentComponent } from "./document";
 import { PinnedNoteComponent } from "./pinned-note";
 import { PinnedTaskComponent } from "./pinned-task";
-import { RunicViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
+import { ViewOutlet, type ViewRegistry } from "../../../../../packages/web/angular/src/view-outlet";
 
 const mainViews = { home: HomeComponent, document: DocumentComponent } satisfies ViewRegistry<ShellState["main"]>;
 const pinnedViews = { pinnedNote: PinnedNoteComponent, pinnedTask: PinnedTaskComponent } satisfies ViewRegistry<ShellState["pinned"][number]>;
 
 @Component({
   selector: "notes-shell",
-  imports: [RunicViewOutlet],
+  imports: [ViewOutlet],
   template: `
     <header><strong>Reactive Notes</strong><span>Angular · two View contracts</span></header>
     @if (state(); as current) {

@@ -16,17 +16,17 @@ Each entry starts with what the ID means. **Fix** says what to change.
 
 ## Bridge code generator
 
-`Runic.Application` generates the Bridge and the TypeScript clients after the
+`Runic.Application.Views` generates the Bridge and the TypeScript clients after the
 model assembly compiles. It reports every ViewModel's first problem in one
 build. An error names the type and member, points at its source line when the
 assembly has a portable PDB (the default), and ends with the link to its entry.
 The [generator section](../packages/dotnet/Runic.Application.Views/README.md#generator-diagnostics)
-of the Runic.Application guide has the same table.
+of the Runic.Application.Views guide has the same table.
 
 ### RUNICBRIDGE001
 
 The generator invocation or build configuration is invalid, or the generator
-failed internally. An example is a malformed `RunicBridgeCompositionType`.
+failed internally. An example is a malformed `RunicApplicationFrontendCompositionType`.
 
 **Fix:** correct the build property. Report an internal error with the
 ViewModel that triggers it.
@@ -146,31 +146,32 @@ there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`.
 
 ### RUNICBRIDGE014
 
-The `Runic.Application` build targets report this error, not the generator. A
-project declares Runic Views and builds its frontend, but `RunicBridgeFrontendDir`
+The `Runic.Application.Views` build targets report this error, not the generator. A
+project declares Runic Views and builds its frontend, but `RunicApplicationFrontendDirectory`
 does not exist or, with the default frontend build command, has no
 `package.json`. The generated TypeScript client would have no package to build
 in.
 
-**Fix:** create the frontend in that directory, set `RunicBridgeFrontendDir` to
-your frontend package directory, or set `RunicBridgeBuildFrontend=false` when
-another tool builds the frontend.
+**Fix:** create the frontend in that directory, set
+`RunicApplicationFrontendDirectory` to your frontend package directory, or set
+`RunicApplicationFrontendBuildEnabled=false` when another tool builds the frontend.
 
 ### RUNICBRIDGE015
 
-A warning from the `Runic.Application` build targets. A project declares a Runic
-Window or View, but Bridge generation is off by default because it references no
-host adapter (`Runic.Application.Desktop`, `Runic.Application.CsWebUi` or
-`Runic.Application.Wpf`) and does not reference `Runic.Application` directly. No
-bridge, `AddRunicViews()` or TypeScript client is generated for it.
+A warning from the `Runic.Application.Views` build targets. A project declares a
+Runic Window or View, but Bridge generation is off by default because it
+references no host adapter (`Runic.Application.Views.Desktop`,
+`Runic.Application.Views.CsWebUi` or `Runic.Application.Views.Wpf`) and does not
+reference `Runic.Application.Views` directly. No bridge, `AddRunicViews()` or
+TypeScript client is generated for it.
 
-**Fix:** set `RunicBridgeBuildEnabled=true` to generate in that project, or
-`RunicBridgeBuildEnabled=false` when another project generates its Views, which
-also silences the warning.
+**Fix:** set `RunicApplicationFrontendGenerationEnabled=true` to generate in that
+project, or `RunicApplicationFrontendGenerationEnabled=false` when another project
+generates its Views, which also silences the warning.
 
 ### RUNICBRIDGE016
 
-The `Runic.Application` build targets report this error, not the generator. The
+The `Runic.Application.Views` build targets report this error, not the generator. The
 frontend install or build command failed without reporting an error in the
 canonical `file(line,column): error CODE: text` form (a Vite or package-manager
 error, for example), or the install created no `node_modules` for declared
@@ -178,6 +179,23 @@ dependencies. The command's own output is printed above the error.
 
 **Fix:** fix the problem the command reports, or run `dotnet runic doctor` to
 check the package manager and lock file.
+
+### RUNICBRIDGE017
+
+A warning from the `Runic.Application.Views` build targets. The project, one of
+its imports (such as `Directory.Build.props`) or the command line sets a build
+property or item by its name from 0.7.0-preview.6 or earlier. Since
+0.7.0-preview.7 every property of these targets starts with
+`RunicApplicationFrontend`. The old name still applies in this preview, and wins
+when both are set; the next preview removes it. The message names the new
+property. The
+[renamed-names table](../packages/dotnet/Runic.Application.Views/README.md#moved-and-renamed-since-070-preview6)
+lists every rename.
+
+**Fix:** rename the property or item, for example
+`<RunicBridgeFrontendDir>` to `<RunicApplicationFrontendDirectory>`. A condition
+on `RunicBridgeBootstrap` reports nothing, but should read
+`RunicApplicationFrontendBootstrap` before the next preview.
 
 ## dotnet runic
 
@@ -257,7 +275,7 @@ the package manager.
 
 The project is not a Runic Views Window project that `dev` can run, or its
 frontend configuration is invalid. Examples: the project does not set
-`RunicViewsWindowProject=true`, has no `RunicBridgeFrontendDir` with a
+`RunicApplicationFrontendWindowProject=true`, has no `RunicApplicationFrontendDirectory` with a
 `package.json`, names an unsupported package manager or development server, or
 a Vite input or development document lies outside the web root.
 

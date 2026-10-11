@@ -1,5 +1,5 @@
 import { Component, computed } from "@angular/core";
-import { injectCommand, injectView, RunicViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
+import { injectCommand, injectView, ViewOutlet, type ViewRegistry } from "@runic-artifex/angular";
 import { connectWorkspace, type WorkspaceState } from "../generated/workspace.js";
 import { CounterComponent } from "./counter";
 import { WelcomeComponent } from "./welcome";
@@ -8,7 +8,7 @@ const pages = { counter: CounterComponent, welcome: WelcomeComponent } satisfies
 
 @Component({
   selector: "runic-app",
-  imports: [RunicViewOutlet],
+  imports: [ViewOutlet],
   templateUrl: "./app.html"
 })
 export class AppComponent {

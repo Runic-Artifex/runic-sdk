@@ -281,8 +281,8 @@ test('navigation changes run the Windows WPF lane', () => {
 
 test('hybrid WPF consumers run when their host or shared runtime changes', () => {
   for (const file of [
-    'packages/dotnet/Runic.Application.Wpf/RunicWebView.cs',
-    'tests/dotnet/Runic.Application.Wpf.Tests/Program.cs',
+    'packages/dotnet/Runic.Application.Views.Wpf/RunicWebView.cs',
+    'tests/dotnet/Runic.Application.Views.Wpf.Tests/Program.cs',
     'examples/wpf-hybrid-editor/Model/EditorViewModel.cs',
     'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
     'packages/dotnet/Runic.Application.Views/WindowContentSession.cs',
@@ -297,12 +297,12 @@ test('the WPF test runner is Windows-only and outside the Linux managed groups',
 });
 
 test('the hybrid host has portable session checks and a Windows native runner', () => {
-  const portable = 'tests/dotnet/Runic.Application.Wpf.Tests/Runic.Application.Wpf.Tests.csproj';
-  const windows = 'tests/dotnet/Runic.Application.Wpf.Windows.Tests/Runic.Application.Wpf.Windows.Tests.csproj';
+  const portable = 'tests/dotnet/Runic.Application.Views.Wpf.Tests/Runic.Application.Views.Wpf.Tests.csproj';
+  const windows = 'tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/Runic.Application.Views.Wpf.Windows.Tests.csproj';
   assert.ok(managedTests(root, 'linux').some(test => test.path === portable && test.group === 'application'));
   assert.ok(!managedTests(root, 'linux').some(test => test.path === windows));
   assert.ok(managedTests(root, 'win32').some(test => test.path === windows && test.group === 'application'));
-  assert.ok(workflow.jobs.wpf.steps.some(step => step.run === 'dotnet run --project tests/dotnet/Runic.Application.Wpf.Windows.Tests -c Release'));
+  assert.ok(workflow.jobs.wpf.steps.some(step => step.run === 'dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release'));
 });
 
 test('the WPF navigation example builds from the packed packages in the WPF lane', () => {

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>Runic.Application.Views.Desktop</PackageId>
+    <!-- Published as Runic.Application.Desktop up to 0.7.0-preview.6. Package validation compares
+         with that package until this ID has a release of its own (eng/release/README.md).
+         The assembly was Runic.Application.Desktop.dll, so package validation cannot pair it
+         with this one (CP0004 in CompatibilitySuppressions.xml); PublicAPI.Shipped.txt
+         still guards the public API until then. -->
+    <PackageValidationBaselineName>Runic.Application.Desktop</PackageValidationBaselineName>
+    <Description>Runic Window and View host adapter for Runic Desktop.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
+    <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
+    <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
+    <!-- PlatformServices selects one provider at run time; a provider loads native libraries only when used. -->
+    <ProjectReference Include="../Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
+    <ProjectReference Include="../Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
+    <ProjectReference Include="../Runic.Platform.Linux/Runic.Platform.Linux.csproj" />
+    <ProjectReference Include="../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
+    <ProjectReference Include="../Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="build/Runic.Application.Views.Desktop.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Desktop.props" />
+    <None Include="build/Runic.Application.Views.Desktop.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Desktop.targets" />
+    <None Include="www/runic-desktop-views.js" Pack="true" PackagePath="www/runic-desktop-views.js" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

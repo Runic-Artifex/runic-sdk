@@ -36,7 +36,7 @@ These source locations are evidence for the ownership assignment, not
 normative contract sources:
 
 - `packages/dotnet/Runic.Application.Views` owns explicit Window and View contracts;
-  `Runic.Application.CsWebUi` owns the current host
+  `Runic.Application.Views.CsWebUi` owns the current host
   composition and scoped Window lifetime.
 - `packages/dotnet/Runic.Desktop/DesktopSurface.cs` and `DesktopHost.cs` own
   standalone Desktop presentation and native dispatch.

@@ -77,7 +77,7 @@
       "project": "packages/dotnet/Runic.Navigation.Wpf/Runic.Navigation.Wpf.csproj"
     },
     {
-      "name": "Runic.Application",
+      "name": "Runic.Application.Views",
       "project": "packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj"
     },
     {
@@ -85,24 +85,24 @@
       "project": "packages/dotnet/Runic.Application.Testing/Runic.Application.Testing.csproj"
     },
     {
-      "name": "Runic.Application.ReactiveUI",
+      "name": "Runic.Application.Views.ReactiveUI",
       "project": "packages/dotnet/Runic.Application.Views.ReactiveUI/Runic.Application.Views.ReactiveUI.csproj"
     },
     {
-      "name": "Runic.Application.ReactiveUI.Reactive",
+      "name": "Runic.Application.Views.ReactiveUI.Reactive",
       "project": "packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive/Runic.Application.Views.ReactiveUI.Reactive.csproj"
     },
     {
-      "name": "Runic.Application.CsWebUi",
+      "name": "Runic.Application.Views.CsWebUi",
       "project": "packages/dotnet/Runic.Application.Views.CsWebUi/Runic.Application.Views.CsWebUi.csproj"
     },
     {
-      "name": "Runic.Application.Desktop",
-      "project": "packages/dotnet/Runic.Application.Desktop/Runic.Application.Desktop.csproj"
+      "name": "Runic.Application.Views.Desktop",
+      "project": "packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj"
     },
     {
-      "name": "Runic.Application.Wpf",
-      "project": "packages/dotnet/Runic.Application.Wpf/Runic.Application.Wpf.csproj"
+      "name": "Runic.Application.Views.Wpf",
+      "project": "packages/dotnet/Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj"
     },
     {
       "name": "Runic.Application.Templates",
@@ -218,7 +218,7 @@
         "packages/dotnet/Runic.Application.Views.ReactiveUI",
         "packages/dotnet/Runic.Application.Views.ReactiveUI.Reactive",
         "packages/dotnet/Runic.Application.Views.CsWebUi",
-        "packages/dotnet/Runic.Application.Desktop",
+        "packages/dotnet/Runic.Application.Views.Desktop",
         "tools/Runic.Application.Views.Codegen",
         "tools/Runic.Application.Views.Codegen.Toolkit",
         "tools/Runic.Application.Views.Codegen.ReactiveUI",
@@ -226,7 +226,7 @@
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
-        "tests/dotnet/Runic.Application.Desktop.Tests",
+        "tests/dotnet/Runic.Application.Views.Desktop.Tests",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
         "eng/branding/application",
         "specs/application",
@@ -248,9 +248,9 @@
         "navigation"
       ],
       "paths": [
-        "packages/dotnet/Runic.Application.Wpf",
-        "tests/dotnet/Runic.Application.Wpf.Tests",
-        "tests/dotnet/Runic.Application.Wpf.Windows.Tests",
+        "packages/dotnet/Runic.Application.Views.Wpf",
+        "tests/dotnet/Runic.Application.Views.Wpf.Tests",
+        "tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests",
         "examples/wpf-hybrid-editor",
         "tests/fixtures/application/wpf-bridge-consumer"
       ]

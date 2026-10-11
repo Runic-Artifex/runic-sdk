@@ -2,7 +2,7 @@
 
 WPF hosts for [Runic.Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md)
 regions. It depends on `Runic.Navigation` and the WPF framework only: no
-`Runic.Application`, generator or web View. The package provides
+`Runic.Application.Views`, generator or web View. The package provides
 the following types in the `Runic.Navigation.Wpf` namespace. The XAML namespace
 is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 

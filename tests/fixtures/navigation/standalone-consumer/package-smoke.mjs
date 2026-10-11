@@ -107,8 +107,8 @@ try {
     const imports = [...readFileSync(join(directory, "obj", file), "utf8").matchAll(/<Import\s+Project="([^"]+)"/g)].map(([, path]) => path);
     assert.ok(!imports.some(path => /runic\./i.test(path)), `${file} imports a Runic package: ${imports.join(", ")}`);
   }
-  const bridge = run(dotnet, ["msbuild", "StandaloneConsumer.csproj", "-getProperty:RunicBridgeBuildEnabled", ...properties], env).trim();
-  assert.equal(bridge, "", "RunicBridgeBuildEnabled is defined in a standalone navigation consumer.");
+  const bridge = run(dotnet, ["msbuild", "StandaloneConsumer.csproj", "-getProperty:RunicApplicationFrontendGenerationEnabled", ...properties], env).trim();
+  assert.equal(bridge, "", "RunicApplicationFrontendGenerationEnabled is defined in a standalone navigation consumer.");
 
   // 5. JIT and NativeAOT runs of the scenarios.
   const jit = run(dotnet, ["run", "--no-restore", "--project", "StandaloneConsumer.csproj", "-c", "Release", ...properties], env);

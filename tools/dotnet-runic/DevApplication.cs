@@ -464,11 +464,11 @@ internal static class DevApplication
         DevOptions options,
         string prefix) =>
         options.WatchFrontend && configuration.HasDevelopmentServer
-            ? [$"{prefix}RunicBridgeBuildFrontend=false", $"{prefix}RunicBridgeCopyFrontend=false"]
+            ? [$"{prefix}RunicApplicationFrontendBuildEnabled=false", $"{prefix}RunicApplicationFrontendCopyEnabled=false"]
             : [];
 
     /// <summary>
-    /// Development server properties plus <c>RunicBridgeInstallFrontend=false</c>:
+    /// Development server properties plus <c>RunicApplicationFrontendInstallEnabled=false</c>:
     /// dev installs the frontend packages itself before the build, and with
     /// <c>--no-restore</c> nothing installs them behind the caller's back.
     /// </summary>
@@ -480,7 +480,7 @@ internal static class DevApplication
         var properties = new List<string>(CreateDevelopmentServerProperties(configuration, options, prefix));
         if (!options.Restore || configuration.NodeEnabled)
         {
-            properties.Add($"{prefix}RunicBridgeInstallFrontend=false");
+            properties.Add($"{prefix}RunicApplicationFrontendInstallEnabled=false");
         }
         return properties;
     }

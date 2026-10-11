@@ -3,7 +3,7 @@ import { Component, effect, Injector, NgZone, signal } from "@angular/core";
 import { TestBed } from "@angular/core/testing";
 import { BrowserTestingModule, platformBrowserTesting } from "@angular/platform-browser/testing";
 import { afterEach, beforeAll, describe, expect, test, expectTypeOf } from "vitest";
-import { injectCollectionViewport, injectCommand, injectOperation, injectView, RunicViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
+import { injectCollectionViewport, injectCommand, injectOperation, injectView, RunicViewOutlet, ViewOutlet, type ViewRegistry } from "../dist/esm/index.js";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
 
 type Page =
@@ -42,9 +42,21 @@ class Host {
 Component({
   selector: "test-host",
   standalone: true,
-  imports: [RunicViewOutlet],
+  imports: [ViewOutlet],
   template: `<runic-view-outlet [content]="content()" [registry]="registry()" />`,
 })(Host);
+
+// The deprecated name of 0.7.0-preview.6 and earlier still renders the same outlet.
+class LegacyHost {
+  readonly content = signal<Page | undefined>({ kind: "welcome", connect: async () => undefined });
+  readonly registry = registry;
+}
+Component({
+  selector: "test-legacy-host",
+  standalone: true,
+  imports: [RunicViewOutlet],
+  template: `<runic-view-outlet [content]="content()" [registry]="registry" />`,
+})(LegacyHost);
 
 beforeAll(() => {
   TestBed.initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
@@ -67,7 +79,7 @@ describe("injectView glue", () => {
   });
 });
 
-describe("RunicViewOutlet", () => {
+describe("ViewOutlet", () => {
   test("renders the registered component, remounts on a new reference and alerts for a missing kind", () => {
     counterMounts = 0;
     const fixture = TestBed.createComponent(Host);
@@ -91,6 +103,13 @@ describe("RunicViewOutlet", () => {
     fixture.componentInstance.registry.set({ counter: CounterPage } as unknown as ViewRegistry<Page>);
     fixture.detectChanges();
     expect(element.querySelector("[role=alert]")?.textContent).toBe("No web component is registered for welcome.");
+  });
+
+  test("the deprecated RunicViewOutlet alias renders the same outlet", () => {
+    const fixture = TestBed.createComponent(LegacyHost);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent?.trim()).toBe("welcome:welcome");
+    expect(Object.getPrototypeOf(RunicViewOutlet)).toBe(ViewOutlet);
   });
 });
 

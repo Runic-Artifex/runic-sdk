@@ -41,11 +41,11 @@ if (existsSync("build-warns")) console.log("src/App.ts(1,1): warning TS6133: 'un
 `);
   writeFileSync(join(project, "App.proj"), `<Project>
   <PropertyGroup>
-    <RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled>
-    <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/frontend</RunicBridgeFrontendDir>
-    <RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/generated</RunicBridgeTypescriptDir>
-    <RunicBridgeFrontendInstallCommand>node install.mjs</RunicBridgeFrontendInstallCommand>
-    <RunicBridgeFrontendBuildCommand>node build.mjs</RunicBridgeFrontendBuildCommand>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
+    <RunicApplicationFrontendInstallCommand>node install.mjs</RunicApplicationFrontendInstallCommand>
+    <RunicApplicationFrontendBuildCommand>node build.mjs</RunicApplicationFrontendBuildCommand>
     <Configuration>Debug</Configuration>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -166,4 +166,34 @@ test("failed frontend commands report one coded error instead of MSB3073", () =>
   result = build(app);
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /^\S.*App\.ts\(1,1\): warning TS6133: 'unused' is declared but never read\./m);
+});
+
+test("an old property name still applies and reports RUNICBRIDGE017 once", () => {
+  const project = join(directory, "renamed");
+  mkdirSync(project, { recursive: true });
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/client</RunicBridgeFrontendDir>
+    <RunicBridgeBuildFrontend>false</RunicBridgeBuildFrontend>
+    <RunicApplicationFrontendBuildEnabled>true</RunicApplicationFrontendBuildEnabled>
+    <Configuration>Debug</Configuration>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <Import Project="${targets}" />
+</Project>
+`);
+  const evaluate = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-nologo", "-noAutoResponse", "-nodeReuse:false",
+    "-getProperty:RunicApplicationFrontendDirectory", "-getProperty:RunicApplicationFrontendBuildEnabled"], { cwd: project, encoding: "utf8" });
+  assert.equal(evaluate.status, 0, evaluate.stdout + evaluate.stderr);
+  const properties = JSON.parse(evaluate.stdout).Properties;
+  assert.equal(properties.RunicApplicationFrontendDirectory, join(project, "client"));
+  assert.equal(properties.RunicApplicationFrontendBuildEnabled, "false", "The old name wins over the new one.");
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsReportRenamedProperties",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  const output = `${result.stdout}${result.stderr}`;
+  assert.equal(result.status, 0, output);
+  const warnings = [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE017:/.test(line)).map(line => line.trim()))];
+  assert.equal(warnings.length, 2, output);
+  assert.ok(warnings.some(line => /RunicBridgeFrontendDir is renamed to RunicApplicationFrontendDirectory/.test(line)), output);
+  assert.ok(warnings.some(line => /RunicBridgeBuildFrontend is renamed to RunicApplicationFrontendBuildEnabled/.test(line)), output);
 });

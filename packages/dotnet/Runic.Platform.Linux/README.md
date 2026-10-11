@@ -4,7 +4,7 @@ Portal file dialogs with GTK3 parenting and text clipboard for Linux x64. Regist
 only in the Linux Desktop host; the package references the shared runtime and no
 Desktop, ASP.NET Core, Windows or macOS assemblies. Factory creation does not
 initialize GTK or load native libraries. Supply the verified GTK owner dispatcher.
-Runic.Application.Desktop selects this provider for GTK 3 windows from
+Runic.Application.Views.Desktop selects this provider for GTK 3 windows from
 `services.AddRunicPlatformServices()`, and never in a GTK 4 process.
 
 `LinuxPlatformProvider.CreateFileDialogs(owner)` uses direct XDG portal dialogs,

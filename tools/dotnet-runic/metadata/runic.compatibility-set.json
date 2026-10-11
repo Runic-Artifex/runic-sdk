@@ -57,7 +57,7 @@
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Application",
+      "identity": "Runic.Application.Views",
       "version": "0.7.0-preview.7"
     },
     {
@@ -67,27 +67,27 @@
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Application.ReactiveUI",
+      "identity": "Runic.Application.Views.ReactiveUI",
       "version": "0.7.0-preview.7"
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Application.ReactiveUI.Reactive",
+      "identity": "Runic.Application.Views.ReactiveUI.Reactive",
       "version": "0.7.0-preview.7"
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Application.CsWebUi",
+      "identity": "Runic.Application.Views.CsWebUi",
       "version": "0.7.0-preview.7"
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Application.Desktop",
+      "identity": "Runic.Application.Views.Desktop",
       "version": "0.7.0-preview.7"
     },
     {
       "ecosystem": "nuget",
-      "identity": "Runic.Application.Wpf",
+      "identity": "Runic.Application.Views.Wpf",
       "version": "0.7.0-preview.7"
     },
     {
@@ -196,7 +196,7 @@
       {
         "id": "desktop",
         "name": "Runic Desktop",
-        "package": "Runic.Application.Desktop",
+        "package": "Runic.Application.Views.Desktop",
         "targets": [
           {
             "rid": "linux-x64",
@@ -243,7 +243,7 @@
       {
         "id": "cswebui",
         "name": "CS-WebUI",
-        "package": "Runic.Application.CsWebUi",
+        "package": "Runic.Application.Views.CsWebUi",
         "targets": [
           {
             "rid": "linux-x64",

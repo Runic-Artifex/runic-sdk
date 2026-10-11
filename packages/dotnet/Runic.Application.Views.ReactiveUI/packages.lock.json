@@ -95,7 +95,7 @@
           "Splat.Core": "21.0.0"
         }
       },
-      "Runic.Application": {
+      "runic.application.views": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",

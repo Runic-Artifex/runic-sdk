@@ -7,6 +7,6 @@
     <!-- bun run bootstrap owns repository frontend installs. Generated and
          copied-out applications install missing frontend dependencies during
          their first build. -->
-    <RunicBridgeInstallFrontend Condition="'$(RunicBridgeInstallFrontend)' == ''">false</RunicBridgeInstallFrontend>
+    <RunicApplicationFrontendInstallEnabled Condition="'$(RunicApplicationFrontendInstallEnabled)' == ''">false</RunicApplicationFrontendInstallEnabled>
   </PropertyGroup>
 </Project>

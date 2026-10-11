@@ -12,9 +12,9 @@ const consumer = join(temporary, "consumer");
 const projects = [
   ["Runic.Desktop", "Runic.Desktop"],
   ["Runic.Navigation", "Runic.Navigation"],
-  ["Runic.Application", "Runic.Application.Views"],
-  ["Runic.Application.ReactiveUI", "Runic.Application.Views.ReactiveUI"],
-  // Runic.Application.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner) and on every platform provider
+  ["Runic.Application.Views", "Runic.Application.Views"],
+  ["Runic.Application.Views.ReactiveUI", "Runic.Application.Views.ReactiveUI"],
+  // Runic.Application.Views.Desktop depends on Runic.Platform.Runtime (DesktopNativeOwner) and on every platform provider
   // package, which AddRunicPlatformServices selects from at run time.
   ["Runic.Platform", "Runic.Platform"],
   ["Runic.Platform.Runtime", "Runic.Platform.Runtime"],
@@ -23,7 +23,7 @@ const projects = [
   ["Runic.Platform.Linux.Portal", "Runic.Platform.Linux.Portal"],
   ["Runic.Platform.Linux", "Runic.Platform.Linux"],
   ["Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Gtk4"],
-  ["Runic.Application.Desktop", "Runic.Application.Desktop"],
+  ["Runic.Application.Views.Desktop", "Runic.Application.Views.Desktop"],
 ];
 const version = JSON.parse(await readFile(join(root, "eng/workspace.json"), "utf8")).version;
 // A unique package version keeps restore from resolving the published release of the
@@ -51,7 +51,7 @@ try {
   for (const [identity, project] of projects) {
     await run("dotnet", ["pack", `packages/dotnet/${project}/${project}.csproj`,
       "-c", "Release", "--no-build", "-o", feed, `-p:Version=${testVersion}`, `-p:PackageVersion=${testVersion}`]);
-    if (identity === "Runic.Application.Desktop")
+    if (identity === "Runic.Application.Views.Desktop")
       await readFile(join(feed, `${identity}.${testVersion}.nupkg`));
   }
   await mkdir(join(consumer, "Frontend/src"), { recursive: true });
@@ -72,17 +72,17 @@ try {
   <PropertyGroup>
     <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
-    <RunicBridgeCompositionType>FirstWindowDesktop.RunicBridgeComposition</RunicBridgeCompositionType>
-    <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
+    <RunicApplicationFrontendCompositionType>FirstWindowDesktop.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendBuildCommand>bun run --bun build</RunicApplicationFrontendBuildCommand>
     <RestoreAdditionalProjectSources>${feed}</RestoreAdditionalProjectSources>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><OutputType>Library</OutputType></PropertyGroup>
+  <PropertyGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="${dependencyInjection}" />
-    <PackageReference Include="Runic.Application.Desktop" Version="${testVersion}" />
-    <PackageReference Include="Runic.Application.ReactiveUI" Version="${testVersion}" />
+    <PackageReference Include="Runic.Application.Views.Desktop" Version="${testVersion}" />
+    <PackageReference Include="Runic.Application.Views.ReactiveUI" Version="${testVersion}" />
   </ItemGroup>
-  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'"><Compile Remove="Program.cs" /></ItemGroup>
 </Project>
 `);
   await run("dotnet", ["build", "FirstWindowDesktop.csproj", "-c", "Release"], consumer);

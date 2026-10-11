@@ -2,7 +2,7 @@
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <OutputType Condition="'$(RunicBridgeBootstrap)' == 'true'">Library</OutputType>
+    <OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
@@ -11,10 +11,10 @@
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
     <!-- NavOrphanViewModel deliberately has no View. -->
     <NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>
-    <RunicBridgeBuildEnabled>true</RunicBridgeBuildEnabled>
-    <RunicBridgeFrontendBuildCommand>dotnet --version</RunicBridgeFrontendBuildCommand>
-    <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicBridgeFrontendDir>
-    <RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/generated</RunicBridgeTypescriptDir>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
     <!-- Map PDB source paths to /_/ as a CI build does, so local runs also
          check that the generator resolves them to the source it documents. -->
     <DeterministicSourcePaths>true</DeterministicSourcePaths>
@@ -33,7 +33,7 @@
     <None Include="../../../specs/application/fixtures/collection-deltas/*.json" Link="fixtures/collection-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/application/fixtures/domain-failures/*.json" Link="fixtures/domain-failures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-  <ItemGroup Condition="'$(RunicBridgeBootstrap)' == 'true'">
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />
     <Compile Remove="*Tests.cs" />
     <!-- The exporter intentionally instantiates generated bridge types, which

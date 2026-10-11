@@ -12,6 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- The tests need the application's assembly, not its built frontend. -->
-    <ProjectReference Include="../RunicWindowApp.csproj" AdditionalProperties="RunicBridgeBuildFrontend=false" />
+    <ProjectReference Include="../RunicWindowApp.csproj" AdditionalProperties="RunicApplicationFrontendBuildEnabled=false" />
   </ItemGroup>
 </Project>
