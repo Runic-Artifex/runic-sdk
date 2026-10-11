@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { root, workspace, engineeringOnly, engineeringTestDirectories } from '../run.mjs';
-import { plan, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected } from './plan.mjs';
+import { plan, skippableJobs, managedGroups, managedTests, webTests, outputs, affected, parseAffected, testReportArguments } from './plan.mjs';
 import { incomplete } from './gate.mjs';
 
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8'));
@@ -309,4 +310,19 @@ test('the WPF navigation example builds from the packed packages in the WPF lane
   assert.ok(!managedTests(root, 'linux').some(test => test.path === path));
   assert.ok(managedTests(root, 'win32').some(test => test.path === path && test.group === 'navigation'));
   assert.ok(workflow.jobs.wpf.steps.some(step => step.run === 'bun examples/wpf-navigation/package-smoke.mjs'));
+});
+
+test('TUnit suites write TRX and Cobertura reports; other executables and listings take no report options', () => {
+  const base = mkdtempSync(resolve(tmpdir(), 'runic-test-reports-'));
+  try {
+    for (const [name, reference] of [['Tunit.Tests', '<PackageReference Include="TUnit.Engine" />'], ['Probe.Tests', '']]) {
+      mkdirSync(resolve(base, name));
+      writeFileSync(resolve(base, name, `${name}.csproj`), `<Project><ItemGroup>${reference}</ItemGroup></Project>`);
+    }
+    const reports = testReportArguments('Tunit.Tests/Tunit.Tests.csproj', [], base);
+    assert.deepEqual(reports.slice(0, 2), ['--results-directory', resolve(base, 'artifacts/test-results/Tunit.Tests')]);
+    for (const option of ['--report-trx', 'Tunit.Tests.trx', '--coverage', 'cobertura', 'Tunit.Tests.cobertura.xml']) assert.ok(reports.includes(option), option);
+    assert.deepEqual(testReportArguments('Tunit.Tests/Tunit.Tests.csproj', ['--list-tests'], base), []);
+    assert.deepEqual(testReportArguments('Probe.Tests/Probe.Tests.csproj', [], base), []);
+  } finally { rmSync(base, { recursive: true, force: true }); }
 });

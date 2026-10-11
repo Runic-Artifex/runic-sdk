@@ -43,7 +43,7 @@ function main() {
     if (!existsSync(resolve(root, 'packages/web/views/dist/index.js'))) viewsRuntime();
     for (const path of selected.paths) {
       if (selected.kind === 'managed') {
-        const args = [...testReportArguments(path), ...extra];
+        const args = [...testReportArguments(path, extra), ...extra];
         run('dotnet', ['run', '--project', path, '-c', configuration, ...(args.length ? ['--', ...args] : [])]);
       } else run('dotnet', ['test', path, '-c', configuration, ...extra]);
     }
