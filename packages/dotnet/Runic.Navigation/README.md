@@ -195,7 +195,11 @@ A failed step is logged as event 1064.
   complete until the dialog closes another way.
 - A request is superseded only before it commits, never after. A cancelled
   token gives `Rejected(Cancelled)` and navigator disposal gives
-  `Rejected(Closed)`, in any phase before the commit.
+  `Rejected(Closed)`, in any phase before the commit. So does the close of
+  the request's region: a parent's Back that retires a child region
+  supersedes the child requests pending at its admission, and a child
+  request admitted after it is `Rejected(Closed)` when the parent commits,
+  never `Superseded`, whichever phase it is in.
 - Hook tokens are cancelled when the request is superseded, cancelled or
   closed. A superseded request that is still running 5 seconds later is logged
   once (event 1067). The next request waits for it.
