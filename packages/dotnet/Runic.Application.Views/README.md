@@ -308,7 +308,7 @@ time. The rule for both MVVM flavours is:
 > its result with `IRunicModelContext.InvokeAsync`.**
 
 ```csharp
-[RelayCommand] // or ReactiveCommand.CreateFromTask(SaveAsync, outputScheduler: scheduler)
+[RelayCommand] // or ReactiveCommand.CreateFromTask(SaveAsync)
 private async Task SaveAsync(CancellationToken token)
 {
     Status = "Saving";
