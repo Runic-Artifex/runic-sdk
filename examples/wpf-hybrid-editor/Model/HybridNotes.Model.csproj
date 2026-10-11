@@ -8,7 +8,6 @@
     <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
     <RunicBridgeCompositionType>HybridNotes.RunicBridgeComposition</RunicBridgeCompositionType>
     <RunicBridgeFrontendDir>$(MSBuildProjectDirectory)/../Frontend</RunicBridgeFrontendDir>
-    <RunicBridgeTypescriptDir>$(RunicBridgeFrontendDir)/src/generated</RunicBridgeTypescriptDir>
     <RunicBridgeFrontendBuildCommand>bun run --bun build</RunicBridgeFrontendBuildCommand>
   </PropertyGroup>
   <ItemGroup>
