@@ -147,6 +147,82 @@ internal static class HostTests
         static Type? FindIn(Type type, System.Reflection.Assembly assembly) => NavigationViewLocator.FindByConvention(type, [assembly]);
     }
 
+    // W250-016: GuardWindowClose clears the region before the window closes; a veto keeps the window and its entries.
+    public static void GuardWindowClose()
+    {
+        using var fixture = new NavFixture();
+        var home = new Page("home");
+        var region = fixture.Region(NavigationTarget.Own<object>(home));
+        var answers = new Queue<TaskCompletionSource<bool>>();
+        var guards = 0;
+        var editor = new GuardedPage("editor", () =>
+        {
+            guards++;
+            var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            answers.Enqueue(answer);
+            return new ValueTask<bool>(answer.Task);
+        });
+        Pump(region.PushAsync(NavigationTarget.Own<object>(editor)));
+
+        // Off by default: the window closes without asking.
+        var unguarded = ShowWindow(new NavigationHost { Region = region }, window => AddTemplates(window, typeof(Page), typeof(GuardedPage)));
+        unguarded.Close();
+        Require(!IsOpen(unguarded) && guards == 0 && ReferenceEquals(region.Current, editor), "A close without GuardWindowClose asked the guards.");
+
+        var host = new NavigationHost { Region = region, GuardWindowClose = true };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(Page), typeof(GuardedPage)));
+        try
+        {
+            window.Close();
+            Require(IsOpen(window), "A guarded close closed the window before the guards answered.");
+            PumpUntil(() => answers.Count == 1, "the guard");
+            // A second close while the guard is asking doesn't ask again.
+            window.Close();
+            Drain();
+            Require(IsOpen(window) && guards == 1, $"A close during the guard asked {guards} times.");
+            answers.Dequeue().SetResult(false);
+            PumpUntil(() => !region.IsTransitioning, "the vetoed clear");
+            Drain();
+            Require(IsOpen(window) && ReferenceEquals(region.Current, editor) && region.CanGoBack, "A vetoed close lost the window or its entries.");
+
+            window.Close();
+            PumpUntil(() => answers.Count == 1, "the second guard");
+            answers.Dequeue().SetResult(true);
+            PumpUntil(() => !IsOpen(window), "the window to close after the clear");
+            Require(region.CurrentEntry is null && !region.CanGoBack, "The window closed without clearing its region.");
+        }
+        finally
+        {
+            host.GuardWindowClose = false;
+            if (IsOpen(window)) window.Close();
+        }
+
+        // An empty region closes at once; a close another handler cancelled is left alone.
+        Pump(region.PushAsync(NavigationTarget.Own<object>(new Page("again"))));
+        var cancelOthers = true;
+        var other = ShowWindow(new NavigationHost { Region = fixture.Region(), GuardWindowClose = true });
+        other.Close();
+        Require(!IsOpen(other), "A guarded close of an empty region didn't close at once.");
+        var vetoed = ShowWindow(new NavigationHost { Region = region, GuardWindowClose = true },
+            window => window.Closing += (_, e) => e.Cancel = cancelOthers);
+        try
+        {
+            vetoed.Close();
+            Drain();
+            Require(IsOpen(vetoed) && !region.IsTransitioning && region.CurrentEntry is not null, "The host cleared a close another handler cancelled.");
+            cancelOthers = false;
+            vetoed.Close();
+            PumpUntil(() => !IsOpen(vetoed), "the window to close");
+            Require(region.CurrentEntry is null, "The second close didn't clear the region.");
+        }
+        finally
+        {
+            cancelOthers = false;
+            ((NavigationHost)vetoed.Content).GuardWindowClose = false;
+            if (IsOpen(vetoed)) vetoed.Close();
+        }
+    }
+
     // BrowseBack goes back when the region can and isn't transitioning.
     public static void BrowseBack()
     {

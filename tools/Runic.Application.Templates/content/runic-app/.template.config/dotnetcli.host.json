@@ -5,11 +5,13 @@
     "packageManager": { "longName": "package-manager", "shortName": "" },
     "host": { "longName": "host", "shortName": "" },
     "viewModels": { "longName": "view-models", "shortName": "" },
+    "tests": { "longName": "tests", "shortName": "" },
     "runicVersion": { "longName": "runic-version", "shortName": "", "isHidden": true },
     "runicNpmVersion": { "longName": "runic-npm-version", "shortName": "", "isHidden": true }
   },
   "usageExamples": [
     "--frontend svelte --package-manager bun",
-    "--frontend vue --host cswebui --view-models toolkit"
+    "--frontend vue --host cswebui --view-models toolkit",
+    "--tests"
   ]
 }

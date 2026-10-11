@@ -64,6 +64,12 @@ internal abstract class MvvmCommand
 
     internal virtual BridgeCommandResultCardinality Cardinality => BridgeCommandResultCardinality.Single;
 
+    /// <summary>
+    /// The TSDoc of a command property without a source method. A library may replace the
+    /// comment its source generator wrote, which describes C# objects a TypeScript caller never sees.
+    /// </summary>
+    internal virtual string? PropertyDocumentation(PropertyInfo command) => XmlDocumentation.Summary(command);
+
     /// <summary>The <c>CommandDescriptor</c> constructor call, without a failure encoder.</summary>
     internal abstract string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan);
 

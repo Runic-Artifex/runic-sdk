@@ -1,3 +1,4 @@
+using System.CodeDom.Compiler;
 using System.Reflection;
 using System.Text;
 using Runic.Application.Views.Codegen.Toolkit;
@@ -43,6 +44,20 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
         internal override bool IsAsync => contract.IsAsync;
         internal override Type? Input => contract.Input;
         internal override Type[] ContractArguments => contract.Input is { } input ? [input] : [];
+
+        // The Toolkit generator documents its properties in C# terms ("Gets an
+        // ICommand instance that can be used to cancel SaveCommand"). Describe the
+        // generated cancel command for TypeScript and drop any other such comment.
+        internal override string? PropertyDocumentation(PropertyInfo command)
+        {
+            if (command.GetCustomAttribute<GeneratedCodeAttribute>(false) is not { Tool: { } tool }
+                || !tool.StartsWith("CommunityToolkit.Mvvm.SourceGenerators.", StringComparison.Ordinal))
+                return base.PropertyDocumentation(command);
+            const string cancel = "CancelCommand";
+            if (!command.Name.EndsWith(cancel, StringComparison.Ordinal) || contract.IsAsync) return null;
+            var target = command.Name[..^cancel.Length];
+            return $"Cancels the running `{char.ToLowerInvariant(target[0])}{target[1..]}` call.";
+        }
 
         internal override string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan)
         {

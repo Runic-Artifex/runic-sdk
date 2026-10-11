@@ -35,6 +35,7 @@ internal static class Program
         await BorrowedResourcesSurviveCloseAndAcceptedWork();
         await NativeUnloadReleasesSession();
         await ReentrantCloseRunsOnce();
+        await HostLifecycleTests.RunAsync();
         Check(WpfPresentationOptions.Validate(new()).Count == 0, "Default options produced layout warnings.");
         var warnings = WpfPresentationOptions.Validate(new() { Width = 1200, Transparent = true, X = 20 });
         Check(warnings.Select(item => item.Option).ToHashSet().SetEquals(["Width", "Transparent", "X"]), "Unsupported layout options were not reported.");

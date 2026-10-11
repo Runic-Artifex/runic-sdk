@@ -5,7 +5,8 @@
     <TextBlock Text="{Binding Message}" Margin="0,0,0,16" />
     <StackPanel Orientation="Horizontal">
       <Button Content="Discard" Command="{Binding YesCommand}" MinWidth="100" Margin="0,0,8,0" />
-      <Button Content="Keep editing" Command="{Binding NoCommand}" MinWidth="100" />
+      <!-- Enter and Esc keep editing, as in a ShowDialog window. -->
+      <Button Content="Keep editing" Command="{Binding NoCommand}" IsDefault="True" IsCancel="True" MinWidth="100" />
     </StackPanel>
   </StackPanel>
 </UserControl>

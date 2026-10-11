@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 
 namespace Runic.Application.Views;
@@ -23,6 +24,7 @@ public sealed class RunicCollectionAttribute(string keyProperty) : Attribute
 /// is false (a ViewModel with validation), the collection only publishes full states, whose keys
 /// are still checked.
 /// </remarks>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record BridgeCollectionDescriptor<T>(
     string Name,
     Func<T, object?> Get,

@@ -213,10 +213,21 @@ verify_template() {
   local manager="$2"
   local host="$3"
   local view_models="$4"
-  # "defaults" omits --host and --view-models, so the checks below prove that
-  # the template's defaults are this host and ViewModel library.
+  # Trailing flags: "defaults" omits --host and --view-models, so the checks
+  # below prove that the template's defaults are this host and ViewModel
+  # library; "tests" adds the TUnit test project and runs it.
+  local defaults="" tests="" flag
+  for flag in "${@:5}"; do
+    case "$flag" in
+      defaults) defaults=defaults ;;
+      tests) tests=tests ;;
+      *) echo "Unknown verify_template flag: $flag" >&2; exit 2 ;;
+    esac
+  done
   local selection=(--host "$host" --view-models "$view_models")
-  [[ "${5:-}" == defaults ]] && selection=()
+  [[ "$defaults" == defaults ]] && selection=()
+  local tests_options=()
+  [[ "$tests" == tests ]] && tests_options=(--tests)
   # desktop-gtk4 becomes DesktopGtk4.
   local host_name="" host_part
   local -a host_parts
@@ -238,6 +249,7 @@ verify_template() {
     --frontend "$framework" \
     --package-manager "$manager" \
     "${selection[@]}" \
+    "${tests_options[@]}" \
     --runic-version "$package_version" \
     --runic-npm-version "$views_npm_version"
 
@@ -268,8 +280,8 @@ verify_template() {
       ;;
   esac
   # Every host registers the platform-services facade, and no project picks a provider package itself.
-  grep -Fq 'services.AddRunicPlatformServices();' "$output/Program.cs"
-  if grep -nE 'NativeOwner|PlatformProvider|Runic\.Platform\.' "$output/Views.cs" "$output/Program.cs" "$output/$project_name.csproj"; then
+  grep -Fq 'services.AddRunicPlatformServices();' "$output/WorkspaceServices.cs"
+  if grep -nE 'NativeOwner|PlatformProvider|Runic\.Platform\.' "$output/Views.cs" "$output/Program.cs" "$output/WorkspaceServices.cs" "$output/$project_name.csproj"; then
     echo "The $host project chooses a platform provider instead of using AddRunicPlatformServices." >&2
     exit 1
   fi
@@ -285,6 +297,22 @@ verify_template() {
     toolkit) grep -Fq 'CommunityToolkit.Mvvm' "$output/$project_name.csproj" ;;
     reactiveui) grep -Fq 'Runic.Application.ReactiveUI' "$output/$project_name.csproj" ;;
   esac
+  local tests_project="$output/$project_name.Tests/$project_name.Tests.csproj"
+  if [[ "$tests" == tests ]]; then
+    # The template pins the repository's TUnit version, and dotnet test needs
+    # Microsoft.Testing.Platform mode on the .NET 10 SDK.
+    local tunit_version
+    tunit_version="$(grep -o 'Include="TUnit" Version="[^"]*"' "$repository_root/Directory.Packages.props" | cut -d'"' -f4)"
+    [[ -n "$tunit_version" ]]
+    grep -Fq "<PackageReference Include=\"TUnit\" Version=\"$tunit_version\" />" "$tests_project"
+    grep -Fq 'AdditionalProperties="RunicBridgeBuildFrontend=false"' "$tests_project"
+    grep -Fq '"runner": "Microsoft.Testing.Platform"' "$output/global.json"
+    grep -Fq "$project_name.Tests/**" "$output/$project_name.csproj"
+  elif [[ -e "$output/$project_name.Tests" || -e "$output/global.json" ]] \
+    || grep -Fq '.Tests/**' "$output/$project_name.csproj"; then
+    echo "The $framework project without --tests contains the test project." >&2
+    exit 1
+  fi
   if grep -rnIE --exclude='*lock*' '^[[:space:]]*#(if|elif|else|endif)\b|<!--#|__[A-Z][A-Z_]+__' "$output"; then
     echo "The generated $framework project contains unprocessed template syntax." >&2
     exit 1
@@ -428,7 +456,40 @@ verify_template() {
     [[ "$host" == desktop-gtk4 || ( "$host" == desktop && "$manager" == npm ) ]]; then
     run_desktop_smoke "$output" "$project_name" "$host"
   fi
-  printf 'TEMPLATE_OK|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models"
+  if [[ "$tests" == tests ]]; then
+    run_generated_tests "$output" "$project_name"
+  fi
+  printf 'TEMPLATE_OK|%s|%s|%s|%s|%s\n' "$framework" "$manager" "$host" "$view_models" "${tests:-no-tests}"
+}
+
+# Runs the generated test project as its README documents. The tests build the
+# application in Debug without its frontend, so no Debug frontend stamp appears.
+run_generated_tests() {
+  local output="$1"
+  local project_name="$2"
+  local log="$output/dotnet-test.log"
+  if ! (cd "$output" && dotnet test --project "$project_name.Tests") > "$log" 2>&1; then
+    echo "The generated tests failed." >&2
+    tail -n 80 "$log" >&2
+    exit 1
+  fi
+  if ! grep -Eq 'succeeded: 3\b' "$log" || grep -Eq 'failed: [1-9]' "$log"; then
+    echo "The generated test run did not pass its three tests." >&2
+    tail -n 40 "$log" >&2
+    exit 1
+  fi
+  if [[ -e "$output/obj/Debug/net10.0/runic-bridge-frontend.stamp" ]]; then
+    echo "Building the generated tests built the frontend." >&2
+    exit 1
+  fi
+  # The test project uses the app's Bridges: TUnit sets IsTestProject and it declares
+  # no Window or View, so it neither generates nor reports RUNICBRIDGE006 or 015.
+  if [[ -e "$output/$project_name.Tests/obj/runic-bridge" || -e "$output/$project_name.Tests/obj/Debug/net10.0/runic-bridge" ]] \
+    || grep -Eq 'RUNICBRIDGE[0-9]+' "$log"; then
+    echo "Building the generated tests ran Bridge generation in the test project." >&2
+    exit 1
+  fi
+  echo "TESTS_OK|$project_name"
 }
 
 # Runs the built Desktop application once under Xvfb with RUNIC_APPLICATION_CLOSE_AFTER_OPEN:
@@ -457,7 +518,7 @@ run_desktop_smoke() {
 # produces, using the packaged tool and the candidate template.
 verify_creator() {
   local creator_directory="$template_tmp/creator"
-  local options=(--frontend vue --package-manager pnpm --host cswebui --view-models toolkit)
+  local options=(--frontend vue --package-manager pnpm --host cswebui --view-models toolkit --tests)
   dotnet tool install Runic.Create \
     --tool-path "$tool_directory" \
     --version "$package_version" \
@@ -517,15 +578,17 @@ managers=(npm pnpm bun)
 # Runic Desktop and ReactiveUI, created without --host and --view-models.
 # Pairwise variants then cover each frontend with CS-WebUI and npm, whose
 # served documents the checks fetch, each frontend with CommunityToolkit.Mvvm,
-# and every host and ViewModel pairing.
+# and every host and ViewModel pairing. Variants and the npm projects add the
+# test project and run it, so the tests pass with every host and ViewModel
+# library.
 variants=(
-  "react npm cswebui toolkit"
-  "vue npm cswebui reactiveui"
-  "svelte npm cswebui toolkit"
-  "angular npm cswebui reactiveui"
-  "svelte bun desktop toolkit"
-  "angular pnpm desktop toolkit"
-  "vue npm desktop-gtk4 toolkit"
+  "react npm cswebui toolkit tests"
+  "vue npm cswebui reactiveui tests"
+  "svelte npm cswebui toolkit tests"
+  "angular npm cswebui reactiveui tests"
+  "svelte bun desktop toolkit tests"
+  "angular pnpm desktop toolkit tests"
+  "vue npm desktop-gtk4 toolkit tests"
 )
 # Keep CI's default matrix complete while allowing focused local debugging.
 if [[ -n "${RUNIC_TEMPLATE_FRAMEWORKS:-}" ]]; then
@@ -535,7 +598,7 @@ if [[ -n "${RUNIC_TEMPLATE_MANAGERS:-}" ]]; then
   read -r -a managers <<< "$RUNIC_TEMPLATE_MANAGERS"
 fi
 if [[ -n "${RUNIC_TEMPLATE_VARIANTS+set}" ]]; then
-  # Semicolon-separated "frontend manager host view-models" entries; empty skips them.
+  # Semicolon-separated "frontend manager host view-models [tests]" entries; empty skips them.
   IFS=';' read -r -a variants <<< "$RUNIC_TEMPLATE_VARIANTS"
 else
   # Default variants follow the selected frontends, so per-framework CI lanes
@@ -567,7 +630,11 @@ case "${RUNIC_TEMPLATE_CREATOR:-1}" in
 esac
 for manager in "${managers[@]}"; do
   for framework in "${frameworks[@]}"; do
-    verify_template "$framework" "$manager" desktop reactiveui defaults
+    if [[ "$manager" == npm ]]; then
+      verify_template "$framework" "$manager" desktop reactiveui defaults tests
+    else
+      verify_template "$framework" "$manager" desktop reactiveui defaults
+    fi
   done
 done
 for variant in "${variants[@]}"; do

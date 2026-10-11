@@ -17,6 +17,7 @@ internal static class Program
             ("project names start with a letter", ProjectNamesAreValidated),
             ("plans print the same choices for dotnet new and the creator", PlansAreReproducible),
             ("plans quote values a shell would split", PlansQuoteShellValues),
+            ("the test project toggle is a presence flag in every command", TestsTogglePassesThrough),
             ("faults link to their catalog entry at the release tag", FaultsLinkToCatalog),
         ];
 
@@ -64,12 +65,16 @@ internal static class Program
         True(model.Options[2].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
         Equal("CommunityToolkit.Mvvm", model.Options[3].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
+        Equal("tests", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
+        Equal("Test project", model.Toggles[0].DisplayName);
+        True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
     }
 
     private static void CreatorExposesEveryOption()
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         Equal(string.Join(',', model.Options.Select(option => option.LongName)), string.Join(',', Runic.Create.Program.OptionFlags));
+        Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
 
     private static void ExplicitChoicesAreValidated()
@@ -114,6 +119,31 @@ internal static class Program
         True(plan.CreateCommand.Contains("--output 'My Projects/it'\"'\"'s'", StringComparison.Ordinal), plan.CreateCommand);
         True(plan.CreatorCommand.Contains("--directory 'My Projects/it'\"'\"'s'", StringComparison.Ordinal), plan.CreatorCommand);
         Equal("cd 'My Projects/it'\"'\"'s'", plan.NextSteps[0]);
+    }
+
+    private static void TestsTogglePassesThrough()
+    {
+        TemplateOptionModel model = TemplateOptionModel.Load();
+        OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
+        CreatePlan plan = new("MyApp", null, "1.0.0", defaults, null, model.Toggles);
+        Equal("dotnet new runic-app --name MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests", plan.CreateCommand);
+        Equal("dnx Runic.Create@1.0.0 -- MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests", plan.CreatorCommand);
+        True(plan.Summary.EndsWith(" · Test project", StringComparison.Ordinal), plan.Summary);
+        Equal("dotnet test --project MyApp.Tests", plan.NextSteps[^1]);
+
+        CreatePlan without = new("MyApp", null, "1.0.0", defaults, null);
+        True(!without.CreateCommand.Contains("--tests", StringComparison.Ordinal), without.CreateCommand);
+        Equal("cd MyApp|dotnet tool restore|dotnet runic dev", string.Join('|', without.NextSteps));
+
+        True(Throws(() => TemplateOptionModel.Parse(
+            """{ "symbols": { "tests": { "type": "parameter", "datatype": "bool", "defaultValue": "true" } } }""", "{}")),
+            "a Boolean parameter that defaults to true is rejected");
+    }
+
+    private static bool Throws(Action action)
+    {
+        try { action(); return false; }
+        catch (System.IO.InvalidDataException) { return true; }
     }
 
     private static void Equal(string? expected, string? actual)

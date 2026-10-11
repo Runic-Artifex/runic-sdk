@@ -13,9 +13,15 @@ internal sealed record CreatePlan(
     string? OutputDirectory,
     string Version,
     IReadOnlyList<OptionSelection> Selections,
-    string? TemplateSource)
+    string? TemplateSource,
+    IReadOnlyList<TemplateToggle>? EnabledToggles = null)
 {
     public string Directory => OutputDirectory ?? Name;
+
+    /// <summary>The Boolean parameters this plan turns on, such as <c>--tests</c>.</summary>
+    public IReadOnlyList<TemplateToggle> Toggles => EnabledToggles ?? [];
+
+    public bool IsEnabled(string longName) => Toggles.Any(toggle => toggle.LongName == longName);
 
     public IReadOnlyList<string> InstallArguments =>
     [
@@ -28,6 +34,7 @@ internal sealed record CreatePlan(
         "new", TemplateOptionModel.TemplateShortName, "--name", Name,
         .. OutputDirectory is null ? Array.Empty<string>() : ["--output", OutputDirectory],
         .. Selections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
+        .. Toggles.Select(toggle => toggle.Flag),
     ];
 
     /// <summary>The noninteractive creator invocation that selects the same options.</summary>
@@ -36,19 +43,22 @@ internal sealed record CreatePlan(
         "dnx", $"Runic.Create@{Version}", "--", Name,
         .. OutputDirectory is null ? Array.Empty<string>() : ["--directory", OutputDirectory],
         .. Selections.SelectMany(selection => new[] { selection.Option.Flag, selection.Choice.Value }),
+        .. Toggles.Select(toggle => toggle.Flag),
     ]);
 
     public string InstallCommand => Format(["dotnet", .. InstallArguments]);
 
     public string CreateCommand => Format(["dotnet", .. CreateArguments]);
 
-    public string Summary => string.Join(" · ", Selections.Select(selection => selection.Choice.DisplayName));
+    public string Summary => string.Join(" · ",
+        Selections.Select(selection => selection.Choice.DisplayName).Concat(Toggles.Select(toggle => toggle.DisplayName)));
 
     public IReadOnlyList<string> NextSteps =>
     [
         Format(["cd", Directory]),
         "dotnet tool restore",
         "dotnet runic dev",
+        .. IsEnabled("tests") ? [Format(["dotnet", "test", "--project", Name + ".Tests"])] : Array.Empty<string>(),
     ];
 
     /// <summary>

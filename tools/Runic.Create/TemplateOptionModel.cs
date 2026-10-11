@@ -25,17 +25,26 @@ internal sealed record TemplateOption(
         Choices.FirstOrDefault(choice => string.Equals(choice.Value, value, StringComparison.OrdinalIgnoreCase));
 }
 
+/// <summary>A Boolean template parameter that the creator and dotnet new pass as a presence flag.</summary>
+internal sealed record TemplateToggle(string Symbol, string LongName, string DisplayName, string Description)
+{
+    public string Flag => "--" + LongName;
+}
+
 /// <summary>
-/// The visible choice parameters of the runic-app template, read from the
+/// The visible choice and Boolean parameters of the runic-app template, read from the
 /// template's own template.json and dotnetcli.host.json. The creator, the
 /// template, and the documentation picker share these declarations.
 /// </summary>
-internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options)
+internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options, IReadOnlyList<TemplateToggle> toggles)
 {
     public const string TemplatePackage = "Runic.Application.Templates";
     public const string TemplateShortName = "runic-app";
 
     public IReadOnlyList<TemplateOption> Options { get; } = options;
+
+    /// <summary>Boolean parameters that are off by default, such as <c>--tests</c>.</summary>
+    public IReadOnlyList<TemplateToggle> Toggles { get; } = toggles;
 
     public static TemplateOptionModel Load() =>
         Parse(ReadResource("Runic.Create.template.json"), ReadResource("Runic.Create.dotnetcli.host.json"));
@@ -47,14 +56,27 @@ internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options)
         host.RootElement.TryGetProperty("symbolInfo", out JsonElement symbolInfo);
 
         var options = new List<TemplateOption>();
+        var toggles = new List<TemplateToggle>();
         foreach (JsonProperty symbol in template.RootElement.GetProperty("symbols").EnumerateObject())
         {
             JsonElement value = symbol.Value;
-            if (String(value, "type") != "parameter" || String(value, "datatype") != "choice") continue;
+            string? datatype = String(value, "datatype");
+            if (String(value, "type") != "parameter" || datatype is not ("choice" or "bool")) continue;
             JsonElement info = symbolInfo.ValueKind == JsonValueKind.Object &&
                 symbolInfo.TryGetProperty(symbol.Name, out JsonElement found) ? found : default;
             if (info.ValueKind == JsonValueKind.Object &&
                 info.TryGetProperty("isHidden", out JsonElement hidden) && hidden.ValueKind == JsonValueKind.True) continue;
+            string longName = (info.ValueKind == JsonValueKind.Object ? String(info, "longName") : null) ?? symbol.Name;
+
+            if (datatype == "bool")
+            {
+                // A presence flag can only turn a parameter on.
+                if (!string.Equals(String(value, "defaultValue") ?? "false", "false", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"The {symbol.Name} parameter must default to false.");
+                toggles.Add(new TemplateToggle(symbol.Name, longName,
+                    String(value, "displayName") ?? symbol.Name, String(value, "description") ?? ""));
+                continue;
+            }
 
             TemplateChoice[] choices = value.GetProperty("choices").EnumerateArray()
                 .Select(choice => new TemplateChoice(
@@ -64,7 +86,7 @@ internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options)
                 .ToArray();
             var option = new TemplateOption(
                 symbol.Name,
-                (info.ValueKind == JsonValueKind.Object ? String(info, "longName") : null) ?? symbol.Name,
+                longName,
                 String(value, "displayName") ?? symbol.Name,
                 String(value, "description") ?? "",
                 String(value, "defaultValue") ?? choices[0].Value,
@@ -72,7 +94,7 @@ internal sealed class TemplateOptionModel(IReadOnlyList<TemplateOption> options)
             _ = option.Default;
             options.Add(option);
         }
-        return new TemplateOptionModel(options);
+        return new TemplateOptionModel(options, toggles);
     }
 
     private static string? String(JsonElement element, string name) =>
