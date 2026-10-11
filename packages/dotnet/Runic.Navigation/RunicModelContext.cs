@@ -19,6 +19,11 @@ namespace Runic.Navigation;
 /// implementation must therefore report <see langword="true"/> for code running inside
 /// one of its turns, and a turn must not need a blocked caller's thread to make progress.
 /// </para>
+/// <para>
+/// Generated bridges start command bodies in a turn. An implementation should run its turns under a
+/// <see cref="SynchronizationContext"/> that resumes their awaits in its turns, as <see cref="RunicModelContext"/>
+/// and a UI dispatcher do, so state a command writes after <c>await</c> is applied in a turn.
+/// </para>
 /// </remarks>
 public interface IRunicModelContext : IAsyncDisposable
 {
@@ -44,6 +49,24 @@ public interface IRunicModelContext : IAsyncDisposable
 /// <summary>
 /// A host-neutral serial execution context for a ViewModel graph.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Each turn runs under a <see cref="SynchronizationContext"/> that queues posted callbacks as new turns. An
+/// <c>await</c> in asynchronous code started in a turn, such as the body of an async command that the bridge
+/// invokes, therefore resumes in a later turn of this context, as code started on a UI thread resumes on that
+/// thread. State written after the <c>await</c> is applied in a turn, in the order in which the continuations
+/// became ready, and no other turn runs between two awaits of the same body. Code after
+/// <c>ConfigureAwait(false)</c>, or in work started with <c>Task.Run</c>, leaves the context; commit its result
+/// with <see cref="InvokeAsync(Action, CancellationToken)"/>.
+/// </para>
+/// <para>
+/// A continuation posted after the context stopped accepting work, or still queued when it closed, runs on the
+/// thread pool outside any turn, so the asynchronous code still finishes and work that waits for it is not
+/// stranded. <see cref="SynchronizationContext.Send"/> runs its callback in a turn of this context, or inline on
+/// the calling thread once the context is closed. An exception that escapes a posted callback, such as one thrown
+/// by an <c>async void</c> method, is reported through <see cref="UnhandledTurnException"/>.
+/// </para>
+/// </remarks>
 #pragma warning disable RUNICNAV001 // The context stays stable; only its optional lifetime surface (Closed) is experimental.
 public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLifetime
 #pragma warning restore RUNICNAV001
@@ -59,6 +82,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
     private bool _disposed;
     private bool _shutdownNotified;
     private readonly ILogger _logger;
+    private readonly TurnSynchronizationContext _synchronizationContext;
 
     // The logger of a RunicModelContext, or the Trace fallback for another context.
     internal static ILogger LoggerOf(IRunicModelContext context) =>
@@ -71,7 +95,11 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
 
     /// <summary>Creates a model context that logs unhandled turn failures to <paramref name="logger"/>.</summary>
     /// <param name="logger">The logger, or <see langword="null"/> for <see cref="System.Diagnostics.Trace"/> output.</param>
-    public RunicModelContext(ILogger<RunicModelContext>? logger) => _logger = logger ?? (ILogger)TraceFallbackLogger.Instance;
+    public RunicModelContext(ILogger<RunicModelContext>? logger)
+    {
+        _logger = logger ?? (ILogger)TraceFallbackLogger.Instance;
+        _synchronizationContext = new(this);
+    }
 
     /// <inheritdoc />
     public event Action<Exception>? UnhandledTurnException;
@@ -158,13 +186,15 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
         return new(_stopped.Task);
     }
 
-    private bool Enqueue(IWorkItem item)
+    // An item that already carries its execution context, such as a posted
+    // continuation, passes captureExecutionContext: false.
+    private bool Enqueue(IWorkItem item, bool captureExecutionContext = true)
     {
         // A model turn may be queued while a trusted bridge invocation is
         // active. Capture its ambient execution context with this individual
         // item, rather than with the drain, because one drain deliberately
         // batches unrelated callers. This also honors SuppressFlow.
-        var captured = new ExecutionContextWorkItem(item, ExecutionContext.Capture());
+        var captured = captureExecutionContext ? new ExecutionContextWorkItem(item, ExecutionContext.Capture()) : item;
         var queueDrain = false;
         lock (_gate)
         {
@@ -189,6 +219,7 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
         // run in this clean baseline even when it follows an item that did
         // capture an AsyncLocal scope.
         var baselineExecutionContext = ExecutionContext.Capture();
+        var previousSynchronizationContext = SynchronizationContext.Current;
         Current = this;
         try
         {
@@ -206,12 +237,81 @@ public sealed class RunicModelContext : IRunicModelContext, IRunicModelContextLi
                     item = _queued.Dequeue();
                 }
 
+                // Set per item: a turn that replaced the context must not pass that on to the next one.
+                SynchronizationContext.SetSynchronizationContext(_synchronizationContext);
                 item.Execute(baselineExecutionContext);
             }
         }
         finally
         {
             Current = previous;
+            SynchronizationContext.SetSynchronizationContext(previousSynchronizationContext);
+        }
+    }
+
+    // Queues a continuation as a turn. It runs on the thread pool instead when the context no longer
+    // accepts work, and again when the context closes before the turn starts (see the class remarks).
+    private void PostContinuation(SendOrPostCallback callback, object? state)
+    {
+        var continuation = new ContinuationWorkItem(callback, state, ExecutionContext.Capture(), this);
+        if (!Enqueue(continuation, captureExecutionContext: false)) continuation.RejectDisposed();
+    }
+
+    // The SynchronizationContext every turn runs under. It holds no state of its own, so copies are not needed.
+    private sealed class TurnSynchronizationContext(RunicModelContext owner) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            ArgumentNullException.ThrowIfNull(d);
+            owner.PostContinuation(d, state);
+        }
+
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            ArgumentNullException.ThrowIfNull(d);
+            if (owner.IsExecuting)
+            {
+                d(state);
+                return;
+            }
+            var started = 0;
+            try
+            {
+                owner.InvokeAsync(() =>
+                {
+                    Volatile.Write(ref started, 1);
+                    d(state);
+                }).AsTask().GetAwaiter().GetResult();
+            }
+            // The context closed before the callback started: run it here, like a closed dispatcher context.
+            catch (ObjectDisposedException) when (Volatile.Read(ref started) == 0) { d(state); }
+        }
+
+        public override SynchronizationContext CreateCopy() => this;
+    }
+
+    // A posted continuation, for example of an await. It runs in the execution context captured when it
+    // was posted (the baseline when the poster suppressed the flow), in a turn or, once the context has
+    // closed, on the thread pool under no SynchronizationContext.
+    private sealed class ContinuationWorkItem(SendOrPostCallback callback, object? state, ExecutionContext? context,
+        RunicModelContext owner) : IWorkItem
+    {
+        private static readonly ContextCallback InvokeInContext = static self => ((ContinuationWorkItem)self!).Invoke();
+
+        public void Execute(ExecutionContext? baselineExecutionContext)
+        {
+            var executionContext = context ?? baselineExecutionContext;
+            if (executionContext is null) Invoke();
+            else ExecutionContext.Run(executionContext, InvokeInContext, this);
+        }
+
+        public void RejectDisposed() =>
+            ThreadPool.UnsafeQueueUserWorkItem(static self => self.Execute(null), this, preferLocal: false);
+
+        private void Invoke()
+        {
+            try { callback(state); }
+            catch (Exception error) { owner.ReportUnhandled(error); }
         }
     }
 

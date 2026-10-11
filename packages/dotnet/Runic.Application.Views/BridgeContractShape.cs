@@ -47,8 +47,8 @@ public static class BridgeContractShape
         var properties = PublicModelProperties(model).Where(property => property.GetCustomAttribute<RunicIgnoreAttribute>(true) is null).ToArray();
         foreach (var property in properties)
         {
-            var interaction = GenericContract(property.PropertyType, "ReactiveUI.Binding.IInteraction`2", "ReactiveUI.Binding.Reactive.IInteraction`2");
-            var command = GenericContract(property.PropertyType, "ReactiveUI.IReactiveCommand`2", "ReactiveUI.Reactive.IReactiveCommand`2");
+            var interaction = BridgeMvvmConventions.Interaction(property.PropertyType);
+            var command = BridgeMvvmConventions.TypedCommand(property.PropertyType);
             var kind = interaction is not null ? "interaction" : command is not null || typeof(ICommand).IsAssignableFrom(property.PropertyType) ? "command" : "state";
             parts.Add($"member:{TypeName(model)}:{property.Name}:wire:{WireName(property)}:{kind}:access:{(property.SetMethod?.IsPublic == true ? "write" : "read")}");
             if (kind == "command" && command is not null)
@@ -63,12 +63,11 @@ public static class BridgeContractShape
             }
             if (kind == "command")
             {
-                var toolkit = GenericContract(property.PropertyType, "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand`1", "CommunityToolkit.Mvvm.Input.IRelayCommand`1");
-                var input = toolkit?.GenericTypeArguments[0] ?? property.GetCustomAttribute<RunicCommandInputAttribute>(true)?.Input;
+                var typed = BridgeMvvmConventions.InputCommand(property.PropertyType);
+                var input = typed?.GenericTypeArguments[0] ?? property.GetCustomAttribute<RunicCommandInputAttribute>(true)?.Input;
                 if (input is not null)
-                    AppendType(parts, input, toolkit is null ? null : GenericAnnotation(nullability.Create(property), 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
-                var isAsync = property.PropertyType.GetInterfaces().Append(property.PropertyType)
-                    .Any(type => type.FullName == "CommunityToolkit.Mvvm.Input.IAsyncRelayCommand");
+                    AppendType(parts, input, typed is null ? null : GenericAnnotation(nullability.Create(property), 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
+                var isAsync = BridgeMvvmConventions.IsAsyncCommand(property.PropertyType);
                 parts.Add($"command-async:{TypeName(model)}:{property.Name}:{isAsync}");
                 AppendFailure(parts, model, property);
                 continue;
@@ -100,7 +99,8 @@ public static class BridgeContractShape
     }
 
     // Only declared commands add parts, so undeclared models keep their
-    // fingerprint. A [RelayCommand] method declaration is usually private.
+    // fingerprint. A command's source method, such as a CommunityToolkit
+    // [RelayCommand] method, is usually private.
     private static void AppendFailure(List<string> parts, Type model, PropertyInfo command)
     {
         foreach (var (declaredOn, failure) in BridgeCommandSources.FailureDeclarations(model, command))
@@ -199,16 +199,15 @@ public static class BridgeContractShape
         for (var current = type; current is not null && current != typeof(object) && !IsFrameworkBase(current); current = current.BaseType) hierarchy.Push(current);
         return hierarchy.SelectMany(current => current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)).Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod is not null);
     }
-    // The generator also uses it to recognise a framework slot type.
-    internal static bool IsFrameworkBase(Type type) => type.FullName is "ReactiveUI.ReactiveObject" or "CommunityToolkit.Mvvm.ComponentModel.ObservableObject" || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
-    // Same rule as the generator: a ReactiveUI command or interaction argument
+    // The generator also uses it for DTO hierarchies and to recognise a framework slot type.
+    internal static bool IsFrameworkBase(Type type) => BridgeMvvmConventions.IsFrameworkBase(type) || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;
+    // Same rule as the generator: a typed command or interaction argument
     // is annotated only when the declared property type closes the contract.
     private static NullabilityInfo? ContractAnnotation(PropertyInfo property, Type contract, NullabilityInfoContext nullability, int index) =>
         property.PropertyType.IsGenericType && property.PropertyType.GenericTypeArguments.SequenceEqual(contract.GenericTypeArguments)
             ? GenericAnnotation(nullability.Create(property), index) : null;
     private static NullabilityInfo? GenericAnnotation(NullabilityInfo? value, int index) => value is { GenericTypeArguments.Length: > 0 } && value.GenericTypeArguments.Length > index ? value.GenericTypeArguments[index] : null;
     private static string WireName(PropertyInfo property) => property.GetCustomAttribute<RunicAliasAttribute>(true)?.Name ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(true)?.Name ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
-    private static Type? GenericContract(Type type, params string[] names) => type.GetInterfaces().Append(type).FirstOrDefault(candidate => candidate.IsGenericType && names.Contains(candidate.GetGenericTypeDefinition().FullName, StringComparer.Ordinal));
     internal static Type? NavigationRegionContent(Type type) =>
 #pragma warning disable RUNICNAV001
         type.IsGenericType && type.GetGenericTypeDefinition() == typeof(NavigationRegion<>) ? type.GenericTypeArguments[0] : null;

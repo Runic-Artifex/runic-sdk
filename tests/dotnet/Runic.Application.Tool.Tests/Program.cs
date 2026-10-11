@@ -51,6 +51,7 @@ internal static class Program
             ("doctor lists every missing GTK 4 profile piece", DoctorGtk4ProfileListsEveryMissingPiece),
             ("doctor names GTK 4 packages for the distribution", DoctorGtk4ProfileNamesDistributionPackages),
             ("doctor warns when a GTK 4 project restores Runic.Platform.Linux", DoctorGtk4ProfileRejectsGtk3Platform),
+            ("doctor names the platform-services provider and checks the portal", DoctorReportsPlatformServicesProvider),
             ("doctor --rid checks Windows WebView2 and C++ tools", DoctorRidChecksWindows),
             ("doctor --rid checks CS-WebUI presentation", DoctorRidChecksCsWebUi),
             ("doctor --rid reports its target through the CLI", DoctorRidThroughCli),
@@ -920,6 +921,10 @@ internal static class Program
         public string FallbackOsReleasePath { get; init; } = Path.Combine(Path.GetTempPath(), "runic-tool-test-no-os-release");
         public IReadOnlyList<string> OsReleasePaths => [OsReleasePath, FallbackOsReleasePath];
 
+        // No files by default, so file checks do not depend on the machine running the tests.
+        public HashSet<string> Files { get; init; } = [];
+        public bool FileExists(string path) => Files.Contains(path);
+
         public string? GetEnvironmentVariable(string name) => Environment.GetValueOrDefault(name);
 
         public string? FindExecutable(string name) =>
@@ -1164,8 +1169,9 @@ internal static class Program
     private static void DoctorGtk4ProfileListsEveryMissingPiece()
     {
         using var workspace = new TestWorkspace();
-        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority)
-            with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4"] };
+        // A custom composition on Runic.Desktop chooses its platform providers itself.
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, null, out var authority)
+            with { UsesGtk4 = true, DirectReferences = ["Runic.Desktop.Gtk4"] };
         DoctorReport Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
             DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult();
 
@@ -1184,7 +1190,7 @@ internal static class Program
         {
             libraries = new Dictionary<string, object>
             {
-                ["Runic.Application.Desktop/1.0.0"] = new { type = "package" },
+                ["Runic.Desktop/1.0.0"] = new { type = "package" },
                 ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
             },
         }));
@@ -1213,6 +1219,18 @@ internal static class Program
 
         using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"}]}}""");
         SequenceEqual(["Runic.Platform.Linux.Gtk4"], DoctorProjectConfiguration.ReferenceIdentities(evaluation.RootElement));
+
+        // Runic.Application.Desktop brings the platform providers and selects the GTK 4 one, even before restore.
+        using var hosted = new TestWorkspace();
+        DoctorProjectConfiguration application = CreateDoctorProject(hosted, null, out _)
+            with { Host = RunicViewsHost.Desktop, UsesGtk4 = true, DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4"] };
+        DoctorCheck libraries = Check(Inspect(application, new FakeDoctorRuntime(authority.Toolchain)), "gtk4-profile");
+        Equal(DoctorStatus.Warning, libraries.Status);
+        Contains(libraries.Message, "2 piece(s)");
+        DoesNotContain(libraries.Message, "Runic.Platform");
+        Contains(libraries.Remediation ?? string.Empty, "AddRunicPlatformServices()");
+        DoesNotContain(libraries.Remediation ?? string.Empty, "CreatePortalWindowOwner");
+        Equal(DoctorStatus.Pass, Check(Inspect(application, new FakeDoctorRuntime(authority.Toolchain) { Libraries = [.. gtk4] }), "gtk4-profile").Status);
     }
 
     private static void DoctorGtk4ProfileNamesDistributionPackages()
@@ -1308,6 +1326,69 @@ internal static class Program
 
         Write(desktop.ProjectAssetsFile, "{}");
         Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Desktop.Gtk4", "Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Portal"] }).Status);
+
+        // Runic.Application.Desktop restores Runic.Platform.Linux but never loads it in a GTK 4 process. Only a direct
+        // reference, for an application that calls LinuxPlatformProvider itself, still conflicts.
+        Write(desktop.ProjectAssetsFile, JsonSerializer.Serialize(new
+        {
+            libraries = new Dictionary<string, object>
+            {
+                ["Runic.Application.Desktop/1.0.0"] = new { type = "package" },
+                ["Runic.Platform.Linux/1.0.0"] = new { type = "package" },
+                ["Runic.Platform.Linux.Gtk4/1.0.0"] = new { type = "package" },
+                ["Runic.Platform.Linux.Portal/1.0.0"] = new { type = "package" },
+            },
+        }));
+        Equal(DoctorStatus.Pass, Inspect(desktop with { DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4"] }).Status);
+        DoctorCheck direct = Inspect(desktop with { DirectReferences = ["Runic.Application.Desktop", "Runic.Desktop.Gtk4", "Runic.Platform.Linux"] });
+        Equal(DoctorStatus.Warning, direct.Status);
+        Contains(direct.Message, "Runic.Platform.Linux is referenced directly");
+        Contains(direct.Remediation ?? string.Empty, "remove Runic.Platform.Linux");
+        Contains(direct.Remediation ?? string.Empty, "AddRunicPlatformServices()");
+        DoesNotContain(direct.Remediation ?? string.Empty, "Portal directly");
+    }
+
+    private static void DoctorReportsPlatformServicesProvider()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration desktop = CreateDoctorProject(workspace, "Runic.Application.Desktop", out var authority);
+        DoctorCheck Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
+            Check(DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult(), "platform-services");
+
+        Contains(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain) { Platform = new("win", "x64", false, "10.0.26100") }).Message, "Windows provider");
+        Contains(Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain) { Platform = new("osx", "arm64", false, "15.0") }).Message, "macOS provider");
+
+        // Linux needs a session bus and an installed xdg-desktop-portal.
+        DoctorCheck missing = Inspect(desktop, new FakeDoctorRuntime(authority.Toolchain));
+        Equal(DoctorStatus.Warning, missing.Status);
+        Contains(missing.Message, "GTK 3");
+        Contains(missing.Message, "no D-Bus session bus");
+        Contains(missing.Message, "xdg-desktop-portal is not installed");
+        Contains(missing.Remediation ?? string.Empty, "xdg-desktop-portal-gnome");
+        var session = new FakeDoctorRuntime(authority.Toolchain)
+        {
+            Environment = { ["XDG_RUNTIME_DIR"] = "/run/user/1000", ["HOME"] = "/home/user" },
+            Files = ["/run/user/1000/bus", "/usr/share/" + DoctorChecks.PortalServiceFile],
+        };
+        DoctorCheck ready = Inspect(desktop with { UsesGtk4 = true }, session);
+        Equal(DoctorStatus.Pass, ready.Status);
+        Contains(ready.Message, "parented through GTK 4");
+        // XDG_DATA_DIRS replaces the default system directories; XDG_DATA_HOME is searched too.
+        var custom = new FakeDoctorRuntime(authority.Toolchain)
+        {
+            Environment = { ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/tmp/bus", ["XDG_DATA_DIRS"] = "/nix/profile/share", ["HOME"] = "/home/user" },
+            Files = ["/usr/share/" + DoctorChecks.PortalServiceFile],
+        };
+        Equal(DoctorStatus.Warning, Inspect(desktop, custom).Status);
+        custom.Files.Add("/home/user/.local/share/" + DoctorChecks.PortalServiceFile);
+        Equal(DoctorStatus.Pass, Inspect(desktop, custom).Status);
+
+        using var webUi = new TestWorkspace();
+        DoctorCheck csWebUi = Inspect(CreateDoctorProject(webUi, "Runic.Application.CsWebUi", out _), new FakeDoctorRuntime(authority.Toolchain));
+        Equal(DoctorStatus.Pass, csWebUi.Status);
+        Contains(csWebUi.Message, "OwnerUnavailable");
+        False(InspectTarget(desktop, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)).Checks.Any(static check => check.Name == "platform-services"),
+            "--rid inspected this machine's platform services.");
     }
 
     private static void DoctorRidChecksWindows()

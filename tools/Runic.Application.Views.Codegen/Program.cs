@@ -5,8 +5,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Input;
 using Runic.Application.Views;
-using Runic.Application.Views.Codegen.Toolkit;
-using Runic.Application.Views.Codegen.ReactiveUI;
 
 try
 {
@@ -29,13 +27,9 @@ try
                 case "--di-composition" when i + 1 < args.Length:
                     compositionType = args[++i];
                     break;
-                case "--reactiveui-flavor" when i + 1 < args.Length:
-                    CodegenOptions.ReactiveUiFlavor = args[++i] switch
-                    {
-                        "primitives" => ReactiveUiFlavor.Default,
-                        "reactive" => ReactiveUiFlavor.SystemReactive,
-                        var value => throw new ArgumentException($"Unsupported ReactiveUI flavor '{value}'. Expected 'primitives' or 'reactive'."),
-                    };
+                // MVVM library options, such as --reactiveui-flavor.
+                case var option when i + 1 < args.Length && MvvmCodegenConventions.ForOption(option) is { } convention:
+                    convention.ApplyOption(option, args[++i]);
                     break;
                 default: values.Add(args[i]); break;
             }
@@ -45,7 +39,7 @@ try
             throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>]");
 
         string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}",
-            $"reactiveui={CodegenOptions.ReactiveUiFlavor}"];
+            .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments)];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
         {
             foreach (var warning in cachedWarnings) Console.Error.WriteLine(warning);
@@ -112,11 +106,10 @@ try
                 group.Last().Member);
         if (aot)
         {
-            var unsupported = models.FirstOrDefault(entry => ToolkitCommandInspector.HasUnsupportedAotValidation(entry.Model));
-            if (unsupported.Model is not null)
-                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Aot,
-                    $"{unsupported.Model.FullName} inherits CommunityToolkit.Mvvm.ObservableValidator. Its validation failed in this prototype's Native AOT probe; use a framework-dependent publish until an AOT-safe validator is verified.",
-                    unsupported.Model);
+            var unsupported = models.Select(entry => (entry.Model, Reason: MvvmCodegenConventions.UnsupportedAotReason(entry.Model)))
+                .FirstOrDefault(entry => entry.Reason is not null);
+            if (unsupported.Reason is not null)
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Aot, unsupported.Reason, unsupported.Model);
         }
 
         Directory.CreateDirectory(positional[2]);
@@ -319,8 +312,7 @@ static void WarnContentWithoutView(Type model, IReadOnlyDictionary<PropertyInfo,
             : contentCollections.ContainsKey(property) ? property.PropertyType.GenericTypeArguments[0]
             : property.PropertyType;
         if (slotType == typeof(object) || BridgeContractShape.IsFrameworkBase(slotType) || slotType.Namespace is { } ns
-                && (ns == "System" || ns == "ReactiveUI" || ns.StartsWith("ReactiveUI.", StringComparison.Ordinal)
-                    || ns.StartsWith("CommunityToolkit.", StringComparison.Ordinal))
+                && (ns == "System" || BridgeMvvmConventions.IsFrameworkNamespace(ns))
             || windowModels.Any(slotType.IsAssignableFrom))
             continue;
         var missing = candidates.Where(type => type != model && slotType.IsAssignableFrom(type)).ToArray();
@@ -474,7 +466,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
-        || InspectCommand(model, property, () => ReactiveCommandInspector.InspectContract(property, CodegenOptions.ReactiveUiFlavor)) is not null).ToArray();
+        || MvvmCodegenConventions.All.Any(convention => InspectCommand(model, property, () => convention.InspectCommand(property)) is not null)).ToArray();
     var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property)).ToArray();
     if (properties.FirstOrDefault(property => WireName(property) == "revision") is { } revision)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
@@ -585,35 +577,31 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var contentBindings = contentProperties.Concat(contentCollections).ToArray();
     var fullType = $"global::{model.FullName}";
     var commandPlans = new Dictionary<PropertyInfo, GeneratedCommandPlan>();
-    var commandSources = commands.ToDictionary(command => command, command => ToolkitSourceMethod(model, command));
+    var commandSources = commands.ToDictionary(command => command, command => CommandSourceMethod(model, command));
     foreach (var command in commands)
     {
         var source = (MemberInfo?)commandSources[command] ?? command;
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
                 $"{model.Name}.{command.Name}: Bridge commands must end with Command.", source);
-        var toolkit = InspectCommand(model, command, () => ToolkitCommandInspector.InspectContract(command));
-        var reactive = InspectCommand(model, command, () => ReactiveCommandInspector.InspectContract(command, CodegenOptions.ReactiveUiFlavor));
+        var library = MvvmCodegenConventions.All
+            .Select(convention => InspectCommand(model, command, () => convention.InspectCommand(command))).ToArray()
+            .FirstOrDefault(candidate => candidate is not null);
         var plainInput = command.GetCustomAttribute<RunicCommandInputAttribute>(true);
-        var plan = toolkit is { } existing
-            ? new GeneratedCommandPlan(false, existing.IsAsync, ToolkitContract: existing,
-                InputGraph: existing.Input is { } toolkitInput ? BridgeTypeGraph.Discover(toolkitInput,
-                    ContractNullability.Argument(command, nullability, [toolkitInput], 0),
-                    $"{model.Name}.{command.Name}.input", source, honorJsonIgnore) : null)
-            : reactive is { } contract
-                ? GeneratedCommandPlan.Reactive(contract,
-                    contract.HasInput ? BridgeTypeGraph.Discover(contract.Input,
-                        ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 0),
-                        $"{model.Name}.{command.Name}.input", source, honorJsonIgnore) : null,
-                    contract.HasResult ? BridgeTypeGraph.Discover(contract.Result,
-                        ContractNullability.Argument(command, nullability, [contract.Input, contract.Result], 1),
-                        $"{model.Name}.{command.Name}.result", source, honorJsonIgnore) : null)
-                : plainInput is not null
-                    ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
-                        rootPath: $"{model.Name}.{command.Name}.input", origin: source, honorJsonIgnore: honorJsonIgnore))
-                : throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
-                    $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput.", source);
-        if (plan.ReactiveContract is null && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
+        var plan = library is { } typed
+            ? new GeneratedCommandPlan(typed.HasStringArgument, typed.IsAsync, Command: typed,
+                InputGraph: typed.Input is { } input ? BridgeTypeGraph.Discover(input,
+                    ContractNullability.Argument(command, nullability, typed.ContractArguments, 0),
+                    $"{model.Name}.{command.Name}.input", source, honorJsonIgnore) : null,
+                ResultGraph: typed.Result is { } result ? BridgeTypeGraph.Discover(result,
+                    ContractNullability.Argument(command, nullability, typed.ContractArguments, 1),
+                    $"{model.Name}.{command.Name}.result", source, honorJsonIgnore) : null)
+            : plainInput is not null
+                ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
+                    rootPath: $"{model.Name}.{command.Name}.input", origin: source, honorJsonIgnore: honorJsonIgnore))
+            : throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
+                $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput.", source);
+        if (plan.Command?.SelectsResultCardinality != true && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
                 $"{model.Name}.{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; CommunityToolkit and plain commands have no result value.", source);
         commandPlans.Add(command, plan with
@@ -650,7 +638,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             plan.ResultGraph?.EmitTypeScriptDecoder("value") ?? "undefined",
             plan.InputGraph?.EncodeTypeScript(plan.ParameterName) ?? "undefined",
             plan.HasArgument,
-            plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream,
+            plan.Command?.Cardinality is BridgeCommandResultCardinality.Stream,
             plan.ParameterName,
             plan.FailureGraph?.TypeScriptType(),
             plan.FailureGraph?.EmitTypeScriptDecoder("value"));
@@ -783,22 +771,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (plan.FailureGraph is { } failure) { failure.AppendCSharpCodec(cs, command.Name + "FailureCodec"); cs.AppendLine(); }
     }
     InteractionCodeEmitter.AppendCSharpCodecs(cs, interactions);
-    if (commandPlans.Values.Any(plan => plan.ToolkitContract is { IsAsync: true }))
-    {
-        cs.AppendLine("    private sealed class ToolkitRunningSubscription : global::System.IDisposable");
-        cs.AppendLine("    {");
-        cs.AppendLine("        private readonly global::System.ComponentModel.INotifyPropertyChanged _command;");
-        cs.AppendLine("        private readonly global::System.ComponentModel.PropertyChangedEventHandler _handler;");
-        cs.AppendLine("        internal ToolkitRunningSubscription(object command, global::System.Action changed)");
-        cs.AppendLine("        {");
-        cs.AppendLine("            _command = (global::System.ComponentModel.INotifyPropertyChanged)command;");
-        cs.AppendLine("            _handler = (_, e) => { if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == \"IsRunning\") changed(); };");
-        cs.AppendLine("            _command.PropertyChanged += _handler;");
-        cs.AppendLine("        }");
-        cs.AppendLine("        public void Dispose() => _command.PropertyChanged -= _handler;");
-        cs.AppendLine("    }");
-        cs.AppendLine();
-    }
+    foreach (var convention in MvvmCodegenConventions.All)
+        convention.AppendSupportTypes(cs, commandPlans.Values);
     if (hasContent || needsCheckedWriter)
     {
         cs.AppendLine(needsCheckedWriter
@@ -938,24 +912,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     {
         var plan = commandPlans[command];
         var name = command.Name[..^"Command".Length];
-        if (plan.ReactiveContract is { } contract)
-        {
-            var commandType = $"global::ReactiveUI.IReactiveCommand<{plan.InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input)}, {plan.ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result)}>";
-            var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive
-                ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
-                : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
-            var input = contract.Input.FullName == "System.Reactive.Unit"
-                ? "default(global::System.Reactive.Unit)"
-                : "global::ReactiveUI.Primitives.RxVoid.Default";
-            if (!plan.HasArgument)
-                cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", {helper}.CanExecute(({commandType})vm.{command.Name}, {input}));");
-            cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", {helper}.IsExecuting(({commandType})vm.{command.Name}));");
-            continue;
-        }
-        if (!plan.HasArgument)
-            cs.AppendLine($"        writer.WriteBoolean(\"can{name}\", ((global::System.Windows.Input.ICommand)vm.{command.Name}).CanExecute(null));");
-        if (plan.ToolkitContract is { IsAsync: true })
-            cs.AppendLine($"        writer.WriteBoolean(\"is{name}Executing\", ((global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.{command.Name}).IsRunning);");
+        if (plan.Command is { } library)
+            library.AppendSnapshotState(cs, command, name, plan);
+        else if (!plan.HasArgument)
+            MvvmCommand.AppendCanExecute(cs, command, name);
     }
     if (needsCheckedWriter) cs.AppendLine("        writeFieldMetadata(writer);");
     cs.AppendLine("        writer.WriteEndObject();");
@@ -1311,7 +1271,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var name = command.Name[..^"Command".Length];
             return new MockOperation(LowerFirst(name), name, plan.HasArgument ? CommandInputType(plan) : "void",
                 plan.ResultGraph?.TypeScriptType() ?? "void", plan.InputGraph?.EmitTypeScriptDecoder("wire"),
-                plan.ResultGraph?.EncodeTypeScript("typed"), plan.ReactiveContract?.Cardinality is BridgeCommandResultCardinality.Stream,
+                plan.ResultGraph?.EncodeTypeScript("typed"), plan.Command?.Cardinality is BridgeCommandResultCardinality.Stream,
                 plan.FailureGraph?.TypeScriptType(), plan.FailureGraph?.EncodeTypeScript("typed"));
         }).ToArray(),
         interactions.Select(plan => new MockInteraction(LowerFirst(plan.Property.Name), plan.Input.TypeScriptType(),
@@ -1389,23 +1349,24 @@ static T? InspectCommand<T>(Type model, PropertyInfo command, Func<T?> inspect) 
     catch (NotSupportedException error) when (error is not BridgeDiagnosticException and not BridgeTypeGraphException)
     {
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command, $"{model.Name}.{error.Message}",
-            (MemberInfo?)ToolkitSourceMethod(model, command) ?? command);
+            (MemberInfo?)CommandSourceMethod(model, command) ?? command);
     }
 }
 
-// CommunityToolkit generates SaveCommand from [RelayCommand] Save, SaveAsync
-// or OnSave. The method carries the parameter name, documentation and the
-// source line that the generated property lacks. The lookup is shared with
-// BridgeContractShape, which fingerprints failure declarations on the method.
-static MethodInfo? ToolkitSourceMethod(Type model, PropertyInfo command) =>
-    BridgeCommandSources.ToolkitSourceMethod(model, command);
+// The method an MVVM library generated the command from: CommunityToolkit
+// generates SaveCommand from [RelayCommand] Save, SaveAsync or OnSave. The
+// method carries the parameter name, documentation and the source line that
+// the generated property lacks. The lookup is shared with BridgeContractShape,
+// which fingerprints failure declarations on the method.
+static MethodInfo? CommandSourceMethod(Type model, PropertyInfo command) =>
+    BridgeCommandSources.SourceMethod(model, command);
 
-// A [RelayCommand] property's generated comment only says which method it
-// wraps, so a Toolkit command uses its method's documentation alone.
+// A generated command property's comment only says which method it wraps
+// ([RelayCommand]), so such a command uses its method's documentation alone.
 static string? CommandDocumentation(PropertyInfo command, MethodInfo? source) =>
     source is null ? XmlDocumentation.Summary(command) : XmlDocumentation.Summary(source);
 
-// The TypeScript parameter of a command with an argument: the Toolkit method's
+// The TypeScript parameter of a command with an argument: its source method's
 // parameter name, else the argument's C# type name, else "input".
 static string CommandParameterName(MethodInfo? source, GeneratedCommandPlan plan)
 {
@@ -1680,33 +1641,23 @@ static class GeneratedOutput
     }
 }
 
-static class CodegenOptions
-{
-    internal static ReactiveUiFlavor ReactiveUiFlavor { get; set; } = ReactiveUiFlavor.Default;
-}
-
-// Every supported command adapter shares input graphs and operation emission.
-// Only the framework-specific execution contract remains in its inspector.
+// Every supported command shares input graphs and operation emission. Only the
+// library-specific execution contract remains in its MVVM convention module.
 sealed record GeneratedCommandPlan(
     bool HasStringArgument,
     bool IsAsync,
     string? LegacyDescriptor = null,
-    ReactiveCommandContract? ReactiveContract = null,
+    MvvmCommand? Command = null,
     BridgeTypeGraph? InputGraph = null,
     BridgeTypeGraph? ResultGraph = null,
     bool IsPlainICommand = false,
-    ToolkitCommandContract? ToolkitContract = null,
     BridgeTypeGraph? FailureGraph = null)
 {
     internal bool HasArgument => InputGraph is not null || HasStringArgument;
     /// <summary>The generated TypeScript parameter name of the command argument.</summary>
     internal string ParameterName { get; init; } = "input";
     /// <summary>True when the snapshot carries is&lt;Name&gt;Executing.</summary>
-    internal bool HasExecutionState => ReactiveContract is not null || ToolkitContract is { IsAsync: true };
-    internal static GeneratedCommandPlan Reactive(ReactiveCommandContract contract,
-        BridgeTypeGraph? input, BridgeTypeGraph? result) =>
-        new(contract.HasInput && contract.Input == typeof(string),
-            IsAsync: true, ReactiveContract: contract, InputGraph: input, ResultGraph: result);
+    internal bool HasExecutionState => Command?.HasExecutionState == true;
 
     internal static GeneratedCommandPlan Plain(BridgeTypeGraph input) =>
         new(HasStringArgument: false, IsAsync: false, InputGraph: input, IsPlainICommand: true);
@@ -1724,54 +1675,11 @@ sealed record GeneratedCommandPlan(
     private string DescriptorCore(PropertyInfo property, string modelType)
     {
         if (LegacyDescriptor is not null) return LegacyDescriptor;
-        if (ToolkitContract is { } toolkit)
-        {
-            var toolkitType = toolkit.Input is null ? null : InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(toolkit.Input);
-            var readArgument = toolkit.HasInput
-                ? $"ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}" : null;
-            var encodeArgument = toolkit.HasInput
-                ? $"EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({toolkitType})argument!))" : null;
-            // IsRunning can change without CanExecuteChanged (for example with
-            // concurrent executions), so publish on the command's own change.
-            var subscribeRunning = toolkit.IsAsync
-                ? $"Subscribe: (vm, changed) => new ToolkitRunningSubscription(vm.{property.Name}, changed)" : null;
-            return ToolkitCommandInspector.DescriptorFor(property, modelType, toolkit, toolkitType, readArgument, encodeArgument, subscribeRunning);
-        }
-        if (IsPlainICommand)
-        {
-            var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
-            var plainInputType = plainGraph.RootCSharpType();
-            var name = property.Name[..^"Command".Length];
-            return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
-        }
-        var contract = ReactiveContract ?? throw new InvalidOperationException("Command plan has no descriptor.");
-        var inputType = InputGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Input);
-        var resultType = ResultGraph?.RootCSharpType() ?? BridgeTypeGraph.CSharpType(contract.Result);
-        var commandType = $"global::ReactiveUI.IReactiveCommand<{inputType}, {resultType}>";
-        var typed = $"({commandType})vm.{property.Name}";
-        var helper = contract.Flavor is ReactiveUiFlavor.SystemReactive
-            ? "global::Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution"
-            : "global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution";
-        var input = contract.HasInput ? $"({inputType})argument!"
-            : contract.Input.FullName == "System.Reactive.Unit" ? "default(global::System.Reactive.Unit)"
-            : "global::ReactiveUI.Primitives.RxVoid.Default";
-        var read = contract.HasInput
-            ? $", ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}"
-            : "";
-        var canonical = contract.HasInput
-            ? $", EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({inputType})argument!))"
-            : "";
-        var canExecute = $", CanExecute: (vm, argument) => {helper}.CanExecute({typed}, {input})";
-        var subscribe = $", Subscribe: (vm, changed) => {helper}.Observe({typed}, changed)";
-        if (contract.HasResult && contract.Cardinality is BridgeCommandResultCardinality.Stream)
-        {
-            var streamExecute = $"async (vm, execution, token, argument) => await {helper}.ExecuteStream({typed}, {input}, execution.Stream!, result => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)), token).ConfigureAwait(false)";
-            return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, CreateStream: () => new global::Runic.Application.Views.BridgeOperationStream(), ExecuteStreamAsync: {streamExecute}{read}{canonical}{canExecute}{subscribe})";
-        }
-        var executionMethod = contract.Cardinality is BridgeCommandResultCardinality.Last ? "ExecuteLast" : "Execute";
-        var execute = contract.HasResult
-            ? $"async (vm, token, argument) => {{ var result = await {helper}.{executionMethod}({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result))); }}"
-            : $"async (vm, token, argument) => {{ await {helper}.ExecuteCompletion({typed}, {input}, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }}";
-        return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, ExecuteResultAsync: {execute}{read}{canonical}{canExecute}{subscribe})";
+        if (Command is { } library) return library.Descriptor(property, modelType, this);
+        if (!IsPlainICommand) throw new InvalidOperationException("Command plan has no descriptor.");
+        var plainGraph = InputGraph ?? throw new InvalidOperationException("Plain ICommand is missing its input graph.");
+        var plainInputType = plainGraph.RootCSharpType();
+        var name = property.Name[..^"Command".Length];
+        return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{name}\", vm => (object)vm.{property.Name}, ReadArgument: e => {{ using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return {property.Name}InputCodec.Read(document.RootElement); }}, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}InputCodec.Write(writer, ({plainInputType})argument!)))";
     }
 }

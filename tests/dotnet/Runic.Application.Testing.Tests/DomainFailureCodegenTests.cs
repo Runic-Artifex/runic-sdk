@@ -116,7 +116,7 @@ internal static class DomainFailureCodegenTests
         ]);
     }
 
-    private static void CompareGolden(string project, string set, (string Golden, string Actual)[] outputs)
+    internal static void CompareGolden(string project, string set, (string Golden, string Actual)[] outputs)
     {
         var update = Environment.GetEnvironmentVariable("RUNIC_UPDATE_GOLDEN") == "1";
         foreach (var (golden, actualPath) in outputs)
@@ -149,7 +149,7 @@ internal static class DomainFailureCodegenTests
         Require(reply is { Ok: false, ErrorKind: "domain-failed", State: not null } && reply.Failure?.GetRawText() == failure,
             $"{reply.Route} did not reply with its declared failure {failure}: {reply}");
 
-    private static string FindWorkspaceRoot()
+    internal static string FindWorkspaceRoot()
     {
         for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null; directory = directory.Parent)
             if (File.Exists(Path.Combine(directory.FullName, "RunicSdk.Core.slnx"))) return directory.FullName;

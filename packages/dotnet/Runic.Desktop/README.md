@@ -151,7 +151,8 @@ The optional native dispatcher interface lets application platform services use 
 same owner/lifetime checks with custom hosts. Window capabilities are forwarded from
 the provider, including operations unavailable under GTK4/Wayland. For native file
 pickers and clipboard, register the matching GTK platform provider and the
-[portal service](../Runic.Platform.Linux.Portal/README.md).
+[portal service](../Runic.Platform.Linux.Portal/README.md). Runic.Application.Desktop
+selects the provider for the running backend from `services.AddRunicPlatformServices()`.
 
 ## Callback concurrency and ordering
 
