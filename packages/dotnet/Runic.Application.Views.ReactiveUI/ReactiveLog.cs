@@ -9,7 +9,8 @@ namespace Runic.Application.Views.ReactiveUI.Reactive;
 namespace Runic.Application.Views.ReactiveUI;
 #endif
 
-// Event IDs continue the Views table and are documented in the Views README
+// Event IDs 1040-1043 and 1090-1099 belong to this package (1044-1049 are reserved for Runic.Navigation.ReactiveUI);
+// they continue the Views table and are documented in the Views README
 // (Logging and telemetry). The category is RunicViewsTelemetry.LogCategory.
 internal static partial class ReactiveLog
 {
@@ -26,8 +27,16 @@ internal static partial class ReactiveLog
     internal static partial void CommandFailed(ILogger logger, Exception? exception, string source, string errorType);
 
     [LoggerMessage(EventId = 1043, EventName = "ReactiveSchedulerOutsideModelTurn", Level = LogLevel.Warning,
-        Message = "Work was scheduled on ReactiveUI's main-thread scheduler outside a Runic model turn, so it runs on {Fallback}, not on a model context. Later occurrences are not logged.")]
-    internal static partial void OutsideModelTurn(ILogger logger, string fallback);
+        Message = "Work was scheduled on ReactiveUI's main-thread scheduler outside a Runic model turn, from {Source}, so it runs on {Fallback}, not on a model context. Observe a background source on the context's scheduler instead, for example ObserveOn with an injected scheduler. Later occurrences from this source are not logged.")]
+    internal static partial void OutsideModelTurn(ILogger logger, string source, string fallback);
+
+    [LoggerMessage(EventId = 1090, EventName = "ReactiveSchedulerKept", Level = LogLevel.Information,
+        Message = "A window opens while ReactiveUI's main-thread scheduler is {Scheduler}, which was set before AddRunicReactiveModelContext() and kept, so commands created without an output scheduler deliver on it, not on the window's model context. Leave ReactiveUI's default scheduler in place, or call WithRunicModelContext() on ReactiveUI's builder, to use the model context.")]
+    internal static partial void SchedulerKept(ILogger logger, string scheduler);
+
+    [LoggerMessage(EventId = 1091, EventName = "ReactiveSchedulerReplaced", Level = LogLevel.Warning,
+        Message = "A window opens while ReactiveUI's main-thread scheduler is {Scheduler}, which replaced the model-context scheduler after AddRunicReactiveModelContext() installed it, for example in a later RxAppBuilder BuildApp(), so commands created without an output scheduler deliver on it, not on the window's model context. Call WithRunicModelContext() on that builder, or ignore this if the replacement is deliberate.")]
+    internal static partial void SchedulerReplaced(ILogger logger, string scheduler);
 }
 
 // The fallback when a component has no ILoggerFactory, matching the Views

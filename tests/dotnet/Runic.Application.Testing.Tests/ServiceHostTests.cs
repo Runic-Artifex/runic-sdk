@@ -99,6 +99,51 @@ internal sealed class ServiceHostTests
             "A null service provider was accepted.");
     }
 
+
+    // W260-015: Create passes the application's ILoggerFactory to the ReactiveUI model-context scheduler, as the
+    // Desktop and CS-WebUI windows do, so work scheduled outside a model turn reaches the test's logs as event 1043.
+    [Test]
+    public async Task CreatePassesTheLoggerFactoryToTheReactiveSchedulerAsync()
+    {
+        var logs = new SchedulerLogCapture();
+        var services = new ServiceCollection();
+        services.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(logs);
+        services.AddRunicReactiveModelContext();
+        services.AddScoped<ContextShellViewModel>();
+        services.AddScoped<ContextPageViewModel>();
+        services.AddScoped<IRunicViewLocator, ContextPageViewLocator>();
+        services.AddScoped<Func<IBridgeTransport, WindowContentSession, ContextShellViewModel, IDisposable>>(
+            _ => (transport, content, vm) => new ContextShellBridge(transport, vm, content: content));
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
+
+        using (RunicWindowTestHost.Create<ContextShellViewModel>(scope.ServiceProvider))
+            await TestHostOffTurnViewModel.PushOutsideTurnAsync();
+        Require(logs.Entries.Count(static entry => entry is { Id: 1043, Level: Microsoft.Extensions.Logging.LogLevel.Warning }
+                && entry.Source == typeof(TestHostOffTurnViewModel).FullName) == 1,
+            $"Event 1043 did not reach the test's logs as a Warning: {string.Join(", ", logs.Entries)}");
+        scope.ServiceProvider.GetRequiredService<ContextShellViewModel>().Main?.Dispose();
+    }
+
+    private sealed record SchedulerLogEntry(int Id, Microsoft.Extensions.Logging.LogLevel Level, string? Source);
+
+    private sealed class SchedulerLogCapture : Microsoft.Extensions.Logging.ILoggerFactory, Microsoft.Extensions.Logging.ILogger
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<SchedulerLogEntry> Entries { get; } = new();
+        public void AddProvider(Microsoft.Extensions.Logging.ILoggerProvider provider) => throw new NotSupportedException();
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => this;
+        public void Dispose()
+        {
+        }
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Enqueue(new(eventId.Id, logLevel,
+                (state as IEnumerable<KeyValuePair<string, object?>>)?.FirstOrDefault(static pair => pair.Key == "Source").Value as string));
+    }
     private static ServiceCollection ToolkitServices(IRunicViewLocator locator)
     {
         var services = new ServiceCollection();

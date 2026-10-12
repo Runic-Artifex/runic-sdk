@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Testing;
 using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 using TUnit.Core;
 
 namespace Runic.Application.Testing.Tests;
@@ -215,6 +216,25 @@ internal sealed class RunicWindowHostTests
         await opened.DisposeAsync();
     }
 
+
+    // W260-015: the Desktop and CS-WebUI hosts open through this path, which passes the application's ILoggerFactory
+    // to the ReactiveUI model-context scheduler before the ViewModel is resolved, so work scheduled outside a model
+    // turn reaches the application's logs as event 1043, a Warning, with no user code.
+    [Test, NotInParallel(Order = 10)]
+    public async Task OpenPassesTheLoggerFactoryToTheReactiveScheduler()
+    {
+        var log = new LogCapture();
+        var services = Services(bridge: true).AddSingleton<ILoggerFactory>(log);
+        services.AddRunicReactiveModelContext();
+        await using var provider = services.BuildServiceProvider();
+        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
+        await using (await new RecordingHost(provider).OpenWindowAsync<HostProbeWindow>())
+            await OpenedWindowOffTurnViewModel.PushOutsideTurnAsync();
+        Require(log.Entries.Count(static entry => entry.EventId.Id == 1043 && entry.Level == LogLevel.Warning
+                && entry.Category == RunicViewsTelemetry.LogCategory
+                && entry.Source == typeof(OpenedWindowOffTurnViewModel).FullName) == 1,
+            $"Event 1043 did not reach the application's logs as a Warning: {string.Join(", ", log.Entries)}");
+    }
     // The test double an application registers: it records the requested Window and opens nothing.
     private sealed class RecordingWindowService : IRunicWindowService
     {
@@ -337,7 +357,7 @@ internal sealed class RunicWindowHostTests
             serviceType == typeof(IServiceProviderIsService) ? null : inner.GetService(serviceType);
     }
 
-    private sealed record LogEntry(string Category, LogLevel Level, EventId EventId);
+    private sealed record LogEntry(string Category, LogLevel Level, EventId EventId, string? Source = null);
 
     private sealed class LogCapture : ILoggerFactory
     {
@@ -353,7 +373,8 @@ internal sealed class RunicWindowHostTests
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(LogLevel logLevel) => true;
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-                Func<TState, Exception?, string> formatter) => owner.Entries.Enqueue(new(category, logLevel, eventId));
+                Func<TState, Exception?, string> formatter) => owner.Entries.Enqueue(new(category, logLevel, eventId,
+                    (state as IEnumerable<KeyValuePair<string, object?>>)?.FirstOrDefault(static pair => pair.Key == "Source").Value as string));
         }
     }
 }

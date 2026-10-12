@@ -107,3 +107,5 @@ Runic.Application.Views.CommandDescriptor<T>.ObserveFailures.get -> System.Func<
 Runic.Application.Views.CommandDescriptor<T>.ObserveFailures.init -> void
 Runic.Application.Views.IRunicWindowContext
 Runic.Application.Views.IRunicWindowContext.RequestCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.IRunicWindowOpeningObserver
+Runic.Application.Views.IRunicWindowOpeningObserver.OnWindowOpening(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void

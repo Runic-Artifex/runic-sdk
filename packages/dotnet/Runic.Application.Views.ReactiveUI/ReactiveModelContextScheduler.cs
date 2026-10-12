@@ -29,6 +29,11 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
 {
     private static readonly ConditionalWeakTable<IRunicModelContext, RunicModelContextSequencer> Sequencers = new();
     private static readonly Lock InstallGate = new();
+    // Whether an install was requested, whether Runic's scheduler was installed or given to ReactiveUI's builder,
+    // and the scheduler it created last.
+    private static bool _requested;
+    private static bool _installed;
+    private static ModelContextMainThreadSequencer? _created;
 
     /// <inheritdoc />
     public ISequencer For(IRunicModelContext context)
@@ -56,14 +61,22 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
     /// their commands: a command reads the main-thread scheduler when it is created.
     /// </para>
     /// <para>
-    /// The first time work is scheduled outside a model turn, for example from a timer thread or after an
-    /// <c>await</c> with <c>ConfigureAwait(false)</c>, it runs on the replaced scheduler and event 1043
-    /// (<c>ReactiveSchedulerOutsideModelTurn</c>) is logged once.
+    /// Work scheduled outside a model turn, for example from a timer thread or after an <c>await</c> with
+    /// <c>ConfigureAwait(false)</c>, runs on the replaced scheduler, and event 1043
+    /// (<c>ReactiveSchedulerOutsideModelTurn</c>) is logged once per ViewModel type that scheduled it, as found on
+    /// the call stack, and once for work that no ViewModel on the stack scheduled.
+    /// </para>
+    /// <para>
+    /// When a window opens, Runic Desktop, CS-WebUI and <c>RunicWindowTestHost.Create</c> pass the application's
+    /// <see cref="ILoggerFactory"/> to the installed scheduler, as a call with <paramref name="loggerFactory"/> does.
+    /// When another scheduler is in effect then, they log event 1090 (<c>ReactiveSchedulerKept</c>) or 1091
+    /// (<c>ReactiveSchedulerReplaced</c>) naming it, unless it is a UI dispatcher's scheduler.
     /// </para>
     /// </remarks>
     /// <param name="loggerFactory">
     /// Creates the logger of event 1043, in the <see cref="RunicViewsTelemetry.LogCategory"/> category; without it,
-    /// the warning goes to <see cref="System.Diagnostics.Trace"/>. A later call with a logger factory replaces it.
+    /// the warning goes to <see cref="System.Diagnostics.Trace"/> until a window opens. A later call with a logger
+    /// factory replaces it.
     /// </param>
     /// <returns>
     /// <see langword="true"/> when the model-context main-thread scheduler is installed, also by an earlier call;
@@ -73,6 +86,7 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
     {
         lock (InstallGate)
         {
+            _requested = true;
             var current = RxSchedulers.MainThreadScheduler;
             if (current is ModelContextMainThreadSequencer installed)
             {
@@ -82,12 +96,49 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
             if (current is not TaskPoolSequencer && !ReferenceEquals(current, Sequencer.CurrentThread)
                 && !ReferenceEquals(current, Sequencer.Immediate))
                 return false;
-            RxSchedulers.MainThreadScheduler = new ModelContextMainThreadSequencer(current)
-            {
-                Logger = loggerFactory?.CreateLogger(RunicViewsTelemetry.LogCategory) ?? TraceLogger.Instance,
-            };
+            // The scheduler WithRunicModelContext() gave ReactiveUI's builder, if it replaces the same default.
+            var scheduler = _created is { } created && ReferenceEquals(created.Fallback, current)
+                ? created
+                : _created = new ModelContextMainThreadSequencer(current);
+            if (loggerFactory is not null) scheduler.Logger = loggerFactory.CreateLogger(RunicViewsTelemetry.LogCategory);
+            RxSchedulers.MainThreadScheduler = scheduler;
+            _installed = true;
             return true;
         }
+    }
+
+    // The scheduler that IReactiveUIBuilder.WithRunicModelContext() passes to WithMainThreadScheduler: the installed
+    // one, or one that replaces ReactiveUI's default and that a later install also uses.
+    internal static ISequencer BuilderScheduler()
+    {
+        lock (InstallGate)
+        {
+            _requested = true;
+            _installed = true;
+            if (RxSchedulers.MainThreadScheduler is ModelContextMainThreadSequencer installed) return installed;
+            return _created ??= new ModelContextMainThreadSequencer(Sequencer.Default);
+        }
+    }
+
+    // Runic Desktop, CS-WebUI and the test host call this before a window resolves its ViewModel. The installed
+    // scheduler logs event 1043 through the application's logger factory from then on; a scheduler that is not
+    // Runic's is reported as kept (1090) or replaced (1091).
+    internal static void OnWindowOpening(ILoggerFactory? loggerFactory)
+    {
+        bool replaced;
+        ISequencer current;
+        lock (InstallGate)
+        {
+            current = RxSchedulers.MainThreadScheduler;
+            if (current is ModelContextMainThreadSequencer installed)
+            {
+                if (loggerFactory is not null) installed.Logger = loggerFactory.CreateLogger(RunicViewsTelemetry.LogCategory);
+                return;
+            }
+            if (!_requested) return;
+            replaced = _installed;
+        }
+        ReactiveSchedulerReports.NotInEffect(loggerFactory, current.GetType(), replaced);
     }
 
     internal static ISequencer Shared(IRunicModelContext context) =>
@@ -99,21 +150,23 @@ public sealed class RunicReactiveSchedulerProvider : IRunicReactiveSchedulerProv
 // same target, so a due time an operator computes and schedules in one call is read on the same clock.
 internal sealed class ModelContextMainThreadSequencer(ISequencer fallback) : ISequencer
 {
-    private int _reported;
+    private readonly OutsideModelTurnReporter _outside = new();
 
     internal ILogger Logger { get; set; } = TraceLogger.Instance;
+
+    internal ISequencer Fallback => fallback;
 
     public DateTimeOffset Now => (ModelTurnFlow.Current is { } context ? RunicReactiveSchedulerProvider.Shared(context) : fallback).Now;
     public long Timestamp => (ModelTurnFlow.Current is { } context ? RunicReactiveSchedulerProvider.Shared(context) : fallback).Timestamp;
 
-    public void Schedule(IWorkItem item) => Target().Schedule(item);
+    public void Schedule(IWorkItem item) => Target(item).Schedule(item);
 
-    public void Schedule(IWorkItem item, long dueTimestamp) => Target().Schedule(item, dueTimestamp);
+    public void Schedule(IWorkItem item, long dueTimestamp) => Target(item).Schedule(item, dueTimestamp);
 
-    private ISequencer Target()
+    private ISequencer Target(IWorkItem item)
     {
         if (ModelTurnFlow.Current is { } context) return RunicReactiveSchedulerProvider.Shared(context);
-        if (Interlocked.Exchange(ref _reported, 1) == 0) ReactiveLog.OutsideModelTurn(Logger, fallback.GetType().Name);
+        _outside.Report(Logger, item, fallback.GetType().Name);
         return fallback;
     }
 }

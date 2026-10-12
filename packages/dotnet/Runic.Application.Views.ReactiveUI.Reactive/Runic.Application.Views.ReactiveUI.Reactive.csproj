@@ -25,6 +25,8 @@
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveLog.cs" Link="Shared/ReactiveLog.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/RunicReactiveExceptions.cs" Link="Shared/RunicReactiveExceptions.cs" />
     <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveServiceCollectionExtensions.cs" Link="Shared/ReactiveServiceCollectionExtensions.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/ReactiveSchedulerDiagnostics.cs" Link="Shared/ReactiveSchedulerDiagnostics.cs" />
+    <Compile Include="../Runic.Application.Views.ReactiveUI/RunicReactiveUIBuilderExtensions.cs" Link="Shared/RunicReactiveUIBuilderExtensions.cs" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="buildTransitive/Runic.Application.Views.ReactiveUI.Reactive.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
