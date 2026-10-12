@@ -1850,6 +1850,9 @@ internal sealed partial class NavigationTests
             fixture.Navigator.CreateRegion<Page>(fixture.Root),
         ];
         var requests = new ConcurrentQueue<(InitPage Page, NavigationResultRequest<Page, int> Request, CancellationTokenSource Cancel)>();
+        // Delayed caller cancellations. Their callbacks dismiss and go back, so the check after the race waits for them
+        // first: a CancelAfter timer that fired after WhenIdleAsync superseded the final push (#188).
+        var cancellations = new ConcurrentQueue<Task>();
         var returned = new ConcurrentDictionary<InitPage, ConcurrentQueue<int>>();
         var workerSeeds = Enumerable.Range(0, 4).Select(_ => master.Next()).ToArray();
         var committed = 0;
@@ -1865,7 +1868,7 @@ internal sealed partial class NavigationTests
                 {
                     var page = new InitPage($"result{worker}.{step}");
                     var cancel = new CancellationTokenSource();
-                    if (random.Next(3) == 0) cancel.CancelAfter(random.Next(3));
+                    if (random.Next(3) == 0) cancellations.Enqueue(CancelAfterAsync(cancel, random.Next(3)));
                     var request = region.PushForResult<int>(NavigationTarget.Own<Page>(page), cancellationToken: cancel.Token);
                     requests.Enqueue((page, request, cancel));
                     if (random.Next(2) == 0 && await Wait(request.Transition) is NavigationResult<Page>.Committed)
@@ -1901,6 +1904,7 @@ internal sealed partial class NavigationTests
             }));
         }
         await Wait(Task.WhenAll(workers));
+        await Wait(Task.WhenAll(cancellations));
         if (!disposeDuringRace)
         {
             // After the race the navigator still delivers a result.
@@ -2118,6 +2122,13 @@ internal sealed partial class NavigationTests
     private static async Task Wait(Task task) => await task.WaitAsync(Timeout);
 
     private static async Task Wait(ValueTask task) => await task.AsTask().WaitAsync(Timeout);
+
+    // CancelAfter whose cancellation, and the callbacks it runs, can be awaited. Zero cancels at once.
+    private static async Task CancelAfterAsync(CancellationTokenSource source, int milliseconds)
+    {
+        if (milliseconds > 0) await Task.Delay(milliseconds);
+        source.Cancel();
+    }
 
     private static async Task Until(Func<bool> condition, string message)
     {
