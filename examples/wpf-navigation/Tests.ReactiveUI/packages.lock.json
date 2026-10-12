@@ -1,0 +1,308 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net10.0-windows7.0": {
+      "TUnit": {
+        "type": "Direct",
+        "requested": "[1.73.19, )",
+        "resolved": "1.73.19",
+        "contentHash": "UmGgYhhtLzAKpWDW3qALB6XLJqTmicHPnX+MK5OEBYD/ZnSK1+cP7KhePhvm2E6yY1UgIeu7f+gsojdHzG2MEA==",
+        "dependencies": {
+          "Microsoft.Testing.Extensions.CodeCoverage": "18.12.0",
+          "Microsoft.Testing.Extensions.Telemetry": "2.5.1",
+          "Microsoft.Testing.Extensions.TrxReport": "2.5.1",
+          "TUnit.Assertions": "1.73.19",
+          "TUnit.Engine": "1.73.19"
+        }
+      },
+      "Microsoft.ApplicationInsights": {
+        "type": "Transitive",
+        "resolved": "2.23.0",
+        "contentHash": "nWArUZTdU7iqZLycLKWe0TDms48KKGE6pONH2terYNa8REXiqixrMOkf1sk5DHGMaUTqONU2YkS4SAXBhLStgw=="
+      },
+      "Microsoft.DiaSymReader": {
+        "type": "Transitive",
+        "resolved": "2.2.10",
+        "contentHash": "zmGsm6b2y3STDa/Of7rdkkfTDV8VuGB8aCqIkLoJIQh5tL78K3zJ8OUyFKnfsaORXmGr9iOKwDkZfUjeXi+CwA=="
+      },
+      "Microsoft.Extensions.DependencyModel": {
+        "type": "Transitive",
+        "resolved": "10.0.10",
+        "contentHash": "rfZA1RjR021RPqSmIPovfz2aOd79TGqJ9BengbjnzIISOVwjLmuSDnhCMmiY/1c6iYvGolQ1iNGzkav0u11XEA=="
+      },
+      "Microsoft.Testing.Extensions.Telemetry": {
+        "type": "Transitive",
+        "resolved": "2.5.1",
+        "contentHash": "mu2iyoHovwl0q1mGeeRU0h8+LALXC7HqbxniLa1shTKYdJGl+KPoCEgjWIQ8MLzk1tlTGPOfg1JsxdH3RxhMCA==",
+        "dependencies": {
+          "Microsoft.ApplicationInsights": "2.23.0",
+          "Microsoft.Testing.Platform": "[2.5.1, 3.0.0)"
+        }
+      },
+      "Microsoft.Testing.Extensions.TrxReport.Abstractions": {
+        "type": "Transitive",
+        "resolved": "2.5.1",
+        "contentHash": "DYTZAguaHz0wNJdHDTTGYOXtnlDoLoIbTMDKSApNNcytm55DJcnwpwELfQGLk5DB5QlgaEjNhnGo1Pu5QvL5VA==",
+        "dependencies": {
+          "Microsoft.Testing.Platform": "[2.5.1, 3.0.0)"
+        }
+      },
+      "Microsoft.Testing.Platform": {
+        "type": "Transitive",
+        "resolved": "2.5.1",
+        "contentHash": "FAMaFFWnULW+hDHMb40Qzhcgz9cAU2/EtgRCBNX/DdQoKo0sPG2EiY+w7bQdl/BgHnf/DbpXLbf5Xy0o15M8NA=="
+      },
+      "Microsoft.Testing.Platform.MSBuild": {
+        "type": "Transitive",
+        "resolved": "2.5.1",
+        "contentHash": "lYawcAwY+h76rQmpma2n0HaL8zkOFbbKapso0Eb+uOAUQn7333pIByLftEuiO67csAoZufHNMwi6PqhNemWQXA==",
+        "dependencies": {
+          "Microsoft.Testing.Platform": "[2.5.1, 3.0.0)"
+        }
+      },
+      "Mono.Cecil": {
+        "type": "Transitive",
+        "resolved": "0.11.6",
+        "contentHash": "f33RkDtZO8VlGXCtmQIviOtxgnUdym9xx/b1p9h91CRGOsJFxCFOFK1FDbVt1OCf1aWwYejUFa2MOQyFWTFjbA=="
+      },
+      "ReactiveUI.Binding.Wpf": {
+        "type": "Transitive",
+        "resolved": "9.1.0",
+        "contentHash": "U2WB4r7oWb3trORfAlpvvwVcwnQGvgH/Gq/afaynsKv/0F4rolbhz+Vk5GCXSaGoyXwJHUaAVPtTEHjs14h9rw==",
+        "dependencies": {
+          "ReactiveUI.Binding": "9.1.0",
+          "ReactiveUI.Primitives": "9.0.0",
+          "ReactiveUI.Primitives.Wpf": "9.0.0",
+          "Splat": "21.0.0"
+        }
+      },
+      "ReactiveUI.Core": {
+        "type": "Transitive",
+        "resolved": "26.0.1",
+        "contentHash": "rjUMGExdqKsVw85gLmsyhtwnSeGyOXagNjMfpW6R46W0izvJmJwAVrEllrLCqjaJJzlgE5RvnvQJWDInSqh4fQ==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "9.0.0",
+          "ReactiveUI.Primitives": "9.0.0",
+          "ReactiveUI.Primitives.Core": "9.0.0",
+          "ReactiveUI.SourceGenerators": "4.2.0",
+          "Splat": "21.0.0"
+        }
+      },
+      "ReactiveUI.Disposables": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "gt5vQ9e7yP/qsv1DbTR9AdwViJwqoHseTwyI/7muKetJMDg60QUv7RZShMj3RIjF48LNiHKABtxPq+Or+42bbA=="
+      },
+      "ReactiveUI.Primitives": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "WmfXpHHBun50DJwTHVDLcFyQIHN/WtaoYJ34GrByFW/CsWgOH0UyjC8h9nul551oRkIvbqBGy3xZiijNdchGRw==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "9.0.0",
+          "ReactiveUI.Primitives.Core": "9.0.0"
+        }
+      },
+      "ReactiveUI.Primitives.Core": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "alULlmIxJycMKxfZeadn5tjjRAP+9+qDX9ryOT9Tg5lQzn0SKQAnmhqMa+9l68ogexrEuK/fUc543KR+kGJCJg==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "9.0.0"
+        }
+      },
+      "ReactiveUI.Primitives.Wpf": {
+        "type": "Transitive",
+        "resolved": "9.0.0",
+        "contentHash": "qRV6W6/wPXpBEixda/74PVudN6tDbO1PH/zpsVrgRTcQzQ5T5u3Nbgau6TcO76pqKbMHRQnl55zlD/Mbzikvxg==",
+        "dependencies": {
+          "ReactiveUI.Primitives": "9.0.0"
+        }
+      },
+      "Splat.Builder": {
+        "type": "Transitive",
+        "resolved": "21.0.0",
+        "contentHash": "uUa2VtGjlz/fZrZkbor9uSysP68ZMpA17DbBrIxsbfaRUp6AOdkC5kcxmppx5uuCcG1mQ/wxvqIoYAN4RGrdCw==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "7.1.0",
+          "Splat.Core": "21.0.0"
+        }
+      },
+      "Splat.Core": {
+        "type": "Transitive",
+        "resolved": "21.0.0",
+        "contentHash": "MGsKsMti+M+y1Bq4t8TA/AMp47XGd8/fBhfEZ+EmxgaWLIzRZ2EGXRKEewLx8jKf2RKTqfjcX6hRhG58cU8EFg==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "7.1.0"
+        }
+      },
+      "Splat.Logging": {
+        "type": "Transitive",
+        "resolved": "21.0.0",
+        "contentHash": "jNnsXXcbksP2rsOMeIFDzm0jputFm11S/1eQxq9U9+dQ7ES4zECl/q7EytG+Z1iogClr4LRDefMlnKiIi7CEsQ==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "7.1.0",
+          "Splat.Core": "21.0.0"
+        }
+      },
+      "TUnit.Assertions": {
+        "type": "Transitive",
+        "resolved": "1.73.19",
+        "contentHash": "fCVqrfthsscHC6/MwlT6aFDid5YW7yTXGU3G096Dd6vTUDnKkbsbImBfe3Pi305dkVSJ5R2X3UjG9tES5AB6yw=="
+      },
+      "notesnavigation.reactiveui": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
+          "ReactiveUI.WPF": "[26.0.1, )",
+          "Runic.Navigation.ReactiveUI": "[0.7.0-preview.7, )",
+          "Runic.Navigation.Wpf": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.navigation": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )"
+        }
+      },
+      "runic.navigation.reactiveui": {
+        "type": "Project",
+        "dependencies": {
+          "ReactiveUI": "[26.0.1, )",
+          "Runic.Navigation": "[0.7.0-preview.7, )"
+        }
+      },
+      "runic.navigation.wpf": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
+          "Runic.Navigation": "[0.7.0-preview.7, )"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "lXyK2O5GoYvfxW8eCFcD16JFbcoSTM1sJkAM0UHS1jZyl9NYMW64Tqm6OQFT0IDBjZi+xHt95/Zg+nxZhGFhZg==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
+        }
+      },
+      "Microsoft.Extensions.DependencyInjection.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "9/qymSh7hVDMGTGwrLz8MRp5zRyXy9adGDOs4HwRdnLil3oZGYuWeZjbmHgCQ9BL1qBroVfgUK3U/nb61617Cw=="
+      },
+      "Microsoft.Extensions.Logging.Abstractions": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.12, )",
+        "resolved": "10.0.12",
+        "contentHash": "+24lC4plfbEDNfLAdTV/SWKS7dW+16X4HdydO3R++134kSNTzcbYA4KpR1Hdh6uWisB8Za3AzwyOn+K+NxWIug==",
+        "dependencies": {
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.12"
+        }
+      },
+      "Microsoft.Testing.Extensions.CodeCoverage": {
+        "type": "CentralTransitive",
+        "requested": "[18.12.0, )",
+        "resolved": "18.12.0",
+        "contentHash": "BST/sWYpKk9OXO7Yxktcg6FWORRsHU0EdCbMwZ7d3OqJsMKlrNHIZ30g0Ib4k5T5acJYXRBmg9mNrTU/N6cy1g==",
+        "dependencies": {
+          "Microsoft.DiaSymReader": "2.2.10",
+          "Microsoft.Extensions.DependencyModel": "10.0.10",
+          "Microsoft.Testing.Platform": "2.5.0",
+          "Mono.Cecil": "0.11.6"
+        }
+      },
+      "Microsoft.Testing.Extensions.TrxReport": {
+        "type": "CentralTransitive",
+        "requested": "[2.5.1, )",
+        "resolved": "2.5.1",
+        "contentHash": "NHqpG2UAVsXoNnNZtyIjxgsfPe9N/E6eTHjHCs7uaSbdOCOsbX5I7N0d1BHyjM7vv3Q5R2nlvngKSHWT+ZCRXQ==",
+        "dependencies": {
+          "Microsoft.Testing.Extensions.TrxReport.Abstractions": "2.5.1",
+          "Microsoft.Testing.Platform": "[2.5.1, 3.0.0)"
+        }
+      },
+      "ReactiveUI": {
+        "type": "CentralTransitive",
+        "requested": "[26.0.1, )",
+        "resolved": "26.0.1",
+        "contentHash": "/TTrqJ++MkBdNqDNZqOWDFfsOfVCSik3sTmXPqrYnIp7lMspXqXwL7dQEWcycqWSxkPdYt6UxXYLJfGRObB06g==",
+        "dependencies": {
+          "ReactiveUI.Binding": "9.1.0",
+          "ReactiveUI.Core": "26.0.1",
+          "ReactiveUI.Disposables": "9.0.0",
+          "ReactiveUI.Primitives": "9.0.0",
+          "ReactiveUI.Primitives.Core": "9.0.0",
+          "ReactiveUI.SourceGenerators": "4.2.0",
+          "Splat": "21.0.0"
+        }
+      },
+      "ReactiveUI.Binding": {
+        "type": "CentralTransitive",
+        "requested": "[9.1.0, )",
+        "resolved": "9.1.0",
+        "contentHash": "uij1S1MQxQCG1zJTpxepsc7yt7NBTfxK24niyi9EGapneCulvjaArSy4DT3te/kuln9IubexhDo23QBt3VslZQ==",
+        "dependencies": {
+          "ReactiveUI.Primitives": "9.0.0",
+          "Splat": "21.0.0"
+        }
+      },
+      "ReactiveUI.SourceGenerators": {
+        "type": "CentralTransitive",
+        "requested": "[4.2.0, )",
+        "resolved": "4.2.0",
+        "contentHash": "hGXWz3yuC6kCLaLHsR+FwAetLlqAoDVY0nMeeRkzQS7yGbmrrPlZwxvcCBJMSbY+PAbEayeBAuezw6lzsXDBGg=="
+      },
+      "ReactiveUI.WPF": {
+        "type": "CentralTransitive",
+        "requested": "[26.0.1, )",
+        "resolved": "26.0.1",
+        "contentHash": "rR1zjeedl5XF04t7NR19YyeUb+ywpy60fasRw3nq+gJQYEx3Fw0mWmW5tLWXHx56zDQ1/h0cxBpTQiyYMSwVqg==",
+        "dependencies": {
+          "ReactiveUI": "26.0.1",
+          "ReactiveUI.Binding": "9.1.0",
+          "ReactiveUI.Binding.Wpf": "9.1.0",
+          "ReactiveUI.Disposables": "9.0.0",
+          "ReactiveUI.Primitives": "9.0.0",
+          "ReactiveUI.Primitives.Core": "9.0.0",
+          "ReactiveUI.Primitives.Wpf": "9.0.0",
+          "ReactiveUI.SourceGenerators": "4.2.0",
+          "Splat": "21.0.0"
+        }
+      },
+      "Splat": {
+        "type": "CentralTransitive",
+        "requested": "[21.0.0, )",
+        "resolved": "21.0.0",
+        "contentHash": "famvWFOGoZZ707Rf9EK6kpt+sqhRnky5n0F0X9at/QzWja8KUwEh6pDG/oM3nleyEIUwK1gi9Nw72fDHAsm+og==",
+        "dependencies": {
+          "ReactiveUI.Disposables": "7.1.0",
+          "Splat.Builder": "21.0.0",
+          "Splat.Logging": "21.0.0"
+        }
+      },
+      "TUnit.Core": {
+        "type": "CentralTransitive",
+        "requested": "[1.73.19, )",
+        "resolved": "1.73.19",
+        "contentHash": "Ry4tjcLXZaw0qYuHl94GX15cb4XavVfwaCtK6BQQGiesKrMV0x+LKnk6DgItdlt4witUvLr1Py9X9n4Edddptg=="
+      },
+      "TUnit.Engine": {
+        "type": "CentralTransitive",
+        "requested": "[1.73.19, )",
+        "resolved": "1.73.19",
+        "contentHash": "v+mpu3OqxinAGYo4yKeNZxXPYaoabBz7/kysb+m1xvmWO7wm3whocc0aM4qWBKoZhoLw6EnWCaQqZhp1zMSu9g==",
+        "dependencies": {
+          "Microsoft.Testing.Extensions.TrxReport.Abstractions": "2.5.1",
+          "Microsoft.Testing.Platform": "2.5.1",
+          "Microsoft.Testing.Platform.MSBuild": "2.5.1",
+          "TUnit.Core": "1.73.19"
+        }
+      }
+    }
+  }
+}

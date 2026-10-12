@@ -2,20 +2,41 @@
 
 The same four-scenario notes app was written with each library, then measured
 for size and vocabulary and probed for what happens when Back is pressed
-twice. The Runic app is [NotesNavigation](NotesNavigation/); the others, the
-race probes and the counting script are in [comparison/](comparison/).
+twice. The Runic app is [NotesNavigation](NotesNavigation/), and
+[NotesNavigation.ReactiveUI](NotesNavigation.ReactiveUI/) is the same app
+with ReactiveUI ViewModels. The others, the race probes and the counting
+script are in [comparison/](comparison/).
 
 | Library | Version | Packages used |
 | --- | --- | --- |
 | Runic | 0.7.0-preview.4 (Runic.Navigation.Wpf is available from this release) | Runic.Navigation.Wpf (with Runic.Navigation), CommunityToolkit.Mvvm 8.4.2, Microsoft.Extensions.DependencyInjection 10.0.12 |
+| Runic with ReactiveUI | 0.7.0-preview.4 | Runic.Navigation.Wpf, Runic.Navigation.ReactiveUI, ReactiveUI.WPF 26.0.1, Microsoft.Extensions.DependencyInjection 10.0.12 |
 | Prism | 9.0.537 | Prism.DryIoc (with Prism.Wpf and Prism.Core) |
 | CrissCross | 5.0.0 | CrissCross.WPF (with ReactiveUI 26.0.1) |
 | ReactiveUI RoutingState | 26.0.1 | ReactiveUI.WPF |
 | Sextant | 4.0.30 | Not built: a platform-neutral core plus MAUI and Avalonia hosts, and no WPF host |
+| .NET MAUI Shell | .NET 10 | Not built: MAUI has no WPF host |
 
-All apps target .NET 10 on Windows and were measured on 2026-10-08. CrissCross
-must target `net10.0-windows10.0.19041.0`; with `net10.0-windows` NuGet falls
-back to its .NET Framework asset (NU1701).
+All apps target .NET 10 on Windows and were measured on 2026-10-08; the
+ReactiveUI variant of the Runic app was added and measured on 2026-10-12.
+CrissCross must target `net10.0-windows10.0.19041.0`; with `net10.0-windows`
+NuGet falls back to its .NET Framework asset (NU1701).
+
+## At a glance
+
+How each library handles what the scenarios exercise. Sextant and MAUI Shell
+are from their documentation and source, not from a built app.
+
+| | Runic (Toolkit or ReactiveUI) | Prism | CrissCross | ReactiveUI RoutingState | Sextant | .NET MAUI Shell |
+| --- | --- | --- | --- | --- | --- | --- |
+| History holds | Entries: ViewModel instance and typed input | URIs and parameters | ViewModel types | ViewModel instances | ViewModel instances, per page and modal stack | Routes and query parameters |
+| Parameters | The ViewModel type and a typed input, or a constructor through `NavigationTarget.Create` | `NavigationParameters` dictionary | `NavigationRequestOptions.Parameter` (object), not replayed on Back | The constructor | `INavigationParameter` dictionary | Query string, `IQueryAttributable` or `[QueryProperty]` |
+| Leave guard | Async, on every exit, with commit-bound discard (`LeaveConfirmation.InDialog` or `ReactiveLeaveConfirmation.WithInteraction`) | Async `IConfirmNavigationRequest` | Synchronous `Cancel`; an async confirm must cancel and re-issue | None built in | None built in | `Shell.OnNavigating` with `Cancel` and a deferral |
+| Results | `PushForResult<T>` with `NavigationCompletion<T>`; result commands in the ReactiveUI adapter | Dialog callbacks only | None; `Interaction` for questions | None; `Interaction` for questions | None | None; a query on the Back route |
+| Second Back while one is in flight | Joins the first | A new Back; a pending confirm can corrupt the journal | Can duplicate an entry | A new Back | Not probed | Not probed |
+| WPF host | Yes | Yes | Yes | Yes | No | No |
+
+The Back behaviour is measured in [scenario 4](#scenario-4-pressing-back-twice).
 
 ## The scenarios
 
@@ -50,7 +71,8 @@ Counted by [comparison/count-loc.sh](comparison/count-loc.sh):
 
 ```sh
 cd examples/wpf-navigation/comparison
-./count-loc.sh ../NotesNavigation; ./count-loc.sh prism; ./count-loc.sh crisscross; ./count-loc.sh routingstate
+./count-loc.sh ../NotesNavigation; ./count-loc.sh ../NotesNavigation.ReactiveUI
+./count-loc.sh prism; ./count-loc.sh crisscross; ./count-loc.sh routingstate
 ```
 
 The rules:
@@ -64,22 +86,37 @@ The rules:
   scenario. Other lines of `App.*` and `Shell/` are Setup.
 - **Excluded:** the shared domain, `bin/` and `obj/`, and the Runic app's
   tests.
+- **Linked files:** a file that a `.csproj` links from another project counts
+  at its link path. The ReactiveUI variant links its domain, `Shell/`,
+  `ConfirmView` and the settings Views from `NotesNavigation/`, so they count
+  in both Runic columns.
 - Layout XAML that is the same in every app is still counted, so compare the
   differences rather than the totals.
 
 Lines as C# / XAML / **total**:
 
-| Part | Runic | Prism | CrissCross | ReactiveUI RoutingState |
-| --- | --- | --- | --- | --- |
-| Setup: bootstrap, shell, registrations | 33 / 8 / **41** | 26 / 9 / **35** | 29 / 27 / **56** | 29 / 8 / **37** |
-| S1 master-detail with a guard | 52 / 16 / **68** | 64 / 16 / **80** | 69 / 18 / **87** | 70 / 18 / **88** |
-| S2 confirm with a result | 35 / 12 / **47** | 29 / 11 / **40** | 25 / 11 / **36** | 25 / 11 / **36** |
-| S3 nested tabs | 35 / 13 / **48** | 30 / 19 / **49** | 43 / 21 / **64** | 41 / 21 / **62** |
-| S4 Back button | 0 / 1 / **1** | 6 / 1 / **7** | 1 / 1 / **2** | 5 / 1 / **6** |
-| **Total** | **205** | **211** | **245** | **229** |
+| Part | Runic | Runic with ReactiveUI | Prism | CrissCross | ReactiveUI RoutingState |
+| --- | --- | --- | --- | --- | --- |
+| Setup: bootstrap, shell, registrations | 33 / 8 / **41** | 34 / 8 / **42** | 26 / 9 / **35** | 29 / 27 / **56** | 29 / 8 / **37** |
+| S1 master-detail with a guard | 52 / 16 / **68** | 55 / 16 / **71** | 64 / 16 / **80** | 69 / 18 / **87** | 70 / 18 / **88** |
+| S2 confirm with a result | 33 / 12 / **45** | 24 / 12 / **36** | 29 / 11 / **40** | 25 / 11 / **36** | 25 / 11 / **36** |
+| S3 nested tabs | 35 / 13 / **48** | 35 / 13 / **48** | 30 / 19 / **49** | 43 / 21 / **64** | 41 / 21 / **62** |
+| S4 Back button | 0 / 1 / **1** | 0 / 1 / **1** | 6 / 1 / **7** | 1 / 1 / **2** | 5 / 1 / **6** |
+| **Total** | **203** | **198** | **211** | **245** | **229** |
 
 The totals are within about 20% of each other, so size alone doesn't separate
 the libraries. Where the lines go does:
+
+- **Runic with ReactiveUI** is the same app for a ReactiveUI team. Its S1 is
+  16 lines shorter than CrissCross's and 17 shorter than RoutingState's,
+  with a guard on every exit and a commit-bound discard. Its guard is
+  `ReactiveLeaveConfirmation.WithInteraction`: the View answers the
+  ViewModel's `Interaction` in `WhenActivated`, as in the other ReactiveUI
+  apps. Its S2 matches the ReactiveUI apps at 36 lines because the confirm's
+  commands come from the adapter (`entry.CreateCompleteCommand`,
+  `entry.CreateDismissCommand`) and the message arrives through the
+  constructor. It is still a ViewModel in a dialog region, so Delete awaits a
+  typed `PushForResult<bool>`.
 
 - **S1** is shortest in Runic, because `LeaveConfirmation.InDialog` is the
   guard, the dialog and the commit-bound discard in one call. The S1 lines
@@ -90,7 +127,7 @@ the libraries. Where the lines go does:
   bind the selection to a property that Open and Delete act on, because
   `ReactiveCommand`'s CanExecute is an observable rather than a function of a
   command parameter.
-- **S2** is longer in Runic than in the others. The dialog is a ViewModel and
+- **S2** is longer in the Toolkit Runic app than in the others. The dialog is a ViewModel and
   View in a dialog region, the same as any page, and answers with
   `entry.CompleteAsync(true)`. ReactiveUI's `Interaction<string, bool>` with a
   handler that opens a window is shorter.
@@ -118,6 +155,7 @@ only what the app uses is listed. Treat the counts as ±3.
 | Library | Count | Concepts |
 | --- | --- | --- |
 | Runic | 19 | `AddRunicWpfNavigation` with `UseViewNamingConvention`; `RunicNavigator.CreateRegion` and its owner; `NavigationRegion<T>` (`PushAsync<T>`, `ResetAsync`, `ReplaceAsync`, `Current`); child regions that close with their page; `NavigationHost` with `NavigationCommands.BrowseBack`; `NavigationSelector.Region`; `NavigationDialogHost`; `NavigationTarget.Create` / `Borrow`; `INavigationInitialize<TInput>`; `NavigationEntryContext` (`CompleteAsync`, `DismissAsync`); `INavigationResume`; `INavigationDepartureGuard`; `LeaveConfirmation.InDialog`; `PushForResult<T>` with `NavigationCompletion<T>`; `NavigationResult<T>`; `ValueTask` returns; Microsoft.Extensions.DependencyInjection; CommunityToolkit's `ObservableObject` with `SetProperty`; `RelayCommand` / `AsyncRelayCommand` |
+| Runic with ReactiveUI | 24 (15 Runic, 8 ReactiveUI, and dependency injection); 17 in S1 with its setup and Back | `RxAppBuilder` with `WithWpf`; `AddRunicWpfNavigation` with `UseViewNamingConvention`; `RunicNavigator.CreateRegion` and its owner; `NavigationRegion<T>` (`PushAsync<T>`, `ResetAsync`, `ReplaceAsync`, `Current`); child regions that close with their page; `NavigationHost` with `NavigationCommands.BrowseBack`; `NavigationSelector.Region`; `NavigationDialogHost`; `NavigationTarget.Create` / `Borrow`; `INavigationInitialize<TInput>`; `NavigationEntryContext` with `WhenNavigatedTo`; `CreateCompleteCommand` / `CreateDismissCommand` with `NavigationOutcome`; `INavigationDepartureGuard`; `ReactiveLeaveConfirmation.WithInteraction`; `PushForResult<T>` with `NavigationCompletion<T>`; `ValueTask` returns; Microsoft.Extensions.DependencyInjection; `ReactiveObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `ReactiveCommand` and its CanExecute observable; `Interaction<TIn, TOut>` with `RegisterHandler`; `ReactiveUserControl<T>` through a non-generic base, bound with `ViewModel="{Binding}"`; `WhenActivated` with `MultipleDisposable`; `RxVoid` |
 | Prism | 25 | `PrismApplication` (`CreateShell`, `RegisterTypes`, `OnInitialized`); `IContainerRegistry`; `RegisterForNavigation`; `RegionManager.RegionName`; `IRegionManager` (`Regions`, `ContainsRegionWithName`); `RequestNavigate`; `NavigationParameters`; `NavigationContext`; `IRegionAware` (`OnNavigatedTo`, `OnNavigatedFrom`); `IConfirmNavigationRequest` with its continuation; `IRegionMemberLifetime` / `KeepAlive`; `IRegionNavigationJournal` (`GoBack`, `CanGoBack`); `IRegionNavigationService.Navigated`; view reuse through `IsNavigationTarget`; `RegisterViewWithRegion`; the TabControl region adapter with a `TabItem` header bound through `DataContext`; `IDialogService.ShowDialog` with its callback; `ShowDialogAsync`; `RegisterDialog`; `IDialogAware`; `DialogCloseListener`; `DialogParameters` / `IDialogParameters` with `ButtonResult`; `BindableBase` with `SetProperty`; `DelegateCommand` / `AsyncDelegateCommand` with `RaiseCanExecuteChanged`; `ViewModelLocator.AutoWireViewModel` |
 | CrissCross, with the ReactiveUI it builds on | 17 | `RxAppBuilder` with `WithWpf` and `RegisterView`; Splat `AppLocator` and `SetupComplete`; ViewModel lifetimes (`RegisterLazySingleton` vs `Register`, because history stores types); `RxObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `NavigationWindow` with its `HostName` template; `ViewModelRoutedViewHost`; `NavigationKeyRequest<T>` with `NavigationRequestOptions.Parameter`; `NavigateToView` / `NavigateBack` / `CanNavigateBack`; `WhenNavigatedTo` / `WhenNavigating`; `IViewModelNavigatingEventArgs.Cancel`; `ReactiveUserControl<T>` and `DataContext` wiring; `WhenActivated` with `MultipleDisposable`; `ReactiveCommand`; `Interaction<TIn, TOut>` with `RegisterHandler` and `Handle`; `ViewModelViewHost`; `RxVoid` |
 | ReactiveUI RoutingState | 15, plus the app's own guard | `RxAppBuilder` with `WithWpf` and `RegisterView`; `IScreen`; `RoutingState` (`Navigate`, `NavigateBack`, `CanNavigateBack`, `GetCurrentViewModel`); `IRoutableViewModel` (`HostScreen`, `UrlPathSegment`); `RoutedViewHost`; `ViewModelViewHost`; `ReactiveObject` with `RaiseAndSetIfChanged`; `WhenAnyValue`; `ReactiveUserControl<T>` and `DataContext` wiring; `IActivatableViewModel` with `ViewModelActivator` and `WhenActivated`; `ReactiveCommand` and its CanExecute observable; `Interaction<TIn, TOut>` with `RegisterHandler` and `Handle`; awaiting an `IObservable` with `FirstAsync`; `MultipleDisposable`; `RxVoid`. Plus the app-defined leave-guard interface |

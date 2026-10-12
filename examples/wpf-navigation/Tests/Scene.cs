@@ -4,9 +4,13 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Extensions.DependencyInjection;
 using Runic.Navigation.Wpf;
+#if REACTIVEUI
+using ReactiveUI.Primitives.Signals;
+#endif
 
 namespace Runic.Navigation.Examples.Notes.Tests;
 
+// Shared by Tests/ and Tests.ReactiveUI/, which defines REACTIVEUI.
 // One app instance: the app's own container and MainWindow, shown off-screen, with the notes list current.
 internal sealed class Scene : IAsyncDisposable
 {
@@ -66,7 +70,13 @@ internal sealed class Scene : IAsyncDisposable
 
     public async Task<NoteDetailViewModel> OpenNoteAsync(int id)
     {
+#if REACTIVEUI
+        // The ReactiveUI variant opens the bound selection.
+        List.Selected = List.Notes.Single(note => note.Id == id);
+        await List.OpenCommand.Execute();
+#else
         await List.OpenCommand.ExecuteAsync(Store.Get(id));
+#endif
         return await PresentedAsync<NoteDetailViewModel>();
     }
 
