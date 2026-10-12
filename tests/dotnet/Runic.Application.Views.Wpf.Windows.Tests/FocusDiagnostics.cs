@@ -51,6 +51,6 @@ internal sealed class FocusDiagnostics
     private sealed class Nothing : IDisposable { public void Dispose() { } }
 
     // TUnit captures Console output of passing cases; write to the process stdout so the CI log shows it.
-    private static readonly StreamWriter Raw = new(Console.OpenStandardOutput()) { AutoFlush = true };
+    private static readonly System.IO.StreamWriter Raw = new(Console.OpenStandardOutput()) { AutoFlush = true };
     internal static void Emit(string line) { lock (Raw) Raw.WriteLine(line); }
 }
