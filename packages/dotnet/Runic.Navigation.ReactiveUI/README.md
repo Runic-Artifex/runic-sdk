@@ -22,6 +22,113 @@ navigation has no experimental package.
 dotnet add package Runic.Navigation.ReactiveUI --prerelease
 ```
 
+## Walkthrough
+
+This section builds master/detail navigation from ReactiveUI ViewModels: pages,
+a leave guard, a result, and a guarded window close. The later sections are the
+reference. The code comes from two examples:
+
+- [Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-reactive-views/README.md)
+  is a Runic Views app (web Views).
+- [NotesNavigation.ReactiveUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-navigation/README.md#the-reactiveui-variant)
+  is a WPF app.
+
+Neither passes a scheduler. A Runic Views app calls
+`AddRunicReactiveModelContext()` and `AddRunicNavigation()`. A WPF app calls
+`RxAppBuilder.CreateReactiveUIBuilder().WithWpf().BuildApp()` and
+`AddRunicWpfNavigation()`. Either way, ReactiveUI's main-thread scheduler is
+the navigator's model context (see [Scheduling](#scheduling)).
+
+**1. Pages.** The shell owns a region and exposes it as a get-only property.
+A web View presents it as a content slot, and a WPF `NavigationHost` binds to
+it. Back is a command, and a page opens from an ordinary `ReactiveCommand`:
+
+```csharp
+Main = navigator.CreateRegion<IMainPage>(this, NavigationTarget.Borrow<IMainPage>(home));
+OpenHomeCommand = Main.CreateBackCommand().DisposeWith(_disposables); // enabled while Main has history
+OpenDocumentCommand = ReactiveCommand.CreateFromTask(OpenDocumentAsync,
+    Main.WhenCurrentChanged().Select(page => page is HomeViewModel)).DisposeWith(_disposables);
+```
+
+The navigator constructs a pushed page from the container. The page takes its
+`NavigationEntryContext` as a constructor parameter, or receives a typed input
+in `INavigationInitialize<TInput>` (`PushAsync<NoteDetailViewModel, int>(id)`).
+
+**2. Arrivals.** Per-entry work goes in `entry.WhenNavigatedTo`, which runs
+each time the entry becomes current, including after a Back. Its scope ends
+when the entry is left. `WhenActivated` follows a mounted View instead:
+
+```csharp
+entry.WhenNavigatedTo((_, visit) => editor.WhenAnyValue(model => model.IsDirty)
+    .Subscribe(dirty => Status = dirty ? "Unsaved changes" : "No unsaved changes")
+    .DisposeWith(visit)).DisposeWith(_disposables);
+```
+
+**3. The leave guard.** The page implements `INavigationDepartureGuard` with
+`ReactiveLeaveConfirmation.WithInteraction`. Every exit asks the guard,
+including Back, a push from code, a parent region leaving and a guarded window
+close. The discard runs only when the departure commits:
+
+```csharp
+_leave = ReactiveLeaveConfirmation.WithInteraction(ConfirmLeave,
+    () => new DiscardNoteRequest(editor.Title, editor.Body.Length), () => editor.IsDirty, editor.RevertChanges);
+
+public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+    _leave.CanDepartAsync(departure, cancellationToken);
+```
+
+The presentation answers the interaction. A WPF View answers it in
+`WhenActivated`, and a web View answers it with
+`view.interactions.confirmLeave.handle(...)`. A .NET fallback handler that
+the ViewModel registers answers when no View does (see
+[Leave confirmation through an interaction](#leave-confirmation-through-an-interaction)).
+
+**4. Results.** The caller pushes for a result and awaits its completion. It
+doesn't need `ToTask()` or a scheduler:
+
+```csharp
+var request = Main.PushForResult<DocumentViewModel, string>();
+if ((await request.Transition).IsCommitted)
+    _home.LastResult = await request.Completion is NavigationCompletion<string>.Completed(var title)
+        ? $"Saved and closed {title}" : "Closed the document.";
+```
+
+Reactive Notes awaits `Completion` outside the command, so its bridged command
+ends when the push settles rather than when the document closes.
+
+The page ends its entry with result commands that the View binds like any other
+command:
+
+```csharp
+SaveAndCloseCommand = entry.CreateCompleteCommand(async token =>
+{
+    await editor.SaveAsync(token);
+    return editor.Title;
+}).DisposeWith(_disposables);
+CloseCommand = entry.CreateCloseCommand().DisposeWith(_disposables); // asks the guard when dirty
+```
+
+A confirm dialog uses `entry.CreateCompleteCommand(_ => Task.FromResult(true))`
+for Yes and `entry.CreateDismissCommand()` for No. If the caller passes a
+command's token to `PushForResult`, cancelling that token after the commit
+closes the entry. So pass the token only from a command that waits for the
+completion, such as Delete waiting for its confirm. Don't pass it from a command
+that ends when the push commits.
+
+**5. The window close.** Disposing a navigator retires its entries without
+asking their guards. To ask the guards before the user closes the window,
+opt in on the window:
+
+- In a Runic Views app, set `GuardClose = true` on the `RunicWindow<T>`. Its
+  default `CanCloseAsync` clears the regions that the ViewModel exposes, and
+  `RequestCloseAsync()` closes from code the way the close button does. See
+  [Guarding a user close](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#guarding-a-user-close).
+- In WPF, set `GuardWindowClose="True"` on the `NavigationHost`.
+
+The leave guard from step 3 then decides. Register a .NET fallback handler for
+this case, because the close is not one of the View's own commands and a
+browser handler is not asked.
+
 ## Scheduling
 
 The adapter neither sets nor needs a scheduler. Like any `ReactiveCommand`, the
@@ -199,7 +306,11 @@ turn. `LeaveConfirmation.InDialog` stays for apps that prefer a dialog region.
   `DispatcherModelContext`, the thread pool otherwise.
 
 Each presentation answers the same interaction natively. In WPF, register the
-handler in the View's `WhenActivated`:
+handler in the View's `WhenActivated`. The View needs ReactiveUI.WPF and a
+`ViewModel`; with Runic.Navigation.Wpf's view locator, bind it from the
+`DataContext` with `ViewModel="{Binding}"`, as
+[NotesNavigation.ReactiveUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/wpf-navigation/NotesNavigation.ReactiveUI/Notes/NoteDetailView.xaml)
+does:
 
 ```csharp
 public partial class EditView : ReactiveUserControl<EditViewModel>
@@ -207,7 +318,8 @@ public partial class EditView : ReactiveUserControl<EditViewModel>
     public EditView()
     {
         InitializeComponent();
-        this.WhenActivated(d => ViewModel!.ConfirmDiscard
+        // DisposeWith is in ReactiveUI.Primitives; MultipleDisposable in ReactiveUI.Primitives.Disposables.
+        this.WhenActivated((MultipleDisposable d) => ViewModel!.ConfirmDiscard
             .RegisterHandler(context => context.SetOutput(MessageBox.Show(
                 $"Discard the changes to {context.Input.ItemName}?", "Close",
                 MessageBoxButton.YesNo) == MessageBoxResult.Yes))

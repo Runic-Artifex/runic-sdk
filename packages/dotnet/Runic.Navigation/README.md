@@ -31,7 +31,7 @@ Presentation hosts and MVVM integrations are independent choices:
 | --- | --- |
 | WPF presentation | `Runic.Navigation.Wpf` presents regions with native Views and a dispatcher context. |
 | Web presentation | `Runic.Application.Views` presents the same regions through generated Window/View bridges. |
-| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides observables and a Back command whose `NavigationOutcome` a View can bind. Model-context scheduling comes from `Runic.Application.Views.ReactiveUI` in a Views app. Compose native ReactiveUI commands for other operations. |
+| ReactiveUI ViewModels | `Runic.Navigation.ReactiveUI` (or its System.Reactive flavor) provides region observables, a Back command, `WhenNavigatedTo`, result commands and a leave confirmation asked through an `Interaction`; its [walkthrough](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#walkthrough) covers pages, guards, results and the window close. Model-context scheduling comes from `Runic.Application.Views.ReactiveUI` in a Views app and from ReactiveUI.WPF in WPF. Compose native ReactiveUI commands for other operations. |
 | CommunityToolkit ViewModels | Use the core's async operations directly with `AsyncRelayCommand` or `[RelayCommand]`, forwarding the command's cancellation token. No additional navigation adapter is needed. |
 
 An integration can optimize its framework's API without duplicating navigation
