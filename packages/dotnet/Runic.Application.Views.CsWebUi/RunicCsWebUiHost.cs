@@ -140,6 +140,12 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             {
                 if (e.EventType == WebUiEventType.Disconnected)
                     session.ReleaseConnection($"{e.ClientId}:{e.ConnectionId}");
+                // With this binding, WebUI cancels the page's navigations from each (re)connect until
+                // runic-cswebui.js allows them before a Bridge call, and reports each one here; ignoring it dropped a
+                // reload or a link before the first call (#196). CS-WebUI does not expose the destination of a
+                // navigation event, so the page repeats the navigation it recorded, if it stays on its origin.
+                else if (e.EventType == WebUiEventType.Navigation)
+                    e.RunJavaScript(ContinueNavigationScript);
             });
             host = new CsWebUiBridgeWindow<TViewModel>(scope, window, transport, content, connectionBinding, viewModel);
             var attachment = opening.AttachBridge(transport, content);
@@ -177,6 +183,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             throw;
         }
     }
+
+    // runic-cswebui.js records each navigation WebUI cancels; this repeats the last one with navigation allowed.
+    internal const string ContinueNavigationScript = "window.__runicContinueNavigation?.();";
 
     // The process main thread: shows windows while idle, then waits in WebUiApplication.Wait while any is shown.
     private sealed class MainThreadLoop

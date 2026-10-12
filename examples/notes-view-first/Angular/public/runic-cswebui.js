@@ -58,6 +58,52 @@
     };
   }
 
+  // The all-events binding also makes WebUI cancel the page's own navigations
+  // from each (re)connect until a Bridge call allows them, such as a reload or
+  // a link before the first call, and report each one to .NET (#196). Record
+  // the last navigation; when .NET receives the report it calls
+  // __runicContinueNavigation, which repeats it with navigation allowed if
+  // WebUI cancelled it and it stays on this origin. WebUI registers its
+  // listener when the document has loaded, after this one, so the check waits
+  // for the report. A cross-origin navigation stays cancelled, and so does a
+  // form submission, which cannot be repeated without its data.
+  let lastNavigation;
+  if (typeof navigation === "object" && navigation !== null && "addEventListener" in navigation) {
+    navigation.addEventListener("navigate", event => {
+      lastNavigation = event.formData ? undefined
+        : { event, url: event.destination.url, type: event.navigationType, key: event.destination.key };
+    });
+  } else if (typeof document === "object" && typeof document.addEventListener === "function") {
+    // Without the Navigation API, WebUI cancels link clicks instead.
+    document.addEventListener("click", event => {
+      const link = event.target?.closest?.("a[href]");
+      lastNavigation = link ? { event, url: link.href, type: "push" } : undefined;
+    });
+  }
+  window.__runicContinueNavigation = () => {
+    const next = lastNavigation;
+    lastNavigation = undefined;
+    if (!next?.event.defaultPrevented || new URL(next.url, location.href).origin !== location.origin) return;
+    // Allow only this navigation. A fragment stays in the document, and WebUI
+    // must go on cancelling the page's other navigations until a Bridge call.
+    const allow = allowed => window.webui?.allowNavigation?.(allowed);
+    allow(true);
+    if (next.type === "traverse" && next.key) {
+      // A traversal starts after this call returns.
+      const { committed, finished } = navigation.traverseTo(next.key);
+      finished.catch(() => undefined);
+      committed.then(() => allow(false), () => allow(false));
+      return;
+    }
+    try {
+      if (next.type === "reload") location.reload();
+      else if (next.type === "replace") location.replace(next.url);
+      else location.assign(next.url);
+    } finally {
+      allow(false);
+    }
+  };
+
   // The window's all-events binding delivers disconnects to .NET, and WebUI has
   // no narrower way to receive them. With it, WebUI also sends a click event for
   // every element with an id, in parallel with the Bridge calls that click

@@ -215,7 +215,9 @@ jobs:
       - uses: ./.github/actions/restore-build
       - uses: ./.github/actions/install-browser
       - name: Exercise first Window generated client
-        run: node examples/first-window/browser-smoke.mjs
+        run: |
+          node examples/first-window/browser-smoke.mjs
+          node examples/first-window/navigation-smoke.mjs
       - name: Exercise Runic Desktop Views host and ReactiveUI client
         run: |
           node examples/first-window-desktop/browser-smoke.mjs

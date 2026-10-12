@@ -132,6 +132,12 @@ element with an id: those clicks would reach the server in parallel with the
 Bridge calls they start. Use Bridge commands rather than WebUI element bindings
 in a Views window.
 
+With that binding, WebUI also cancels the page's own navigations after each
+connect until a Bridge call allows them, and reports each one to the server.
+The host carries out a same-origin one, such as a reload, a link to another
+page or a fragment, so the page does not stay put before its first Bridge call.
+A cross-origin navigation and a form submission stay cancelled.
+
 A window-local `CreateBridgeSession()` retains one native binding for each route
 name and swaps the active managed handler as Views change; an inactive route
 returns `disconnected`. CS-WebUI cannot remove a native route registration
