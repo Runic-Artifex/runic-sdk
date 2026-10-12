@@ -66,6 +66,15 @@ internal sealed class GuardedPage(string name, Func<ValueTask<bool>> guard) : Pa
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) => guard();
 }
 
+// A tab that holds a page region, as the Customers tab of a TabControl shell does.
+internal sealed class PagesTab(string name, NavigationRegion<object> pages)
+{
+    public string Name { get; } = name;
+    public NavigationRegion<object> Pages { get; } = pages;
+
+    public override string ToString() => Name;
+}
+
 // Changes a DispatcherObject in its hooks, which throws off the UI thread, and records where they ran.
 internal sealed class AffinePage(DispatcherModelContext context) : Page("affine"), INavigationInitialize, INavigationDepartureGuard, IDisposable
 {

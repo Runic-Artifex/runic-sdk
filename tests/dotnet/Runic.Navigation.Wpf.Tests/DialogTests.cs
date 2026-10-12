@@ -380,7 +380,7 @@ internal sealed class DialogTests
     }
 
     // Last: Application.Shutdown with open dialogs closes everything, and the navigator retires every entry.
-    [Test, DisplayName("Application.Shutdown"), NotInParallel("WpfSuite", Order = 42)]
+    [Test, DisplayName("Application.Shutdown"), NotInParallel("WpfSuite", Order = 46)]
     public void ApplicationShutdown()
     {
         var scene = new DialogScene();
