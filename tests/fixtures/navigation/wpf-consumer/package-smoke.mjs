@@ -1,9 +1,9 @@
 // Proves that the packed Runic.Navigation.Wpf installs and runs in a plain WPF app
 // (W240-001 §8, §11). It checks the package layout, restores the consumer in a temporary
 // copy from the packed feed, asserts that the restored graph holds Runic.Navigation and
-// Runic.Navigation.Wpf as its only Runic packages and that NuGet imports only the package's
-// buildTransitive targets, checks that RUNICNAV001 is reported only in the consumer's own
-// code, builds it, and on Windows runs it with --smoke: show the window, push, Back, exit 0.
+// Runic.Navigation.Wpf as its only Runic packages and that NuGet imports no Runic build
+// assets, builds it with warnings as errors, and on Windows runs it with --smoke: show the
+// window, push, Back, exit 0.
 // Other platforms stop after the build, because WPF runs only on Windows.
 // Usage: bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
@@ -71,33 +71,16 @@ try {
   const runic = Object.keys(assets.libraries).filter(library => /^runic\./i.test(library)).sort();
   assert.deepEqual(runic, [`Runic.Navigation/${version}`, `${id}/${version}`].sort(), `Unexpected Runic libraries: ${runic.join(", ")}`);
 
-  // 3. NuGet imports no Runic build assets except Runic.Navigation.Wpf's buildTransitive targets,
-  // which suppress RUNICNAV001 in XAML-generated code.
+  // 3. NuGet imports no Runic build assets.
   const runicImports = [];
   for (const file of readdirSync(join(directory, "obj")).filter(name => /\.nuget\.g\.(props|targets)$/.test(name))) {
     const imports = [...readFileSync(join(directory, "obj", file), "utf8").matchAll(/<Import\s+Project="([^"]+)"/g)].map(([, path]) => path);
     runicImports.push(...imports.filter(path => /runic\./i.test(path)));
   }
-  assert.equal(runicImports.length, 1, `Unexpected Runic build imports: ${runicImports.join(", ")}`);
-  assert.match(runicImports[0].replaceAll("\\", "/"), /\/runic\.navigation\.wpf\/[^/]+\/buildTransitive\/Runic\.Navigation\.Wpf\.targets$/i);
+  assert.deepEqual(runicImports, [], `Unexpected Runic build imports: ${runicImports.join(", ")}`);
 
-  // 4. Without the consumer's own suppression, RUNICNAV001 is reported only at its use sites in
-  // Program.cs, with the documentation link, and never in MainWindow's XAML-generated code.
-  writeFileSync(join(directory, "Program.cs"), readFileSync(join(fixture, "Program.cs"), "utf8").replace(/^#pragma warning disable RUNICNAV001.*\n/m, ""));
-  let unsuppressed = "";
-  try {
-    run(["build", "--no-restore", "WpfConsumer.csproj", "-c", "Release", ...properties]);
-  } catch (error) {
-    unsuppressed = String(error.stdout);
-  }
-  const reports = unsuppressed.split("\n").filter(line => line.includes("RUNICNAV001"));
-  assert.ok(reports.length > 0, "The unsuppressed build did not report RUNICNAV001.");
-  for (const line of reports)
-    assert.match(line, /[\\/]Program\.cs\(\d+,\d+\): error RUNICNAV001: .*\/docs\/experimental\.md#RUNICNAV001\)/, `RUNICNAV001 outside the consumer's code: ${line}`);
-  copyFileSync(join(fixture, "Program.cs"), join(directory, "Program.cs"));
-
-  // 5. With only the consumer's suppression, the XAML (rn: namespace) compiles against the package
-  // with warnings as errors, and on Windows the smoke runs.
+  // 4. The XAML (rn: namespace) compiles against the package with warnings as errors, and on
+  // Windows the smoke runs.
   run(["build", "--no-restore", "WpfConsumer.csproj", "-c", "Release", ...properties]);
   if (process.platform === "win32") {
     const output = run(["run", "--no-build", "--project", "WpfConsumer.csproj", "-c", "Release", ...properties, "--", "--smoke"]);

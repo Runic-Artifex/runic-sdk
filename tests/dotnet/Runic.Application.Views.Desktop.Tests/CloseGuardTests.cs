@@ -11,7 +11,6 @@ using Runic.Navigation;
 using TUnit.Core;
 using static DesktopChecks;
 
-#pragma warning disable RUNICNAV001 // The guarded Window presents an experimental navigation region.
 
 // RunicWindow.GuardClose on Runic Desktop: a user close of the embedded window asks the departure guards of the
 // navigation regions the Window presents (W250-036). The window host is headless; UserClose calls the

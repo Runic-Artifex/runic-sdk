@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Threading;
@@ -11,7 +10,6 @@ namespace Runic.Navigation.Wpf;
 // live on. A region stays listed in the window where a guarding host last loaded with it, until the region is collected,
 // the window closes, a guarding host loads with it in another window, or a host that presents it turns the guard off.
 // The window holds its regions weakly and a region holds nothing of the window, so neither keeps the other alive.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class WindowCloseGuard
 {
     private static readonly DependencyProperty GuardProperty = DependencyProperty.RegisterAttached("WindowCloseGuard",

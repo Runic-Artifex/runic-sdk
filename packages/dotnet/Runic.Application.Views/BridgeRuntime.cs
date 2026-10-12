@@ -37,9 +37,6 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
     /// <see cref="NavigationRegion{TContent}"/> publishes when its <c>Current</c> changes and binds the window session as
     /// its navigator's presentation; another <see cref="INotifyPropertyChanged"/> publishes on every change.
     /// </param>
-#pragma warning disable RUNICNAV001
-    [System.Diagnostics.CodeAnalysis.Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
-#pragma warning restore RUNICNAV001
     public PropertyDescriptor(string name, Func<T, object?> getter, Action<T, IBridgeArguments>? setter, Func<T, object?> observe)
         : this(name, getter, setter) => Observe = observe ?? throw new ArgumentNullException(nameof(observe));
 
@@ -258,12 +255,10 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 
 // The navigation regions a Bridge presents as content slots, in declaration order: what a guarded
 // Window clears before it closes.
-#pragma warning disable RUNICNAV001 // Region slots present the experimental navigator.
 internal interface IBridgeRegionSlots
 {
     IReadOnlyList<INavigationRegion> NavigationRegions();
 }
-#pragma warning restore RUNICNAV001
 
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
@@ -1483,9 +1478,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             _observed.Remove(property.Name);
             var subscription = next switch
             {
-#pragma warning disable RUNICNAV001 // Region slots present the experimental navigator.
                 INavigationRegion region => NavigationPresentationBinding.Observe(region, _content, Publish),
-#pragma warning restore RUNICNAV001
                 INotifyPropertyChanged notifying => new SubObjectSubscription(notifying, Publish),
                 _ => null,
             };
@@ -1493,7 +1486,6 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         }
     }
 
-#pragma warning disable RUNICNAV001 // Region slots present the experimental navigator.
     IReadOnlyList<INavigationRegion> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
     {
         List<INavigationRegion> regions = [];
@@ -1501,7 +1493,6 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             if (property.Observe?.Invoke(_vm) is INavigationRegion region && !regions.Contains(region)) regions.Add(region);
         return regions;
     });
-#pragma warning restore RUNICNAV001
 
     private void ReleaseObservedSubObjects()
     {

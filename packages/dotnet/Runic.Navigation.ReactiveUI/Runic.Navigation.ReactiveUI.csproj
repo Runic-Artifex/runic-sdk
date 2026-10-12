@@ -5,8 +5,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Navigation.ReactiveUI</PackageId>
-    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
-    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>ReactiveUI observables, commands and interaction leave confirmation for Runic.Navigation regions and entries.</Description>
     <PackageTags>runic-artifex;navigation;reactiveui;mvvm;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

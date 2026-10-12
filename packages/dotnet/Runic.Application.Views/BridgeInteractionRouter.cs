@@ -528,9 +528,7 @@ public sealed class BridgeInteractionRouter : IDisposable
         }
     }
 
-#pragma warning disable RUNICNAV001 // Ends requests with the experimental navigator's hook token.
     private static CancellationToken NavigationHookCancellation() => Runic.Navigation.RunicNavigator.HookCancellationToken;
-#pragma warning restore RUNICNAV001
 
     private CancellationLease RegisterCancellation(string requestId, TimeSpan timeout, CancellationToken cancellationToken,
         CancellationToken hookCancellation)

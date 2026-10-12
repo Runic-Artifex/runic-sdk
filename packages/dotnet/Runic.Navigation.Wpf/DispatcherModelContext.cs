@@ -28,7 +28,6 @@ namespace Runic.Navigation.Wpf;
 /// shuts down, so a hook that awaits past shutdown still finishes.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHookScheduler, IRunicModelContextLifetime, IDisposable
 {
     private static readonly DispatcherOperationCallback RunItem = static state =>

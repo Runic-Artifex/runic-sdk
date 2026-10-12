@@ -62,7 +62,7 @@ normal `ReactiveUI.SourceGenerators` attributes with
 source-generator package.
 
 The navigation adapter (`WhenCurrentChanged`, `WhenEntryChanged` and
-`CreateBackCommand()`) is in the separate, experimental
+`CreateBackCommand()`) is in the separate
 `Runic.Navigation.ReactiveUI.Reactive` package, with `System.Reactive.Unit` as
 the back command's input. This package no longer references it; add it to
 navigate.

@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Runic.Navigation;
 
 // The reentrancy marker of a running hook (W230 §19 deviation 15, W240-001 §4.4). While a hook runs,
@@ -22,7 +20,6 @@ namespace Runic.Navigation;
 // The marker holds its transition weakly: user code may keep the hook's SynchronizationContext (for
 // example Progress<T> or ObserveOn(SynchronizationContext.Current)), and that must not keep the
 // transition, its entries and region alive.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class NavigationHookMarker
 {
     private static readonly AsyncLocal<NavigationHookMarker?> Current = new();

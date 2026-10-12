@@ -5,8 +5,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Testing</PackageId>
-    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
-    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>Headless Window and View test host for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RunicApplicationFrontendGenerationEnabled>false</RunicApplicationFrontendGenerationEnabled>

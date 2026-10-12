@@ -7,7 +7,6 @@ namespace Runic.Navigation;
 /// The content-type-independent view of a <see cref="NavigationEntry{TContent}"/>, for hosts that present
 /// a region without knowing its content type. Only <see cref="NavigationEntry{TContent}"/> implements it.
 /// </summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationEntry
 {
     /// <summary>Gets the entry's id, unique within its navigator.</summary>
@@ -33,7 +32,6 @@ public interface INavigationEntry
 
 /// <summary>One entry of a navigation region: its stable id, content, ownership and state.</summary>
 /// <typeparam name="TContent">The region's content type.</typeparam>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class NavigationEntry<TContent> : INavigationEntry where TContent : class
 {
     internal NavigationEntry(NavigationEntryCore core) => Core = core;
@@ -73,7 +71,6 @@ public sealed class NavigationEntry<TContent> : INavigationEntry where TContent 
 /// <see cref="NavigationTarget.Own{T}"/> or <see cref="NavigationTarget.Borrow{T}"/> receives it in
 /// <see cref="INavigationInitialize.InitializeAsync"/>.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class NavigationEntryContext
 {
     private readonly NavigationEntryCore _entry;
@@ -203,7 +200,6 @@ internal enum NavigationEntryPhase
 }
 
 // The non-generic entry shared by a region's typed views.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class NavigationEntryCore
 {
     private object? _typedView;
@@ -287,7 +283,6 @@ internal sealed class EmptyServiceProvider : IServiceProvider
 }
 
 // One state change of an entry, raised as StateChanged and, around Active, as the INavigationAware calls.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal readonly record struct NavigationEntryChange(NavigationEntryCore Entry, NavigationEntryState Previous, NavigationEntryState State);
 
 // The provider ActivatorUtilities constructs a Create<T>() target's content from (W250-032 §3): the entry's
@@ -296,7 +291,6 @@ internal readonly record struct NavigationEntryChange(NavigationEntryCore Entry,
 // receive it. It forwards the optional provider interfaces ActivatorUtilities uses (required, keyed and
 // IsService checks). The context is not passed as an ActivatorUtilities argument because ActivatorUtilities
 // then rejects the constructors that don't take it.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class NavigationConstructionServices(IServiceProvider services, NavigationEntryContext context)
     : IServiceProvider, ISupportRequiredService, IKeyedServiceProvider
 {

@@ -1,12 +1,10 @@
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace Runic.Navigation;
 
-/// <summary>Registers the experimental window navigator.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+/// <summary>Registers the window navigator.</summary>
 public static class RunicNavigationServiceCollectionExtensions
 {
     /// <summary>

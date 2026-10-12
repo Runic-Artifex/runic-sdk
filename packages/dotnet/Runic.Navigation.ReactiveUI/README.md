@@ -10,13 +10,13 @@ and `CreateBackCommand()` for `NavigationRegion<TContent>`; `WhenNavigatedTo()`,
 `WhenNavigatedFrom()`, `CreateCompleteCommand()`, `CreateDismissCommand()` and
 `CreateCloseCommand()` for an entry's `NavigationEntryContext`; and
 `ReactiveLeaveConfirmation.WithInteraction()`, a leave confirmation asked through a
-ReactiveUI `Interaction` (all experimental, `RUNICNAV001`).
+ReactiveUI `Interaction`.
 
 Apps that use the System.Reactive distribution of ReactiveUI reference
 [`Runic.Navigation.ReactiveUI.Reactive`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI.Reactive/README.md)
 instead. Runic Views apps reference this package next to
 `Runic.Application.Views.ReactiveUI`, which no longer brings it, so an app without
-navigation has no experimental package.
+navigation does not reference it.
 
 ```sh
 dotnet add package Runic.Navigation.ReactiveUI --prerelease
@@ -158,12 +158,11 @@ back command delivers its output and `IsExecuting` on ReactiveUI's
 `Runic.Application.Views.ReactiveUI` (same namespace) in W250, with no type
 forwards.
 
-## Navigation (experimental)
+## Navigation
 
 `RunicNavigator` regions replace `RoutingState` rather than wrap it: a region
 has awaited departure guards, stable entry ids, owned content and supersession,
 which `RoutingState`'s mutable stack and synchronous `Navigate` cannot enforce.
-The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
 
 ```csharp
 BackCommand = Main.CreateBackCommand(); // holds a handler on this ViewModel's own region
@@ -215,7 +214,7 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   `INavigationDepartureGuard`) and the entry's `Retirement` token for per-entry
   work, and `Dispose` for owned content.
 
-## Entry lifecycle and result commands (experimental)
+## Entry lifecycle and result commands
 
 Content that the navigator creates takes its `NavigationEntryContext` as a
 constructor parameter (`NavigationTarget.Create<T>()` and the region methods that

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -7,7 +6,6 @@ using Microsoft.Extensions.Logging;
 namespace Runic.Navigation.Wpf;
 
 /// <summary>Registers window navigation on the WPF dispatcher.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class RunicWpfNavigationServiceCollectionExtensions
 {
     /// <summary>

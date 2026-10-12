@@ -1,6 +1,5 @@
 // A WPF app that uses only the packed Runic.Navigation.Wpf (W240-001 §11). With --smoke it shows
 // its window off-screen, pushes a page, goes back with BrowseBack and exits 0.
-#pragma warning disable RUNICNAV001 // The experimental navigation API (docs/experimental.md).
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;

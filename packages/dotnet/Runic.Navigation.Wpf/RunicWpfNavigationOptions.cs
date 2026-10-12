@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Runic.Navigation.Wpf;
 
 /// <summary>Configures <see cref="RunicWpfNavigationServiceCollectionExtensions.AddRunicWpfNavigation"/>.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class RunicWpfNavigationOptions
 {
     private readonly Dictionary<Type, Type> _views = [];

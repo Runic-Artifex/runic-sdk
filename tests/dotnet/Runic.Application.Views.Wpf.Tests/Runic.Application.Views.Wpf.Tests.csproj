@@ -11,7 +11,7 @@
     <!-- The linked WpfDiagnostics.cs uses RunicReleaseLinks. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <RunicReleaseLinksNamespace>Runic.Application.Views.Wpf</RunicReleaseLinksNamespace>
-    <NoWarn>$(NoWarn);RUNICWPF001;RUNICNAV001</NoWarn>
+    <NoWarn>$(NoWarn);RUNICWPF001</NoWarn>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
   <ItemGroup>

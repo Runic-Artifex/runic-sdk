@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Runic.Navigation;
 
 /// <summary>
@@ -23,7 +21,6 @@ namespace Runic.Navigation;
 /// run on the thread pool.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface IRunicModelHookScheduler
 {
     /// <summary>

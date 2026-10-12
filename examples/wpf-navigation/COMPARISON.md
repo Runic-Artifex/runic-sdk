@@ -254,8 +254,8 @@ the first has committed is a new request and pops again.
   hosts for WPF, Avalonia, MAUI and WinForms, plus page transitions, WebView2
   integration and a Fluent UI kit. Runic.Navigation's engine is UI-free, but
   its only desktop host is WPF.
-- **Runic's constraints.** Runic is a preview: its navigation API is
-  experimental (`RUNICNAV001`). It requires Microsoft.Extensions.DependencyInjection.
+- **Runic's constraints.** Runic is a preview, so its navigation API can still
+  change before 1.0. It requires Microsoft.Extensions.DependencyInjection.
   Its navigation is asynchronous, so a Back commits after the click returns,
   where Prism and RoutingState commit synchronously. It is a new project with
   a small user base and little third-party material: answers, samples and

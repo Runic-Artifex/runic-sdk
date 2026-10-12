@@ -48,16 +48,16 @@ export const packageLayouts = {
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.Application/i, /^ReactiveUI$/i],
   },
-  // The WPF hosts depend on Runic.Navigation and the WPF framework only (W240-001 §8). The
-  // only build asset suppresses RUNICNAV001 in XAML-generated code (docs/experimental.md).
+  // The WPF hosts depend on Runic.Navigation and the WPF framework only (W240-001 §8) and
+  // carry no build assets.
   "Runic.Navigation.Wpf": {
-    files: ["README.md", "Runic.Navigation.Wpf.nuspec", "buildTransitive/Runic.Navigation.Wpf.targets", "icon.png", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.xml"],
+    files: ["README.md", "Runic.Navigation.Wpf.nuspec", "icon.png", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.dll", "lib/net10.0-windows7.0/Runic.Navigation.Wpf.xml"],
     requires: ["Runic.Navigation"],
     exactDependencies: ["Runic.Navigation"],
     forbidden: [/^Runic\.(?!Navigation$)/i],
   },
   // The Application adapters own model-context scheduling and bring no navigation adapter, so an app
-  // without navigation has no experimental package in its graph (W250-014).
+  // without navigation has no navigation package in its graph (W250-014).
   "Runic.Application.Views.ReactiveUI": {
     requires: ["Runic.Application.Views", "ReactiveUI"],
     forbidden: [/^Runic\.Navigation\.ReactiveUI/i, /^ReactiveUI\.Reactive$/i],
@@ -298,7 +298,7 @@ for (var attempt = 0; attempt < 100 && !published; attempt++)
 if (!published) throw new Exception("The packaged generated publication failed.");
 Console.WriteLine("Packaged Window/View test host passed.");`
       : strategy.canaryType
-        ? `#pragma warning disable RUNICNAV001, RUNICWPF001\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
+        ? `#pragma warning disable RUNICWPF001\nConsole.WriteLine(typeof(${strategy.canaryType}).Assembly.GetName().Name);`
         : `Console.WriteLine(System.Reflection.Assembly.Load("${assemblyName}").GetName().Name);`,
     );
     if (viewTestConsumer)

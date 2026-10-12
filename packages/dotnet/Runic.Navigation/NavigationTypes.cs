@@ -6,11 +6,9 @@ namespace Runic.Navigation;
 
 /// <summary>Configures what happens to a child region while the entry that owns it is retained.</summary>
 /// <param name="WhileParentRetained">The policy applied when a push retains the owning entry.</param>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record NavigationRegionOptions(NavigationChildRetention WhileParentRetained = NavigationChildRetention.Keep);
 
 /// <summary>What a child region does while the entry that owns it is retained.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationChildRetention
 {
     /// <summary>The child region keeps its entries.</summary>
@@ -28,16 +26,13 @@ public enum NavigationChildRetention
 /// The entry that must be current when the request is admitted and when it commits;
 /// otherwise the request is rejected with <see cref="NavigationRejection.NotCurrent"/>.
 /// </param>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record NavigationRequestOptions(NavigationEntryId? ExpectedCurrent = null);
 
 /// <summary>Identifies one navigation entry. Ids increase monotonically per navigator.</summary>
 /// <param name="Value">The id's sequence number.</param>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public readonly record struct NavigationEntryId(long Value);
 
 /// <summary>The lifecycle state of a navigation entry.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationEntryState
 {
     /// <summary>The entry belongs to a transition that has not committed.</summary>
@@ -54,7 +49,6 @@ public enum NavigationEntryState
 }
 
 /// <summary>Whether the navigator owns an entry's content.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationOwnership
 {
     /// <summary>The navigator forgets and disposes the content when the entry retires.</summary>
@@ -65,7 +59,6 @@ public enum NavigationOwnership
 }
 
 /// <summary>The operation that caused a departure, resume or result.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationOperation
 {
     /// <summary>A new entry became current; the previous current entry was retained.</summary>
@@ -91,7 +84,6 @@ public enum NavigationOperation
 }
 
 /// <summary>Whether a departing entry is retained or retired.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationDepartureKind
 {
     /// <summary>The entry stays in history (a push).</summary>
@@ -105,7 +97,6 @@ public enum NavigationDepartureKind
 /// Describes a departure that a guard can veto. The navigator creates one for each guard invocation; it
 /// belongs to that invocation and to the transition that runs it.
 /// </summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class NavigationDeparture
 {
     private readonly NavigationTransition _transition;
@@ -217,7 +208,6 @@ internal sealed class NavigationSettlementSource(NavigationTransitionId id)
 /// <see cref="NavigationOperation.Reset"/> for a new entry. An initial target of
 /// <see cref="RunicNavigator.CreateRegion{TContent}"/> arrives with <see cref="NavigationOperation.Reset"/>.
 /// </param>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record NavigationResume(NavigationEntryId Entry, NavigationOperation Operation);
 
 /// <summary>Describes the current entry stopping being current (<see cref="INavigationAware.OnNavigatedFrom"/>).</summary>
@@ -227,11 +217,9 @@ public sealed record NavigationResume(NavigationEntryId Entry, NavigationOperati
 /// because the entry that owns the region retired or the navigator was disposed.
 /// </param>
 /// <param name="Kind">Whether the entry stays in its region's history or retires.</param>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record NavigationExit(NavigationEntryId Entry, NavigationOperation Operation, NavigationDepartureKind Kind);
 
 /// <summary>The data of <see cref="NavigationEntryContext.StateChanged"/>.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class NavigationEntryStateChangedEventArgs : EventArgs
 {
     /// <summary>Creates the data of one state change.</summary>
@@ -260,7 +248,6 @@ public sealed class NavigationEntryStateChangedEventArgs : EventArgs
 }
 
 /// <summary>Why a navigation request was rejected.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationRejection
 {
     /// <summary>A departure guard returned <see langword="false"/>.</summary>
@@ -290,7 +277,6 @@ public enum NavigationRejection
 }
 
 /// <summary>The phase in which a transition failed.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationPhase
 {
     /// <summary>A departure guard threw.</summary>
@@ -305,7 +291,6 @@ public enum NavigationPhase
 
 /// <summary>The outcome of a navigation request. Navigation outcomes are returned, never thrown.</summary>
 /// <typeparam name="TContent">The region's content type.</typeparam>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public abstract record NavigationResult<TContent> where TContent : class
 {
     private NavigationResult()
@@ -361,7 +346,6 @@ public abstract record NavigationResult<TContent> where TContent : class
 
 /// <summary>How a <see cref="NavigationRegion{TContent}.PushForResult{TResult}"/> request ended.</summary>
 /// <typeparam name="TResult">The result type.</typeparam>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public abstract record NavigationCompletion<TResult>
 {
     private NavigationCompletion()
@@ -391,7 +375,6 @@ public abstract record NavigationCompletion<TResult>
 /// <see cref="NavigationCompletion{TResult}.Dismissed"/> on every other path. Both tasks complete
 /// asynchronously and are never completed inside a commit turn.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed class NavigationResultRequest<TContent, TResult> where TContent : class
 {
     private readonly Task<NavigationResult<TContent>> _transition;
@@ -412,14 +395,12 @@ public sealed class NavigationResultRequest<TContent, TResult> where TContent : 
 /// <summary>A navigation target created by <see cref="NavigationTarget"/>.</summary>
 /// <typeparam name="TContent">The content type.</typeparam>
 /// <remarks>Only targets from <see cref="NavigationTarget"/> are accepted; other implementations are rejected.</remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 [SuppressMessage("Design", "CA1040:Avoid empty interfaces", Justification = "A covariant marker for targets created by NavigationTarget.")]
 public interface INavigationTarget<out TContent> where TContent : class
 {
 }
 
 /// <summary>Initializes a new entry once, before it first becomes current.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationInitialize
 {
     /// <summary>Initializes the entry's content. Runs outside model turns and at most once per entry.</summary>
@@ -433,7 +414,6 @@ public interface INavigationInitialize
 /// content that initializes with input through an interface check. Implement
 /// <see cref="INavigationInitialize{TInput}"/> instead.
 /// </summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 [EditorBrowsable(EditorBrowsableState.Never)]
 [SuppressMessage("Design", "CA1040:Avoid empty interfaces", Justification = "A marker that keeps the initial-target check free of reflection for NativeAOT.")]
 public interface INavigationInputInitialize
@@ -445,7 +425,6 @@ public interface INavigationInputInitialize
 /// <see cref="NavigationTarget.Create{T, TInput}(Func{IServiceProvider, T}, TInput)"/>.
 /// </summary>
 /// <typeparam name="TInput">The input type.</typeparam>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationInitialize<in TInput> : INavigationInputInitialize
 {
     /// <summary>Initializes the entry's content. Runs outside model turns and at most once per entry.</summary>
@@ -456,7 +435,6 @@ public interface INavigationInitialize<in TInput> : INavigationInputInitialize
 }
 
 /// <summary>Runs when a retained entry becomes current again.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationResume
 {
     /// <summary>Prepares the content to become current. Runs outside model turns and again on a retry, so it must be repeatable.</summary>
@@ -490,7 +468,6 @@ public interface INavigationResume
 /// after the turn.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationAware
 {
     /// <summary>
@@ -512,7 +489,6 @@ public interface INavigationAware
 }
 
 /// <summary>Can veto a transition that retains or retires an entry.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationDepartureGuard
 {
     /// <summary>
@@ -526,7 +502,6 @@ public interface INavigationDepartureGuard
 }
 
 /// <summary>Creates navigation targets and states who owns their content.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class NavigationTarget
 {
     /// <summary>
@@ -623,7 +598,6 @@ public static class NavigationTarget
 
 // The only INavigationTarget<T> implementations. The region works with this
 // non-generic core; the public interface stays a covariant marker.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal abstract class NavigationTargetCore
 {
     public abstract NavigationOwnership Ownership { get; }
@@ -644,7 +618,6 @@ internal abstract class NavigationTargetCore
         ValueTask.CompletedTask;
 }
 
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class InstanceNavigationTarget<T>(T content, NavigationOwnership ownership)
     : NavigationTargetCore, INavigationTarget<T> where T : class
 {
@@ -653,7 +626,6 @@ internal sealed class InstanceNavigationTarget<T>(T content, NavigationOwnership
     public override Type ContentType => typeof(T);
 }
 
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, NavigationEntryContext, T> factory)
     : NavigationTargetCore, INavigationTarget<T> where T : class
 {
@@ -664,7 +636,6 @@ internal sealed class FactoryNavigationTarget<T>(Func<IServiceProvider, Navigati
         factory(services, entry) ?? throw new InvalidOperationException($"The navigation factory for {typeof(T).Name} returned null.");
 }
 
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class InputNavigationTarget<T, TInput>(Func<IServiceProvider, NavigationEntryContext, T> factory, TInput input)
     : NavigationTargetCore, INavigationTarget<T> where T : class, INavigationInitialize<TInput>
 {
@@ -680,7 +651,6 @@ internal sealed class InputNavigationTarget<T, TInput>(Func<IServiceProvider, Na
 
 // Constructs T with ActivatorUtilities from the entry's provider (W240-001 §5, D5). The
 // annotation keeps T's public constructors under trimming and NativeAOT.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class ActivatedNavigationTarget<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>
     : NavigationTargetCore, INavigationTarget<T> where T : class
 {
@@ -691,7 +661,6 @@ internal sealed class ActivatedNavigationTarget<[DynamicallyAccessedMembers(Dyna
         NavigationConstructionServices.Activate<T>(services, entry);
 }
 
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class ActivatedInputNavigationTarget<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T, TInput>(TInput input)
     : NavigationTargetCore, INavigationTarget<T> where T : class, INavigationInitialize<TInput>
 {

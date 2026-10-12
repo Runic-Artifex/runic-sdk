@@ -9,7 +9,7 @@ using DisplayNameAttribute = TUnit.Core.DisplayNameAttribute;
 
 namespace Runic.Navigation.Tests;
 
-// W230-002 slice 1: the experimental navigator core (design record W230-001 §4-§6, §10, §13).
+// W230-002 slice 1: the navigator core (design record W230-001 §4-§6, §10, §13).
 internal sealed partial class NavigationTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);

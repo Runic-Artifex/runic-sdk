@@ -88,7 +88,6 @@ internal sealed partial class CodegenDiagnosticsTests
                 """, "RUNICBRIDGE003", "public object Value", "RowViewModel.Current.value").ConfigureAwait(false);
             // A navigation result, typically from an exposed back command, names the mapping that fixes it (W250-014).
             await RejectAt("NavigationResultValue", """
-                #pragma warning disable RUNICNAV001
                 public sealed class BackViewModel : FixtureModel { public NavigationResult<BackViewModel>? LastBack { get; } }
                 public sealed partial class BackWindow : RunicWindow<BackViewModel>;
                 """, "RUNICBRIDGE003", "public NavigationResult<BackViewModel>? LastBack",
@@ -119,7 +118,6 @@ internal sealed partial class CodegenDiagnosticsTests
                 "WriteOnlyViewModel.Name: a public getter is required.").ConfigureAwait(false);
             // NavigationRegion<TContent> slots (W230-002): a known content type, get-only.
             await RejectAt("ObjectRegion", """
-                #pragma warning disable RUNICNAV001
                 public sealed class AnyRegionViewModel : FixtureModel
                 {
                     public AnyRegionViewModel(RunicNavigator navigator) => Main = navigator.CreateRegion<object>(this);
@@ -129,7 +127,6 @@ internal sealed partial class CodegenDiagnosticsTests
                 """, "RUNICBRIDGE008", "public NavigationRegion<object> Main",
                 "AnyRegionViewModel.Main: a NavigationRegion<object> slot has no known content.").ConfigureAwait(false);
             await RejectAt("SettableRegion", """
-                #pragma warning disable RUNICNAV001
                 public interface IRegionPage : INotifyPropertyChanged { }
                 public sealed class RegionPageViewModel : FixtureModel, IRegionPage { public string Title => ""; }
                 public sealed partial class RegionPageView : RunicView<RegionPageViewModel>;
@@ -141,7 +138,6 @@ internal sealed partial class CodegenDiagnosticsTests
                 """, "RUNICBRIDGE008", "public NavigationRegion<IRegionPage>? Main",
                 "SettableRegionViewModel.Main: a NavigationRegion slot must be get-only").ConfigureAwait(false);
             await RejectAt("UnknownRegionContent", """
-                #pragma warning disable RUNICNAV001
                 public interface IMissingPage : INotifyPropertyChanged { }
                 public sealed class MissingRegionViewModel : FixtureModel
                 {
@@ -463,8 +459,8 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class HomeView : RunicView<HomeViewModel>;
                 """;
             var (missingViewExit, missingViewOutput, missingViewDirectory) = await RunGeneratorAsync(generator, temporaryRoot,
-                "MissingView", Preamble + "#pragma warning disable RUNICNAV001\n" + MissingViewSource).ConfigureAwait(false);
-            var orphanLine = (Preamble + "#pragma warning disable RUNICNAV001\n" + MissingViewSource)
+                "MissingView", Preamble + MissingViewSource).ConfigureAwait(false);
+            var orphanLine = (Preamble + MissingViewSource)
                 .Split('\n').ToList().FindIndex(text => text.Contains("class OrphanViewModel", StringComparison.Ordinal)) + 1;
             var warnings = missingViewOutput.Split('\n').Where(text => text.Contains("warning RUNICBRIDGE013:", StringComparison.Ordinal)).ToArray();
             Require(missingViewExit == 0 && warnings.Length == 3
@@ -487,18 +483,16 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(shellBridge.Contains("The navigation region ShellViewModel.Main cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal)
                     && shellBridge.Contains("The ShellViewModel.Tabs cannot present {unregistered.GetType().FullName}", StringComparison.Ordinal),
                 $"The generated content failure does not name the slot and the presented type.\n{shellBridge}");
-            // Generated code is not a use site of the experimental navigation API (W250-015): a
-            // Bridge that observes a region slot suppresses RUNICNAV001 itself, before its code.
+            // Navigation is a supported API: a Bridge that observes a region slot needs no warning
+            // suppression of its own.
             var regionBridges = Directory.GetFiles(Path.Combine(missingViewDirectory, "cs"), "*.g.cs")
                 .Select(File.ReadAllLines).Where(lines => lines.Any(line => line.Contains("static vm => vm.", StringComparison.Ordinal))).ToArray();
-            Require(regionBridges.Length > 0 && regionBridges.All(lines =>
-                    Array.IndexOf(lines, "#pragma warning disable RUNICNAV001") is var pragma and >= 0
-                    && pragma < Array.FindIndex(lines, line => line.StartsWith("internal sealed class ", StringComparison.Ordinal))),
-                $"A generated Bridge with a navigation region slot does not suppress RUNICNAV001.\n{shellBridge}");
+            Require(regionBridges.Length > 0 && regionBridges.All(lines => !lines.Any(line => line.StartsWith("#pragma warning", StringComparison.Ordinal))),
+                $"A generated Bridge with a navigation region slot suppresses a warning.\n{shellBridge}");
             // A Window's ViewModel has a Window, not a View: it is not reported
             // for a slot whose content type it shares.
             var (windowModelExit, windowModelOutput, _) = await RunGeneratorAsync(generator, temporaryRoot, "MissingViewWindowModel",
-                Preamble + "#pragma warning disable RUNICNAV001\n" + """
+                Preamble + """
                 public interface IPane : INotifyPropertyChanged { }
                 public sealed class MainViewModel : FixtureModel { public IReadOnlyList<IPane> Panes { get; } = []; }
                 public sealed class ListPaneViewModel : FixtureModel, IPane { public string Title => "list"; }

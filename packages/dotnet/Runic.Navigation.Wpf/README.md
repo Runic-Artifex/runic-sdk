@@ -16,12 +16,6 @@ is `https://runic-artifex.eu/xaml/navigation`, with the prefix `rn`.
 - `AddRunicWpfNavigation()`, which registers the navigator on the dispatcher.
 
 The package targets `net10.0-windows` and isn't trimmable, because WPF isn't.
-Its API is experimental, like the navigator's: suppress `RUNICNAV001` to use it
-([Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICNAV001)).
-The package's only build asset suppresses `RUNICNAV001` in the code that the WPF
-markup compiler generates for a named control, such as
-`<rn:NavigationHost x:Name="Host" />`, so the diagnostic appears only in your
-own code and a per-site `#pragma warning disable RUNICNAV001` is enough.
 
 ```sh
 # Available from 0.7.0-preview.4.
@@ -39,8 +33,8 @@ and its
 sets the same app against Prism, ReactiveUI and CrissCross.
 
 **1. Install and register.** Add this package and
-`Microsoft.Extensions.DependencyInjection`, and suppress `RUNICNAV001`. Then
-register the navigator and one service that holds the window's regions:
+`Microsoft.Extensions.DependencyInjection`. Then register the navigator and one
+service that holds the window's regions:
 
 ```csharp
 public partial class App : Application

@@ -1,9 +1,6 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Runic.Navigation;
 
 /// <summary>How a navigation request ended, as reported by <see cref="NavigationOutcome.Kind"/>.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public enum NavigationOutcomeKind
 {
     /// <summary>The transition committed.</summary>
@@ -25,5 +22,4 @@ public enum NavigationOutcomeKind
 /// </summary>
 /// <param name="Kind">How the request ended.</param>
 /// <param name="Rejection">Why the request was rejected, for <see cref="NavigationOutcomeKind.Rejected"/>; otherwise <see langword="null"/>.</param>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public sealed record NavigationOutcome(NavigationOutcomeKind Kind, NavigationRejection? Rejection = null);

@@ -1,6 +1,5 @@
-// Restores the navigation consumer from packed packages in a temporary copy, checks that
-// RUNICNAV001 is reported only in its own code and never in the generated Bridge, runs it
-// with JIT, then publishes and runs it with NativeAOT on Linux.
+// Restores the navigation consumer from packed packages in a temporary copy, builds and runs
+// it with JIT and warnings as errors, then publishes and runs it with NativeAOT on Linux.
 // Usage: bun tests/fixtures/application/navigation-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -43,24 +42,6 @@ try {
 <configuration><packageSources><clear/><add key="candidate" value="${feed}"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources>
 <packageSourceMapping><clear/><packageSource key="candidate"><package pattern="Runic.*"/></packageSource><packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping>
 </configuration>`);
-
-  // Without the consumer's own suppression, RUNICNAV001 is reported only at its use sites in
-  // Program.cs and Shell.cs, with the documentation link: the generated Bridge for the region
-  // slot needs none from the application.
-  const sources = ["Program.cs", "Shell.cs"];
-  for (const file of sources)
-    writeFileSync(join(directory, file), readFileSync(join(fixture, file), "utf8").replace(/^#pragma warning disable RUNICNAV001.*\n/m, ""));
-  let unsuppressed = "";
-  try {
-    run("dotnet", ["build", "NavigationConsumer.csproj", "-c", "Release", ...properties]);
-  } catch (error) {
-    unsuppressed = String(error.stdout);
-  }
-  const reports = unsuppressed.split("\n").filter(line => line.includes("RUNICNAV001"));
-  assert.ok(reports.length > 0, "The unsuppressed build did not report RUNICNAV001.");
-  for (const line of reports)
-    assert.match(line, /[\\/](Program|Shell)\.cs\(\d+,\d+\): error RUNICNAV001: .*\/docs\/experimental\.md#RUNICNAV001\)/, `RUNICNAV001 outside the consumer's code: ${line}`);
-  for (const file of sources) copyFileSync(join(fixture, file), join(directory, file));
 
   const jit = run("dotnet", ["run", "--project", "NavigationConsumer.csproj", "-c", "Release", ...properties]);
   assert.ok(jit.includes("NAVIGATION_CONSUMER_OK"), "The JIT navigation consumer did not pass.");

@@ -205,7 +205,7 @@ static Runic.Application.Testing.RunicOperationStatus.operator ==(Runic.Applicat
 Runic.Application.Testing.RunicCallReply<TModel>.Failure.get -> System.Text.Json.JsonElement?
 Runic.Application.Testing.RunicOperationStatus.Failure.get -> System.Text.Json.JsonElement?
 Runic.Application.Testing.RunicOperationStatus.Failure.init -> void
-[RUNICNAV001]Runic.Application.Testing.RunicNavigationTestExtensions
-[RUNICNAV001]static Runic.Application.Testing.RunicNavigationTestExtensions.RetainedContentModelCount(this Runic.Application.Views.WindowContentSession! session) -> int
+Runic.Application.Testing.RunicNavigationTestExtensions
+static Runic.Application.Testing.RunicNavigationTestExtensions.RetainedContentModelCount(this Runic.Application.Views.WindowContentSession! session) -> int
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.RunicWindowTestHost(TViewModel! viewModel, string! rootRoute, System.Func<Runic.Application.Views.IBridgeTransport!, Runic.Application.Views.WindowContentSession!, TViewModel!, System.IDisposable!>! attach, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), Runic.Navigation.IRunicModelContext? modelContext = null) -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.ModelContext.get -> Runic.Navigation.IRunicModelContext?

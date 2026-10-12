@@ -5,7 +5,6 @@ using Runic.Navigation;
 using TUnit.Core;
 using static DesktopChecks;
 
-#pragma warning disable RUNICNAV001 // The Window presents an experimental navigation region.
 
 // A page leaving a navigation region on Runic Desktop (W250-044). The browser unmounts a page after it received the
 // snapshot that removed it, so its Unmount call can arrive after .NET released the page's routes. The host's browser

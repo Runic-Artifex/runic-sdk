@@ -1,12 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Runic.Navigation;
 
 /// <summary>
 /// A presentation of a navigator's content, attached with <see cref="RunicNavigator.AttachPresentation"/>.
 /// Presentation integrations, such as the Runic Views runtime, implement it; applications do not.
 /// </summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationPresentation
 {
     /// <summary>

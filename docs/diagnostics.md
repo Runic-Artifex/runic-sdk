@@ -1,7 +1,7 @@
 # Diagnostics
 
 Every diagnostic ID that a Runic SDK package reports has an entry here, except
-the experimental API IDs (`RUNICNAV001`, `RUNICWPF001`), which
+the experimental API ID (`RUNICWPF001`), which
 [Experimental APIs](experimental.md) describes. Build errors, `dotnet runic`
 failures, the asset packer and Runic.Create link to their entry at the release
 tag of the package that reported them, so the text matches the version you use.
