@@ -7,8 +7,8 @@ import { launchChromium, pause, waitFor } from "../shared/smoke.mjs";
 const project = fileURLToPath(new URL("./NotesReactiveViews.csproj", import.meta.url));
 const source = fileURLToPath(new URL("./ViewModels.cs", import.meta.url));
 const getter = process.env.RUNIC_HOT_RELOAD_SCENARIO === "getter";
-const before = getter ? 'public string Greeting => "Reactive Notes";' : 'SavedMessage = $"Saved {Title}";';
-const after = getter ? 'public string Greeting => "Updated Reactive Notes";' : 'SavedMessage = $"Hot {Title}";';
+const before = getter ? 'public string Greeting => "Reactive Notes";' : 'SavedMessage = $"Saved {title}";';
+const after = getter ? 'public string Greeting => "Updated Reactive Notes";' : 'SavedMessage = $"Hot {title}";';
 let browser;
 // The outer catch appends the dotnet watch output.
 const detail = async () => browser ? await browser.diagnostics() : "browser: not started";
@@ -21,6 +21,9 @@ async function availablePort() {
   return port;
 }
 
+// Fail before starting dotnet watch when the edit point is missing or ambiguous.
+if ((await readFile(source, "utf8")).split(before).length !== 2)
+  throw new Error(`The Hot Reload edit point must occur exactly once in ViewModels.cs: ${before}`);
 const port = await availablePort();
 const url = `http://127.0.0.1:${port}/`;
 const watch = spawn("dotnet", ["watch", "--non-interactive", "--project", project,

@@ -102,7 +102,11 @@ HMR can be checked with `RUNIC_HMR_FRONTEND=svelte` or `angular` and
 through `runic-dev.mjs`, the SDK's internal runner for these multi-frontend
 examples; applications use `dotnet runic dev` instead. The
 [IDE host check](ide-host-smoke.mjs) covers development host startup and
-shutdown. The dev server proxies `/webui.js` from the native host.
+shutdown. [dotnet-hot-reload-smoke.mjs](dotnet-hot-reload-smoke.mjs) runs the
+host under `dotnet watch` and edits `ViewModels.cs`: Save's message by default,
+or the Home greeting with `RUNIC_HOT_RELOAD_SCENARIO=getter`. The edit must apply
+without restarting the View's activation. The check fails before it starts when
+the line it edits is missing. The dev server proxies `/webui.js` from the native host.
 
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesReactiveViews.csproj` with
