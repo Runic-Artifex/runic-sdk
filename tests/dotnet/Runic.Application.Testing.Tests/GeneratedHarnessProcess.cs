@@ -33,6 +33,11 @@ internal static class GeneratedHarnessProcess
                 process.StartInfo.ArgumentList.Add(argument);
         }
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        // A --coverage run passes its CLR profiler to every child. Instrumented Debug IL of
+        // BridgeOperationRouter.Wire is invalid (InvalidProgramException), so the .NET fixture
+        // exporter then aborted in local `bun run test application` runs (W260-014).
+        foreach (var name in process.StartInfo.Environment.Keys.Where(IsCoverageProfilerVariable).ToList())
+            process.StartInfo.Environment.Remove(name);
         if (!process.Start()) throw new InvalidOperationException($"Could not start {executable}.");
         Console.WriteLine($"Generated client child started: PID {process.Id} ({executable}), limit 512 MiB / 30 s.");
         var output = DrainBoundedAsync(process.StandardOutput);
@@ -73,6 +78,10 @@ internal static class GeneratedHarnessProcess
 
     // On Unix a child killed by a signal, such as the abort after an unhandled
     // .NET exception, reports 128 plus the signal number.
+    private static bool IsCoverageProfilerVariable(string name) =>
+        name.StartsWith("CORECLR_ENABLE_PROFILING", StringComparison.Ordinal) || name.StartsWith("CORECLR_PROFILER", StringComparison.Ordinal)
+        || name.StartsWith("CODE_COVERAGE_", StringComparison.Ordinal) || name.StartsWith("MicrosoftInstrumentationEngine_", StringComparison.Ordinal);
+
     private static string DescribeExit(int code) => code switch
     {
         134 when !OperatingSystem.IsWindows() => "aborted (exit code 134, SIGABRT)",

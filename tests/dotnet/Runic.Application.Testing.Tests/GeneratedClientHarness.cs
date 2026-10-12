@@ -43,9 +43,11 @@ internal sealed class GeneratedClientHarness
     {
         // An aborting child, like the .NET exporter after an unhandled exception,
         // prints its cause last, after more output than the retained limit.
+        // Abort only once both writes are flushed: an unflushed stdout write is lost
+        // with the process, which made this case fail intermittently.
         const string script = """
-            process.stdout.write("x".repeat(40_000) + "\nSTDOUT_END\n");
-            process.stderr.write("y".repeat(40_000) + "\nSTDERR_CAUSE\n", () => process.kill(process.pid, "SIGABRT"));
+            process.stdout.write("x".repeat(40_000) + "\nSTDOUT_END\n", () =>
+                process.stderr.write("y".repeat(40_000) + "\nSTDERR_CAUSE\n", () => process.kill(process.pid, "SIGABRT")));
             """;
         string message;
         try
