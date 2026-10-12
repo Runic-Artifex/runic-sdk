@@ -21,6 +21,7 @@ export interface InteractionSurface {
 export interface InteractionScope {
   readonly bridge: RunicBridgeClient;
   readonly route: string;
+  /** The presentation the handlers start in; `resume` can move them to another. */
   readonly presentationId: string | undefined;
   /** The lease is not disposed and its route belongs to the current Bridge session. */
   readonly live: () => boolean;
@@ -31,8 +32,8 @@ export interface InteractionSession {
   readonly surface: Readonly<Record<string, InteractionSurface>>;
   /** Resolves when .NET acknowledged the registered handlers. */
   ready(): Promise<void>;
-  /** Registers the handlers again after a reconnect remounted the presentation. */
-  resume?(): void;
+  /** Registers the handlers again after a reconnect remounted the presentation, under `presentationId` when given. */
+  resume?(presentationId?: string): void;
   dispose(): void;
 }
 
@@ -67,6 +68,7 @@ type InteractionRequest = {
 class InteractionRuntime implements InteractionSession {
   readonly surface: Readonly<Record<string, InteractionSurface>>;
   private readonly handlers = new Map<string, InteractionHandler>();
+  private presentationId: string | undefined;
   private generation = 0;
   private capabilityGeneration = 0;
   private disposed = false;
@@ -82,6 +84,7 @@ class InteractionRuntime implements InteractionSession {
   private readonly cancelledRequests = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly scope: InteractionScope, private readonly definitions: Readonly<Record<string, InteractionDefinition>>) {
+    this.presentationId = scope.presentationId;
     const surface: Record<string, InteractionSurface> = {};
     for (const name of Object.keys(definitions)) surface[name] = { handle: handler => this.register(name, handler as InteractionHandler["handle"]) };
     this.surface = surface;
@@ -98,8 +101,13 @@ class InteractionRuntime implements InteractionSession {
     if (this.unavailable) throw new BridgeError("disconnected", "The interaction presentation is no longer available.");
   }
 
-  resume(): void {
-    if (this.disposed || this.unavailable || !this.scope.live()) return;
+  resume(presentationId?: string): void {
+    if (this.disposed || !this.scope.live()) return;
+    // .NET acknowledged the remounted presentation, which has a new id after the
+    // page started a new browser session. A reply about the released presentation
+    // may have stopped the handlers in the meantime.
+    if (presentationId !== undefined) this.presentationId = presentationId;
+    this.unavailable = false;
     this.retryDelay = 25;
     this.syncCapabilities();
     this.ensureLoops();
@@ -199,7 +207,7 @@ class InteractionRuntime implements InteractionSession {
   }
 
   private syncCapabilities(): void {
-    const presentationId = this.scope.presentationId;
+    const presentationId = this.presentationId;
     if (!presentationId) return;
     const generation = ++this.capabilityGeneration;
     const handlers = [...this.handlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
@@ -207,7 +215,8 @@ class InteractionRuntime implements InteractionSession {
       if (this.disposed || this.unavailable || !this.scope.live() || !this.scope.bridge.isConnected()) return;
       const reply = JSON.parse(await this.scope.bridge.call("__runicInteractionControl",
         jsonForInteraction({ route: this.scope.route, presentationId, generation, handlers }))) as { kind?: unknown };
-      if (reply?.kind !== "ok") {
+      // A reply about a presentation that a reconnect replaced does not stop its successor.
+      if (reply?.kind !== "ok" && this.presentationId === presentationId) {
         this.unavailable = true;
         this.abortActive();
         throw new BridgeError("disconnected", "The interaction presentation is no longer available.");
@@ -224,7 +233,7 @@ class InteractionRuntime implements InteractionSession {
       ownerEpoch: request["ownerEpoch"], name: request["name"], contract: request["contract"] };
     const key = identity(request["name"], request["contract"]);
     const handler = this.handlers.get(key);
-    if (!handler || request["route"] !== this.scope.route || request["presentationId"] !== this.scope.presentationId) {
+    if (!handler || request["route"] !== this.scope.route || request["presentationId"] !== this.presentationId) {
       await this.reply(requestIdentity, "cancelled");
       return;
     }
@@ -261,20 +270,25 @@ class InteractionRuntime implements InteractionSession {
     }
   }
 
+  // A loop serves one presentation id. After resume() replaced it, the loop ends
+  // and ensureLoops() starts one for the new id.
+  private current(presentationId: string): boolean { return this.running() && this.presentationId === presentationId; }
+
   private async runLoop(): Promise<void> {
-    const presentationId = this.scope.presentationId;
+    const presentationId = this.presentationId;
     if (!presentationId) return;
-    while (this.running()) {
+    while (this.current(presentationId)) {
       try { await this.capabilitySync; }
       catch {
         // ready() passes this failure to the command that awaits it; the loop retries.
+        if (this.presentationId !== presentationId) return;
         if (this.unavailable) { this.stopLoops(); return; }
         if (!this.scope.bridge.isConnected()) { this.pauseLoops(); return; }
         await this.waitForRetry();
         this.syncCapabilities();
         continue;
       }
-      if (!this.running()) return;
+      if (!this.current(presentationId)) return;
       const handlers = [...this.handlers.values()].map(handler => ({ name: handler.name, contract: handler.contract }));
       let envelope: unknown;
       try {
@@ -282,11 +296,12 @@ class InteractionRuntime implements InteractionSession {
           jsonForInteraction({ route: this.scope.route, presentationId, generation: this.capabilityGeneration, handlers })));
       } catch {
         // A dropped long poll is retried with backoff; a closed transport pauses the loop.
+        if (this.presentationId !== presentationId) return;
         if (!this.scope.bridge.isConnected()) { this.pauseLoops(); return; }
         await this.waitForRetry();
         continue;
       }
-      if (!this.running()) return;
+      if (!this.current(presentationId)) return;
       this.retryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const request = envelope as Record<string, unknown>;
@@ -297,20 +312,21 @@ class InteractionRuntime implements InteractionSession {
   }
 
   private async runControlLoop(): Promise<void> {
-    const presentationId = this.scope.presentationId;
+    const presentationId = this.presentationId;
     if (!presentationId) return;
-    while (this.running()) {
+    while (this.current(presentationId)) {
       let envelope: unknown;
       try {
         envelope = JSON.parse(await this.scope.bridge.call("__runicInteractionControlWait",
           jsonForInteraction({ route: this.scope.route, presentationId })));
       } catch {
         // A dropped long poll is retried with backoff; a closed transport pauses the loop.
+        if (this.presentationId !== presentationId) return;
         if (!this.scope.bridge.isConnected()) { this.pauseLoops(); return; }
         await this.waitForRetry();
         continue;
       }
-      if (!this.running()) return;
+      if (!this.current(presentationId)) return;
       this.retryDelay = 25;
       if (envelope === null || typeof envelope !== "object") continue;
       const control = envelope as Record<string, unknown>;

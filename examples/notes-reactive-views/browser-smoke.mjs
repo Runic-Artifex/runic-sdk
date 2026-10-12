@@ -290,6 +290,56 @@ try {
   if (cancel.kind !== "not-running") throw new Error(`Terminal operation accepted cancellation: ${JSON.stringify(cancel)}`);
   const invalid = await evaluate('(async () => JSON.parse(await window.__runicBridge.call("__runicOperationStatus", "invalid-json")))()');
   if (invalid.kind !== "invalid-request") throw new Error(`Malformed operation identity was accepted: ${JSON.stringify(invalid)}`);
+
+  // WebUI never settles calls in flight when its WebSocket closes. A call the
+  // admission timeout released is late; a reconnect must forget it, or its
+  // missing admission swallows the admission of a call sent afterwards.
+  const admissions = () => query("window.__runicBridgeAdmissionState()");
+  await evaluate(`(() => {
+    const webui = window.webui;
+    const call = webui.call;
+    webui.call = function (name, ...args) {
+      if (name === "__runicLostProbe") return new Promise(() => {});
+      return call.call(this, name, ...args);
+    };
+    window.__runicLostProbe = window.__runicBridge.call("__runicLostProbe").then(() => "resolved", error => error.message);
+    return true;
+  })()`);
+  await retry(async () => (await admissions()).late === 1);
+  const { result: prototype } = await command("Runtime.evaluate", { expression: "WebSocket.prototype" });
+  const { objects } = await command("Runtime.queryObjects", { prototypeObjectId: prototype.objectId });
+  const closed = await command("Runtime.callFunctionOn", {
+    objectId: objects.objectId, returnByValue: true,
+    functionDeclaration: "function () { let count = 0; for (const socket of this) if (socket.readyState === WebSocket.OPEN) { socket.close(); count++; } return count; }",
+  });
+  if (closed.result.value !== 1) throw new Error(`Expected one open WebUI WebSocket, closed ${closed.result.value}.`);
+  await retry(async () => await query("window.webui.isConnected()") === false);
+  await retry(async () => await query("window.webui.isConnected()") === true);
+  // Generated clients resume with their own calls; wait until .NET admitted them.
+  await retry(async () => !(await admissions()).waiting);
+  // A regression check only, and timing-dependent: it relies on the 250 ms
+  // connection poll seeing the closed socket before WebUI reconnects (after
+  // 500 ms). The host-client-scripts unit tests are the real guard.
+  const afterLoss = await admissions();
+  if (afterLoss.late !== 0)
+    throw new Error(`A reconnect kept admissions from the lost connection: ${JSON.stringify(afterLoss)}`);
+  // The lost connection also rejects the call it never answered.
+  const probe = await evaluate("window.__runicLostProbe");
+  if (probe !== "The CS-WebUI connection was lost before the call completed.")
+    throw new Error(`A call in flight on the lost connection did not reject: ${probe}`);
+  await retry(async () => (await snapshot("shell")).state?.main.kind === "document");
+  await expectClickEventsSuppressed("after reconnecting");
+  // .NET released the lost connection's mounts. The page mounts its Views again
+  // in a new browser session, because CS-WebUI reuses the connection key, so the
+  // editor holds one activation lease and its interaction handlers answer below.
+  try {
+    await retry(async () => {
+      const state = (await snapshot(editorRoute)).state;
+      return state?.activationCount - state?.deactivationCount === 1;
+    });
+  } catch (cause) {
+    throw new Error(`The reconnect did not mount the editor View again: ${JSON.stringify((await snapshot(editorRoute)).state)}`, { cause });
+  }
   await evaluate("window.__runicDiscardPromptCount = 0; window.confirm = () => { window.__runicDiscardPromptCount++; return false; }");
   await click("[data-discard]");
   await retry(async () => await query('document.querySelector("#document-pane [data-message]")?.textContent') === "Kept current changes.");
@@ -339,46 +389,7 @@ try {
   if (await query("window.__runicLeavePromptCount") !== 2) throw new Error("Save and close asked to discard saved changes.");
   await click("[data-go=document]");
   await retry(async () => await query(bodyField) === "Saved through the result.");
-
-  // WebUI never settles calls in flight when its WebSocket closes. A call the
-  // admission timeout released is late; a reconnect must forget it, or its
-  // missing admission swallows the admission of a call sent afterwards.
-  const admissions = () => query("window.__runicBridgeAdmissionState()");
-  await evaluate(`(() => {
-    const webui = window.webui;
-    const call = webui.call;
-    webui.call = function (name, ...args) {
-      if (name === "__runicLostProbe") return new Promise(() => {});
-      return call.call(this, name, ...args);
-    };
-    window.__runicLostProbe = window.__runicBridge.call("__runicLostProbe").then(() => "resolved", error => error.message);
-    return true;
-  })()`);
-  await retry(async () => (await admissions()).late === 1);
-  const { result: prototype } = await command("Runtime.evaluate", { expression: "WebSocket.prototype" });
-  const { objects } = await command("Runtime.queryObjects", { prototypeObjectId: prototype.objectId });
-  const closed = await command("Runtime.callFunctionOn", {
-    objectId: objects.objectId, returnByValue: true,
-    functionDeclaration: "function () { let count = 0; for (const socket of this) if (socket.readyState === WebSocket.OPEN) { socket.close(); count++; } return count; }",
-  });
-  if (closed.result.value !== 1) throw new Error(`Expected one open WebUI WebSocket, closed ${closed.result.value}.`);
-  await retry(async () => await query("window.webui.isConnected()") === false);
-  await retry(async () => await query("window.webui.isConnected()") === true);
-  // Generated clients resume with their own calls; wait until .NET admitted them.
-  await retry(async () => !(await admissions()).waiting);
-  // A regression check only, and timing-dependent: it relies on the 250 ms
-  // connection poll seeing the closed socket before WebUI reconnects (after
-  // 500 ms). The host-client-scripts unit tests are the real guard.
-  const afterLoss = await admissions();
-  if (afterLoss.late !== 0)
-    throw new Error(`A reconnect kept admissions from the lost connection: ${JSON.stringify(afterLoss)}`);
-  // The lost connection also rejects the call it never answered.
-  const probe = await evaluate("window.__runicLostProbe");
-  if (probe !== "The CS-WebUI connection was lost before the call completed.")
-    throw new Error(`A call in flight on the lost connection did not reject: ${probe}`);
-  await retry(async () => (await snapshot("shell")).state?.main.kind === "document");
-  await expectClickEventsSuppressed("after reconnecting");
-  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation|reconnect-admissions|lost-calls-rejected|click-events-suppressed|leave-guard-interaction|result-commands");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|reconnect-admissions|lost-calls-rejected|click-events-suppressed|reconnect-remount|interaction-fallback-and-confirmation|leave-guard-interaction|result-commands");
   }
 } finally {
   try { await browser?.close(); }

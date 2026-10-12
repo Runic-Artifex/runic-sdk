@@ -339,8 +339,12 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     throw new BridgeError("failed", "This route already has an incompatible Bridge contract.");
   const shared = routeEntry.entries.get(contractId)
     ?? createEntry(contractId, route, bridge, routeEntry, wire => options.hydrate(wire as never), options.collections);
-  const mountToken = options.mount ? `${runtime.mountSession}:${globalThis.crypto.randomUUID()}` : undefined;
+  const presentation = options.mount ? globalThis.crypto.randomUUID() : undefined;
+  const mountToken = presentation ? `${runtime.mountSession}:${presentation}` : undefined;
   const lease: SharedLease = { disposed: false, current: undefined, listeners: new Set(), mounted: false, mountToken };
+  // A reconnect mounts the presentation again in the page's new browser session.
+  const renewMountToken = (session: string) => (lease.mountToken = `${session}:${presentation}`);
+  if (presentation) lease.renewMountToken = renewMountToken;
   shared.leases.add(lease);
   let interactions: InteractionSession | undefined;
 
@@ -391,7 +395,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   if (mountToken) {
     try {
       lease.mounted = true;
-      const acknowledged = await bridge.call(`${route}Mount`, mountToken);
+      // A reconnect while the snapshot loaded started a new browser session.
+      const acknowledged = await bridge.call(`${route}Mount`, renewMountToken(runtime.mountSession));
       if (acknowledged !== "ok") throw new BridgeError("disconnected", "The View mount was not accepted.", { route: `${route}Mount` });
     } catch (cause) {
       dispose();
@@ -400,8 +405,8 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   }
   if (!isLive()) { dispose(); throw new BridgeError("disconnected", "The Bridge session changed during connection."); }
   if (options.interactions)
-    interactions = options.interactions({ bridge, route, presentationId: mountToken, live: () => !lease.disposed && isLive() });
-  if (interactions?.resume) lease.resumeInteractions = () => interactions?.resume?.();
+    interactions = options.interactions({ bridge, route, presentationId: lease.mountToken, live: () => !lease.disposed && isLive() });
+  if (interactions?.resume) lease.resumeInteractions = () => interactions?.resume?.(lease.mountToken);
   const ready = async () => { await interactions?.ready(); };
   const operationScope: OperationScope = { bridge, contract: contractId, route, assertConnected, ready };
   const operationSupport = () => {
