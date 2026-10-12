@@ -59,7 +59,9 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
   deterministic for a commit. It uploads these files as `release-candidate-<run id>`
   and passes their `sha256sum` lines to `publish` as the job output `release-sha256`.
   It then runs the publication checks read-only: `cli.mjs publish --dry-run`
-  (which versions are missing; published versions must have matching contents),
+  (which versions are missing; published versions must have matching contents; the
+  NuGet trusted-publishing key could push every missing package, see
+  [New NuGet package IDs](#new-nuget-package-ids)),
   `github.mjs release --dry-run` (the tag and any release belong to this commit) and
   `cli.mjs tag-latest --dry-run` (where npm `latest` would move).
 - `publish` runs only when **dry-run** is unchecked. It is the only job in the
@@ -69,7 +71,8 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
   packages against the candidate inventory, and attests those verified bytes before
   anything is published: `actions/attest-build-provenance` covers every `.nupkg`,
   every npm `.tgz` and the three release assets; `actions/attest` attaches the SBOM
-  to the packages and the bundle. Then it publishes (npm also with `--provenance`),
+  to the packages and the bundle. It repeats the registry lookups and the
+  NuGet push check before the first push, then publishes (npm also with `--provenance`),
   creates the release and moves `latest`. It installs no workspace dependencies:
   the release scripts use only built-in modules.
 
@@ -122,8 +125,10 @@ through OIDC with the `preview` tag. Until 1.0, every release is a preview, so a
 GitHub release the workflow moves npm `latest` to it, never to an older version.
 Each npm trusted publisher therefore also needs **Allow npm dist-tag** enabled.
 The filename is retained so installed trusted-publisher registrations keep working.
-New package identities may still need registry ownership/bootstrap configuration.
-That is account setup, not a recurring release acceptance checklist.
+A new npm package name may still need its trusted publisher configured; a new NuGet
+package ID must be covered by the NuGet policy (see
+[New NuGet package IDs](#new-nuget-package-ids)). That is account setup, not a
+recurring release acceptance checklist.
 
 If publication fails, rerun the failed `publish` job in the same run. If NuGet is still
 indexing a previous push, wait for it to become available before retrying.
@@ -150,6 +155,7 @@ For packaging/release-tool changes, use focused checks:
 ```sh
 bun run test eng/release/contracts.test.mjs
 bun run test eng/release/workflow.test.mjs
+bun test eng/release/nuget-policy.test.mjs
 bun test eng/release/github.test.mjs eng/release/sbom.test.mjs
 bun run test eng/release/ci-run.test.mjs
 bun test eng/release/template-locks.test.mjs
@@ -159,6 +165,46 @@ bun test eng/release/template-locks.test.mjs
 `verify` checks the downloaded files; `publish` checks registry identity/content
 before sending missing versions; `registry` checks availability. These are internal
 workflow steps, not files a maintainer must assemble by hand.
+
+## New NuGet package IDs
+
+NuGet packages are pushed with the short-lived key that `NuGet/login` gets from the
+nuget.org trusted-publishing policy of the `runic-artifex` account. The key can push
+only IDs that match one of the policy's package globs, a new ID only if the policy
+may push new packages, and an existing ID only if `runic-artifex` owns it. Otherwise
+nuget.org answers 403 during `dotnet nuget push`, after earlier packages of the
+release may already be published (runic-translations-sdk 0.6.0-preview.6 stopped
+that way).
+
+[`nuget-policy.json`](nuget-policy.json) mirrors the policy: the owner, its package
+globs (`*` matches any run of characters, case-insensitively, as on nuget.org) and
+whether it may push new packages. `cli.mjs publish`, in the dry run and in the
+`publish` job before the first push, checks every NuGet package that is not
+published yet (`nuget-policy.mjs`): its ID must match a glob; a new ID (one nuget.org
+does not know) needs `pushNewPackages`; an existing ID must list `runic-artifex`
+among its owners. These lookups use the public service index, search and
+flat-container endpoints and need no key. A failure names each package ID and the
+remedy, and nothing is published. The check notes every new ID it lets through.
+`nuget-policy.test.mjs` also fails when a NuGet package in `eng/workspace.json`
+matches none of the mirrored globs.
+
+Before releasing a new NuGet package ID:
+
+1. Sign in to nuget.org as an administrator of `runic-artifex`, open
+   **Trusted Publishing**, and edit the policy `Runic-Artifex-SDK` for
+   `Runic-Artifex/runic-sdk`, `publish-preview.yml` and the `preview` environment:
+   allow pushing new packages and make a package glob match the new ID. Since
+   2026-10-12 the globs are `Runic.*` and `dotnet-runic*`, which cover every ID in
+   `eng/workspace.json`; an ID outside them needs a new glob.
+2. Update `nuget-policy.json` in the same pull request that adds the package, so it
+   stays an exact copy of the policy.
+3. Run **Publish preview** with **dry-run**; it reports the new ID with a notice.
+
+The mirror is the only source the check has: nuget.org does not publish a policy,
+and no request tells whether a key may push a version that does not exist yet.
+Pushing a throwaway package to probe the key would itself publish, and a step after
+`NuGet/login` could only try the real push. Keep the mirror in step when the policy
+changes.
 
 ## After publication: docs catalog
 
