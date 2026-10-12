@@ -1,0 +1,10 @@
+<local:NoteDetailViewBase x:Class="Runic.Navigation.Examples.Notes.NoteDetailView"
+                          xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                          xmlns:local="clr-namespace:Runic.Navigation.Examples.Notes"
+                          ViewModel="{Binding}">
+  <StackPanel>
+    <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" />
+    <Button Content="Save" Command="{Binding SaveCommand}" />
+  </StackPanel>
+</local:NoteDetailViewBase>

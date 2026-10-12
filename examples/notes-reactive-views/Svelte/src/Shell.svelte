@@ -20,8 +20,8 @@
 <header><strong>Reactive Notes</strong><span>Svelte · two View contracts</span></header>
 <div class="layout">
   <nav aria-label="Main navigation">
-    <button data-go="home" aria-current={shellState.main.kind === "home" ? "page" : "false"} onclick={() => command.run("openHome")}>Home</button>
-    <button data-go="document" aria-current={shellState.main.kind === "document" ? "page" : "false"} onclick={() => command.run("openDocument")}>Document</button>
+    <button data-go="home" aria-current={shellState.main?.kind === "home" ? "page" : "false"} disabled={!shellState.canOpenHome} onclick={() => command.run("openHome")}>Home</button>
+    <button data-go="document" aria-current={shellState.main?.kind === "document" ? "page" : "false"} disabled={!shellState.canOpenDocument} onclick={() => command.run("openDocument")}>Document</button>
   </nav>
   <main id="main"><ViewOutlet content={shellState.main} registry={mainViews} /></main>
 </div>

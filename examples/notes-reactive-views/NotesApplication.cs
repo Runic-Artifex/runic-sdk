@@ -5,6 +5,7 @@ using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
 using Runic.Application.Views.ReactiveUI;
 using Microsoft.Extensions.Logging;
+using Runic.Navigation;
 using Splat;
 
 namespace NotesReactiveViews;
@@ -31,9 +32,15 @@ public sealed class NotesApplication : IDisposable
         // Views diagnostics, such as a routed region that cannot present its route,
         // go to the console; without a logger factory they would go to Trace.
         services.AddLogging(logging => logging.AddSimpleConsole().SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Warning));
-        // A window scope owns one execution lane for the whole reactive graph.
-        // The Shell binds its children before the bridge can expose any of them.
+        // A window scope owns one execution lane for the whole reactive graph, and
+        // ReactiveUI commands deliver their notifications on it without a scheduler.
         services.AddRunicReactiveModelContext();
+        // One navigator per window scope, on that model context. It constructs each
+        // DocumentViewModel from the window's services and owns it.
+        services.AddRunicNavigation();
+        services.AddScoped<HomeViewModel>();
+        services.AddScoped<EditorViewModel>();
+        services.AddScoped<PreviewViewModel>();
         services.AddScoped<ShellViewModel>();
         services.AddScoped<IRunicViewLocator>(_ => new ReactiveRunicViewLocator(locator));
         services.AddRunicBridges();

@@ -6,9 +6,10 @@ import type { DiscardNoteRequest, SaveFailure } from "./types.js";
 export type { DiscardNoteRequest, SaveFailure } from "./types.js";
 
 export interface EditorState {
-  readonly urlPathSegment: string;
   readonly title: string;
   readonly body: string;
+  /** Whether the title or body differs from the last save. */
+  readonly isDirty: boolean;
   readonly savedMessage: string;
   readonly activationCount: number;
   readonly deactivationCount: number;
@@ -68,11 +69,11 @@ export interface EditorCompactPageReference {
 const pageEditorCompactReferences = viewReferences<EditorCompactPageReference>(id => ({ kind: "editorCompact", connect: () => connectEditorAt(`content${id}`, true) }));
 export function pageEditorCompact(id: string): EditorCompactPageReference { return pageEditorCompactReferences(id); }
 
-type WireState = Omit<EditorState, "urlPathSegment" | "title" | "body" | "savedMessage" | "activationCount" | "deactivationCount"> & {
+type WireState = Omit<EditorState, "title" | "body" | "isDirty" | "savedMessage" | "activationCount" | "deactivationCount"> & {
   readonly revision: number;
-  readonly urlPathSegment: unknown;
   readonly title: unknown;
   readonly body: unknown;
+  readonly isDirty: unknown;
   readonly savedMessage: unknown;
   readonly activationCount: unknown;
   readonly deactivationCount: unknown;
@@ -85,17 +86,17 @@ function hydrate(wire: WireState): EditorState {
   const { revision: _revision, __runicFields: _runicFields, ...state } = wire;
   return {
     ...state,
-    urlPathSegment: bridgeWire.string(wire.urlPathSegment),
     title: bridgeWire.string(wire.title),
     body: bridgeWire.string(wire.body),
+    isDirty: bridgeWire.boolean(wire.isDirty),
     savedMessage: bridgeWire.string(wire.savedMessage),
     activationCount: bridgeWire.integer(wire.activationCount, -2147483648, 2147483647),
     deactivationCount: bridgeWire.integer(wire.deactivationCount, -2147483648, 2147483647),
   };
 }
-const bridgeContract = "NotesReactiveViews.EditorViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C";
+const bridgeContract = "NotesReactiveViews.EditorViewModel:79D2D4A3CA4F5AC94637C31280D660A0B53E13BFB9CCDE287A25C2DD574E3918";
 const interactionDefinitions = defineInteractions({
-  confirmDiscard: { contract: "73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
+  confirmDiscard: { contract: "79D2D4A3CA4F5AC94637C31280D660A0B53E13BFB9CCDE287A25C2DD574E3918:interaction:ConfirmDiscard", decodeInput: (value: unknown) => bridgeWire.object<DiscardNoteRequest>(value, value => ({ title: bridgeWire.string(value["title"]), bodyLength: bridgeWire.integer(value["bodyLength"], -2147483648, 2147483647)})), encodeOutput: (value: unknown) => (value as boolean) },
 });
 const checkedFieldNames = ["title", "body"];
 

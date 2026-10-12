@@ -9,6 +9,8 @@
     <Project Path="examples/notes-reactive-views/NotesReactiveViews.csproj" />
     <Project Path="examples/wpf-navigation/NotesNavigation/NotesNavigation.csproj" />
     <Project Path="examples/wpf-navigation/Tests/NotesNavigation.Tests.csproj" />
+    <Project Path="examples/wpf-navigation/NotesNavigation.ReactiveUI/NotesNavigation.ReactiveUI.csproj" />
+    <Project Path="examples/wpf-navigation/Tests.ReactiveUI/NotesNavigation.ReactiveUI.Tests.csproj" />
     <Project Path="examples/wpf-hybrid-editor/Model/HybridNotes.Model.csproj" />
     <Project Path="examples/wpf-hybrid-editor/Tests/HybridNotes.Tests.csproj" />
     <Project Path="examples/wpf-hybrid-editor/App/HybridNotes.Wpf.csproj" />

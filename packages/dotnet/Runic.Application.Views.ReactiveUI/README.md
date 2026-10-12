@@ -251,6 +251,11 @@ also logged by the Views runtime (event 1000 or 1004). The helper works on any
 
 ## Navigation (experimental)
 
+Start with the [ReactiveUI navigation walkthrough](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#walkthrough):
+pages, a leave guard, results and a guarded window close, with code from the
+[Reactive Notes](https://github.com/Runic-Artifex/runic-sdk/blob/main/examples/notes-reactive-views/README.md)
+example. This section covers what is specific to Runic Views.
+
 The observables and back command for `RunicNavigator` regions
 (`WhenCurrentChanged`, `WhenEntryChanged` and `CreateBackCommand`) are in the
 `Runic.Navigation.ReactiveUI` namespace of the

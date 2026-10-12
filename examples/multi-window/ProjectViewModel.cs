@@ -1,58 +1,65 @@
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using ReactiveUI;
+using ReactiveUI.Primitives;
+using ReactiveUI.Primitives.Disposables;
 using Runic.Application.Views;
+using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
 using Runic.Platform;
 
 namespace MultiWindow;
 
 // The root ViewModel of each Window. The singletons it takes are shared by every Window; IRunicModelContext is this
-// Window's own.
-public sealed partial class ProjectViewModel : ObservableObject, IDisposable
+// Window's own. The commands take no scheduler: AddRunicReactiveModelContext delivers their notifications on the
+// model context of the Window that runs them.
+public sealed class ProjectViewModel : ReactiveObject, IDisposable
 {
     private readonly ProjectService _project;
-    private readonly SettingsStore _settings;
-    private readonly IRunicWindowService _windows;
     private readonly IRunicModelContext _context;
     private readonly CancellationTokenSource _stop = new();
+    private readonly MultipleDisposable _disposables = new();
+    private string _title;
+    private string _theme;
+    private string _desktopScheme = nameof(DesktopColorScheme.NoPreference);
 
     public ProjectViewModel(ProjectService project, SettingsStore settings, IDesktopSettings desktop,
-        IRunicWindowService windows, IRunicModelContext context)
+        IRunicWindowService windows, IRunicModelContext context, ILogger<ProjectViewModel> logger)
     {
         _project = project;
-        _settings = settings;
-        _windows = windows;
         _context = context;
-        Title = project.Title;
-        Theme = settings.Load().Theme;
+        _title = project.Title;
+        _theme = settings.Load().Theme;
+        RenameCommand = ReactiveCommand.Create<string>(project.Rename).DisposeWith(_disposables);
+        // Opens another Window on the same project, in its own scope. The service releases it when it closes.
+        NewWindowCommand = ReactiveCommand.CreateFromTask(async token =>
+        {
+            await windows.OpenWindowAsync<ProjectWindow>(cancellationToken: token);
+        }).DisposeWith(_disposables);
+        ChooseThemeCommand = ReactiveCommand.Create<string>(theme =>
+        {
+            settings.Save(settings.Load() with { Theme = theme });
+            Theme = theme;
+        }).DisposeWith(_disposables);
+        // A ReactiveCommand reports its exceptions on ThrownExceptions; log them instead of
+        // letting ReactiveUI's default handler end the app.
+        RenameCommand.ObserveBridgeExceptions(logger).DisposeWith(_disposables);
+        NewWindowCommand.ObserveBridgeExceptions(logger).DisposeWith(_disposables);
+        ChooseThemeCommand.ObserveBridgeExceptions(logger).DisposeWith(_disposables);
         _project.Renamed += OnRenamed;
         _ = Task.Run(() => WatchAppearanceAsync(desktop, _stop.Token));
     }
 
-    [ObservableProperty]
-    public partial string Title { get; private set; }
+    public string Title { get => _title; private set => this.RaiseAndSetIfChanged(ref _title, value); }
 
     // The app setting: "system", "light" or "dark".
-    [ObservableProperty]
-    public partial string Theme { get; private set; }
+    public string Theme { get => _theme; private set => this.RaiseAndSetIfChanged(ref _theme, value); }
 
     // The desktop's preference, which "system" follows: NoPreference, Light or Dark.
-    [ObservableProperty]
-    public partial string DesktopScheme { get; private set; } = nameof(DesktopColorScheme.NoPreference);
+    public string DesktopScheme { get => _desktopScheme; private set => this.RaiseAndSetIfChanged(ref _desktopScheme, value); }
 
-    [RelayCommand]
-    private void Rename(string title) => _project.Rename(title);
-
-    // Opens another Window on the same project, in its own scope. The service releases it when it closes.
-    [RelayCommand]
-    private async Task NewWindowAsync() => await _windows.OpenWindowAsync<ProjectWindow>();
-
-    [RelayCommand]
-    private void ChooseTheme(string theme)
-    {
-        _settings.Save(_settings.Load() with { Theme = theme });
-        Theme = theme;
-    }
+    public ReactiveCommand<string, RxVoid> RenameCommand { get; }
+    public ReactiveCommand<RxVoid, RxVoid> NewWindowCommand { get; }
+    public ReactiveCommand<string, RxVoid> ChooseThemeCommand { get; }
 
     // Raised on the renaming Window's thread: apply it in this Window's turn.
     private void OnRenamed(object? sender, EventArgs e) => _context.TryPost(() => Title = _project.Title);
@@ -76,5 +83,6 @@ public sealed partial class ProjectViewModel : ObservableObject, IDisposable
         _project.Renamed -= OnRenamed;
         // Ends the watch; the token source is not disposed, because the watch may still be observing it.
         _stop.Cancel();
+        _disposables.Dispose();
     }
 }

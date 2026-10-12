@@ -6,7 +6,9 @@ regions to ReactiveUI 26's System.Reactive distribution (`ReactiveUI.Reactive`).
 It is the counterpart of
 [`Runic.Navigation.ReactiveUI`](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
 with `System.Reactive.Unit` and `IScheduler` in place of `RxVoid` and
-`ISequencer`; that page describes the API and lifetimes. The package depends on
+`ISequencer`; that page describes the API and lifetimes, and its
+[walkthrough](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#walkthrough)
+applies to this flavor with the substitutions below. The package depends on
 `Runic.Navigation` and `ReactiveUI.Reactive` only, with no `Runic.Application.Views`.
 The types are in the `Runic.Navigation.ReactiveUI.Reactive` namespace.
 

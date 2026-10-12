@@ -23,6 +23,9 @@ It covers four scenarios, each in its own folder:
   `NavigationCommands.BrowseBack` to the `NavigationHost`, which can't execute
   while a Back is in flight.
 
+[NotesNavigation.ReactiveUI](#the-reactiveui-variant) is the same app with
+ReactiveUI ViewModels and the Runic.Navigation.ReactiveUI adapter.
+
 [COMPARISON.md](COMPARISON.md) measures the same app written with Prism,
 ReactiveUI and CrissCross: lines, concepts, and what each does when Back is
 pressed twice. The [Runic.Navigation.Wpf quick start](../../packages/dotnet/Runic.Navigation.Wpf/README.md#quick-start)
@@ -75,6 +78,55 @@ from 0.7.0-preview.4.
 
 `NotesNavigation/Domain/` is the notes store the comparison apps share; it
 stands in for your own model.
+
+## The ReactiveUI variant
+
+[NotesNavigation.ReactiveUI/](NotesNavigation.ReactiveUI/) is the same app
+for a ReactiveUI team. It uses the same regions and hosts, and
+[Runic.Navigation.ReactiveUI](../../packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
+where ReactiveUI has its own idiom:
+
+- **The leave guard asks through an `Interaction`.** `NoteDetailViewModel`
+  builds its guard with `ReactiveLeaveConfirmation.WithInteraction`, and
+  `NoteDetailView` answers `ConfirmDiscard` with a `MessageBox` in
+  `WhenActivated`. As with `LeaveConfirmation.InDialog`, the discard runs
+  only when the departure commits.
+- **The confirm answers with result commands.** `ConfirmViewModel` takes its
+  `NavigationEntryContext` and its message through its constructor. Its Yes
+  is `entry.CreateCompleteCommand(...)` and its No is
+  `entry.CreateDismissCommand()`. Delete awaits the `Completion` of
+  `PushForResult<bool>` with the command's token, so disposing a Delete
+  execution dismisses the prompt.
+- **The list reloads in `WhenNavigatedTo`.** Its commands are
+  `ReactiveCommand`s whose `CanExecute` observes the bound selection.
+- **No scheduler in user code.** `RxAppBuilder` with `WithWpf()` makes the
+  dispatcher ReactiveUI's main-thread scheduler, and the dispatcher is also
+  the navigator's model context.
+
+The files that don't depend on the MVVM library are linked from
+`NotesNavigation/` rather than copied: the domain, `Shell/`, `ConfirmView`
+and the settings Views. The two apps differ only where the libraries do.
+`NoteDetailView` derives from a one-line `NoteDetailViewBase`. XAML in a
+`Runic.Navigation.*` namespace resolves `ReactiveUI` to
+`Runic.Navigation.ReactiveUI`, so it can't name `ReactiveUserControl<T>`.
+
+[Tests.ReactiveUI/](Tests.ReactiveUI/) reuses the harness in `Tests/` and
+answers the interaction with its own handler. CI runs it on Windows from
+source:
+
+```sh
+dotnet run --project examples/wpf-navigation/NotesNavigation.ReactiveUI
+dotnet run --project examples/wpf-navigation/Tests.ReactiveUI -c Release
+```
+
+In your own project, reference the packages instead of the projects:
+
+```xml
+<PackageReference Include="Runic.Navigation.Wpf" Version="0.7.0-preview.4" />
+<PackageReference Include="Runic.Navigation.ReactiveUI" Version="0.7.0-preview.4" />
+<PackageReference Include="ReactiveUI.WPF" Version="26.0.1" />
+<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+```
 
 ## Native Toolkit commands
 

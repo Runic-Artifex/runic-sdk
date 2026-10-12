@@ -7,22 +7,32 @@ export interface ProjectState {
   readonly title: string;
   readonly theme: string;
   readonly desktopScheme: string;
+  readonly isRenameExecuting: boolean;
   readonly canNewWindow: boolean;
   readonly isNewWindowExecuting: boolean;
+  readonly isChooseThemeExecuting: boolean;
 }
 
+export interface ProjectRenameOperation extends BridgeOperation<void> {}
 export interface ProjectNewWindowOperation extends BridgeOperation<void> {}
+export interface ProjectChooseThemeOperation extends BridgeOperation<void> {}
 
 /** A connected Project ViewModel. Dispose it when its presentation ends. */
 export interface ProjectClient extends ViewClient<ProjectState> {
-  rename(title: string): Promise<ProjectState>;
-  canRename(title: string): Promise<boolean>;
+  rename(input: string): Promise<ProjectState>;
+  canRename(input: string): Promise<boolean>;
   newWindow(): Promise<ProjectState>;
-  chooseTheme(theme: string): Promise<ProjectState>;
-  canChooseTheme(theme: string): Promise<boolean>;
+  chooseTheme(input: string): Promise<ProjectState>;
+  canChooseTheme(input: string): Promise<boolean>;
+  startRename(input: string): Promise<ProjectRenameOperation>;
+  startRenameWithRequestId(requestId: string, input: string): Promise<ProjectRenameOperation>;
+  recoverRenameWithRequestId(requestId: string): Promise<ProjectRenameOperation>;
   startNewWindow(): Promise<ProjectNewWindowOperation>;
   startNewWindowWithRequestId(requestId: string): Promise<ProjectNewWindowOperation>;
   recoverNewWindowWithRequestId(requestId: string): Promise<ProjectNewWindowOperation>;
+  startChooseTheme(input: string): Promise<ProjectChooseThemeOperation>;
+  startChooseThemeWithRequestId(requestId: string, input: string): Promise<ProjectChooseThemeOperation>;
+  recoverChooseThemeWithRequestId(requestId: string): Promise<ProjectChooseThemeOperation>;
 }
 
 export interface ProjectPageReference {
@@ -47,7 +57,7 @@ function hydrate(wire: WireState): ProjectState {
     desktopScheme: bridgeWire.string(wire.desktopScheme),
   };
 }
-const bridgeContract = "MultiWindow.ProjectViewModel:C4C4CEC799BB56C93C96E60E9135E984FC487893B9700C42FAA0E5F6E268A459";
+const bridgeContract = "MultiWindow.ProjectViewModel:C51AB9A453B6106CD3AA1D180EC24A0C70FEB79129E3E2806D669473B13AE4A8";
 
 /**
  * Connects a Project client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -56,18 +66,26 @@ const bridgeContract = "MultiWindow.ProjectViewModel:C4C4CEC799BB56C93C96E60E913
 export function connectProject(options?: BridgeConnectOptions): Promise<ProjectClient> { return connectProjectAt("project", false, options); }
 async function connectProjectAt(route: string, mount = false, options?: BridgeConnectOptions): Promise<ProjectClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, operations: bridgeOperations, timeout: options?.timeout });
+  const startRenameOperation = (requestId: string, input: string) => view.startOperation<void>("Rename", requestId, () => JSON.stringify({ requestId, input: input }), value => undefined);
   const startNewWindowOperation = (requestId: string) => view.startOperation<void>("NewWindow", requestId, () => requestId, value => undefined);
+  const startChooseThemeOperation = (requestId: string, input: string) => view.startOperation<void>("ChooseTheme", requestId, () => JSON.stringify({ requestId, input: input }), value => undefined);
   return {
     get snapshot() { return view.snapshot; },
     subscribe: view.subscribe,
     dispose: view.dispose,
-    async rename(title) { return view.command(`${route}Rename`, JSON.stringify(title)); },
-    async canRename(title) { return view.query(`${route}CanRename`, JSON.stringify(title)); },
+    async rename(input) { return view.command(`${route}Rename`, JSON.stringify(input)); },
+    async canRename(input) { return view.query(`${route}CanRename`, JSON.stringify(input)); },
     async newWindow() { return view.command(`${route}NewWindow`); },
-    async chooseTheme(theme) { return view.command(`${route}ChooseTheme`, JSON.stringify(theme)); },
-    async canChooseTheme(theme) { return view.query(`${route}CanChooseTheme`, JSON.stringify(theme)); },
+    async chooseTheme(input) { return view.command(`${route}ChooseTheme`, JSON.stringify(input)); },
+    async canChooseTheme(input) { return view.query(`${route}CanChooseTheme`, JSON.stringify(input)); },
+    startRename(input: string) { return startRenameOperation(globalThis.crypto.randomUUID(), input); },
+    startRenameWithRequestId(requestId: string, input: string) { return startRenameOperation(requestId, input); },
+    recoverRenameWithRequestId(requestId: string) { return view.recoverOperation<void>("Rename", requestId, value => undefined); },
     startNewWindow() { return startNewWindowOperation(globalThis.crypto.randomUUID()); },
     startNewWindowWithRequestId(requestId: string) { return startNewWindowOperation(requestId); },
     recoverNewWindowWithRequestId(requestId: string) { return view.recoverOperation<void>("NewWindow", requestId, value => undefined); },
+    startChooseTheme(input: string) { return startChooseThemeOperation(globalThis.crypto.randomUUID(), input); },
+    startChooseThemeWithRequestId(requestId: string, input: string) { return startChooseThemeOperation(requestId, input); },
+    recoverChooseThemeWithRequestId(requestId: string) { return view.recoverOperation<void>("ChooseTheme", requestId, value => undefined); },
   };
 }

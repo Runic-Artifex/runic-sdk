@@ -8,19 +8,35 @@
 #  - A line with a trailing tag [S1]..[S4] counts for that scenario. Otherwise the folder decides:
 #    S1/, S2/, S3/ -> that scenario (the Runic app names them Notes/, Dialogs/, Settings/); App.* and Shell/
 #    -> Setup. S4 exists only as tags.
+#  - Files a .csproj links from another project (Link= or LinkBase=) count as if they were at their link path.
 # Usage: count-loc.sh <project dir>, e.g. count-loc.sh prism or count-loc.sh ../NotesNavigation
 set -euo pipefail
 project=${1:?project dir}
 cd "$project"
-find . -type f \( -name '*.cs' -o -name '*.xaml' \) -not -path './bin/*' -not -path './obj/*' \
-  -not -path './Domain/*' -not -path './Tests/*' -not -path './comparison/*' | sort | while read -r f; do
-  case "$f" in
+# Prints "<file> <path it counts as>" for the project's own files and the files its .csproj links.
+files() {
+  find . -type f \( -name '*.cs' -o -name '*.xaml' \) -not -path './bin/*' -not -path './obj/*' \
+    -not -path './comparison/*' | while read -r f; do echo "$f $f"; done
+  { cat ./*.csproj | grep -oE 'Include="[^"]+\.(cs|xaml)" Link(Base)?="[^"]+"' || true; } | while read -r include link; do
+    pattern=${include#Include=\"}; pattern=${pattern%\"}
+    for f in $pattern; do
+      case "$link" in
+        Link=*) to=${link#Link=\"}; to=${to%\"} ;;
+        *) to=${link#LinkBase=\"}; to="${to%\"}/$(basename "$f")" ;;
+      esac
+      echo "$f ./$to"
+    done
+  done
+}
+files | sort -k2 | while read -r f path; do
+  case "$path $f" in ./Domain/* | ./Tests/* | *shared/Domain.cs) continue ;; esac
+  case "$path" in
     ./S1/* | ./Notes/*) default=S1 ;;
     ./S2/* | ./Dialogs/*) default=S2 ;;
     ./S3/* | ./Settings/*) default=S3 ;;
     *) default=Setup ;;
   esac
-  case "$f" in *.xaml) lang=XAML ;; *) lang=CS ;; esac
+  case "$path" in *.xaml) lang=XAML ;; *) lang=CS ;; esac
   awk -v def="$default" -v lang="$lang" '
     { line=$0; sub(/^[ \t]+/, "", line); sub(/[ \t\r]+$/, "", line) }
     line == "" { next }

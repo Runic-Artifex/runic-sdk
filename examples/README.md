@@ -7,11 +7,11 @@ TypeScript clients. To start a new application, use the
 
 - [First Window](first-window/README.md) introduces one Window, ViewModel, and frontend client.
 - [First Window on Runic Desktop](first-window-desktop/README.md) hosts the same counter with Runic Desktop and ReactiveUI.
-- [Multi-window project](multi-window/README.md) opens Windows from a ViewModel, shares state across Windows, and stores app settings next to the desktop's preferences.
+- [Multi-window project](multi-window/README.md) opens Windows from a ReactiveUI ViewModel, shares state across Windows, and stores app settings next to the desktop's preferences.
 - [CommunityToolkit Notes](notes-view-first/README.md) shows nested content, View scopes, and typed writes.
-- [Reactive Notes](notes-reactive-views/README.md) demonstrates ReactiveUI routing and multiple Views over a model.
+- [Reactive Notes](notes-reactive-views/README.md) navigates ReactiveUI ViewModels with RunicNavigator: master/detail with a result, a leave guard asked through an `Interaction`, and multiple Views over a model.
 - [DynamicData](dynamicdata/README.md) presents a 100,000-row cache through independent, keyed viewports.
-- [WPF navigation](wpf-navigation/README.md) navigates a plain WPF app with Runic.Navigation.Wpf alone, and [compares it](wpf-navigation/COMPARISON.md) with Prism, ReactiveUI and CrissCross.
+- [WPF navigation](wpf-navigation/README.md) navigates a plain WPF app with Runic.Navigation.Wpf alone, has a ReactiveUI variant on Runic.Navigation.ReactiveUI, and [compares it](wpf-navigation/COMPARISON.md) with Prism, ReactiveUI and CrissCross.
 - [Hybrid WPF editor](wpf-hybrid-editor/README.md) replaces one editor with a Runic web View while retaining the native shell, shared model, services and navigation entry.
 
 The examples build the Runic packages from source with `ProjectReference` and

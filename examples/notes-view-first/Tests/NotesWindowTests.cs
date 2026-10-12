@@ -288,9 +288,12 @@ public sealed class NotesWindowTests : IAsyncDisposable
         var leaving = Navigation.OpenHomeAsync();
         await WhenAsync(Navigation.Dialog, () => Navigation.Dialog.Current is not null);
         var confirm = (ConfirmNavigationViewModel)Navigation.Dialog.Current!;
-        var cover = new ConfirmNavigationViewModel("Covering");
-        await Assert.That(await Navigation.Dialog.PushAsync(NavigationTarget.Own<IDialogViewModel>(cover)))
+        // The navigator constructs the cover, as it does the confirm, and passes it its entry.
+        await Assert.That(await Navigation.Dialog.PushAsync(NavigationTarget.Create<IDialogViewModel>((_, entry) =>
+                new ConfirmNavigationViewModel(entry, "Covering"))))
             .IsTypeOf<NavigationResult<IDialogViewModel>.Committed>();
+        var cover = (ConfirmNavigationViewModel)Navigation.Dialog.Current!;
+        await Assert.That(cover).IsNotSameReferenceAs(confirm);
 
         await confirm.CancelCommand.ExecuteAsync(null);
         await leaving.WaitAsync(TimeSpan.FromSeconds(10));

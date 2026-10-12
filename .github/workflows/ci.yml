@@ -361,6 +361,9 @@ jobs:
       # W240-007: the reference app and its scenario tests, built from the packed packages only.
       - name: Test the WPF navigation example from the packed packages
         run: bun examples/wpf-navigation/package-smoke.mjs
+      # W250-037: the ReactiveUI variant of the same app, built from source with the ReactiveUI adapter.
+      - name: Test the ReactiveUI WPF navigation example
+        run: dotnet run --project examples/wpf-navigation/Tests.ReactiveUI -c Release
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   templates:
