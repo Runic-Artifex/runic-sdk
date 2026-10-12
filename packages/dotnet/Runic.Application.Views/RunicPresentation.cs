@@ -1,3 +1,5 @@
+using Runic.Navigation;
+
 namespace Runic.Application.Views;
 
 /// <summary>A .NET presentation object associated with a web component.</summary>
@@ -71,6 +73,9 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 {
     private IBridgeWindow? _host;
     private int _opened;
+    // The window's session and root Bridge, recorded when the host attaches it.
+    private WindowContentSession? _content;
+    private IDisposable? _bridge;
 
     /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
     protected RunicWindow() { }
@@ -78,6 +83,71 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// <summary>The window's scoped root ViewModel.</summary>
     /// <exception cref="InvalidOperationException">The window has not opened.</exception>
     public TViewModel ViewModel => DataContext ?? throw NotOpen();
+
+    /// <summary>
+    /// Gets whether a close the user starts, with the title-bar close button, Alt+F4 or the window manager, first asks
+    /// <see cref="CanCloseAsync"/>, so the window can stay open. The default is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Set it in the Window's constructor; the host reads it when the window opens:
+    /// <code>
+    /// public sealed partial class EditorWindow : RunicWindow&lt;EditorViewModel&gt;
+    /// {
+    ///     public EditorWindow() =&gt; GuardClose = true;
+    /// }
+    /// </code>
+    /// The default <see cref="CanCloseAsync"/> asks the departure guards of the navigation regions the Window
+    /// presents, as WPF's <c>NavigationHost.GuardWindowClose</c> does.
+    /// </para>
+    /// <para>
+    /// Runic Desktop's embedded window asks it; the window closes when it returns <see langword="true"/>. A
+    /// presentation that cannot keep its window open, CS-WebUI or a browser, opens unguarded and logs
+    /// <c>WindowCloseGuardUnavailable</c> (event 1052). <see cref="CloseAsync"/>, <see cref="DisposeAsync"/> and a host
+    /// shutdown (Ctrl+C, SIGTERM) close without asking: they are the application's own close.
+    /// </para>
+    /// </remarks>
+    public bool GuardClose { get; init; }
+
+    /// <summary>
+    /// Decides whether a close the user started may proceed, when <see cref="GuardClose"/> is <see langword="true"/>.
+    /// Return <see langword="false"/> to keep the window open.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The default clears each navigation region the Window's Bridge presents (each <c>NavigationRegion&lt;T&gt;</c>
+    /// property of its ViewModel), in declaration order, skipping empty ones. A clear asks the departure guard of every
+    /// entry and of the child regions they own, as any other navigation would. The window closes when every clear
+    /// commits; a guard that rejects or fails, a cancelled or superseded clear keeps it open with its entries, and the
+    /// regions after it are not asked. A guard can confirm through a dialog region of the same window. Override it to
+    /// add checks of your own, and call the base method to keep the navigation guards.
+    /// </para>
+    /// <para>
+    /// It starts in a turn of the window's model context, as a command body does, and one decision runs at a time:
+    /// another close request while it runs waits for the same decision. It may take as long as a prompt needs.
+    /// <paramref name="cancellationToken"/> is cancelled when the window closes without asking, for example with
+    /// <see cref="CloseAsync"/>. An exception keeps the window open and is logged as <c>WindowCloseGuardFailed</c>
+    /// (event 1051).
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Cancelled when the window closes without asking or the decision is abandoned.</param>
+    /// <returns><see langword="true"/> to let the window close.</returns>
+    protected virtual async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+    {
+#pragma warning disable RUNICNAV001 // The close guard asks the experimental navigator's guards.
+        foreach (var region in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
+        {
+            if (region.CurrentEntry is null && !region.CanGoBack) continue;
+            // Stays in the model turn, like a command body.
+            var result = await region.ClearAsync(cancellationToken: cancellationToken).ConfigureAwait(true);
+            // A closed navigator has nothing left to guard.
+            if (result is NavigationResult<object>.Committed or NavigationResult<object>.Rejected { Reason: NavigationRejection.Closed })
+                continue;
+            return false;
+        }
+#pragma warning restore RUNICNAV001
+        return true;
+    }
 
     /// <inheritdoc/>
     public IBridgeWindow Host => Volatile.Read(ref _host) ?? throw NotOpen();
@@ -107,6 +177,40 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 
     RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>
         RunicWindowOpening.Validate<TViewModel>(host, options);
+
+    internal void AttachedBridge(WindowContentSession content, IDisposable bridge)
+    {
+        Volatile.Write(ref _content, content);
+        Volatile.Write(ref _bridge, bridge);
+    }
+
+    // The host's close guard: CanCloseAsync in a model turn. It never throws, so a host keeps the window open on any
+    // failure without logging it again.
+    internal async ValueTask<bool> AskCanCloseAsync(CancellationToken cancellationToken)
+    {
+        var content = Volatile.Read(ref _content);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (content?.ModelContext is { IsExecuting: false } context)
+            {
+                var decision = await context.InvokeAsync(() => CanCloseAsync(cancellationToken).AsTask(), cancellationToken)
+                    .ConfigureAwait(false);
+                return await decision.ConfigureAwait(false);
+            }
+            return await CanCloseAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception error)
+        {
+            ViewsLog.WindowCloseGuardFailed(content?.Logger ?? TraceFallbackLogger.Instance, error, GetType().Name,
+                error.GetType().FullName ?? error.GetType().Name);
+            return false;
+        }
+    }
 
     private InvalidOperationException NotOpen() =>
         new($"{GetType().Name} has not opened. Open it with OpenWindowAsync<{GetType().Name}>().");

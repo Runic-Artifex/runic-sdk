@@ -16,11 +16,13 @@ switch (args.SingleOrDefault())
         break;
     case "--probe-window-close":
         return ProbeWindowClose();
+    case "--probe-close-guard":
+        return ProbeCloseGuard();
     case "--probe-missing-bridge":
         await ProbeMissingBridgeAsync();
         break;
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-missing-bridge");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge");
         return 2;
 }
 WebUiApplication.Clean();
@@ -124,6 +126,41 @@ static async Task ProbeMissingBridgeAsync()
     Console.WriteLine("FIRST_WINDOW_MISSING_BRIDGE_OK");
 }
 
+// CS-WebUI cannot keep a browser window open: a Window with GuardClose opens unguarded, logs
+// WindowCloseGuardUnavailable once, and closes without asking CanCloseAsync.
+static int ProbeCloseGuard()
+{
+    var services = new ServiceCollection();
+    services.AddScoped<GuardedProbeViewModel>();
+    services.AddRunicViews();
+    var log = new RecordingLoggerFactory();
+    services.AddSingleton<ILoggerFactory>(log);
+    using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+    var asked = false;
+    var result = RunicCsWebUiHost.Run(provider, async host =>
+    {
+        await using var window = await host.OpenWindowAsync<GuardedProbeWindow>();
+        window.Asked = () => asked = true;
+        var close = await window.CloseAsync(TimeSpan.FromSeconds(5));
+        await close.Completion;
+        await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        return 7;
+    });
+    if (result != 7) throw new InvalidOperationException($"Run returned {result} instead of the application's result.");
+    if (asked) throw new InvalidOperationException("CS-WebUI asked CanCloseAsync although it cannot keep its window open.");
+    LogEntry[] entries;
+    lock (log.Entries) entries = [.. log.Entries];
+    if (entries.Count(static entry => entry.EventId.Id == 1052) != 1 || !entries.Any(static entry =>
+            entry is { Category: "Runic.Application.Views", Level: LogLevel.Warning } &&
+            entry.EventId is { Id: 1052, Name: "WindowCloseGuardUnavailable" } &&
+            entry.Message.Contains(nameof(GuardedProbeWindow), StringComparison.Ordinal) &&
+            entry.Message.Contains("CS-WebUI", StringComparison.Ordinal)))
+        throw new InvalidOperationException("A guarded Window on CS-WebUI was not logged once as event 1052:\n" +
+            string.Join('\n', entries.Select(static entry => entry.ToString())));
+    Console.WriteLine("FIRST_WINDOW_CLOSE_GUARD_OK");
+    return 0;
+}
+
 static void RequireBridgeNotRegistered(RunicWindowConfigurationException error, string name)
 {
     if (error.Diagnostics is [{ Code: RunicWindowConfigurationException.BridgeNotRegisteredCode }] &&
@@ -142,6 +179,24 @@ namespace CsWebUiWindowProbes
     }
 
     public sealed partial class ProbeWindow : RunicWindow<ProbeViewModel>;
+
+    // Guards its close; Asked records a CanCloseAsync call, which CS-WebUI must not make.
+    public sealed partial class GuardedProbeViewModel : ObservableObject
+    {
+        [ObservableProperty] private bool dirty;
+    }
+
+    public sealed partial class GuardedProbeWindow : RunicWindow<GuardedProbeViewModel>
+    {
+        public GuardedProbeWindow() => GuardClose = true;
+        public Action? Asked { get; set; }
+
+        protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+        {
+            Asked?.Invoke();
+            return base.CanCloseAsync(cancellationToken);
+        }
+    }
 
     // Hides IServiceProviderIsService, as some third-party containers do.
     internal sealed class OpaqueProvider(IServiceProvider inner) : IServiceProvider
@@ -164,8 +219,10 @@ namespace CsWebUiWindowProbes
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
             public bool IsEnabled(LogLevel logLevel) => true;
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-                Func<TState, Exception?, string> formatter) =>
-                owner.Entries.Add(new LogEntry(category, eventId, logLevel, formatter(state, exception)));
+                Func<TState, Exception?, string> formatter)
+            {
+                lock (owner.Entries) owner.Entries.Add(new LogEntry(category, eventId, logLevel, formatter(state, exception)));
+            }
         }
     }
 

@@ -48,6 +48,13 @@ Window owns the native window, scope, and attachments until it is disposed or
 windows have closed: CS-WebUI reports closing for all of its windows at once,
 so with several windows open it waits for all of them.
 
+A browser window closes without asking the application, and WebUI reports the
+close only after it happened, so CS-WebUI cannot keep a window open. A Window
+with `GuardClose` opens unguarded, logs event 1052 `WindowCloseGuardUnavailable`
+once, and its `CanCloseAsync` is not asked; the navigation regions' departure
+guards still run for navigation inside the window. Use Runic Desktop's embedded
+window when a user close must be able to keep unsaved work open.
+
 `ValidateWindow<TWindow>` checks at startup that the generated Bridge for the
 ViewModel is registered and returns a `RunicWindowValidationResult`, the same
 result Runic Desktop returns. `OpenWindowAsync` repeats the check before it

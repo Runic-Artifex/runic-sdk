@@ -13,6 +13,8 @@ Runic.Application.Views.IRunicWindowHost.Services.get -> System.IServiceProvider
 Runic.Application.Views.IRunicWindowHost.Validate(Runic.Application.Views.RunicWindowOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
 Runic.Application.Views.RunicWindow<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 Runic.Application.Views.RunicWindow<TViewModel>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicWindow<TViewModel>.GuardClose.get -> bool
+Runic.Application.Views.RunicWindow<TViewModel>.GuardClose.init -> void
 Runic.Application.Views.RunicWindow<TViewModel>.Host.get -> Runic.Application.Views.IBridgeWindow!
 Runic.Application.Views.RunicWindow<TViewModel>.RunicWindow() -> void
 *REMOVED*Runic.Application.Views.RunicWindow<TViewModel>.RunicWindow(TViewModel! dataContext) -> void
@@ -53,7 +55,9 @@ static Runic.Application.Views.RunicWindowHostExtensions.OpenWindowAsync<TWindow
 static Runic.Application.Views.RunicWindowHostExtensions.ValidateWindow<TWindow>(this Runic.Application.Views.IRunicWindowHost! host, Runic.Application.Views.RunicWindowOptions? options = null) -> Runic.Application.Views.RunicWindowValidationResult!
 Runic.Application.Views.RunicWindowOpening<TViewModel>
 Runic.Application.Views.RunicWindowOpening<TViewModel>.AttachBridge(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.WindowContentSession! content) -> System.IDisposable!
+Runic.Application.Views.RunicWindowOpening<TViewModel>.CloseGuard.get -> System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>?
 Runic.Application.Views.RunicWindowOpening<TViewModel>.Options.get -> Runic.Application.Views.RunicWindowOptions!
+Runic.Application.Views.RunicWindowOpening<TViewModel>.ReportCloseGuardUnavailable(string! presentation) -> void
 Runic.Application.Views.RunicWindowOpening<TViewModel>.Scope.get -> Microsoft.Extensions.DependencyInjection.AsyncServiceScope
 Runic.Application.Views.RunicWindowOpening<TViewModel>.ViewModel.get -> TViewModel!
 Runic.Application.Views.RunicWindowOpening<TViewModel>.Window.get -> Runic.Application.Views.RunicWindow<TViewModel!>!
@@ -91,3 +95,4 @@ override Runic.Application.Views.RunicWindowValidationResult.ToString() -> strin
 Runic.Application.Views.RunicWindowValidationResult.Warnings.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
 static Runic.Application.Views.RunicWindowValidationResult.operator !=(Runic.Application.Views.RunicWindowValidationResult? left, Runic.Application.Views.RunicWindowValidationResult? right) -> bool
 static Runic.Application.Views.RunicWindowValidationResult.operator ==(Runic.Application.Views.RunicWindowValidationResult? left, Runic.Application.Views.RunicWindowValidationResult? right) -> bool
+virtual Runic.Application.Views.RunicWindow<TViewModel>.CanCloseAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>

@@ -235,6 +235,44 @@ CommunityToolkit.Mvvm ViewModels.
   `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Presentation` and
   `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `NativeWindow`).
 
+### Guarding a user close
+
+A Window that sets `GuardClose` asks `CanCloseAsync` before a close the user
+starts (the title-bar close button, Alt+F4 or the window manager) and stays open
+when it returns `false`, like `Window.Closing` with `e.Cancel = true` in WPF and
+Avalonia, but asynchronous:
+
+```csharp
+public sealed partial class EditorWindow : RunicWindow<EditorViewModel>
+{
+    public EditorWindow() => GuardClose = true;
+}
+```
+
+The default `CanCloseAsync` clears each `NavigationRegion<T>` the Window's
+ViewModel exposes, in declaration order, so the departure guards of their
+entries decide, as WPF's `NavigationHost.GuardWindowClose` does (see
+[Navigation](#navigation-experimental)). Override it to add a check of your own,
+and call the base method to keep the navigation guards. It starts in a turn of
+the window's model context, one decision runs at a time, and it may wait as
+long as a prompt needs; the event loop is never blocked. An exception keeps the
+window open and is logged as event 1051.
+
+- `CloseAsync`, disposal and a host shutdown (Ctrl+C, SIGTERM) are the
+  application's own close: they do not ask, and they cancel a pending
+  decision's token.
+- On Runic Desktop the embedded window asks. A Window that also has
+  `WindowOptions.ConfirmCloseAsync` asks its own guard first, then that
+  confirmation. A programmatic close that asks goes through
+  `((DesktopBridgeWindow<T>)window.Host).Presentation.RequestCloseAsync()`.
+- A presentation that cannot keep its window open opens the Window unguarded and
+  logs event 1052 `WindowCloseGuardUnavailable` instead of failing: CS-WebUI, a
+  browser window (an explicitly selected browser or the `EmbeddedThenBrowser`
+  fallback), or a custom embedded-window host without the `CloseConfirmation`
+  capability. A browser tab or window closes without asking the application.
+  Save drafts as the user edits, or handle the close afterwards, where that
+  matters.
+
 ### Moved and renamed since 0.7.0-preview.6
 
 The Window types and entry points of the two hosts were merged into this API,
@@ -848,6 +886,8 @@ output accordingly. The message properties are listed per event.
 | 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` or a cancellation on `ThrownExceptions`. | `Source` (the command expression or `sourceName`), `ErrorType` |
 | 1043 | `ReactiveSchedulerOutsideModelTurn` | Warning | Work is scheduled on the model-context main-thread scheduler that `AddRunicReactiveModelContext()` installs, outside a model turn, so it runs on the scheduler it replaced. Logged once per process; to `Trace` unless `InstallMainThreadScheduler(loggerFactory)` received a logger factory. | `Fallback` |
 | 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
+| 1051 | `WindowCloseGuardFailed` | Error | A guarded Window's `CanCloseAsync` throws; the window stays open. A departure guard that throws is logged by the navigator as 1060 instead. | `Window`, `ErrorType` |
+| 1052 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
@@ -862,7 +902,7 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1020, 1021 and 1050 use the category `Runic.Application.Views`
+Events 1000-1012, 1020, 1021 and 1050-1052 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,

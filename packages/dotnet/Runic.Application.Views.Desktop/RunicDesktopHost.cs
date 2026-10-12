@@ -139,8 +139,13 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var attachment = opening.AttachBridge(transport, content);
             try { owner.Attach(attachment); }
             catch { attachment.Dispose(); throw; }
-            var presentation = await surface.OpenWindowAsync(WindowOptionsFor(opening.Options), cancellationToken)
-                .ConfigureAwait(false);
+            var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options));
+            var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
+            // An EmbeddedThenBrowser fallback opens without close confirmation; Runic Desktop reports
+            // close-confirmation-unavailable for the options, and this names the Window.
+            if (opening.CloseGuard is not null && windowOptions.ConfirmCloseAsync is not null &&
+                !presentation.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation))
+                opening.ReportCloseGuardUnavailable("the browser fallback");
             owner.SetPresentation(presentation);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
@@ -168,6 +173,38 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         Width = options.Width is { } width ? (uint)width : WindowOptions.Width,
         Height = options.Height is { } height ? (uint)height : WindowOptions.Height,
     };
+
+    // A guarded Window confirms user closes through ConfirmCloseAsync: first its own guard, then the one of
+    // WindowOptions, if any. A presentation that cannot keep its window open, an explicitly selected browser or an
+    // embedded-window host without close confirmation, opens unguarded with a warning instead of failing, so the
+    // same Window opens on every host.
+    private DesktopWindowOptions GuardedWindowOptions<TViewModel>(RunicWindowOpening<TViewModel> opening,
+        DesktopWindowOptions options) where TViewModel : class
+    {
+        if (opening.CloseGuard is not { } guard) return options;
+        if (options.ConfirmCloseAsync is { } configured)
+            return options with
+            {
+                ConfirmCloseAsync = async cancellationToken =>
+                    await guard(cancellationToken).ConfigureAwait(false) &&
+                    await configured(cancellationToken).ConfigureAwait(false),
+            };
+        var guarded = options with { ConfirmCloseAsync = guard };
+        try
+        {
+            var unsupported = Desktop.GetPresentationPreflight(guarded).OptionDiagnostics.Any(static diagnostic =>
+                diagnostic is { Severity: DesktopDiagnosticSeverity.Error, Option: ConfirmCloseOption });
+            if (!unsupported) return guarded;
+        }
+        // Invalid options fail when the window opens, with the same error.
+        catch (ArgumentException) { return guarded; }
+        opening.ReportCloseGuardUnavailable(options.Browser == BrowserKind.Embedded
+            ? "the configured embedded-window host"
+            : $"the {options.Browser} browser");
+        return options;
+    }
+
+    private const string ConfirmCloseOption = $"{nameof(DesktopWindowOptions)}.{nameof(DesktopWindowOptions.ConfirmCloseAsync)}";
 
     private static RunicWindowDiagnostic ToWindowDiagnostic(DesktopDiagnostic diagnostic) =>
         new(diagnostic.Code, diagnostic.Message, diagnostic.Remediation)

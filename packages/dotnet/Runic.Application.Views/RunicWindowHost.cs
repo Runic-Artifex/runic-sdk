@@ -147,9 +147,37 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(content);
-        return _attachWithContent is not null
+        var bridge = _attachWithContent is not null
             ? _attachWithContent(transport, content, ViewModel)
             : _attach!(transport, ViewModel);
+        Window.AttachedBridge(content, bridge);
+        return bridge;
+    }
+
+    /// <summary>
+    /// The Window's close guard, or <see langword="null"/> when <see cref="RunicWindow{TViewModel}.GuardClose"/> is
+    /// <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// A host whose window can stay open calls it, after <see cref="AttachBridge"/>, when the user closes the window,
+    /// and closes the window only when it returns <see langword="true"/>. It runs
+    /// <see cref="RunicWindow{TViewModel}.CanCloseAsync"/> in a model turn and never throws: a failure is logged and
+    /// returns <see langword="false"/>, as cancellation does. A host that cannot keep its window open calls
+    /// <see cref="ReportCloseGuardUnavailable"/> instead.
+    /// </remarks>
+    public Func<CancellationToken, ValueTask<bool>>? CloseGuard => Window.GuardClose ? Window.AskCanCloseAsync : null;
+
+    /// <summary>
+    /// Logs <c>WindowCloseGuardUnavailable</c> (event 1052): the Window guards its close, but
+    /// <paramref name="presentation"/>, such as <c>CS-WebUI</c>, cannot keep its window open, so it opens unguarded.
+    /// </summary>
+    /// <param name="presentation">The presentation that cannot keep the window open, as it reads in a sentence.</param>
+    public void ReportCloseGuardUnavailable(string presentation)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(presentation);
+        var logger = Scope.ServiceProvider.GetService<ILoggerFactory>()?.CreateLogger(RunicViewsTelemetry.LogCategory)
+            ?? TraceFallbackLogger.Instance;
+        ViewsLog.WindowCloseGuardUnavailable(logger, Window.GetType().Name, presentation);
     }
 }
 
