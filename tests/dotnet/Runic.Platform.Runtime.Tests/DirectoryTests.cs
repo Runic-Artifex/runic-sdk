@@ -3,10 +3,12 @@ using System.Text;
 using Runic.Platform;
 using Runic.Platform.Linux;
 using Runic.Platform.Runtime;
+using TUnit.Core;
 
-internal static class DirectoryTests
+internal sealed class DirectoryTests
 {
-    internal static async Task RunAsync()
+    [Test, DisplayName("DIRECTORY: exact access, compatibility, owner lifetime and shared admission")]
+    public async Task DirectoryAccessAsync()
     {
         string root = Path.Combine(Path.GetTempPath(), "runic-directories-" + Guid.NewGuid().ToString("N"));
         string path = Path.Combine(root, OperatingSystem.IsWindows() ? "space % Ω 文本" : "space % Ω 文本\nline");

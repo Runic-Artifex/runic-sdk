@@ -1,9 +1,11 @@
 using Runic.Platform;
 using Runic.Platform.Runtime;
+using TUnit.Core;
 
-internal static class DesktopServicesTests
+internal sealed class DesktopServicesTests
 {
-    internal static async Task RunAsync()
+    [Test, DisplayName("DESKTOP: settings lifecycle, input validation and retained handoff")]
+    public async Task DesktopServicesAsync()
     {
         foreach (var path in new[] { "relative.txt", "file.txt\0" })
             Throws<ArgumentException>(() => DesktopServiceValidation.FilePath(path, DesktopFileOperation.Open));

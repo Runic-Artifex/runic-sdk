@@ -31,9 +31,10 @@ these files with runtime introspection output from one installed desktop.
 Verification:
 
 ```sh
-direnv exec . dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --dbus
+direnv exec . dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
 direnv exec . dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-generation-pilot
-direnv exec . dbus-run-session -- artifacts/portal-generation-pilot/Runic.Platform.Linux.Portal.Tests --dbus
+direnv exec . dbus-run-session -- artifacts/portal-generation-pilot/Runic.Platform.Linux.Portal.Tests
+direnv exec . dbus-run-session -- artifacts/portal-generation-pilot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
 ```
 
 For generated-source inspection, build the provider with

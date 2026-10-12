@@ -1,10 +1,12 @@
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 using Tmds.DBus.Protocol;
+using TUnit.Core;
 
-internal static class InhibitionTests
+internal sealed class InhibitionTests
 {
-    internal static async Task RunAsync()
+    [Test, Explicit, Category("DBus"), DisplayName("inhibition: early/legacy replies, flags/reason, parent release, independent/idempotent release, denial, cancellation, owner replacement and portal restart without replay")]
+    public async Task InhibitionAsync()
     {
         using var bus = new DBusConnection(DBusAddress.Session!);
         await bus.ConnectAsync();

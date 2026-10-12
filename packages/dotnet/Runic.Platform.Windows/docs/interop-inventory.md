@@ -83,8 +83,8 @@ command-line modes of that revision; the TUnit suite now selects the same checks
 with the `NativeSettings`, `Native` and `NativeInhibition` categories.
 
 `Runic.Platform.Runtime.Tests.exe` passed its conformance run without arguments
-(14/14). It also ran `--native-services`, with `RUNIC_TEST_SERVICE` selecting
-each operation:
+(14/14). It also ran `--native-services` (now the `NativeServices` category), with
+`RUNIC_TEST_SERVICE` selecting each operation:
 
 - `Open` exited with 0, and Notepad opened the owned file.
 - `Reveal` exited with 0, and Explorer opened with the file selected.
