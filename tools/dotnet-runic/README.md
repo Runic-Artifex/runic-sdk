@@ -37,7 +37,7 @@ With Vite, `dev` prepares a development document for every HTML page that
 `vite build` emits, so a second window with its own page (for example
 `settings.html` listed in `build.rolldownOptions.input` and opened with
 `RunicWindowOptions { StartPage = "settings.html" }`, as
-[A Window with its own page](../../packages/dotnet/Runic.Application.Views/README.md#a-window-with-its-own-page)
+[A Window with its own page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#a-window-with-its-own-page)
 shows) loads in `dev` exactly
 as in build and publish. Before the build, `dev` reads the build inputs from
 the resolved Vite configuration with Node.js, or with Bun for a Bun frontend,
