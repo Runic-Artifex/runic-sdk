@@ -64,6 +64,29 @@ internal sealed class GeneratedClientHarness
             throw new InvalidOperationException($"The failure did not name the abort: {message[..Math.Min(message.Length, 200)]}");
     }
 
+    [Test]
+    public async Task AHarnessChildStartsWithCoreDumpsDisabledAsync()
+    {
+        // The kernel keeps an aborting child alive while it writes a core dump, which
+        // outlasts the harness limit on a loaded runner and hides the child's cause.
+        if (OperatingSystem.IsWindows()) return;
+        const string script = """
+            const limit = Bun.spawnSync(["sh", "-c", "ulimit -c"]).stdout.toString().trim();
+            process.stdout.write(`CORE_LIMIT=${limit}\n`);
+            process.exit(1);
+            """;
+        try
+        {
+            await GeneratedHarnessProcess.RunAsync("bun", ["-e", script], FindWorkspaceRoot()).ConfigureAwait(false);
+            throw new InvalidOperationException("The failing harness child was reported as passing.");
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("bun generated-client harness ", StringComparison.Ordinal))
+        {
+            if (!error.Message.Contains("CORE_LIMIT=0\n", StringComparison.Ordinal))
+                throw new InvalidOperationException($"The harness child could still write a core dump:\n{error.Message}");
+        }
+    }
+
     private static string FindWorkspaceRoot()
     {
         for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
