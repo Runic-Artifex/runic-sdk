@@ -35,3 +35,4 @@ Runic.Application.Views.Desktop.RunicDesktopHost.SurfaceOptions.get -> Runic.Des
 Runic.Application.Views.Desktop.RunicDesktopHost.SurfaceOptions.init -> void
 Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.get -> Runic.Desktop.DesktopWindowOptions!
 Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.init -> void
+static Runic.Application.Views.Desktop.PlatformServices.CreateSettings() -> Runic.Platform.IDesktopSettings!

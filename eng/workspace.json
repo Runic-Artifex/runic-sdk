@@ -309,6 +309,7 @@
       "paths": [
         "examples/first-window",
         "examples/first-window-desktop",
+        "examples/multi-window",
         "examples/notes-view-first",
         "examples/notes-reactive-views",
         "examples/dynamicdata",

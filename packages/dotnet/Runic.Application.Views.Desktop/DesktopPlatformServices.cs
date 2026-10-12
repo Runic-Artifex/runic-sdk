@@ -74,6 +74,33 @@ public static class PlatformServices
         return services;
     }
 
+    /// <summary>Creates the desktop's appearance preferences from the provider for the operating system.</summary>
+    /// <returns>Application-scoped preferences that the caller disposes at shutdown.</returns>
+    /// <remarks>
+    /// Windows reads its settings, macOS reads AppKit once the Desktop event loop runs, and Linux reads
+    /// xdg-desktop-portal with either toolkit, without loading GTK. Elsewhere, or where the Windows provider does not
+    /// support the running version, every read reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices"/> registers one instance for
+    /// the application.
+    /// </remarks>
+    public static IDesktopSettings CreateSettings()
+    {
+        IDesktopSettings? settings = null;
+        if (OperatingSystem.IsWindows()) settings = Optional(CreateWindowsSettings);
+        else if (OperatingSystem.IsMacOS()) settings = CreateMacOSSettings();
+        else if (OperatingSystem.IsLinux()) settings = CreatePortalSettings();
+        return settings ?? DesktopSettings.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopSettings CreateWindowsSettings() => WindowsPlatformProvider.CreateSettings();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopSettings CreateMacOSSettings() => MacOSPlatformProvider.CreateSettings();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopSettings CreatePortalSettings() => PortalPlatformProvider.CreateSettings();
+
     internal static IWindowPlatformServices Create(DesktopNativeOwner owner, out DesktopPlatformProvider provider)
     {
         provider = DesktopPlatformProvider.None;
@@ -250,18 +277,21 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed as
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/>.
+    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/> for the application.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
     /// its constructor. They bind to the window's native owner when the window opens, using
     /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. Resolved in any other scope
-    /// they stay unbound and report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>. Existing registrations
-    /// of these service types are kept.
+    /// they stay unbound and report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// <see cref="IDesktopSettings"/> needs no window: it is a singleton created by
+    /// <see cref="PlatformServices.CreateSettings"/> when first resolved, and disposed with the service provider.
+    /// Existing registrations of these service types are kept.
     /// </remarks>
     public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.TryAddSingleton(static _ => PlatformServices.CreateSettings());
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);

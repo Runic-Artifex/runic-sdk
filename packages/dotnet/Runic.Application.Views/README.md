@@ -235,6 +235,44 @@ CommunityToolkit.Mvvm ViewModels.
   `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Presentation` and
   `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `NativeWindow`).
 
+### Opening a Window from a ViewModel
+
+The host is passed only to the `Run` callback. To open Windows from a command
+or a service, register `IRunicWindowService` and take it in a constructor:
+
+```csharp
+services.AddRunicWindowService();
+```
+
+```csharp
+public sealed partial class ProjectViewModel(IRunicWindowService windows) : ObservableObject
+{
+    [RelayCommand]
+    private async Task NewWindowAsync() => await windows.OpenWindowAsync<ProjectWindow>();
+}
+```
+
+- `OpenWindowAsync<TWindow>(options, cancellationToken)` has the same
+  parameters and checks as the host's, and opens the Window in its own DI scope
+  on the host that runs the application, on Runic Desktop and CS-WebUI alike.
+  On CS-WebUI, `WaitForCloseAsync` completes only when every browser window has
+  closed.
+- The service is a singleton, so ViewModels in every Window and singleton
+  services can take it. A host binds it before it resolves the ViewModel of the
+  first Window it opens, so it already works in that ViewModel's constructor.
+  Before any Window has opened it throws `InvalidOperationException`.
+- The service releases each Window it opened, with its scope and ViewModels,
+  once the Window closes, so a command doesn't need to keep it. Keep the
+  returned Window to wait for it or to close it; disposing it earlier is safe.
+  A release failure is logged as event 1051.
+- Runic has no owned or modal Windows, so there is no owner parameter. The new
+  Window's ViewModel is resolved from DI like the first one's; to give it
+  input, let it read a singleton service, as the
+  [multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window)
+  does with its shared project.
+- The interface has one method, so a test registers a fake that records the
+  requested Window types after the application's services.
+
 ### Moved and renamed since 0.7.0-preview.6
 
 The Window types and entry points of the two hosts were merged into this API,
@@ -848,6 +886,7 @@ output accordingly. The message properties are listed per event.
 | 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` or a cancellation on `ThrownExceptions`. | `Source` (the command expression or `sourceName`), `ErrorType` |
 | 1043 | `ReactiveSchedulerOutsideModelTurn` | Warning | Work is scheduled on the model-context main-thread scheduler that `AddRunicReactiveModelContext()` installs, outside a model turn, so it runs on the scheduler it replaced. Logged once per process; to `Trace` unless `InstallMainThreadScheduler(loggerFactory)` received a logger factory. | `Fallback` |
 | 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
+| 1051 | `WindowReleaseFailed` | Error | `IRunicWindowService` fails to release a Window it opened, after that Window closed. | `Window`, `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
@@ -862,7 +901,7 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1020, 1021 and 1050 use the category `Runic.Application.Views`
+Events 1000-1012, 1020, 1021, 1050 and 1051 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,

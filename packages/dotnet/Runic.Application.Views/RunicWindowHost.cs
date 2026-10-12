@@ -172,6 +172,8 @@ internal static class RunicWindowOpening
             throw new RunicWindowConfigurationException(errors);
         }
         cancellationToken.ThrowIfCancellationRequested();
+        // IRunicWindowService opens further Windows on this host, also from the ViewModel resolved below.
+        (services.GetService(typeof(RunicWindowService)) as RunicWindowService)?.Bind(host);
 
         var scope = services.CreateAsyncScope();
         RunicWindowOpening<TViewModel> opening;

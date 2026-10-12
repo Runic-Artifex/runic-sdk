@@ -69,3 +69,8 @@ ViewModel can take `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` or
 them to the native window when it opens. A host without a native owner
 registers `WindowPlatformServices.Unavailable(reason)`, whose operations and
 capabilities all report that reason. Tests can use the same instance.
+
+`IDesktopSettings` is application-scoped, so `AddRunicPlatformServices()`
+registers one singleton for it. A host or platform without a provider
+registers `DesktopSettings.Unavailable(reason)`: reads return
+`Unavailable(reason)`, and a watch emits that value once and then waits.

@@ -11,12 +11,18 @@ public sealed class ScopeProbe : IAsyncDisposable
 
     public ScopeProbe() => Interlocked.Increment(ref Live);
 
+    private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public bool Disposed { get; private set; }
+
+    // Completes when the Window's scope is disposed.
+    public Task Released => _released.Task;
 
     public ValueTask DisposeAsync()
     {
         if (!Disposed) Interlocked.Decrement(ref Live);
         Disposed = true;
+        _released.TrySetResult();
         return ValueTask.CompletedTask;
     }
 }

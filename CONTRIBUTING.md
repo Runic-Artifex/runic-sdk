@@ -193,7 +193,7 @@ It runs these steps in order:
    with `--check`.
 3. `bun eng/run.mjs build` (the same as `bun run build`) builds the Views runtime,
    `RunicSdk.Core.slnx` and the web packages. The build rewrites the committed
-   generated clients in `examples/{first-window,first-window-desktop,notes-view-first,notes-reactive-views}/Frontend/src/generated`.
+   generated clients in `examples/{first-window,first-window-desktop,multi-window,notes-view-first,notes-reactive-views}/Frontend/src/generated`.
    CI's build job runs the same build and then fails on any changed tracked file.
 
 Commit the resulting changes. `regen` does not change lockfiles or anything outside
