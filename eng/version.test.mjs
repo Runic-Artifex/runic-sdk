@@ -16,6 +16,10 @@ const files = () => ({
     "runic.desktop": { type: "Project", dependencies: { "Runic.External": "[0.6.0-preview.1, )", "Runic.Platform": "[0.6.0-preview.1, )" } },
     "runic.platform": { type: "Project" },
   } } }, null, 2) + "\n",
+  "tests/fixture/packages.Fixture.Tests.lock.json": JSON.stringify({ version: 2, dependencies: { "net10.0": {
+    "runic.navigation": { type: "Project", dependencies: { "Runic.Platform": "[0.6.0-preview.1, )" } },
+    "runic.platform": { type: "Project" },
+  } } }, null, 2) + "\n",
 });
 
 test("the committed release-train version copies agree with eng/workspace.json", () => {
@@ -30,6 +34,7 @@ test("a mismatched version copy fails", () => {
     ["eng/Versions.props", "<RunicSdkVersion>0.6.0-preview.1</RunicSdkVersion>", ""],
     ["bun.lock", '"name": "@runic-artifex/react",\n      "version": "0.6.0-preview.1"', '"name": "@runic-artifex/react",\n      "version": "0.5.0"'],
     ["examples/app/packages.lock.json", '"Runic.Platform": "[0.6.0-preview.1, )"', '"Runic.Platform": "[0.5.0, )"'],
+    ["tests/fixture/packages.Fixture.Tests.lock.json", '"Runic.Platform": "[0.6.0-preview.1, )"', '"Runic.Platform": "[0.5.0, )"'],
   ]) {
     const value = files();
     value[path] = value[path].replace(from, to);
@@ -44,6 +49,7 @@ test("version bump rewrites every copy and keeps the validation baseline", () =>
   assert.match(next["packages/web/react/package.json"], /"react": "0\.6\.0-preview\.1"/, "external dependencies are untouched");
   assert.match(next["examples/app/packages.lock.json"], /"Runic\.Platform": "\[0\.7\.0-preview\.1, \)"/);
   assert.equal(next["examples/app/packages.lock.json"].match(/0\.6\.0-preview\.1/g)?.length, 3, "external NuGet packages are untouched");
+  assert.match(next["tests/fixture/packages.Fixture.Tests.lock.json"], /"Runic\.Platform": "\[0\.7\.0-preview\.1, \)"/, "project-named lock files are rewritten");
   for (const invalid of [undefined, "0.7", "v0.7.0", "0.7.0-preview..1"])
     assert.throws(() => bumpVersionFiles(files(), invalid));
 });
