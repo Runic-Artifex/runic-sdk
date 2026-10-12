@@ -194,15 +194,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         NavigationRegionOptions? options = null) where TContent : class
     {
         ArgumentNullException.ThrowIfNull(owner);
-        NavigationTargetCore? target = null;
-        if (initial is not null)
-        {
-            target = initial as NavigationTargetCore
-                ?? throw new ArgumentException("Navigation targets must be created with NavigationTarget.", nameof(initial));
-            if (target.HasInput)
-                throw new ArgumentException("A target created with input initializes asynchronously and can't be an initial target.", nameof(initial));
-            if (target.Instance is { } instance) RejectInitializable(instance, nameof(initial));
-        }
+        var target = initial is null ? null : InitialTarget(initial, nameof(initial));
         if (target is { Instance: null }) ThrowIfInitialCreationCycle(owner.GetType(), target.ContentType);
 
         // The region and the initial entry are allocated before the content, so a created target's constructor
@@ -214,52 +206,14 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             ObjectDisposedException.ThrowIf(_closing, this);
             region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
                 options?.WhileParentRetained ?? NavigationChildRetention.Keep);
-            if (target is not null) entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance);
-        }
-
-        object? content = target?.Instance;
-        IServiceScope? scope = null;
-        if (target is not null && content is null)
-        {
-            scope = CreateEntryScope();
-            var creations = s_initialCreations ??= [];
-            creations.Add((owner.GetType(), target.ContentType));
-            try { content = Construct(target, entry!, scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance); }
-            catch
+            if (target is not null)
             {
-                DisposeUnclaimed(null, null, scope);
-                throw;
-            }
-            finally { creations.RemoveAt(creations.Count - 1); }
-            try { RejectInitializable(content, nameof(initial)); }
-            catch
-            {
-                DisposeUnclaimed(content, null, scope);
-                throw;
+                region.Started = true;
+                entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance);
             }
         }
 
-        var owned = target?.Ownership == NavigationOwnership.Owned;
-        // The instance the factory created is ours to dispose when no region takes it.
-        var created = target is not null && target.Instance is null;
-        var claimed = false;
-        IRunicModelContextLease? lease = null;
-        try
-        {
-            if (owned)
-            {
-                // A claimed instance stays in the owned table even if binding
-                // fails, like any retired instance.
-                Claim(content!);
-                claimed = true;
-                lease = RunicModelContextRegistry.Shared.Bind(ModelContext, content!);
-            }
-        }
-        catch
-        {
-            DisposeUnclaimed(created && (claimed || !owned) ? content : null, lease, scope);
-            throw;
-        }
+        var content = target is null ? default : PrepareInitial(owner, target, entry!, nameof(initial));
         NavigationEntryCore? retireAtOnce = null;
         try
         {
@@ -272,35 +226,164 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (!region.Closed) _regions.Add(region);
                 if (!_regionsByOwner.TryGetValue(owner, out var ownerRegions)) _regionsByOwner.Add(owner, ownerRegions = []);
                 ownerRegions.Add(region);
-                if (entry is not null)
-                {
-                    entry.Content = content;
-                    entry.Phase = NavigationEntryPhase.Active;
-                    entry.Lease = lease;
-                    entry.Scope = scope;
-                    _tracked.Add(entry);
-                    if (owned) _ownedEntries[content!] = entry;
-                    if (region.Closed)
-                    {
-                        entry.Phase = NavigationEntryPhase.Removed;
-                        retireAtOnce = entry;
-                    }
-                    else region.Stack = [entry];
-                }
+                if (entry is not null) retireAtOnce = ActivateInitialLocked(region, entry, content);
             }
         }
         catch (ObjectDisposedException)
         {
             // The navigator started closing; user disposal runs outside the gate.
-            DisposeUnclaimed(created ? content : null, lease, scope);
+            content.DisposeUnclaimed(this);
             throw;
         }
         // The initial entry arrives without a transition: its notifications run here, before the region is returned.
-        if (entry is not null)
-            RaiseEntryChanges([new(entry, NavigationEntryState.Pending, entry.State)],
-                retireAtOnce is null ? NavigationOperation.Reset : NavigationOperation.Clear);
-        if (retireAtOnce is not null) _ = RetireAsync(retireAtOnce, null);
+        if (entry is not null) RaiseInitial(entry, retireAtOnce);
         return new NavigationRegion<TContent>(region);
+    }
+
+    // NavigationRegion<TContent>.Start: the initial target of a region created empty, committed on the same
+    // path as CreateRegion's (W260-005). It is allowed once, before any request to the region.
+    internal void StartRegion(NavigationRegionCore region, object initial, string parameter)
+    {
+        var target = InitialTarget(initial, parameter);
+        if (target.Instance is null) ThrowIfInitialCreationCycle(region.Owner.GetType(), target.ContentType);
+        NavigationEntryCore entry;
+        lock (Gate)
+        {
+            ObjectDisposedException.ThrowIf(_closing, this);
+            ThrowIfNotStartableLocked(region);
+            region.Started = true;
+            entry = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance);
+        }
+
+        var content = PrepareInitial(region.Owner, target, entry, parameter);
+        NavigationEntryCore? retireAtOnce;
+        try
+        {
+            lock (Gate)
+            {
+                ObjectDisposedException.ThrowIf(_closing, this);
+                // The content's construction can reach the region, for example by a request from its constructor.
+                ThrowIfNotStartableLocked(region, starting: true);
+                retireAtOnce = ActivateInitialLocked(region, entry, content);
+                region.Version++;
+            }
+        }
+        catch (Exception error) when (error is ObjectDisposedException or InvalidOperationException)
+        {
+            content.DisposeUnclaimed(this);
+            throw;
+        }
+        RaiseInitial(entry, retireAtOnce);
+        if (retireAtOnce is null) region.RaiseChanges(NavigationRegionChanges.Current);
+    }
+
+    private static void ThrowIfNotStartableLocked(NavigationRegionCore region, bool starting = false)
+    {
+        if (region.Requested)
+            throw new InvalidOperationException(
+                $"Start can't be called on a region that already received a navigation request ({region.ContentTypeName} region #{region.Id}). "
+                + "Call Start once, before the first request, for example in the constructor of the window's ViewModel; use ResetAsync afterwards.");
+        if (region.Started && !starting)
+            throw new InvalidOperationException(
+                $"The {region.ContentTypeName} region #{region.Id} already has its initial entry: Start can be called once, "
+                + "and not on a region created with an initial target. Use ResetAsync to replace its content.");
+    }
+
+    private static NavigationTargetCore InitialTarget(object initial, string parameter)
+    {
+        ArgumentNullException.ThrowIfNull(initial, parameter);
+        var target = initial as NavigationTargetCore
+            ?? throw new ArgumentException("Navigation targets must be created with NavigationTarget.", parameter);
+        if (target.HasInput)
+            throw new ArgumentException("A target created with input initializes asynchronously and can't be an initial target.", parameter);
+        if (target.Instance is { } instance) RejectInitializable(instance, parameter);
+        return target;
+    }
+
+    // Creates (for a Create target), claims and binds an initial target's content. A failure disposes what was
+    // created and propagates, so the region stays empty.
+    private InitialContent PrepareInitial(object owner, NavigationTargetCore target, NavigationEntryCore entry, string parameter)
+    {
+        object? content = target.Instance;
+        IServiceScope? scope = null;
+        if (content is null)
+        {
+            scope = CreateEntryScope();
+            var creations = s_initialCreations ??= [];
+            creations.Add((owner.GetType(), target.ContentType));
+            try { content = Construct(target, entry, scope?.ServiceProvider ?? Services ?? EmptyServiceProvider.Instance); }
+            catch
+            {
+                DisposeUnclaimed(null, null, scope);
+                throw;
+            }
+            finally { creations.RemoveAt(creations.Count - 1); }
+            try { RejectInitializable(content, parameter); }
+            catch
+            {
+                DisposeUnclaimed(content, null, scope);
+                throw;
+            }
+        }
+
+        var owned = target.Ownership == NavigationOwnership.Owned;
+        // The instance the factory created is ours to dispose when no region takes it.
+        var created = target.Instance is null;
+        var claimed = false;
+        IRunicModelContextLease? lease = null;
+        try
+        {
+            if (owned)
+            {
+                // A claimed instance stays in the owned table even if binding
+                // fails, like any retired instance.
+                Claim(content);
+                claimed = true;
+                lease = RunicModelContextRegistry.Shared.Bind(ModelContext, content);
+            }
+        }
+        catch
+        {
+            DisposeUnclaimed(created && (claimed || !owned) ? content : null, lease, scope);
+            throw;
+        }
+        return new InitialContent(content, scope, lease, created, owned);
+    }
+
+    // Commits the prepared initial entry as the region's only entry, or marks it removed when the region is
+    // already closed; then it is returned to retire at once.
+    private NavigationEntryCore? ActivateInitialLocked(NavigationRegionCore region, NavigationEntryCore entry, InitialContent content)
+    {
+        entry.Content = content.Content!;
+        entry.Phase = NavigationEntryPhase.Active;
+        entry.Lease = content.Lease;
+        entry.Scope = content.Scope;
+        _tracked.Add(entry);
+        if (content.Owned) _ownedEntries[content.Content!] = entry;
+        if (region.Closed)
+        {
+            entry.Phase = NavigationEntryPhase.Removed;
+            return entry;
+        }
+        region.Stack = [entry];
+        return null;
+    }
+
+    private void RaiseInitial(NavigationEntryCore entry, NavigationEntryCore? retireAtOnce)
+    {
+        RaiseEntryChanges([new(entry, NavigationEntryState.Pending, entry.State)],
+            retireAtOnce is null ? NavigationOperation.Reset : NavigationOperation.Clear);
+        if (retireAtOnce is not null) _ = RetireAsync(retireAtOnce, null);
+    }
+
+    private readonly record struct InitialContent(object? Content, IServiceScope? Scope, IRunicModelContextLease? Lease,
+        bool Created, bool Owned)
+    {
+        public void DisposeUnclaimed(RunicNavigator navigator)
+        {
+            if (Content is null) return; // default: no initial target
+            navigator.DisposeUnclaimed(Created ? Content : null, Lease, Scope);
+        }
     }
 
     // Constructs a Create target's content for its pending entry (W250-032 §3): a factory receives the entry's
@@ -385,7 +468,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             throw new InvalidOperationException(
                 $"Creating {target.Name}, the initial target of a region owned by {ownerType.Name}, created another region owned by a {ownerType.Name} with the same initial target. "
                 + $"This is a dependency cycle: {target.Name}'s constructor depends on the service that creates the region. "
-                + $"Create the region without an initial target and reset it after construction, for example with ResetAsync<{target.Name}>().");
+                + $"Create the region without an initial target and start it once the service exists, for example with Region.Start(NavigationTarget.Create<{target.Name}>()) in the constructor of the window's ViewModel.");
         }
     }
 
@@ -616,6 +699,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         var transitioningChanged = false;
         lock (Gate)
         {
+            region.Requested = true;
             var related = RelatedRunningLocked(region);
             if (_closing || region.Closed) rejected = TransitionOutcome.Reject(NavigationRejection.Closed);
             else if (cancellationToken.IsCancellationRequested)

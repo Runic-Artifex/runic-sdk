@@ -120,6 +120,41 @@ internal sealed class NavigationAdapterTests
         Require(throwing.Calls == 1, $"A subscription whose initial emission threw still observed the region ({throwing.Calls} calls).");
     }
 
+    // W260-005: a shell that observes its region, then starts it in its constructor, sees the root page before
+    // Start returns, and its Back command stays disabled.
+    [Test, NotInParallel(Order = 7)]
+    public async Task StartedRegionSemanticsAsync()
+    {
+        await using var context = new RunicModelContext();
+        var scheduler = ContextScheduler.For(context);
+        await using var navigator = new RunicNavigator(new RunicNavigatorOptions { ModelContext = context });
+        var region = navigator.CreateRegion<NavigationPage>(new object());
+        var currents = new Recorder<NavigationPage?>();
+        var history = new Recorder<bool>();
+        using var currentSubscription = region.WhenCurrentChanged().Subscribe(currents);
+        using var historySubscription = region.WhenCanGoBackChanged().Subscribe(history);
+        var back = region.CreateBackCommand(scheduler);
+
+        var home = new NavigationPage("home");
+        region.Start(NavigationTarget.Borrow(home));
+        Require(currents.Values.SequenceEqual([null, home]) && history.Values.SequenceEqual([false]),
+            $"WhenCurrentChanged did not see the started root before Start returned: {string.Join(", ", currents.Values.Select(page => page?.Name ?? "null"))}.");
+        Require(!ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was enabled on a started root.");
+        Require(ThrowsInvalidOperation(() => region.Start(NavigationTarget.Borrow(new NavigationPage("again")))),
+            "A second Start was accepted.");
+
+        await region.PushAsync(NavigationTarget.Own(new NavigationPage("document")));
+        await WaitUntilAsync(() => ReactiveCommandExecution.CanExecute(back, UnitValue()), "The back command was disabled with history.");
+        Require(await ReactiveCommandExecution.Execute(back, UnitValue(), CancellationToken.None) == new NavigationOutcome(NavigationOutcomeKind.Committed)
+            && region.Current == home, "Back did not return to the started root.");
+    }
+
+    private static bool ThrowsInvalidOperation(Action action)
+    {
+        try { action(); return false; }
+        catch (InvalidOperationException) { return true; }
+    }
+
     [Test, NotInParallel(Order = 2)]
     public async Task NavigationStateCompositionAsync()
     {
