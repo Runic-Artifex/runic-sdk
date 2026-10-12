@@ -247,10 +247,19 @@ internal sealed class BridgeSnapshotDetachedException : Exception
 {
 }
 
+// The navigation regions a Bridge presents as content slots, in declaration order: what a guarded
+// Window clears before it closes.
+#pragma warning disable RUNICNAV001 // Region slots present the experimental navigator.
+internal interface IBridgeRegionSlots
+{
+    IReadOnlyList<INavigationRegion> NavigationRegions();
+}
+#pragma warning restore RUNICNAV001
+
 /// <summary>Base class of generated bridges that expose one ViewModel over an <see cref="IBridgeTransport"/>.</summary>
 [EditorBrowsable(EditorBrowsableState.Never)]
 public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDetachmentSignal,
-    IBridgeSnapshotBatchParticipant where T : INotifyPropertyChanged
+    IBridgeSnapshotBatchParticipant, IBridgeRegionSlots where T : INotifyPropertyChanged
 {
     private const int MaximumFieldWritePayloadLength = 64 * 1024;
     private const int MaximumFieldWriteRequestIdLength = 256;
@@ -1473,6 +1482,16 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             if (next is not null && subscription is not null) _observed[property.Name] = (next, subscription);
         }
     }
+
+#pragma warning disable RUNICNAV001 // Region slots present the experimental navigator.
+    IReadOnlyList<INavigationRegion> IBridgeRegionSlots.NavigationRegions() => _modelTurn.Run(() =>
+    {
+        List<INavigationRegion> regions = [];
+        foreach (var property in _properties)
+            if (property.Observe?.Invoke(_vm) is INavigationRegion region && !regions.Contains(region)) regions.Add(region);
+        return regions;
+    });
+#pragma warning restore RUNICNAV001
 
     private void ReleaseObservedSubObjects()
     {

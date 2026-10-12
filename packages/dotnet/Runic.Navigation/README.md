@@ -526,8 +526,14 @@ DI disposes the navigator before the model context it depends on. Its
    plus owned content disposal. If a turn does not run in time, the stack is
    cleared outside a turn (event 1068).
 
-Window close does not run guards. Disposing a navigator cancels window-owned
+Disposal does not run guards. Disposing a navigator cancels window-owned
 operations that its owned content started, and then disposes that content.
+To ask the guards before a user closes the window, opt in on the window:
+`GuardClose` on a `RunicWindow<T>`
+([Runic.Application.Views](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#guarding-a-user-close),
+Runic Desktop's embedded window) or `GuardWindowClose` on a WPF
+`NavigationHost` (Runic.Navigation.Wpf). Either clears the window's regions
+before it closes, and a guard that rejects or fails keeps the window open.
 
 `WhenIdleAsync()` waits until no transition or retirement is running.
 

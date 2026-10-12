@@ -80,6 +80,18 @@ The same Window and `async host => ...` body run on CS-WebUI with
   stops new operations and waits for accepted ones before releasing the scope.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
+- A Window with `GuardClose` (see
+  [Guarding a user close](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#guarding-a-user-close))
+  passes its `CanCloseAsync` to the embedded window as
+  `DesktopWindowOptions.ConfirmCloseAsync`, ahead of a `ConfirmCloseAsync` of
+  `WindowOptions`, so the title-bar close button, Alt+F4 or the window manager
+  asks the navigation regions' departure guards. `window.RequestCloseAsync()`
+  is the same native close request and shares its decision;
+  `CloseAsync`, disposal, Ctrl+C and SIGTERM do not ask. An explicitly selected
+  browser, the `EmbeddedThenBrowser` fallback, or a custom window host without
+  the `CloseConfirmation` capability opens the Window unguarded for the user's
+  close and logs event 1053 `WindowCloseGuardUnavailable`; `RequestCloseAsync`
+  still asks `CanCloseAsync` there.
 - `services.AddRunicPlatformServices()` registers native file dialogs, the
   text clipboard, and the file launcher for each window scope:
   `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and

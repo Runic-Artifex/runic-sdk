@@ -231,6 +231,9 @@ CommunityToolkit.Mvvm ViewModels.
   cancellationToken)` stops new operations, waits up to `timeout` for accepted
   ones, and returns a `BridgeWindowCloseResult`; its token also stops only the
   caller's wait. Disposal is asynchronous only.
+- `RequestCloseAsync(cancellationToken)` closes the window as its close button
+  does and returns whether it closed; with `GuardClose` it asks `CanCloseAsync`
+  first (see [Guarding a user close](#guarding-a-user-close)).
 - `Host` returns the host adapter, an `IBridgeWindow`:
   `DesktopBridgeWindow<TViewModel>` (with `Surface`, `Presentation` and
   `NativeOwner`) or `CsWebUiBridgeWindow<TViewModel>` (with `NativeWindow`).
@@ -272,6 +275,65 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
   does with its shared project.
 - The interface has one method, so a test registers a fake that records the
   requested Window types after the application's services.
+
+### Guarding a user close
+
+A Window that sets `GuardClose` asks `CanCloseAsync` before a close the user
+starts (the title-bar close button, Alt+F4 or the window manager) and stays open
+when it returns `false`, like `Window.Closing` with `e.Cancel = true` in WPF and
+Avalonia, but asynchronous:
+
+```csharp
+public sealed partial class EditorWindow : RunicWindow<EditorViewModel>
+{
+    public EditorWindow() => GuardClose = true;
+}
+```
+
+The default `CanCloseAsync` clears each `NavigationRegion<T>` the Window's
+ViewModel exposes, in declaration order, so the departure guards of their
+entries decide, as WPF's `NavigationHost.GuardWindowClose` does (see
+[Navigation](#navigation-experimental)). Override it to add a check of your own,
+and call the base method to keep the navigation guards. It starts in a turn of
+the window's model context, one decision runs at a time, and it may wait as
+long as a prompt needs; the event loop is never blocked. An exception keeps the
+window open and is logged as event 1052.
+
+To close a Window from code the way the close button does, call
+`RequestCloseAsync(cancellationToken)`. It returns `true` when the window
+closed and `false` when `CanCloseAsync` kept it open, like `Window.Close()`
+in WPF and Avalonia, which raises the cancellable `Closing`, but awaitable.
+Without `GuardClose` it closes. Keep the Window that `OpenWindowAsync`
+returned, including from `IRunicWindowService`, to call it from a command:
+
+```csharp
+[RelayCommand]
+private async Task CloseEditorAsync()
+{
+    if (!await _editor.RequestCloseAsync()) StatusText = "The editor has unsaved changes.";
+}
+```
+
+A request while another request or a user close is being decided waits for
+the same decision; its token stops only the caller's wait. When the window may
+close, the visible window closes at once and disposal releases its scope, as
+after a user close.
+
+- `CloseAsync`, disposal and a host shutdown (Ctrl+C, SIGTERM) are the
+  application's own close: they do not ask, and they cancel a pending
+  decision's token. A pending `RequestCloseAsync` then returns `true`.
+- On Runic Desktop the embedded window asks, and `RequestCloseAsync` is its
+  native close request. A Window that also has
+  `WindowOptions.ConfirmCloseAsync` asks its own guard first, then that
+  confirmation, for both.
+- A presentation that cannot keep its window open opens the Window unguarded and
+  logs event 1053 `WindowCloseGuardUnavailable` instead of failing: CS-WebUI, a
+  browser window (an explicitly selected browser or the `EmbeddedThenBrowser`
+  fallback), or a custom embedded-window host without the `CloseConfirmation`
+  capability. A browser tab or window closes without asking the application.
+  Save drafts as the user edits, or handle the close afterwards, where that
+  matters. `RequestCloseAsync` still asks there, because the application is
+  the one closing.
 
 ### Moved and renamed since 0.7.0-preview.6
 
@@ -887,6 +949,8 @@ output accordingly. The message properties are listed per event.
 | 1043 | `ReactiveSchedulerOutsideModelTurn` | Warning | Work is scheduled on the model-context main-thread scheduler that `AddRunicReactiveModelContext()` installs, outside a model turn, so it runs on the scheduler it replaced. Logged once per process; to `Trace` unless `InstallMainThreadScheduler(loggerFactory)` received a logger factory. | `Fallback` |
 | 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 1051 | `WindowReleaseFailed` | Error | `IRunicWindowService` fails to release a Window it opened, after that Window closed. | `Window`, `ErrorType` |
+| 1052 | `WindowCloseGuardFailed` | Error | A guarded Window's `CanCloseAsync` throws; the window stays open. A departure guard that throws is logged by the navigator as 1060 instead. | `Window`, `ErrorType` |
+| 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
@@ -901,7 +965,7 @@ output accordingly. The message properties are listed per event.
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1020, 1021, 1050 and 1051 use the category `Runic.Application.Views`
+Events 1000-1012, 1020, 1021 and 1050-1052 use the category `Runic.Application.Views`
 (`RunicViewsTelemetry.LogCategory`). Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,

@@ -295,6 +295,15 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1051, EventName = "WindowReleaseFailed", Level = LogLevel.Error,
         Message = "Releasing the closed Window {Window} failed with {ErrorType}.")]
     internal static partial void WindowReleaseFailed(ILogger logger, Exception? exception, string window, string errorType);
+    // RunicWindow.CanCloseAsync threw for a close the user started, on any host that can keep its window open.
+    [LoggerMessage(EventId = 1052, EventName = "WindowCloseGuardFailed", Level = LogLevel.Error,
+        Message = "The close guard of {Window} failed with {ErrorType}; the window stays open.")]
+    internal static partial void WindowCloseGuardFailed(ILogger logger, Exception? exception, string window, string errorType);
+
+    // A Window with GuardClose opened on a presentation that cannot keep its window open.
+    [LoggerMessage(EventId = 1053, EventName = "WindowCloseGuardUnavailable", Level = LogLevel.Warning,
+        Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]
+    internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace
