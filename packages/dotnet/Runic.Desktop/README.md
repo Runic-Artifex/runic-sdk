@@ -200,6 +200,16 @@ surface.RegisterCapability("save", async (invocation, cancellationToken) =>
 Do not hold such a gate across work that waits for another callback, such as a
 Cancel request, or that callback can never run.
 
+## Calls to unregistered capabilities
+
+A call to a name with no registration is not invoked, replies empty, and reports
+a `capability-not-admitted` error to `DiagnosticSink` that names the capability.
+A page can call a capability just after its owner released it, for example a
+page removed from a navigation region unmounts after the snapshot that removed
+it. A name released shortly before (the host remembers the last 256) is treated
+as such a late call: nothing is invoked, the reply is the same, and no
+diagnostic is reported.
+
 ## Security notes
 
 - A local client that holds the session credential can take the only Bridge
