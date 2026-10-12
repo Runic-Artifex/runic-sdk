@@ -345,7 +345,14 @@ internal sealed class BridgeOperationRouter : IDisposable
         using (var writer = new Utf8JsonWriter(buffer)) write(writer);
         return Encoding.UTF8.GetString(buffer.GetBuffer().AsSpan(0, (int)buffer.Length));
     }
-    private static string Wire(BridgeOperationAdmissionKind kind) => kind.ToString().ToLowerInvariant();
+    private static string Wire(BridgeOperationAdmissionKind kind) => kind switch
+    {
+        BridgeOperationAdmissionKind.Accepted => "accepted",
+        BridgeOperationAdmissionKind.Duplicate => "duplicate",
+        BridgeOperationAdmissionKind.Expired => "expired",
+        BridgeOperationAdmissionKind.Rejected => "rejected",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
     private static string Wire(BridgeOperationStatusKind kind) =>
         kind is BridgeOperationStatusKind.DomainFailed ? "domain-failed" : kind.ToString().ToLowerInvariant();
     private static string Wire(BridgeOperationDeliveryFailureKind kind) => kind switch
