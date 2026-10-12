@@ -479,7 +479,8 @@ jobs:
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
       - name: Exercise direct portal protocol
         if: runner.os == 'Linux'
-        run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --dbus
+        # The explicit DBus cases need a session bus; the managed job runs the portable cases.
+        run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
         run: |
@@ -503,7 +504,9 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
-          dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --dbus
+          # The run without a filter keeps the portable cases covered under NativeAOT.
+          dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
+          dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll

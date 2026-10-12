@@ -1,9 +1,11 @@
 using Runic.Platform;
 using Runic.Platform.Runtime;
+using TUnit.Core;
 
-internal static class FileLeaseTests
+internal sealed class FileLeaseTests
 {
-    internal static async Task RunAsync()
+    [Test, DisplayName("FILE: concrete stream access, staging, conflict and commit cancellation")]
+    public async Task FileLeasesAsync()
     {
         string directory = Path.Combine(Path.GetTempPath(), $"runic-leases-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);

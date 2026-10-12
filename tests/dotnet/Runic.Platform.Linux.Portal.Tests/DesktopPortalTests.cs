@@ -2,10 +2,12 @@ using Microsoft.Win32.SafeHandles;
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 using Tmds.DBus.Protocol;
+using TUnit.Core;
 
-internal static class DesktopPortalTests
+internal sealed class DesktopPortalTests
 {
-    internal static async Task RunAsync()
+    [Test, Explicit, Category("DBus"), DisplayName("desktop portals: settings, notification permission/actions, installed activation and owned file descriptors")]
+    public async Task DesktopPortalsAsync()
     {
         using var connection = new DBusConnection(DBusAddress.Session!);
         await connection.ConnectAsync();

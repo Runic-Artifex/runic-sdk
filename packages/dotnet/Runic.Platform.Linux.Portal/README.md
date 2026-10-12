@@ -95,11 +95,17 @@ your desktop (for example `xdg-desktop-portal-kde` on Plasma). The development f
 provides both GTK and KDE backend binaries without starting or reconfiguring the
 user's portal services. Sandboxed packaging must expose the portal bus interface.
 
-Protocol checks run with:
+Protocol checks are explicit TUnit cases (category `DBus`) that need a session bus. Run them on an
+isolated bus:
 
 ```sh
-direnv exec . dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -- --dbus
+direnv exec . dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -- --treenode-filter "/*/*/*/*[Category=DBus]"
 ```
+
+The suite's default run includes a real document-portal save through the session bus's portal. Give
+it a private runtime directory, so an isolated bus never touches the desktop session's document
+mount: `XDG_RUNTIME_DIR=$(mktemp -d) XDG_DATA_HOME=$XDG_RUNTIME_DIR/data dbus-run-session -- ...`.
+Never start a second document portal against your own `XDG_RUNTIME_DIR`.
 
 The GTK4 production-provider directory journey uses a real native window and
 exported parent with a controlled FileChooser service on an isolated session bus:
