@@ -304,6 +304,42 @@ try {
   if (await query("window.__runicDiscardPromptCount") !== 2)
     throw new Error("The approved discard did not reach the mounted browser interaction handler exactly once.");
 
+  // The document's leave guard asks through its ConfirmLeave interaction. The
+  // discard above left the body empty, so the note has unsaved changes.
+  const mainKind = async () => (await snapshot("shell")).state?.main?.kind;
+  const lastResult = 'document.querySelector("#main [data-last-result]")?.textContent';
+  await retry(async () => await query('document.querySelector("[data-document-status]")?.textContent') === "Unsaved changes");
+  await evaluate("window.__runicLeavePromptCount = 0; window.confirm = () => { window.__runicLeavePromptCount++; return false; }");
+  // The shell's Back is not this View's command, so the browser handler does not
+  // answer it; the ViewModel's fallback keeps the edits.
+  await click("[data-go=home]");
+  await pause(300);
+  if (await mainKind() !== "document" || await query("window.__runicLeavePromptCount") !== 0)
+    throw new Error("The shell's Back left the dirty document or asked another route's handler.");
+  await click("[data-close]");
+  await retry(async () => await query("window.__runicLeavePromptCount") === 1);
+  await pause(300);
+  if (await mainKind() !== "document" || (await snapshot(editorRoute)).state?.body !== "")
+    throw new Error("A declined Close left the document or changed its edits.");
+  await evaluate("window.confirm = () => { window.__runicLeavePromptCount++; return true; }");
+  await click("[data-close]");
+  await retry(async () => await mainKind() === "home");
+  await retry(async () => await query(lastResult) === "Closed the document.");
+  if (await query("window.__runicLeavePromptCount") !== 2) throw new Error("An approved Close did not ask exactly once.");
+  // The guard reverted the edits when the Close committed; the editor is window-scoped.
+  const bodyField = 'document.querySelector("#document-pane [data-body]")?.value';
+  await click("[data-go=document]");
+  await retry(async () => await query(bodyField) === "Both Views see this text.");
+  // Save and close completes the PushForResult request with the note's title.
+  await change("#document-pane [data-body]", "Saved through the result.");
+  await retry(async () => (await snapshot(editorRoute)).state?.isDirty === true);
+  await click("[data-save-close]");
+  await retry(async () => await mainKind() === "home");
+  await retry(async () => await query(lastResult) === "Saved and closed Operation roundtrip");
+  if (await query("window.__runicLeavePromptCount") !== 2) throw new Error("Save and close asked to discard saved changes.");
+  await click("[data-go=document]");
+  await retry(async () => await query(bodyField) === "Saved through the result.");
+
   // WebUI never settles calls in flight when its WebSocket closes. A call the
   // admission timeout released is late; a reconnect must forget it, or its
   // missing admission swallows the admission of a call sent afterwards.
@@ -342,7 +378,7 @@ try {
     throw new Error(`A call in flight on the lost connection did not reject: ${probe}`);
   await retry(async () => (await snapshot("shell")).state?.main.kind === "document");
   await expectClickEventsSuppressed("after reconnecting");
-  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation|reconnect-admissions|lost-calls-rejected|click-events-suppressed");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|interaction-fallback-and-confirmation|reconnect-admissions|lost-calls-rejected|click-events-suppressed|leave-guard-interaction|result-commands");
   }
 } finally {
   try { await browser?.close(); }

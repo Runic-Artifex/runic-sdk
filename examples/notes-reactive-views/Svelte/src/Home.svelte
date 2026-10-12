@@ -8,6 +8,7 @@
 {#if home.state}
   <h1>{home.state.greeting}</h1>
   <p>Open the document to see two Views of one Editor ViewModel.</p>
+  <p data-last-result class="muted">{home.state.lastResult}</p>
 {:else}
   <p>Connecting…</p>
 {/if}

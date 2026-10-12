@@ -4,8 +4,9 @@ import { connectView, viewReferences } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 
 export interface HomeState {
-  readonly urlPathSegment: string;
   readonly greeting: string;
+  /** How the last visit to the document ended. */
+  readonly lastResult: string;
 }
 
 /** A connected Home ViewModel. Dispose it when its presentation ends. */
@@ -19,20 +20,20 @@ export interface HomePageReference {
 const pageHomeReferences = viewReferences<HomePageReference>(id => ({ kind: "home", connect: () => connectHomeAt(`content${id}`, true) }));
 export function pageHome(id: string): HomePageReference { return pageHomeReferences(id); }
 
-type WireState = Omit<HomeState, "urlPathSegment" | "greeting"> & {
+type WireState = Omit<HomeState, "greeting" | "lastResult"> & {
   readonly revision: number;
-  readonly urlPathSegment: unknown;
   readonly greeting: unknown;
+  readonly lastResult: unknown;
 };
 function hydrate(wire: WireState): HomeState {
   const { revision: _revision, ...state } = wire;
   return {
     ...state,
-    urlPathSegment: bridgeWire.string(wire.urlPathSegment),
     greeting: bridgeWire.string(wire.greeting),
+    lastResult: bridgeWire.string(wire.lastResult),
   };
 }
-const bridgeContract = "NotesReactiveViews.HomeViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C";
+const bridgeContract = "NotesReactiveViews.HomeViewModel:79D2D4A3CA4F5AC94637C31280D660A0B53E13BFB9CCDE287A25C2DD574E3918";
 
 /**
  * Connects a Home client. It waits up to `options.timeout` milliseconds (default 5000) for the

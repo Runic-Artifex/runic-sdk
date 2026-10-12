@@ -19,8 +19,8 @@ const pinnedViews = { pinnedNote: PinnedNoteComponent, pinnedTask: PinnedTaskCom
     @if (state(); as current) {
       <div class="layout">
         <nav aria-label="Main navigation">
-          <button data-go="home" [attr.aria-current]="current.main.kind === 'home' ? 'page' : null" (click)="command.run('openHome')">Home</button>
-          <button data-go="document" [attr.aria-current]="current.main.kind === 'document' ? 'page' : null" (click)="command.run('openDocument')">Document</button>
+          <button data-go="home" [attr.aria-current]="current.main?.kind === 'home' ? 'page' : null" [disabled]="!current.canOpenHome" (click)="command.run('openHome')">Home</button>
+          <button data-go="document" [attr.aria-current]="current.main?.kind === 'document' ? 'page' : null" [disabled]="!current.canOpenDocument" (click)="command.run('openDocument')">Document</button>
         </nav>
         <main id="main"><runic-view-outlet [content]="current.main" [registry]="mainViews" /></main>
       </div>

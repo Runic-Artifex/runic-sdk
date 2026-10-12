@@ -1,37 +1,73 @@
-# Reactive Notes with routed Views
+# Reactive Notes with navigated Views
 
-A notes application built with ReactiveUI routing, commands, and
-interactions. Its explicit [Window](NotesWindow.cs) and [Views](Views.cs)
-select the generated client contracts; [ViewModels](ViewModels.cs) use
-ReactiveUI routing and commands.
+A notes application built with ReactiveUI commands and interactions on
+`RunicNavigator` regions, through the `Runic.Navigation.ReactiveUI` adapter. Its
+explicit [Window](NotesWindow.cs) and [Views](Views.cs) select the generated
+client contracts; [ViewModels](ViewModels.cs) hold the navigation, and no
+ViewModel takes a scheduler.
 
 The window binds its ViewModels to its `IRunicModelContext` (namespace
-`Runic.Navigation`) as it presents them. The bridge starts each command in a
-turn of that context, and the editor's async commands resume there after
-`await`, so they set state directly without `InvokeAsync`.
+`Runic.Navigation`) as it presents them. `AddRunicReactiveModelContext()` makes
+ReactiveUI deliver command notifications on that context, so commands are
+created without a scheduler argument. The bridge starts each command in a turn
+of that context, and the async commands resume there after `await`, so they set
+state directly without `InvokeAsync`.
+
+## Navigation
+
+- **Master/detail.** The shell's `Main` is a `NavigationRegion<IMainPage>` that
+  starts at the window-scoped Home. **Document** pushes a fresh
+  `DocumentViewModel` with `PushForResult<DocumentViewModel, string>()`; the
+  navigator constructs it from the window's services and disposes it when the
+  visit ends. Home shows the result: the saved title, or that the document was
+  closed. **Home** is the region's `CreateBackCommand()`.
+- **Entry context.** `DocumentViewModel` takes its `NavigationEntryContext` as
+  a constructor parameter. `entry.CreateCompleteCommand(...)` is **Save and
+  close**: it saves, then completes the request with the title.
+  `entry.CreateCloseCommand()` is **Close**: a Back from the entry that its guard
+  can veto. `entry.WhenNavigatedTo(...)` follows the draft's unsaved state while
+  the document is current, and disposes that subscription when it is left.
+- **Leave guard.** `ReactiveLeaveConfirmation.WithInteraction` asks through the
+  document's `Interaction<DiscardNoteRequest, bool> ConfirmLeave` before unsaved
+  edits are lost, and reverts them only when the departure commits. The web View
+  answers it with `window.confirm` for its own **Close**. A browser handler only
+  answers the commands of its own View, so the shell's **Home** gets the
+  ViewModel's fallback handler, which keeps the edits.
+- **Child region.** The document owns a `NavigationRegion<IDocumentPane>` that
+  swaps the borrowed, window-scoped Editor and Preview with `ReplaceAsync`. It
+  closes with the document. Because the editor is borrowed, the draft and its
+  Views' routes outlive each visit.
+
+The generator presents each get-only region property as a content slot, so the
+generated `main` and `currentPane` are nullable references.
+
+## Commands, failures and activation
+
 The editor's **Discard changes** command is a typed
 `Interaction<DiscardNoteRequest, bool>`: a mounted browser confirms or
 declines it, while the regular .NET fallback declines when no browser endpoint
 is available. The browser smoke check covers both answers.
-**Save** declares `[RunicFailure(typeof(SaveFailure))]` on `SaveCommand`: a
-missing or overlong title is a `SaveFailure` that every frontend shows with
-`matchCase` ([save-failure.ts](Frontend/src/save-failure.ts)) instead of a
-rejected call. A `ReactiveCommand` also reports that exception on
-`ThrownExceptions`, so the editor attaches `ObserveBridgeExceptions(logger)` to
-both commands and disposes the subscriptions with the ViewModel.
+**Save** declares `[RunicFailure(typeof(SaveFailure))]` on `SaveCommand`, and
+**Save and close** declares it on `SaveAndCloseCommand`: a missing or overlong
+title is a `SaveFailure` that every frontend shows with `matchCase`
+([save-failure.ts](Frontend/src/save-failure.ts)) instead of a rejected call.
+A `ReactiveCommand` also reports that exception on `ThrownExceptions`, so each
+ViewModel attaches `ObserveBridgeExceptions(logger)` to its commands and
+disposes the subscriptions with the ViewModel.
 The Svelte and Angular variants also mount a second full editor for the same
 page. The main editor owns the confirmation handler; the mirrored editor keeps
 its own mount and subscription without advertising a competing handler. This
 leaves one eligible interaction destination in the browser connection.
 
-The shell routes Home or Document. Document routes Editor or Preview. It also
-presents the same Editor ViewModel in a `compact` View contract. Full and compact
-Views can be mounted together; leaving one does not deactivate the ViewModel
-while the other remains. The frontend has plain TypeScript, Svelte, and Angular
+The document presents the same Editor ViewModel in its pane and in a `compact`
+View contract. Full and compact Views can be mounted together; leaving one does
+not deactivate the ViewModel while the other remains. ReactiveUI activation
+follows mounted Views, not the navigation entry: the editor's `WhenActivated`
+counters, observable in the browser check, stop and restart as the document is
+left and opened again. The frontend has plain TypeScript, Svelte, and Angular
 variants, all using the same generated modules and the shared
 `@runic-artifex/views` runtime; Svelte and Angular connect pages with
-`useView` and `injectView()`. The `WhenActivated` counters
-are observable in the browser check.
+`useView` and `injectView()`.
 
 ```csharp
 [RunicViewContract("compact")]
@@ -70,6 +106,6 @@ shutdown. The dev server proxies `/webui.js` from the native host.
 
 This example builds the Runic packages from source. To copy it out, replace the
 `ProjectReference` and `Import` lines in `NotesReactiveViews.csproj` with
-`Runic.Application.Views.CsWebUi` and `Runic.Application.Views.ReactiveUI` package
-references, as described in the
+`Runic.Application.Views.CsWebUi`, `Runic.Application.Views.ReactiveUI` and
+`Runic.Navigation.ReactiveUI` package references, as described in the
 [First Window README](../first-window/README.md#copy-it-into-your-own-project).

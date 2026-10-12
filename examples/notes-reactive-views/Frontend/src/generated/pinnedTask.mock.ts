@@ -17,7 +17,7 @@ export interface PinnedTaskMock extends MockTypedView<PinnedTaskMockState, Pinne
 const spec: MockTypedViewSpec = {
   kind: "pinnedTask",
   route: "pinnedTask",
-  contract: "NotesReactiveViews.PinnedTaskViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C",
+  contract: "NotesReactiveViews.PinnedTaskViewModel:79D2D4A3CA4F5AC94637C31280D660A0B53E13BFB9CCDE287A25C2DD574E3918",
   fields: {
     priority: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },

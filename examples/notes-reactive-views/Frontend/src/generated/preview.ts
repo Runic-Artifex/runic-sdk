@@ -4,7 +4,6 @@ import { connectView, viewReferences } from "@runic-artifex/views/generated";
 import * as bridgeWire from "@runic-artifex/views/generated/wire";
 
 export interface PreviewState {
-  readonly urlPathSegment: string;
   readonly heading: string;
   readonly body: string;
 }
@@ -20,9 +19,8 @@ export interface PreviewPageReference {
 const pagePreviewReferences = viewReferences<PreviewPageReference>(id => ({ kind: "preview", connect: () => connectPreviewAt(`content${id}`, true) }));
 export function pagePreview(id: string): PreviewPageReference { return pagePreviewReferences(id); }
 
-type WireState = Omit<PreviewState, "urlPathSegment" | "heading" | "body"> & {
+type WireState = Omit<PreviewState, "heading" | "body"> & {
   readonly revision: number;
-  readonly urlPathSegment: unknown;
   readonly heading: unknown;
   readonly body: unknown;
 };
@@ -30,12 +28,11 @@ function hydrate(wire: WireState): PreviewState {
   const { revision: _revision, ...state } = wire;
   return {
     ...state,
-    urlPathSegment: bridgeWire.string(wire.urlPathSegment),
     heading: bridgeWire.string(wire.heading),
     body: bridgeWire.string(wire.body),
   };
 }
-const bridgeContract = "NotesReactiveViews.PreviewViewModel:73AD0FA9B3EF8693E439E2223DB026358D5CB5A22365B5541700B69F937BBF7C";
+const bridgeContract = "NotesReactiveViews.PreviewViewModel:79D2D4A3CA4F5AC94637C31280D660A0B53E13BFB9CCDE287A25C2DD574E3918";
 
 /**
  * Connects a Preview client. It waits up to `options.timeout` milliseconds (default 5000) for the

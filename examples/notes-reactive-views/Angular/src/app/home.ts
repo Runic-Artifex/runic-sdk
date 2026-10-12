@@ -5,7 +5,7 @@ import { injectView } from "../../../../../packages/web/angular/src/inject-view"
 @Component({
   selector: "notes-home",
   template: `
-    @if (home.state(); as state) { <h1>{{ state.greeting }}</h1><p>Open the document to see two Views of one Editor ViewModel.</p> }
+    @if (home.state(); as state) { <h1>{{ state.greeting }}</h1><p>Open the document to see two Views of one Editor ViewModel.</p><p data-last-result class="muted">{{ state.lastResult }}</p> }
     @else { <p>Connecting…</p> }
     @if (home.error(); as issue) { <p role="alert">{{ issue }}</p> }
   `,
