@@ -5,6 +5,7 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authority, scan, json, sha256, validateCandidate, VERSION, REPOSITORY } from './artifacts.mjs';
 import { registryMatches, needsLatest, npmLatest } from './registry.mjs';
+import { publishMissing } from './nuget-policy.mjs';
 import { runChecked } from './process.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const [command, ...rest] = process.argv.slice(2);
@@ -38,20 +39,15 @@ else if (command === 'registry') {
   assert.equal(process.env.CI_RUN_ID, candidate.ciRunId, 'Publish the artifacts of the selected CI run');
   assert.equal(process.env.GITHUB_REF, 'refs/heads/main', 'Publish from main');
   if (!dryRun) assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
-  // Partial publication may be resumed, but an existing version is never replaced:
-  // registryMatches throws when a published version has different contents.
-  const pending = [];
-  for (const p of candidate.packages) if (!await registryMatches(p)) pending.push(p);
-  console.log(`${dryRun ? 'Would publish' : 'Publishing'} ${pending.length} of ${candidate.packages.length} packages: ${pending.map(p => p.name).join(', ') || 'none (all already published with matching contents)'}`);
-  if (dryRun) process.exit(0);
-  for (const p of pending) {
+  // The NuGet trusted-publishing check (nuget-policy.mjs) runs here, also in the dry run.
+  await publishMissing(candidate.packages, {dryRun, push: p => {
     const path = resolve(directory, p.file);
     if (p.registry === 'npm') runChecked('npm', ['publish', path, '--tag', 'preview', '--access', 'public', '--provenance', '--registry', 'https://registry.npmjs.org']);
     else {
       assert(process.env.NUGET_API_KEY, 'NuGet OIDC login missing');
       runChecked('dotnet', ['nuget', 'push', path, '--source', 'https://api.nuget.org/v3/index.json', '--api-key', process.env.NUGET_API_KEY]);
     }
-  }
+  }});
 } else if (command === 'tag-latest') {
   const candidate = json(args[0]); validateCandidate(candidate);
   if (!dryRun) assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');

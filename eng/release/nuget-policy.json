@@ -1,0 +1,5 @@
+{
+  "owner": "runic-artifex",
+  "packageGlobs": ["Runic.*", "dotnet-runic*"],
+  "pushNewPackages": true
+}
