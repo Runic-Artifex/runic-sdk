@@ -596,8 +596,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // Test seam: runs between the cancellation check and the initialize claim.
     internal Action? BeforeInitializeClaim { get; set; }
 
-    // Test seam: awaited before a guard's basis check, with the transition's region.
-    internal Func<NavigationRegionCore, Task>? BeforeGuardBasisCheck { get; set; }
+    // Test seam: awaited just before a basis check (StaleOutcome), before each guard and when Preparing starts, with the
+    // transition's region and phase.
+    internal Func<NavigationRegionCore, NavigationPhase, Task>? BeforeBasisCheck { get; set; }
 
     internal NavigationResultRequest<TContent, TResult> PushForResult<TContent, TResult>(NavigationRegionCore region,
         NavigationTargetCore target, NavigationRequestOptions? options, CancellationToken cancellationToken) where TContent : class
@@ -890,7 +891,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             if (entry.Content is not INavigationDepartureGuard guard) continue;
             if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
-            if (BeforeGuardBasisCheck is { } beforeBasisCheck) await this.AfterUserCode(beforeBasisCheck(region));
+            if (BeforeBasisCheck is { } beforeBasisCheck) await this.AfterUserCode(beforeBasisCheck(region, NavigationPhase.Guarding));
             // A plan region changed since the basis: the commit would be
             // superseded, and the entry may already have retired.
             if (StaleOutcome(transition, plan) is { } stale) return (stale, null);
@@ -931,6 +932,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         transition.Phase = NavigationPhase.Preparing;
         if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
         if (IsClosing(region)) return (TransitionOutcome.Reject(NavigationRejection.Closed), null);
+        if (BeforeBasisCheck is { } beforePrepare) await this.AfterUserCode(beforePrepare(region, NavigationPhase.Preparing));
         if (StaleOutcome(transition, plan) is { } changed) return (changed, null);
         var failure = await this.AfterUserCode(PrepareAsync(transition, plan));
         if (failure is not null) return (failure, null);
