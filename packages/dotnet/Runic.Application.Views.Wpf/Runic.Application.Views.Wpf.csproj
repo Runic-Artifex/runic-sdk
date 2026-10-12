@@ -9,12 +9,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.Wpf</PackageId>
-    <!-- Published as Runic.Application.Wpf up to 0.7.0-preview.6. Package validation compares
-         with that package until this ID has a release of its own (eng/release/README.md).
-         The assembly was Runic.Application.Wpf.dll, so package validation cannot pair it
-         with this one (CP0004 in CompatibilitySuppressions.xml); PublicAPI.Shipped.txt
-         still guards the public API until then. -->
-    <PackageValidationBaselineName>Runic.Application.Wpf</PackageValidationBaselineName>
     <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
     <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <RunicReleaseLinksNamespace>Runic.Application.Views.Wpf</RunicReleaseLinksNamespace>

@@ -5,9 +5,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.ReactiveUI</PackageId>
-    <!-- Published as Runic.Application.ReactiveUI up to 0.7.0-preview.6. Package validation compares
-         with that package until this ID has a release of its own (eng/release/README.md). -->
-    <PackageValidationBaselineName>Runic.Application.ReactiveUI</PackageValidationBaselineName>
     <Description>ReactiveUI 26 (Primitives flavor) model-context scheduling, routing, view location, and activation for Runic Views.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

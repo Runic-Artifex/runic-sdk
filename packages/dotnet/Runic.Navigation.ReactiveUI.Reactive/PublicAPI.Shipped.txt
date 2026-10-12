@@ -1,14 +1,16 @@
 #nullable enable
-Runic.Navigation.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider
-Runic.Navigation.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
-Runic.Navigation.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions
-Runic.Navigation.ReactiveUI.Reactive.RunicReactiveSchedulerProvider
-Runic.Navigation.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.For(Runic.Navigation.IRunicModelContext! context) -> System.Reactive.Concurrency.IScheduler!
-Runic.Navigation.ReactiveUI.Reactive.RunicReactiveSchedulerProvider.RunicReactiveSchedulerProvider() -> void
-static Runic.Navigation.ReactiveUI.Reactive.ReactiveServiceCollectionExtensions.AddRunicReactiveModelContext(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation
-static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region, System.Reactive.Concurrency.IScheduler! scheduler) -> ReactiveUI.Reactive.ReactiveCommand<System.Reactive.Unit, Runic.Navigation.NavigationResult<TContent!>!>!
 static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenCurrentChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<TContent?>!
 static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenEntryChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<Runic.Navigation.NavigationEntry<TContent!>?>!
 static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenCanGoBackChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<bool>!
 static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.WhenIsTransitioningChanged<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region) -> System.IObservable<bool>!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigation.CreateBackCommand<TContent>(this Runic.Navigation.NavigationRegion<TContent!>! region, System.Reactive.Concurrency.IScheduler? outputScheduler = null) -> ReactiveUI.Reactive.ReactiveCommand<System.Reactive.Unit, Runic.Navigation.NavigationOutcome!>!
+Runic.Navigation.ReactiveUI.Reactive.ReactiveLeaveConfirmation
+Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveLeaveConfirmation.WithInteraction<TPrompt>(ReactiveUI.Binding.Reactive.IInteraction<TPrompt, bool>! interaction, System.Func<TPrompt>! prompt, System.Func<bool>! hasUnsavedChanges, System.Action? discard = null, bool askOnRetain = false) -> Runic.Navigation.LeaveConfirmation!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry.CreateCloseCommand(this Runic.Navigation.NavigationEntryContext! entry, System.IObservable<bool>? canExecute = null, System.Reactive.Concurrency.IScheduler? outputScheduler = null) -> ReactiveUI.Reactive.ReactiveCommand<System.Reactive.Unit, Runic.Navigation.NavigationOutcome!>!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry.CreateCompleteCommand<TResult>(this Runic.Navigation.NavigationEntryContext! entry, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.Task<TResult>!>! produce, System.IObservable<bool>? canExecute = null, System.Reactive.Concurrency.IScheduler? outputScheduler = null) -> ReactiveUI.Reactive.ReactiveCommand<System.Reactive.Unit, Runic.Navigation.NavigationOutcome!>!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry.CreateCompleteCommand<TResult>(this Runic.Navigation.NavigationEntryContext! entry, System.IObservable<bool>? canExecute = null, System.Reactive.Concurrency.IScheduler? outputScheduler = null) -> ReactiveUI.Reactive.ReactiveCommand<TResult, Runic.Navigation.NavigationOutcome!>!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry.CreateDismissCommand(this Runic.Navigation.NavigationEntryContext! entry, System.IObservable<bool>? canExecute = null, System.Reactive.Concurrency.IScheduler? outputScheduler = null) -> ReactiveUI.Reactive.ReactiveCommand<System.Reactive.Unit, Runic.Navigation.NavigationOutcome!>!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry.WhenNavigatedFrom(this Runic.Navigation.NavigationEntryContext! entry) -> System.IObservable<Runic.Navigation.NavigationExit!>!
+static Runic.Navigation.ReactiveUI.Reactive.ReactiveNavigationEntry.WhenNavigatedTo(this Runic.Navigation.NavigationEntryContext! entry, System.Action<Runic.Navigation.NavigationResume!, ReactiveUI.Primitives.Reactive.Disposables.ContainerDisposable!>! onNavigatedTo) -> System.IDisposable!
