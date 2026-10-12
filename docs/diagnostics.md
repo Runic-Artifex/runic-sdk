@@ -177,6 +177,10 @@ canonical `file(line,column): error CODE: text` form (a Vite or package-manager
 error, for example), or the install created no `node_modules` for declared
 dependencies. The command's own output is printed above the error.
 
+Errors that `tsc` and `vue-tsc` print are logged with their codes and
+locations instead, and those of a failed `svelte-check` as
+`file(line,column): error : text`, so an IDE links them to the source line.
+
 **Fix:** fix the problem the command reports, or run `dotnet runic doctor` to
 check the package manager and lock file.
 
@@ -334,7 +338,8 @@ up to three times, and fails with this diagnostic only if every port was taken.
 A Window entry page does not exist: a Vite build input or the configured
 development document names a file that is missing.
 
-**Fix:** create the page or remove it from `build.rolldownOptions.input`.
+**Fix:** create the page or remove it from `build.rolldownOptions.input`. See
+[A Window with its own page](../packages/dotnet/Runic.Application.Views/README.md#a-window-with-its-own-page).
 
 ### RAPPDEV1010
 

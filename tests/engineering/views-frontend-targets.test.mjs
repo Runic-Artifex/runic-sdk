@@ -34,10 +34,34 @@ if (!existsSync("install-skips-modules")) mkdirSync("node_modules", { recursive:
 `);
   writeFileSync(join(frontend, "build.mjs"), `
 import { appendFileSync, existsSync } from "node:fs";
+import { sep } from "node:path";
 appendFileSync("../commands.log", "build\\n");
 if (existsSync("build-fails")) { console.error("error during build:"); console.error("[vite]: Rollup failed to resolve import"); process.exit(1); }
 if (existsSync("build-reports")) { console.log("src/App.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'."); process.exit(2); }
 if (existsSync("build-warns")) console.log("src/App.ts(1,1): warning TS6133: 'unused' is declared but never read.");
+if (existsSync("svelte-check-human")) {
+  // svelte-check's default output, colored as on Windows or in CI.
+  const file = process.cwd() + sep + "\u001b[32msrc/settings.ts\u001b[39m";
+  console.log("Loading svelte-check in workspace: " + process.cwd());
+  console.log(file + ":5:7");
+  console.log("\u001b[31mError\u001b[39m: Type 'string' is not assignable to type 'number'. (ts)");
+  console.log("\u001b[36mconst count: number = '1';\u001b[39m");
+  console.log(process.cwd() + sep + "src/App.svelte:2:1");
+  console.log("\u001b[33mWarn\u001b[39m: A11y: <img> element should have an alt attribute (svelte)");
+  console.log("svelte-check found 1 error and 1 warning in 2 files");
+  process.exit(1);
+}
+if (existsSync("svelte-check-machine")) {
+  console.log("1791786106400 START " + JSON.stringify(process.cwd()));
+  console.log("1791786106401 ERROR " + JSON.stringify("src/settings.ts") + " 5:7 " + JSON.stringify("Type 'string' is not assignable to type 'number'."));
+  console.log("1791786106402 WARNING " + JSON.stringify("src/App.svelte") + " 2:1 " + JSON.stringify('A11y: "alt" missing'));
+  console.log("1791786106403 COMPLETED 4 FILES 1 ERRORS 1 WARNINGS 2 FILES_WITH_PROBLEMS");
+  process.exit(1);
+}
+if (existsSync("svelte-check-warns")) {
+  console.log(process.cwd() + sep + "src/App.svelte:2:1");
+  console.log("Warn: A11y: <img> element should have an alt attribute (svelte)");
+}
 `);
   writeFileSync(join(project, "App.proj"), `<Project>
   <PropertyGroup>
@@ -67,7 +91,7 @@ function build({ project, frontend }) {
 }
 
 // At minimal verbosity MSBuild indents the command's own output lines, not the errors it logs.
-const errors = output => [...new Set(output.split("\n").filter(line => /^\S.* error [A-Z]+\d+:/.test(line))
+const errors = output => [...new Set(output.split("\n").filter(line => /^\S.* error (?:[A-Z]+\d+)?\s*:/.test(line))
   .map(line => line.replace(/\s*\[[^\]]*\]\s*$/, "").trim()))];
 
 const age = (file, seconds) => {
@@ -166,6 +190,30 @@ test("failed frontend commands report one coded error instead of MSB3073", () =>
   result = build(app);
   assert.equal(result.status, 0, result.output);
   assert.match(result.output, /^\S.*App\.ts\(1,1\): warning TS6133: 'unused' is declared but never read\./m);
+});
+
+test("svelte-check errors are logged at their file, line and column", () => {
+  const app = fixture("svelte-check", { name: "app", private: true, devDependencies: { vite: "8.3.2" } });
+  for (const format of ["human", "machine"]) {
+    writeFileSync(join(app.frontend, `svelte-check-${format}`), "");
+    const result = build(app);
+    rmSync(join(app.frontend, `svelte-check-${format}`));
+    assert.notEqual(result.status, 0, result.output);
+    assert.doesNotMatch(result.output, /MSB3073|RUNICBRIDGE016/, format);
+    const reported = errors(result.output);
+    assert.equal(reported.length, 1, result.output);
+    assert.match(reported[0], /frontend[\\/]src[\\/]settings\.ts\(5,7\): error : Type 'string' is not assignable to type 'number'\./,
+      `The ${format} svelte-check error is logged at its location in the frontend directory.`);
+    assert.doesNotMatch(reported[0], /\u001b/);
+    assert.match(result.output, /^\S.*frontend[\\/]src[\\/]App\.svelte\(2,1\): warning : A11y: /m, result.output);
+    if (format === "machine") assert.match(result.output, /warning : A11y: "alt" missing/);
+  }
+
+  // A check that only warns builds, and its warnings stay in the command output.
+  writeFileSync(join(app.frontend, "svelte-check-warns"), "");
+  const result = build(app);
+  assert.equal(result.status, 0, result.output);
+  assert.doesNotMatch(result.output, /App\.svelte\(2,1\): warning/);
 });
 
 test("an old property name still applies and reports RUNICBRIDGE017 once", () => {
