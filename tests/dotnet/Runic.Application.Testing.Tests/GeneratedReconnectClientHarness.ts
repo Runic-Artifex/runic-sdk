@@ -1,7 +1,8 @@
 // Checks that a generated client resumes after its host transport reconnects
-// without a page reload: it re-reads live routes and re-acknowledges mounted
-// presentations with their existing token, retrying while .NET still assigns
-// the token to the former connection.
+// without a page reload: it re-reads live routes and mounts each mounted
+// presentation again in a new browser session, retrying while .NET answers
+// ignored. .NET rejects the former session once a CS-WebUI connection that kept
+// its key closed.
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -51,9 +52,14 @@ const deadline = Date.now() + 5_000;
 while ((mounts().length < 3 || !titles.includes("after")) && Date.now() < deadline)
   await new Promise<void>(resolve => setTimeout(resolve, 20));
 expect(titles.at(-1) === "after", "A reconnect did not refresh the route's state.");
-expect(mounts().length === 3 && mounts().every(call => call.args[0] === token),
-  "A reconnect did not re-acknowledge the mounted presentation with its token until it was accepted.");
+const [session, presentation] = token.split(":");
+const remounts = mounts().slice(1).map(call => String(call.args[0]));
+expect(remounts.length === 2 && remounts.every(remount => remount === remounts[0])
+  && remounts[0]!.split(":")[0] !== session && remounts[0]!.split(":")[1] === presentation,
+  `A reconnect did not mount the presentation again in a new browser session until it was accepted: ${JSON.stringify([token, ...remounts])}`);
 view.dispose();
+expect(calls.at(-1)?.route === "contentreconnectUnmount" && calls.at(-1)?.args[0] === remounts[0],
+  "The disposed View did not unmount its current token.");
 console.log("GENERATED_RECONNECT_CLIENT_OK");
 
 function expect(condition: boolean, message: string): asserts condition {

@@ -333,6 +333,8 @@ test("interaction long polls in flight when the connection is lost stop without 
   }
 });
 
+// Like .NET with a CS-WebUI reconnect that keeps the connection key: the closed
+// connection's browser session cannot mount again (W250-041).
 test("commands and interactions work again after a reconnect remounts the View", async () => {
   const bridge = fresh();
   const notes = mockNotes(bridge, { state: { title: "a", count: 0n, rows: [] } });
@@ -352,6 +354,9 @@ test("commands and interactions work again after a reconnect remounts the View",
   await client.command("notesSave");
   assert.deepEqual(await notes.interactions.confirm.request("yes"), { kind: "answered", output: true });
   assert.deepEqual(inputs, ["yes"]);
+  const [first, second] = bridge.calls.filter(call => call.name === "notesMount").map(call => String(call.args[0]).split(":"));
+  assert.ok(first && second && first[0] !== second[0] && first[1] === second[1], "the View mounted again in a new browser session");
+  assert.equal(await bridge.call("notesMount", first!.join(":")), "disconnected");
   stop();
   client.dispose();
 });

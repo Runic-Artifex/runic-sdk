@@ -38,6 +38,32 @@ internal sealed class GeneratedClientHarness
         }
     }
 
+    [Test]
+    public async Task AFailedHarnessChildReportsTheEndOfItsOutputAsync()
+    {
+        // An aborting child, like the .NET exporter after an unhandled exception,
+        // prints its cause last, after more output than the retained limit.
+        const string script = """
+            process.stdout.write("x".repeat(40_000) + "\nSTDOUT_END\n");
+            process.stderr.write("y".repeat(40_000) + "\nSTDERR_CAUSE\n", () => process.kill(process.pid, "SIGABRT"));
+            """;
+        string message;
+        try
+        {
+            await GeneratedHarnessProcess.RunAsync("bun", ["-e", script], FindWorkspaceRoot()).ConfigureAwait(false);
+            throw new InvalidOperationException("The aborted harness child was reported as passing.");
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("bun generated-client harness ", StringComparison.Ordinal))
+        {
+            message = error.Message;
+        }
+        if (!message.Contains("STDERR_CAUSE", StringComparison.Ordinal) || !message.Contains("STDOUT_END", StringComparison.Ordinal)
+            || !message.Contains("earlier characters omitted", StringComparison.Ordinal) || message.Length > 40_000)
+            throw new InvalidOperationException($"The failure did not report the bounded end of the child's output:\n{message[..Math.Min(message.Length, 2_000)]}");
+        if (!OperatingSystem.IsWindows() && !message.Contains("SIGABRT", StringComparison.Ordinal))
+            throw new InvalidOperationException($"The failure did not name the abort: {message[..Math.Min(message.Length, 200)]}");
+    }
+
     private static string FindWorkspaceRoot()
     {
         for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)

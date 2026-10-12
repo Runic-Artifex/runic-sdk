@@ -220,7 +220,10 @@ export interface MockBridge extends Required<RunicBridgeClient> {
   route(name: string, handler: (...args: unknown[]) => string | Promise<string>): void;
   /** Answers the next `times` calls of a whole route name with `failure`. */
   failNext(name: string, failure: MockFailure, times?: number): void;
-  /** Rejects further calls until `reconnect()`. */
+  /**
+   * Rejects further calls until `reconnect()`. Like .NET when a connection closes, it ends the mounted
+   * presentations, and a later `Mount` in their browser session answers `disconnected`.
+   */
   disconnect(): void;
   /** Restores calls and notifies reconnect listeners, as a host transport does after a reconnect. */
   reconnect(): void;
@@ -353,6 +356,10 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
   let now = 0;
   let sequence = 0;
   let interactionSequence = 0;
+  // Browser sessions whose connection closed. A CS-WebUI reconnect can keep the
+  // connection key, so .NET rejects their mounts from then on.
+  const closedSessions = new Set<string>();
+  const sessionOf = (token: string) => token.slice(0, Math.max(token.indexOf(":"), 0));
 
   // Operations by request id. Like a .NET window, the ids are shared by every View.
   const operations = new Map<string, OperationRecord>();
@@ -790,6 +797,7 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
     }
     if (suffix === "Snapshot") return envelope(view, undefined, true);
     if (suffix === "Mount") {
+      if (typeof args[0] === "string" && closedSessions.has(sessionOf(args[0]))) return "disconnected";
       // The mount token identifies the presentation that interaction handlers belong to.
       if (typeof args[0] === "string" && !view.presentations.has(args[0]))
         view.presentations.set(args[0], { id: args[0], handlers: [], queue: [], cancellations: [] });
@@ -928,7 +936,14 @@ export function createMockBridge(options: MockBridgeOptions = {}): MockBridge {
       if (!Number.isSafeInteger(times) || times < 1) throw new RangeError("times must be a positive integer.");
       failures.set(name, [...(failures.get(name) ?? []), ...Array.from({ length: times }, () => failure)]);
     },
-    disconnect() { connected = false; },
+    disconnect() {
+      connected = false;
+      for (const view of views.values())
+        for (const presentation of [...view.presentations.values()]) {
+          if (sessionOf(presentation.id)) closedSessions.add(sessionOf(presentation.id));
+          endPresentation(view, presentation);
+        }
+    },
     reconnect() {
       connected = true;
       for (const listener of [...reconnectListeners]) listener();

@@ -136,7 +136,9 @@ test("leases of one route share a snapshot until the last one is disposed", asyn
   third.dispose();
 });
 
-test("a reconnect re-reads live routes and re-sends mount tokens until .NET accepts them", async () => {
+// .NET rejects a browser session once its connection closed, and a CS-WebUI
+// reconnect can keep the connection key, so the page mounts in a new session.
+test("a reconnect re-reads live routes and mounts each View again in a new browser session", async () => {
   const bridge = freshBridge();
   const mounts = ["ok", "ignored", "ok"];
   const counter = bridge.view("contentabc", {
@@ -153,12 +155,15 @@ test("a reconnect re-reads live routes and re-sends mount tokens until .NET acce
   const deadline = Date.now() + 5_000;
   while (routeCalls(bridge, "contentabcMount").length < 3 && Date.now() < deadline)
     await new Promise(resolve => setTimeout(resolve, 20));
-  const remounts = routeCalls(bridge, "contentabcMount");
-  assert.equal(remounts.length, 3);
-  assert.ok(remounts.every(call => call.args[0] === token));
+  const remounts = routeCalls(bridge, "contentabcMount").slice(1).map(call => call.args[0] as string);
+  assert.equal(remounts.length, 2, "an ignored remount is retried");
+  const [session, presentation] = (token as string).split(":");
+  assert.ok(remounts.every(remount => remount === remounts[0]));
+  assert.notEqual(remounts[0]!.split(":")[0], session, "the remount starts a new browser session");
+  assert.equal(remounts[0]!.split(":")[1], presentation, "the remount keeps the presentation");
   assert.ok(routeCalls(bridge, "contentabcSnapshot").length >= 2);
   client.dispose();
-  assert.equal(routeCalls(bridge, "contentabcUnmount")[0]?.args[0], token);
+  assert.equal(routeCalls(bridge, "contentabcUnmount")[0]?.args[0], remounts[0]);
 });
 
 test("calls fail with BridgeError when the transport is unavailable", async () => {

@@ -43,19 +43,38 @@ internal static class GeneratedHarnessProcess
             await exit.ConfigureAwait(false);
             Console.WriteLine($"Generated client child exited: PID {process.Id}, code {process.ExitCode}, observed peak {peakBytes / 1024} KiB.");
         }
-        var diagnostics = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
+        var (stdout, stderr) = (await output.ConfigureAwait(false), await error.ConfigureAwait(false));
         if (failure is not null || process.ExitCode != 0)
-            throw new InvalidOperationException($"{executable} generated-client harness {failure ?? $"failed with exit code {process.ExitCode}"}.\n{diagnostics}");
-        Console.Write(diagnostics);
+            throw new InvalidOperationException($"{executable} generated-client harness {failure ?? DescribeExit(process.ExitCode)}.\n" +
+                $"stderr:\n{(stderr.Length == 0 ? "(empty)" : stderr)}\nstdout:\n{(stdout.Length == 0 ? "(empty)" : stdout)}");
+        Console.Write(stdout + stderr);
     }
 
+    // On Unix a child killed by a signal, such as the abort after an unhandled
+    // .NET exception, reports 128 plus the signal number.
+    private static string DescribeExit(int code) => code switch
+    {
+        134 when !OperatingSystem.IsWindows() => "aborted (exit code 134, SIGABRT)",
+        137 when !OperatingSystem.IsWindows() => "was killed (exit code 137, SIGKILL)",
+        139 when !OperatingSystem.IsWindows() => "crashed (exit code 139, SIGSEGV)",
+        _ => $"failed with exit code {code}",
+    };
+
+    // Keeps the last 16 KiB: an abort or a failed assertion reports its cause at the end.
     private static async Task<string> DrainBoundedAsync(StreamReader reader)
     {
+        const int Limit = 16_384;
         var retained = new System.Text.StringBuilder();
         var buffer = new char[4096];
+        long dropped = 0;
         int count;
         while ((count = await reader.ReadAsync(buffer).ConfigureAwait(false)) != 0)
-            if (retained.Length < 16_384) retained.Append(buffer, 0, Math.Min(count, 16_384 - retained.Length));
-        return retained.ToString();
+        {
+            retained.Append(buffer, 0, count);
+            if (retained.Length <= Limit) continue;
+            dropped += retained.Length - Limit;
+            retained.Remove(0, retained.Length - Limit);
+        }
+        return dropped == 0 ? retained.ToString() : $"[{dropped} earlier characters omitted]\n{retained}";
     }
 }

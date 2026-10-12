@@ -394,6 +394,10 @@ The mock follows the .NET protocol where a client can observe it:
   error with `kind: "committed-with-error"` keeps the value and returns that receipt.
 - Only snapshot replies carry `protocol`, and a declared failure replies
   `domain-failed` with `failure` and the state after the call.
+- `disconnect()` ends the mounted presentations, and a later `Mount` in their
+  browser session answers `disconnected`, as .NET does when a CS-WebUI reconnect
+  keeps the connection key. After `reconnect()` the client mounts its Views again
+  in a new browser session.
 
 It does not model the .NET delivery queue (its 64-frame and 1 MiB bounds and the
 recovery they trigger) or the producer's key checks: an edit that would leave an

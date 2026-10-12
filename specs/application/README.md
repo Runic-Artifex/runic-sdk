@@ -171,9 +171,12 @@ A generated client mounts each presentation of a content reference with a token
   retires the routes. If the reference is presented again first, as when one
   command sets `Main = b; Main = a;` and the browser never saw `b`, the retained
   tokens resume on the new bridge with fresh Views in a later model turn.
-- After `onReconnect`, a client re-reads each live route's snapshot and re-sends
-  each mounted token from the new connection, retrying while it is `ignored`
-  because .NET has not yet released the former connection.
+- After `onReconnect`, a client re-reads each live route's snapshot, starts a new
+  browser session and mounts each mounted presentation again from the new
+  connection as `{newBrowserSession}:{presentation}`, retrying while it is
+  `ignored`. A CS-WebUI reconnect can keep the connection key, so re-sending the
+  former token would be `disconnected`: .NET cannot tell it from a late call of
+  the closed connection. Interaction handlers resume under the new token.
 
 ## Operations
 

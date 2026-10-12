@@ -263,6 +263,8 @@ jobs:
           RUNIC_HMR_FRONTEND=svelte RUNIC_HMR_VIA_RUNIC_DEV=1 node examples/notes-reactive-views/hmr-smoke.mjs
           dotnet build examples/notes-reactive-views/NotesReactiveViews.csproj -c Debug
           node examples/notes-reactive-views/ide-host-smoke.mjs
+          node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
+          RUNIC_HOT_RELOAD_SCENARIO=getter node examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   packages:

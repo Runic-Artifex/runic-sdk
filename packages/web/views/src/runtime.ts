@@ -12,7 +12,12 @@ export interface SharedLease {
   current: unknown | undefined;
   readonly listeners: Set<(state: unknown) => void>;
   mounted: boolean;
-  readonly mountToken: string | undefined;
+  mountToken: string | undefined;
+  /**
+   * Moves the lease's mount token to a new browser session and returns it. Absent in leases made by older copies
+   * of this package, which re-send their former token.
+   */
+  renewMountToken?: ((session: string) => string) | undefined;
   /** Restarts the lease's interaction handlers after a reconnect remounted it. Absent in leases made by older copies of this package. */
   resumeInteractions?: (() => void) | undefined;
 }
@@ -90,13 +95,17 @@ export function sharedRuntimeFor(bridge: RunicBridgeClient): SharedRuntime {
 
 // A transport reconnect keeps this page, while .NET released the former
 // connection's View mounts and its publications were lost. Re-read each
-// live route and re-acknowledge each mounted presentation.
+// live route and mount each mounted presentation again.
 function watchReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient): void {
   runtime.reconnect ??= bridge.onReconnect?.(() => resumeAfterReconnect(runtime, bridge));
 }
 
 function resumeAfterReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient): void {
   if (runtime.bridge !== bridge) return;
+  // .NET rejects a browser session once a connection that used it closed. A
+  // CS-WebUI reconnect can keep the connection key, so only a new session tells
+  // this page's mounts from late calls of the closed connection.
+  runtime.mountSession = globalThis.crypto.randomUUID();
   for (const route of runtime.routes.values()) {
     if (!route.active || route.bridge !== bridge) continue;
     for (const entry of route.entries.values()) {
@@ -112,14 +121,15 @@ function resumeAfterReconnect(runtime: SharedRuntime, bridge: RunicBridgeClient)
           "The state after a reconnect could not be read.", { cause, route: snapshotRoute }), snapshotRoute);
       });
       for (const lease of entry.leases)
-        if (lease.mounted && lease.mountToken && !lease.disposed) void remountLease(bridge, route.route, lease, lease.mountToken);
+        if (lease.mounted && lease.mountToken && !lease.disposed)
+          void remountLease(bridge, route.route, lease, lease.renewMountToken?.(runtime.mountSession) ?? lease.mountToken);
     }
   }
 }
 
 async function remountLease(bridge: RunicBridgeClient, route: string, lease: SharedLease, token: string): Promise<void> {
-  // .NET answers "ignored" while the former connection still owns the token.
-  for (let attempt = 0; attempt < 20 && !lease.disposed; attempt++) {
+  // .NET answers "ignored" while the former connection still owns a re-sent token.
+  for (let attempt = 0; attempt < 20 && !lease.disposed && lease.mountToken === token; attempt++) {
     let reply: string;
     try { reply = await bridge.call(`${route}Mount`, token); }
     catch (cause) {
@@ -128,8 +138,8 @@ async function remountLease(bridge: RunicBridgeClient, route: string, lease: Sha
         "The View could not be mounted again after a reconnect.", { cause, route: `${route}Mount` }));
       return;
     }
-    // The same token keeps the presentation id, so its interaction handlers resume.
-    if (reply === "ok" && !lease.disposed) lease.resumeInteractions?.();
+    // The interaction handlers resume under the token's presentation id.
+    if (reply === "ok" && !lease.disposed && lease.mountToken === token) lease.resumeInteractions?.();
     if (reply !== "ignored") return;
     await new Promise<void>(resolve => setTimeout(resolve, 250));
   }

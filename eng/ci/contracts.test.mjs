@@ -176,7 +176,8 @@ test('Views replace the Bridge application gates', () => {
   for (const path of ['examples/first-window/browser-smoke.mjs', 'examples/notes-view-first/window-smoke.mjs',
     'examples/first-window-desktop/browser-smoke.mjs',
     'examples/notes-view-first/browser-smoke.mjs', 'examples/notes-reactive-views/browser-smoke.mjs',
-    'examples/notes-reactive-views/hmr-smoke.mjs', 'examples/notes-reactive-views/ide-host-smoke.mjs'])
+    'examples/notes-reactive-views/hmr-smoke.mjs', 'examples/notes-reactive-views/ide-host-smoke.mjs',
+    'examples/notes-reactive-views/dotnet-hot-reload-smoke.mjs'])
     assert.ok(steps.includes(path), path);
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run?.includes('examples/first-window/package-smoke.mjs')));
