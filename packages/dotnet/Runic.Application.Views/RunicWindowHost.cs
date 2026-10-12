@@ -224,6 +224,8 @@ internal static class RunicWindowOpening
         RunicWindowOpening<TViewModel> opening;
         try
         {
+            // IRunicWindowContext in this scope closes this Window, also from the ViewModel resolved below.
+            (scope.ServiceProvider.GetService(typeof(RunicWindowContext)) as RunicWindowContext)?.Bind(window);
             // The Bridge factories come first, so a missing Bridge constructs no ViewModel. Containers without
             // IServiceProviderIsService are checked here, before the ViewModel and native window.
             var attachWithContent = scope.ServiceProvider.GetService<

@@ -42,7 +42,9 @@ internal sealed class PortalConnection : IDisposable
                 catch (DBusErrorReplyException)
                 {
                     application.Diagnose("portal-identity-registration-failed", "The portal rejected the application's desktop identity.",
-                        $"Install a matching {id}.desktop entry visible to the desktop session. For development, omit the explicit application ID to use desktop-inferred identity.");
+                        $"Install a matching {id}.desktop entry where the desktop session finds desktop entries, such as ~/.local/share/applications. " +
+                        "For development, create the services with a null application ID, for example new PortalApplication() or " +
+                        "PortalPlatformProvider.CreateNotifications(), or AddRunicPlatformServices() without an ID, so the portal infers the identity.");
                     throw;
                 }
                 application.Diagnose("portal-identity-registered", "The portal connection registered its desktop identity.", "All services created by this application use the same desktop ID.");

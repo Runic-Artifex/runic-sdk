@@ -64,6 +64,86 @@ internal sealed class WindowServiceChecks
         Require(ReferenceEquals(kept.GetRequiredService<IDesktopSettings>(), custom), "AddRunicPlatformServices replaced the application's settings.");
     }
 
+    // Notifications come from AddRunicPlatformServices with no OperatingSystem branch in the application. Nothing here
+    // sends a notification or connects to a session bus: creating the service connects to nothing, and no request
+    // is made of a native provider.
+    [Test, NotInParallel(Order = 19)]
+    public async Task PlatformServicesRegisterOneDesktopNotificationsForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var notifications = provider.GetRequiredService<IDesktopNotifications>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(notifications, first.ServiceProvider.GetRequiredService<IDesktopNotifications>()),
+                    "A Window scope got its own desktop notifications.");
+            if (OperatingSystem.IsLinux())
+                Require(PortalApplicationId(notifications, out var id) && id is null,
+                    $"Linux without an application ID did not create portal notifications with inferred identity: {notifications.GetType().FullName}");
+            else if (OperatingSystem.IsWindows())
+                Require(await notifications.RequestPermissionAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+                    "Windows without an AppUserModelID did not report notifications unconfigured.");
+        }
+
+        await using (var identified = new ServiceCollection().AddRunicPlatformServices("org.example.Notes").BuildServiceProvider())
+        {
+            var notifications = identified.GetRequiredService<IDesktopNotifications>();
+            if (OperatingSystem.IsLinux())
+                Require(PortalApplicationId(notifications, out var id) && id == "org.example.Notes",
+                    "Linux portal notifications did not use the application ID passed to AddRunicPlatformServices.");
+            else if (OperatingSystem.IsWindows())
+                Require(notifications.GetType().FullName == "Runic.Platform.Windows.WindowsDesktopNotifications",
+                    $"Windows with an AppUserModelID did not create toasts: {notifications.GetType().FullName}");
+        }
+
+        Require(Catch(() => new ServiceCollection().AddRunicPlatformServices(" ")) is ArgumentException,
+            "An empty application ID was accepted.");
+        if (OperatingSystem.IsLinux())
+            Require(Catch(() => new ServiceCollection().AddRunicPlatformServices("Notes")) is ArgumentException,
+                "Linux accepted an application ID that is not a reverse-DNS desktop ID.");
+
+        await using var custom = DesktopNotifications.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopNotifications>(), custom),
+            "AddRunicPlatformServices replaced the application's notifications.");
+    }
+
+    [Test]
+    public async Task UnavailableDesktopNotificationsReportTheReason()
+    {
+        var notifications = DesktopNotifications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        var raised = false;
+        notifications.Activated += (_, _) => raised = true;
+        Require(await notifications.RequestPermissionAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)
+            && await notifications.ShowAsync(new DesktopNotification("saved", "Notes", "Saved.")) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)
+            && await notifications.RemoveAsync("saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured)
+            && !raised,
+            "Unavailable notifications did not report the provider unconfigured for every request.");
+        using (var cancelled = new CancellationTokenSource())
+        {
+            await cancelled.CancelAsync();
+            Require(await CatchAsync(() => notifications.ShowAsync(new("saved", "Notes", "Saved."), cancelled.Token).AsTask()) is OperationCanceledException,
+                "A cancelled request did not throw.");
+        }
+        await notifications.DisposeAsync();
+        Require(await CatchAsync(() => notifications.RemoveAsync("saved").AsTask()) is ObjectDisposedException, "A request after disposal did not fail.");
+        Require(Catch(() => DesktopNotifications.Unavailable((PlatformUnavailableReason)99)) is ArgumentOutOfRangeException,
+            "An undefined reason was accepted.");
+    }
+
+    // Reads the identity of portal notifications without making a request.
+    private static bool PortalApplicationId(IDesktopNotifications notifications, out string? id)
+    {
+        id = null;
+        if (notifications.GetType().FullName != "Runic.Platform.Linux.Portal.PortalNotifications") return false;
+        var application = notifications.GetType()
+            .GetField("_application", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)?
+            .GetValue(notifications);
+        if (application is null) return false;
+        id = application.GetType().GetProperty("ApplicationId")?.GetValue(application) as string;
+        return true;
+    }
+
     [Test]
     public async Task UnavailableDesktopSettingsReportTheReason()
     {

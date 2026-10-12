@@ -273,6 +273,47 @@ internal sealed class CloseGuardTests
         Require(await request.WaitAsync(TimeSpan.FromSeconds(5)), "A request ended by CloseAsync did not report the window closed.");
         Require(token.IsCancellationRequested && fixture.Script.AskCount == 1, "CloseAsync did not cancel the pending guard.");
     }
+
+    // A ViewModel closes its own guarded Window through IRunicWindowContext, from a command's model turn, with no
+    // holder of the Window: the guard keeps it open, then lets it close. Without close confirmation the request takes
+    // the path CS-WebUI and browser windows use.
+    [Test, NotInParallel(Order = 29)]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task AViewModelClosesItsOwnGuardedWindow(bool confirmsClose)
+    {
+        await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>(confirmsClose: confirmsClose);
+        fixture.Script.Decide = static _ => ValueTask.FromResult(false);
+        Require(!await fixture.ViewModel.QuitAsync().WaitAsync(TimeSpan.FromSeconds(5)),
+            "The ViewModel's close request reported the window closed although the guard kept it.");
+        Require(fixture.Native.IsOpen && fixture.ViewModel.Main.Current is GuardedPage && fixture.Script.AskCount == 1,
+            "A kept close request did not leave the window open with its entry after asking the guard once.");
+
+        fixture.Script.Decide = static _ => ValueTask.FromResult(true);
+        var closed = fixture.Window.WaitForCloseAsync().AsTask();
+        Require(await fixture.ViewModel.QuitAsync().WaitAsync(TimeSpan.FromSeconds(5)),
+            "The ViewModel's close request reported the window open although the guard allowed it.");
+        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(!fixture.Native.IsOpen && fixture.Script.AskCount == 2, "An allowed close request did not close the native window.");
+    }
+
+    // Outside a Window's scope the context has no Window, and says so instead of closing something else.
+    [Test]
+    public async Task AWindowContextOutsideAWindowScopeThrows()
+    {
+        await using var provider = new ServiceCollection().AddRunicWindowService()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        await using var scope = provider.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<IRunicWindowContext>();
+        Require(ReferenceEquals(context, scope.ServiceProvider.GetRequiredService<IRunicWindowContext>()),
+            "One scope resolved two window contexts.");
+        try
+        {
+            await context.RequestCloseAsync();
+            throw new InvalidOperationException("Closing through an unbound window context did not fail.");
+        }
+        catch (InvalidOperationException error) when (error.Message.Contains("outside a Window's scope", StringComparison.Ordinal)) { }
+    }
 }
 
 // One guarded Window on a headless Desktop host whose embedded window confirms closes.
@@ -318,6 +359,7 @@ sealed class GuardFixture : IAsyncDisposable
         services.AddSingleton<ILoggerFactory>(logs);
         services.AddSingleton(script);
         services.AddRunicNavigation();
+        services.AddRunicWindowService();
         services.AddScoped<GuardedShellModel>();
         services.AddScoped<Func<IBridgeTransport, WindowContentSession, GuardedShellModel, IDisposable>>(
             _ => (transport, content, model) => new GuardedShellBridge(transport, model, content));
@@ -399,10 +441,21 @@ sealed class GuardedPage(CloseGuardScript script) : INavigationDepartureGuard
 
 sealed class GuardedShellModel : INotifyPropertyChanged
 {
-    public GuardedShellModel(RunicNavigator navigator, CloseGuardScript script) =>
+    private readonly IRunicWindowContext _window;
+    private readonly IRunicModelContext _context;
+
+    public GuardedShellModel(RunicNavigator navigator, CloseGuardScript script, IRunicWindowContext window, IRunicModelContext context)
+    {
+        _window = window;
+        _context = context;
         Main = navigator.CreateRegion(this, NavigationTarget.Own(new GuardedPage(script)));
+    }
 
     public NavigationRegion<GuardedPage> Main { get; }
+
+    // What a Quit command does: the Bridge starts it in a turn of the Window's model context.
+    public async Task<bool> QuitAsync() => await await _context.InvokeAsync(() => _window.RequestCloseAsync().AsTask());
+
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 

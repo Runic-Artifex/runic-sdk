@@ -194,6 +194,37 @@ The same Window and `async host => ...` body run on CS-WebUI with
   stores the app's own theme in a settings file and follows this preference
   when the theme is "system". Register your own `IDesktopSettings` before
   calling `AddRunicPlatformServices()`, for example in tests, to replace it.
+- `AddRunicPlatformServices()` also registers `IDesktopNotifications`, one
+  singleton for the application, which `PlatformServices.CreateNotifications(applicationId)`
+  creates when it is first resolved and the service provider disposes. A
+  ViewModel takes it in its constructor, with no `OperatingSystem` branch:
+
+  ```csharp
+  services.AddRunicPlatformServices("org.example.Notes");
+
+  public sealed partial class NotesViewModel(IFileDialogs files, IDesktopNotifications notifications) : ObservableObject
+  {
+      private async Task SavedAsync(string name) =>
+          await notifications.ShowAsync(new DesktopNotification("saved", "Notes", $"Saved {name}."));
+  }
+  ```
+
+  The application ID is the one string you pass: on Windows the
+  AppUserModelID your installer registers with the shell, on Linux the
+  reverse-DNS ID of the installed desktop entry (`org.example.Notes` for
+  `org.example.Notes.desktop`); macOS uses the bundle identifier. Runic does
+  not derive it from the assembly or the GTK application ID. The overload
+  checks it for the running system and throws `ArgumentException` when it is
+  invalid there. Without an ID, `AddRunicPlatformServices()` lets the Linux
+  portal infer the identity from the desktop session, which suits
+  development, and Windows requests return `Unavailable(ProviderNotConfigured)`;
+  so does CS-WebUI's registration. Creating the service sends nothing and
+  opens no connection; the first request does, and success acknowledges
+  submission, not that the desktop showed it. On Linux, a rejected desktop ID
+  is reported as `portal-identity-registration-failed`, and portal diagnostics
+  are logged as event 2003 through the provider's `ILoggerFactory`. Register
+  your own `IDesktopNotifications` first to replace it, for example a fake in
+  tests.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativePickerOwner`, which the services above bind to. The
   provider APIs that take it directly, such as

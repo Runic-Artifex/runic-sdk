@@ -25,6 +25,9 @@ one application ID, registering each owned host connection before portal calls.
 Existing static factories remain available for desktop-inferred identity.
 Runic.Application.Views.Desktop's `services.AddRunicPlatformServices()` uses those static
 factories for GTK 4 windows; compose the services yourself to pass a `PortalApplication`.
+It also registers notifications with `PortalPlatformProvider.CreateNotifications`,
+with the application ID passed to `AddRunicPlatformServices(applicationId)`, or
+desktop-inferred identity without one.
 
 Calls are bound to a specific portal service owner. An interrupted operation
 returns unavailable; it is never replayed automatically. Notifications detect

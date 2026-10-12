@@ -39,18 +39,24 @@ public interface IRunicWindowService
 /// <summary>Registers <see cref="IRunicWindowService"/> for dependency injection.</summary>
 public static class RunicWindowServiceCollectionExtensions
 {
-    /// <summary>Registers <see cref="IRunicWindowService"/> as a singleton. An existing registration is kept.</summary>
+    /// <summary>
+    /// Registers <see cref="IRunicWindowService"/> as a singleton and <see cref="IRunicWindowContext"/> per scope.
+    /// Existing registrations are kept.
+    /// </summary>
     /// <remarks>
-    /// The service follows the host, such as <c>RunicDesktopHost</c> or <c>RunicCsWebUiHost</c>, that most recently
-    /// opened a Window with these services. A host binds it before it resolves that Window's ViewModel, so the
+    /// The window service follows the host, such as <c>RunicDesktopHost</c> or <c>RunicCsWebUiHost</c>, that most
+    /// recently opened a Window with these services. A host binds it before it resolves that Window's ViewModel, so the
     /// service is ready in every ViewModel constructor and command. A service that uses it before the application
-    /// opens its first Window gets an <see cref="InvalidOperationException"/>.
+    /// opens its first Window gets an <see cref="InvalidOperationException"/>. The window context of each Window's
+    /// scope is bound to that Window before its ViewModel is resolved.
     /// </remarks>
     public static IServiceCollection AddRunicWindowService(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton(static provider => new RunicWindowService(provider));
         services.TryAddSingleton<IRunicWindowService>(static provider => provider.GetRequiredService<RunicWindowService>());
+        services.TryAddScoped(static _ => new RunicWindowContext());
+        services.TryAddScoped<IRunicWindowContext>(static provider => provider.GetRequiredService<RunicWindowContext>());
         return services;
     }
 }

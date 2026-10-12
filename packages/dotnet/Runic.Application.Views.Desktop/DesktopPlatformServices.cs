@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Runic.Desktop;
 using Runic.Platform;
 #if RUNIC_PORTABLE_PLATFORMS
@@ -34,7 +35,7 @@ public enum DesktopPlatformProvider
 /// <summary>Selects the native platform-service provider for the running Desktop backend.</summary>
 /// <remarks>
 /// Applications that open windows with <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> call
-/// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices"/> instead and take
+/// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> instead and take
 /// <see cref="IWindowPlatformServices"/> or <see cref="IFileDialogs"/> in a ViewModel constructor. The explicit
 /// providers, such as <c>WindowsPlatformProvider</c>, remain available for custom composition.
 /// </remarks>
@@ -82,7 +83,7 @@ public static class PlatformServices
     /// Windows reads its settings, macOS reads AppKit once the Desktop event loop runs, and Linux reads
     /// xdg-desktop-portal with either toolkit, without loading GTK. Elsewhere, or where the Windows provider does not
     /// support the running version, every read reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
-    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices"/> registers one instance for
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers one instance for
     /// the application.
     /// </remarks>
     public static IDesktopSettings CreateSettings()
@@ -95,6 +96,58 @@ public static class PlatformServices
 #endif
         return settings ?? DesktopSettings.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
+
+    /// <summary>Creates the desktop's notifications from the provider for the operating system.</summary>
+    /// <param name="applicationId">
+    /// The application's identity: on Windows its AppUserModelID, which the application registers with the shell; on
+    /// Linux the reverse-DNS ID of its installed desktop entry (<c>org.example.App</c> for
+    /// <c>org.example.App.desktop</c>). macOS uses the bundle identifier and ignores it. <see langword="null"/> on Linux
+    /// lets the portal infer the identity from the desktop session, which suits development; on Windows it leaves
+    /// notifications unconfigured.
+    /// </param>
+    /// <returns>Application-scoped notifications that the caller disposes at shutdown.</returns>
+    /// <remarks>
+    /// Windows sends toasts, macOS UserNotifications once the Desktop event loop runs, and Linux xdg-desktop-portal
+    /// notifications with either toolkit, without loading GTK. Creating them sends nothing and connects to nothing; the
+    /// first request does. Without an <paramref name="applicationId"/> on Windows, elsewhere, or where the Windows
+    /// provider does not support the running version, every request reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection, string)"/>
+    /// registers one instance for the application.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is not a valid ID on this operating system.</exception>
+    public static IDesktopNotifications CreateNotifications(string? applicationId = null) => CreateNotifications(applicationId, null);
+
+    internal static IDesktopNotifications CreateNotifications(string? applicationId, ILogger? logger)
+    {
+        if (applicationId is not null) ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        IDesktopNotifications? notifications = null;
+        if (OperatingSystem.IsWindows())
+            notifications = applicationId is null ? null : Optional(() => CreateWindowsNotifications(applicationId));
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsMacOS()) notifications = CreateMacOSNotifications();
+        else if (OperatingSystem.IsLinux()) notifications = CreatePortalNotifications(applicationId, logger);
+#endif
+        return notifications ?? DesktopNotifications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopNotifications CreateWindowsNotifications(string applicationId) =>
+        WindowsPlatformProvider.CreateNotifications(applicationId);
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopNotifications CreateMacOSNotifications() => MacOSPlatformProvider.CreateNotifications();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopNotifications CreatePortalNotifications(string? applicationId, ILogger? logger) =>
+        PortalPlatformProvider.CreateNotifications(applicationId,
+            logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic));
+
+    // Validates a Linux desktop ID without creating anything that connects.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ValidatePortalApplicationId(string applicationId) => _ = new PortalApplication(applicationId);
+#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSettings CreateWindowsSettings() => WindowsPlatformProvider.CreateSettings();
@@ -207,7 +260,7 @@ public static class PlatformServices
 
 /// <summary>The platform services of one Desktop window, bound to its native owner once the window opens.</summary>
 /// <remarks>
-/// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices"/> registers one instance per window
+/// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers one instance per window
 /// scope. Before the window opens every service reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>;
 /// <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> binds it to the window as soon as the presentation opens, and closing the window
 /// stops it. After that every service reports <see cref="PlatformUnavailableReason.OwnerClosed"/>.
@@ -288,21 +341,62 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed as
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/> for the application.
+    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/> and one
+    /// <see cref="IDesktopNotifications"/> for the application, without an application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
     /// its constructor. They bind to the window's native owner when the window opens, using
     /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. Resolved in any other scope
     /// they stay unbound and report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
-    /// <see cref="IDesktopSettings"/> needs no window: it is a singleton created by
-    /// <see cref="PlatformServices.CreateSettings"/> when first resolved, and disposed with the service provider.
-    /// Existing registrations of these service types are kept.
+    /// <see cref="IDesktopSettings"/> and <see cref="IDesktopNotifications"/> need no window: they are singletons
+    /// created by <see cref="PlatformServices.CreateSettings"/> and <see cref="PlatformServices.CreateNotifications(string?)"/>
+    /// when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
+    /// use the identity the desktop portal infers and Windows notifications report
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
+    /// <see cref="AddRunicPlatformServices(IServiceCollection, string)"/> instead. Existing registrations of these
+    /// service types are kept.
     /// </remarks>
     public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        return services.AddPlatformServices(applicationId: null);
+    }
+
+    /// <summary>
+    /// Registers the same services as <see cref="AddRunicPlatformServices(IServiceCollection)"/>, with notifications
+    /// for the application identified by <paramref name="applicationId"/>.
+    /// </summary>
+    /// <param name="services">The application's services.</param>
+    /// <param name="applicationId">
+    /// The application's identity, the same string on every operating system: on Windows its AppUserModelID, which the
+    /// application's installer registers with the shell; on Linux the reverse-DNS ID of its installed desktop entry,
+    /// such as <c>org.example.App</c> for <c>org.example.App.desktop</c>. macOS uses the bundle identifier instead.
+    /// </param>
+    /// <remarks>
+    /// The ID is checked here for the running operating system. On Linux the portal registers it when the first
+    /// notification request connects, and reports <c>portal-identity-registration-failed</c> when no matching
+    /// desktop entry is installed; during development, use the overload without an ID. Portal diagnostics are logged
+    /// as event 2003 through the provider's <c>ILoggerFactory</c>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is empty or not a valid ID on this operating system.</exception>
+    public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services, string applicationId)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);
+        if (OperatingSystem.IsWindows() && (applicationId.Length > 128 || applicationId.Contains('\0')))
+            throw new ArgumentException("Supply the AppUserModelID the application registers, at most 128 characters.", nameof(applicationId));
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) PlatformServices.ValidatePortalApplicationId(applicationId);
+#endif
+        return services.AddPlatformServices(applicationId);
+    }
+
+    private static IServiceCollection AddPlatformServices(this IServiceCollection services, string? applicationId)
+    {
         services.TryAddSingleton(static _ => PlatformServices.CreateSettings());
+        services.TryAddSingleton(provider => PlatformServices.CreateNotifications(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());
         services.TryAddScoped(static provider => provider.GetRequiredService<IWindowPlatformServices>().FileDialogs);

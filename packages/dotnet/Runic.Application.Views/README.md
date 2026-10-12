@@ -378,7 +378,9 @@ To close a Window from code the way the close button does, call
 closed and `false` when `CanCloseAsync` kept it open, like `Window.Close()`
 in WPF and Avalonia, which raises the cancellable `Closing`, but awaitable.
 Without `GuardClose` it closes. Keep the Window that `OpenWindowAsync`
-returned, including from `IRunicWindowService`, to call it from a command.
+returned, including from `IRunicWindowService`, to call it from a command; a
+ViewModel closes its own Window through `IRunicWindowContext` (see
+[Closing a ViewModel's own Window](#closing-a-viewmodels-own-window)).
 With ReactiveUI, the command passes its token to the request. The Bridge starts
 the command in a turn of its own Window's model context, so the body sets state
 directly after `await`:
@@ -420,6 +422,68 @@ after a user close.
   Save drafts as the user edits, or handle the close afterwards, where that
   matters. `RequestCloseAsync` still asks there, because the application is
   the one closing.
+
+### Closing a ViewModel's own Window
+
+A Quit or Done command closes the Window its ViewModel belongs to through
+`IRunicWindowContext`, which `AddRunicWindowService()` registers per scope.
+`OpenWindowAsync` binds it to the Window it opens before it resolves the
+Window's ViewModel, so the ViewModel takes it in its constructor and needs no
+holder that the code calling `OpenWindowAsync` fills in:
+
+```csharp
+services.AddRunicWindowService();
+```
+
+With ReactiveUI:
+
+```csharp
+public sealed partial class EditorViewModel : ReactiveObject
+{
+    public EditorViewModel(IRunicWindowContext window)
+    {
+        // Closes this Window as its close button does: GuardClose and the navigation guards decide.
+        QuitCommand = ReactiveCommand.CreateFromTask(async token =>
+        {
+            if (!await window.RequestCloseAsync(token)) StatusText = "Save or discard the draft first.";
+        });
+    }
+
+    [Reactive] public partial string StatusText { get; set; } = "";
+
+    public ReactiveCommand<RxVoid, RxVoid> QuitCommand { get; }
+}
+```
+
+With CommunityToolkit.Mvvm:
+
+```csharp
+public sealed partial class EditorViewModel(IRunicWindowContext window) : ObservableObject
+{
+    [ObservableProperty] private string _statusText = "";
+
+    [RelayCommand]
+    private async Task QuitAsync()
+    {
+        if (!await window.RequestCloseAsync()) StatusText = "Save or discard the draft first.";
+    }
+}
+```
+
+- `RequestCloseAsync(cancellationToken)` is the Window's own
+  `RequestCloseAsync`: it asks `CanCloseAsync` when the Window sets
+  `GuardClose`, returns `false` with the Window open when that keeps it, and
+  `true` once it closed. It works on Runic Desktop and on CS-WebUI, where the
+  request is guarded although the browser's own close is not.
+- The context belongs to the Window's DI scope. A scoped service that the
+  ViewModel takes shares it; a navigation entry created with
+  `RunicNavigatorOptions.CreateEntryScopes` has a scope of its own, so pass the context to it from
+  the Window's ViewModel. Resolved outside a Window's scope, or called before
+  the Window has opened, for example from the ViewModel's constructor, it
+  throws `InvalidOperationException`.
+- The interface has one method, so a test registers a fake that answers
+  `true` or `false` after the application's services, or opens the Window and
+  lets its guards decide.
 
 ### Moved and renamed since 0.7.0-preview.6
 
@@ -1042,6 +1106,7 @@ output accordingly. The message properties are listed per event.
 | 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
+| 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the notifications `AddRunicPlatformServices()` registers: Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3000 | `WindowCloseCancellationCallbackFailed` | Error | A Runic Desktop close-cancellation callback throws. | `ErrorType` |
 | 3001 | `WindowCloseConfirmationFailed` | Error | A Runic Desktop close confirmation throws; the Window stays open. | `ErrorType` |
 | 3002 | `DesktopConfigurationInvalid` | Error | `DesktopHost.Validate` finds a check that fails the window request. | `Code`, `Option`, `DiagnosticMessage`, `Remediation` |
