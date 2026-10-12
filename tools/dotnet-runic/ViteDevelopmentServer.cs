@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,28 +54,35 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
     {
         ArgumentNullException.ThrowIfNull(configuration);
         using PhaseTimer phase = PhaseTimer.Start("Starting Vite development server");
-        int port = ReserveLoopbackPort();
+        ViteDevelopmentServer started = await LoopbackPort
+            .StartAsync(
+                "Vite development server",
+                port => StartOnPortAsync(configuration, port, cancellationToken))
+            .ConfigureAwait(false);
+        phase.Complete();
+        return started;
+    }
+
+    private static async Task<ViteDevelopmentServer> StartOnPortAsync(
+        DevProjectConfiguration configuration,
+        int port,
+        CancellationToken cancellationToken)
+    {
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
-        RunningProcess process;
-        try
-        {
-            IReadOnlyList<string> arguments = CreateArguments(
-                configuration,
-                port);
-            JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
-                configuration.WorkspaceRoot,
-                configuration.FrontendPackageDirectory);
-            process = RunningProcess.Start(
-                "vite",
-                packageManager.Executable,
-                configuration.WorkspaceRoot,
-                arguments,
-                CreateEnvironment(configuration));
-        }
-        catch
-        {
-            throw;
-        }
+        IReadOnlyList<string> arguments = CreateArguments(
+            configuration,
+            port);
+        JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
+            configuration.WorkspaceRoot,
+            configuration.FrontendPackageDirectory);
+        var conflict = new PortConflictWatch();
+        RunningProcess process = RunningProcess.Start(
+            "vite",
+            packageManager.Executable,
+            configuration.WorkspaceRoot,
+            arguments,
+            CreateEnvironment(configuration),
+            observeLine: conflict.Observe);
         var server = new ViteDevelopmentServer(
             process,
             origin,
@@ -105,8 +109,18 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 }
             }
             Console.WriteLine($"[dev] Vite development server ready at {origin}");
-            phase.Complete();
             return server;
+        }
+        catch (DevDevelopmentException) when (server.Completion.IsCompleted)
+        {
+            bool portInUse = await conflict.ExplainsExitAsync(process).ConfigureAwait(false);
+            await server.DisposeAsync().ConfigureAwait(false);
+            if (portInUse)
+            {
+                throw new LoopbackPort.PortInUseException();
+            }
+
+            throw;
         }
         catch
         {
@@ -231,20 +245,6 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 $"Timed out waiting for the Vite development server ({probe}: {lastResponse}). " +
                 "Run 'dotnet runic doctor' and verify the configured dev script " +
                 "and Vite entry module.");
-        }
-    }
-
-    private static int ReserveLoopbackPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try
-        {
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        finally
-        {
-            listener.Stop();
         }
     }
 

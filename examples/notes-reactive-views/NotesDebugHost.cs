@@ -9,6 +9,8 @@ namespace NotesReactiveViews;
 
 internal sealed class NotesDebugHost : IDisposable
 {
+    private const int MaxStartAttempts = 3;
+
     private readonly Process _frontend;
     private readonly NotesWindow _window;
     private readonly string _profilePath;
@@ -57,8 +59,27 @@ internal sealed class NotesDebugHost : IDisposable
         }
         // WebUI reports a localhost URL but listens on IPv4 loopback only. Windows
         // waits about two seconds on the refused ::1 attempt, so proxy to 127.0.0.1.
-        var backendUrl = new UriBuilder(window.NativeWindow.StartServer("index.html")) { Host = "127.0.0.1" }
+        var nativeUrl = window.NativeWindow.StartServer("index.html");
+        // Under heavy parallel load the native server has returned "" instead of throwing.
+        if (string.IsNullOrEmpty(nativeUrl))
+            throw new InvalidOperationException("WebUI did not start the backend server: it returned an empty URL.");
+        var backendUrl = new UriBuilder(nativeUrl) { Host = "127.0.0.1" }
             .Uri.GetLeftPart(UriPartial.Authority);
+        // A port is free when AvailablePort returns it but is bound later, by the
+        // frontend process, so another process can take it in between (#214). The
+        // frontend then exits saying the port is in use; start it again on a new one.
+        for (var attempt = 1; ; attempt++)
+        {
+            var host = await TryStartAsync(window, framework, frontend, backendUrl, profilePath, attempt == MaxStartAttempts);
+            if (host is not null) return host;
+            Console.WriteLine($"RUNIC_IDE_PORT_RETRY|attempt={attempt + 1}|of={MaxStartAttempts}");
+        }
+    }
+
+    /// <summary>Starts the frontend on a new port, or returns null if another process took the port first.</summary>
+    private static async Task<NotesDebugHost?> TryStartAsync(
+        NotesWindow window, string framework, string frontend, string backendUrl, string profilePath, bool lastAttempt)
+    {
         var frontendPort = AvailablePort();
         var frontendUrl = $"http://127.0.0.1:{frontendPort}/";
         var script = Path.Combine(AppContext.BaseDirectory, "notes-ide-frontend.mjs");
@@ -73,9 +94,18 @@ internal sealed class NotesDebugHost : IDisposable
         foreach (var argument in new[] { script, Environment.ProcessId.ToString(), frontend, framework,
                      backendUrl, frontendPort.ToString(), profilePath })
             start.ArgumentList.Add(argument);
+        var portInUse = new TaskCompletionSource();
+        void Forward(string? line, TextWriter writer)
+        {
+            if (line is null) return;
+            if (line.Contains("already in use", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("EADDRINUSE", StringComparison.Ordinal))
+                portInUse.TrySetResult();
+            writer.WriteLine(line);
+        }
         var process = new Process { StartInfo = start, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) Console.WriteLine(eventArgs.Data); };
-        process.ErrorDataReceived += (_, eventArgs) => { if (eventArgs.Data is not null) Console.Error.WriteLine(eventArgs.Data); };
+        process.OutputDataReceived += (_, eventArgs) => Forward(eventArgs.Data, Console.Out);
+        process.ErrorDataReceived += (_, eventArgs) => Forward(eventArgs.Data, Console.Error);
         if (!process.Start()) throw new InvalidOperationException("Could not start the frontend dev process.");
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
@@ -87,7 +117,18 @@ internal sealed class NotesDebugHost : IDisposable
             while (DateTimeOffset.UtcNow < deadline)
             {
                 if (process.HasExited)
+                {
+                    // Let the redirected output finish so a port conflict is not missed.
+                    using var drain = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    try { await process.WaitForExitAsync(drain.Token); }
+                    catch (OperationCanceledException) { }
+                    if (portInUse.Task.IsCompleted && !lastAttempt)
+                    {
+                        host.StopFrontend();
+                        return null;
+                    }
                     throw new InvalidOperationException($"The frontend dev process exited with code {process.ExitCode}.");
+                }
                 try
                 {
                     // The WebUI script request reserves its single client slot for the real window.
@@ -115,6 +156,13 @@ internal sealed class NotesDebugHost : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        StopFrontend();
+        if (!_windowRecorded && Directory.Exists(_profilePath))
+            Directory.Delete(_profilePath, recursive: true);
+    }
+
+    private void StopFrontend()
+    {
         RunicBridgeHotReload.RestartRequired -= OnRestartRequired;
         if (!_frontend.HasExited)
         {
@@ -123,8 +171,6 @@ internal sealed class NotesDebugHost : IDisposable
             _frontend.WaitForExit(3000);
         }
         _frontend.Dispose();
-        if (!_windowRecorded && Directory.Exists(_profilePath))
-            Directory.Delete(_profilePath, recursive: true);
     }
 
     private void OnRestartRequired(string mismatch)

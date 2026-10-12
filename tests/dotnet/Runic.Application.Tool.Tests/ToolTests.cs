@@ -226,6 +226,100 @@ internal sealed class ToolTests
         }
     }
 
+    [Test, DisplayName("dev server bind failures are recognized from the server output")]
+    public void PortInUseMessagesAreRecognized()
+    {
+        True(LoopbackPort.IsInUseMessage("Error: Port 5173 is already in use"), "Vite's message was not recognized.");
+        True(LoopbackPort.IsInUseMessage("An unhandled exception occurred: Port 4200 is already in use. Use '--port' to specify a different port."),
+            "Angular's message was not recognized.");
+        True(LoopbackPort.IsInUseMessage("Error: listen EADDRINUSE: address already in use 127.0.0.1:4200"), "Node's message was not recognized.");
+        False(LoopbackPort.IsInUseMessage("Local: http://127.0.0.1:5173/"), "A ready message was taken for a bind failure.");
+        False(LoopbackPort.IsInUseMessage("error TS2307: Cannot find module"), "A compile error was taken for a bind failure.");
+    }
+
+    [Test, DisplayName("a dev server that lost its port race is started again on another port")]
+    public void LostPortRaceStartsOnAnotherPort() => VerifyLostPortRaceAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyLostPortRaceAsync()
+    {
+        int[] reserved = [41001, 41002, 41003, 41004];
+        int next = 0;
+        int ReservePort() => reserved[next++];
+
+        // The first two picks are taken before the server binds them; the third works.
+        var tried = new List<int>();
+        string started = await LoopbackPort.StartAsync("test server", port =>
+        {
+            tried.Add(port);
+            return tried.Count < 3 ? throw new LoopbackPort.PortInUseException() : Task.FromResult($"port {port}");
+        }, ReservePort);
+        Equal("port 41003", started);
+        SequenceEqual([41001, 41002, 41003], tried);
+
+        // A port that keeps being taken fails with a diagnosis after the bounded number of attempts.
+        next = 0;
+        tried.Clear();
+        try
+        {
+            await LoopbackPort.StartAsync<string>("test server", port =>
+            {
+                tried.Add(port);
+                throw new LoopbackPort.PortInUseException();
+            }, ReservePort);
+            throw new InvalidOperationException("An endless port conflict was accepted.");
+        }
+        catch (DevDevelopmentException error)
+        {
+            Equal("RAPPDEV1007", error.Code);
+            Contains(error.Message, "test server");
+            Equal(LoopbackPort.StartAttempts, tried.Count);
+        }
+
+        // Any other failure is reported at once instead of being retried.
+        next = 0;
+        tried.Clear();
+        try
+        {
+            await LoopbackPort.StartAsync<string>("test server", port =>
+            {
+                tried.Add(port);
+                throw new DevDevelopmentException("RAPPDEV1007", "The server crashed.");
+            }, ReservePort);
+            throw new InvalidOperationException("A crash was accepted.");
+        }
+        catch (DevDevelopmentException error)
+        {
+            Equal("The server crashed.", error.Message);
+            Equal(1, tried.Count);
+        }
+    }
+
+    [Test, DisplayName("an exited dev server is blamed on its port only when it reported the conflict")]
+    public void ExitedServerIsBlamedOnItsPort() => VerifyPortConflictWatchAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyPortConflictWatchAsync()
+    {
+        using var workspace = new TestWorkspace();
+        (string executable, IReadOnlyList<string> prefix) = ProcessTreeSignal.SelfCommand();
+        var conflict = new PortConflictWatch();
+        RunningProcess lost = RunningProcess.Start(
+            "port-test", executable, workspace.Root,
+            [.. prefix, StopTestChild.Argument, StopTestChild.PortInUseRole, workspace.Root],
+            observeLine: conflict.Observe);
+        Equal(1, await lost.Completion.WaitAsync(TimeSpan.FromSeconds(30)));
+        True(await conflict.ExplainsExitAsync(lost), "The reported port conflict was not detected.");
+        await lost.DisposeAsync();
+
+        // The "run" role stays alive, so an unfinished process is never blamed on its port.
+        var quiet = new PortConflictWatch();
+        RunningProcess running = StartStopChild("run", workspace.Root);
+        WaitForStopChild(workspace.Root);
+        False(await quiet.ExplainsExitAsync(running), "A running process was blamed on its port.");
+        await running.StopAsync();
+        False(await quiet.ExplainsExitAsync(running), "A process that never reported a conflict was blamed on its port.");
+        await running.DisposeAsync();
+    }
+
     private sealed class ReadinessHandler(bool ready = false) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(

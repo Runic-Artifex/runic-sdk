@@ -314,6 +314,11 @@ did not become ready in time.
 check that the configured dev script starts with the frontend's own command,
 such as `npm run dev`.
 
+`dotnet runic dev` picks a free loopback port for the development server, and
+another process can take it before the server binds it. When the server exits
+reporting that its port is in use, the command starts it again on a new port,
+up to three times, and fails with this diagnostic only if every port was taken.
+
 ### RAPPDEV1008
 
 `--no-restore` was given but the frontend packages are not installed.

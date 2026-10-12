@@ -124,8 +124,13 @@ let argumentsToRun;
 if (framework === "angular") {
   if (await completed(launch(["sync-host-script.mjs"])) !== 0)
     throw new Error("Angular host script sync failed.");
-  const angularPort = await pickFreeLoopbackPort();
-  closeAngularProxy = await startAngularSourceMapProxy(port, angularPort);
+  // Bind the visible port before choosing the Angular one. Both are picked
+  // from the OS's free ports, and the visible port was released by the host
+  // that chose it: picking first could return the same number, and the proxy
+  // would then hold the port `ng serve` is told to bind (#214).
+  let angularPort;
+  closeAngularProxy = await startAngularSourceMapProxy(port, () => angularPort);
+  angularPort = await pickFreeLoopbackPort();
   console.log(`RUNIC_IDE_ANGULAR_MAP_PROXY|visible=${port}|angular=${angularPort}`);
   argumentsToRun = [join(frontend, "node_modules/@angular/cli/bin/ng.js"), "serve",
     "--configuration", "development", "--host", "127.0.0.1", "--port", String(angularPort),
