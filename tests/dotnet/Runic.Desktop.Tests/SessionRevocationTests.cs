@@ -153,30 +153,82 @@ public sealed class SessionRevocationTests
             disposed.TrySetResult();
             return PresentationResult.None;
         });
-        using var client = new HttpClient();
-        var bridge = await client.GetStringAsync(new Uri(surfaceUrl, "webui.js"), deadline.Token);
-        var token = ReadToken(bridge);
-        const string credentialPrefix = "const SESSION_CREDENTIAL = \"";
-        var credentialStart = bridge.IndexOf(credentialPrefix, StringComparison.Ordinal) + credentialPrefix.Length;
-        var credential = bridge[credentialStart..bridge.IndexOf('"', credentialStart)];
-        using var socket = new ClientWebSocket();
-        socket.Options.SetRequestHeader("Origin", $"{surfaceUrl.Scheme}://{surfaceUrl.Authority}");
-        socket.Options.AddSubProtocol($"runic-desktop.{credential}");
-        await socket.ConnectAsync(
-            new UriBuilder(surfaceUrl) { Scheme = "ws", Path = $"{surfaceUrl.AbsolutePath}_webui_ws_connect" }.Uri,
-            deadline.Token);
-        await SendAsync(socket, Packet(token, 0, 0xF5, [0]), deadline.Token);
-        _ = await ReceiveAsync(socket, deadline.Token);
+        var connection = await ConnectToSurfaceAsync(surfaceUrl, deadline.Token);
+        using var socket = connection.Socket;
+        var token = connection.Token;
 
         await SendCallAsync(socket, token, 1, "dispose", deadline.Token);
 
         await disposed.Task.WaitAsync(deadline.Token);
         // The detached teardown completes once the callback has released its session.
+        using var client = new HttpClient();
         while (true)
         {
             using var response = await client.GetAsync(surfaceUrl, deadline.Token);
             if (response.StatusCode == System.Net.HttpStatusCode.NotFound) break;
             await Task.Delay(20, deadline.Token);
+        }
+    }
+
+    // A connection subscription is not advertised to the page. An advertised all-events
+    // binding makes webui.js cancel every navigation, including location.reload(), and
+    // report it as an event instead, so the page could not reload (#196).
+    [Test]
+    public async Task ConnectionSubscriptionsReachEverySubscriberWithoutAnAllEventsBinding()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync();
+        var first = new System.Collections.Concurrent.ConcurrentQueue<PresentationEventKind>();
+        var second = new System.Collections.Concurrent.ConcurrentQueue<PresentationEventKind>();
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var firstSubscription = surface.SubscribeConnectionEvents(invocation => first.Enqueue(invocation.Kind));
+        using var secondSubscription = surface.SubscribeConnectionEvents(invocation =>
+        {
+            second.Enqueue(invocation.Kind);
+            if (invocation.Kind == PresentationEventKind.Disconnected) disconnected.TrySetResult();
+        });
+
+        var (socket, _, reply) = await ConnectToSurfaceAsync(surface.Url, deadline.Token);
+        using (socket)
+        {
+            Assert.Equal(1, reply[8]);
+            // The advertised names, NUL-terminated: an all-events binding would add an empty name.
+            Assert.Equal("__webui_core_api__,", Encoding.UTF8.GetString(reply, 9, reply.Length - 9).TrimEnd('\0'));
+            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, deadline.Token);
+        }
+
+        await disconnected.Task.WaitAsync(deadline.Token);
+        PresentationEventKind[] expected = [PresentationEventKind.Connected, PresentationEventKind.Disconnected];
+        Assert.Equal(expected, first.ToArray());
+        Assert.Equal(expected, second.ToArray());
+    }
+
+    private static async Task<(ClientWebSocket Socket, uint Token, byte[] Reply)> ConnectToSurfaceAsync(
+        Uri surfaceUrl,
+        CancellationToken cancellationToken)
+    {
+        using var client = new HttpClient();
+        var bridge = await client.GetStringAsync(new Uri(surfaceUrl, "webui.js"), cancellationToken);
+        var token = ReadToken(bridge);
+        const string credentialPrefix = "const SESSION_CREDENTIAL = \"";
+        var credentialStart = bridge.IndexOf(credentialPrefix, StringComparison.Ordinal) + credentialPrefix.Length;
+        var credential = bridge[credentialStart..bridge.IndexOf('"', credentialStart)];
+        var socket = new ClientWebSocket();
+        try
+        {
+            socket.Options.SetRequestHeader("Origin", $"{surfaceUrl.Scheme}://{surfaceUrl.Authority}");
+            socket.Options.AddSubProtocol($"runic-desktop.{credential}");
+            await socket.ConnectAsync(
+                new UriBuilder(surfaceUrl) { Scheme = "ws", Path = $"{surfaceUrl.AbsolutePath}_webui_ws_connect" }.Uri,
+                cancellationToken);
+            await SendAsync(socket, Packet(token, 0, 0xF5, [0]), cancellationToken);
+            return (socket, token, await ReceiveAsync(socket, cancellationToken));
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
         }
     }
 

@@ -10,14 +10,8 @@ using TUnit.Core;
 // The native WPF checks, after the portable cases (WpfDispatcherExecutor runs them on the dispatcher).
 internal sealed class NativeChecks
 {
-    // This case never completed in CI before the TUnit migration: the former Main used the default
-    // ShutdownMode.OnLastWindowClose, so the window.Close() in this case's finally block ended Application.Run and
-    // the process exited with code 0 before the failure reached Main's catch (no run printed the success line
-    // below, and RunicViewHost's HostAsync never ran). Run under TUnit, it fails: after location.reload() the
-    // surface raises neither Disconnected nor a second Connected event within 20 seconds. Skipped until that is
-    // resolved; see PR #194.
+    // location.reload() reconnects the page within the same presentation (#196).
     [Test, NotInParallel("WpfSuite", Order = 11)]
-    [Skip("Known failure: no reconnect after location.reload() in the WPF child WebView (PR #194).")]
     public async Task ChildWebViewAuthenticatesReloadsAndUnloads()
     {
         using var child = new RunicWebView();
@@ -39,15 +33,17 @@ internal sealed class NativeChecks
             });
             await using var view = await services.CreateWpfViewAsync(host, Program.HtmlOptions(), new object());
             var connectionIds = new HashSet<ulong>();
+            List<string> events = [];
             // OpenAsync completes when the token check succeeds; the session raises its Connected event after that,
             // from a thread-pool thread, so the first event can arrive after OpenAsync has returned.
             var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             using var observe = view.Surface.SubscribeConnectionEvents(invocation =>
             {
-                if (invocation.Kind != PresentationEventKind.Connected) return;
                 lock (connectionIds)
                 {
+                    events.Add($"{invocation.Kind} {invocation.Session.Id}");
+                    if (invocation.Kind != PresentationEventKind.Connected) return;
                     connectionIds.Add(invocation.Session.Id);
                     connected.TrySetResult();
                     if (connectionIds.Count > 1) reconnected.TrySetResult();
@@ -56,9 +52,12 @@ internal sealed class NativeChecks
             await view.OpenAsync();
             await Task.WhenAny(connected.Task, Task.Delay(TimeSpan.FromSeconds(20)));
             Program.Check(window.IsVisible && child.Handle != 0, "The WebView did not remain inside the WPF shell.");
-            lock (connectionIds) Program.Check(connectionIds.Count == 1, "The first document did not authenticate.");
+            lock (connectionIds)
+                Program.Check(connectionIds.Count == 1, $"The first document did not authenticate. Events: {string.Join(", ", events)}.");
             await view.Surface.RunJavaScriptAsync("location.reload();");
-            await reconnected.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            await Task.WhenAny(reconnected.Task, Task.Delay(TimeSpan.FromSeconds(20)));
+            lock (connectionIds)
+                Program.Check(reconnected.Task.IsCompleted, $"The reloaded document did not reconnect. Events: {string.Join(", ", events)}.");
             Program.Check(!attachment.Disposed, "Browser reload retired the child session.");
             child.Width = 350;
             child.Height = 220;
