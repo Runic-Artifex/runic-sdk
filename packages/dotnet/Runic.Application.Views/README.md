@@ -247,6 +247,27 @@ or a service, register `IRunicWindowService` and take it in a constructor:
 services.AddRunicWindowService();
 ```
 
+With ReactiveUI, as in the
+[multi-window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/multi-window):
+
+```csharp
+public sealed class ProjectViewModel : ReactiveObject
+{
+    public ProjectViewModel(IRunicWindowService windows)
+    {
+        // Opens another Window on the same project, in its own scope. The service releases it when it closes.
+        NewWindowCommand = ReactiveCommand.CreateFromTask(async token =>
+        {
+            await windows.OpenWindowAsync<ProjectWindow>(cancellationToken: token);
+        });
+    }
+
+    public ReactiveCommand<RxVoid, RxVoid> NewWindowCommand { get; }
+}
+```
+
+With CommunityToolkit.Mvvm:
+
 ```csharp
 public sealed partial class ProjectViewModel(IRunicWindowService windows) : ObservableObject
 {
@@ -290,6 +311,8 @@ public sealed partial class EditorWindow : RunicWindow<EditorViewModel>
 }
 ```
 
+The declaration is the same for ReactiveUI and CommunityToolkit.Mvvm
+ViewModels; only the guards and the commands below differ.
 The default `CanCloseAsync` clears each `NavigationRegion<T>` the Window's
 ViewModel exposes, in declaration order, so the departure guards of their
 entries decide, as WPF's `NavigationHost.GuardWindowClose` does (see
@@ -312,7 +335,19 @@ To close a Window from code the way the close button does, call
 closed and `false` when `CanCloseAsync` kept it open, like `Window.Close()`
 in WPF and Avalonia, which raises the cancellable `Closing`, but awaitable.
 Without `GuardClose` it closes. Keep the Window that `OpenWindowAsync`
-returned, including from `IRunicWindowService`, to call it from a command:
+returned, including from `IRunicWindowService`, to call it from a command.
+With ReactiveUI, the command passes its token to the request. The Bridge starts
+the command in a turn of its own Window's model context, so the body sets state
+directly after `await`:
+
+```csharp
+CloseEditorCommand = ReactiveCommand.CreateFromTask(async token =>
+{
+    if (!await _editor.RequestCloseAsync(token)) StatusText = "The editor has unsaved changes.";
+});
+```
+
+With CommunityToolkit.Mvvm:
 
 ```csharp
 [RelayCommand]

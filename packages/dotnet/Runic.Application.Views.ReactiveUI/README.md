@@ -391,7 +391,9 @@ The browser is asked when the page's own window starts the departure:
 - A .NET handler keeps ReactiveUI's order: the latest registered is asked first.
   A fallback registered in the ViewModel's constructor answers only when no
   browser handler is eligible, for example when the View isn't mounted or the
-  departure came from .NET code.
+  departure came from .NET code. The web View registers its handler when it
+  mounts, so a departure during the page's first render, such as a close just
+  as the page opened, is answered by that fallback too.
 - When the departure is superseded (another navigation of the region wins),
   cancelled or its navigator closes, the request ends and `signal` aborts. So
   does the close decision when the window closes without asking. Close the

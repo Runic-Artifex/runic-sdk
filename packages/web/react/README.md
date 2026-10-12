@@ -161,6 +161,45 @@ Unmounting stops rendering feedback but never cancels accepted work. The optiona
 `cancel(operation)` and `waitForCompletion(operation, status)` callbacks are the
 controller's options.
 
+## Interactions
+
+A ReactiveUI `Interaction<TInput, TOutput>` on the ViewModel, such as the
+question of a `ReactiveLeaveConfirmation.WithInteraction` leave guard, is
+`client.interactions.<name>` on the generated client. Register the page's
+answer in an effect: `handle((prompt, { signal }) => …)` returns the function
+that removes it, so React removes the handler when the page unmounts or its
+client changes:
+
+```tsx
+export function EditPage({ page }: { page: EditPageReference }) {
+  const { state, client } = useView(page);
+  useEffect(() => client?.interactions.confirmDiscard.handle(
+    async (prompt, { signal }) => confirmDialog(`Discard the changes to ${prompt.itemName}?`, signal),
+  ), [client]);
+  const close = useCommand(() => client?.close());
+  return <button disabled={!client || close.pending} onClick={() => void close.run()}>Close {state?.name}</button>;
+}
+```
+
+`prompt` and the answer are typed from the ViewModel's interaction. The
+handler may return the answer or a promise of it; `confirmDialog` stands for
+the application's own dialog.
+
+- The page is asked for a departure that its own window starts: its Close, the
+  shell's Back in the same window, or a guarded window close.
+- `signal` aborts when .NET no longer needs the answer, for example when the
+  departure is superseded or the window closes. Close the dialog then; a late
+  answer is ignored.
+- The handler exists only after the effect has run. A departure before that,
+  such as a close during the page's first render, is answered by the
+  ViewModel's .NET fallback handler, or fails closed without one.
+
+The [ReactiveUI leave confirmation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)
+has the .NET side and which View answers which departure. In a frontend test,
+the generated mock's `interactions.<name>.request(input)` resolves with the
+registered handler's answer; see the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
+
 ## `useCollectionViewport(options)`
 
 Follows a fixed-row-height scroll container and returns `{ viewport, ref }`.
