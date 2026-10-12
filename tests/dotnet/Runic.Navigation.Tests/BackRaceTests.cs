@@ -306,13 +306,15 @@ internal sealed partial class NavigationTests
     // A parent Back supersedes a pending child Back, because it closes the child region. A second child Back
     // must not join the superseded one (it would end Superseded with it): it is admitted on its own and is
     // rejected as Closed when the parent's Back closes the region. The parent's commit can land at any step of the
-    // second child Back; with closeBeforeBasisCheck a test seam holds it at the step where it once read the
-    // region's version bump as a supersession.
+    // second child Back. With closeBeforeBasisCheck a test seam holds it at one of the two steps where it once read
+    // the region's version bump as a supersession: the basis check before its guard, or the one when it starts
+    // Preparing, after its guard ran and its closing check passed. Without it the test runs the natural race.
     [Test]
-    [Arguments(false)]
-    [Arguments(true)]
+    [Arguments(null)]
+    [Arguments(NavigationPhase.Guarding)]
+    [Arguments(NavigationPhase.Preparing)]
     [DisplayName("ChildBackAfterSupersessionDoesNotJoinAsync(closeBeforeBasisCheck: $closeBeforeBasisCheck)")]
-    public async Task ChildBackAfterSupersessionDoesNotJoinAsync(bool closeBeforeBasisCheck)
+    public async Task ChildBackAfterSupersessionDoesNotJoinAsync(NavigationPhase? closeBeforeBasisCheck)
     {
         await using var fixture = new Fixture();
         var main = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
@@ -329,7 +331,7 @@ internal sealed partial class NavigationTests
         var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // The parent's guard holds its commit until the second child Back stalls before its basis check.
-        if (closeBeforeBasisCheck)
+        if (closeBeforeBasisCheck is not null)
             document.Guard = async (_, _) =>
             {
                 await parentGuard.Task;
@@ -341,17 +343,17 @@ internal sealed partial class NavigationTests
             var childBack = document.Child.BackAsync().AsTask();
             await Until(() => Volatile.Read(ref resumed) == 1, "The child Back did not start resuming.");
             // Installed once the first child Back is past its guards, so only the second one stalls.
-            if (closeBeforeBasisCheck)
-                fixture.Navigator.BeforeGuardBasisCheck = region =>
+            if (closeBeforeBasisCheck is { } phase)
+                fixture.Navigator.BeforeBasisCheck = (region, at) =>
                 {
-                    if (!ReferenceEquals(region, document.Child.Core) || !reached.TrySetResult()) return Task.CompletedTask;
+                    if (!ReferenceEquals(region, document.Child.Core) || at != phase || !reached.TrySetResult()) return Task.CompletedTask;
                     return proceed.Task;
                 };
             // The parent's admission supersedes the first child Back before it returns, so the second is admitted
             // after that and can't join it.
             var parentBack = main.BackAsync().AsTask();
             var secondChildBack = document.Child.BackAsync().AsTask();
-            if (closeBeforeBasisCheck)
+            if (closeBeforeBasisCheck is not null)
             {
                 await Wait(reached.Task);
                 parentGuard.SetResult();

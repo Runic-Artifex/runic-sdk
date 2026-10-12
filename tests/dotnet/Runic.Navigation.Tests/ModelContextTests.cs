@@ -30,7 +30,9 @@ internal sealed class ModelContextTests
             Record("run");
             await NestedAsync();
             Record("nested");
-            await Task.Delay(1).ConfigureAwait(false);
+            // ConfigureAwait(false) that also yields when the delay has already elapsed: an await of a completed task
+            // continues synchronously, still in the turn, which a 1 ms delay allowed under load (#187).
+            await Task.Delay(1).ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
             Record("left");
         }
 
@@ -62,7 +64,9 @@ internal sealed class ModelContextTests
         }
 
         var bodies = await context.InvokeAsync(() => new[] { WriteAsync("a"), WriteAsync("b"), WriteAsync("c") });
-        gate.SetResult();
+        // Released in a turn, so all three continuations are queued before the first runs. Released from another
+        // thread, they are posted one at a time, and a's turn could run and queue a:3 before b and c were ready (#187).
+        await context.InvokeAsync(gate.SetResult);
         await Task.WhenAll(bodies).WaitAsync(TimeSpan.FromSeconds(5));
         Require(writes.SequenceEqual(["a:1", "a:2", "b:1", "b:2", "c:1", "c:2", "a:3", "b:3", "c:3"]),
             $"Writes after await were not applied in ready order: {string.Join(", ", writes)}");
