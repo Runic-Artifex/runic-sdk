@@ -1,0 +1,156 @@
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Windows;
+using System.Windows.Threading;
+
+namespace Runic.Navigation.Wpf;
+
+// The window side of NavigationHost.GuardWindowClose (W250-047). The guard belongs to the window and lists regions, not
+// hosts: a host on an unselected TabControl tab is unloaded and its view discarded, while its region and the draft in it
+// live on. A region stays listed in the window where a guarding host last loaded with it, until the region is collected,
+// the window closes, a guarding host loads with it in another window, or a host that presents it turns the guard off.
+// The window holds its regions weakly and a region holds nothing of the window, so neither keeps the other alive.
+[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
+internal sealed class WindowCloseGuard
+{
+    private static readonly DependencyProperty GuardProperty = DependencyProperty.RegisterAttached("WindowCloseGuard",
+        typeof(WindowCloseGuard), typeof(WindowCloseGuard), new PropertyMetadata(null));
+
+    // The guard that lists each region: one window per region.
+    private static readonly ConditionalWeakTable<INavigationRegion, WeakReference<WindowCloseGuard>> Owners = new();
+
+    private readonly Window _window;
+    // In the order their hosts first loaded.
+    private readonly List<WeakReference<INavigationRegion>> _regions = [];
+    private bool _checking;
+    private bool _approved;
+    private bool _closed;
+
+    private WindowCloseGuard(Window window)
+    {
+        _window = window;
+        window.Closing += OnClosing;
+        window.Closed += OnClosed;
+    }
+
+    // Lists the region in the window, and takes it from the window that listed it before.
+    public static void Add(Window window, INavigationRegion region)
+    {
+        var guard = (WindowCloseGuard?)window.GetValue(GuardProperty);
+        if (guard is null)
+        {
+            guard = new WindowCloseGuard(window);
+            window.SetValue(GuardProperty, guard);
+        }
+        if (Owners.TryGetValue(region, out var owner) && owner.TryGetTarget(out var previous))
+        {
+            if (ReferenceEquals(previous, guard)) return;
+            previous.Forget(region);
+        }
+        Owners.AddOrUpdate(region, new WeakReference<WindowCloseGuard>(guard));
+        _ = guard.Regions(); // Drops the collected regions first, so the list doesn't grow with them.
+        guard._regions.Add(new WeakReference<INavigationRegion>(region));
+    }
+
+    // Removes the region from the window that lists it.
+    public static void Remove(INavigationRegion region)
+    {
+        if (!Owners.TryGetValue(region, out var owner)) return;
+        Owners.Remove(region);
+        if (owner.TryGetTarget(out var guard)) guard.Forget(region);
+    }
+
+    // Whether the window lists the region; for tests.
+    internal static bool Lists(Window window, INavigationRegion region) =>
+        window.GetValue(GuardProperty) is WindowCloseGuard guard && guard.Regions().Contains(region);
+
+    // The number of live regions the window lists; for tests.
+    internal static int CountOf(Window window) => window.GetValue(GuardProperty) is WindowCloseGuard guard ? guard.Regions().Count : 0;
+
+    // Whether any window lists the region; for tests.
+    internal static bool IsListed(INavigationRegion region) =>
+        Owners.TryGetValue(region, out var owner) && owner.TryGetTarget(out var guard) && !guard._closed;
+
+    // The live regions, in order; drops the collected ones.
+    private List<INavigationRegion> Regions()
+    {
+        List<INavigationRegion> live = new(_regions.Count);
+        _regions.RemoveAll(reference =>
+        {
+            if (!reference.TryGetTarget(out var region)) return true;
+            live.Add(region);
+            return false;
+        });
+        return live;
+    }
+
+    private void Forget(INavigationRegion region)
+    {
+        // A navigator, and so its regions, belongs to one UI thread; this is for a window of another thread all the same.
+        if (!_window.Dispatcher.CheckAccess())
+        {
+            _window.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () => Forget(region));
+            return;
+        }
+        _regions.RemoveAll(reference => !reference.TryGetTarget(out var listed) || ReferenceEquals(listed, region));
+    }
+
+    private static bool HasEntries(INavigationRegion region) => region.CurrentEntry is not null || region.CanGoBack;
+
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (e.Cancel || _approved || _closed || !Regions().Exists(HasEntries)) return;
+        e.Cancel = true;
+        if (_checking) return;
+        _checking = true;
+        // Posted: WPF ignores the cancel during Application.Shutdown, and the window is gone when this runs.
+        _window.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _ = ClearThenCloseAsync());
+    }
+
+    private async Task ClearThenCloseAsync()
+    {
+        INavigationRegion? clearing = null;
+        try
+        {
+            if (PresentationSource.FromVisual(_window) is null) return;
+            // One region after another. A region that is empty by its turn, such as a child region that an earlier
+            // clear closed, is skipped; a clear that doesn't commit keeps the window open and asks no further regions.
+            foreach (var region in Regions())
+            {
+                if (!HasEntries(region)) continue;
+                clearing = region;
+                // The plan of any other clear: every entry's guard and the guards of the child regions the entries own.
+                var result = await region.ClearAsync();
+                if (result is not NavigationResult<object>.Committed) return;
+            }
+            await _window.Dispatcher.InvokeAsync(() =>
+            {
+                if (PresentationSource.FromVisual(_window) is null) return;
+                _approved = true;
+                try { _window.Close(); }
+                finally { _approved = false; }
+            });
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception error)
+        {
+            WpfNavigationLog.WindowCloseGuardFailed(WpfNavigationLog.For(clearing?.Navigator.Services), error, WpfNavigationLog.ErrorType(error));
+        }
+        finally { _checking = false; }
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        _closed = true;
+        _window.Closing -= OnClosing;
+        _window.Closed -= OnClosed;
+        _window.ClearValue(GuardProperty);
+        foreach (var region in Regions())
+        {
+            if (Owners.TryGetValue(region, out var owner) && owner.TryGetTarget(out var guard) && ReferenceEquals(guard, this))
+                Owners.Remove(region);
+        }
+        _regions.Clear();
+    }
+}

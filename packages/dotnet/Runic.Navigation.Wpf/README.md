@@ -245,7 +245,8 @@ When none presents the content, the host logs event 1082 once per type.
   View for the retained ViewModel, so state that must survive belongs in the
   ViewModel.
 - An unloaded host unsubscribes and never touches entries. It reads the
-  region again when it's loaded.
+  region again when it's loaded. With `GuardWindowClose`, the window still
+  clears the region when it closes (see below).
 - `NavigationCommands.BrowseBack` (Alt+Left, the mouse back button) goes back
   while `CanGoBack` and not `IsTransitioning`. Set `HandlesBrowseBack="False"`
   to handle it yourself.
@@ -262,19 +263,56 @@ window's host to ask the same guards as navigation before the window closes:
 ```
 
 While the region has entries, closing the window (close button, Alt+F4,
-`Close()`) is cancelled, and the host clears the region. Clear asks the
+`Close()`) is cancelled, and the region is cleared. Clear asks the
 guard of every entry, top down, and of the child regions they own, as any
 other navigation would. When the clear commits, the window closes; when a
 guard rejects, the window stays open with its entries. A guard can confirm with
-`LeaveConfirmation.InDialog` through a dialog host in the same window. Set it
-on each host whose region needs a say; their clears run one after another.
+`LeaveConfirmation.InDialog` through a dialog host in the same window.
+
+Set it on each host whose region needs a say. The window clears their regions
+one after another, in the order the hosts first loaded, and stops at the first
+clear that doesn't commit.
 
 WPF ignores a cancelled close during `Application.Shutdown()` and doesn't
 raise `Closing` when the Windows session ends, so neither asks the guards.
 Close the main window instead of calling `Shutdown()`, and handle
 `Application.SessionEnding` yourself if drafts must survive a log-off.
 A failed guard also keeps the window open. If the clear request itself throws,
-the host logs event 1088.
+event 1088 is logged.
+
+#### Tabs and other hosts that unload
+
+The guard belongs to the window, not to the loaded host. When a host loads
+with `GuardWindowClose`, its window starts guarding the region, and keeps
+guarding it while the host is unloaded or discarded. So a page region inside a
+tab is asked when the window closes even while another tab is selected:
+
+```xml
+<!-- MainWindow.xaml -->
+<rn:NavigationDialogHost Region="{Binding Dialog}" />
+<TabControl ItemsSource="{Binding Tabs}"
+            rn:NavigationSelector.Region="{Binding Tab}" DisplayMemberPath="Title" />
+
+<!-- CustomersTabView.xaml, the View of the Customers tab -->
+<rn:NavigationHost Region="{Binding Pages}" GuardWindowClose="True" />
+```
+
+1. The user edits a customer on the Customers tab, then selects Reports.
+   Nothing is asked (see "Selecting tabs and other existing models"): the edit
+   page stays the region's current entry, and its View is discarded.
+2. The user closes the window. The window clears the Customers page region,
+   so the edit page's guard asks; "keep" leaves the window open, "discard"
+   closes it.
+
+A window guards a region from the first time a guarding host loads with it,
+so a tab that was never selected isn't asked. It stops when the region
+closes, when the window closes, when a guarding host loads with the region in
+another window (the region follows the host), or when a host of the region
+sets `GuardWindowClose` to `false`. A host whose `Region` changes keeps the
+previous region guarded, because that region and its drafts live on. The
+window holds no host, and holds its regions weakly, so neither a discarded
+host nor a closed child region is kept alive, and a region keeps no closed
+window alive.
 
 ## Dialogs
 
@@ -397,6 +435,18 @@ preserved. Do not also navigate from a `SelectedItem` property setter: the
 adapter owns that coordination. On unload it detaches handlers and cancels its
 pending request; on reload it reads the committed region again. The adapter
 never owns the items or closes the region.
+
+Selecting another tab is not a departure from the regions inside the tab.
+The selection asks the guard of the tab's own model, if it has one, and no
+other guard. A page region shown inside the tab keeps its entries, and
+their drafts, while another tab is selected: its regions are owned by a
+borrowed model or the application, so they close only with the navigator.
+Prism (a tab activates a view and asks no `IConfirmNavigationRequest`) and
+Avalonia's `TabControl` and `TabbedPage` don't ask either. To ask before a tab
+switch anyway, as with MAUI Shell's cancellable `Navigating` on a tab change,
+let the tab's model implement `INavigationDepartureGuard` and ask its pages
+from there. To ask the pages when the window closes, set `GuardWindowClose`
+on their host (see "Tabs and other hosts that unload").
 
 ## Plain content without navigation
 
