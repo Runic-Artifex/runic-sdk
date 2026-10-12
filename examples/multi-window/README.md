@@ -21,7 +21,7 @@ from other Windows, or from the desktop, in a turn of its own context.
 its scope, once the user closes it. `AddRunicReactiveModelContext()` makes each
 `ReactiveCommand` deliver its notifications on the model context of the Window
 that runs it, so the commands are created without a scheduler argument, and
-`ObserveBridgeExceptions(logger)` logs failures a command does not declare.
+the generated Bridge logs failures a command does not declare.
 The [template](https://docs.runic-artifex.eu/getting-started/) starts with the
 same ReactiveUI setup; CommunityToolkit.Mvvm ViewModels work the same way, as in
 the [CommunityToolkit Notes](../notes-view-first/README.md) example.

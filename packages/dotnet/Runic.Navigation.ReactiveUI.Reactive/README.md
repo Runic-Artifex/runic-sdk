@@ -23,7 +23,7 @@ extension methods with the same names in different namespaces, so referencing
 both without Runic.Application.Views is not guarded.
 
 ```csharp
-BackCommand = Main.CreateBackCommand().DisposeWith(disposables);
+BackCommand = Main.CreateBackCommand(); // on this ViewModel's own region: no disposal
 ```
 
 `WhenCurrentChanged()`, `WhenEntryChanged()`, `WhenCanGoBackChanged()`,

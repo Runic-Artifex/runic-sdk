@@ -45,10 +45,15 @@ it. Back is a command, and a page opens from an ordinary `ReactiveCommand`:
 
 ```csharp
 Main = navigator.CreateRegion<IMainPage>(this, NavigationTarget.Borrow<IMainPage>(home));
-OpenHomeCommand = Main.CreateBackCommand().DisposeWith(_disposables); // enabled while Main has history
+OpenHomeCommand = Main.CreateBackCommand(); // enabled while Main has history
 OpenDocumentCommand = ReactiveCommand.CreateFromTask(OpenDocumentAsync,
-    Main.WhenCurrentChanged().Select(page => page is HomeViewModel)).DisposeWith(_disposables);
+    Main.WhenCurrentChanged().Select(page => page is HomeViewModel));
 ```
+
+Neither command needs disposing: they observe the shell's own region (see
+[Command lifetime](#command-lifetime)). In a Runic Views app, neither needs a
+`ThrownExceptions` subscription either: the generated Bridge logs an unexpected
+exception.
 
 The navigator constructs a pushed page from the container. The page takes its
 `NavigationEntryContext` as a constructor parameter, or receives a typed input
@@ -61,8 +66,11 @@ when the entry is left. `WhenActivated` follows a mounted View instead:
 ```csharp
 entry.WhenNavigatedTo((_, visit) => editor.WhenAnyValue(model => model.IsDirty)
     .Subscribe(dirty => Status = dirty ? "Unsaved changes" : "No unsaved changes")
-    .DisposeWith(visit)).DisposeWith(_disposables);
+    .DisposeWith(visit));
 ```
+
+The subscription to the window-scoped editor ends with the visit scope.
+`WhenNavigatedTo` itself ends when the entry retires.
 
 **3. The leave guard.** The page implements `INavigationDepartureGuard` with
 `ReactiveLeaveConfirmation.WithInteraction`. Every exit asks the guard,
@@ -106,8 +114,8 @@ SaveAndCloseCommand = entry.CreateCompleteCommand(async token =>
 {
     await editor.SaveAsync(token);
     return editor.Title;
-}).DisposeWith(_disposables);
-CloseCommand = entry.CreateCloseCommand().DisposeWith(_disposables); // asks the guard when dirty
+});
+CloseCommand = entry.CreateCloseCommand(); // asks the guard when dirty, disposed with the entry
 ```
 
 A confirm dialog uses `entry.CreateCompleteCommand(_ => Task.FromResult(true))`
@@ -158,12 +166,11 @@ which `RoutingState`'s mutable stack and synchronous `Navigate` cannot enforce.
 The adapter is experimental, like the navigator: suppress `RUNICNAV001` to use it.
 
 ```csharp
-BackCommand = Main.CreateBackCommand().DisposeWith(disposables); // holds a region handler
+BackCommand = Main.CreateBackCommand(); // holds a handler on this ViewModel's own region
 
 Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the model turn
     .Select(current => current is DocumentViewModel)
-    .Subscribe(isDocument => IsDocumentOpen = isDocument)
-    .DisposeWith(disposables);
+    .Subscribe(isDocument => IsDocumentOpen = isDocument);
 ```
 
 - `WhenCurrentChanged()` emits the current content (`null` when the region is
@@ -191,11 +198,11 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
   notification that starts a transition, without a scheduler hop.
   It reflects this region only: a transition of
   an ancestor region does not disable it. The command observes the region
-  until it is disposed, so dispose it with its owner. A rejected, superseded
+  until it is disposed: dispose it only when the region outlives the command's
+  owner (see [Command lifetime](#command-lifetime)). A rejected, superseded
   or failed Back is its output, not an exception, so `ThrownExceptions`
-  carries only defects and cancellation. Subscribe to `ThrownExceptions`;
-  Runic Views apps can use `ObserveBridgeExceptions` from
-  `Runic.Application.Views.ReactiveUI`.
+  carries only defects and cancellation. In a Runic Views app the generated
+  Bridge logs them; elsewhere, subscribe to `ThrownExceptions`.
   Overlapping executions to the same destination share one Back and confirmation.
   Each caller cancels independently; the shared Back cancels only after every
   caller cancels before commit.
@@ -218,9 +225,8 @@ wrap it). The extension methods on the entry context follow the entry's core
 ```csharp
 public sealed record DiscardPrompt(string ItemName);
 
-public sealed class EditViewModel : ReactiveObject, IPage, INavigationDepartureGuard, IDisposable
+public sealed class EditViewModel : ReactiveObject, IPage, INavigationDepartureGuard
 {
-    private readonly MultipleDisposable _disposables = new();
     private readonly LeaveConfirmation _leave;
 
     public EditViewModel(ItemStore store, NavigationEntryContext entry)
@@ -229,15 +235,15 @@ public sealed class EditViewModel : ReactiveObject, IPage, INavigationDepartureG
         {
             // Each arrival: the push that created the entry, then each Back or BackTo that resumes it.
             if (arrival.Operation is NavigationOperation.Back) Refresh.Execute().Subscribe().DisposeWith(scope);
-        }).DisposeWith(_disposables);
+        });
 
         _leave = ReactiveLeaveConfirmation.WithInteraction(
             ConfirmDiscard, () => new DiscardPrompt(Name), () => IsDirty, discard: () => Name = _original.Name);
 
         SaveCommand = entry.CreateCompleteCommand(ct => store.SaveAsync(_original with { Name = Name }, ct),
-            this.WhenAnyValue(vm => vm.IsDirty)).DisposeWith(_disposables);
-        CancelCommand = entry.CreateDismissCommand().DisposeWith(_disposables);
-        CloseCommand = entry.CreateCloseCommand().DisposeWith(_disposables); // asks when dirty
+            this.WhenAnyValue(vm => vm.IsDirty));
+        CancelCommand = entry.CreateDismissCommand();
+        CloseCommand = entry.CreateCloseCommand(); // asks when dirty
     }
 
     public Interaction<DiscardPrompt, bool> ConfirmDiscard { get; } = new();
@@ -247,8 +253,6 @@ public sealed class EditViewModel : ReactiveObject, IPage, INavigationDepartureG
 
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken ct) =>
         _leave.CanDepartAsync(departure, ct);
-
-    public void Dispose() => _disposables.Dispose();
     // ...
 }
 ```
@@ -261,8 +265,9 @@ public sealed class EditViewModel : ReactiveObject, IPage, INavigationDepartureG
   current, whether a push retains it or it retires. Both run in the commit turn,
   at the same moment as `INavigationAware`. Subscribe while the entry is pending,
   in the constructor or `InitializeAsync`: a subscription made later starts with
-  the next arrival and does not replay the current one. Disposing the returned
-  subscription disposes the current scope.
+  the next arrival and does not replay the current one. The subscription ends
+  when the entry retires; dispose it only to stop the calls earlier, which also
+  disposes the current scope.
 - `WhenNavigatedFrom()` emits a `NavigationExit` (`Kind` `Retain` or `Retire`)
   in the commit turn of each departure, and completes when the entry retires.
 - `CreateCompleteCommand(produce)` produces a result, then calls
@@ -280,7 +285,49 @@ The commands output the Back's `NavigationOutcome`, which a Runic View can
 receive (no `RUNICBRIDGE003`). Like `CreateBackCommand`, they take an optional
 `canExecute` and `outputScheduler` and need no scheduler argument. A failure of
 `produce`, or completing an entry that was not pushed with `PushForResult`,
-reaches `ThrownExceptions`.
+reaches `ThrownExceptions`. The entry disposes them when it retires, so the
+ViewModel has no dispose line for them.
+
+### Command lifetime
+
+ReactiveUI does not require disposing a command or a subscription that
+observes only the ViewModel itself; dispose one only when it observes an object
+that outlives its owner. For navigation:
+
+- The entry commands (`CreateCompleteCommand`, `CreateDismissCommand`,
+  `CreateCloseCommand`) and `WhenNavigatedTo` end when their entry retires.
+- `CreateBackCommand()` and the region observables on the ViewModel's own
+  region, such as a shell's `Main` or a page's child region, need no disposal.
+  Dispose them with the owner when the region outlives it, such as a page's
+  command on its parent's region.
+- Subscriptions to window-scoped or singleton objects, such as a borrowed
+  editor or a service, go in the `WhenNavigatedTo` scope, `WhenActivated` or the
+  ViewModel's `Dispose`. The navigator disposes the content it owns when its
+  entry retires.
+
+### State in InitializeAsync
+
+`InitializeAsync` runs outside model turns, before the entry commits. Content
+that the navigator created for the entry (`NavigationTarget.Create`, or a new
+instance handed over with `Own`) is not presented until that commit, and the
+commit turn runs after the awaited hook. So the hook sets that content's own
+state directly, also after `await`:
+
+```csharp
+public async ValueTask InitializeAsync(NavigationEntryContext entry, int noteId, CancellationToken ct)
+{
+    var note = await _store.LoadAsync(noteId, ct);
+    Title = note.Title; // not presented yet: no InvokeAsync
+}
+```
+
+Use `context.InvokeAsync` for state that something already presents or that
+other work also changes: a `Borrow` target, a service, another page, or state
+that the page's own background work writes. Guards and `ResumeAsync` run while
+the content may be presented, so they also use `InvokeAsync`. Don't schedule
+work on ReactiveUI's main-thread scheduler from a hook, for example through a
+command's `Execute().Subscribe()`: outside a turn it falls back (Views event
+1043).
 
 ## Leave confirmation through an interaction
 
@@ -384,11 +431,10 @@ OpenCommand = ReactiveCommand.CreateFromTask(async token =>
 {
     var result = await Main.PushAsync<DocumentViewModel>(cancellationToken: token);
     HandleNavigationOutcome(result); // resumes on the model context
-}, canOpen).DisposeWith(disposables);
+}, canOpen); // observes this ViewModel and its own region: no disposal
 
 _isNavigatingHelper = Main.WhenIsTransitioningChanged()
-    .ToProperty(this, vm => vm.IsNavigating)
-    .DisposeWith(disposables);
+    .ToProperty(this, vm => vm.IsNavigating);
 ```
 
 The `IsNavigating` getter reads `_isNavigatingHelper.Value` (or use ReactiveUI's
@@ -408,8 +454,10 @@ the token for cancellation during guards or preparation. For result requests,
 forward it to `PushForResult` to also dismiss a committed prompt on cancellation.
 
 Deliver model state on the model context (the default in a Runic Views app) and
-native UI state on the presentation's dispatcher. Own command/property subscriptions with the ViewModel;
-subscriptions specific to a mounted View belong in `WhenActivated`.
+native UI state on the presentation's dispatcher. Dispose a command or
+subscription with the ViewModel only when it observes an object that outlives
+the ViewModel (see [Command lifetime](#command-lifetime)); subscriptions
+specific to a mounted View belong in `WhenActivated`.
 This command/property shape works in WPF and through Runic's web bridge. The
 example exposes a completion-only command and handles navigation results inside
 the ViewModel, so the web boundary does not need to encode navigation's content

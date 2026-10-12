@@ -1686,9 +1686,12 @@ sealed record GeneratedCommandPlan(
     internal string DescriptorFor(PropertyInfo property, string modelType)
     {
         var descriptor = DescriptorCore(property, modelType);
-        if (FailureGraph is null) return descriptor;
-        if (!descriptor.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
-        return descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
+        if (FailureGraph is not null)
+        {
+            if (!descriptor.EndsWith(')')) throw new InvalidOperationException("A command descriptor must be a constructor call.");
+            descriptor = descriptor[..^1] + $", EncodeFailure: failure => failure is {FailureGraph.RootCSharpType()} declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}FailureCodec.Write(writer, declared)) : null)";
+        }
+        return Command?.DescriptorInitializer(property, this) is { } initializer ? $"{descriptor} {{ {initializer} }}" : descriptor;
     }
 
     private string DescriptorCore(PropertyInfo property, string modelType)

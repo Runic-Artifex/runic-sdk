@@ -103,3 +103,5 @@ Runic.Application.Views.IRunicWindowService.OpenWindowAsync<TWindow>(Runic.Appli
 Runic.Application.Views.RunicWindowServiceCollectionExtensions
 static Runic.Application.Views.RunicWindowServiceCollectionExtensions.AddRunicWindowService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 virtual Runic.Application.Views.RunicWindow<TViewModel>.CanCloseAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.CommandDescriptor<T>.ObserveFailures.get -> System.Func<T, Microsoft.Extensions.Logging.ILogger!, System.IDisposable!>?
+Runic.Application.Views.CommandDescriptor<T>.ObserveFailures.init -> void

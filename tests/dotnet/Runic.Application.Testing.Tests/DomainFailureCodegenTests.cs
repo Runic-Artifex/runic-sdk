@@ -55,7 +55,7 @@ internal sealed class DomainFailureCodegenTests
     public async Task ReactiveCommandAsync()
     {
         await using var context = new RunicModelContext();
-        using var model = new FailureReactiveViewModel(context);
+        var model = new FailureReactiveViewModel(context);
         using var lease = RunicModelContextRegistry.Shared.Bind(context, model);
         using var host = new RunicWindowTestHost<FailureReactiveViewModel>(model, "failureReactive",
             (transport, content, vm) => new FailureReactiveBridge(transport, vm, content: content), new TestViewLocator());

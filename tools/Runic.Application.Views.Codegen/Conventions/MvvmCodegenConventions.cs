@@ -73,6 +73,12 @@ internal abstract class MvvmCommand
     /// <summary>The <c>CommandDescriptor</c> constructor call, without a failure encoder.</summary>
     internal abstract string Descriptor(PropertyInfo property, string modelType, GeneratedCommandPlan plan);
 
+    /// <summary>
+    /// Object-initializer assignments for the <c>CommandDescriptor</c>, such as <c>ObserveFailures</c>, or
+    /// <see langword="null"/>.
+    /// </summary>
+    internal virtual string? DescriptorInitializer(PropertyInfo property, GeneratedCommandPlan plan) => null;
+
     /// <summary>Appends the command's availability and execution state to the snapshot writer.</summary>
     internal virtual void AppendSnapshotState(StringBuilder cs, PropertyInfo command, string name, GeneratedCommandPlan plan)
     {

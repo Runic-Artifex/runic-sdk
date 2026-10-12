@@ -185,7 +185,8 @@ try {
     throw new Error("Two mounted Views activated one ViewModel more than once.");
 
   // Save declares SaveFailure: a missing title shows the frontend's typed text,
-  // and ObserveBridgeExceptions keeps it away from ReactiveUI's default handler.
+  // and the Bridge, which observes ThrownExceptions, keeps it away from ReactiveUI's
+  // default handler without logging it.
   await change("#document-pane [data-title]", " ");
   await retry(async () => (await snapshot(editorRoute)).state?.title === " ");
   await click("[data-save]");

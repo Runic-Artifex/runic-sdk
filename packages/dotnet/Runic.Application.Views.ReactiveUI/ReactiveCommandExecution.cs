@@ -36,6 +36,7 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;
         TResult? result = default;
+        using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
         using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
@@ -44,7 +45,11 @@ public static class ReactiveCommandExecution
                 count++;
                 if (count == 1) result = value;
             },
-            error => completion.TrySetException(error),
+            error =>
+            {
+                BridgeCommandFailures.MarkReceived(error);
+                completion.TrySetException(error);
+            },
             () =>
             {
                 if (count == 1) completion.TrySetResult(result!);
@@ -66,11 +71,16 @@ public static class ReactiveCommandExecution
         var completion = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;
         TResult? result = default;
+        using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
         using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
             value => { count++; result = value; },
-            error => completion.TrySetException(error),
+            error =>
+            {
+                BridgeCommandFailures.MarkReceived(error);
+                completion.TrySetException(error);
+            },
             () =>
             {
                 if (count == 0) completion.TrySetException(new InvalidOperationException("Reactive command produced no result."));
@@ -90,11 +100,16 @@ public static class ReactiveCommandExecution
     {
         ArgumentNullException.ThrowIfNull(command);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
         using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
             _ => { },
-            error => completion.TrySetException(error),
+            error =>
+            {
+                BridgeCommandFailures.MarkReceived(error);
+                completion.TrySetException(error);
+            },
             () => completion.TrySetResult()));
         await completion.Task.ConfigureAwait(false);
     }
@@ -118,6 +133,7 @@ public static class ReactiveCommandExecution
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(encode);
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var call = BridgeCommandFailures.For(command).BeginCall();
         using var cancellation = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
         cancellationToken.ThrowIfCancellationRequested();
         using var subscription = ModelTurnFlow.Subscribe(command.Execute(input), new Observer<TResult>(
@@ -134,7 +150,11 @@ public static class ReactiveCommandExecution
                 }
                 if (!published) completion.TrySetResult();
             },
-            error => completion.TrySetException(error),
+            error =>
+            {
+                BridgeCommandFailures.MarkReceived(error);
+                completion.TrySetException(error);
+            },
             () => completion.TrySetResult()));
         await completion.Task.ConfigureAwait(false);
         return BridgeOperationResult.Stream(stream);
@@ -167,6 +187,22 @@ public static class ReactiveCommandExecution
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(changed);
         return States.GetValue(command, static _ => new State()).Observe(command, changed);
+    }
+
+    /// <summary>
+    /// Logs the unexpected exceptions that <paramref name="command"/> reports on <c>ThrownExceptions</c>, while one
+    /// generated Bridge presents it, until the result is disposed. Exceptions that a Bridge call received, declared
+    /// failures and cancellations are not logged, and nothing is logged while
+    /// <see cref="RunicReactiveExceptions.ObserveBridgeExceptions(IHandleObservableErrors, Action{Exception})"/>
+    /// observes the command.
+    /// </summary>
+    public static IDisposable ObserveFailures<TInput, TResult>(
+        IReactiveCommand<TInput, TResult> command, Microsoft.Extensions.Logging.ILogger logger, string source)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentException.ThrowIfNullOrWhiteSpace(source);
+        return BridgeCommandFailures.For(command).Log(command, logger, source);
     }
 
     private static readonly ConditionalWeakTable<object, State> States = [];

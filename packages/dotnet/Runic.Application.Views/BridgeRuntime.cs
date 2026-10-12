@@ -170,7 +170,16 @@ public sealed record CommandDescriptor<T>(
     Func<T, Action, IDisposable>? Subscribe = null,
     Func<BridgeOperationStream>? CreateStream = null,
     Func<T, BridgeOperationExecution, CancellationToken, object?, Task<BridgeOperationResult>>? ExecuteStreamAsync = null,
-    Func<object, string?>? EncodeFailure = null);
+    Func<object, string?>? EncodeFailure = null)
+{
+    /// <summary>
+    /// Observes the failures that the command reports outside a Bridge call's reply, such as a ReactiveUI command's
+    /// <c>ThrownExceptions</c>, while a Bridge presents the ViewModel. The Bridge passes its logger, which writes to
+    /// the Window's <see cref="Microsoft.Extensions.Logging.ILoggerFactory"/>, and disposes the result when it
+    /// detaches. <see langword="null"/> when the command reports its failures only to its caller.
+    /// </summary>
+    public Func<T, Microsoft.Extensions.Logging.ILogger, IDisposable>? ObserveFailures { get; init; }
+}
 
 // Detail is present only when BridgeDiagnostics allows local failure detail.
 // Failure is the encoded declared failure of a domain-failed reply, which
@@ -445,6 +454,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     subscribedCommands.Add(nativeCommand);
                 }
                 if (command.Subscribe is { } subscribe) bindings.Add(subscribe(_vm, Publish));
+                if (command.ObserveFailures is { } observeFailures) bindings.Add(observeFailures(_vm, _logger));
             }
 
             bindings.Add(transport.Bind($"{name}Snapshot", _ => _modelTurn.Run(Reply)));

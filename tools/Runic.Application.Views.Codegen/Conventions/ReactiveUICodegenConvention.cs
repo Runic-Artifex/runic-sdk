@@ -88,6 +88,11 @@ internal sealed class ReactiveUICodegenConvention : MvvmCodegenConvention
             return $"new global::Runic.Application.Views.CommandDescriptor<{modelType}>(\"{contract.Name}\", vm => (object)vm.{property.Name}, ExecuteResultAsync: {execute}{read}{canonical}{canExecute}{subscribe})";
         }
 
+        // While a Bridge presents the ViewModel, it logs the command's ThrownExceptions that no Bridge call
+        // reported (W250-042), so the ViewModel needs no subscription of its own.
+        internal override string? DescriptorInitializer(PropertyInfo property, GeneratedCommandPlan plan) =>
+            $"ObserveFailures = (vm, logger) => {Helper(contract.Flavor)}.ObserveFailures(({CommandType(plan)})vm.{property.Name}, logger, \"{property.ReflectedType?.Name}.{property.Name}\")";
+
         // Availability and execution state come from the command's observables.
         internal override void AppendSnapshotState(StringBuilder cs, PropertyInfo command, string name, GeneratedCommandPlan plan)
         {

@@ -28,6 +28,10 @@ namespace Runic.Navigation.ReactiveUI;
 /// <see cref="NavigationEntryContext.StateChanged"/>, so they run in the model turn that commits the change, at the same
 /// moment as <see cref="INavigationAware"/>. Navigation lifetime is not ReactiveUI activation: a retained entry stays
 /// alive while nothing presents it, and its View may deactivate and activate again when it returns.
+/// <para>
+/// The entry owns what these methods create: a <see cref="WhenNavigatedTo"/> subscription ends, and a command is disposed,
+/// when the entry retires. Dispose either yourself only to stop it earlier.
+/// </para>
 /// </remarks>
 [Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class ReactiveNavigationEntry
@@ -53,7 +57,7 @@ public static class ReactiveNavigationEntry
     /// </remarks>
     /// <param name="entry">The entry context.</param>
     /// <param name="onNavigatedTo">Receives the arrival and the scope for subscriptions that end when the entry is left.</param>
-    /// <returns>The subscription. Dispose it with its owner, for example with <c>DisposeWith</c>.</returns>
+    /// <returns>The subscription, which ends when the entry retires. Dispose it only to stop the calls earlier.</returns>
     public static IDisposable WhenNavigatedTo(this NavigationEntryContext entry, Action<NavigationResume, FlavorDisposables> onNavigatedTo)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -102,6 +106,7 @@ public static class ReactiveNavigationEntry
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's main-thread
     /// scheduler, as in <see cref="ReactiveNavigation.CreateBackCommand{TContent}"/>.
     /// </param>
+    /// <returns>The command, which the entry disposes when it retires.</returns>
     [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
         Justification = "The overloads differ in the required produce delegate, which decides the command's input type.")]
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
@@ -109,12 +114,12 @@ public static class ReactiveNavigationEntry
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(produce);
-        return ReactiveCommand.CreateFromTask(async cancellationToken =>
+        return DisposeOnRetirement(entry, ReactiveCommand.CreateFromTask(async cancellationToken =>
         {
             // Resume where the command started, so the result is produced and completed on the same model context.
             var result = await produce(cancellationToken);
             return (await entry.CompleteAsync(result, cancellationToken)).Outcome;
-        }, canExecute, outputScheduler);
+        }, canExecute, outputScheduler));
     }
 
     /// <summary>
@@ -133,15 +138,16 @@ public static class ReactiveNavigationEntry
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's main-thread
     /// scheduler.
     /// </param>
+    /// <returns>The command, which the entry disposes when it retires.</returns>
     [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
         Justification = "The overloads differ in the required produce delegate, which decides the command's input type.")]
     public static ReactiveCommand<TResult, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return ReactiveCommand.CreateFromTask<TResult, NavigationOutcome>(
+        return DisposeOnRetirement(entry, ReactiveCommand.CreateFromTask<TResult, NavigationOutcome>(
             async (result, cancellationToken) => (await entry.CompleteAsync(result, cancellationToken)).Outcome,
-            canExecute, outputScheduler);
+            canExecute, outputScheduler));
     }
 
     /// <summary>
@@ -160,12 +166,13 @@ public static class ReactiveNavigationEntry
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's main-thread
     /// scheduler.
     /// </param>
+    /// <returns>The command, which the entry disposes when it retires.</returns>
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateDismissCommand(this NavigationEntryContext entry,
         IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return ReactiveCommand.CreateFromTask(
-            async cancellationToken => (await entry.DismissAsync(cancellationToken)).Outcome, canExecute, outputScheduler);
+        return DisposeOnRetirement(entry, ReactiveCommand.CreateFromTask(
+            async cancellationToken => (await entry.DismissAsync(cancellationToken)).Outcome, canExecute, outputScheduler));
     }
 
     /// <summary>
@@ -183,12 +190,22 @@ public static class ReactiveNavigationEntry
     /// The scheduler of the command's output and <c>IsExecuting</c>, or <see langword="null"/> for ReactiveUI's main-thread
     /// scheduler.
     /// </param>
+    /// <returns>The command, which the entry disposes when it retires.</returns>
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateCloseCommand(this NavigationEntryContext entry,
         IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return ReactiveCommand.CreateFromTask(
-            async cancellationToken => (await entry.BackAsync(cancellationToken)).Outcome, canExecute, outputScheduler);
+        return DisposeOnRetirement(entry, ReactiveCommand.CreateFromTask(
+            async cancellationToken => (await entry.BackAsync(cancellationToken)).Outcome, canExecute, outputScheduler));
+    }
+
+    // The entry owns the commands it creates: once it retires, none of them can act, so their canExecute subscription
+    // ends with it and the ViewModel needs no dispose line. Disposing a ReactiveCommand during its own execution, as a
+    // Close command's committed Back does, only stops its availability updates. A retired entry disposes it at once.
+    private static TCommand DisposeOnRetirement<TCommand>(NavigationEntryContext entry, TCommand command) where TCommand : IDisposable
+    {
+        entry.Retirement.UnsafeRegister(static state => ((IDisposable)state!).Dispose(), command);
+        return command;
     }
 
     // One WhenNavigatedTo subscription: a scope per arrival, disposed when the entry stops being current. State changes

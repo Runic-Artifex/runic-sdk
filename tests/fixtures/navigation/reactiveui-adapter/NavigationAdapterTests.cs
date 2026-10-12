@@ -404,6 +404,47 @@ internal sealed class NavigationAdapterTests
             await WaitUntilAsync(() => thrown.Values.Length == 1, "A complete command without a request did not report ThrownExceptions.");
             Require(region.Current == page, "A failed complete command left the entry.");
         }
+
+        // The entry disposes the commands it creates when it retires (W250-042): their canExecute subscriptions end
+        // without a dispose line in the ViewModel, also for the Close command whose own Back retires the entry.
+        var availability = new CountedAvailability();
+        var closeCommand = page.Entry.CreateCloseCommand(availability);
+        var dismissCommand = page.Entry.CreateDismissCommand(availability);
+        var pickCommand = page.Entry.CreateCompleteCommand<string>(availability);
+        var saveCommand = page.Entry.CreateCompleteCommand(_ => Task.FromResult("kept"), availability);
+        Require(availability.Subscriptions == 4, $"The entry commands observe {availability.Subscriptions} availabilities, not 4.");
+        var left = await ReactiveCommandExecution.Execute(closeCommand, UnitValue(), CancellationToken.None);
+        Require(left.Kind == NavigationOutcomeKind.Committed && region.Current == home, $"The close command gave {left}.");
+        await WaitUntilAsync(() => availability.Subscriptions == 0,
+            $"The retired entry kept {availability.Subscriptions} command subscriptions.");
+        using (page.Entry.CreateCloseCommand(availability))
+            Require(availability.Subscriptions == 0, "A command of a retired entry was not disposed at once.");
+        GC.KeepAlive((dismissCommand, pickCommand, saveCommand));
+    }
+
+    // An availability that counts its live subscriptions.
+    private sealed class CountedAvailability : IObservable<bool>
+    {
+        private int _subscriptions;
+
+        public int Subscriptions => Volatile.Read(ref _subscriptions);
+
+        public IDisposable Subscribe(IObserver<bool> observer)
+        {
+            Interlocked.Increment(ref _subscriptions);
+            observer.OnNext(true);
+            return new Subscription(this);
+        }
+
+        private sealed class Subscription(CountedAvailability owner) : IDisposable
+        {
+            private int _disposed;
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0) Interlocked.Decrement(ref owner._subscriptions);
+            }
+        }
     }
 
     // ReactiveLeaveConfirmation.WithInteraction keeps the LeaveConfirmation rules and fails closed (W250-035).
