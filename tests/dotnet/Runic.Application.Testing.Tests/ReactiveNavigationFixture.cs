@@ -62,7 +62,11 @@ public sealed partial class ReactiveNavShellViewModel : ReactiveObject, IDisposa
 }
 
 public sealed partial class ReactiveNavShellWindow
-    : RunicWindow<ReactiveNavShellViewModel>;
+    : RunicWindow<ReactiveNavShellViewModel>
+{
+    // A close asks the departure guards of the shell's regions (LeaveGuardRoutingTests opens it on a test host).
+    public ReactiveNavShellWindow() => GuardClose = true;
+}
 
 /// <summary>The question a <see cref="ReactiveNavEditorViewModel"/> asks before it discards its draft.</summary>
 public sealed record NavDiscardPrompt(string Title, string Draft);

@@ -117,16 +117,21 @@ public static class ReactiveInteractionDescriptor
             {
                 var invocation = RunicInteractionInvocation.Current;
                 if (invocation is null) return;
-                Binding<TInput, TOutput>? binding;
+                // Only routes of the invoking window, its own route first. The window's router decides whether another
+                // route may answer: from a navigation hook, such as the guard of the page the shell's Back leaves, or
+                // from the window's close decision.
+                Binding<TInput, TOutput>[] bindings;
                 lock (_gate)
-                    binding = _bindings.FirstOrDefault(candidate => ReferenceEquals(candidate.Session, invocation.Session)
-                        && string.Equals(candidate.Route, invocation.Route, StringComparison.Ordinal));
-                if (binding is null) return;
-
-                var request = binding.Session.Interactions.TryRequest(binding.Route, binding.Name, binding.Contract,
-                    context.Input, binding.EncodeInput, binding.DecodeOutput, binding.Timeout);
-                if (request is null) return;
-                context.SetOutput(await request.ConfigureAwait(false));
+                    bindings = [.. _bindings.Where(candidate => ReferenceEquals(candidate.Session, invocation.Session))
+                        .OrderBy(candidate => string.Equals(candidate.Route, invocation.Route, StringComparison.Ordinal) ? 0 : 1)];
+                foreach (var binding in bindings)
+                {
+                    var request = binding.Session.Interactions.TryRequest(binding.Route, binding.Name, binding.Contract,
+                        context.Input, binding.EncodeInput, binding.DecodeOutput, binding.Timeout);
+                    if (request is null) continue;
+                    context.SetOutput(await request.ConfigureAwait(false));
+                    return;
+                }
             }
 
             private void Remove(Binding<TInput, TOutput> binding)

@@ -144,8 +144,9 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, INavigationDe
         // only when the departure commits; a No, or a superseded departure, keeps them.
         _leave = ReactiveLeaveConfirmation.WithInteraction(ConfirmLeave,
             () => new DiscardNoteRequest(editor.Title, editor.Body.Length), () => editor.IsDirty, editor.RevertChanges);
-        // The web View answers for its own Close. The shell's Back has no handler there:
-        // keep the edits rather than fail the departure (ReactiveUI asks the latest handler first).
+        // The web View answers for its Close and the shell's Back. ReactiveUI asks the latest handler
+        // first, so this fallback answers only when no View is mounted or .NET code starts the departure:
+        // keep the edits rather than fail it.
         ConfirmLeave.RegisterHandler(context => context.SetOutput(false)).DisposeWith(_disposables);
 
         // Result commands end the entry: Save and close completes the request with the

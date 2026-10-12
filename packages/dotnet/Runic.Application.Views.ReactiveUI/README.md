@@ -132,9 +132,16 @@ The disposer, replacement handler, view disposal, unmount, disconnect, the
 cancellation of the command that asked, and the end of a navigation guard that
 asked (see [Leave confirmation in a web View](#leave-confirmation-in-a-web-view))
 abort the handler signal as appropriate. Requests go only to a selected mounted
-endpoint through a pull route. With no eligible browser handler, the adapter
-does not consume the interaction, preserving normal ReactiveUI .NET handler
-precedence and unhandled behavior.
+endpoint through a pull route, and never to another window or browser
+connection. With no eligible browser handler, the adapter does not consume the
+interaction, preserving normal ReactiveUI .NET handler precedence and unhandled
+behavior.
+
+The browser handler is a ReactiveUI handler registered when the View's bridge
+attaches. ReactiveUI asks the latest handler first, so a .NET handler registered
+after the View attached, such as a WPF View's in `WhenActivated`, answers before
+it, and a fallback registered in the ViewModel's constructor answers only when
+no browser handler is eligible.
 
 ## Model-context scheduling
 
@@ -334,17 +341,34 @@ const settled = await close.outcome();
 if (settled.ok && settled.value.kind === "Rejected") showStillEditing(); // the user said no
 ```
 
-- The browser is asked only for a navigation that one of this ViewModel's
-  bridged commands started, such as `close()` or `startClose()`, and only on the
-  connection that started it, like any interaction. A navigation started
-  elsewhere, such as the shell's Back command or .NET code, is not routed to this
-  View: register a .NET handler for it, or it fails closed.
+The browser is asked when the page's own window starts the departure:
+
+| Departure | Who answers |
+| --- | --- |
+| A bridged command of this View, such as `close()` or `startClose()` | This View, mounted by the browser connection that ran the command |
+| A bridged command of another View in the same window, such as the shell's Back | This View, mounted by the browser connection that ran the command |
+| A guarded window close: the close button with `GuardClose`, or `RequestCloseAsync()` | This View, when it is the only presentation in the window with a mounted handler |
+| Navigation that .NET code starts outside a command, such as a timer or startup | .NET handlers only |
+| A command of another window that navigates this window's region | .NET handlers only |
+
+- An interaction never crosses windows or browser connections. A command's
+  question goes only to the connection and client that ran the command. A
+  close has no browser caller, so it asks only when exactly one presentation in
+  the window, from any connection, has mounted a handler; with several, as in a
+  multi-client CS-WebUI window, none is asked.
+- A .NET handler keeps ReactiveUI's order: the latest registered is asked first.
+  A fallback registered in the ViewModel's constructor answers only when no
+  browser handler is eligible, for example when the View isn't mounted or the
+  departure came from .NET code.
 - When the departure is superseded (another navigation of the region wins),
-  cancelled or its navigator closes, the request ends and `signal` aborts. Close
-  the dialog when it does; a late answer is ignored.
-- With no mounted handler, the question falls back to .NET handlers, and with
-  none it fails closed: the command's outcome is `Failed`, and the navigator
-  logs event 1060 with the `UnhandledInteractionException` type.
+  cancelled or its navigator closes, the request ends and `signal` aborts. So
+  does the close decision when the window closes without asking. Close the
+  dialog when it does; a late answer is ignored.
+- A View that unmounts or disconnects while it asks fails the departure closed:
+  the page stays, and a close keeps the window open.
+- With no handler that answers, the departure fails closed: the command's
+  outcome is `Failed`, a close keeps the window open, and the navigator logs
+  event 1060 with the `UnhandledInteractionException` type.
 
 ## System.Reactive flavor
 

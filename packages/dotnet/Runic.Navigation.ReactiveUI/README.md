@@ -79,8 +79,10 @@ public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, Cancellatio
 
 The presentation answers the interaction. A WPF View answers it in
 `WhenActivated`, and a web View answers it with
-`view.interactions.confirmLeave.handle(...)`. A .NET fallback handler that
-the ViewModel registers answers when no View does (see
+`view.interactions.confirmLeave.handle(...)` for a departure its own window
+starts: the page's Close, the shell's Back or a guarded window close. A .NET
+fallback handler that the ViewModel registers answers when no View does, such as
+for navigation that .NET code starts (see
 [Leave confirmation through an interaction](#leave-confirmation-through-an-interaction)).
 
 **4. Results.** The caller pushes for a result and awaits its completion. It
@@ -125,9 +127,9 @@ opt in on the window:
   [Guarding a user close](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#guarding-a-user-close).
 - In WPF, set `GuardWindowClose="True"` on the `NavigationHost`.
 
-The leave guard from step 3 then decides. Register a .NET fallback handler for
-this case, because the close is not one of the View's own commands and a
-browser handler is not asked.
+The leave guard from step 3 then decides. In a Runic Views app the close is the
+window's own departure, so the page's mounted web View asks the user, as it does
+for its Close and the shell's Back. A WPF View answers in `WhenActivated`.
 
 ## Scheduling
 
@@ -331,7 +333,23 @@ public partial class EditView : ReactiveUserControl<EditViewModel>
 While no View of the entry is active, such as for a retained entry, nothing
 answers and a departure that asks fails closed. When that can happen, register a
 fallback handler in the ViewModel's constructor: ReactiveUI runs the latest
-handler first, so an active View's handler still answers before it.
+handler first, so an active View's handler still answers before it. The same
+fallback answers navigation that .NET code starts outside any View, such as a
+timer or a service, because no web View is asked for it.
+
+A Runic web View answers for the departures its own window starts:
+
+| Departure | Who answers |
+| --- | --- |
+| The page's own command, such as its Close | The page's web View on the invoking browser connection |
+| Another View's command in the same window, such as the shell's Back | The page's web View on the invoking browser connection |
+| A guarded window close (`GuardClose`, `RequestCloseAsync`) | The page's web View, when it is the window's only presentation with a mounted handler |
+| Navigation that .NET code starts outside a command | .NET handlers only |
+| A command of another window | .NET handlers only |
+
+A .NET handler registered later than the web View's, such as in a WPF View's
+`WhenActivated`, answers first; the web View registers when its bridge
+attaches, after the ViewModel's constructor.
 
 In a test, answer in place (awaiting a command needs
 `using ReactiveUI.Primitives.Signals;` in this flavor):
