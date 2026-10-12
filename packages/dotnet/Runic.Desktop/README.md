@@ -173,7 +173,9 @@ control callbacks available. For one connection:
   connection event.
 - The rest of a capability handler can run concurrently with other capability
   handlers and with connection events, including `Connected`.
-- Connection events (`SubscribeConnectionEvents`) run one at a time.
+- Connection events (`SubscribeConnectionEvents`) run one at a time. Every
+  subscription receives each event, in subscription order, and subscribing does
+  not change how the page navigates or reloads.
 - Admission is not guaranteed to follow arrival order, and replies are sent as
   handlers complete, so they can arrive out of order. The page matches each reply
   to its call.

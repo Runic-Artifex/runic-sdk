@@ -28,6 +28,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private static readonly AsyncLocal<WebUiWindow?> CallbackWindow = new();
 
     private readonly ConcurrentDictionary<string, BindingRegistration> _bindings = new(StringComparer.Ordinal);
+    // Connection observers are not bindings: the page never learns about them, so
+    // observing connections does not turn on the bridge's all-events mode.
+    private readonly object _connectionObserverGate = new();
+    private Action<WebUiEvent>[] _connectionObservers = [];
     private readonly ConcurrentDictionary<Guid, WebUiSession> _sessions = new();
     private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
@@ -1329,6 +1333,95 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 eventNumber,
                 cancellationToken).ConfigureAwait(false);
         }
+
+        if (eventType is WebUiEventType.Connected or WebUiEventType.Disconnected)
+        {
+            NotifyConnectionObservers(session, eventType, eventNumber);
+        }
+    }
+
+    // Observes Connected and Disconnected events without an all-events binding. That
+    // binding is advertised to the page, whose bridge then cancels every navigation,
+    // including location.reload(), and reports it as a Navigation event instead (#196).
+    // Every observer receives every event, in subscription order.
+    internal IDisposable ObserveConnections(Action<WebUiEvent> observer)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ArgumentNullException.ThrowIfNull(observer);
+        lock (_connectionObserverGate) _connectionObservers = [.. _connectionObservers, observer];
+        return new ConnectionObservation(this, observer);
+    }
+
+    private void NotifyConnectionObservers(WebUiSession session, WebUiEventType eventType, nuint eventNumber)
+    {
+        var observers = Volatile.Read(ref _connectionObservers);
+        if (observers.Length == 0)
+        {
+            return;
+        }
+
+        var webUiEvent = new WebUiEvent(
+            this,
+            session.Id,
+            eventType,
+            string.Empty,
+            [],
+            eventNumber,
+            0,
+            session.ClientId,
+            session.ConnectionId,
+            session.Cookies);
+        var previousCallbackWindow = CallbackWindow.Value;
+        CallbackWindow.Value = this;
+        List<Exception>? failures = null;
+        try
+        {
+            // One failing observer does not hide the event from the others.
+            foreach (var observer in observers)
+            {
+                try
+                {
+                    observer(webUiEvent);
+                }
+                catch (Exception exception)
+                {
+                    (failures ??= []).Add(exception);
+                }
+            }
+        }
+        finally
+        {
+            CallbackWindow.Value = previousCallbackWindow;
+            webUiEvent.Invalidate();
+        }
+
+        if (failures is [var failure])
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failure);
+        }
+        else if (failures is not null)
+        {
+            throw new AggregateException(failures);
+        }
+    }
+
+    private void RemoveConnectionObserver(Action<WebUiEvent> observer)
+    {
+        lock (_connectionObserverGate)
+        {
+            var index = Array.IndexOf(_connectionObservers, observer);
+            if (index >= 0)
+            {
+                _connectionObservers = [.. _connectionObservers[..index], .. _connectionObservers[(index + 1)..]];
+            }
+        }
+    }
+
+    private sealed class ConnectionObservation(WebUiWindow window, Action<WebUiEvent> observer) : IDisposable
+    {
+        private WebUiWindow? _window = window;
+
+        public void Dispose() => Interlocked.Exchange(ref _window, null)?.RemoveConnectionObserver(observer);
     }
 
     internal Task RunJavaScriptForSessionAsync(Guid sessionId, string script, CancellationToken cancellationToken)

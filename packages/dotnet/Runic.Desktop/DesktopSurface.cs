@@ -78,16 +78,14 @@ public sealed class DesktopSurface : IAsyncDisposable
     /// Events of one connection run one at a time and never overlap the synchronous part of a capability
     /// handler, but they can overlap a capability handler that is awaiting. A disconnection event follows
     /// the completion of every invocation the connection accepted. See <see cref="RegisterCapability"/>.
+    /// Every subscription receives every event, in subscription order. Subscribing does not change how the
+    /// page navigates or reloads.
     /// </remarks>
     public IDisposable SubscribeConnectionEvents(Action<PresentationInvocation> handler)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         ArgumentNullException.ThrowIfNull(handler);
-        return _engine.Bind("", webUiEvent =>
-        {
-            if (webUiEvent.EventType is WebUiEventType.Connected or WebUiEventType.Disconnected)
-                handler(new PresentationInvocation(this, webUiEvent));
-        });
+        return _engine.ObserveConnections(webUiEvent => handler(new PresentationInvocation(this, webUiEvent)));
     }
 
     /// <summary>Opens this surface in one installed browser or embedded WebView.</summary>
