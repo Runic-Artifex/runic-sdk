@@ -358,3 +358,49 @@ test("runic-cswebui.js stops WebUI from sending click events for elements with i
   expect(renamed.dataset.webui_click_is_set).toBe("true");
   expect(added.dataset.webui_click_is_set).toBeUndefined();
 });
+
+// With the all-events binding, WebUI cancels the page's navigations until a
+// Bridge call allows them and reports each to .NET, which then asks the page to
+// continue it (#196). The script repeats a cancelled same-origin navigation
+// with navigation allowed only for it, and leaves the others cancelled.
+test("runic-cswebui.js continues a cancelled same-origin navigation", () => {
+  const actions = [];
+  let allowed = false;
+  let navigate;
+  const location = {
+    href: "http://localhost:4000/index.html", origin: "http://localhost:4000",
+    reload: () => actions.push(["reload", allowed]),
+    assign: url => actions.push(["assign", url, allowed]),
+    replace: url => actions.push(["replace", url, allowed]),
+  };
+  const context = {
+    history: { pushState() {}, replaceState() {} }, setInterval, clearInterval, setTimeout, clearTimeout, console, URL,
+    location, navigation: { addEventListener: (type, listener) => { if (type === "navigate") navigate = listener; } },
+    webui: { allowNavigation: status => { allowed = status; } },
+  };
+  context.window = context;
+  context.globalThis = context;
+  runInNewContext(readFileSync(resolve(root, scripts[0]), "utf8"), context);
+  // WebUI's own listener runs after the script's and cancels the navigation.
+  const report = (url, navigationType, { cancelled = true, formData = null } = {}) => {
+    const event = { destination: { url, key: "k" }, navigationType, formData, defaultPrevented: false };
+    navigate(event);
+    event.defaultPrevented = cancelled;
+    context.__runicContinueNavigation();
+  };
+
+  report("http://localhost:4000/index.html", "reload");
+  report("http://localhost:4000/notes.html", "push");
+  report("http://localhost:4000/index.html#notes", "replace");
+  report("http://example.com/", "push");
+  report("http://localhost:4000/save", "push", { formData: {} });
+  report("http://localhost:4000/allowed.html", "push", { cancelled: false });
+  context.__runicContinueNavigation();
+
+  expect(actions).toEqual([
+    ["reload", true],
+    ["assign", "http://localhost:4000/notes.html", true],
+    ["replace", "http://localhost:4000/index.html#notes", true],
+  ]);
+  expect(allowed).toBe(false);
+});

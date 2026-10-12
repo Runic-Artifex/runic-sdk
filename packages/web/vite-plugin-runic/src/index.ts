@@ -26,6 +26,7 @@ export type {
 
 const virtualClientId = "virtual:runic/client";
 const resolvedVirtualClientId = `\0${virtualClientId}`;
+const clientPackageId = "@runic-artifex/vite-plugin-runic/client";
 const stateEvent = "runic:state";
 const diagnosticEvent = "runic:diagnostic";
 const stateKey = "runic:state";
@@ -148,9 +149,14 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     name: "runic",
     enforce: "pre",
     config(config, environment) {
-      if (environment.command !== "build" || desktopBootstrapUrl === undefined) {
-        return undefined;
+      if (environment.command === "serve") {
+        // The development client is injected into HTML as a virtual module,
+        // which the dependency scanner cannot see. Pre-bundling it up front
+        // keeps a cold optimizer cache from discovering it on the first page
+        // load and reloading the page, which drops a host's Bridge connection.
+        return options.devtools === false ? undefined : { optimizeDeps: { include: [clientPackageId] } };
       }
+      if (desktopBootstrapUrl === undefined) return undefined;
       if (config.base !== undefined && config.base !== "./") {
         throw new TypeError("desktop: true requires Vite base to be './' for relocatable surface output.");
       }
@@ -232,7 +238,7 @@ export function runic(options: RunicViteOptions = {}): RunicVitePlugin {
     },
     load(id) {
       if (id !== resolvedVirtualClientId) return undefined;
-      return `export * from ${JSON.stringify("@runic-artifex/vite-plugin-runic/client")};`;
+      return `export * from ${JSON.stringify(clientPackageId)};`;
     },
     devtools: {
       async setup(context) {

@@ -173,7 +173,8 @@ test('Views replace the Bridge application gates', () => {
   assert.equal(workflow.jobs.bridge, undefined);
   assert.equal(workflow.jobs.customers, undefined);
   const steps = workflow.jobs.views.steps.map(step => step.run ?? '').join('\n');
-  for (const path of ['examples/first-window/browser-smoke.mjs', 'examples/notes-view-first/window-smoke.mjs',
+  for (const path of ['examples/first-window/browser-smoke.mjs', 'examples/first-window/navigation-smoke.mjs',
+    'examples/notes-view-first/window-smoke.mjs',
     'examples/first-window-desktop/browser-smoke.mjs',
     'examples/notes-view-first/browser-smoke.mjs', 'examples/notes-reactive-views/browser-smoke.mjs',
     'examples/notes-reactive-views/hmr-smoke.mjs', 'examples/notes-reactive-views/ide-host-smoke.mjs',
