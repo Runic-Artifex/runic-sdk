@@ -26,9 +26,7 @@ both without Runic.Application.Views is not guarded.
 BackCommand = Main.CreateBackCommand(); // on this ViewModel's own region: no disposal
 ```
 
-`WhenCurrentChanged()`, `WhenEntryChanged()`, `WhenCanGoBackChanged()`,
-`WhenIsTransitioningChanged()` and `CreateBackCommand()` are experimental
-(`RUNICNAV001`). The Back command returns a
+The Back command returns a
 `ReactiveCommand<Unit, NavigationOutcome>` and, without an `outputScheduler`,
 delivers on ReactiveUI's main-thread scheduler: the model context in a Runic
 Views app that calls `AddRunicReactiveModelContext()` from
@@ -37,9 +35,9 @@ provider and `AddRunicReactiveModelContext()` moved to that package in W250;
 see [Scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#scheduling).
 
 The entry API is the same source as the default flavor's
-([entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands-experimental),
+([entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands),
 [leave confirmation through an interaction](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#leave-confirmation-through-an-interaction)),
-also experimental:
+with these differences:
 
 - `WhenNavigatedTo()` passes a `ContainerDisposable` scope, as `WhenActivated`
   does in this flavor; it converts to `CompositeDisposable`.

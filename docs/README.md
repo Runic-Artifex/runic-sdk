@@ -17,6 +17,5 @@ See the [deployment cutover plan](https://github.com/Runic-Artifex/runic-site/bl
 The [diagnostics catalog](diagnostics.md) describes every diagnostic ID that an
 SDK package reports, other than the experimental API IDs. Diagnostics link to it at the release tag of the package.
 
-[Experimental APIs](experimental.md) lists the experimental diagnostic IDs
-(`RUNICNAV001`, `RUNICWPF001`), how to suppress them and the criteria for
-removing them. The diagnostics link to it at the release's tag.
+[Experimental APIs](experimental.md) lists the experimental diagnostic ID
+(`RUNICWPF001`) and how to suppress it. The diagnostics link to it at the release's tag.

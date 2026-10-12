@@ -12,7 +12,6 @@ namespace Runic.Application.Views;
 // binding only weakly, so a live session does not keep a navigator reachable either:
 // the table entry, and with it the binding, dies with the navigator. A closed
 // navigator binds nothing and never throws for a second session.
-#pragma warning disable RUNICNAV001 // Binds sessions to the experimental navigator.
 internal static class NavigationPresentationBinding
 {
     private static readonly ConditionalWeakTable<RunicNavigator, Slot> Slots = new();

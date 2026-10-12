@@ -1,6 +1,5 @@
 // Shared by Runic.Navigation.ReactiveUI and, compiled with SYSTEM_REACTIVE,
 // Runic.Navigation.ReactiveUI.Reactive.
-using System.Diagnostics.CodeAnalysis;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Binding.Reactive;
 #else
@@ -14,7 +13,6 @@ namespace Runic.Navigation.ReactiveUI;
 #endif
 
 /// <summary>Creates a <see cref="LeaveConfirmation"/> that asks through a ReactiveUI interaction.</summary>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class ReactiveLeaveConfirmation
 {
     /// <summary>

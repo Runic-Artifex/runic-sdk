@@ -12,8 +12,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
     <StartupObject>WpfConsumer.Program</StartupObject>
-    <!-- No project-wide RUNICNAV001 suppression: the sources suppress it where they use the
-         experimental navigation API, and generated code must need none (package-smoke.mjs). -->
   </PropertyGroup>
   <ItemGroup>
     <!-- The container; the package itself needs only the abstractions. -->

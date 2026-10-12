@@ -15,7 +15,6 @@ namespace Runic.Navigation;
 /// instance from the typed entry in <see cref="CurrentEntry"/> and <see cref="History"/>. Compare entries by
 /// <see cref="INavigationEntry.Id"/>, not by reference.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public interface INavigationRegion : INotifyPropertyChanged
 {
     /// <summary>Gets the navigator that owns the region.</summary>
@@ -67,7 +66,6 @@ public interface INavigationRegion : INotifyPropertyChanged
 /// returned as a <see cref="NavigationResult{TContent}"/>. Called from inside a model turn, an
 /// operation is admitted without blocking and continues on the thread pool; do not block on it there.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
     Justification = "The target, container-constructed and typed-input forms differ by generic arity and the type of the first parameter (W240-001 §5), so no call is ambiguous.")]
 public sealed class NavigationRegion<TContent> : INavigationRegion where TContent : class
@@ -332,12 +330,10 @@ internal enum NavigationRegionChanges
 }
 
 // Immutable history cache entry: the stack a view was built from, and that view.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed record HistoryCache(NavigationEntryCore[] Source, object View);
 
 // The non-generic region state. Every field is guarded by the navigator's gate;
 // the stack is an immutable array replaced on change.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, string contentTypeName, object owner,
     NavigationChildRetention whileParentRetained)
 {

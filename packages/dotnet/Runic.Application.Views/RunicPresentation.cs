@@ -182,7 +182,6 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// <returns><see langword="true"/> to let the window close.</returns>
     protected virtual async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
     {
-#pragma warning disable RUNICNAV001 // The close guard asks the experimental navigator's guards.
         foreach (var region in (_bridge as IBridgeRegionSlots)?.NavigationRegions() ?? [])
         {
             if (region.CurrentEntry is null && !region.CanGoBack) continue;
@@ -193,7 +192,6 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
                 continue;
             return false;
         }
-#pragma warning restore RUNICNAV001
         return true;
     }
 

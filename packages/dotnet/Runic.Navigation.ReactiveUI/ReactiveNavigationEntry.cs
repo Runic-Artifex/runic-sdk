@@ -33,7 +33,6 @@ namespace Runic.Navigation.ReactiveUI;
 /// when the entry retires. Dispose either yourself only to stop it earlier.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class ReactiveNavigationEntry
 {
     /// <summary>

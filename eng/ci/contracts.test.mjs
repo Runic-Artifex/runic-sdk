@@ -187,7 +187,7 @@ test('Views replace the Bridge application gates', () => {
     step.run?.includes('bun run --cwd packages/web/views --bun build')));
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run?.includes('examples/first-window-desktop/package-smoke.mjs')));
-  // W230-002: the experimental navigator through a packaged Bridge window, with JIT and NativeAOT.
+  // W230-002: the navigator through a packaged Bridge window, with JIT and NativeAOT.
   assert.ok(workflow.jobs['package-consumers'].steps.some(step =>
     step.run === 'bun tests/fixtures/application/navigation-consumer/package-smoke.mjs'));
   // W240-003: the packed Runic.Navigation alone, with no Runic build assets or Node, with JIT and NativeAOT.

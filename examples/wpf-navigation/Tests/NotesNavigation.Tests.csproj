@@ -12,8 +12,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <!-- Runic.Navigation is experimental. -->
-    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TUnit" />

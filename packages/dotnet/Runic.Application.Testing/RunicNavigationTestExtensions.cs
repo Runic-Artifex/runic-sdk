@@ -1,12 +1,10 @@
-using System.Diagnostics.CodeAnalysis;
 using Runic.Application.Views;
 using Runic.Navigation;
 
 namespace Runic.Application.Testing;
 
-/// <summary>Lifecycle counts for tests of the experimental navigator.</summary>
+/// <summary>Lifecycle counts for tests of the navigator.</summary>
 /// <remarks>The navigator's own count is <see cref="RunicNavigator.UnretiredEntryCount"/>.</remarks>
-[Experimental("RUNICNAV001", UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class RunicNavigationTestExtensions
 {
     /// <summary>

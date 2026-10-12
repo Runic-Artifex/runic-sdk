@@ -5,8 +5,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Navigation</PackageId>
-    <!-- RunicReleaseLinks.ExperimentalUrlFormat for [Experimental] help links. -->
-    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
     <Description>Typed, host-neutral navigation regions with guards, results and content ownership, and the model context that serializes ViewModel changes.</Description>
     <PackageTags>runic-artifex;navigation;mvvm;wpf;dotnet;nativeaot</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -293,7 +293,7 @@ public sealed partial class EditorWindow : RunicWindow<EditorViewModel>
 The default `CanCloseAsync` clears each `NavigationRegion<T>` the Window's
 ViewModel exposes, in declaration order, so the departure guards of their
 entries decide, as WPF's `NavigationHost.GuardWindowClose` does (see
-[Navigation](#navigation-experimental)). Override it to add a check of your own,
+[Navigation](#navigation)). Override it to add a check of your own,
 and call the base method to keep the navigation guards. It starts in a turn of
 the window's model context, one decision runs at a time, and it may wait as
 long as a prompt needs; the event loop is never blocked. An exception keeps the
@@ -570,7 +570,7 @@ export type DocumentPane = "Editor" | "Preview";
   ViewModels it can present, such as
   `DocumentPageReference | HomePageReference`, with `| null` when it is
   nullable. A `NavigationRegion<TContent>` slot always includes `| null`,
-  because a region can be empty; see [Navigation](#navigation-experimental).
+  because a region can be empty; see [Navigation](#navigation).
   The frameworks' `ViewRegistry<State["main"]>` accepts such a nullable type.
 - `<summary>` comments on ViewModels, state properties, commands, interactions,
   DTO types and members, and enum cases become TSDoc. A summary on a partial
@@ -880,7 +880,7 @@ the generated mock encodes the failure. A ReactiveUI command also reports the
 failure on `ThrownExceptions`; the generated Bridge observes it there and does
 not log it, so the ViewModel needs no subscription.
 
-## Navigation (experimental)
+## Navigation
 
 Navigation comes from the
 [Runic.Navigation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md)

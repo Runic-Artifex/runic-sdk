@@ -148,7 +148,7 @@ already have. A `RunicViewDriver<T>` has:
   frames in order: `State`, `Delta` with its `RunicCollectionChange`s, or
   `Failure`.
 
-### Navigation (experimental)
+### Navigation
 
 A `NavigationRegion<TContent>` slot is an ordinary content slot, so the same host
 and drivers apply. Create the navigator with the window's model context and pass
@@ -157,7 +157,6 @@ rejects a session whose context is not the navigator's.
 
 ```csharp
 using Runic.Navigation; // RunicNavigator and RunicModelContext
-#pragma warning disable RUNICNAV001
 await using var context = new RunicModelContext();
 await using var navigator = new RunicNavigator(new() { ModelContext = context, TimeProvider = clock });
 var shell = new ShellViewModel(navigator);

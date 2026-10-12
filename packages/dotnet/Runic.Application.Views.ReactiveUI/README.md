@@ -288,7 +288,7 @@ the command's owner, such as a service, another page or a parent's region.
 - A handler registered on the ViewModel's own `Interaction` needs no disposal.
   Put View-scoped work in `WhenActivated`.
 
-## Navigation (experimental)
+## Navigation
 
 Start with the [ReactiveUI navigation walkthrough](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#walkthrough):
 pages, a leave guard, results and a guarded window close, with code from the
@@ -300,12 +300,12 @@ The observables and back command for `RunicNavigator` regions
 `Runic.Navigation.ReactiveUI` namespace of the
 [Runic.Navigation.ReactiveUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
 package. It depends on `Runic.Navigation` and `ReactiveUI` only. This package
-no longer references it, so an app without navigation has no experimental
-package; add a `PackageReference` to `Runic.Navigation.ReactiveUI` to navigate.
+no longer references it, so an app without navigation does not carry it; add a
+`PackageReference` to `Runic.Navigation.ReactiveUI` to navigate.
 Use a `NavigationRegion<TContent>` for new navigation, and keep
 `ReactiveRoutedRegion<T>` for existing `RoutingState` code. Expose the region as
 a get-only property and the generator presents its `Current` like any content
-slot. Suppress `RUNICNAV001` to use the adapter.
+slot.
 
 `CreateBackCommand()` needs no scheduler: with `AddRunicReactiveModelContext()`
 its notifications arrive on the Window's model context. Its output is a
@@ -326,7 +326,7 @@ adapter's `entry.WhenNavigatedTo(...)`.
 The adapter's entry commands (`CreateCompleteCommand`, `CreateDismissCommand`,
 `CreateCloseCommand`) also output a `NavigationOutcome`, so a View binds them
 without `RUNICBRIDGE003`, and their entry disposes them when it retires; see
-[entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands-experimental).
+[entry lifecycle and result commands](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#entry-lifecycle-and-result-commands).
 
 ### Leave confirmation in a web View
 

@@ -1,5 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
-
 namespace Runic.Navigation;
 
 // The life of a PushForResult request. Changed only under the navigator's gate.
@@ -31,12 +29,10 @@ internal enum NavigationResultDismissal
 
 // Marks a Back that returns from a result entry: it may leave the region empty, and
 // CompleteAsync stages the value that the commit turn accepts.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed record NavigationReturn(NavigationStagedResult? Result);
 
 // The non-generic side of a PushForResult request. The source is completed only
 // outside the gate, after the state became terminal.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal abstract class NavigationResultRequestCore(NavigationRegionCore region, CancellationToken callerToken)
 {
     public NavigationRegionCore Region { get; } = region;
@@ -60,14 +56,12 @@ internal abstract class NavigationResultRequestCore(NavigationRegionCore region,
 }
 
 // Accepts a TResult, or any reference type assignable to it (contravariant), without reflection.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal interface INavigationResultSink<in TResult>
 {
     NavigationStagedResult Stage(TResult value);
 }
 
 // A value CompleteAsync offers. The commit turn of its return accepts it under the gate.
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal abstract class NavigationStagedResult(NavigationResultRequestCore request)
 {
     public NavigationResultRequestCore Request { get; } = request;
@@ -84,7 +78,6 @@ internal abstract class NavigationStagedResult(NavigationResultRequestCore reque
     protected abstract void Store();
 }
 
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 internal sealed class NavigationResultRequestCore<TResult>(NavigationRegionCore region, CancellationToken callerToken)
     : NavigationResultRequestCore(region, callerToken), INavigationResultSink<TResult>
 {

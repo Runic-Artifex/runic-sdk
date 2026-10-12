@@ -1,4 +1,3 @@
-#pragma warning disable RUNICNAV001 // The experimental navigation API (docs/experimental.md).
 using CsWebUi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

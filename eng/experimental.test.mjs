@@ -6,8 +6,7 @@ import { test } from "node:test";
 import { root } from "./run.mjs";
 
 // Every [Experimental] diagnostic links to its entry in docs/experimental.md at the release
-// tag (W250-015). The URL itself is built by eng/build/release-links.targets and checked by
-// Runic.Navigation.Tests against the compiled attribute.
+// tag (W250-015). The URL itself is built by eng/build/release-links.targets.
 const sources = execFileSync("git", ["ls-files", "packages/dotnet/*.cs"], { cwd: root, encoding: "utf8" })
   .trim().split("\n").map(file => [file, readFileSync(resolve(root, file), "utf8")]);
 const docs = readFileSync(resolve(root, "docs/experimental.md"), "utf8");
@@ -26,7 +25,7 @@ test("docs/experimental.md has an entry for every experimental diagnostic ID", (
     ...[...text.matchAll(/const string \w*Id = "(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
     ...[...text.matchAll(/Experimental\("(RUNIC[A-Z]+\d{3})"/g)].map(match => match[1]),
   ]));
-  assert.deepEqual([...ids].sort(), ["RUNICNAV001", "RUNICWPF001"]);
+  assert.deepEqual([...ids].sort(), ["RUNICWPF001"]);
   for (const id of ids) {
     // The anchor keeps the ID's case, which the compiler substitutes into UrlFormat.
     assert.ok(docs.includes(`<a id="${id}"></a>`), `docs/experimental.md has no anchor for ${id}`);
@@ -41,8 +40,8 @@ test("experimental help links name the release tag, not main", () => {
   assert.match(targets, /<RunicExperimentalHelpLinkBase [^>]*>\$\(RunicReleaseSourceUrl\)docs\/experimental\.md#<\/RunicExperimentalHelpLinkBase>/);
 });
 
-test("the WPF packages suppress their experimental IDs only in intermediate .g.cs files", () => {
-  for (const [project, id] of [["Runic.Navigation.Wpf", "RUNICNAV001"], ["Runic.Application.Views.Wpf", "RUNICWPF001"]]) {
+test("the WPF Views package suppresses its experimental ID only in intermediate .g.cs files", () => {
+  for (const [project, id] of [["Runic.Application.Views.Wpf", "RUNICWPF001"]]) {
     const targets = readFileSync(resolve(root, `packages/dotnet/${project}/buildTransitive/${project}.targets`), "utf8");
     assert.match(targets, new RegExp(`dotnet_diagnostic\\.${id}\\.severity = none`));
     assert.equal([...targets.matchAll(/dotnet_diagnostic\./g)].length, 1, `${project} suppresses more than ${id}`);

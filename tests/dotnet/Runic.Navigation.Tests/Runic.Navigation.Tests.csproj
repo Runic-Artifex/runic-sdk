@@ -7,8 +7,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <!-- Tests exercise the experimental navigation API. -->
-    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
   </PropertyGroup>
   <ItemGroup>

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -30,7 +29,6 @@ namespace Runic.Navigation.Wpf;
 /// unloaded, as on an unselected tab.
 /// </para>
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public class NavigationHost : ContentControl
 {
     /// <summary>Identifies the <see cref="Region"/> dependency property.</summary>

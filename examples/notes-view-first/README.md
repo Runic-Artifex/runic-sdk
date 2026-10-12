@@ -114,9 +114,6 @@ therefore starts navigation commands with `runDispatched`, which orders them
 by dispatch, not by completion. Use the same pattern for any command whose
 completion depends on a later command.
 
-The navigation types are experimental, and the projects suppress
-`RUNICNAV001`.
-
 ## Declared failures
 
 `EditorViewModel.Save` declares `[RunicFailure(typeof(SaveFailure))]`, a

@@ -1,7 +1,6 @@
 // Shared by Runic.Navigation.ReactiveUI and, compiled with SYSTEM_REACTIVE,
 // Runic.Navigation.ReactiveUI.Reactive.
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
@@ -29,7 +28,6 @@ namespace Runic.Navigation.ReactiveUI;
 /// An entry's lifetime is not ReactiveUI activation: a retained entry stays alive while it is not presented, and its View may
 /// deactivate and activate again when it returns.
 /// </remarks>
-[Experimental(RunicNavigator.DiagnosticId, UrlFormat = RunicReleaseLinks.ExperimentalUrlFormat)]
 public static class ReactiveNavigation
 {
     /// <summary>

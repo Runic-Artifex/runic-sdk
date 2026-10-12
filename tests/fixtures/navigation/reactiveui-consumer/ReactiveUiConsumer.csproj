@@ -9,8 +9,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
-    <!-- The fixture exercises the experimental navigation API. -->
-    <NoWarn>$(NoWarn);RUNICNAV001</NoWarn>
   </PropertyGroup>
   <ItemGroup Condition="'$(RunicNavigationFlavor)' != 'Reactive'">
     <PackageReference Include="Runic.Navigation.ReactiveUI" Version="$(RunicPackageVersion)" />

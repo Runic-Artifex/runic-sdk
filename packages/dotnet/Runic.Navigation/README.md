@@ -43,17 +43,12 @@ The [Toolkit WPF example](https://github.com/Runic-Artifex/runic-sdk/tree/main/e
 and [ReactiveUI recipes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md#native-command-composition)
 show each framework's native command style.
 
-## Experimental API
+## Navigator
 
 `RunicNavigator` owns typed navigation regions. Each region gives its entries
 stable ids, and it supports awaited departure guards, initialize-once and
-resume-on-return hooks, and owned or borrowed content. The navigation API is
-experimental: every type is marked `[Experimental("RUNICNAV001")]`. Suppress
-`RUNICNAV001` to use it, and expect changes before it is supported;
-[Experimental APIs](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/experimental.md#RUNICNAV001)
-shows how and lists the criteria for stabilizing it. The model
-context types are not experimental. The navigator replaces ReactiveUI's
-`RoutingState`; it does not wrap one. See the
+resume-on-return hooks, and owned or borrowed content. The navigator replaces
+ReactiveUI's `RoutingState`; it does not wrap one. See the
 [ReactiveUI adapter](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.ReactiveUI/README.md)
 for observables and a back command. WPF apps present regions with
 [Runic.Navigation.Wpf](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation.Wpf/README.md).
@@ -646,8 +641,7 @@ context for an object that is already bound is rejected.
 Disposing a `RunicModelContext` rejects queued turns and waits for the running
 turn. It implements `IRunicModelContextLifetime`: its `Closed` token is cancelled
 after admission stops and before queued turns are rejected, so navigators close
-immediately, like those using the WPF dispatcher context. Like the interface,
-`Closed` is experimental (`RUNICNAV001`). A posted turn that
+immediately, like those using the WPF dispatcher context. A posted turn that
 disposal drops is logged (event 1031). Exceptions from close callbacks are reported
 through `UnhandledTurnException` (event 1030) and do not interrupt shutdown.
 
