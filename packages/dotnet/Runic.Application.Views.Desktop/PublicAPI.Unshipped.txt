@@ -36,3 +36,5 @@ Runic.Application.Views.Desktop.RunicDesktopHost.SurfaceOptions.init -> void
 Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.get -> Runic.Desktop.DesktopWindowOptions!
 Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.init -> void
 static Runic.Application.Views.Desktop.PlatformServices.CreateSettings() -> Runic.Platform.IDesktopSettings!
+static Runic.Application.Views.Desktop.DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! applicationId) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Views.Desktop.PlatformServices.CreateNotifications(string? applicationId = null) -> Runic.Platform.IDesktopNotifications!

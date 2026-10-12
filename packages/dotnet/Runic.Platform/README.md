@@ -74,3 +74,6 @@ capabilities all report that reason. Tests can use the same instance.
 registers one singleton for it. A host or platform without a provider
 registers `DesktopSettings.Unavailable(reason)`: reads return
 `Unavailable(reason)`, and a watch emits that value once and then waits.
+`IDesktopNotifications` is registered the same way; without a provider it is
+`DesktopNotifications.Unavailable(reason)`, whose requests return
+`Unavailable(reason)` and which never raises `Activated`.

@@ -9,3 +9,5 @@ static Runic.Platform.WindowPlatformServices.CapabilityIds.get -> System.Collect
 static Runic.Platform.WindowPlatformServices.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IWindowPlatformServices!
 Runic.Platform.DesktopSettings
 static Runic.Platform.DesktopSettings.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopSettings!
+Runic.Platform.DesktopNotifications
+static Runic.Platform.DesktopNotifications.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopNotifications!

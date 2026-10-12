@@ -114,6 +114,11 @@ internal sealed class DesktopPortalTests
             "shared registration failure remains typed despite diagnostic observer failure");
         Check(service.Calls is ["Register"] && sharedDiagnostics is [{ Code: "portal-identity-registration-failed" }],
             "shared registration failure prevents requests and emits one actionable diagnostic");
+        // The remedy names what the factories accept: an installed entry, or no application ID during development.
+        Check(sharedDiagnostics[0].Remediation.Contains("org.runic.MissingIdentity.desktop", StringComparison.Ordinal)
+            && sharedDiagnostics[0].Remediation.Contains("null application ID", StringComparison.Ordinal)
+            && new PortalApplication().ApplicationId is null,
+            "identity remediation names the desktop entry and the null application ID the factories accept");
         service.RegistrationError = null;
         Console.WriteLine("PASS desktop portals: settings, notification permission/actions, installed activation and owned file descriptors.");
     }
