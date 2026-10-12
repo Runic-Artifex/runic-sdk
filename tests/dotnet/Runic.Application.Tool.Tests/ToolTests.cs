@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -224,6 +225,54 @@ internal sealed class ToolTests
         {
             Contains(error.Message, "code 7");
         }
+    }
+
+    [Test, DisplayName("dev server connection resets are retried and an unserved page is named")]
+    public void DevServerConnectionFailuresAreReported() => VerifyDevServerConnectionFailuresAsync().GetAwaiter().GetResult();
+
+    private static async Task VerifyDevServerConnectionFailuresAsync()
+    {
+        var origin = new Uri("http://127.0.0.1:12345/");
+        var running = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Vite and the Angular CLI listen on the port briefly before they bind it. A
+        // connection reset there reaches HttpClient's caller as a bare SocketException.
+        static HttpStatusCode Reset() => throw new SocketException((int)SocketError.NotConnected);
+        var resetThenReady = new ScriptedHandler(Reset, () => HttpStatusCode.OK);
+        using (var client = new HttpClient(resetThenReady))
+        {
+            await ViteDevelopmentServer.WaitUntilReadyAsync(
+                origin, "src/main.ts", running.Task, client, TimeSpan.FromSeconds(5), CancellationToken.None);
+        }
+        Equal(3, resetThenReady.Requests);
+
+        foreach ((HttpMessageHandler handler, string cause) in new (HttpMessageHandler, string)[]
+        {
+            (new ScriptedHandler(() => HttpStatusCode.NotFound), "404"),
+            (new ScriptedHandler(Reset), "not connected"),
+        })
+        {
+            using var client = new HttpClient(handler);
+            try
+            {
+                await FrontendDevelopmentDocument.ReadAsync(client, origin, "settings.html", "Vite", CancellationToken.None);
+                throw new InvalidOperationException("A page the server did not serve was accepted.");
+            }
+            catch (DevDevelopmentException error)
+            {
+                Equal("RAPPDEV1007", error.Code);
+                Contains(error.Message, "'settings.html'");
+                Contains(error.Message, cause);
+            }
+        }
+    }
+
+    private sealed class ScriptedHandler(params Func<HttpStatusCode>[] steps) : HttpMessageHandler
+    {
+        internal int Requests { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(steps[Math.Min(Requests++, steps.Length - 1)]()));
     }
 
     [Test, DisplayName("dev server bind failures are recognized from the server output")]

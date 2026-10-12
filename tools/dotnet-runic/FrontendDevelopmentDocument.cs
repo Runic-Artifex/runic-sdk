@@ -1,13 +1,40 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Runic.Application.Tool;
 
 internal static partial class FrontendDevelopmentDocument
 {
+    /// <summary>
+    /// Reads a page from a ready development server. A failure names the page and its cause instead of
+    /// surfacing as an unexpected exception.
+    /// </summary>
+    internal static async Task<string> ReadAsync(
+        HttpClient client,
+        Uri origin,
+        string document,
+        string server,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await client.GetStringAsync(new Uri(origin, document), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception error) when (LoopbackPort.IsConnectionFailure(error))
+        {
+            throw new DevDevelopmentException(
+                "RAPPDEV1007",
+                $"The {server} development server did not serve '{document}': {error.Message}");
+        }
+    }
+
     internal static void Write(
         DevProjectConfiguration configuration,
         Uri origin,

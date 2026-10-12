@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.Http;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -70,6 +71,17 @@ internal static class LoopbackPort
             }
         }
     }
+
+    /// <summary>
+    /// Whether a request to a development server failed because the connection did. Vite and the Angular CLI
+    /// check a port before they bind it by listening on it briefly and closing again, which resets a connection
+    /// accepted meanwhile. HttpClient reports most connection failures as <see cref="HttpRequestException"/>,
+    /// but a connection reset right after it was accepted can surface as an unwrapped
+    /// <see cref="SocketException"/> ("Transport endpoint is not connected") while the handler reads the
+    /// remote address.
+    /// </summary>
+    internal static bool IsConnectionFailure(Exception error) =>
+        error is HttpRequestException or SocketException;
 
     internal sealed class PortInUseException : Exception;
 }
