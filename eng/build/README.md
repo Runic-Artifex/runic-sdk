@@ -59,8 +59,11 @@ It also keeps the other links that leave a package on the release tag:
   this repository's `blob/main` and `tree/main` links name the tag and relative
   links become absolute links at the tag. A remaining `main` link of any Runic
   Artifex repository fails the pack; link to the package registry or the
-  documentation portal instead. `eng/release/readme-links.mjs` applies the same
-  rules to npm packages, and `bun run pack` checks every staged README.
+  documentation portal instead. Nothing else in the README changes: the copy is
+  written byte for byte, so backslashes such as shell line continuations survive
+  on Linux (`eng/release/readme-pack.test.mjs` packs and compares).
+  `eng/release/readme-links.mjs` applies the same rules to npm packages, and
+  `bun run pack` checks every staged README.
 - `RunicReleaseLinks.Diagnostic(id)` is the ID's entry in
   [docs/diagnostics.md](../../docs/diagnostics.md) (`RunicDiagnosticsCatalog`) at
   the tag, so a new diagnostic needs only its catalog entry.
