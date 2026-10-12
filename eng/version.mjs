@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // eng/workspace.json owns the SDK release-train version. eng/Versions.props,
-// every npm manifest and the manifests' bun.lock workspace entries carry copies
-// that `check` compares and `bump` rewrites.
+// every npm manifest, the manifests' bun.lock workspace entries and the project
+// references in every committed NuGet packages.lock.json carry copies that
+// `check` compares and `bump` rewrites.
 // Directory.Packages.props and the template package read RunicSdkVersion, the
 // CLI compatibility metadata is regenerated, and template locks are stamped
 // from the packed archives. Runic.CommandLine is released independently.
@@ -28,6 +29,18 @@ function single(text, pattern, label) {
   return matches[0][2];
 }
 const replaceVersion = (text, pattern, version) => text.replace(pattern, (_, prefix, _old, suffix) => `${prefix}${version}${suffix}`);
+const nugetLock = "packages.lock.json";
+// A NuGet lock file records each referenced project's dependency on another
+// project as "Name": "[<version>, )", with the version from eng/Versions.props.
+// Locked restore does not compare these ranges, so a stale one survives in CI.
+function* nugetProjectRanges(text) {
+  for (const [framework, entries] of Object.entries(JSON.parse(text).dependencies ?? {})) {
+    const projects = new Set(Object.entries(entries).filter(([, entry]) => entry.type === "Project").map(([name]) => name.toLowerCase()));
+    for (const [owner, entry] of Object.entries(entries))
+      for (const [name, range] of Object.entries(entry.dependencies ?? {}))
+        if (projects.has(name.toLowerCase())) yield { key: `${framework}.${owner}.${name}`, name, range };
+  }
+}
 
 export function readVersionFiles(base = root) {
   const read = path => readFileSync(resolve(base, path), "utf8");
@@ -37,6 +50,8 @@ export function readVersionFiles(base = root) {
     "eng/Versions.props": read("eng/Versions.props"),
     "bun.lock": read("bun.lock"),
     ...Object.fromEntries(JSON.parse(workspace).npm.map(p => [`${p.path}/package.json`, read(`${p.path}/package.json`)])),
+    ...Object.fromEntries(execFileSync("git", ["ls-files", "-z", "--", `*${nugetLock}`], { cwd: base, encoding: "utf8" })
+      .split("\0").filter(Boolean).map(path => [path, read(path)])),
   };
 }
 
@@ -51,6 +66,10 @@ export function versionCopies(files) {
   for (const entry of npm)
     copies[`bun.lock ${entry.path}`] = single(files["bun.lock"], lockVersion(entry), `bun.lock workspace entry for ${entry.path}`);
   for (const [path, text] of Object.entries(files)) {
+    if (path.endsWith(nugetLock)) {
+      for (const { key, range } of nugetProjectRanges(text)) copies[`${path} ${key}`] = /^\[([^,\]]+), \)$/.exec(range)?.[1] ?? range;
+      continue;
+    }
     if (!path.endsWith("package.json")) continue;
     copies[path] = single(text, manifestVersion, `${path} version`);
     const manifest = JSON.parse(text);
@@ -66,7 +85,7 @@ export function checkVersions(files) {
   const authority = copies["eng/workspace.json"];
   assert.match(authority, versionPattern, "eng/workspace.json version is not a SemVer version");
   for (const [path, value] of Object.entries(copies))
-    assert.equal(value, authority, `${path} has ${value}; eng/workspace.json has ${authority}. Run bun run version:bump ${authority}`);
+    assert.equal(value, authority, `${path} has ${value}; eng/workspace.json has ${authority}. Run ${path.includes(nugetLock) ? "bun run lock:nuget" : `bun run version:bump ${authority}`}`);
   return authority;
 }
 
@@ -80,6 +99,9 @@ export function bumpVersionFiles(files, version) {
     if (path === "eng/workspace.json") updated = replaceVersion(text, workspaceVersion, version);
     else if (path === "eng/Versions.props") updated = replaceVersion(text, sdkVersion, version);
     else if (path === "bun.lock") updated = npm.reduce((lock, entry) => replaceVersion(lock, lockVersion(entry), version), text);
+    else if (path.endsWith(nugetLock))
+      updated = [...new Set([...nugetProjectRanges(text)].map(({ name }) => name))]
+        .reduce((lock, name) => lock.replaceAll(`"${name}": "[${previous}, )"`, `"${name}": "[${version}, )"`), text);
     else {
       updated = replaceVersion(text, manifestVersion, version);
       for (const { name } of npm)
