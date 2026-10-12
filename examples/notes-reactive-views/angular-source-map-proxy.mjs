@@ -17,9 +17,20 @@ export async function pickFreeLoopbackPort() {
 // Angular's dev bundle currently carries a Debug ID that makes this Chrome
 // build skip its otherwise valid source map. Rewrite only that comment in the
 // IDE's loopback development response; leave the map and build output intact.
-export async function startAngularSourceMapProxy(visiblePort, angularPort) {
+//
+// `upstreamPort` is a function so the proxy can bind the visible port first and
+// learn the Angular port afterwards: choosing the Angular port while the
+// visible one is still unbound can hand out the same number twice (#214).
+// Until it returns a port, requests get a 502 like any other early request.
+export async function startAngularSourceMapProxy(visiblePort, upstreamPort) {
   const sockets = new Set();
   const server = createHttpServer((incoming, outgoing) => {
+    const angularPort = upstreamPort();
+    if (!angularPort) {
+      outgoing.writeHead(502, { "content-type": "text/plain" });
+      outgoing.end("Angular dev server is starting.");
+      return;
+    }
     const headers = { ...incoming.headers, host: `127.0.0.1:${angularPort}`, "accept-encoding": "identity" };
     const upstream = httpRequest({
       hostname: "127.0.0.1", port: angularPort, method: incoming.method,
@@ -62,6 +73,8 @@ export async function startAngularSourceMapProxy(visiblePort, angularPort) {
     socket.once("close", () => sockets.delete(socket));
   });
   server.on("upgrade", (incoming, browser, head) => {
+    const angularPort = upstreamPort();
+    if (!angularPort) { browser.destroy(); return; }
     const angular = connect(angularPort, "127.0.0.1", () => {
       const headers = { ...incoming.headers, host: `127.0.0.1:${angularPort}` };
       angular.write(`${incoming.method} ${incoming.url} HTTP/1.1\r\n`);

@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Net;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -43,11 +41,25 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
     {
         ArgumentNullException.ThrowIfNull(configuration);
         using PhaseTimer phase = PhaseTimer.Start("Starting Angular development server");
-        int port = ReserveLoopbackPort();
+        AngularDevelopmentServer server = await LoopbackPort
+            .StartAsync(
+                "Angular development server",
+                port => StartOnPortAsync(configuration, port, cancellationToken))
+            .ConfigureAwait(false);
+        phase.Complete();
+        return server;
+    }
+
+    private static async Task<AngularDevelopmentServer> StartOnPortAsync(
+        DevProjectConfiguration configuration,
+        int port,
+        CancellationToken cancellationToken)
+    {
         Uri origin = new($"http://127.0.0.1:{port}/", UriKind.Absolute);
         JavaScriptPackageManager packageManager = JavaScriptPackageManager.Resolve(
             configuration.WorkspaceRoot,
             configuration.FrontendPackageDirectory);
+        var conflict = new PortConflictWatch();
         RunningProcess process = RunningProcess.Start(
             "angular",
             packageManager.Executable,
@@ -57,7 +69,8 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             {
                 ["BROWSER"] = "none",
                 ["NG_CLI_ANALYTICS"] = "false",
-            });
+            },
+            observeLine: conflict.Observe);
         var server = new AngularDevelopmentServer(process, origin);
         try
         {
@@ -75,8 +88,18 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                     document);
             }
             Console.WriteLine($"[dev] Angular development server ready at {origin}");
-            phase.Complete();
             return server;
+        }
+        catch (DevDevelopmentException) when (server.Completion.IsCompleted)
+        {
+            bool portInUse = await conflict.ExplainsExitAsync(process).ConfigureAwait(false);
+            await server.DisposeAsync().ConfigureAwait(false);
+            if (portInUse)
+            {
+                throw new LoopbackPort.PortInUseException();
+            }
+
+            throw;
         }
         catch
         {
@@ -155,20 +178,6 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                 "RAPPDEV1007",
                 $"Timed out waiting for the Angular development server at {Origin}. " +
                 "Run 'dotnet runic doctor' and verify the Angular serve target.");
-        }
-    }
-
-    private static int ReserveLoopbackPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try
-        {
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        finally
-        {
-            listener.Stop();
         }
     }
 

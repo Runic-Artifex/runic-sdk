@@ -26,6 +26,21 @@ internal sealed class RunningProcess : IAsyncDisposable
 
     internal Task<int> Completion => _completion.Task;
 
+    /// <summary>
+    /// Waits, for at most <paramref name="timeout"/>, until the output of an exited process has been delivered. A
+    /// descendant that still holds the pipes open must not stall the caller.
+    /// </summary>
+    internal async Task DrainOutputAsync(TimeSpan timeout)
+    {
+        try
+        {
+            await _process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+        }
+    }
+
     internal event Action<string>? OutputReceived;
 
     internal static RunningProcess Start(
@@ -34,7 +49,8 @@ internal sealed class RunningProcess : IAsyncDisposable
         string workingDirectory,
         IReadOnlyList<string> arguments,
         IReadOnlyDictionary<string, string?>? environment = null,
-        Func<string, bool>? suppressLine = null)
+        Func<string, bool>? suppressLine = null,
+        Action<string>? observeLine = null)
     {
         ProcessStartInfo startInfo = CommandRunner.CreateStartInfo(
             executable,
@@ -62,6 +78,7 @@ internal sealed class RunningProcess : IAsyncDisposable
         {
             if (eventArgs.Data is not null)
             {
+                observeLine?.Invoke(eventArgs.Data);
                 running.OutputReceived?.Invoke(eventArgs.Data);
                 if (suppressLine?.Invoke(eventArgs.Data) == true) return;
                 Console.Out.WriteLine($"[{label}] {eventArgs.Data}");
@@ -71,6 +88,7 @@ internal sealed class RunningProcess : IAsyncDisposable
         {
             if (eventArgs.Data is not null)
             {
+                observeLine?.Invoke(eventArgs.Data);
                 running.OutputReceived?.Invoke(eventArgs.Data);
                 if (suppressLine?.Invoke(eventArgs.Data) == true) return;
                 Console.Error.WriteLine($"[{label}] {eventArgs.Data}");

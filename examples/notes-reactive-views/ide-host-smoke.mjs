@@ -51,7 +51,8 @@ async function verify(framework, stopWithSignal = false) {
       const ready = output.match(/RUNIC_IDE_READY\|(http:\/\/127\.0\.0\.1:\d+\/)\|backend=(http:\/\/[^|\r\n]+)\|framework=/);
       frontend = ready?.[1];
       backend = ready?.[2];
-      const angularPort = output.match(/RUNIC_IDE_ANGULAR_MAP_PROXY\|visible=\d+\|angular=(\d+)/)?.[1];
+      // A start that lost a port race is repeated; the last report is the live one.
+      const angularPort = [...output.matchAll(/RUNIC_IDE_ANGULAR_MAP_PROXY\|visible=\d+\|angular=(\d+)/g)].at(-1)?.[1];
       if (angularPort) angularOrigin = `http://127.0.0.1:${angularPort}/`;
       return frontend && backend;
     }, 90_000).catch(error => {
@@ -71,8 +72,9 @@ async function verify(framework, stopWithSignal = false) {
       const bundle = await (await fetch(new URL("/main.js", frontend))).text();
       if (/^\/\/# debugId=/m.test(bundle) || !bundle.includes("sourceMappingURL=main.js.map"))
         throw new Error("Angular Debug response lost its source map or retained the Debug ID directive.");
-      if (!(await responds(new URL("/main.js.map", frontend))).ok)
-        throw new Error("Angular source map was unavailable through the Debug proxy.");
+      // The map is large and a loaded runner can take longer than one 700 ms probe.
+      const map = await respondsWithin(new URL("/main.js.map", frontend));
+      if (!map.ok) throw new Error(`Angular source map was unavailable through the Debug proxy: ${JSON.stringify(map)}`);
     }
 
     if (stopWithSignal) host.kill("SIGTERM");

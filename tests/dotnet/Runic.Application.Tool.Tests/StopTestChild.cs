@@ -17,8 +17,18 @@ internal static partial class StopTestChild
     internal const string Argument = "__stop-test-child";
     internal const int ApplicationExitCode = 3;
 
+    /// <summary>Stands in for a dev server that lost its port: prints Vite's message and exits.</summary>
+    internal const string PortInUseRole = "port-in-use";
+
     internal static int Run(string role, string markers)
     {
+        if (role == PortInUseRole)
+        {
+            Console.Error.WriteLine("error when starting dev server:");
+            Console.Error.WriteLine("Error: Port 5173 is already in use");
+            return 1;
+        }
+
         if (OperatingSystem.IsWindows())
         {
             // The test runner's own host may have disabled Ctrl+C for its children; an application has it enabled.
