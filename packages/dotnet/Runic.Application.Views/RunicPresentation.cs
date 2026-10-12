@@ -165,8 +165,10 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// property of its ViewModel), in declaration order, skipping empty ones. A clear asks the departure guard of every
     /// entry and of the child regions they own, as any other navigation would. The window closes when every clear
     /// commits; a guard that rejects or fails, a cancelled or superseded clear keeps it open with its entries, and the
-    /// regions after it are not asked. A guard can confirm through a dialog region of the same window. Override it to
-    /// add checks of your own, and call the base method to keep the navigation guards.
+    /// regions after it are not asked. A guard can confirm through a dialog region of the same window, or through a
+    /// ReactiveUI interaction that a web View of this window answers: the close is the window's own departure, so the
+    /// one presentation in the window that has mounted a handler for the interaction is asked. Override it to add
+    /// checks of your own, and call the base method to keep the navigation guards.
     /// </para>
     /// <para>
     /// It starts in a turn of the window's model context, as a command body does, and one decision runs at a time:
@@ -292,6 +294,8 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     internal async ValueTask<bool> AskCanCloseAsync(CancellationToken cancellationToken)
     {
         var content = Volatile.Read(ref _content);
+        // The window starts this departure: a guard's interaction may ask the page's mounted web View handler.
+        using var scope = content is null ? null : RunicInteractionInvocation.EnterWindowClose(content, cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();

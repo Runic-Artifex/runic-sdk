@@ -30,9 +30,10 @@ state directly without `InvokeAsync`.
 - **Leave guard.** `ReactiveLeaveConfirmation.WithInteraction` asks through the
   document's `Interaction<DiscardNoteRequest, bool> ConfirmLeave` before unsaved
   edits are lost, and reverts them only when the departure commits. The web View
-  answers it with `window.confirm` for its own **Close**. A browser handler only
-  answers the commands of its own View, so the shell's **Home** gets the
-  ViewModel's fallback handler, which keeps the edits.
+  answers it with `window.confirm` for its own **Close** and for the shell's
+  **Home** (Back) in the same window. Navigation that .NET code starts, or a
+  departure while no View is mounted, gets the ViewModel's fallback handler,
+  which keeps the edits.
 - **Child region.** The document owns a `NavigationRegion<IDocumentPane>` that
   swaps the borrowed, window-scoped Editor and Preview with `ReplaceAsync`. It
   closes with the document. Because the editor is borrowed, the draft and its

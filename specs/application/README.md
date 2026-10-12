@@ -242,8 +242,23 @@ capabilities with `{route, presentationId, generation, handlers}`;
 `__runicInteractionControlWait` delivers
 `{kind: "cancelled", requestId, route, presentationId, ownerEpoch, reason}`.
 
-Only a trusted bridge invocation can reach the browser, and only the single
-presentation of the invoking client and connection. Interactions time out after
+Only a trusted invocation scope of the same window session can reach the
+browser; a request never crosses to another window session, client or
+connection. Two scopes exist:
+
+- A bridge command invocation reaches only the single presentation of the
+  invoking client and connection. It reaches the invoking route, or, while a
+  navigation hook that the command started runs (such as the leave guard of the
+  page that the shell's Back departs), another route of the same window mounted
+  by that client and connection.
+- The window's close decision (`CanCloseAsync` for a user close or
+  `RequestCloseAsync`) reaches the single presentation of the window with the
+  handler mounted, from any connection. With none or several, it asks nothing.
+
+Work outside both scopes, such as navigation that .NET code starts, never
+reaches the browser. A request ends when its scope's token or the navigation
+hook's token is cancelled, its presentation unmounts or disconnects, or the
+window closes; the awaiting interaction then fails. Interactions time out after
 two minutes by default (at most ten); a window holds at most 32 pending requests,
 8 per presentation, and payloads up to 64 KiB.
 

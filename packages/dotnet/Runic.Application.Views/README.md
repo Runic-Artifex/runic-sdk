@@ -299,6 +299,14 @@ the window's model context, one decision runs at a time, and it may wait as
 long as a prompt needs; the event loop is never blocked. An exception keeps the
 window open and is logged as event 1052.
 
+A guard can ask the user in the page: a ReactiveUI interaction it handles, such
+as `ReactiveLeaveConfirmation.WithInteraction`, reaches the web View's mounted
+handler when the Window has exactly one presentation with that handler
+mounted. It never reaches another Window. If the View unmounts or the Window
+closes during the question, the guard's answer is "keep", so the Window stays
+open (see
+[Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view)).
+
 To close a Window from code the way the close button does, call
 `RequestCloseAsync(cancellationToken)`. It returns `true` when the window
 closed and `false` when `CanCloseAsync` kept it open, like `Window.Close()`

@@ -7,16 +7,20 @@ namespace Runic.Application.Views;
 
 /// <summary>
 /// The trusted origin of work which may ask a browser to handle an interaction.
-/// Generated bridges establish this scope around a command or operation. It is
+/// Generated bridges establish this scope around a command or operation, and a
+/// <see cref="RunicWindow{TViewModel}"/> around its close decision. It is
 /// deliberately absent for arbitrary background work, which must use a .NET
 /// handler or opt into an explicit scope.
 /// </summary>
 public sealed class RunicInteractionInvocation
 {
+    // The route of the scope a Window enters while it decides a close; no bridge route has this name.
+    internal const string WindowCloseRoute = "__runicWindowClose";
+
     private static readonly AsyncLocal<RunicInteractionInvocation?> CurrentScope = new();
 
     private RunicInteractionInvocation(WindowContentSession session, string route, string? clientKey,
-        string? connectionKey, string? commandName, CancellationToken cancellationToken)
+        string? connectionKey, string? commandName, CancellationToken cancellationToken, bool windowClose = false)
     {
         Session = session;
         Route = route;
@@ -24,11 +28,15 @@ public sealed class RunicInteractionInvocation
         ConnectionKey = connectionKey;
         CommandName = commandName;
         CancellationToken = cancellationToken;
+        IsWindowClose = windowClose;
     }
 
     /// <summary>The window content session that owns the invocation.</summary>
     public WindowContentSession Session { get; }
-    /// <summary>The bridge route whose browser client may handle interactions.</summary>
+    /// <summary>
+    /// The bridge route whose browser client may handle interactions, or <c>__runicWindowClose</c> while the
+    /// window decides a close.
+    /// </summary>
     public string Route { get; }
     /// <summary>The trusted browser client identity, if the invocation came from one.</summary>
     public string? ClientKey { get; }
@@ -40,6 +48,10 @@ public sealed class RunicInteractionInvocation
     public CancellationToken CancellationToken { get; }
     /// <summary>The invocation scope on the current asynchronous flow, or <see langword="null"/>.</summary>
     public static RunicInteractionInvocation? Current => CurrentScope.Value;
+
+    // The window decides a close, after its close button or RequestCloseAsync. No browser client started it, so it
+    // may ask the one presentation in this window that has mounted a handler for the interaction.
+    internal bool IsWindowClose { get; }
 
     /// <summary>
     /// Enters a trusted bridge invocation. Callers must use identity supplied by
@@ -62,6 +74,15 @@ public sealed class RunicInteractionInvocation
         var previous = CurrentScope.Value;
         CurrentScope.Value = new RunicInteractionInvocation(session, route, clientKey, connectionKey,
             commandName, cancellationToken);
+        return new Scope(previous);
+    }
+
+    // RunicWindow enters it around its close decision, whatever started the close; the token ends the decision.
+    internal static IDisposable EnterWindowClose(WindowContentSession session, CancellationToken cancellationToken)
+    {
+        var previous = CurrentScope.Value;
+        CurrentScope.Value = new RunicInteractionInvocation(session, WindowCloseRoute, null, null, null,
+            cancellationToken, windowClose: true);
         return new Scope(previous);
     }
 
@@ -174,19 +195,25 @@ public sealed class BridgeInteractionRouter : IDisposable
     /// Attempts browser delivery for the current trusted bridge invocation.
     /// A null result preserves ReactiveUI fallback/unhandled behavior.
     /// </summary>
+    /// <remarks>
+    /// The invocation must belong to this window. A bridged command reaches the presentation of
+    /// <paramref name="route"/> mounted by the client and connection that invoked it: its own route, or another
+    /// route of the window from a navigation hook, such as the departure guard of the page that the shell's Back
+    /// leaves. A window's close decision reaches the one presentation of the route that handles the interaction.
+    /// </remarks>
     public Task<TOutput>? TryRequest<TInput, TOutput>(string route, string name, string contract,
         TInput input, Func<TInput, string> encodeInput, Func<JsonElement, TOutput> decodeOutput,
         TimeSpan? timeout = null)
     {
         var invocation = RunicInteractionInvocation.Current;
-        if (invocation is null || !ReferenceEquals(invocation.Session, _session)
-            || !string.Equals(invocation.Route, route, StringComparison.Ordinal)
-            || string.IsNullOrWhiteSpace(invocation.ConnectionKey)) return null;
-        if (invocation.CancellationToken.IsCancellationRequested)
-            return Task.FromCanceled<TOutput>(invocation.CancellationToken);
+        if (invocation is null || !ReferenceEquals(invocation.Session, _session)) return null;
         // A navigation hook, such as a leave confirmation's guard, asks on behalf of its transition: the request ends
         // when that transition is superseded, cancelled or closed.
         var hook = NavigationHookCancellation();
+        if (!invocation.IsWindowClose && (string.IsNullOrWhiteSpace(invocation.ConnectionKey)
+            || (!string.Equals(invocation.Route, route, StringComparison.Ordinal) && !hook.CanBeCanceled))) return null;
+        if (invocation.CancellationToken.IsCancellationRequested)
+            return Task.FromCanceled<TOutput>(invocation.CancellationToken);
         if (hook.IsCancellationRequested) return Task.FromCanceled<TOutput>(hook);
         var lifetime = ResolveTimeout(timeout);
 
@@ -372,9 +399,11 @@ public sealed class BridgeInteractionRouter : IDisposable
 
     private Presentation? SelectPresentation(DefinitionKey key, RunicInteractionInvocation invocation)
     {
+        // A window's close has no invoking client: any presentation of this window may answer, if it is the only one.
         var matches = _presentations.Values.Where(presentation => presentation.Capabilities.Contains(key)
-            && string.Equals(presentation.ConnectionKey, invocation.ConnectionKey, StringComparison.Ordinal)
-            && string.Equals(presentation.ClientKey, invocation.ClientKey, StringComparison.Ordinal)).ToArray();
+            && (invocation.IsWindowClose
+                || (string.Equals(presentation.ConnectionKey, invocation.ConnectionKey, StringComparison.Ordinal)
+                    && string.Equals(presentation.ClientKey, invocation.ClientKey, StringComparison.Ordinal)))).ToArray();
         return matches.Length == 1 ? matches[0] : null;
     }
 

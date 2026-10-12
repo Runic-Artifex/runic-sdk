@@ -43,8 +43,16 @@ public static class ReactiveLeaveConfirmation
     /// </para>
     /// <para>
     /// The question is asked in the guard, outside model turns, on the thread the guard runs on: the dispatcher for a WPF
-    /// navigator, the thread pool otherwise. A Runic web View can answer only a navigation that one of its own bridged
-    /// commands started, such as a Close command on the same ViewModel.
+    /// navigator, the thread pool otherwise.
+    /// </para>
+    /// <para>
+    /// A Runic web View's handler answers a departure that its own window starts: a bridged command of any View in that
+    /// window, such as the page's Close or the shell's Back, asks the presentation mounted by the same browser
+    /// connection; a guarded window close asks the window's one presentation with a mounted handler. A departure that
+    /// .NET code starts outside both, such as a timer's navigation, reaches only .NET handlers. Handlers run latest
+    /// first, as in ReactiveUI: one registered after the View attached, such as a WPF View's <c>WhenActivated</c>
+    /// handler, answers before the web View, and a fallback registered in the ViewModel's constructor answers only
+    /// when no View does.
     /// </para>
     /// </remarks>
     /// <typeparam name="TPrompt">The interaction's input, which a web View receives as typed data.</typeparam>

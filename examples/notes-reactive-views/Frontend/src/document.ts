@@ -28,8 +28,9 @@ export function mountDocument(host: HTMLElement, view: DocumentClient): () => vo
     }
   };
   const report = (error: unknown) => { const status = document.querySelector<HTMLElement>("#status")!; status.textContent = String(error); status.classList.add("error"); };
-  // The leave guard asks here when this View's Close or Save and close leaves
-  // unsaved edits. Answering false keeps the document and its edits.
+  // The leave guard asks here when this window leaves the document with unsaved
+  // edits: its Close or the shell's Home (Back).
+  // Answering false keeps the document and its edits.
   const removeLeaveHandler = view.interactions.confirmLeave.handle(async (request, { signal }) => {
     if (signal.aborted) throw signal.reason;
     return window.confirm(`Close “${request.title}” and lose its unsaved changes?`);

@@ -360,14 +360,15 @@ try {
   const lastResult = 'document.querySelector("#main [data-last-result]")?.textContent';
   await retry(async () => await query('document.querySelector("[data-document-status]")?.textContent') === "Unsaved changes");
   await evaluate("window.__runicLeavePromptCount = 0; window.confirm = () => { window.__runicLeavePromptCount++; return false; }");
-  // The shell's Back is not this View's command, so the browser handler does not
-  // answer it; the ViewModel's fallback keeps the edits.
+  // The shell's Back departs the document in the same window and connection, so
+  // the document's browser handler asks; declining keeps the document and its edits.
   await click("[data-go=home]");
-  await pause(300);
-  if (await mainKind() !== "document" || await query("window.__runicLeavePromptCount") !== 0)
-    throw new Error("The shell's Back left the dirty document or asked another route's handler.");
-  await click("[data-close]");
   await retry(async () => await query("window.__runicLeavePromptCount") === 1);
+  await pause(300);
+  if (await mainKind() !== "document" || (await snapshot(editorRoute)).state?.body !== "")
+    throw new Error("A declined shell Back left the document or changed its edits.");
+  await click("[data-close]");
+  await retry(async () => await query("window.__runicLeavePromptCount") === 2);
   await pause(300);
   if (await mainKind() !== "document" || (await snapshot(editorRoute)).state?.body !== "")
     throw new Error("A declined Close left the document or changed its edits.");
@@ -375,7 +376,7 @@ try {
   await click("[data-close]");
   await retry(async () => await mainKind() === "home");
   await retry(async () => await query(lastResult) === "Closed the document.");
-  if (await query("window.__runicLeavePromptCount") !== 2) throw new Error("An approved Close did not ask exactly once.");
+  if (await query("window.__runicLeavePromptCount") !== 3) throw new Error("An approved Close did not ask exactly once.");
   // The guard reverted the edits when the Close committed; the editor is window-scoped.
   const bodyField = 'document.querySelector("#document-pane [data-body]")?.value';
   await click("[data-go=document]");
@@ -386,10 +387,18 @@ try {
   await click("[data-save-close]");
   await retry(async () => await mainKind() === "home");
   await retry(async () => await query(lastResult) === "Saved and closed Operation roundtrip");
-  if (await query("window.__runicLeavePromptCount") !== 2) throw new Error("Save and close asked to discard saved changes.");
+  if (await query("window.__runicLeavePromptCount") !== 3) throw new Error("Save and close asked to discard saved changes.");
   await click("[data-go=document]");
   await retry(async () => await query(bodyField) === "Saved through the result.");
-  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|reconnect-admissions|lost-calls-rejected|click-events-suppressed|reconnect-remount|interaction-fallback-and-confirmation|leave-guard-interaction|result-commands");
+  // An approved shell Back discards: the guard reverts the edits when it commits.
+  await change("#document-pane [data-body]", "Discarded through Back.");
+  await retry(async () => (await snapshot(editorRoute)).state?.isDirty === true);
+  await click("[data-go=home]");
+  await retry(async () => await mainKind() === "home");
+  if (await query("window.__runicLeavePromptCount") !== 4) throw new Error("An approved shell Back did not ask exactly once.");
+  await click("[data-go=document]");
+  await retry(async () => await query(bodyField) === "Saved through the result.");
+  console.log("REACTIVE_NOTES_BROWSER_OK|view-collection|polymorphic-dispatch|stable-reorder|pruned-route|restored-route|nested-routing|view-contract|shared-state|command|shared-activation|route-deactivation|reload-lease|operation-wire|reconnect-admissions|lost-calls-rejected|click-events-suppressed|reconnect-remount|interaction-fallback-and-confirmation|leave-guard-interaction|shell-back-asks-view|result-commands");
   }
 } finally {
   try { await browser?.close(); }
