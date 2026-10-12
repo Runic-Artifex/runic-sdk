@@ -165,7 +165,8 @@ public partial class DocumentViewModel : ObservableObject, IMainViewModel, INavi
         // Leaving with unsaved edits asks in the dialog region, and discards the edits only when
         // the departure commits. A superseded departure or a closing window dismisses the dialog.
         _leave = LeaveConfirmation.InDialog(navigation.Dialog,
-            () => NavigationTarget.Own<IDialogViewModel>(new ConfirmNavigationViewModel("Discard the unsaved edits and return Home?")),
+            () => NavigationTarget.Create<IDialogViewModel>((_, entry) =>
+                new ConfirmNavigationViewModel(entry, "Discard the unsaved edits and return Home?")),
             () => Editor.IsDirty, Editor.DiscardChanges);
         // A child region owned by this document: it closes when the document retires,
         // and keeps the open pane while another page covers the document.
@@ -303,27 +304,20 @@ public partial class PreviewViewModel : ObservableObject, IDocumentPaneViewModel
     public void Dispose() => _editor.PropertyChanged -= OnEditorChanged;
 }
 
-// An owned dialog entry pushed for a result: confirming completes the request,
-// cancelling dismisses it, and either leaves the dialog region empty.
-public partial class ConfirmNavigationViewModel(string message) : ObservableObject, IDialogViewModel, INavigationInitialize
+// A dialog entry pushed for a result. The navigator constructs it with its entry
+// context and owns it: confirming completes the request, cancelling dismisses it,
+// and either leaves the dialog region empty.
+public partial class ConfirmNavigationViewModel(NavigationEntryContext entry, string message) : ObservableObject, IDialogViewModel
 {
-    private NavigationEntryContext? _entry;
-
     public string Message => message;
-
-    ValueTask INavigationInitialize.InitializeAsync(NavigationEntryContext entry, CancellationToken cancellationToken)
-    {
-        _entry = entry;
-        return ValueTask.CompletedTask;
-    }
 
     // A Confirm whose Back is rejected (superseded by a concurrent answer, or its commit turn
     // failed) leaves the dialog open to answer again. Cancel always works: it ends the request
     // at once, so the guard keeps the document, and then goes back from the dialog. A Cancel
     // after a Confirm supersedes the Confirm's Back unless that Back has started committing.
     [RelayCommand]
-    private Task Confirm() => _entry is { } entry ? entry.CompleteAsync(true).AsTask() : Task.CompletedTask;
+    private Task Confirm() => entry.CompleteAsync(true).AsTask();
 
     [RelayCommand]
-    private Task Cancel() => _entry is { } entry ? entry.DismissAsync().AsTask() : Task.CompletedTask;
+    private Task Cancel() => entry.DismissAsync().AsTask();
 }
