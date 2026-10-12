@@ -171,6 +171,70 @@ public sealed class DesktopApiTests
     }
 
     [Test]
+    public async Task ACallToAReleasedCapabilityIsLateAndAnUnadmittedOneNamesTheCapability()
+    {
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        var invocations = 0;
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { DiagnosticSink = diagnostics.Enqueue });
+        await using var surface = await host.CreateSurfaceAsync();
+        PresentationCapabilityHandler handler = (_, _) =>
+        {
+            Interlocked.Increment(ref invocations);
+            return ValueTask.FromResult(PresentationResult.FromString("served"));
+        };
+        var registration = surface.RegisterCapability("page.unmount", handler);
+        using var client = new HttpClient();
+        var bridge = await client.GetStringAsync(new Uri(surface.Url, "webui.js"));
+        var token = ExtractUnsigned(bridge, "const TOKEN = ");
+        var credential = ExtractQuoted(bridge, "const SESSION_CREDENTIAL = \"");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var socket = await ConnectAuthenticatedAsync(surface.Url, credential, token, timeout.Token);
+        ushort id = 0;
+        async Task<string> CallAsync(string capability)
+        {
+            var call = ++id;
+            await SendPacketAsync(socket, CreatePacket(token, call, 0xF9, [.. Encoding.UTF8.GetBytes($"{capability}\0\0")]), timeout.Token);
+            // Binding announcements can arrive before the reply.
+            while (true)
+            {
+                var packet = await ReceivePacketAsync(socket, timeout.Token);
+                if (packet[7] == 0xF9 && BinaryPrimitives.ReadUInt16LittleEndian(packet.AsSpan(5, 2)) == call)
+                    return Encoding.UTF8.GetString(packet[PacketHeaderSize..]).TrimEnd('\0');
+            }
+        }
+
+        Assert.Equal("served", await CallAsync("page.unmount"));
+        Assert.Empty(diagnostics);
+
+        // The owner released the capability while the page's call was in flight: late, so no diagnostic and no handler.
+        registration.Dispose();
+        Assert.Equal("", await CallAsync("page.unmount"));
+        Assert.Equal(1, Volatile.Read(ref invocations));
+        Assert.Empty(diagnostics);
+
+        // A new registration of the name is served again, and releasing it once more stays benign.
+        var replacement = surface.RegisterCapability("page.unmount", handler);
+        Assert.Equal("served", await CallAsync("page.unmount"));
+        replacement.Dispose();
+        Assert.Equal("", await CallAsync("page.unmount"));
+        Assert.Empty(diagnostics);
+
+        // A name that was never admitted is still an error, and names the capability; the page's text is bounded and printable.
+        Assert.Equal("", await CallAsync("page.never"));
+        var unadmitted = Assert.Single(diagnostics);
+        Assert.Equal(DesktopErrorCategory.CapabilityDenied, unadmitted.Category);
+        Assert.Equal("capability-not-admitted", unadmitted.Code);
+        Assert.Equal(DesktopDiagnosticSeverity.Error, unadmitted.Severity);
+        Assert.Equal("The presentation capability 'page.never' is not admitted for this session.", unadmitted.Message);
+        _ = await CallAsync("odd\u0007name" + new string('x', 100));
+        Assert.Equal(2, diagnostics.Count);
+        var bounded = diagnostics.Last().Message;
+        Assert.Contains("'odd?namexxx", bounded, StringComparison.Ordinal);
+        Assert.Contains("...'", bounded, StringComparison.Ordinal);
+        Assert.True(bounded.Length < 140);
+    }
+
+    [Test]
     public async Task PresentationSessionIdentityIsUniquePerAuthenticatedConnection()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions

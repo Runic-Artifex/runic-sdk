@@ -17,6 +17,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 {
     private const string BridgePath = "/webui.js";
     private const string DesktopBootstrapPath = "/runic-desktop.js";
+    private const int ReleasedBindingMemory = 256;
     private const string WebSocketPath = "/_webui_ws_connect";
     private const string AuthCookieName = "webui_auth";
     private const string DocumentBootstrapProperty = "globalThis[Symbol.for(\"runic-desktop.bootstrap\")]";
@@ -28,6 +29,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private static readonly AsyncLocal<WebUiWindow?> CallbackWindow = new();
 
     private readonly ConcurrentDictionary<string, BindingRegistration> _bindings = new(StringComparer.Ordinal);
+    // Bindings released lately, by name. Only a call that races a release matters, so the memory is bounded.
+    private readonly object _releasedGate = new();
+    private readonly HashSet<string> _releasedBindings = new(StringComparer.Ordinal);
+    private readonly Queue<string> _releasedBindingOrder = new();
     // Connection observers are not bindings: the page never learns about them, so
     // observing connections does not turn on the bridge's all-events mode.
     private readonly object _connectionObserverGate = new();
@@ -1280,12 +1285,19 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
         if (!_bindings.TryGetValue(element, out var registration))
         {
-            _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
-                DesktopErrorCategory.CapabilityDenied,
-                "capability-not-admitted",
-                "The presentation capability is not admitted for this session.",
-                Retryable: false,
-                CorrelationId: Guid.NewGuid().ToString("N")));
+            // A page can still call a capability its owner just released: a page removed from a navigation region
+            // unmounts after the snapshot that removed it reached the browser. Such a call is late, not unadmitted.
+            // Nothing is invoked and the reply is the same, so only the diagnostic differs.
+            if (!WasRecentlyReleased(element))
+            {
+                _runtimeOptions?.DiagnosticSink?.Invoke(new DesktopDiagnostic(
+                    DesktopErrorCategory.CapabilityDenied,
+                    "capability-not-admitted",
+                    $"The presentation capability '{DescribeElement(element)}' is not admitted for this session.",
+                    Retryable: false,
+                    CorrelationId: Guid.NewGuid().ToString("N")));
+            }
+
             return WebUiResult.None;
         }
 
@@ -1634,9 +1646,40 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     {
         if (_bindings.TryGetValue(element, out var registration) && registration.Id == registrationId)
         {
+            // Remembered first, so a call racing the removal finds the name in one of the two tables.
+            RememberReleased(element);
             ((ICollection<KeyValuePair<string, BindingRegistration>>)_bindings)
                 .Remove(new KeyValuePair<string, BindingRegistration>(element, registration));
         }
+    }
+
+    private void RememberReleased(string element)
+    {
+        lock (_releasedGate)
+        {
+            if (!_releasedBindings.Add(element)) return;
+            _releasedBindingOrder.Enqueue(element);
+            while (_releasedBindingOrder.Count > ReleasedBindingMemory)
+                _releasedBindings.Remove(_releasedBindingOrder.Dequeue());
+        }
+    }
+
+    // Only consulted for a name with no binding, so a rebound name is served by its new registration.
+    private bool WasRecentlyReleased(string element)
+    {
+        lock (_releasedGate) return _releasedBindings.Contains(element);
+    }
+
+    // The page chooses the name: keep it short and printable in a diagnostic.
+    private static string DescribeElement(string element)
+    {
+        const int limit = 64;
+        var text = element.Length > limit ? element[..limit] + "..." : element;
+        return string.Create(text.Length, text, static (span, source) =>
+        {
+            for (var index = 0; index < span.Length; index++)
+                span[index] = char.IsControl(source[index]) ? '?' : source[index];
+        });
     }
 
     private string? GetOrCreateProfilePath(WebUiBrowser browser)

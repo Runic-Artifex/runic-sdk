@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Text.Json;
@@ -283,7 +284,8 @@ sealed class GuardFixture : IAsyncDisposable
     private readonly IRunicWindow _window;
 
     private GuardFixture(ServiceProvider provider, DesktopHost host, IRunicWindow window, IBridgeWindow bridgeWindow,
-        GuardedShellModel viewModel, CloseGuardScript script, RecordingLoggerFactory logs, ConfirmingWindowHost native)
+        GuardedShellModel viewModel, CloseGuardScript script, RecordingLoggerFactory logs, ConfirmingWindowHost native,
+        ConcurrentQueue<DesktopDiagnostic> diagnostics)
     {
         _provider = provider;
         _host = host;
@@ -293,12 +295,16 @@ sealed class GuardFixture : IAsyncDisposable
         Script = script;
         Logs = logs;
         Native = native;
+        Diagnostics = diagnostics;
     }
 
     public IBridgeWindow Window { get; }
     // The Window itself, as application code holds it.
     public IRunicWindow Opened => _window;
     public DesktopWindow Presentation => ((DesktopBridgeWindow<GuardedShellModel>)Window).Presentation;
+    public DesktopSurface Surface => ((DesktopBridgeWindow<GuardedShellModel>)Window).Surface;
+    // What the host reported to its DiagnosticSink.
+    public ConcurrentQueue<DesktopDiagnostic> Diagnostics { get; }
     public GuardedShellModel ViewModel { get; }
     public CloseGuardScript Script { get; }
     public RecordingLoggerFactory Logs { get; }
@@ -318,7 +324,13 @@ sealed class GuardFixture : IAsyncDisposable
             _ => (transport, content, model) => new GuardedShellBridge(transport, model, content));
         var provider = services.BuildServiceProvider();
         var factory = new ConfirmingWindowFactory { ConfirmsClose = confirmsClose };
-        var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+        var diagnostics = new ConcurrentQueue<DesktopDiagnostic>();
+        var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+            DiagnosticSink = diagnostics.Enqueue,
+        });
         try
         {
             var windows = new RunicDesktopHost(provider, host)
@@ -327,7 +339,7 @@ sealed class GuardFixture : IAsyncDisposable
                 WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, ConfirmCloseAsync = confirmClose },
             };
             var window = await windows.OpenWindowAsync<TWindow>();
-            return new GuardFixture(provider, host, window, window.Host, window.ViewModel, script, logs, factory.Hosts.Single());
+            return new GuardFixture(provider, host, window, window.Host, window.ViewModel, script, logs, factory.Hosts.Single(), diagnostics);
         }
         catch
         {
@@ -395,19 +407,36 @@ sealed class GuardedShellModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
 }
 
-// What the generator writes for a ViewModel with one NavigationRegion property.
+// What the generator writes for a ViewModel with one NavigationRegion property: the snapshot presents the region's
+// current page as content and names its reference, so the page is served by routes of its own.
 sealed class GuardedShellBridge(IBridgeTransport transport, GuardedShellModel vm, WindowContentSession content)
-    : ViewModelBridge<GuardedShellModel>(transport, vm, "guardedShell", Write,
+    : ViewModelBridge<GuardedShellModel>(transport, vm, "guardedShell",
+        (writer, model, revision) => Write(content, writer, model, revision),
         [new PropertyDescriptor<GuardedShellModel>("Main", static vm => vm.Main.Current, null, static vm => vm.Main)],
         [], content: content)
 {
-    private static void Write(Utf8JsonWriter writer, GuardedShellModel vm, long revision)
+    private static void Write(WindowContentSession content, Utf8JsonWriter writer, GuardedShellModel vm, long revision)
     {
         writer.WriteStartObject();
         writer.WriteNumber("revision", revision);
-        if (vm.Main.Current is { } page) writer.WriteString("title", page.Title);
-        else writer.WriteNull("title");
+        if (vm.Main.Current is { } page)
+        {
+            writer.WriteString("title", page.Title);
+            writer.WriteString("page", content.Present(vm, "Main", "page", page, static (_, _, _) => new PageBridge()).Id);
+        }
+        else
+        {
+            content.Clear(vm, "Main");
+            writer.WriteNull("title");
+            writer.WriteNull("page");
+        }
         writer.WriteEndObject();
+    }
+
+    // The page's own bridge; the content session serves its Mount and Unmount routes around it.
+    private sealed class PageBridge : IDisposable
+    {
+        public void Dispose() { }
     }
 }
 
