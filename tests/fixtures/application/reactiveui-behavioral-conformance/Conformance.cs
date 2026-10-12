@@ -17,6 +17,7 @@ using Runic.Navigation.ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
 using FlavorScheduler = System.Reactive.Concurrency.IScheduler;
 using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.Reactive.IRunicReactiveSchedulerProvider;
+using DispatcherSchedulerProbe = ConformanceProbes.DispatcherScheduler;
 #elif DEFAULT_FLAVOR
 using ReactiveUI;
 using ReactiveUI.Builder;
@@ -28,6 +29,7 @@ using Runic.Navigation.ReactiveUI;
 using FlavorUnit = ReactiveUI.Primitives.RxVoid;
 using FlavorScheduler = ReactiveUI.Primitives.Concurrency.ISequencer;
 using FlavorSchedulerProvider = Runic.Application.Views.ReactiveUI.IRunicReactiveSchedulerProvider;
+using DispatcherSchedulerProbe = ConformanceProbes.DispatcherSequencer;
 #else
 #error A ReactiveUI flavor must be selected.
 #endif
@@ -557,6 +559,133 @@ internal sealed class ConformanceTests
                 "Two scopes shared a scheduler.");
     }
 
+    // W260-015: a Runic Desktop, CS-WebUI or test-host window that opens while AddRunicReactiveModelContext() kept
+    // another main-thread scheduler logs event 1090 once per scheduler type; a UI dispatcher's scheduler is silent.
+    // It runs first, before AmbientMainThreadSchedulerSemanticsAsync installs the model-context scheduler.
+    [Test, NotInParallel(Order = 0)]
+    public async Task KeptSchedulerIsReportedWhenAWindowOpensAsync()
+    {
+        var previous = RxSchedulers.MainThreadScheduler;
+        try
+        {
+            var logs = new RecordingLoggerFactory();
+            RxSchedulers.MainThreadScheduler = new DispatcherSchedulerProbe(previous);
+            await using (var dispatcher = WindowServices(logs))
+            {
+                NotifyWindowOpening(dispatcher);
+                Require(logs.Logger.Entries.IsEmpty, "A UI dispatcher's scheduler was reported when a window opened.");
+            }
+
+            var kept = new ApplicationScheduler(previous);
+            RxSchedulers.MainThreadScheduler = kept;
+            await using var provider = WindowServices(logs);
+            Require(ReferenceEquals(RxSchedulers.MainThreadScheduler, kept),
+                "AddRunicReactiveModelContext replaced a scheduler the application set.");
+            NotifyWindowOpening(provider);
+            NotifyWindowOpening(provider);
+            Require(logs.Logger.Entries.SingleOrDefault() is
+                { Id: 1090, Level: Microsoft.Extensions.Logging.LogLevel.Information } entry
+                && entry.Source == typeof(ApplicationScheduler).FullName,
+                $"A kept scheduler was not logged once as event 1090: {string.Join(", ", logs.Logger.Entries)}");
+        }
+        finally
+        {
+            RxSchedulers.MainThreadScheduler = previous;
+        }
+    }
+
+    // W260-015, maintainer decision 1: work scheduled outside a model turn is logged once per ViewModel type, so a
+    // second offending ViewModel is not hidden behind the first. The window passes the application's logger factory.
+    [Test, NotInParallel(Order = 12)]
+    public async Task OutsideTurnWorkIsLoggedPerViewModelTypeAsync()
+    {
+        var logs = new RecordingLoggerFactory();
+        await using var provider = WindowServices(logs);
+        NotifyWindowOpening(provider);
+
+        var first = new OffTurnFirstViewModel();
+        var second = new OffTurnSecondViewModel();
+        await first.PushOutsideTurnAsync();
+        await first.PushOutsideTurnAsync();
+        await second.PushOutsideTurnAsync();
+        var outside = logs.Logger.Entries.Where(static entry => entry.Id == 1043).ToList();
+        Require(outside.Count(entry => entry.Source == typeof(OffTurnFirstViewModel).FullName) == 1
+            && outside.Count(entry => entry.Source == typeof(OffTurnSecondViewModel).FullName) == 1
+            && outside.All(static entry => entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning),
+            $"Work outside a model turn was not logged once per ViewModel type: {string.Join(", ", outside)}");
+    }
+
+    // W260-015: ReactiveUI's builder after the install. Core services keep the model-context scheduler; platform
+    // services replace it with ReactiveUI's default outside a test runner, which a window reports as event 1091 once;
+    // WithRunicModelContext() keeps it. Runs after BridgeExceptionSemanticsAsync, which builds ReactiveUI first.
+    [Test, NotInParallel(Order = 13)]
+    public async Task BuilderAfterInstallSemanticsAsync()
+    {
+        Require(RunicReactiveSchedulerProvider.InstallMainThreadScheduler(), "The model-context scheduler is not installed.");
+        var installed = RxSchedulers.MainThreadScheduler;
+        var logs = new RecordingLoggerFactory();
+        await using var provider = WindowServices(logs);
+        Splat.ModeDetector.OverrideModeDetector(new ModeDetectorProbe(inUnitTestRunner: false));
+        try
+        {
+            Splat.Builder.AppBuilder.ResetBuilderStateForTests();
+            RxAppBuilder.CreateReactiveUIBuilder().BuildApp();
+            Require(ReferenceEquals(RxSchedulers.MainThreadScheduler, installed),
+                "BuildApp with ReactiveUI's core services replaced the model-context scheduler.");
+
+            Splat.Builder.AppBuilder.ResetBuilderStateForTests();
+            RxAppBuilder.CreateReactiveUIBuilder().WithPlatformServices().BuildApp();
+            var replacement = RxSchedulers.MainThreadScheduler;
+            Require(!ReferenceEquals(replacement, installed),
+                "BuildApp with ReactiveUI's platform services kept the model-context scheduler.");
+            NotifyWindowOpening(provider);
+            NotifyWindowOpening(provider);
+            Require(logs.Logger.Entries.SingleOrDefault() is
+                { Id: 1091, Level: Microsoft.Extensions.Logging.LogLevel.Warning } entry
+                && entry.Source == replacement.GetType().FullName,
+                $"A scheduler that replaced the install was not logged once as event 1091: {string.Join(", ", logs.Logger.Entries)}");
+
+            RxSchedulers.MainThreadScheduler = new DispatcherSchedulerProbe(replacement);
+            NotifyWindowOpening(provider);
+            Require(logs.Logger.Entries.Count == 1, "A UI dispatcher's scheduler that replaced the install was reported.");
+
+            Splat.Builder.AppBuilder.ResetBuilderStateForTests();
+            RxAppBuilder.CreateReactiveUIBuilder().WithPlatformServices().WithRunicModelContext().BuildApp();
+            Require(ReferenceEquals(RxSchedulers.MainThreadScheduler, installed),
+                "BuildApp with WithRunicModelContext() did not keep the model-context scheduler.");
+            NotifyWindowOpening(provider);
+            Require(logs.Logger.Entries.Count == 1, "The model-context scheduler was reported when a window opened.");
+
+            await using var context = new RunicModelContext();
+            var run = await ExecuteInTurnAsync(context);
+            Require(run.Count >= 3 && run.All(observed => observed == context),
+                "A command created after WithRunicModelContext() did not deliver on the model context of its turn.");
+        }
+        finally
+        {
+            Splat.ModeDetector.OverrideModeDetector(new ModeDetectorProbe(inUnitTestRunner: true));
+            Splat.Builder.AppBuilder.ResetBuilderStateForTests();
+            RxSchedulers.MainThreadScheduler = installed;
+        }
+    }
+
+    private static ServiceProvider WindowServices(RecordingLoggerFactory logs)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<Microsoft.Extensions.Logging.ILoggerFactory>(logs);
+        services.AddRunicReactiveModelContext();
+        services.AddRunicReactiveModelContext();
+        return services.BuildServiceProvider();
+    }
+
+    // What the Desktop and CS-WebUI hosts and RunicWindowTestHost.Create run before they resolve a window's ViewModel.
+    private static void NotifyWindowOpening(IServiceProvider services)
+    {
+        var observers = services.GetServices<IRunicWindowOpeningObserver>().ToList();
+        Require(observers.Count == 1, "AddRunicReactiveModelContext did not register one window-opening observer.");
+        observers[0].OnWindowOpening(services.GetService<Microsoft.Extensions.Logging.ILoggerFactory>());
+    }
+
 
     private static async Task WaitUntilAsync(Func<bool> condition, string message)
     {
@@ -573,7 +702,7 @@ internal sealed class ConformanceTests
     #endif
     }
 
-    private static IDisposable Schedule<T>(FlavorScheduler scheduler, T value, Action<T> action)
+    internal static IDisposable Schedule<T>(FlavorScheduler scheduler, T value, Action<T> action)
     {
     #if SYSTEM_REACTIVE
         return scheduler.Schedule((Value: value, Action: action), static (_, state) =>
@@ -679,7 +808,7 @@ sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger
     public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
     public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state,
         Exception? exception, Func<TState, Exception?, string> formatter) => Entries.Enqueue((eventId.Id, logLevel, exception,
-            (state as IEnumerable<KeyValuePair<string, object?>>)?.FirstOrDefault(pair => pair.Key == "Source").Value as string));
+            (state as IEnumerable<KeyValuePair<string, object?>>)?.FirstOrDefault(pair => pair.Key is "Source" or "Scheduler").Value as string));
 }
 
 sealed class EmptyDisposable : IDisposable
@@ -738,4 +867,68 @@ sealed class RecordingLoggerFactory : Microsoft.Extensions.Logging.ILoggerFactor
     public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => Logger;
     public void AddProvider(Microsoft.Extensions.Logging.ILoggerProvider provider) => throw new NotSupportedException();
     public void Dispose() { }
+}
+
+// A scheduler an application sets before AddRunicReactiveModelContext(); it delegates to ReactiveUI's default.
+sealed class ApplicationScheduler(FlavorScheduler inner) : DelegatingScheduler(inner);
+
+sealed class ModeDetectorProbe(bool inUnitTestRunner) : Splat.IModeDetector
+{
+    public bool? InUnitTestRunner() => inUnitTestRunner;
+}
+
+// Background values observed on ReactiveUI's main-thread scheduler, as after Task.Run or ConfigureAwait(false).
+// Each ViewModel declares its own method: the scheduler names the type that declares the scheduling code.
+sealed class OffTurnFirstViewModel : System.ComponentModel.INotifyPropertyChanged
+{
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+    public Task PushOutsideTurnAsync() => Task.Run(() =>
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = ConformanceTests.Schedule(RxSchedulers.MainThreadScheduler, 0, _ => done.TrySetResult());
+        return done.Task;
+    });
+}
+
+sealed class OffTurnSecondViewModel : System.ComponentModel.INotifyPropertyChanged
+{
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+
+    public Task PushOutsideTurnAsync() => Task.Run(() =>
+    {
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = ConformanceTests.Schedule(RxSchedulers.MainThreadScheduler, 0, _ => done.TrySetResult());
+        return done.Task;
+    });
+}
+
+#if SYSTEM_REACTIVE
+class DelegatingScheduler(FlavorScheduler inner) : FlavorScheduler
+{
+    public DateTimeOffset Now => inner.Now;
+    public IDisposable Schedule<TState>(TState state, Func<FlavorScheduler, TState, IDisposable> action) => inner.Schedule(state, action);
+    public IDisposable Schedule<TState>(TState state, TimeSpan dueTime, Func<FlavorScheduler, TState, IDisposable> action) =>
+        inner.Schedule(state, dueTime, action);
+    public IDisposable Schedule<TState>(TState state, DateTimeOffset dueTime, Func<FlavorScheduler, TState, IDisposable> action) =>
+        inner.Schedule(state, dueTime, action);
+}
+#else
+class DelegatingScheduler(FlavorScheduler inner) : FlavorScheduler
+{
+    public DateTimeOffset Now => inner.Now;
+    public long Timestamp => inner.Timestamp;
+    public void Schedule(ReactiveUI.Primitives.Concurrency.IWorkItem item) => inner.Schedule(item);
+    public void Schedule(ReactiveUI.Primitives.Concurrency.IWorkItem item, long dueTimestamp) => inner.Schedule(item, dueTimestamp);
+}
+#endif
+
+// Named as a UI platform's dispatcher scheduler: WPF's DispatcherSequencer, or System.Reactive's DispatcherScheduler.
+namespace ConformanceProbes
+{
+#if SYSTEM_REACTIVE
+    sealed class DispatcherScheduler(FlavorScheduler inner) : DelegatingScheduler(inner);
+#else
+    sealed class DispatcherSequencer(FlavorScheduler inner) : DelegatingScheduler(inner);
+#endif
 }

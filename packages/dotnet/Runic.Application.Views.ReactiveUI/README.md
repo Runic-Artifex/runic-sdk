@@ -167,18 +167,48 @@ state publication. `CanExecute` follows its source synchronously, in the turn
 that changes the state it observes. Routing follows the running turn, so two
 Windows never share notifications. Work scheduled outside a turn, for example
 from a timer thread or after `ConfigureAwait(false)`, runs on the scheduler the
-extension replaced, ReactiveUI's task pool; Runic logs that once as
-`ReactiveSchedulerOutsideModelTurn` (Views event 1043, Warning). Pass an
-`ILoggerFactory` to `RunicReactiveSchedulerProvider.InstallMainThreadScheduler`
-to log it there; otherwise it goes to `Trace`.
+extension replaced, ReactiveUI's task pool. Runic logs that as
+`ReactiveSchedulerOutsideModelTurn` (Views event 1043, Warning), once per
+ViewModel type found on the call stack, named in its `Source` property, and once
+for work with no ViewModel there. Runic Desktop, CS-WebUI and
+`RunicWindowTestHost.Create` pass the application's `ILoggerFactory` to the
+scheduler when a window opens, so the warning reaches the application's logs;
+before that, or without a factory, it goes to `Trace`. To fix it, observe the
+background source on the context's scheduler, as shown below for `ObserveOn`.
+
+An application that builds ReactiveUI with `RxAppBuilder` adds
+`WithRunicModelContext()` (namespace `ReactiveUI.Builder`) to that builder, as
+Avalonia, MAUI and WPF applications add `WithAvalonia()`, `WithMaui()` or
+`WithWpf()`, and still calls `AddRunicReactiveModelContext()`:
+
+```csharp
+using ReactiveUI.Builder;
+using Runic.Application.Views.ReactiveUI;
+
+services.AddRunicReactiveModelContext();
+
+RxAppBuilder.CreateReactiveUIBuilder()
+    .WithPlatformServices()
+    .WithRunicModelContext()
+    .BuildApp();
+```
+
+Without it, `BuildApp()` with `WithPlatformServices()` replaces the scheduler
+with ReactiveUI's default outside a test runner. An application that does not
+use `RxAppBuilder` needs only `AddRunicReactiveModelContext()`.
 
 The extension replaces only ReactiveUI's default schedulers. A scheduler that an
 application or UI platform set, such as WPF's dispatcher or a test scheduler, is
 kept, and `InstallMainThreadScheduler()` returns `false`. To opt out, set
-`RxSchedulers.MainThreadScheduler`, or call ReactiveUI's builder
-`WithMainThreadScheduler`, before `AddRunicReactiveModelContext()`, or replace it
-afterwards. Commands read the scheduler when they are created, so register the
-model context before the ViewModels create their commands.
+`RxSchedulers.MainThreadScheduler`, or call `WithMainThreadScheduler` on
+ReactiveUI's builder, before `AddRunicReactiveModelContext()`, or replace it
+afterwards. When a Runic Desktop, CS-WebUI or test-host window opens while
+another scheduler is in effect, Runic logs it once per scheduler type: as
+`ReactiveSchedulerKept` (Views event 1090, Information) when it was set before
+`AddRunicReactiveModelContext()`, and as `ReactiveSchedulerReplaced` (1091,
+Warning) when it replaced Runic's afterwards. A UI dispatcher's scheduler, such
+as WPF's, is not logged. Commands read the scheduler when they are created, so
+register the model context before the ViewModels create their commands.
 
 The scheduler only delivers the command's notifications. The task body runs in
 the context because the Bridge starts it in a turn. Set ViewModel state directly
@@ -198,7 +228,11 @@ has the details.
 For an explicit scheduler, for example an `ObserveOn` in a DynamicData
 pipeline, inject `ISequencer` or call `RunicReactiveSchedulerProvider.For(context)`.
 Both return the context's own sequencer, one per context, which the main-thread
-scheduler also uses. The extension registers, with `TryAdd`, the scoped
+scheduler also uses. The injected sequencer is resolved from the window's scope
+before the ViewModel is constructed, so a source that replays when the
+constructor subscribes is already observed on the right context; a scheduler
+that looked up the ViewModel's context could not, because the host binds the
+ViewModel only after constructing it. The extension registers, with `TryAdd`, the scoped
 `IRunicModelContext`, the singleton `IRunicReactiveSchedulerProvider` and a
 transient `ISequencer` for the resolved context, preserving custom application
 registrations. Dispose a scope asynchronously to drain its default owned

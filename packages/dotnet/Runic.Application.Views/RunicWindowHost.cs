@@ -217,6 +217,9 @@ internal static class RunicWindowOpening
             throw new RunicWindowConfigurationException(errors);
         }
         cancellationToken.ThrowIfCancellationRequested();
+        // Before the ViewModel creates its commands: for example, the ReactiveUI adapter logs through the
+        // application's logger factory from here on, and reports a main-thread scheduler that is not Runic's.
+        RunicWindowOpeningObservers.Notify(services, services.GetService<ILoggerFactory>());
         // IRunicWindowService opens further Windows on this host, also from the ViewModel resolved below.
         (services.GetService(typeof(RunicWindowService)) as RunicWindowService)?.Bind(host);
 

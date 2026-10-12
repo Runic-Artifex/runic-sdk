@@ -18,3 +18,5 @@ static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveSchedulerProvide
 *REMOVED*Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicWindow<TViewModel>.ViewModel.get -> TViewModel?
 *REMOVED*Runic.Application.Views.ReactiveUI.Reactive.ReactiveRunicWindow<TViewModel>.ViewModel.set -> void
 static Runic.Application.Views.ReactiveUI.Reactive.ReactiveCommandExecution.ObserveFailures<TInput, TResult>(ReactiveUI.IReactiveCommand<TInput, TResult>! command, Microsoft.Extensions.Logging.ILogger! logger, string! source) -> System.IDisposable!
+Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveUIBuilderExtensions
+static Runic.Application.Views.ReactiveUI.Reactive.RunicReactiveUIBuilderExtensions.WithRunicModelContext(this ReactiveUI.Reactive.Builder.IReactiveUIBuilder! builder) -> ReactiveUI.Reactive.Builder.IReactiveUIBuilder!

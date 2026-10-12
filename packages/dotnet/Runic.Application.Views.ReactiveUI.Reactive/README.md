@@ -32,10 +32,15 @@ Runic adapters.
 `RxSchedulers.MainThreadScheduler` when ReactiveUI's is still a System.Reactive
 default, so commands created without an `outputScheduler` deliver their results
 and `IsExecuting` on the model context of the turn that runs them. Work
-scheduled outside a turn runs on the replaced scheduler and is logged once
-(Views event 1043). A scheduler the application or platform set is kept. See
+scheduled outside a turn runs on the replaced scheduler and is logged once per
+ViewModel type (Views event 1043). A scheduler the application or platform set
+is kept. An application that builds ReactiveUI with `RxAppBuilder` adds
+`WithRunicModelContext()` (namespace `ReactiveUI.Reactive.Builder`) to that
+builder. To opt out, set `RxSchedulers.MainThreadScheduler`, or call
+`WithMainThreadScheduler` on ReactiveUI's builder, before
+`AddRunicReactiveModelContext()`, or replace it afterwards. See
 [Model-context scheduling](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#model-context-scheduling)
-for the rules and the opt-out.
+for the rules.
 
 ```csharp
 using Runic.Application.Views.ReactiveUI.Reactive;
