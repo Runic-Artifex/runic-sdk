@@ -74,6 +74,54 @@ without waiting for it. Without DI, construct the navigator with
 `LoggerFactory`, `TimeProvider`, `CloseTimeout`), and use the same model
 context for the window's session.
 
+### The root page
+
+Give a region its root page once, where that page exists. When the region's
+owner has it, pass it as the initial target of `CreateRegion`, as above. When
+the root page itself navigates the region, for example a list that pushes its
+detail page, it depends on the service that creates the region, so that
+service creates the region empty and the window's ViewModel starts it:
+
+```csharp
+public sealed class AppNavigation // registered per window scope
+{
+    public AppNavigation(RunicNavigator navigator) => Main = navigator.CreateRegion<IPage>(this);
+
+    public NavigationRegion<IPage> Main { get; }
+}
+
+public sealed class ListViewModel(AppNavigation navigation) : IPage { /* pushes into navigation.Main */ }
+
+public sealed class ShellViewModel
+{
+    public ShellViewModel(AppNavigation navigation, ListViewModel list)
+    {
+        Main = navigation.Main;
+        Main.Start(NavigationTarget.Borrow<IPage>(list)); // or NavigationTarget.Create<ListViewModel>()
+    }
+
+    public NavigationRegion<IPage> Main { get; }
+}
+```
+
+`Start(target)` takes the same path as an initial target: it commits
+synchronously, and the entry's `StateChanged` and `OnNavigatedTo(Reset)`, then
+the region's `PropertyChanged`, run on the caller's thread before it returns.
+So a window opened through `IRunicWindowService` shows its root page as soon as
+`OpenWindowAsync` returns, with no startup hook. Unlike a navigation request,
+`Start` throws: an exception from the target's factory or constructor
+propagates from the ViewModel's constructor, the window's scope is released,
+and `OpenWindowAsync` fails. `Start` throws `InvalidOperationException` when the
+region already has its initial entry (a second `Start`, or a region created
+with an initial target) or already received any navigation request; use
+`ResetAsync` from then on. Don't start a region with a discarded
+`_ = Main.ResetAsync(...)`: a failure would only be logged (event 1061), and
+the window would show an empty region until a later turn commits it.
+
+With `CreateEntryScopes`, a `Create` target resolves scoped services from its
+own entry scope, so `Create<ListViewModel>()` would receive a second
+`AppNavigation`. Start such a region with `Borrow`, as above.
+
 ### Operations and results
 
 | Operation | Effect |
@@ -206,8 +254,8 @@ a pending entry whose transition didn't commit reports `Pending` to `Retired`.
   current entry. Its pending entry reports `Pending` to `Retired` in a later
   turn, if it has `StateChanged` handlers.
 - An initial target reports `Pending` to `Active` and `OnNavigatedTo(Reset)`
-  inline in `CreateRegion`, so it doesn't run in a model turn unless
-  `CreateRegion` was called in one.
+  inline in `CreateRegion` or `NavigationRegion<T>.Start`, so it doesn't run
+  in a model turn unless that call was made in one.
 - Each handler is called separately. One that throws is logged (event 1075),
   and the other handlers still run; the change stands. Handlers must not pump
   or await navigation; start navigation after the turn instead.
@@ -321,8 +369,8 @@ A failed step is logged as event 1064.
   Those of borrowed content keep their entries when the entry retires, because
   the content lives on. Regions owned by the root, or by an object that is no
   entry's content, are nobody's child regions.
-- An initial target (`CreateRegion(owner, initial)`) becomes current without a
-  transition. Its content must not implement `INavigationInitialize` or
+- An initial target (`CreateRegion(owner, initial)` or `region.Start(target)`)
+  becomes current without a transition. Its content must not implement `INavigationInitialize` or
   `INavigationInitialize<TInput>`, and `Create(factory, input)` and
   `Create<T, TInput>(input)` cannot be initial targets.
 
@@ -635,9 +683,9 @@ resumes on its own context as usual.
   same owner type and initial target type on the same thread, on any
   navigator, and throws `InvalidOperationException` instead of overflowing the
   stack. One holder type reused at two levels with different targets is fine.
-  Create the region empty and reset it after construction:
-  `await navigation.Region.ResetAsync<HomeViewModel>()`, for example from
-  application startup.
+  Create the region empty and start it once the service exists, for example
+  with `navigation.Region.Start(NavigationTarget.Create<HomeViewModel>())` in
+  the window ViewModel's constructor (see [The root page](#the-root-page)).
 
 ## Model context
 

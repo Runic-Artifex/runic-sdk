@@ -127,6 +127,43 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// </summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>
+    /// Commits the root entry of a region created without an initial target, synchronously, like the
+    /// <c>initial</c> target of <see cref="RunicNavigator.CreateRegion{TContent}"/>. Call it once, where the root
+    /// page exists, for example in the constructor of a window's ViewModel:
+    /// <c>Main.Start(NavigationTarget.Borrow&lt;IPage&gt;(list))</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The target follows the rules for initial targets: it has no input, and its content implements neither
+    /// <see cref="INavigationInitialize"/> nor <see cref="INavigationInitialize{TInput}"/>. Content that a
+    /// <c>Create</c> target constructs can take its <see cref="NavigationEntryContext"/> as a constructor parameter.
+    /// </para>
+    /// <para>
+    /// Before the method returns, the entry's <see cref="NavigationEntryContext.StateChanged"/> and
+    /// <see cref="INavigationAware.OnNavigatedTo"/> (with <see cref="NavigationOperation.Reset"/>), then the
+    /// region's <see cref="PropertyChanged"/>, run on the caller's thread. Call it before the region is shared
+    /// with other threads.
+    /// </para>
+    /// <para>
+    /// Unlike a navigation request, a failure throws: an exception from the target's factory or constructor
+    /// propagates, and the region stays empty. Opened through <c>IRunicWindowService</c>, the window then fails
+    /// to open.
+    /// </para>
+    /// </remarks>
+    /// <param name="target">The root content.</param>
+    /// <exception cref="ArgumentException">The target has input, was not created with <see cref="NavigationTarget"/>, or its content initializes asynchronously.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// The region already has its initial entry (it was created with one, or <see cref="Start"/> was called before),
+    /// or it already received a navigation request.
+    /// </exception>
+    /// <exception cref="ObjectDisposedException">The navigator is closed.</exception>
+    public void Start(INavigationTarget<TContent> target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        Core.Navigator.StartRegion(Core, target, nameof(target));
+    }
+
     /// <summary>Pushes a new entry. The current entry is retained.</summary>
     public ValueTask<NavigationResult<TContent>> PushAsync(INavigationTarget<TContent> target,
         NavigationRequestOptions? options = null, CancellationToken cancellationToken = default) =>
@@ -354,6 +391,10 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public NavigationEntryCore[] Stack { get => _stack; set => _stack = value; }
     public long Version { get; set; }
     public bool Closed { get; set; }
+    // An initial entry was taken by CreateRegion or Start; Start is then refused.
+    public bool Started { get; set; }
+    // A request reached the region (admitted or not); Start is then refused.
+    public bool Requested { get; set; }
     // Admitted transitions that have not released admission, in admission order.
     public List<NavigationTransition> InFlight { get; } = [];
 

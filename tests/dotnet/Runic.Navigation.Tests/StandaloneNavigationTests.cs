@@ -186,15 +186,16 @@ internal sealed partial class NavigationTests
         while (cycle is not null && !(cycle is InvalidOperationException && cycle.Message.Contains("dependency cycle", StringComparison.Ordinal)))
             cycle = cycle.InnerException;
         Require(cycle is InvalidOperationException { Message: var cycleMessage } && cycleMessage.Contains(nameof(HomePage), StringComparison.Ordinal)
-            && cycleMessage.Contains(nameof(MainNavigation), StringComparison.Ordinal) && cycleMessage.Contains("ResetAsync<HomePage>()", StringComparison.Ordinal),
+            && cycleMessage.Contains(nameof(MainNavigation), StringComparison.Ordinal) && cycleMessage.Contains("Start(NavigationTarget.Create<HomePage>())", StringComparison.Ordinal),
             $"The initial-target cycle was not reported: {error}");
         await Wait(fixture.Navigator.WhenIdleAsync());
         Require(fixture.Navigator.UnretiredEntryCount == 0, "The failed cycle left entries behind.");
 
-        // The documented pattern: an empty region reset after construction.
+        // The documented pattern: an empty region started once the holder exists (W260-005). The page resolves
+        // the holder without reaching the cycle guard.
         var resetting = provider.GetRequiredService<ResettingNavigation>();
-        await Wait(resetting.Region.ResetAsync<ResetHomePage>());
-        Require(resetting.Region.Current is ResetHomePage { Navigation: var navigation } && navigation == resetting, "The reset pattern failed.");
+        resetting.Region.Start(NavigationTarget.Create<ResetHomePage>());
+        Require(resetting.Region.Current is ResetHomePage { Navigation: var navigation } && navigation == resetting, "The start pattern failed.");
 
         // A page created as an initial target may create its own child region with an initial target.
         var shell = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Create<ShellPage>());
