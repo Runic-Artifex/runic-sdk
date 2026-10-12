@@ -1145,9 +1145,11 @@ and must return a task that covers all work requiring its resources.
   [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md),
   which says how to fix it. See [Generator diagnostics](#generator-diagnostics).
 - **The frontend dependencies were not installed.** The build installs them
-  when `node_modules` is missing. Install them with the frontend's package
-  manager, or run `dotnet runic doctor` to check the package manager and lock
-  file. Set `RunicApplicationFrontendInstallEnabled=false` when a workspace install owns
+  when `package.json` or a lock file changed since the last install, and when
+  declared dependencies have no `node_modules`. If that install did not run or
+  failed, install them with the frontend's package manager, or run
+  `dotnet runic doctor` to check the package manager and lock file. Set
+  `RunicApplicationFrontendInstallEnabled=false` when a workspace install owns
   them.
 - **The build says only one ReactiveUI flavor can be used.**
   `Runic.Application.Views.ReactiveUI` and `Runic.Application.Views.ReactiveUI.Reactive`

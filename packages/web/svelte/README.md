@@ -200,4 +200,4 @@ initialization and send the range to the ViewModel from an effect:
 
 Translation helpers moved to
 [`@runic-artifex/translations-svelte`](https://www.npmjs.com/package/@runic-artifex/translations-svelte).
-Use a prior SDK preview until application imports have been migrated.
+Import them from there instead of `@runic-artifex/svelte`.

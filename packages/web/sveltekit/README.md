@@ -22,4 +22,4 @@ matching route options (`runicPrerenderedPageOptions`, `runicSpaPageOptions`).
 
 Translation routing helpers moved to
 [`@runic-artifex/translations-sveltekit`](https://www.npmjs.com/package/@runic-artifex/translations-sveltekit).
-Use a prior SDK preview until application imports have been migrated.
+Import them from there instead of `@runic-artifex/sveltekit`.
