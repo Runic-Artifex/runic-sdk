@@ -69,7 +69,7 @@ internal sealed class NativeChecks
             // focuses the first element later, on a channel that is not ordered with this script's bridge
             // socket. The page waits for the focus to land instead of sampling activeElement once (#216).
             var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe, TimeSpan.FromSeconds(15));
-            Console.WriteLine($"[focus] {focus} windowActive={window.IsActive}");
+            FocusDiagnostics.Emit($"[focus] {focus} windowActive={window.IsActive}");
             Program.Check(focus.StartsWith("editor ", StringComparison.Ordinal), $"The child document could not focus its editor: {focus}.");
             window.Content = null;
             await attachment.Released.Task.WaitAsync(TimeSpan.FromSeconds(10));

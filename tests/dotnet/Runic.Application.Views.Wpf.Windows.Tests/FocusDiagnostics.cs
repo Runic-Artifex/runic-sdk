@@ -25,7 +25,7 @@ internal sealed class FocusDiagnostics
             await using var host = await DesktopHost.StartAsync(new() { WindowHostFactory = child.CreateWindowHostFactory(), ConnectionTimeout = TimeSpan.FromSeconds(20) });
             await using var view = await services.CreateWpfViewAsync(host, Program.HtmlOptions(), new object());
             await view.OpenAsync();
-            Console.WriteLine($"[focus-diag] start windowActive={window.IsActive} keyboardFocus={System.Windows.Input.Keyboard.FocusedElement?.GetType().Name ?? "-"}");
+            Emit($"[focus-diag] start windowActive={window.IsActive} keyboardFocus={System.Windows.Input.Keyboard.FocusedElement?.GetType().Name ?? "-"}");
             int resizedEarly = 0, plainEarly = 0, resizedMissing = 0, plainMissing = 0;
             List<string> lines = [];
             for (var i = 0; i < 60; i++)
@@ -42,11 +42,15 @@ internal sealed class FocusDiagnostics
                 if (missing) { if (resize) resizedMissing++; else plainMissing++; }
                 lines.Add($"[focus-diag] {i} resize={resize} reset={reset} {focus} windowActive={window.IsActive}");
             }
-            foreach (var line in lines) Console.WriteLine(line);
-            Console.WriteLine($"[focus-diag] summary: probe arrived before focus {resizedEarly}/30 (resize), {plainEarly}/30 (no resize); never focused {resizedMissing}/30, {plainMissing}/30");
+            foreach (var line in lines) Emit(line);
+            Emit($"[focus-diag] summary: probe arrived before focus {resizedEarly}/30 (resize), {plainEarly}/30 (no resize); never focused {resizedMissing}/30, {plainMissing}/30");
         }
         finally { window.Close(); }
     }
 
     private sealed class Nothing : IDisposable { public void Dispose() { } }
+
+    // TUnit captures Console output of passing cases; write to the process stdout so the CI log shows it.
+    private static readonly StreamWriter Raw = new(Console.OpenStandardOutput()) { AutoFlush = true };
+    internal static void Emit(string line) { lock (Raw) Raw.WriteLine(line); }
 }
