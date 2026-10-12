@@ -33,7 +33,8 @@ internal sealed class WindowCloseGuardTests
         var customers = new PagesTab("customers", pages);
         var reports = new Page("reports");
         var tab = fixture.Navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(customers));
-        var tabs = new TabControl { ItemsSource = new object[] { customers, reports } };
+        // As in the trial's shell: headers show the name, so only the selected tab's content uses the tab's template.
+        var tabs = new TabControl { ItemsSource = new object[] { customers, reports }, DisplayMemberPath = nameof(PagesTab.Name) };
         NavigationSelector.SetRegion(tabs, tab);
         var window = ShowWindow(tabs, window =>
         {
@@ -44,7 +45,8 @@ internal sealed class WindowCloseGuardTests
         {
             var hosts = HostsOf(window, pages);
             Require(hosts is [{ IsLoaded: true }] && ViewOf(hosts[0]) is TextBox { DataContext: GuardedPage },
-                "The Customers tab doesn't present its page region.");
+                $"The Customers tab doesn't present its page region: {hosts.Count} host(s), loaded: {string.Join(", ", hosts.Select(host => host.IsLoaded))}, "
+                + $"view: {(hosts.Count > 0 ? ViewOf(hosts[0])?.DataContext : null)}.");
             var shown = hosts[0];
 
             Select(tabs, tab, reports);
