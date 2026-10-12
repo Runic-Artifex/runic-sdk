@@ -14,7 +14,7 @@ namespace Runic.Navigation.Wpf.Tests;
 internal sealed class WindowCloseGuardTests
 {
     // N1: a guarding host on a TabControl tab unloads when another tab is selected, and the window still asks its region.
-    // F13: selecting another tab is no departure; the tab's page region keeps its entries and asks no guard.
+    // A region of another owner that a tab only refers to is not the tab's: selecting another tab asks no guard (W260-009).
     [Test, DisplayName("GuardWindowClose on an unselected tab"), NotInParallel("WpfSuite", Order = 43)]
     public void UnselectedTab()
     {
@@ -84,6 +84,84 @@ internal sealed class WindowCloseGuardTests
         finally
         {
             WindowCloseGuard.Remove(pages);
+            if (IsOpen(window)) window.Close();
+        }
+    }
+
+    // W260-009 (F13): selecting another tab asks the current page of each region the tab's model owns, as a retained
+    // departure. A page that keeps its draft keeps the tab selected; one that allows leaves the page in its region, and
+    // the window's close still asks it.
+    [Test, DisplayName("Tab switch asks the tab's page regions"), NotInParallel("WpfSuite", Order = 42)]
+    public void TabSwitchAsksPages()
+    {
+        using var fixture = new NavFixture();
+        var customers = new PagesTab("customers", fixture.Navigator, NavigationTarget.Own<object>(new Page("list")));
+        var pages = customers.Pages;
+        var asked = new List<(NavigationDepartureKind Kind, CancellationToken Token, TaskCompletionSource<bool> Answer)>();
+        var editor = new DeparturePage("editor", (departure, token) =>
+        {
+            var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            token.Register(() => answer.TrySetCanceled(token));
+            asked.Add((departure.Kind, token, answer));
+            return new ValueTask<bool>(answer.Task);
+        });
+        Pump(pages.PushAsync(NavigationTarget.Own<object>(editor)));
+        var reports = new Page("reports");
+        var settings = new Page("settings");
+        var tab = fixture.Navigator.CreateRegion<object>(new object(), NavigationTarget.Borrow<object>(customers));
+        var tabs = new TabControl { ItemsSource = new object[] { customers, reports, settings }, DisplayMemberPath = nameof(PagesTab.Name) };
+        NavigationSelector.SetRegion(tabs, tab);
+        var window = ShowWindow(tabs, window =>
+        {
+            AddTemplates(window, typeof(Page), typeof(DeparturePage));
+            window.Resources.Add(new DataTemplateKey(typeof(PagesTab)), GuardedPagesTemplate());
+        });
+        try
+        {
+            Require(HostsOf(window, pages) is [{ IsLoaded: true } shown] && ViewOf(shown) is TextBox { DataContext: DeparturePage },
+                "The Customers tab doesn't present its page region.");
+
+            // Keep: the tab stays selected, with its page and its loaded host.
+            tabs.SelectedItem = reports;
+            PumpUntil(() => asked.Count == 1, "the page's guard on the tab switch");
+            Require(asked[0].Kind == NavigationDepartureKind.Retain && tab.IsTransitioning && ReferenceEquals(tab.Current, customers),
+                $"The tab switch asked the page as {asked[0].Kind} or changed the tab before it answered.");
+            asked[0].Answer.SetResult(false);
+            PumpUntil(() => !tab.IsTransitioning && ReferenceEquals(tabs.SelectedItem, customers), "the kept tab");
+            Drain();
+            Require(ReferenceEquals(tab.Current, customers) && ReferenceEquals(pages.Current, editor) && pages.CanGoBack
+                    && HostsOf(window, pages) is [{ IsLoaded: true } kept] && ViewOf(kept) is TextBox { DataContext: DeparturePage },
+                "A page that kept its draft didn't keep the tab selected and presented.");
+
+            // A later selection supersedes the pending one and cancels its guard; the latest choice is asked again.
+            tabs.SelectedItem = reports;
+            PumpUntil(() => asked.Count == 2, "the guard of the first selection");
+            tabs.SelectedItem = settings;
+            PumpUntil(() => asked.Count == 3, "the guard of the later selection");
+            Require(asked[1].Token.IsCancellationRequested && asked[1].Answer.Task.IsCanceled && ReferenceEquals(tab.Current, customers),
+                "The later selection didn't cancel the superseded guard.");
+
+            // Allow: the switch commits, and the page stays in its region with its draft.
+            asked[2].Answer.SetResult(true);
+            PumpUntil(() => ReferenceEquals(tab.Current, settings) && !tab.IsTransitioning, "the allowed tab switch");
+            Drain();
+            Require(ReferenceEquals(tabs.SelectedItem, settings) && ReferenceEquals(pages.Current, editor) && pages.CanGoBack
+                    && HostsOf(window, pages).Count == 0 && WindowCloseGuard.Lists(window, pages),
+                "The allowed switch didn't select the tab, left the page, or stopped the window guarding it.");
+
+            // The window's close clears the region: the page retires, and its guard is asked again.
+            window.Close();
+            PumpUntil(() => asked.Count == 4, "the page's guard on the window's close");
+            Require(asked[3].Kind == NavigationDepartureKind.Retire && IsOpen(window), "The window's close didn't ask the page to retire.");
+            asked[3].Answer.SetResult(true);
+            PumpUntil(() => !IsOpen(window), "the window to close");
+            Require(pages.CurrentEntry is null && !pages.CanGoBack,
+                "The window closed without clearing the tab's region.");
+        }
+        finally
+        {
+            WindowCloseGuard.Remove(pages);
+            foreach (var (_, _, answer) in asked) answer.TrySetResult(false);
             if (IsOpen(window)) window.Close();
         }
     }

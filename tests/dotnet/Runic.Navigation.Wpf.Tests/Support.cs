@@ -66,11 +66,33 @@ internal sealed class GuardedPage(string name, Func<ValueTask<bool>> guard) : Pa
     public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) => guard();
 }
 
-// A tab that holds a page region, as the Customers tab of a TabControl shell does.
-internal sealed class PagesTab(string name, NavigationRegion<object> pages)
+// A page whose guard runs a test delegate with the departure and the guard's token.
+internal sealed class DeparturePage(string name, Func<NavigationDeparture, CancellationToken, ValueTask<bool>> guard)
+    : Page(name), INavigationDepartureGuard
 {
-    public string Name { get; } = name;
-    public NavigationRegion<object> Pages { get; } = pages;
+    public ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) =>
+        guard(departure, cancellationToken);
+}
+
+// A tab that holds a page region, as the Customers tab of a TabControl shell does.
+internal sealed class PagesTab
+{
+    // A tab that refers to a region of another owner, such as the root.
+    public PagesTab(string name, NavigationRegion<object> pages)
+    {
+        Name = name;
+        Pages = pages;
+    }
+
+    // A tab model that creates its page region with itself as the owner.
+    public PagesTab(string name, RunicNavigator navigator, INavigationTarget<object> initial)
+    {
+        Name = name;
+        Pages = navigator.CreateRegion(this, initial);
+    }
+
+    public string Name { get; }
+    public NavigationRegion<object> Pages { get; }
 
     public override string ToString() => Name;
 }
