@@ -1,9 +1,11 @@
 using Runic.Platform;
 using Runic.Platform.Runtime;
+using TUnit.Core;
 
-internal static class NativeAccessTests
+internal sealed class NativeAccessTests
 {
-    internal static async Task RunAsync()
+    [Test, DisplayName("ACCESS: acquisition failure and selected-file permission limits")]
+    public async Task NativeAccessAsync()
     {
         // Exercise actual filesystem failures after a native selection, while the
         // controlled selection source avoids a manual OS dialog in managed CI.

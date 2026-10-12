@@ -8,7 +8,7 @@ On Apple Silicon macOS, create a small text file outside the application's
 container, then run the retained app from Terminal:
 
 ```sh
-RunicPlatform.app/Contents/MacOS/Runic.Platform.Runtime.Tests --native-select
+RunicPlatform.app/Contents/MacOS/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeSelect]"
 ```
 
 Select that file in the owned open sheet. The test reads at most 4096 bytes without
@@ -25,7 +25,7 @@ makes no retained-bookmark or general filesystem permission promise.
 
 The Runtime test uses a `Runic.Desktop` embedded WebView as the native window
 owner, with the provider selected directly from `Runic.Platform`. For an ordinary
-desktop-session selection test, the same `--native-select` flag works with the
+desktop-session selection test, the same `NativeSelect` category works with the
 Windows/Linux/macOS executable outside a sandbox. Linux Wayland/portal evidence
 additionally needs a supported compositor and portal; Xvfb cancellation is not a
 substitute.

@@ -115,8 +115,6 @@ The .NET test suites in `tests/dotnet`, the ReactiveUI fixtures in `tests/fixtur
 and the examples' tests use [TUnit](https://tunit.dev) on Microsoft.Testing.Platform
 (MTP). Each suite is an executable; run it with `dotnet run --project <suite>`. The
 repository's `global.json` does not opt in to the MTP mode of `dotnet test`.
-`tests/dotnet/Runic.Platform.Linux.Portal.Tests` and
-`tests/dotnet/Runic.Platform.Runtime.Tests` still run their own `Program.cs`.
 
 - **Project.** Keep `OutputType` `Exe`. Reference `TUnit.Core`, `TUnit.Engine`,
   `Microsoft.Testing.Extensions.TrxReport` and `Microsoft.Testing.Extensions.CodeCoverage`,
@@ -125,8 +123,9 @@ repository's `global.json` does not opt in to the MTP mode of `dotnet test`.
   the suites keep their own assertion helpers, and `Runic.Desktop.Tests` keeps
   `xunit.assert`. Set `TUnitImplicitUsings` to `false`, write `using TUnit.Core;`, and
   delete `Program.cs`: TUnit generates the entry point. A suite that also starts its own
-  executable as a child process or helper sets `GenerateTestingPlatformEntryPoint` to
-  `false`, and its `Program.cs` runs that helper before it builds the test application
+  executable as a child process or helper, or must run inside a native event loop
+  (`Runic.Platform.Runtime.Tests` on macOS), sets `GenerateTestingPlatformEntryPoint` to
+  `false`, and its `Program.cs` runs that helper or loop before it builds the test application
   the way the generated entry point does. Commit the suite's `packages.lock.json`
   (`bun run lock:nuget`).
 - **Cases.** Each case is a non-static `[Test]` method in a non-static class and fails when

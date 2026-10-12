@@ -1,10 +1,12 @@
 using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 using Tmds.DBus.Protocol;
+using TUnit.Core;
 
-internal static class PortalRecoveryTests
+internal sealed class PortalRecoveryTests
 {
-    internal static async Task RunAsync()
+    [Test, Explicit, Category("DBus"), DisplayName("portal restart: owner-bound in-flight failure, no replay, re-registration, and identity across notifications/settings/FD handoff")]
+    public async Task PortalRestartAsync()
     {
         const string name = "org.runic.RecoveryPortal";
         const string appId = "org.runic.RecoveryApplication";

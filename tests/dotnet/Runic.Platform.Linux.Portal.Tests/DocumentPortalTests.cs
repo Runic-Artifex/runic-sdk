@@ -4,6 +4,8 @@ using Runic.Platform;
 using Runic.Platform.Linux.Portal;
 using Runic.Platform.Runtime;
 using Tmds.DBus.Protocol;
+using TUnit.Core;
+using TUnit.Core.Enums;
 
 // Saves through the real xdg-document-portal FUSE view a Flatpak application gets
 // (<mount>/by-app/<app-id>/<doc-id>/<name>), with the production picker, location
@@ -11,13 +13,15 @@ using Tmds.DBus.Protocol;
 // Every document added here is deleted again. Without a document portal or FUSE
 // this reports a skip with its reason, never a pass.
 [System.Runtime.Versioning.SupportedOSPlatform("linux")]
-internal static partial class DocumentPortalTests
+internal sealed partial class DocumentPortalTests
 {
     private const string AppId = "org.runic.PortalTests";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    internal static async Task RunAsync(IPortalWindowOwner owner)
+    [Test, RunOn(OS.Linux), DisplayName("document portal atomic save")]
+    public async Task AtomicSaveAsync()
     {
+        var owner = new Owner();
         if (!File.Exists("/dev/fuse")) { Skip("/dev/fuse is absent"); return; }
         if (DBusAddress.Session is not { } address) { Skip("no session bus"); return; }
         using var connection = new DBusConnection(address);
@@ -186,7 +190,7 @@ internal static partial class DocumentPortalTests
         return long.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    private static void Skip(string reason) => Console.WriteLine("SKIP document portal atomic save: " + reason + ".");
+    private static void Skip(string reason) => TUnit.Core.Skip.Test("document portal atomic save: " + reason + ".");
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
 
     [LibraryImport("libc", EntryPoint = "open", StringMarshalling = StringMarshalling.Utf8)]
