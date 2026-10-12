@@ -28,6 +28,10 @@ useful, but is bounded and has credential values redacted. Failures stay in
 the dock: `/__runic/state` and the copied diagnostic state leave them out, and
 the other timeline fields stay path-free. An application without a Vite-served `index.html` imports
 `virtual:runic/client` itself. `devtools: false` disables the injection.
+The plugin adds `@runic-artifex/vite-plugin-runic/client` to
+`optimizeDeps.include`, because the dependency scanner cannot see the injected
+client: with a cold `node_modules/.vite` cache, the first page would otherwise
+discover it, and Vite would reload the page and close the host's connection.
 
 The native host serves `webui.js` and its client script (`runic-desktop.js`,
 `runic-cswebui.js` or `runic-desktop-views.js`) from the root of the web
