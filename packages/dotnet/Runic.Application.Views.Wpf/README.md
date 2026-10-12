@@ -7,13 +7,14 @@ shell, navigation engine, ViewModels, services and native dialogs. Toolkit,
 ReactiveUI, or plain observable models can use the same presentation adapter.
 Suppress `RUNICWPF001` where you use it; the package suppresses it in the code
 that the WPF markup compiler generates for a named `RunicWebView`.
+The XAML namespace is `https://runic-artifex.eu/xaml/views`, with the prefix `rv`.
 
 ## Host a web View in XAML
 
 `RunicViewHost` presents an existing model through its generated web View:
 
 ```xml
-<UserControl xmlns:rv="clr-namespace:Runic.Application.Views.Wpf;assembly=Runic.Application.Views.Wpf"
+<UserControl xmlns:rv="https://runic-artifex.eu/xaml/views"
              xmlns:local="clr-namespace:MyApp">
   <rv:RunicViewHost Model="{Binding}">
     <!-- Shown with the same DataContext when the web View can't open. -->

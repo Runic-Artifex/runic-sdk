@@ -5,10 +5,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Runic.Desktop;
 using Runic.Platform;
+#if RUNIC_PORTABLE_PLATFORMS
 using Runic.Platform.Linux;
 using Runic.Platform.Linux.Gtk4;
 using Runic.Platform.Linux.Portal;
 using Runic.Platform.MacOS;
+#endif
 using Runic.Platform.Runtime;
 using Runic.Platform.Windows;
 
@@ -87,19 +89,23 @@ public static class PlatformServices
     {
         IDesktopSettings? settings = null;
         if (OperatingSystem.IsWindows()) settings = Optional(CreateWindowsSettings);
+#if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsMacOS()) settings = CreateMacOSSettings();
         else if (OperatingSystem.IsLinux()) settings = CreatePortalSettings();
+#endif
         return settings ?? DesktopSettings.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSettings CreateWindowsSettings() => WindowsPlatformProvider.CreateSettings();
 
+#if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSettings CreateMacOSSettings() => MacOSPlatformProvider.CreateSettings();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopSettings CreatePortalSettings() => PortalPlatformProvider.CreateSettings();
+#endif
 
     internal static IWindowPlatformServices Create(DesktopNativeOwner owner, out DesktopPlatformProvider provider)
     {
@@ -107,12 +113,15 @@ public static class PlatformServices
         if (!owner.IsAvailable) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
         provider = CurrentProvider;
         // Each provider is created in its own method, so the JIT loads only the selected provider's assembly:
-        // a GTK 4 process does not even load the GTK 3 provider.
+        // a GTK 4 process does not even load the GTK 3 provider. The -windows assembly references only the
+        // Windows provider, so elsewhere its providers report ProviderNotConfigured.
         NativeServices? native = null;
         if (provider == DesktopPlatformProvider.Windows) native = CreateWindows(owner);
+#if RUNIC_PORTABLE_PLATFORMS
         else if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS()) native = CreateMacOS(owner);
         else if (provider == DesktopPlatformProvider.LinuxGtk3) native = CreateGtk3(owner);
         else if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux()) native = CreateGtk4(owner);
+#endif
         if (native is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         return new BoundWindowPlatformServices(owner, selected);
     }
@@ -123,6 +132,7 @@ public static class PlatformServices
         WindowsPlatformProvider.CreateTextClipboard(owner),
         Optional(() => WindowsPlatformProvider.CreateFileLauncher(owner)));
 
+#if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SupportedOSPlatform("macos")]
     private static NativeServices CreateMacOS(DesktopNativeOwner owner) => new(
@@ -144,6 +154,7 @@ public static class PlatformServices
         return new(PortalPlatformProvider.CreateFileDialogs(portalOwner), Gtk4PlatformProvider.CreateTextClipboard(owner),
             PortalPlatformProvider.CreateFileLauncher(portalOwner));
     }
+#endif
 
     // A provider that requires a newer OS version than the one running reports the service unconfigured.
     private static T? Optional<T>(Func<T> create) where T : class

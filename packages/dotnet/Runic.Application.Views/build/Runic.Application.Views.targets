@@ -46,6 +46,11 @@
     <_RunicBridgeNoViewsMarker>RunicBridge.NoViews.marker</_RunicBridgeNoViewsMarker>
     <RunicApplicationFrontendDirectory Condition="'$(RunicApplicationFrontendDirectory)' == ''">$(MSBuildProjectDirectory)/Frontend</RunicApplicationFrontendDirectory>
     <RunicApplicationFrontendGeneratedDirectory Condition="'$(RunicApplicationFrontendGeneratedDirectory)' == ''">$(RunicApplicationFrontendDirectory)/src/generated</RunicApplicationFrontendGeneratedDirectory>
+    <!-- A frontend inside the project folder would otherwise add its installed
+         packages and build output to the default None, Content and Page items,
+         which IDEs list and evaluation walks. Items are evaluated after all
+         properties, so the SDK's default globs see this exclude. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**</DefaultItemExcludes>
     <!-- WPF compiles a temporary copy of the project (<name>_<random>_wpftmp)
          to resolve local types in XAML. The copy imports these targets too,
          but must not generate or bootstrap again: it compiles the code that

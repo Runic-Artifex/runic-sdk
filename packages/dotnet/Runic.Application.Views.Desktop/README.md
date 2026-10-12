@@ -113,7 +113,10 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `Unavailable(OwnerClosed)`. A Linux process without a GTK backend returns
   `Unavailable(ProviderNotConfigured)`. `GetSnapshot()` reports the same states
   per capability. The package references every provider package, but loads
-  only the selected provider assembly. `dotnet runic doctor` names the
+  only the selected provider assembly. An application that targets
+  `net10.0-windows`, such as a WPF application, gets an assembly that
+  references only `Runic.Platform.Windows`, so it does not ship the Linux and
+  macOS providers. `dotnet runic doctor` names the
   provider and, on Linux, checks for the session bus and xdg-desktop-portal.
   `PlatformServices.ForWindow(owner)` creates the same services for a
   `DesktopWindow` that the application opened itself.
