@@ -92,6 +92,9 @@ starts: the page's Close, the shell's Back or a guarded window close. A .NET
 fallback handler that the ViewModel registers answers when no View does, such as
 for navigation that .NET code starts (see
 [Leave confirmation through an interaction](#leave-confirmation-through-an-interaction)).
+A web View registers its handler when it mounts, so a departure during the
+page's first render, such as a close just as the page opened, gets the fallback
+too.
 
 **4. Results.** The caller pushes for a result and awaits its completion. It
 doesn't need `ToTask()` or a scheduler:
@@ -134,6 +137,22 @@ opt in on the window:
   `RequestCloseAsync()` closes from code the way the close button does. See
   [Guarding a user close](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#guarding-a-user-close).
 - In WPF, set `GuardWindowClose="True"` on the `NavigationHost`.
+
+In a Runic Views app, the Window opts in. A ViewModel that keeps the Window
+`OpenWindowAsync` returned closes it from a `ReactiveCommand` the way the close
+button does:
+
+```csharp
+public sealed partial class EditorWindow : RunicWindow<EditorViewModel>
+{
+    public EditorWindow() => GuardClose = true;
+}
+
+CloseEditorCommand = ReactiveCommand.CreateFromTask(async token =>
+{
+    if (!await _editor.RequestCloseAsync(token)) StatusText = "The editor has unsaved changes.";
+});
+```
 
 The leave guard from step 3 then decides. In a Runic Views app the close is the
 window's own departure, so the page's mounted web View asks the user, as it does

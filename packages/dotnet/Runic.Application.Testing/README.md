@@ -226,6 +226,46 @@ cover a guard that asks in a dialog region with `PushForResult`, resuming a
 retained entry, retirement of a parent's child regions, racing navigation and
 closing the window while the dialog asks.
 
+### Interactions
+
+A test answers a ReactiveUI `Interaction`, such as the question of a
+`ReactiveLeaveConfirmation.WithInteraction` guard, with a .NET handler on the
+ViewModel. ReactiveUI asks the latest handler first, so a handler the test
+registers answers before a fallback registered in the ViewModel's constructor;
+dispose it to restore the fallback. From the
+[ReactiveUI WPF navigation tests](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/wpf-navigation/Tests.ReactiveUI):
+
+```csharp
+var answers = new Queue<bool>([false, true]);
+var prompts = new List<string>();
+using var handler = detail.ConfirmDiscard.RegisterHandler(context =>
+{
+    prompts.Add(context.Input);
+    context.SetOutput(answers.Dequeue());
+});
+```
+
+This is the supported test path for a question that a web View answers in the
+browser. The host does not run the generated TypeScript client, and a
+driver's `Mount()` acknowledges a presentation without registering any
+interaction handler, so the question never waits for a browser: it goes to
+the .NET handlers. The test still covers everything the ViewModel decides: the
+guard, the prompt's input, and what each answer keeps or discards. With no
+handler that answers, the departure fails closed with ReactiveUI's
+`UnhandledInteractionException`, as in the application.
+
+The browser's side is tested with the frontend: the generated typed mock's
+`interactions.<name>.request(input)` resolves with the answer of the handler
+the View registered with `interactions.<name>.handle(...)`; see the
+[Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
+Which View is asked for which departure, and the fallback when none is
+mounted, are covered by the SDK's own tests and described in
+[Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view).
+
+CommunityToolkit.Mvvm has no interaction type: a Toolkit guard asks in a
+dialog region, and a test answers it by executing the dialog's command through
+its driver, as in [Navigation](#navigation).
+
 ### Collections and deltas
 
 `Track()` follows a route from a snapshot through its frames, as the generated

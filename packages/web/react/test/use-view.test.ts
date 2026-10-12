@@ -1,4 +1,4 @@
-import { act, Component, createElement, StrictMode, Suspense, useState, type ReactNode } from "react";
+import { act, Component, createElement, StrictMode, Suspense, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, expectTypeOf, test, vi } from "vitest";
 import { BridgeError, bridgeFailure, bridgeSuccess, type BridgeOperation, type BridgeOperationStatus, type BridgeOutcome } from "@runic-artifex/views";
@@ -143,6 +143,48 @@ describe("useView", () => {
     expect(latest?.error).toBeUndefined();
     await act(async () => reference.resolveAll());
     expect(text()).toBe("7");
+  });
+});
+
+describe("interactions", () => {
+  type Prompt = { readonly itemName: string };
+  type Handler = (prompt: Prompt, context: { readonly signal: AbortSignal }) => unknown;
+
+  // Mirrors a generated client's interaction surface: handle registers the View's
+  // answer and returns the function that removes it.
+  function interactiveClient() {
+    const handlers = new Set<Handler>();
+    return Object.assign(fakeClient(1), {
+      handlers,
+      interactions: {
+        confirmDiscard: {
+          handle(handler: (prompt: Prompt, context: { readonly signal: AbortSignal }) => boolean | Promise<boolean>) {
+            handlers.add(handler);
+            return () => { handlers.delete(handler); };
+          },
+        },
+      },
+    });
+  }
+
+  test("the README's effect answers while the page is mounted and is removed when it unmounts", async () => {
+    const page = interactiveClient();
+    function EditPage({ page }: { readonly page: ReturnType<typeof interactiveClient> }): ReactNode {
+      const { client } = useView(page);
+      useEffect(() => client?.interactions.confirmDiscard.handle(
+        async (prompt, { signal }) => !signal.aborted && prompt.itemName === "Groceries",
+      ), [client]);
+      return null;
+    }
+    await act(async () => {
+      root ??= createRoot(document.body.appendChild(document.createElement("div")));
+      root.render(createElement(StrictMode, null, createElement(EditPage, { page })));
+    });
+    expect(page.handlers.size).toBe(1);
+    const [handler] = page.handlers;
+    expect(await handler!({ itemName: "Groceries" }, { signal: new AbortController().signal })).toBe(true);
+    await act(async () => root!.render(null));
+    expect(page.handlers.size).toBe(0);
   });
 });
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ReactiveUI;
 using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
 using Runic.Application.Testing;
@@ -109,6 +110,29 @@ internal sealed class LeaveGuardRoutingTests
         editor.Answer(await ExpectPromptAsync(prompt), discard: true);
         Require(await request.WaitAsync(Timeout) && !shell.Native.IsOpen && editor.ViewModel.Draft == "",
             "Discard on RequestCloseAsync did not discard the draft and close the window.");
+    }
+
+    // The ReactiveUI RequestCloseAsync sample of the Runic.Application.Views README and the Runic.Navigation.ReactiveUI
+    // walkthrough: a ReactiveCommand asks the guarded window to close, and reports when the page's web View keeps it open.
+    [Test]
+    public async Task AReactiveCommandRequestsTheGuardedCloseAsync()
+    {
+        await using var shell = await GuardedShell.OpenAsync();
+        var editor = await shell.OpenEditorAsync();
+        var workspace = new WorkspaceViewModel(shell.Window);
+
+        var prompt = editor.WaitForPromptAsync();
+        var kept = ReactiveCommandExecution.Execute(workspace.CloseEditorCommand, RxVoid.Default, CancellationToken.None);
+        editor.Answer(await ExpectPromptAsync(prompt), discard: false);
+        await kept.WaitAsync(Timeout);
+        Require(workspace.StatusText == "The editor has unsaved changes." && shell.Native.IsOpen
+            && editor.ViewModel.Draft == "changed", "Keep editing did not keep the window open and report it.");
+
+        prompt = editor.WaitForPromptAsync();
+        var closed = ReactiveCommandExecution.Execute(workspace.CloseEditorCommand, RxVoid.Default, CancellationToken.None);
+        editor.Answer(await ExpectPromptAsync(prompt), discard: true);
+        await closed.WaitAsync(Timeout);
+        Require(!shell.Native.IsOpen && editor.ViewModel.Draft == "", "Discard did not close the window.");
     }
 
     // The shell's Back from another browser connection does not reach the editor's View, and fails closed without a
@@ -252,6 +276,26 @@ internal sealed class LeaveGuardRoutingTests
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    // Keeps a Window that OpenWindowAsync returned and closes it from a command, as the README sample does.
+    private sealed class WorkspaceViewModel : ReactiveObject
+    {
+        private readonly IRunicWindow _editor;
+        private string _statusText = "";
+
+        public WorkspaceViewModel(IRunicWindow editor)
+        {
+            _editor = editor;
+            CloseEditorCommand = ReactiveCommand.CreateFromTask(async token =>
+            {
+                if (!await _editor.RequestCloseAsync(token)) StatusText = "The editor has unsaved changes.";
+            });
+        }
+
+        public string StatusText { get => _statusText; private set => this.RaiseAndSetIfChanged(ref _statusText, value); }
+
+        public ReactiveCommand<RxVoid, RxVoid> CloseEditorCommand { get; }
     }
 
     private sealed class SharedPromptModel
