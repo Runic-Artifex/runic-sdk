@@ -12,5 +12,12 @@ export default defineConfig({
   base: "./",
   plugins: [svelte(), runic()],
 //#endif
-  build: { outDir: "dist", emptyOutDir: true, target: "es2022" }
+  build: {
+    // Every HTML page a Window opens is a build input. For a second Window, add
+    // "settings.html" here and open it with RunicWindowOptions { StartPage = "settings.html" }.
+    rolldownOptions: { input: ["index.html"] },
+    outDir: "dist",
+    emptyOutDir: true,
+    target: "es2022"
+  }
 });

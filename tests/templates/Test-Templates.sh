@@ -373,12 +373,13 @@ verify_template() {
     exit 1
   fi
   configure_candidate_registry "$manager" "$output"
-  # A second window gets its own page as a second Vite build input. Angular
-  # builds through the Angular CLI and keeps a single page here.
+  # A second window gets its own page as a second Vite build input, the step the
+  # template's vite.config.ts describes. Angular builds through the Angular CLI
+  # and keeps a single page here.
   if [[ "$framework" != angular ]]; then
-    sed -i 's|build: { outDir: "dist",|build: { rolldownOptions: { input: ["index.html", "settings.html"] }, outDir: "dist",|' \
+    sed -i 's|input: \["index.html"\]|input: ["index.html", "settings.html"]|' \
       "$output/Frontend/vite.config.ts"
-    grep -Fq '"settings.html"' "$output/Frontend/vite.config.ts"
+    grep -Fq 'input: ["index.html", "settings.html"]' "$output/Frontend/vite.config.ts"
   fi
 
   # The documented first run, verbatim: dotnet tool restore, then

@@ -64,8 +64,9 @@
   <!-- The generator and the frontend commands run with IgnoreExitCode, so a
        failure is not repeated as MSB3073 ("The command exited with code 1").
        This task logs their canonical errors and warnings with their codes and
-       locations, and logs the summary error only when the command failed
-       without reporting one. It is compiled only when a command failed or
+       locations, and those of a failed svelte-check with their locations. It
+       logs the summary error only when the command failed without reporting
+       one. It is compiled only when a command failed or
        reported a diagnostic. -->
   <UsingTask TaskName="RunicBridgeReportCommandResult" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
@@ -86,10 +87,24 @@
         {
           var diagnostic = new Regex(@"^\s*(?:(?<origin>.*?)\s*:\s*)?(?<kind>error|warning)\s+(?<code>[A-Za-z]+\d+)\s*:\s*(?<text>.*)$");
           var location = new Regex(@"^(?<file>.*?)\s*\((?<line>\d+)(?:[,-](?<column>\d+))?[^)]*\)$");
+          // svelte-check reports in neither form. Its default output names the
+          // absolute file as "file:line:column" on one line and the message as
+          // "Error: text" or "Warn: text" on the next; --output machine prints
+          // '<time> ERROR "file" line:column "text"'. Both are logged when the
+          // command failed, so a check that only warns still builds.
+          var ansi = new Regex(@"\x1B\[[0-9;]*m");
+          var svelteLocation = new Regex(@"^(?<file>.+?):(?<line>\d+):(?<column>\d+)$");
+          var svelteMessage = new Regex(@"^(?<kind>Error|Warn):\s*(?<text>.*)$");
+          // Off Windows, MSBuild turns every backslash in an output line into a
+          // slash, so an escaped quote in its JSON strings arrives as /".
+          var svelteMachine = new Regex(@"^\d+\s+(?<kind>ERROR|WARNING)\s+(?<file>""(?:[^""\\]|\\.|/"")*"")\s+(?<line>\d+):(?<column>\d+)\s+(?<text>""(?:[^""\\]|\\.|/"")*"")\s*$");
+          var lines = new System.Collections.Generic.List<string>();
+          foreach (var item in Lines ?? new Microsoft.Build.Framework.ITaskItem[0]) lines.Add(ansi.Replace(item.ItemSpec, ""));
           bool reportedError = false;
-          foreach (var item in Lines ?? new Microsoft.Build.Framework.ITaskItem[0])
+          for (int index = 0; index < lines.Count; index++)
           {
-            Match match = diagnostic.Match(item.ItemSpec);
+            if (ExitCode != 0 && TryReportSvelteCheck(lines, index, svelteLocation, svelteMessage, svelteMachine, ref reportedError)) continue;
+            Match match = diagnostic.Match(lines[index]);
             if (!match.Success) continue;
             // A diagnostic without an origin, such as the generator's, belongs to the project.
             string file = match.Groups["origin"].Value.Trim();
@@ -101,11 +116,7 @@
               line = int.Parse(at.Groups["line"].Value);
               if (at.Groups["column"].Success) column = int.Parse(at.Groups["column"].Value);
             }
-            if (file.Length > 0 && !string.IsNullOrEmpty(WorkingDirectory) && file.IndexOfAny(Path.GetInvalidPathChars()) < 0 && !Path.IsPathRooted(file))
-            {
-              file = Path.GetFullPath(Path.Combine(WorkingDirectory, file));
-            }
-            if (file.Length == 0) file = FailureFile ?? "";
+            file = Resolve(file);
             if (match.Groups["kind"].Value == "error")
             {
               reportedError = true;
@@ -121,6 +132,88 @@
             Log.LogError(null, FailureCode, null, FailureFile, 0, 0, 0, 0, FailureText);
           }
           return !Log.HasLoggedErrors;
+        }
+
+        // A relative file belongs to the command's working directory; no file belongs to the project.
+        private string Resolve(string file)
+        {
+          if (file.Length > 0 && file.IndexOfAny(Path.GetInvalidPathChars()) < 0)
+          {
+            if (!Path.IsPathRooted(file) && !string.IsNullOrEmpty(WorkingDirectory)) file = Path.GetFullPath(Path.Combine(WorkingDirectory, file));
+            else if (Path.IsPathRooted(file)) file = Path.GetFullPath(file);
+          }
+          return file.Length == 0 ? FailureFile ?? "" : file;
+        }
+
+        private bool TryReportSvelteCheck(System.Collections.Generic.List<string> lines, int index,
+          Regex location, Regex message, Regex machine, ref bool reportedError)
+        {
+          string kind, file, text;
+          int line, column;
+          Match match = machine.Match(lines[index]);
+          if (match.Success)
+          {
+            kind = match.Groups["kind"].Value == "ERROR" ? "error" : "warning";
+            file = DecodeJsonString(match.Groups["file"].Value);
+            text = DecodeJsonString(match.Groups["text"].Value);
+          }
+          else
+          {
+            match = location.Match(lines[index].Trim());
+            if (!match.Success || index + 1 >= lines.Count || !Path.IsPathRooted(match.Groups["file"].Value)) return false;
+            Match next = message.Match(lines[index + 1].Trim());
+            if (!next.Success) return false;
+            kind = next.Groups["kind"].Value == "Error" ? "error" : "warning";
+            file = match.Groups["file"].Value;
+            text = next.Groups["text"].Value;
+          }
+          line = int.Parse(match.Groups["line"].Value);
+          column = int.Parse(match.Groups["column"].Value);
+          file = Resolve(file);
+          // svelte-check prints no diagnostic code; the message is enough to link the location.
+          if (kind == "error")
+          {
+            reportedError = true;
+            Log.LogError(null, null, null, file, line, column, 0, 0, text);
+          }
+          else
+          {
+            Log.LogWarning(null, null, null, file, line, column, 0, 0, text);
+          }
+          return true;
+        }
+
+        // Decodes a JSON string. A slash before a quote is an escaped quote, and
+        // one before n and an indent is a line break, as MSBuild left them.
+        private static string DecodeJsonString(string quoted)
+        {
+          var text = new System.Text.StringBuilder();
+          int end = quoted.Length - 1;
+          for (int i = 1; i < end; i++)
+          {
+            char c = quoted[i];
+            if (c == '/' && i + 1 < end && (quoted[i + 1] == '"' || (quoted[i + 1] == 'n' && i + 2 < end && quoted[i + 2] == ' ')))
+            {
+              text.Append(quoted[++i] == 'n' ? '\n' : '"');
+              continue;
+            }
+            if (c != '\\' || i + 1 >= end) { text.Append(c); continue; }
+            char escaped = quoted[++i];
+            switch (escaped)
+            {
+              case 'n': text.Append('\n'); break;
+              case 'r': text.Append('\r'); break;
+              case 't': text.Append('\t'); break;
+              case 'b': text.Append('\b'); break;
+              case 'f': text.Append('\f'); break;
+              case 'u' when i + 4 < end:
+                text.Append((char)Convert.ToInt32(quoted.Substring(i + 1, 4), 16));
+                i += 4;
+                break;
+              default: text.Append(escaped); break;
+            }
+          }
+          return text.ToString();
         }
       ]]></Code>
     </Task>
@@ -503,7 +596,8 @@
           Inputs="@(RunicApplicationFrontendInput)" Outputs="$(_RunicBridgeFrontendStamp)"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'">
     <!-- Compiler errors in canonical form (tsc, vue-tsc) are logged with
-         their codes and locations; any other failure, such as a Vite error,
+         their codes and locations, and svelte-check errors with their
+         locations; any other failure, such as a Vite error,
          gets one RUNICBRIDGE016 instead of MSB3073. -->
     <Exec Command="$(RunicApplicationFrontendBuildCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">

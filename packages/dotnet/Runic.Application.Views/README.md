@@ -297,6 +297,49 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
 - The interface has one method, so a test registers a fake that records the
   requested Window types after the application's services.
 
+### A Window with its own page
+
+Every Window opens `index.html` unless `RunicWindowOptions.StartPage` names
+another page. With Vite, each page is a build input, and listing inputs replaces
+the default `index.html`, so keep it in the list. The `runic-app` template's
+`vite.config.ts` already lists it; add the second page next to it:
+
+```ts
+// Frontend/vite.config.ts (Vite 8)
+export default defineConfig({
+  plugins: [svelte(), runic({ desktop: true })],
+  build: {
+    rolldownOptions: { input: ["index.html", "settings.html"] },
+    outDir: "dist",
+    emptyOutDir: true,
+    target: "es2022"
+  }
+});
+```
+
+Create `Frontend/settings.html` beside `index.html`, for example as a copy that
+loads its own entry script, and open it with:
+
+```csharp
+await windows.OpenWindowAsync<SettingsWindow>(new RunicWindowOptions { StartPage = "settings.html" });
+```
+
+The build writes `www/settings.html` beside `www/index.html`, and
+`dotnet runic dev` serves both. Vite resolves inputs against its root, the
+frontend directory. The object form, `input: { main: "index.html", settings:
+"settings.html" }`, names the output chunks; `rollupOptions` still works in
+Vite 8 but is deprecated. A page in a folder, such as `pages/settings.html`,
+works the same way with `StartPage = "pages/settings.html"`:
+`@runic-artifex/vite-plugin-runic` points its host scripts (`webui.js` and the
+Runic client script) at the web root.
+
+A page that the build does not emit fails before a window waits for it: on
+Runic Desktop, opening the Window throws `RunicWindowConfigurationException`
+with the code `content-entry-not-found`, which names the page and the pages the
+content root has; `dotnet runic dev` stops with `RAPPDEV1009` when a build
+input's file is missing. CS-WebUI does not check the page before it opens
+the window.
+
 ### Guarding a user close
 
 A Window that sets `GuardClose` asks `CanCloseAsync` before a close the user
@@ -647,7 +690,10 @@ generation; every other code fails the build.
 The build targets run the generator and the frontend install and build
 commands without wrapping their failures in MSB3073. Errors and warnings that a
 command prints in the canonical `file(line,column): error CODE: text` form, such
-as the generator's and `tsc`'s, are logged once with their code and location. A
+as the generator's, `tsc`'s and `vue-tsc`'s, are logged once with their code and location.
+When `svelte-check` fails, its errors and warnings are logged at their file, line and
+column too, without a code, from its default output or `--output machine`; warnings
+of a check that passes stay in the command output. A
 failed command that reports no such error gets one summary error instead:
 `RUNICBRIDGE001` for the generator, `RUNICBRIDGE016` for the frontend
 commands.
@@ -669,7 +715,7 @@ commands.
 | `RUNICBRIDGE013` (warning) | A public, concrete ViewModel in the application assembly can be put in a ViewModel content property, ViewModel collection or `NavigationRegion<TContent>` slot, but has no View, so pushing or presenting it throws `NotSupportedException` naming the slot and the type. Broad slot types are not checked: framework types (System, ReactiveUI, CommunityToolkit), a type the slot's owner or a Window's ViewModel also derives from or implements, and a type that more than eight ViewModels without a View could fill. | Add a View, such as `public sealed partial class SettingsView : RunicView<SettingsViewModel>;` (with the slot's `[RunicViewContract]`, if any). If the type is never presented there, suppress the warning with `<NoWarn>$(NoWarn);RUNICBRIDGE013</NoWarn>`. |
 | `RUNICBRIDGE014` | A project declares Runic Views, but `RunicApplicationFrontendDirectory` does not exist or, with the default build command, has no `package.json`. Reported by the build targets. | Create the frontend there, point `RunicApplicationFrontendDirectory` at your frontend package, or set `RunicApplicationFrontendBuildEnabled=false` when another tool builds it. |
 | `RUNICBRIDGE015` (warning) | A project declares a Runic Window or View, but generation is off because it references no host adapter and not `Runic.Application.Views` directly, so no bridge, `AddRunicViews()` or client is generated. Reported by the build targets. | Set `RunicApplicationFrontendGenerationEnabled=true` to generate in that project, or `false` when another project generates its Views. |
-| `RUNICBRIDGE016` | The frontend install or build command failed without reporting an error in the canonical `file(line,column): error CODE: text` form (a Vite or package-manager error, for example), or the install created no `node_modules` for declared dependencies. The command's own output is printed above the error. Reported by the build targets. | Fix the problem the command reports, or run `dotnet runic doctor` to check the package manager and lock file. |
+| `RUNICBRIDGE016` | The frontend install or build command failed without reporting an error in the canonical `file(line,column): error CODE: text` form or as a `svelte-check` error (a Vite or package-manager error, for example), or the install created no `node_modules` for declared dependencies. The command's own output is printed above the error. Reported by the build targets. | Fix the problem the command reports, or run `dotnet runic doctor` to check the package manager and lock file. |
 | `RUNICBRIDGE017` (warning) | The project, an import or the command line sets a build property or item by its 0.7.0-preview.6 name (`RunicBridge*`, `RunicViewsWindowProject`). The old name still applies in this preview. Reported by the build targets. | Rename it to the `RunicApplicationFrontend*` name in the message; see the [rename table](#moved-and-renamed-since-070-preview6). |
 
 ## Build properties
