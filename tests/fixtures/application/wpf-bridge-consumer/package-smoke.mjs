@@ -3,7 +3,9 @@
 //  1. Single: one UseWPF project that references only Runic.Application.Views.Wpf, declares a
 //     RunicView and calls AddRunicViews(). Its local XAML type makes WPF compile a
 //     temporary *_wpftmp assembly, which must not generate again. The client lands in
-//     Frontend/src/generated and the built frontend in www/.
+//     Frontend/src/generated and the built frontend in www/. Its XAML names RunicViewHost
+//     through https://runic-artifex.eu/xaml/views, Frontend/node_modules and Frontend/dist
+//     are not project items, and the output has no Linux or macOS platform assemblies.
 //  2. Split: the View lives in a WPF-free model project; the WPF application copies
 //     the model's built frontend to its own www/.
 //  3. Without a Frontend folder, the single project fails with one RUNICBRIDGE014.
@@ -17,7 +19,7 @@
 // Usage: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +72,24 @@ try {
   exists("Single/obj/Release/net10.0-windows/runic-bridge/RunicBridgeComposition.g.cs");
   exists("Single/bin/Release/net10.0-windows/www/index.html");
   exists("Single/bin/Release/net10.0-windows/www/assets/app.js");
+  // A Windows-only application gets the -windows Runic.Application.Views.Desktop, which
+  // references only the Windows platform provider.
+  const output = readdirSync(join(directory, "Single/bin/Release/net10.0-windows"));
+  assert.ok(output.includes("Runic.Platform.Windows.dll"), "The Windows platform provider is missing.");
+  assert.deepEqual(output.filter(name => /^(Runic\.Platform\.(Linux|MacOS)|Tmds\.DBus)/.test(name)), [],
+    "The Windows-only application ships Linux or macOS platform assemblies.");
+  // The frontend's installed packages and build output are not project items.
+  mkdirSync(join(directory, "Single/Frontend/node_modules/stand-in"), { recursive: true });
+  writeFileSync(join(directory, "Single/Frontend/node_modules/stand-in/package.json"), "{}");
+  const items = spawnSync("dotnet", ["msbuild", "Single/WpfSingle.csproj", "-getItem:None", "-getItem:Content", "-getItem:Page",
+    "-p:Configuration=Release", `-p:RunicPackageVersion=${version}`, `-p:RunicContainerVersion=${container}`],
+  { cwd: directory, env, encoding: "utf8" });
+  assert.equal(items.status, 0, `${items.stdout}${items.stderr}`);
+  const listed = Object.values(JSON.parse(items.stdout).Items).flat().map(item => item.Identity.replaceAll("\\", "/"));
+  assert.ok(listed.includes("Frontend/package.json"), `Frontend/package.json is not a project item: ${listed}`);
+  assert.deepEqual(listed.filter(path => /^Frontend\/(node_modules|dist)\//.test(path)), [],
+    "Frontend/node_modules or Frontend/dist is listed as a project item.");
+  rmSync(join(directory, "Single/Frontend/node_modules"), { recursive: true });
 
   // 2. Split layout: the model generates, the WPF application copies its frontend.
   assert.equal(summary(build("Split/App/SplitApp.csproj"), "Warning"), 0, "The split layout reported warnings.");

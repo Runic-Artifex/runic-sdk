@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../../../eng/build/application.props" />
   <PropertyGroup>
-    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <!-- The -windows assembly has the same API and selects only the Windows provider,
+         so Windows-only applications, such as every WPF application, do not ship the
+         Linux and macOS providers and their dependencies. -->
+    <TargetFrameworks>$(RunicApplicationDefaultTargetFramework);$(RunicApplicationDefaultTargetFramework)-windows</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.Desktop</PackageId>
@@ -14,22 +18,27 @@
     <Description>Runic Window and View host adapter for Runic Desktop.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+  <PropertyGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">
+    <DefineConstants>$(DefineConstants);RUNIC_PORTABLE_PLATFORMS</DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Application.Views/Runic.Application.Views.csproj" />
     <ProjectReference Include="../Runic.Desktop/Runic.Desktop.csproj" />
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <!-- PlatformServices selects one provider at run time; a provider loads native libraries only when used. -->
     <ProjectReference Include="../Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
-    <ProjectReference Include="../Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
-    <ProjectReference Include="../Runic.Platform.Linux/Runic.Platform.Linux.csproj" />
-    <ProjectReference Include="../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
-    <ProjectReference Include="../Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="build/Runic.Application.Views.Desktop.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Desktop.props" />
     <None Include="build/Runic.Application.Views.Desktop.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Desktop.targets" />
     <None Include="www/runic-desktop-views.js" Pack="true" PackagePath="www/runic-desktop-views.js" />
+  </ItemGroup>
+  <ItemGroup Condition="'$([MSBuild]::GetTargetPlatformIdentifier($(TargetFramework)))' != 'windows'">
+    <ProjectReference Include="../Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
+    <ProjectReference Include="../Runic.Platform.Linux/Runic.Platform.Linux.csproj" />
+    <ProjectReference Include="../Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
+    <ProjectReference Include="../Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

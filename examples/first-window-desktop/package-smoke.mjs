@@ -47,6 +47,8 @@ function run(command, args, cwd = root, env = process.env) {
 
 try {
   await run("dotnet", ["build", "examples/first-window-desktop/FirstWindowDesktop.csproj", "-c", "Release"]);
+  // The example builds only the net10.0 assembly; the package also has the net10.0-windows one.
+  await run("dotnet", ["build", "packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj", "-c", "Release"]);
   await mkdir(feed);
   for (const [identity, project] of projects) {
     await run("dotnet", ["pack", `packages/dotnet/${project}/${project}.csproj`,

@@ -447,6 +447,13 @@ verify_template() {
   dotnet build "$output/$project_name.csproj" --configuration Release --no-restore
   test -d "$output/Frontend/node_modules"
   test -f "$output/Frontend/dist/index.html"
+  # The frontend's packages and build output are not project items.
+  dotnet msbuild "$output/$project_name.csproj" -getItem:None -getItem:Content -p:Configuration=Release > "$output/items.json"
+  if grep -E '"Identity": "Frontend[\\/]+(node_modules|dist)[\\/]' "$output/items.json"; then
+    echo "Frontend/node_modules or Frontend/dist is listed as a project item." >&2
+    exit 1
+  fi
+  grep -Fq '"Identity": "Frontend/package.json"' "$output/items.json" || grep -Fq '"Identity": "Frontend\\package.json"' "$output/items.json"
   if [[ "$framework" != angular ]]; then
     test -f "$output/bin/Release/net10.0/www/settings.html"
   fi
