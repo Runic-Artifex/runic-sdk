@@ -139,7 +139,9 @@ internal sealed class NotesDebugHost : IDisposable
                         return host;
                     }
                 }
-                catch (HttpRequestException) { }
+                // The Angular CLI checks the port by listening on it briefly; a connection
+                // reset there can surface as an unwrapped SocketException.
+                catch (Exception error) when (error is HttpRequestException or SocketException) { }
                 catch (TaskCanceledException) { }
                 await Task.Delay(200);
             }

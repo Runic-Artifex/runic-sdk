@@ -18,12 +18,18 @@ internal static class GeneratedHarnessProcess
         // An aborting child stays alive while the kernel hands its core dump to the
         // system handler. That takes seconds for Bun or .NET, and far longer on a
         // loaded runner, so the 30 s limit would hide the cause the abort printed.
-        // Unix children start through exec with core dumps disabled and keep their PID.
+        // A core limit of 0 does not prevent that on Linux: a piped core_pattern
+        // runs the handler regardless, and the GitHub runner's systemd-coredump is
+        // passed a fixed unlimited size, so it reads the whole dump (15 s per Bun
+        // abort, over 40 s when several overlap). Linux runs no handler at all for
+        // a limit of exactly 1 byte. Where prlimit cannot set it (no prlimit, or a
+        // hard limit of 0), the limit is 0, which other Unix systems honor.
+        // Unix children start through exec and keep their PID.
         if (OperatingSystem.IsWindows()) process.StartInfo.FileName = executable;
         else
         {
             process.StartInfo.FileName = "/bin/sh";
-            foreach (var argument in new[] { "-c", "ulimit -c 0 && exec \"$@\"", "sh", executable })
+            foreach (var argument in new[] { "-c", "prlimit --pid $$ --core=1 2>/dev/null || ulimit -c 0; exec \"$@\"", "sh", executable })
                 process.StartInfo.ArgumentList.Add(argument);
         }
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
@@ -44,7 +50,11 @@ internal static class GeneratedHarnessProcess
                 try { if (!process.HasExited) peakBytes = Math.Max(peakBytes, process.PeakWorkingSet64); }
                 catch (InvalidOperationException) when (process.HasExited) { }
                 if (peakBytes > 512L * 1024 * 1024) { failure = "exceeded 512 MiB"; break; }
-                if (clock.Elapsed > TimeSpan.FromSeconds(30)) { failure = "exceeded 30 seconds"; break; }
+                if (clock.Elapsed > TimeSpan.FromSeconds(30))
+                {
+                    failure = IsDumpingCore(process.Id) ? "exceeded 30 seconds while writing its core dump" : "exceeded 30 seconds";
+                    break;
+                }
                 await Task.WhenAny(exit, Task.Delay(50)).ConfigureAwait(false);
             }
         }
@@ -70,6 +80,14 @@ internal static class GeneratedHarnessProcess
         139 when !OperatingSystem.IsWindows() => "crashed (exit code 139, SIGSEGV)",
         _ => $"failed with exit code {code}",
     };
+
+    // An aborted child that is still alive is held by the core dump handler.
+    private static bool IsDumpingCore(int processId)
+    {
+        if (!OperatingSystem.IsLinux()) return false;
+        try { return File.ReadLines($"/proc/{processId}/status").Contains("CoreDumping:\t1"); }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
 
     // Keeps the last 16 KiB: an abort or a failed assertion reports its cause at the end.
     private static async Task<string> DrainBoundedAsync(StreamReader reader)

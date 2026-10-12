@@ -96,10 +96,11 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
             await server.WaitUntilReadyAsync(cancellationToken).ConfigureAwait(false);
             if (!configuration.HasFrontendCompiler)
             {
+                using var client = new HttpClient();
                 foreach (string destination in configuration.DevelopmentServerDocuments)
                 {
-                    string document = await server
-                        .ReadDevelopmentDocumentAsync(destination, cancellationToken)
+                    string document = await FrontendDevelopmentDocument.ReadAsync(
+                            client, origin, destination, "Vite", cancellationToken)
                         .ConfigureAwait(false);
                     FrontendDevelopmentDocument.Write(
                         configuration,
@@ -140,15 +141,6 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                 ?? Environment.GetEnvironmentVariable("DEBUG"),
             ["RUNIC_APPLICATION_DEV_PROJECT"] = configuration.ProjectPath,
         };
-
-    private async Task<string> ReadDevelopmentDocumentAsync(
-        string document,
-        CancellationToken cancellationToken)
-    {
-        using var client = new HttpClient();
-        return await client.GetStringAsync(new Uri(Origin, document), cancellationToken)
-            .ConfigureAwait(false);
-    }
 
     internal static IReadOnlyList<string> CreateArguments(
         DevProjectConfiguration configuration,
@@ -225,7 +217,7 @@ internal sealed class ViteDevelopmentServer : IFrontendDevelopmentServer
                         }
                     }
                 }
-                catch (HttpRequestException)
+                catch (Exception error) when (LoopbackPort.IsConnectionFailure(error))
                 {
                     lastResponse = "connection failed";
                 }

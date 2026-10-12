@@ -69,12 +69,18 @@ internal sealed class GeneratedClientHarness
     {
         // The kernel keeps an aborting child alive while it writes a core dump, which
         // outlasts the harness limit on a loaded runner and hides the child's cause.
+        // Linux skips a piped core handler only for a limit of exactly 1 byte.
         if (OperatingSystem.IsWindows()) return;
         const string script = """
-            const limit = Bun.spawnSync(["sh", "-c", "ulimit -c"]).stdout.toString().trim();
+            const limit = process.platform === "linux"
+              ? require("node:fs").readFileSync("/proc/self/limits", "utf8").split("\n")
+                  .find((line) => line.startsWith("Max core file size")).split(/\s+/)[4]
+              : Bun.spawnSync(["sh", "-c", "ulimit -c"]).stdout.toString().trim();
             process.stdout.write(`CORE_LIMIT=${limit}\n`);
             process.exit(1);
             """;
+        // A shell that ran 'ulimit -c 0' leaves a hard limit of 0, which cannot be raised.
+        var expected = OperatingSystem.IsLinux() && CoreHardLimit() != "0" ? "CORE_LIMIT=1\n" : "CORE_LIMIT=0\n";
         try
         {
             await GeneratedHarnessProcess.RunAsync("bun", ["-e", script], FindWorkspaceRoot()).ConfigureAwait(false);
@@ -82,10 +88,14 @@ internal sealed class GeneratedClientHarness
         }
         catch (InvalidOperationException error) when (error.Message.StartsWith("bun generated-client harness ", StringComparison.Ordinal))
         {
-            if (!error.Message.Contains("CORE_LIMIT=0\n", StringComparison.Ordinal))
+            if (!error.Message.Contains(expected, StringComparison.Ordinal))
                 throw new InvalidOperationException($"The harness child could still write a core dump:\n{error.Message}");
         }
     }
+
+    private static string CoreHardLimit() => File.ReadLines("/proc/self/limits")
+        .First(line => line.StartsWith("Max core file size", StringComparison.Ordinal))
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries)[5];
 
     private static string FindWorkspaceRoot()
     {

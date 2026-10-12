@@ -42,8 +42,13 @@ internal static partial class Program
             HelpPresenter = new Runic.CommandLine.Spectre.SpectreHelpPresenter(),
             Console = console ?? new SpectreCommandConsole(),
             ExitCodePolicy = ToolExitCodePolicy.Instance,
+            // Command Line reports an unexpected exception only as RCLI5000; name its cause.
+            ExceptionObserver = ReportUnexpectedFailure,
         }.RunAsync(arguments, signals.Token).ConfigureAwait(false);
     }
+
+    internal static void ReportUnexpectedFailure(Exception exception) =>
+        Console.Error.WriteLine($"dotnet runic failed unexpectedly: {exception}");
 
     [Command("dev", Description = "Run the application with development watchers.",
         Examples = ["dotnet runic dev", "dotnet runic dev --project ./MyApp.csproj -- --app-argument"])]

@@ -218,7 +218,9 @@ one of the two projects, and call `AddRunicViews()` of each composition.
 `RCLI8101` and `RCLI8102`, which mark individual doctor checks. Human
 output prints the link to the entry above the fault line; JSON output carries
 the code in `fault.code`. Usage errors exit with code 2, other failures with
-code 1. See the [`dotnet runic` guide](../tools/dotnet-runic/README.md).
+code 1. An unexpected internal failure reports `RCLI5000`, exits with code 3
+and prints the exception to standard error; include it when you report the
+problem. See the [`dotnet runic` guide](../tools/dotnet-runic/README.md).
 
 ### RAPPCLI1000
 
@@ -307,8 +309,9 @@ every package belongs to one release.
 
 ### RAPPDEV1007
 
-The Window process or the frontend development server exited unexpectedly or
-did not become ready in time.
+The Window process or the frontend development server exited unexpectedly,
+did not become ready in time, or did not serve a page that the native window
+loads. The message names the page and the server's response.
 
 **Fix:** read the process output above the fault. For a development server,
 check that the configured dev script starts with the frontend's own command,

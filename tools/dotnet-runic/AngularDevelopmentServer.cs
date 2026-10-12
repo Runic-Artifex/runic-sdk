@@ -78,8 +78,8 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
             using var client = new HttpClient();
             foreach (string destination in configuration.DevelopmentServerDocuments)
             {
-                string document = await client
-                    .GetStringAsync(new Uri(origin, destination), cancellationToken)
+                string document = await FrontendDevelopmentDocument.ReadAsync(
+                        client, origin, destination, "Angular", cancellationToken)
                     .ConfigureAwait(false);
                 FrontendDevelopmentDocument.Write(
                     configuration,
@@ -161,7 +161,7 @@ internal sealed class AngularDevelopmentServer : IFrontendDevelopmentServer
                         return;
                     }
                 }
-                catch (HttpRequestException)
+                catch (Exception error) when (LoopbackPort.IsConnectionFailure(error))
                 {
                 }
                 catch (TaskCanceledException) when (!timeout.IsCancellationRequested)
