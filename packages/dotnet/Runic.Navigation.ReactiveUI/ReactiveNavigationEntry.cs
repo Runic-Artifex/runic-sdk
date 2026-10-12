@@ -1,6 +1,5 @@
 // Shared by Runic.Navigation.ReactiveUI and, compiled with SYSTEM_REACTIVE,
 // Runic.Navigation.ReactiveUI.Reactive.
-using System.Diagnostics.CodeAnalysis;
 #if SYSTEM_REACTIVE
 using ReactiveUI.Reactive;
 using FlavorUnit = System.Reactive.Unit;
@@ -106,8 +105,6 @@ public static class ReactiveNavigationEntry
     /// scheduler, as in <see cref="ReactiveNavigation.CreateBackCommand{TContent}"/>.
     /// </param>
     /// <returns>The command, which the entry disposes when it retires.</returns>
-    [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in the required produce delegate, which decides the command's input type.")]
     public static ReactiveCommand<FlavorUnit, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         Func<CancellationToken, Task<TResult>> produce, IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {
@@ -138,8 +135,6 @@ public static class ReactiveNavigationEntry
     /// scheduler.
     /// </param>
     /// <returns>The command, which the entry disposes when it retires.</returns>
-    [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in the required produce delegate, which decides the command's input type.")]
     public static ReactiveCommand<TResult, NavigationOutcome> CreateCompleteCommand<TResult>(this NavigationEntryContext entry,
         IObservable<bool>? canExecute = null, FlavorScheduler? outputScheduler = null)
     {

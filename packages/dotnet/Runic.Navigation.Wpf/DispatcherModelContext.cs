@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Windows.Threading;
 using Microsoft.Extensions.Logging;
 
@@ -98,8 +97,6 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     }
 
     /// <inheritdoc />
-    [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Implements IRunicModelContext, whose overloads differ by generic arity.")]
     public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(turn);
@@ -111,8 +108,6 @@ public sealed class DispatcherModelContext : IRunicModelContext, IRunicModelHook
     }
 
     /// <inheritdoc />
-    [SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "Implements IRunicModelContext, whose overloads differ by generic arity.")]
     public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(turn);

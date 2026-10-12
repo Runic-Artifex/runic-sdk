@@ -66,8 +66,6 @@ public interface INavigationRegion : INotifyPropertyChanged
 /// returned as a <see cref="NavigationResult{TContent}"/>. Called from inside a model turn, an
 /// operation is admitted without blocking and continues on the thread pool; do not block on it there.
 /// </remarks>
-[SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-    Justification = "The target, container-constructed and typed-input forms differ by generic arity and the type of the first parameter (W240-001 §5), so no call is ambiguous.")]
 public sealed class NavigationRegion<TContent> : INavigationRegion where TContent : class
 {
     private static readonly PropertyChangedEventArgs CurrentChanged = new(nameof(Current));

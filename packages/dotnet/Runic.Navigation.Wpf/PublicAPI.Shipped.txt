@@ -79,3 +79,6 @@ Runic.Navigation.Wpf.ViewHost.Services.set -> void
 static readonly Runic.Navigation.Wpf.ViewHost.ContentProperty -> System.Windows.DependencyProperty!
 static readonly Runic.Navigation.Wpf.ViewHost.ViewLocatorProperty -> System.Windows.DependencyProperty!
 static readonly Runic.Navigation.Wpf.ViewHost.ServicesProperty -> System.Windows.DependencyProperty!
+Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.get -> bool
+Runic.Navigation.Wpf.NavigationHost.GuardWindowClose.set -> void
+static readonly Runic.Navigation.Wpf.NavigationHost.GuardWindowCloseProperty -> System.Windows.DependencyProperty!

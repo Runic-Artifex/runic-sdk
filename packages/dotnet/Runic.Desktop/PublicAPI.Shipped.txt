@@ -226,22 +226,16 @@ Runic.Desktop.DesktopWindow
 Runic.Desktop.DesktopWindow.Browser.get -> Runic.Desktop.BrowserKind
 Runic.Desktop.DesktopWindow.Capabilities.get -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindow.CheckNativeAccess() -> bool
-Runic.Desktop.DesktopWindow.CloseAsync() -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.DispatchNativeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.DisposeAsync() -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.FellBack.get -> bool
-Runic.Desktop.DesktopWindow.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
 Runic.Desktop.DesktopWindow.IsOpen.get -> bool
-Runic.Desktop.DesktopWindow.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Desktop.DesktopWindow.MoveAsync(uint x, uint y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.NativeHandle.get -> nint
 Runic.Desktop.DesktopWindow.ProcessId.get -> ulong
 Runic.Desktop.DesktopWindow.RequestCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
 Runic.Desktop.DesktopWindow.RequestedBrowser.get -> Runic.Desktop.BrowserKind
 Runic.Desktop.DesktopWindow.ResizeAsync(uint width, uint height, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.DesktopWindow.SupportsNativeDispatch.get -> bool
-Runic.Desktop.DesktopWindow.ToggleMaximizedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task!
-Runic.Desktop.DesktopWindow.WaitForClose(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> void
 Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindowCapabilities.CloseConfirmation = 64 -> Runic.Desktop.DesktopWindowCapabilities
 Runic.Desktop.DesktopWindowCapabilities.Focus = 2 -> Runic.Desktop.DesktopWindowCapabilities
@@ -289,9 +283,7 @@ Runic.Desktop.DesktopWindowHostOptions.Transparent.get -> bool
 Runic.Desktop.DesktopWindowHostOptions.Transparent.init -> void
 Runic.Desktop.DesktopWindowHostOptions.Width.get -> uint
 Runic.Desktop.DesktopWindowHostOptions.Width.init -> void
-Runic.Desktop.DesktopWindowHostOptions.X.get -> uint?
 Runic.Desktop.DesktopWindowHostOptions.X.init -> void
-Runic.Desktop.DesktopWindowHostOptions.Y.get -> uint?
 Runic.Desktop.DesktopWindowHostOptions.Y.init -> void
 Runic.Desktop.DesktopWindowOptions
 Runic.Desktop.DesktopWindowOptions.<Clone>$() -> Runic.Desktop.DesktopWindowOptions!
@@ -337,9 +329,7 @@ Runic.Desktop.DesktopWindowOptions.Transparent.get -> bool
 Runic.Desktop.DesktopWindowOptions.Transparent.init -> void
 Runic.Desktop.DesktopWindowOptions.Width.get -> uint
 Runic.Desktop.DesktopWindowOptions.Width.init -> void
-Runic.Desktop.DesktopWindowOptions.X.get -> uint?
 Runic.Desktop.DesktopWindowOptions.X.init -> void
-Runic.Desktop.DesktopWindowOptions.Y.get -> uint?
 Runic.Desktop.DesktopWindowOptions.Y.init -> void
 Runic.Desktop.IDesktopNativeDispatchWindowHost
 Runic.Desktop.IDesktopNativeDispatchWindowHost.CheckNativeAccess() -> bool
@@ -353,7 +343,6 @@ Runic.Desktop.IDesktopWindowHost.Closed -> System.EventHandler?
 Runic.Desktop.IDesktopWindowHost.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopWindowHost.IsOpen.get -> bool
 Runic.Desktop.IDesktopWindowHost.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.IDesktopWindowHost.MoveAsync(uint x, uint y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopWindowHost.NativeHandle.get -> nint
 Runic.Desktop.IDesktopWindowHost.NavigateAsync(System.Uri! url, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Desktop.IDesktopWindowHost.OpenAsync(System.Uri! url, Runic.Desktop.DesktopWindowHostOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
@@ -596,3 +585,17 @@ Runic.Desktop.IDesktopEventLoopWindowHostFactory
 Runic.Desktop.IDesktopEventLoopWindowHostFactory.PrepareEventLoop() -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopDiagnostic!>!
 Runic.Desktop.IDesktopEventLoopWindowHostFactory.RunEventLoop(System.Func<System.Threading.Tasks.Task<int>!>! application) -> int
 static Runic.Desktop.DesktopEventLoop.Run(Runic.Desktop.DesktopHostOptions! options, System.Func<Runic.Desktop.DesktopHost!, System.Threading.Tasks.Task<int>!>! application) -> int
+Runic.Desktop.DesktopHost.ShutdownRequested.get -> System.Threading.CancellationToken
+Runic.Desktop.DesktopHostOptions.HandleShutdownSignals.get -> bool
+Runic.Desktop.DesktopHostOptions.HandleShutdownSignals.init -> void
+Runic.Desktop.DesktopWindow.CloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.FocusAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.MinimizeAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.ToggleMaximizedAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindow.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopWindowHostOptions.X.get -> int?
+Runic.Desktop.DesktopWindowHostOptions.Y.get -> int?
+Runic.Desktop.DesktopWindowOptions.X.get -> int?
+Runic.Desktop.DesktopWindowOptions.Y.get -> int?
+Runic.Desktop.IDesktopWindowHost.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

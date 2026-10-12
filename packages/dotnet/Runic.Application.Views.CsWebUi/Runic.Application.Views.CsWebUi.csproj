@@ -5,9 +5,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views.CsWebUi</PackageId>
-    <!-- Published as Runic.Application.CsWebUi up to 0.7.0-preview.6. Package validation compares
-         with that package until this ID has a release of its own (eng/release/README.md). -->
-    <PackageValidationBaselineName>Runic.Application.CsWebUi</PackageValidationBaselineName>
     <Description>CS-WebUI host adapter for Runic Window and View applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>

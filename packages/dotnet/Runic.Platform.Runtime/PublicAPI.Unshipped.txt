@@ -1,6 +1,1 @@
 #nullable enable
-Runic.Platform.Runtime.NativeFileLocation
-Runic.Platform.Runtime.NativeFileLocation.DocumentPortal = 1 -> Runic.Platform.Runtime.NativeFileLocation
-Runic.Platform.Runtime.NativeFileLocation.Host = 0 -> Runic.Platform.Runtime.NativeFileLocation
-Runic.Platform.Runtime.NativeFileSelection.Location.get -> Runic.Platform.Runtime.NativeFileLocation
-Runic.Platform.Runtime.NativeFileSelection.Location.init -> void

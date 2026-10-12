@@ -431,3 +431,15 @@ Runic.Platform.IDirectoryLease
 Runic.Platform.IDirectoryLease.DisplayName.get -> string!
 Runic.Platform.IDirectoryLease.LocalPath.get -> string!
 Runic.Platform.IFileDialogs.OpenDirectoryAsync(Runic.Platform.OpenDirectoryOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PickerResult<Runic.Platform.IDirectoryLease!>!>
+Runic.Platform.IWindowPlatformServices
+Runic.Platform.IWindowPlatformServices.Clipboard.get -> Runic.Platform.ITextClipboard!
+Runic.Platform.IWindowPlatformServices.FileDialogs.get -> Runic.Platform.IFileDialogs!
+Runic.Platform.IWindowPlatformServices.FileLauncher.get -> Runic.Platform.IDesktopFileLauncher!
+Runic.Platform.PickerResult<T>.Selected.Deconstruct(out T value) -> void
+Runic.Platform.WindowPlatformServices
+static Runic.Platform.WindowPlatformServices.CapabilityIds.get -> System.Collections.Immutable.ImmutableArray<string!>
+static Runic.Platform.WindowPlatformServices.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IWindowPlatformServices!
+Runic.Platform.DesktopSettings
+static Runic.Platform.DesktopSettings.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopSettings!
+Runic.Platform.DesktopNotifications
+static Runic.Platform.DesktopNotifications.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopNotifications!

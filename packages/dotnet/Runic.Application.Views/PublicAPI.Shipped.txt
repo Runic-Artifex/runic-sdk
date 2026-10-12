@@ -262,7 +262,6 @@ Runic.Application.Views.RunicViewContractAttribute
 Runic.Application.Views.RunicViewContractAttribute.Contract.get -> string!
 Runic.Application.Views.RunicViewContractAttribute.RunicViewContractAttribute(string! contract) -> void
 Runic.Application.Views.RunicWindow<TViewModel>
-Runic.Application.Views.RunicWindow<TViewModel>.RunicWindow(TViewModel! dataContext) -> void
 Runic.Application.Views.ServiceProviderViewLocator
 Runic.Application.Views.ServiceProviderViewLocator.Locate<TView, TViewModel>() -> TView!
 Runic.Application.Views.ServiceProviderViewLocator.Locate<TView, TViewModel>(string? contract) -> TView!
@@ -384,7 +383,6 @@ Runic.Application.Views.BridgeWindowCloseResult.Equals(Runic.Application.Views.B
 Runic.Application.Views.BridgeWindowCloseResult.RemainingOperations.get -> int
 Runic.Application.Views.BridgeWindowCloseResult.RemainingOperations.init -> void
 Runic.Application.Views.IBridgeWindow
-Runic.Application.Views.IBridgeWindow.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 Runic.Application.Views.WindowContentSession.BeginCloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 override Runic.Application.Views.BridgeCollectionDescriptor<T>.Equals(object? obj) -> bool
 override Runic.Application.Views.BridgeCollectionDescriptor<T>.GetHashCode() -> int
@@ -467,3 +465,111 @@ Runic.Application.Views.AcceptedWorkScope.RunAsync(System.Func<System.Threading.
 Runic.Application.Views.AcceptedWorkScope.RunAsync<TResult>(System.Func<System.Threading.Tasks.Task<TResult>!>! work) -> System.Threading.Tasks.Task<TResult>!
 Runic.Application.Views.RunicBridgeJsonIgnoreAttribute
 Runic.Application.Views.RunicBridgeJsonIgnoreAttribute.RunicBridgeJsonIgnoreAttribute() -> void
+Runic.Application.Views.AcceptedWorkScope.AcceptedWorkScope(Microsoft.Extensions.Logging.ILogger? logger) -> void
+Runic.Application.Views.IBridgeWindow.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Views.IBridgeWindow.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.IRunicWindow
+Runic.Application.Views.IRunicWindow.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Views.IRunicWindow.Host.get -> Runic.Application.Views.IBridgeWindow!
+Runic.Application.Views.IRunicWindow.RequestCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.IRunicWindow.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.IRunicWindowHost
+Runic.Application.Views.IRunicWindowHost.OpenAsync<TViewModel>(Runic.Application.Views.RunicWindowOpening<TViewModel!>! opening, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.IBridgeWindow!>
+Runic.Application.Views.IRunicWindowHost.Services.get -> System.IServiceProvider!
+Runic.Application.Views.IRunicWindowHost.Validate(Runic.Application.Views.RunicWindowOptions! options) -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
+Runic.Application.Views.RunicWindow<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Views.RunicWindow<TViewModel>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicWindow<TViewModel>.GuardClose.get -> bool
+Runic.Application.Views.RunicWindow<TViewModel>.GuardClose.init -> void
+Runic.Application.Views.RunicWindow<TViewModel>.Host.get -> Runic.Application.Views.IBridgeWindow!
+Runic.Application.Views.RunicWindow<TViewModel>.RequestCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.RunicWindow<TViewModel>.RunicWindow() -> void
+Runic.Application.Views.RunicWindow<TViewModel>.ViewModel.get -> TViewModel!
+Runic.Application.Views.RunicWindow<TViewModel>.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.RunicWindowConfigurationException
+const Runic.Application.Views.RunicWindowConfigurationException.BridgeNotRegisteredCode = "bridge-not-registered" -> string!
+Runic.Application.Views.RunicWindowConfigurationException.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
+const Runic.Application.Views.RunicWindowConfigurationException.OptionInvalidCode = "window-option-invalid" -> string!
+Runic.Application.Views.RunicWindowConfigurationException.RunicWindowConfigurationException(System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>! diagnostics) -> void
+Runic.Application.Views.RunicWindowConfigurationException.RunicWindowConfigurationException(System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>! diagnostics, System.Exception? innerException) -> void
+const Runic.Application.Views.RunicWindowConfigurationException.ViewModelNotRegisteredCode = "viewmodel-not-registered" -> string!
+Runic.Application.Views.RunicWindowDiagnostic
+Runic.Application.Views.RunicWindowDiagnostic.<Clone>$() -> Runic.Application.Views.RunicWindowDiagnostic!
+Runic.Application.Views.RunicWindowDiagnostic.Code.get -> string!
+Runic.Application.Views.RunicWindowDiagnostic.Code.init -> void
+Runic.Application.Views.RunicWindowDiagnostic.Deconstruct(out string! Code, out string! Message, out string? Remediation) -> void
+Runic.Application.Views.RunicWindowDiagnostic.Equals(Runic.Application.Views.RunicWindowDiagnostic? other) -> bool
+override Runic.Application.Views.RunicWindowDiagnostic.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicWindowDiagnostic.GetHashCode() -> int
+Runic.Application.Views.RunicWindowDiagnostic.Message.get -> string!
+Runic.Application.Views.RunicWindowDiagnostic.Message.init -> void
+Runic.Application.Views.RunicWindowDiagnostic.Option.get -> string?
+Runic.Application.Views.RunicWindowDiagnostic.Option.init -> void
+Runic.Application.Views.RunicWindowDiagnostic.Remediation.get -> string?
+Runic.Application.Views.RunicWindowDiagnostic.Remediation.init -> void
+Runic.Application.Views.RunicWindowDiagnostic.RunicWindowDiagnostic(string! Code, string! Message, string? Remediation = null) -> void
+Runic.Application.Views.RunicWindowDiagnostic.Severity.get -> Runic.Application.Views.RunicWindowDiagnosticSeverity
+Runic.Application.Views.RunicWindowDiagnostic.Severity.init -> void
+override Runic.Application.Views.RunicWindowDiagnostic.ToString() -> string!
+static Runic.Application.Views.RunicWindowDiagnostic.operator !=(Runic.Application.Views.RunicWindowDiagnostic? left, Runic.Application.Views.RunicWindowDiagnostic? right) -> bool
+static Runic.Application.Views.RunicWindowDiagnostic.operator ==(Runic.Application.Views.RunicWindowDiagnostic? left, Runic.Application.Views.RunicWindowDiagnostic? right) -> bool
+Runic.Application.Views.RunicWindowDiagnosticSeverity
+Runic.Application.Views.RunicWindowDiagnosticSeverity.Error = 0 -> Runic.Application.Views.RunicWindowDiagnosticSeverity
+Runic.Application.Views.RunicWindowDiagnosticSeverity.Warning = 1 -> Runic.Application.Views.RunicWindowDiagnosticSeverity
+Runic.Application.Views.RunicWindowHostExtensions
+static Runic.Application.Views.RunicWindowHostExtensions.OpenWindowAsync<TWindow>(this Runic.Application.Views.IRunicWindowHost! host, Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+static Runic.Application.Views.RunicWindowHostExtensions.ValidateWindow<TWindow>(this Runic.Application.Views.IRunicWindowHost! host, Runic.Application.Views.RunicWindowOptions? options = null) -> Runic.Application.Views.RunicWindowValidationResult!
+Runic.Application.Views.RunicWindowOpening<TViewModel>
+Runic.Application.Views.RunicWindowOpening<TViewModel>.AttachBridge(Runic.Application.Views.IBridgeTransport! transport, Runic.Application.Views.WindowContentSession! content) -> System.IDisposable!
+Runic.Application.Views.RunicWindowOpening<TViewModel>.CloseGuard.get -> System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>?
+Runic.Application.Views.RunicWindowOpening<TViewModel>.Options.get -> Runic.Application.Views.RunicWindowOptions!
+Runic.Application.Views.RunicWindowOpening<TViewModel>.ReportCloseGuardUnavailable(string! presentation) -> void
+Runic.Application.Views.RunicWindowOpening<TViewModel>.UseCloseRequest(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<bool>>! requestClose) -> void
+Runic.Application.Views.RunicWindowOpening<TViewModel>.Scope.get -> Microsoft.Extensions.DependencyInjection.AsyncServiceScope
+Runic.Application.Views.RunicWindowOpening<TViewModel>.ViewModel.get -> TViewModel!
+Runic.Application.Views.RunicWindowOpening<TViewModel>.Window.get -> Runic.Application.Views.RunicWindow<TViewModel!>!
+Runic.Application.Views.RunicWindowOptions
+Runic.Application.Views.RunicWindowOptions.<Clone>$() -> Runic.Application.Views.RunicWindowOptions!
+Runic.Application.Views.RunicWindowOptions.ContentRoot.get -> string?
+Runic.Application.Views.RunicWindowOptions.ContentRoot.init -> void
+Runic.Application.Views.RunicWindowOptions.Equals(Runic.Application.Views.RunicWindowOptions? other) -> bool
+override Runic.Application.Views.RunicWindowOptions.Equals(object? obj) -> bool
+override Runic.Application.Views.RunicWindowOptions.GetHashCode() -> int
+Runic.Application.Views.RunicWindowOptions.Height.get -> int?
+Runic.Application.Views.RunicWindowOptions.Height.init -> void
+Runic.Application.Views.RunicWindowOptions.ResolveContentRoot() -> string!
+Runic.Application.Views.RunicWindowOptions.RunicWindowOptions() -> void
+Runic.Application.Views.RunicWindowOptions.StartPage.get -> string!
+Runic.Application.Views.RunicWindowOptions.StartPage.init -> void
+override Runic.Application.Views.RunicWindowOptions.ToString() -> string!
+Runic.Application.Views.RunicWindowOptions.Width.get -> int?
+Runic.Application.Views.RunicWindowOptions.Width.init -> void
+static Runic.Application.Views.RunicWindowOptions.operator !=(Runic.Application.Views.RunicWindowOptions? left, Runic.Application.Views.RunicWindowOptions? right) -> bool
+static Runic.Application.Views.RunicWindowOptions.operator ==(Runic.Application.Views.RunicWindowOptions? left, Runic.Application.Views.RunicWindowOptions? right) -> bool
+Runic.Application.Views.RunicWindowValidationResult
+Runic.Application.Views.RunicWindowValidationResult.<Clone>$() -> Runic.Application.Views.RunicWindowValidationResult!
+Runic.Application.Views.RunicWindowValidationResult.Deconstruct(out System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>! Diagnostics) -> void
+Runic.Application.Views.RunicWindowValidationResult.Diagnostics.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
+Runic.Application.Views.RunicWindowValidationResult.Diagnostics.init -> void
+Runic.Application.Views.RunicWindowValidationResult.Equals(Runic.Application.Views.RunicWindowValidationResult? other) -> bool
+override Runic.Application.Views.RunicWindowValidationResult.Equals(object? obj) -> bool
+Runic.Application.Views.RunicWindowValidationResult.Errors.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
+override Runic.Application.Views.RunicWindowValidationResult.GetHashCode() -> int
+Runic.Application.Views.RunicWindowValidationResult.IsValid.get -> bool
+Runic.Application.Views.RunicWindowValidationResult.RunicWindowValidationResult(System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>! Diagnostics) -> void
+Runic.Application.Views.RunicWindowValidationResult.ThrowIfInvalid() -> void
+override Runic.Application.Views.RunicWindowValidationResult.ToString() -> string!
+Runic.Application.Views.RunicWindowValidationResult.Warnings.get -> System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicWindowDiagnostic!>!
+static Runic.Application.Views.RunicWindowValidationResult.operator !=(Runic.Application.Views.RunicWindowValidationResult? left, Runic.Application.Views.RunicWindowValidationResult? right) -> bool
+static Runic.Application.Views.RunicWindowValidationResult.operator ==(Runic.Application.Views.RunicWindowValidationResult? left, Runic.Application.Views.RunicWindowValidationResult? right) -> bool
+Runic.Application.Views.IRunicWindowService
+Runic.Application.Views.IRunicWindowService.OpenWindowAsync<TWindow>(Runic.Application.Views.RunicWindowOptions? options = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.RunicWindowServiceCollectionExtensions
+static Runic.Application.Views.RunicWindowServiceCollectionExtensions.AddRunicWindowService(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+virtual Runic.Application.Views.RunicWindow<TViewModel>.CanCloseAsync(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.CommandDescriptor<T>.ObserveFailures.get -> System.Func<T, Microsoft.Extensions.Logging.ILogger!, System.IDisposable!>?
+Runic.Application.Views.CommandDescriptor<T>.ObserveFailures.init -> void
+Runic.Application.Views.IRunicWindowContext
+Runic.Application.Views.IRunicWindowContext.RequestCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
+Runic.Application.Views.IRunicWindowOpeningObserver
+Runic.Application.Views.IRunicWindowOpeningObserver.OnWindowOpening(Microsoft.Extensions.Logging.ILoggerFactory? loggerFactory) -> void

@@ -209,3 +209,5 @@ Runic.Application.Testing.RunicNavigationTestExtensions
 static Runic.Application.Testing.RunicNavigationTestExtensions.RetainedContentModelCount(this Runic.Application.Views.WindowContentSession! session) -> int
 Runic.Application.Testing.RunicWindowTestHost<TViewModel>.RunicWindowTestHost(TViewModel! viewModel, string! rootRoute, System.Func<Runic.Application.Views.IBridgeTransport!, Runic.Application.Views.WindowContentSession!, TViewModel!, System.IDisposable!>! attach, Runic.Application.Views.IRunicViewLocator? viewLocator = null, System.Threading.CancellationToken operationShutdown = default(System.Threading.CancellationToken), Runic.Navigation.IRunicModelContext? modelContext = null) -> void
 Runic.Application.Testing.RunicWindowTestHostOptions.ModelContext.get -> Runic.Navigation.IRunicModelContext?
+Runic.Application.Testing.RunicWindowTestHost
+static Runic.Application.Testing.RunicWindowTestHost.Create<TViewModel>(System.IServiceProvider! services, Runic.Application.Testing.RunicWindowTestHostOptions? options = null) -> Runic.Application.Testing.RunicWindowTestHost<TViewModel!>!

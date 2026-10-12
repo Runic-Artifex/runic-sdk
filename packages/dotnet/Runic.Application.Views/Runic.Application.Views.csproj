@@ -5,9 +5,6 @@
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <PackageId>Runic.Application.Views</PackageId>
-    <!-- Published as Runic.Application up to 0.7.0-preview.6. Package validation compares
-         with that package until this ID has a release of its own (eng/release/README.md). -->
-    <PackageValidationBaselineName>Runic.Application</PackageValidationBaselineName>
     <Description>Host-neutral Window and View runtime with generated typed TypeScript clients.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Published enum members name wire value kinds (String, Int32, Single). -->

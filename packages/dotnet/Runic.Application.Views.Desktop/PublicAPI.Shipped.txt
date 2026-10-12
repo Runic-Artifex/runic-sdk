@@ -10,11 +10,7 @@ Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.DisposeAsync() -
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.Presentation.get -> Runic.Desktop.DesktopWindow!
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.Surface.get -> Runic.Desktop.DesktopSurface!
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.ViewModel.get -> TViewModel!
-Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions
-static Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions.OpenDesktopWindowAsync<TWindow, TViewModel>(this System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop, Runic.Desktop.DesktopSurfaceOptions! surfaceOptions, System.Func<Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel!>!, TWindow!>! createWindow, Runic.Desktop.DesktopWindowOptions? windowOptions = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
 Runic.Application.Views.Desktop.DesktopBridgeTransport.PublishAsync(string! name, string! stateJson) -> System.Threading.Tasks.ValueTask
-Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
-static Runic.Application.Views.Desktop.DesktopBridgeWindowExtensions.ValidateDesktopWindow<TViewModel>(this System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop, Runic.Desktop.DesktopWindowOptions? windowOptions = null) -> Runic.Desktop.DesktopValidationResult!
 Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.NativeOwner.get -> Runic.Application.Views.Desktop.DesktopNativeOwner!
 Runic.Application.Views.Desktop.DesktopNativeOwner
 Runic.Application.Views.Desktop.DesktopNativeOwner.CheckAccess() -> bool
@@ -23,3 +19,38 @@ Runic.Application.Views.Desktop.DesktopNativeOwner.Generation.get -> System.Guid
 Runic.Application.Views.Desktop.DesktopNativeOwner.InvokeAsync(System.Action<nint>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
 Runic.Application.Views.Desktop.DesktopNativeOwner.IsAvailable.get -> bool
 Runic.Application.Views.Desktop.DesktopNativeOwner.Window.get -> Runic.Desktop.DesktopWindow!
+Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.DesktopPlatformProvider.LinuxGtk3 = 3 -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.DesktopPlatformProvider.LinuxGtk4 = 4 -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.DesktopPlatformProvider.MacOS = 2 -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.DesktopPlatformProvider.None = 0 -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.DesktopPlatformProvider.Windows = 1 -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.DesktopPlatformServiceCollectionExtensions
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.Clipboard.get -> Runic.Platform.ITextClipboard!
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.FileDialogs.get -> Runic.Platform.IFileDialogs!
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.FileLauncher.get -> Runic.Platform.IDesktopFileLauncher!
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.GetSnapshot() -> Runic.Platform.CapabilitySnapshot!
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.IsBound.get -> bool
+Runic.Application.Views.Desktop.DesktopWindowPlatformServices.Provider.get -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+Runic.Application.Views.Desktop.PlatformServices
+static Runic.Application.Views.Desktop.DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Views.Desktop.PlatformServices.CurrentProvider.get -> Runic.Application.Views.Desktop.DesktopPlatformProvider
+static Runic.Application.Views.Desktop.PlatformServices.ForWindow(Runic.Application.Views.Desktop.DesktopNativeOwner! owner) -> Runic.Application.Views.Desktop.DesktopWindowPlatformServices!
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
+Runic.Application.Views.Desktop.DesktopBridgeWindow<TViewModel>.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Application.Views.Desktop.RunicDesktopHost
+static Runic.Application.Views.Desktop.RunicDesktopHost.DefaultWindowOptions.get -> Runic.Desktop.DesktopWindowOptions!
+Runic.Application.Views.Desktop.RunicDesktopHost.Desktop.get -> Runic.Desktop.DesktopHost!
+static Runic.Application.Views.Desktop.RunicDesktopHost.Run(System.IServiceProvider! services, Runic.Desktop.DesktopHostOptions! options, System.Func<Runic.Application.Views.Desktop.RunicDesktopHost!, System.Threading.Tasks.Task<int>!>! application) -> int
+static Runic.Application.Views.Desktop.RunicDesktopHost.Run(System.IServiceProvider! services, System.Func<Runic.Application.Views.Desktop.RunicDesktopHost!, System.Threading.Tasks.Task<int>!>! application) -> int
+Runic.Application.Views.Desktop.RunicDesktopHost.RunicDesktopHost(System.IServiceProvider! services, Runic.Desktop.DesktopHost! desktop) -> void
+Runic.Application.Views.Desktop.RunicDesktopHost.Services.get -> System.IServiceProvider!
+Runic.Application.Views.Desktop.RunicDesktopHost.SurfaceOptions.get -> Runic.Desktop.DesktopSurfaceOptions?
+Runic.Application.Views.Desktop.RunicDesktopHost.SurfaceOptions.init -> void
+Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.get -> Runic.Desktop.DesktopWindowOptions!
+Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.init -> void
+static Runic.Application.Views.Desktop.PlatformServices.CreateSettings() -> Runic.Platform.IDesktopSettings!
+static Runic.Application.Views.Desktop.DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! applicationId) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Runic.Application.Views.Desktop.PlatformServices.CreateNotifications(string? applicationId = null) -> Runic.Platform.IDesktopNotifications!
