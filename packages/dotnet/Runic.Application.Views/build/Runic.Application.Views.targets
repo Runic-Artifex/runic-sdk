@@ -241,34 +241,44 @@
   </Target>
 
   <Target Name="RunicViewsDesignTimeComposition" BeforeTargets="CoreCompile"
-          DependsOnTargets="RunicViewsDetectBridgeUse"
+          DependsOnTargets="RunicViewsDetectBridgeUse;ResolveAssemblyReferences"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(DesignTimeBuild)' == 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <MSBuild Projects="$(_RunicBridgeCodegenProject)" Targets="Build"
              Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
              Condition="Exists('$(_RunicBridgeCodegenProject)') and '$(RunicApplicationFrontendCompositionType)' != ''" />
     <MakeDir Directories="$(_RunicBridgeGeneratedDir)" />
-    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicApplicationFrontendCompositionType)&quot; &quot;$(_RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs&quot;"
+    <WriteLinesToFile File="$(_RunicBridgeGeneratedDir)RunicBridgeComposition.References.txt" Lines="@(ReferencePath)" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Condition="'$(RunicApplicationFrontendCompositionType)' != ''" />
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicApplicationFrontendCompositionType)&quot; &quot;$(_RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs&quot; --references &quot;$(_RunicBridgeGeneratedDir)RunicBridgeComposition.References.txt&quot;"
+          StandardOutputImportance="normal"
           Condition="'$(RunicApplicationFrontendCompositionType)' != ''" />
     <ItemGroup>
       <Compile Include="$(_RunicBridgeGeneratedDir)*.Bridge.g.cs;$(_RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(_RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs"
-               Condition="'$(RunicApplicationFrontendCompositionType)' != ''" />
+               Condition="'$(RunicApplicationFrontendCompositionType)' != '' and Exists('$(_RunicBridgeGeneratedDir)RunicBridgeComposition.DesignTime.g.cs')" />
     </ItemGroup>
   </Target>
 
   <!-- The bootstrap pass compiles the application before its Bridges exist.
        An empty composition lets Program.cs call AddRunicViews() or
        AddRunicBridges() in that pass, so a starter needs no bootstrap-only
-       OutputType or Compile changes. -->
+       OutputType or Compile changes. When a reference already declares the
+       composition type, as a model project of a 0.7.0-preview.6 WPF app named
+       after the application does, calls bind to that type and no stub is
+       written (it would make them ambiguous, CS0121). -->
   <Target Name="RunicViewsBootstrapComposition" BeforeTargets="CoreCompile;GenerateTemporaryTargetAssembly"
+          DependsOnTargets="ResolveAssemblyReferences"
           Condition="'$(RunicApplicationFrontendBootstrap)' == 'true' and '$(RunicApplicationFrontendCompositionType)' != '' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
     <PropertyGroup>
       <_RunicBridgeBootstrapComposition>$(IntermediateOutputPath)RunicBridgeComposition.Bootstrap.g.cs</_RunicBridgeBootstrapComposition>
+      <_RunicBridgeBootstrapReferences>$(IntermediateOutputPath)RunicBridgeComposition.References.txt</_RunicBridgeBootstrapReferences>
     </PropertyGroup>
     <MakeDir Directories="$(IntermediateOutputPath)" />
-    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicApplicationFrontendCompositionType)&quot; &quot;$(_RunicBridgeBootstrapComposition)&quot;" />
+    <WriteLinesToFile File="$(_RunicBridgeBootstrapReferences)" Lines="@(ReferencePath)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --composition-stub &quot;$(RunicApplicationFrontendCompositionType)&quot; &quot;$(_RunicBridgeBootstrapComposition)&quot; --references &quot;$(_RunicBridgeBootstrapReferences)&quot;"
+          StandardOutputImportance="normal" />
     <ItemGroup>
-      <Compile Include="$(_RunicBridgeBootstrapComposition)" />
+      <Compile Include="$(_RunicBridgeBootstrapComposition)" Condition="Exists('$(_RunicBridgeBootstrapComposition)')" />
     </ItemGroup>
   </Target>
 
@@ -362,6 +372,16 @@
     <ItemGroup Condition="'$(_RunicBridgeSkipped)' == 'true'">
       <FileWrites Include="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" />
     </ItemGroup>
+    <!-- The bootstrap pass found the composition type in a reference (see
+         RunicViewsBootstrapComposition). A second composition of that name
+         here would make AddRunicViews() ambiguous. -->
+    <PropertyGroup>
+      <_RunicBridgeCompositionDeclaredByMarker>$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/RunicBridgeComposition.DeclaredBy.txt</_RunicBridgeCompositionDeclaredByMarker>
+      <_RunicBridgeCompositionDeclaredBy Condition="'$(RunicApplicationFrontendModelAssembly)' == '' and Exists('$(_RunicBridgeCompositionDeclaredByMarker)')">$([System.IO.File]::ReadAllText('$(_RunicBridgeCompositionDeclaredByMarker)').Trim())</_RunicBridgeCompositionDeclaredBy>
+    </PropertyGroup>
+    <Error Code="RUNICBRIDGE018" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge018"
+           Condition="'$(RunicApplicationFrontendCompositionType)' != '' and '$(_RunicBridgeSkipped)' != 'true' and '$(_RunicBridgeCompositionDeclaredBy)' != ''"
+           Text="$(AssemblyName) declares Runic Views and generates the composition $(RunicApplicationFrontendCompositionType), but the referenced assembly $(_RunicBridgeCompositionDeclaredBy) already declares that type, so AddRunicViews() would be ambiguous. Set RunicApplicationFrontendCompositionType to another type name in $(MSBuildProjectFile) or in the project that builds $(_RunicBridgeCompositionDeclaredBy)." />
     <ItemGroup>
       <Compile Include="$(_RunicBridgeGeneratedDir)*.Bridge.g.cs;$(_RunicBridgeGeneratedDir)*.View.g.cs" />
       <Compile Include="$(_RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs" Condition="'$(RunicApplicationFrontendCompositionType)' != '' and '$(_RunicBridgeSkipped)' != 'true'" />
