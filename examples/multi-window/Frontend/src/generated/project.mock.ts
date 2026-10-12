@@ -4,7 +4,7 @@ import { mockTypedView, type MockBridge, type MockTypedView, type MockTypedViewS
 import type { ProjectClient, ProjectState } from "./project.js";
 
 /** The state of a mock Project: the client state, with content as `{ kind, id }` and command state optional. */
-export type ProjectMockState = Omit<ProjectState, "canNewWindow" | "isNewWindowExecuting"> & Partial<Pick<ProjectState, "canNewWindow" | "isNewWindowExecuting">>;
+export type ProjectMockState = Omit<ProjectState, "isRenameExecuting" | "canNewWindow" | "isNewWindowExecuting" | "isChooseThemeExecuting"> & Partial<Pick<ProjectState, "isRenameExecuting" | "canNewWindow" | "isNewWindowExecuting" | "isChooseThemeExecuting">>;
 
 export interface ProjectMockDefinition {
   /** Presents the mock as content on route `content{id}`; omit it for the root route `project`. */
@@ -22,31 +22,35 @@ export interface ProjectMockDefinition {
   };
   /** Operation handlers; without one an operation runs its command handler and succeeds. */
   readonly operations?: {
+    readonly rename?: MockTypedOperationHandler<ProjectMockState, string, void> | "manual";
     readonly newWindow?: MockTypedOperationHandler<ProjectMockState, void, void> | "manual";
+    readonly chooseTheme?: MockTypedOperationHandler<ProjectMockState, string, void> | "manual";
   };
 }
 
 export interface ProjectMock extends MockTypedView<ProjectMockState, ProjectClient, "project"> {
-  readonly operations: { readonly newWindow: readonly MockTypedOperation<void, void>[]; };
+  readonly operations: { readonly rename: readonly MockTypedOperation<string, void>[]; readonly newWindow: readonly MockTypedOperation<void, void>[]; readonly chooseTheme: readonly MockTypedOperation<string, void>[]; };
 }
 
 const spec: MockTypedViewSpec = {
   kind: "project",
   route: "project",
-  contract: "MultiWindow.ProjectViewModel:C4C4CEC799BB56C93C96E60E9135E984FC487893B9700C42FAA0E5F6E268A459",
+  contract: "MultiWindow.ProjectViewModel:C51AB9A453B6106CD3AA1D180EC24A0C70FEB79129E3E2806D669473B13AE4A8",
   fields: {
     title: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     theme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
     desktopScheme: { encode: (value: unknown) => { const typed = value as string; return typed; }, decode: (wire: unknown) => bridgeWire.string(wire) },
   },
-  defaults: { canNewWindow: true, isNewWindowExecuting: false },
+  defaults: { isRenameExecuting: false, canNewWindow: true, isNewWindowExecuting: false, isChooseThemeExecuting: false },
   commands: {
     rename: { route: "Rename", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.string(wire); } },
     newWindow: { route: "NewWindow", available: "canNewWindow" },
     chooseTheme: { route: "ChooseTheme", read: (raw: unknown) => { const wire: unknown = JSON.parse(raw as string); return bridgeWire.string(wire); } },
   },
   operations: {
+    rename: { member: "Rename", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
     newWindow: { member: "NewWindow" },
+    chooseTheme: { member: "ChooseTheme", decodeInput: (wire: unknown) => bridgeWire.string(wire) },
   },
 };
 
