@@ -65,8 +65,12 @@ internal sealed class NativeChecks
             Program.Check(((System.Windows.Interop.IKeyboardInputSink)child).TabInto(
                 new System.Windows.Input.TraversalRequest(System.Windows.Input.FocusNavigationDirection.Next)),
                 "WPF could not tab into the child presentation.");
-            var focused = await view.Surface.ExecuteJavaScriptAsync("return document.activeElement.id;");
-            Program.Check(focused == "editor", "The child document could not focus its editor.");
+            // TabInto only requests the move: WebView2's MoveFocus has no completion, and the browser process
+            // focuses the first element later, on a channel that is not ordered with this script's bridge
+            // socket. The page waits for the focus to land instead of sampling activeElement once (#216).
+            var focus = await view.Surface.ExecuteJavaScriptAsync(FocusProbe, TimeSpan.FromSeconds(15));
+            Console.WriteLine($"[focus] {focus} windowActive={window.IsActive}");
+            Program.Check(focus.StartsWith("editor ", StringComparison.Ordinal), $"The child document could not focus its editor: {focus}.");
             window.Content = null;
             await attachment.Released.Task.WaitAsync(TimeSpan.FromSeconds(10));
             await view.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
@@ -144,6 +148,16 @@ internal sealed class NativeChecks
             return host;
         }
     }
+
+    // Resolves when the document's focused element is the editor, or after ten seconds, and reports the element
+    // the script found on arrival, the element it settled on, the wait, and whether the page had OS focus.
+    internal const string FocusProbe = """
+        const arrived = performance.now();
+        const initial = document.activeElement?.id || "-";
+        while (document.activeElement?.id !== "editor" && performance.now() - arrived < 10000)
+          await new Promise(resolve => setTimeout(resolve, 5));
+        return `${document.activeElement?.id || "-"} initial=${initial} waitedMs=${Math.round(performance.now() - arrived)} hasFocus=${document.hasFocus()}`;
+        """;
 
     private static async Task<RunicViewHostState> SettledAsync(RunicViewHost host)
     {
