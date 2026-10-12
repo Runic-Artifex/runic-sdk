@@ -18,7 +18,7 @@ public static class ProjectServices
         // Once per Window: each Window's scope has its own model context and ViewModel. ReactiveUI commands
         // deliver their notifications on the model context of the Window that runs them.
         services.AddRunicReactiveModelContext();
-        // Command failures that are not declared reach the console through ObserveBridgeExceptions.
+        // Command failures that are not declared reach the console: the generated Bridge logs them.
         services.AddLogging(logging => logging.AddSimpleConsole().SetMinimumLevel(LogLevel.Warning));
         services.AddScoped<ProjectViewModel>();
         services.AddRunicViews();

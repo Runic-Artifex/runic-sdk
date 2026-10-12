@@ -72,11 +72,11 @@ public sealed partial class FailureToolkitViewModel : ObservableObject
     }
 }
 
+// No ThrownExceptions subscription: the generated Bridge observes the declared failures there, so they never reach
+// ReactiveUI's default handler (W250-042).
 /// <summary>A ReactiveUI command that declares its failure on the property.</summary>
-public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
+public sealed class FailureReactiveViewModel : ReactiveObject
 {
-    private readonly IDisposable _exceptions;
-    private readonly IDisposable _importExceptions;
     private string _title = "";
 
     public FailureReactiveViewModel(IRunicModelContext modelContext)
@@ -91,9 +91,6 @@ public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
         }, scheduler);
         // A stream that publishes two values, then fails as declared.
         ImportCommand = ReactiveCommand.CreateFromObservable<RxVoid, int>(_ => new FailingSequence(), scheduler);
-        // M1: bridged ReactiveUI commands need a ThrownExceptions subscriber.
-        _exceptions = SaveCommand.ThrownExceptions.Subscribe(new IgnoredExceptions());
-        _importExceptions = ImportCommand.ThrownExceptions.Subscribe(new IgnoredExceptions());
     }
 
     public string Title
@@ -107,12 +104,6 @@ public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
 
     [RunicFailure(typeof(NoteSaveFailure)), RunicCommandResult(BridgeCommandResultCardinality.Stream)]
     public ReactiveCommand<RxVoid, int> ImportCommand { get; }
-
-    public void Dispose()
-    {
-        _exceptions.Dispose();
-        _importExceptions.Dispose();
-    }
 
     private sealed class FailingSequence : IObservable<int>
     {
@@ -128,13 +119,6 @@ public sealed class FailureReactiveViewModel : ReactiveObject, IDisposable
         {
             public void Dispose() { }
         }
-    }
-
-    private sealed class IgnoredExceptions : IObserver<Exception>
-    {
-        public void OnCompleted() { }
-        public void OnError(Exception error) { }
-        public void OnNext(Exception value) { }
     }
 }
 

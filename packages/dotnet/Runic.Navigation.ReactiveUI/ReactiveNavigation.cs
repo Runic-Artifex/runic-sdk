@@ -98,15 +98,17 @@ public static class ReactiveNavigation
     /// </summary>
     /// <remarks>
     /// A rejected, superseded or failed Back is an outcome, not an exception, so <c>ThrownExceptions</c>
-    /// reports only defects and cancellation. Subscribe to the command's <c>ThrownExceptions</c>; without a
-    /// subscriber ReactiveUI routes them to its default exception handler. Apps that use Runic Views
-    /// can use <c>RunicReactiveExceptions.ObserveBridgeExceptions</c> from <c>Runic.Application.Views.ReactiveUI</c>.
+    /// reports only defects and cancellation. While a generated Runic Views Bridge presents the command, it logs those
+    /// defects; otherwise, without a <c>ThrownExceptions</c> subscriber, ReactiveUI routes them to its default exception
+    /// handler.
     /// Code that needs the full <see cref="NavigationResult{TContent}"/>, such as a failure's exception, awaits
     /// <see cref="NavigationRegion{TContent}.BackAsync"/> in its own command.
     /// Overlapping executions to the same destination share one Back and confirmation. Cancelling one execution
     /// cancels that caller; the shared Back is cancelled only when every caller cancels before commit.
-    /// The command observes the region through a <c>PropertyChanged</c> handler until the command is disposed,
-    /// so dispose it with its owner, for example with <c>DisposeWith</c>.
+    /// The command observes the region through a <c>PropertyChanged</c> handler until the command is disposed. A
+    /// command whose owner lives as long as the region, such as a shell ViewModel's command on its own region, needs no
+    /// disposal: they become unreachable together. Dispose it with its owner only when the region outlives the owner,
+    /// such as a page's command on its parent's region.
     /// </remarks>
     /// <param name="region">The region.</param>
     /// <param name="outputScheduler">

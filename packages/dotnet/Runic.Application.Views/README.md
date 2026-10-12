@@ -877,8 +877,8 @@ The generated client's `save()` then returns
 `Promise<BridgeOutcome<EditorState, SaveFailure>>` instead of
 `Promise<EditorState>`, its operation is `BridgeOperation<void, SaveFailure>`, and
 the generated mock encodes the failure. A ReactiveUI command also reports the
-failure on `ThrownExceptions`, so give every bridged `ReactiveCommand` a
-subscriber.
+failure on `ThrownExceptions`; the generated Bridge observes it there and does
+not log it, so the ViewModel needs no subscription.
 
 ## Navigation (experimental)
 
@@ -953,7 +953,7 @@ output accordingly. The message properties are listed per event.
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
 | 1040 | `RoutedRegionRouteIncompatible` | Error | A ReactiveUI `ReactiveRoutedRegion<T>` receives a ViewModel that is not a `T`, so it presents no content. | `Region`, `Model` |
 | 1041 | `RoutedRegionRouterFailed` | Error | The router observed by a `ReactiveRoutedRegion<T>` fails; the region keeps its last content. | `Region`, `ErrorType` |
-| 1042 | `ReactiveCommandFailed` | Error | A ReactiveUI command or object observed with `ObserveBridgeExceptions(logger)` reports an exception other than a declared `RunicFailureException` or a cancellation on `ThrownExceptions`. | `Source` (the command expression or `sourceName`), `ErrorType` |
+| 1042 | `ReactiveCommandFailed` | Error | A bridged ReactiveUI command reports on `ThrownExceptions` an exception that no Bridge call received, while a generated Bridge presents it, or a command or object observed with `ObserveBridgeExceptions(logger)` reports one; declared `RunicFailureException`s and cancellations are not logged. | `Source` (`Model.Command` for the Bridge; the command expression or `sourceName` for `ObserveBridgeExceptions`), `ErrorType` |
 | 1043 | `ReactiveSchedulerOutsideModelTurn` | Warning | Work is scheduled on the model-context main-thread scheduler that `AddRunicReactiveModelContext()` installs, outside a model turn, so it runs on the scheduler it replaced. Logged once per process; to `Trace` unless `InstallMainThreadScheduler(loggerFactory)` received a logger factory. | `Fallback` |
 | 1050 | `WindowRegistrationMissing` | Error | `ValidateWindow` or `OpenWindowAsync` finds a Window's generated Bridge unregistered, on any host. | `Code`, `DiagnosticMessage`, `Remediation` |
 | 1051 | `WindowReleaseFailed` | Error | `IRunicWindowService` fails to release a Window it opened, after that Window closed. | `Window`, `ErrorType` |
@@ -985,13 +985,17 @@ section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`. Events 3000
 use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
 
 Events 1040-1042 come from `Runic.Application.Views.ReactiveUI` (and its `.Reactive`
-flavor) and also use `Runic.Application.Views`. They need the
+flavor) and also use `Runic.Application.Views`. Events 1040 and 1041 need the
 `ReactiveRoutedRegion<T>(router, loggerFactory)` constructor, which a
 ViewModel can call with an `ILoggerFactory` injected from DI, as
 `examples/notes-reactive-views` does. Without a factory, the region writes the
 same messages to `Trace` as described above. `Region` is the region's ViewModel
-type name `T`. Event 1042 uses the logger passed to `ObserveBridgeExceptions`;
-`Source` is the observed command's expression, such as `SaveCommand`, or `sourceName`.
+type name `T`. The Bridge logs event 1042 through the Window's logger factory,
+with the ViewModel type and command property, such as `EditorViewModel.SaveCommand`, as
+`Source`; an exception that a Bridge call received is logged as 1000 or 1004
+instead. `ObserveBridgeExceptions(logger)` replaces that logging for its command
+and uses the logger passed to it; `Source` is the observed command's expression,
+such as `SaveCommand`, or `sourceName`.
 
 Bridge calls are traced by the `ActivitySource` and measured by the `Meter`
 named `Runic.Application.Views` (`RunicViewsTelemetry.ActivitySourceName` and

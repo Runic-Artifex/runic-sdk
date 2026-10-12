@@ -6,13 +6,15 @@ namespace RunicWindowApp;
 
 public interface IWorkspacePage { }
 
-public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
+public sealed class WorkspaceViewModel : ReactiveObject
 {
     private IWorkspacePage _main;
 
     // The Window runs these commands in its model turns, and AddRunicReactiveModelContext
     // makes ReactiveUI deliver their notifications there, ordered with Bridge replies,
-    // so a command needs no scheduler argument.
+    // so a command needs no scheduler argument. The generated Bridge logs a command's
+    // unexpected exception, and a command needs disposing only when its canExecute
+    // observes an object that outlives this ViewModel, so these need neither.
     public WorkspaceViewModel(WelcomeViewModel welcome, CounterViewModel counter)
     {
         _main = welcome;
@@ -28,12 +30,6 @@ public sealed class WorkspaceViewModel : ReactiveObject, IDisposable
 
     public ReactiveCommand<RxVoid, RxVoid> ShowWelcomeCommand { get; }
     public ReactiveCommand<RxVoid, RxVoid> ShowCounterCommand { get; }
-
-    public void Dispose()
-    {
-        ShowWelcomeCommand.Dispose();
-        ShowCounterCommand.Dispose();
-    }
 }
 
 public sealed class WelcomeViewModel : ReactiveObject, IWorkspacePage
@@ -41,7 +37,7 @@ public sealed class WelcomeViewModel : ReactiveObject, IWorkspacePage
     public string Greeting => "Your first Runic View is ready.";
 }
 
-public sealed class CounterViewModel : ReactiveObject, IWorkspacePage, IDisposable
+public sealed class CounterViewModel : ReactiveObject, IWorkspacePage
 {
     private int _count;
     private int _step = 1;
@@ -65,8 +61,6 @@ public sealed class CounterViewModel : ReactiveObject, IWorkspacePage, IDisposab
     }
 
     public ReactiveCommand<RxVoid, RxVoid> IncrementCommand { get; }
-
-    public void Dispose() => IncrementCommand.Dispose();
 }
 #else
 using CommunityToolkit.Mvvm.ComponentModel;

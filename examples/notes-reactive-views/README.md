@@ -52,9 +52,11 @@ is available. The browser smoke check covers both answers.
 **Save and close** declares it on `SaveAndCloseCommand`: a missing or overlong
 title is a `SaveFailure` that every frontend shows with `matchCase`
 ([save-failure.ts](Frontend/src/save-failure.ts)) instead of a rejected call.
-A `ReactiveCommand` also reports that exception on `ThrownExceptions`, so each
-ViewModel attaches `ObserveBridgeExceptions(logger)` to its commands and
-disposes the subscriptions with the ViewModel.
+A `ReactiveCommand` also reports that exception on `ThrownExceptions`. The
+generated Bridge observes it, so the ViewModels have no `ThrownExceptions`
+subscriptions: it logs only an unexpected exception that no Bridge call
+reported. No ViewModel disposes its commands: none observes an object that
+outlives it, and the document's entry commands end with its entry.
 The Svelte and Angular variants also mount a second full editor for the same
 page. The main editor owns the confirmation handler; the mirrored editor keeps
 its own mount and subscription without advertising a competing handler. This

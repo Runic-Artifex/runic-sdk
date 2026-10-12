@@ -1,8 +1,6 @@
-using Microsoft.Extensions.Logging;
 using ReactiveUI;
 using ReactiveUI.Binding;
 using ReactiveUI.Primitives;
-using ReactiveUI.Primitives.Disposables;
 using Runic.Application.Views;
 using Runic.Application.Views.ReactiveUI;
 using Runic.Navigation;
@@ -28,30 +26,30 @@ public interface IPinnedItem;
 // current page as a content slot. Home is borrowed from the window scope; each
 // visit to the document pushes a fresh DocumentViewModel that the navigator owns.
 // No command takes a scheduler: AddRunicReactiveModelContext delivers ReactiveUI's
-// notifications on the window's model context.
-public sealed class ShellViewModel : ReactiveObject, IDisposable
+// notifications on the window's model context. No command needs a ThrownExceptions
+// subscription: the generated Bridge logs an unexpected exception, and a declared
+// failure reaches the frontend. No command needs disposing: none observes an object
+// that outlives this ViewModel.
+public sealed class ShellViewModel : ReactiveObject
 {
     private readonly HomeViewModel _home;
     private readonly PinnedNoteViewModel _pinnedNote = new();
     private readonly PinnedTaskViewModel _pinnedTask = new();
-    private readonly MultipleDisposable _disposables = new();
     private IReadOnlyList<IPinnedItem> _pinned;
 
-    public ShellViewModel(RunicNavigator navigator, HomeViewModel home, EditorViewModel editor, ILogger<ShellViewModel> logger)
+    public ShellViewModel(RunicNavigator navigator, HomeViewModel home, EditorViewModel editor)
     {
         _home = home;
         _pinned = [_pinnedNote, _pinnedTask];
         Editor = editor;
         Main = navigator.CreateRegion<IMainPage>(this, NavigationTarget.Borrow<IMainPage>(home));
         // Back runs the document's leave guard; it is enabled while Main has history.
-        OpenHomeCommand = Main.CreateBackCommand().DisposeWith(_disposables);
+        OpenHomeCommand = Main.CreateBackCommand();
         OpenDocumentCommand = ReactiveCommand.CreateFromTask(OpenDocumentAsync,
-            Main.WhenCurrentChanged().Select(page => page is HomeViewModel)).DisposeWith(_disposables);
-        OpenHomeCommand.ObserveBridgeExceptions(logger).DisposeWith(_disposables);
-        OpenDocumentCommand.ObserveBridgeExceptions(logger).DisposeWith(_disposables);
-        SwapPinnedCommand = ReactiveCommand.Create(SwapPinned).DisposeWith(_disposables);
-        RemovePinnedCommand = ReactiveCommand.Create(RemovePinned).DisposeWith(_disposables);
-        RestorePinnedCommand = ReactiveCommand.Create(RestorePinned).DisposeWith(_disposables);
+            Main.WhenCurrentChanged().Select(page => page is HomeViewModel));
+        SwapPinnedCommand = ReactiveCommand.Create(SwapPinned);
+        RemovePinnedCommand = ReactiveCommand.Create(RemovePinned);
+        RestorePinnedCommand = ReactiveCommand.Create(RestorePinned);
     }
 
     public NavigationRegion<IMainPage> Main { get; }
@@ -96,7 +94,6 @@ public sealed class ShellViewModel : ReactiveObject, IDisposable
         _pinned = [_pinnedNote, _pinnedTask];
         this.RaisePropertyChanged(nameof(Pinned));
     }
-    public void Dispose() => _disposables.Dispose();
 }
 
 public class PinnedNoteViewModel : ReactiveObject, IPinnedItem
@@ -118,27 +115,27 @@ public sealed partial class HomeViewModel : ReactiveObject, IMainPage
 }
 
 // One visit to the document. The navigator constructs it with its entry context and
-// owns it: it is disposed, and its child region closes, when the visit retires. The
-// note lives in the window-scoped editor, which the document borrows, so the draft
-// and the editor's View routes survive across visits.
-public sealed class DocumentViewModel : ReactiveObject, IMainPage, INavigationDepartureGuard, IDisposable
+// owns it: its child region closes, and its entry commands and WhenNavigatedTo end,
+// when the visit retires, so it needs no Dispose. The note lives in the window-scoped
+// editor, which the document borrows, so the draft and the editor's View routes
+// survive across visits.
+public sealed class DocumentViewModel : ReactiveObject, IMainPage, INavigationDepartureGuard
 {
-    private readonly MultipleDisposable _disposables = new();
     private readonly EditorViewModel _editor;
     private readonly LeaveConfirmation _leave;
     private DocumentPane _activePane;
     private string _status = "";
 
     public DocumentViewModel(NavigationEntryContext entry, RunicNavigator navigator, EditorViewModel editor,
-        PreviewViewModel preview, ILogger<DocumentViewModel> logger)
+        PreviewViewModel preview)
     {
         _editor = editor;
         CurrentPane = navigator.CreateRegion<IDocumentPane>(this, NavigationTarget.Borrow<IDocumentPane>(editor));
+        // The region is this page's own, so the subscription needs no disposal.
         CurrentPane.WhenCurrentChanged()
-            .Subscribe(pane => ActivePane = pane is PreviewViewModel ? DocumentPane.Preview : DocumentPane.Editor)
-            .DisposeWith(_disposables);
-        ShowEditorCommand = ReactiveCommand.CreateFromTask(token => ShowAsync(editor, token)).DisposeWith(_disposables);
-        ShowPreviewCommand = ReactiveCommand.CreateFromTask(token => ShowAsync(preview, token)).DisposeWith(_disposables);
+            .Subscribe(pane => ActivePane = pane is PreviewViewModel ? DocumentPane.Preview : DocumentPane.Editor);
+        ShowEditorCommand = ReactiveCommand.CreateFromTask(token => ShowAsync(editor, token));
+        ShowPreviewCommand = ReactiveCommand.CreateFromTask(token => ShowAsync(preview, token));
 
         // Leaving with unsaved edits asks through ConfirmLeave. The edits are reverted
         // only when the departure commits; a No, or a superseded departure, keeps them.
@@ -147,7 +144,7 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, INavigationDe
         // The web View answers for its Close and the shell's Back. ReactiveUI asks the latest handler
         // first, so this fallback answers only when no View is mounted or .NET code starts the departure:
         // keep the edits rather than fail it.
-        ConfirmLeave.RegisterHandler(context => context.SetOutput(false)).DisposeWith(_disposables);
+        ConfirmLeave.RegisterHandler(context => context.SetOutput(false));
 
         // Result commands end the entry: Save and close completes the request with the
         // title; Close goes back, asking first when there are unsaved edits.
@@ -155,16 +152,14 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, INavigationDe
         {
             await editor.SaveAsync(token);
             return editor.Title;
-        }).DisposeWith(_disposables);
-        CloseCommand = entry.CreateCloseCommand().DisposeWith(_disposables);
+        });
+        CloseCommand = entry.CreateCloseCommand();
 
-        // Per visit, not per mounted View: follow the draft while this entry is current.
+        // Per visit, not per mounted View: follow the window-scoped draft while this entry
+        // is current. The visit scope ends that subscription when the entry is left.
         entry.WhenNavigatedTo((_, visit) => editor.WhenAnyValue(model => model.IsDirty)
             .Subscribe(dirty => Status = dirty ? "Unsaved changes" : "No unsaved changes")
-            .DisposeWith(visit)).DisposeWith(_disposables);
-
-        foreach (var command in new IHandleObservableErrors[] { ShowEditorCommand, ShowPreviewCommand, SaveAndCloseCommand, CloseCommand })
-            command.ObserveBridgeExceptions(logger).DisposeWith(_disposables);
+            .DisposeWith(visit));
     }
 
     public NavigationRegion<IDocumentPane> CurrentPane { get; }
@@ -191,8 +186,6 @@ public sealed class DocumentViewModel : ReactiveObject, IMainPage, INavigationDe
         if (!ReferenceEquals(CurrentPane.Current, pane))
             await CurrentPane.ReplaceAsync(NavigationTarget.Borrow(pane), cancellationToken: token);
     }
-
-    public void Dispose() => _disposables.Dispose();
 }
 
 public sealed record DiscardNoteRequest(string Title, int BodyLength);
@@ -207,12 +200,9 @@ public sealed record TitleRequired : SaveFailure;
 [RunicUnionCase("titleTooLong")]
 public sealed record TitleTooLong(int MaximumLength) : SaveFailure;
 
-public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatableViewModel, IDisposable
+public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatableViewModel
 {
     private const int MaximumTitleLength = 120;
-    private readonly IDisposable _fallbackDiscardHandler;
-    private readonly IDisposable _saveExceptions;
-    private readonly IDisposable _discardExceptions;
     private string _title = "Untitled";
     private string _body = "";
     private string _savedTitle = "Untitled";
@@ -221,9 +211,9 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
     private int _activationCount;
     private int _deactivationCount;
 
-    public EditorViewModel(ILogger<EditorViewModel> logger)
+    public EditorViewModel()
     {
-        _fallbackDiscardHandler = ConfirmDiscard.RegisterHandler(context =>
+        ConfirmDiscard.RegisterHandler(context =>
         {
             // A native or headless invocation has no mounted browser endpoint.
             // Keep ReactiveUI's normal handler precedence and decline the discard.
@@ -232,10 +222,6 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
         });
         SaveCommand = ReactiveCommand.CreateFromTask(SaveAsync);
         DiscardCommand = ReactiveCommand.CreateFromTask(DiscardAsync);
-        // A ReactiveCommand also reports its exceptions on ThrownExceptions. The
-        // Bridge already delivered declared failures; log anything else.
-        _saveExceptions = SaveCommand.ObserveBridgeExceptions(logger);
-        _discardExceptions = DiscardCommand.ObserveBridgeExceptions(logger);
         this.WhenActivated((Action<Action<IDisposable>>)(dispose =>
         {
             ActivationCount++;
@@ -296,15 +282,6 @@ public sealed class EditorViewModel : ReactiveObject, IDocumentPane, IActivatabl
             SavedMessage = $"Discarded {request.Title}";
         }
         else SavedMessage = "Kept current changes.";
-    }
-
-    public void Dispose()
-    {
-        _fallbackDiscardHandler.Dispose();
-        _saveExceptions.Dispose();
-        _discardExceptions.Dispose();
-        SaveCommand.Dispose();
-        DiscardCommand.Dispose();
     }
 
     private sealed class ActivationLease(Action dispose) : IDisposable

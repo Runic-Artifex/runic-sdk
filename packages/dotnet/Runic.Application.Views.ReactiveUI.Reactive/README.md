@@ -68,7 +68,8 @@ the back command's input. This package no longer references it; add it to
 navigate.
 `BatchBridgeSnapshots(model)` and `ObserveBridgeExceptions` are also available in
 this adapter's namespace; this flavor's commands implement the same
-`IHandleObservableErrors`. See
+`IHandleObservableErrors`, and a generated Bridge logs their unexpected
+exceptions in the same way. See
 [Declared failures and ThrownExceptions](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#declared-failures-and-thrownexceptions).
 Place it after `ObserveOn(modelScheduler)` and before collection binding; see
 the [DynamicData guide](https://docs.runic-artifex.eu/guides/application/guides/dynamicdata/).

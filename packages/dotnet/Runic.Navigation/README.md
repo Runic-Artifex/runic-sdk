@@ -549,6 +549,15 @@ the caller, never inside a turn. Hook operations don't count as turns. Once
 the context is closed, disposal runs on the thread pool. A decorator that
 wraps a scheduling context must implement and forward the interface too.
 
+An initialize hook may set the state of content created for its entry
+(`NavigationTarget.Create`, or a new instance handed over with `Own`) directly,
+also after `await`: nothing presents that content before the entry commits,
+and the navigator commits in a turn after the awaited hook. Commit with
+`ModelContext.InvokeAsync` state that is already presented or that other work
+also writes, such as a `Borrow` target, a service or another page, and read or
+write state that way in guards and resume hooks, which run while the content
+may be presented.
+
 A context that can close on its own, for example when its UI thread shuts
 down, can also implement `IRunicModelContextLifetime`. The navigator subscribes
 to its `Closed` token and starts closing when it fires: later requests are
