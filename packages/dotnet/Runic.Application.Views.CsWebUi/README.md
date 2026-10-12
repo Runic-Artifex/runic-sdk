@@ -50,10 +50,13 @@ so with several windows open it waits for all of them.
 
 A browser window closes without asking the application, and WebUI reports the
 close only after it happened, so CS-WebUI cannot keep a window open. A Window
-with `GuardClose` opens unguarded, logs event 1052 `WindowCloseGuardUnavailable`
-once, and its `CanCloseAsync` is not asked; the navigation regions' departure
-guards still run for navigation inside the window. Use Runic Desktop's embedded
-window when a user close must be able to keep unsaved work open.
+with `GuardClose` opens unguarded, logs event 1053 `WindowCloseGuardUnavailable`
+once, and its `CanCloseAsync` is not asked when the user closes the browser
+window; the navigation regions' departure guards still run for navigation
+inside the window. `window.RequestCloseAsync()` still asks `CanCloseAsync`
+before it closes the window, because the application is the one closing. Use
+Runic Desktop's embedded window when a user close must be able to keep unsaved
+work open.
 
 `ValidateWindow<TWindow>` checks at startup that the generated Bridge for the
 ViewModel is registered and returns a `RunicWindowValidationResult`, the same
@@ -96,7 +99,10 @@ instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformService
 `IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
 ViewModels that take them resolve on both hosts. CS-WebUI windows have no native
 owner, so every operation and the capability snapshot report
-`Unavailable(OwnerUnavailable)`.
+`Unavailable(OwnerUnavailable)`. It also registers one `IDesktopSettings`
+whose reads return `Unavailable(ProviderNotConfigured)`; register a platform
+provider's settings, such as `WindowsPlatformProvider.CreateSettings()`, before
+it to read the desktop's preferences on CS-WebUI.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to

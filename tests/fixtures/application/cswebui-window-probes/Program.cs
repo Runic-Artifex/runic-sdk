@@ -126,8 +126,8 @@ static async Task ProbeMissingBridgeAsync()
     Console.WriteLine("FIRST_WINDOW_MISSING_BRIDGE_OK");
 }
 
-// CS-WebUI cannot keep a browser window open: a Window with GuardClose opens unguarded, logs
-// WindowCloseGuardUnavailable once, and closes without asking CanCloseAsync.
+// CS-WebUI cannot keep a browser window open when the user closes it: a Window with GuardClose opens unguarded and
+// logs WindowCloseGuardUnavailable once. RequestCloseAsync, the application asking, is still guarded.
 static int ProbeCloseGuard()
 {
     var services = new ServiceCollection();
@@ -136,26 +136,27 @@ static int ProbeCloseGuard()
     var log = new RecordingLoggerFactory();
     services.AddSingleton<ILoggerFactory>(log);
     using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
-    var asked = false;
     var result = RunicCsWebUiHost.Run(provider, async host =>
     {
         await using var window = await host.OpenWindowAsync<GuardedProbeWindow>();
-        window.Asked = () => asked = true;
-        var close = await window.CloseAsync(TimeSpan.FromSeconds(5));
-        await close.Completion;
+        window.Answer = false;
+        if (await window.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)) || window.Asked != 1)
+            throw new InvalidOperationException("RequestCloseAsync on CS-WebUI did not keep the window open when CanCloseAsync refused.");
+        window.Answer = true;
+        if (!await window.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)) || window.Asked != 2)
+            throw new InvalidOperationException("RequestCloseAsync on CS-WebUI did not close the window when CanCloseAsync allowed it.");
         await window.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         return 7;
     });
     if (result != 7) throw new InvalidOperationException($"Run returned {result} instead of the application's result.");
-    if (asked) throw new InvalidOperationException("CS-WebUI asked CanCloseAsync although it cannot keep its window open.");
     LogEntry[] entries;
     lock (log.Entries) entries = [.. log.Entries];
-    if (entries.Count(static entry => entry.EventId.Id == 1052) != 1 || !entries.Any(static entry =>
+    if (entries.Count(static entry => entry.EventId.Id == 1053) != 1 || !entries.Any(static entry =>
             entry is { Category: "Runic.Application.Views", Level: LogLevel.Warning } &&
-            entry.EventId is { Id: 1052, Name: "WindowCloseGuardUnavailable" } &&
+            entry.EventId is { Id: 1053, Name: "WindowCloseGuardUnavailable" } &&
             entry.Message.Contains(nameof(GuardedProbeWindow), StringComparison.Ordinal) &&
             entry.Message.Contains("CS-WebUI", StringComparison.Ordinal)))
-        throw new InvalidOperationException("A guarded Window on CS-WebUI was not logged once as event 1052:\n" +
+        throw new InvalidOperationException("A guarded Window on CS-WebUI was not logged once as event 1053:\n" +
             string.Join('\n', entries.Select(static entry => entry.ToString())));
     Console.WriteLine("FIRST_WINDOW_CLOSE_GUARD_OK");
     return 0;
@@ -180,21 +181,22 @@ namespace CsWebUiWindowProbes
 
     public sealed partial class ProbeWindow : RunicWindow<ProbeViewModel>;
 
-    // Guards its close; Asked records a CanCloseAsync call, which CS-WebUI must not make.
     public sealed partial class GuardedProbeViewModel : ObservableObject
     {
         [ObservableProperty] private bool dirty;
     }
 
+    // Guards its close and answers CanCloseAsync with Answer, counting the calls.
     public sealed partial class GuardedProbeWindow : RunicWindow<GuardedProbeViewModel>
     {
         public GuardedProbeWindow() => GuardClose = true;
-        public Action? Asked { get; set; }
+        public bool Answer { get; set; }
+        public int Asked { get; private set; }
 
-        protected override ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
+        protected override async ValueTask<bool> CanCloseAsync(CancellationToken cancellationToken)
         {
-            Asked?.Invoke();
-            return base.CanCloseAsync(cancellationToken);
+            Asked++;
+            return await base.CanCloseAsync(cancellationToken) && Answer;
         }
     }
 

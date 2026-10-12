@@ -168,7 +168,24 @@ public sealed class RunicWindowOpening<TViewModel> where TViewModel : class
     public Func<CancellationToken, ValueTask<bool>>? CloseGuard => Window.GuardClose ? Window.AskCanCloseAsync : null;
 
     /// <summary>
-    /// Logs <c>WindowCloseGuardUnavailable</c> (event 1052): the Window guards its close, but
+    /// Makes <see cref="RunicWindow{TViewModel}.RequestCloseAsync"/> call <paramref name="requestClose"/>, the host's own
+    /// request to close the window as the user's close button does.
+    /// </summary>
+    /// <remarks>
+    /// A host whose user close asks <see cref="CloseGuard"/> or another confirmation passes its close request, so a
+    /// request and a user close share one decision. It returns whether the window closed, and
+    /// <see langword="true"/> once the window is closed. Without it, <c>RequestCloseAsync</c> asks
+    /// <see cref="CloseGuard"/> itself and then closes the window with <see cref="IBridgeWindow.CloseAsync"/>.
+    /// </remarks>
+    /// <param name="requestClose">Requests the close; its token stops only the caller's wait.</param>
+    public void UseCloseRequest(Func<CancellationToken, ValueTask<bool>> requestClose)
+    {
+        ArgumentNullException.ThrowIfNull(requestClose);
+        Window.UseHostCloseRequest(requestClose);
+    }
+
+    /// <summary>
+    /// Logs <c>WindowCloseGuardUnavailable</c> (event 1053): the Window guards its close, but
     /// <paramref name="presentation"/>, such as <c>CS-WebUI</c>, cannot keep its window open, so it opens unguarded.
     /// </summary>
     /// <param name="presentation">The presentation that cannot keep the window open, as it reads in a sentence.</param>
@@ -200,6 +217,8 @@ internal static class RunicWindowOpening
             throw new RunicWindowConfigurationException(errors);
         }
         cancellationToken.ThrowIfCancellationRequested();
+        // IRunicWindowService opens further Windows on this host, also from the ViewModel resolved below.
+        (services.GetService(typeof(RunicWindowService)) as RunicWindowService)?.Bind(host);
 
         var scope = services.CreateAsyncScope();
         RunicWindowOpening<TViewModel> opening;

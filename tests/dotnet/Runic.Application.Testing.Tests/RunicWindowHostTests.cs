@@ -159,6 +159,75 @@ internal sealed class RunicWindowHostTests
         await closed.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [Test, NotInParallel(Order = 8)]
+    public async Task WindowServiceOpensOnTheHostAndReleasesClosedWindows()
+    {
+        await using var provider = Services(bridge: true).AddRunicWindowService().BuildServiceProvider(
+            new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        var windows = provider.GetRequiredService<IRunicWindowService>();
+        Require(await CatchAsync(() => windows.OpenWindowAsync<HostProbeWindow>().AsTask()) is InvalidOperationException error
+            && error.Message.Contains("host.OpenWindowAsync", StringComparison.Ordinal) && HostProbeViewModel.Created == 0,
+            "The window service opened a Window, or failed unclearly, before any host had opened one.");
+
+        var host = new RecordingHost(provider);
+        await using var first = await host.OpenWindowAsync<HostProbeWindow>();
+        var options = new RunicWindowOptions { Width = 320, Height = 200 };
+        var second = await windows.OpenWindowAsync<HostProbeWindow>(options);
+        Require(host.Opened.Count == 2 && ReferenceEquals(second.Host, host.Opened[1].Window)
+            && ReferenceEquals(host.Opened[1].Options, options),
+            "The window service did not open the Window on the host that opened the first one.");
+        Require(!ReferenceEquals(first.ViewModel.Scope, second.ViewModel.Scope), "A Window opened by the service shared a scope.");
+
+        // The user closes the second window; nothing awaits it, so the service releases it.
+        host.Opened[1].Window.CloseByUser();
+        await second.ViewModel.Scope.Released.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(host.Opened[1].Attached!.Disposed && !first.ViewModel.Scope.Disposed,
+            "Closing a Window opened by the service did not release only that Window.");
+        await second.DisposeAsync();
+    }
+
+    [Test, NotInParallel(Order = 9)]
+    public async Task WindowServiceIsBoundBeforeTheFirstViewModelAndKeepsAFake()
+    {
+        Task<HostProbeWindow>? fromConstructor = null;
+        using var cancelled = new CancellationTokenSource();
+        await cancelled.CancelAsync();
+        var services = Services(bridge: true).AddRunicWindowService();
+        // Replaces the plain registration: the ViewModel uses the service in its constructor, with a cancelled token so
+        // it opens nothing. A bound service reaches the host's checks and is cancelled; an unbound one throws.
+        services.AddScoped(provider =>
+        {
+            fromConstructor ??= provider.GetRequiredService<IRunicWindowService>()
+                .OpenWindowAsync<HostProbeWindow>(cancellationToken: cancelled.Token).AsTask();
+            return new HostProbeViewModel(provider.GetRequiredService<ScopeProbe>());
+        });
+        await using (var provider = services.BuildServiceProvider())
+        {
+            await using var window = await new RecordingHost(provider).OpenWindowAsync<HostProbeWindow>();
+            Require(fromConstructor is { IsCanceled: true }, $"The first ViewModel's constructor got an unbound window service: {fromConstructor?.Exception}");
+        }
+
+        var fake = new RecordingWindowService();
+        await using var faked = Services(bridge: true).AddSingleton<IRunicWindowService>(fake).AddRunicWindowService().BuildServiceProvider();
+        var opened = await faked.GetRequiredService<IRunicWindowService>().OpenWindowAsync<HostProbeWindow>();
+        Require(fake.Opened.SequenceEqual([typeof(HostProbeWindow)]) && HostProbeViewModel.Created == 0,
+            "AddRunicWindowService replaced an application's own window service.");
+        await opened.DisposeAsync();
+    }
+
+    // The test double an application registers: it records the requested Window and opens nothing.
+    private sealed class RecordingWindowService : IRunicWindowService
+    {
+        public List<Type> Opened { get; } = [];
+
+        public ValueTask<TWindow> OpenWindowAsync<TWindow>(RunicWindowOptions? options = null, CancellationToken cancellationToken = default)
+            where TWindow : class, IRunicWindow, new()
+        {
+            Opened.Add(typeof(TWindow));
+            return ValueTask.FromResult(new TWindow());
+        }
+    }
+
     private static ServiceCollection Services(bool bridge)
     {
         HostProbeViewModel.Created = 0;
@@ -251,6 +320,9 @@ internal sealed class RunicWindowHostTests
 
         public ValueTask WaitForCloseAsync(CancellationToken cancellationToken = default) =>
             new(_closed.Task.WaitAsync(cancellationToken));
+
+        // The native window closed, as when the user closes it: only the wait completes.
+        public void CloseByUser() => _closed.TrySetResult();
 
         public async ValueTask DisposeAsync()
         {

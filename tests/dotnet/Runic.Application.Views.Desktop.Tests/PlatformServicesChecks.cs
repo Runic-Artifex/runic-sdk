@@ -124,7 +124,7 @@ internal sealed class PlatformServicesChecks
     }
 
     // Claims GTK 4 for this process, so it runs last.
-    [Test, NotInParallel(Order = 18), RunOn(OS.Linux)]
+    [Test, NotInParallel(Order = 20), RunOn(OS.Linux)]
     public async Task Gtk4ProcessSelectsOnlyTheGtk4Provider()
     {
         LinuxDesktopRuntime.ClaimBackend(LinuxEmbeddedBackend.Gtk4WebKit6);

@@ -25,7 +25,7 @@ namespace Runic.Application.Views.CsWebUi;
 /// CS-WebUI is supported on a best-effort basis. Its windows have no native owner, so platform services report
 /// <c>OwnerUnavailable</c>, and it reports closing for all of its windows at once. It cannot keep a window open, so a
 /// Window with <see cref="RunicWindow{TViewModel}.GuardClose"/> opens unguarded and logs
-/// <c>WindowCloseGuardUnavailable</c> (event 1052).
+/// <c>WindowCloseGuardUnavailable</c> (event 1053).
 /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, no browser is launched: each
 /// window starts its local server, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and keeps
 /// serving until a line is read from standard input or the process ends. Test harnesses and remote browsers use

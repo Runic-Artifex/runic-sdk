@@ -143,9 +143,12 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
             // An EmbeddedThenBrowser fallback opens without close confirmation; Runic Desktop reports
             // close-confirmation-unavailable for the options, and this names the Window.
-            if (opening.CloseGuard is not null && windowOptions.ConfirmCloseAsync is not null &&
-                !presentation.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation))
+            var confirmsClose = windowOptions.ConfirmCloseAsync is not null &&
+                presentation.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation);
+            if (opening.CloseGuard is not null && windowOptions.ConfirmCloseAsync is not null && !confirmsClose)
                 opening.ReportCloseGuardUnavailable("the browser fallback");
+            // RunicWindow.RequestCloseAsync joins the decision of the native close button.
+            if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;

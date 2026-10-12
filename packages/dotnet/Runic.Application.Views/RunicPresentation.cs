@@ -50,6 +50,9 @@ public interface IRunicWindow : IRunicView, IAsyncDisposable
     /// <inheritdoc cref="IBridgeWindow.CloseAsync"/>
     ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default);
 
+    /// <inheritdoc cref="RunicWindow{TViewModel}.RequestCloseAsync"/>
+    ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default);
+
     internal ValueTask OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken);
 
     internal RunicWindowValidationResult Validate(IRunicWindowHost host, RunicWindowOptions options);
@@ -76,6 +79,12 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     // The window's session and root Bridge, recorded when the host attaches it.
     private WindowContentSession? _content;
     private IDisposable? _bridge;
+    // RequestCloseAsync: the host's own close request, if it has one, else one shared decision at a time, cancelled
+    // when the application closes the window without asking.
+    private Func<CancellationToken, ValueTask<bool>>? _hostCloseRequest;
+    private readonly object _closeGate = new();
+    private Task<bool>? _closeRequest;
+    private readonly CancellationTokenSource _closeWithoutAsking = new();
 
     /// <summary>Creates a window whose ViewModel is assigned when it opens.</summary>
     protected RunicWindow() { }
@@ -103,11 +112,48 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// <para>
     /// Runic Desktop's embedded window asks it; the window closes when it returns <see langword="true"/>. A
     /// presentation that cannot keep its window open, CS-WebUI or a browser, opens unguarded and logs
-    /// <c>WindowCloseGuardUnavailable</c> (event 1052). <see cref="CloseAsync"/>, <see cref="DisposeAsync"/> and a host
-    /// shutdown (Ctrl+C, SIGTERM) close without asking: they are the application's own close.
+    /// <c>WindowCloseGuardUnavailable</c> (event 1053). <see cref="RequestCloseAsync"/> asks it on every host.
+    /// <see cref="CloseAsync"/>, <see cref="DisposeAsync"/> and a host shutdown (Ctrl+C, SIGTERM) close without
+    /// asking: they are the application's own close.
     /// </para>
     /// </remarks>
     public bool GuardClose { get; init; }
+
+    /// <summary>
+    /// Asks to close the window as the user's close button does, like <c>Window.Close()</c> in WPF and Avalonia, and
+    /// returns whether it closed. With <see cref="GuardClose"/> it first asks <see cref="CanCloseAsync"/>, and returns
+    /// <see langword="false"/> with the window open when that does; without it the window closes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A request while another request or a user close is being decided waits for the same decision. When the
+    /// window may close, its visible window closes at once, and accepted operations finish before
+    /// <see cref="DisposeAsync"/> releases its scope, as after a user close. On Runic Desktop's embedded window the
+    /// request is the native close request, so a <c>DesktopWindowOptions.ConfirmCloseAsync</c> of the host is asked
+    /// too. On CS-WebUI and in a browser, where the user's close cannot be guarded, this request still is.
+    /// </para>
+    /// <para>
+    /// Use <see cref="CloseAsync"/> to close without asking, for example after the application has already decided.
+    /// A closed window returns <see langword="true"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="cancellationToken">Stops this caller's wait; the decision continues for other requests.</param>
+    /// <returns><see langword="true"/> when the window closed; <see langword="false"/> when it stays open.</returns>
+    /// <exception cref="InvalidOperationException">The window has not opened.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask<bool> RequestCloseAsync(CancellationToken cancellationToken = default)
+    {
+        var host = Host;
+        if (Volatile.Read(ref _hostCloseRequest) is { } hostRequest) return hostRequest(cancellationToken);
+        Task<bool> pending;
+        lock (_closeGate)
+        {
+            if (_closeRequest is null || _closeRequest.IsCompleted)
+                _closeRequest = Task.Run(() => RequestCloseCoreAsync(host));
+            pending = _closeRequest;
+        }
+        return new(pending.WaitAsync(cancellationToken));
+    }
 
     /// <summary>
     /// Decides whether a close the user started may proceed, when <see cref="GuardClose"/> is <see langword="true"/>.
@@ -127,7 +173,7 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
     /// another close request while it runs waits for the same decision. It may take as long as a prompt needs.
     /// <paramref name="cancellationToken"/> is cancelled when the window closes without asking, for example with
     /// <see cref="CloseAsync"/>. An exception keeps the window open and is logged as <c>WindowCloseGuardFailed</c>
-    /// (event 1051).
+    /// (event 1052).
     /// </para>
     /// </remarks>
     /// <param name="cancellationToken">Cancelled when the window closes without asking or the decision is abandoned.</param>
@@ -157,14 +203,68 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
         Host.WaitForCloseAsync(cancellationToken);
 
     /// <inheritdoc/>
-    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default) =>
-        Host.CloseAsync(timeout, cancellationToken);
+    public ValueTask<BridgeWindowCloseResult> CloseAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var host = Host;
+        CloseWithoutAsking();
+        return host.CloseAsync(timeout, cancellationToken);
+    }
 
     /// <summary>Closes the window immediately and waits until its resources are released. Does nothing before it opens.</summary>
     public async ValueTask DisposeAsync()
     {
-        if (Volatile.Read(ref _host) is { } host) await host.DisposeAsync().ConfigureAwait(false);
+        if (Volatile.Read(ref _host) is { } host)
+        {
+            CloseWithoutAsking();
+            await host.DisposeAsync().ConfigureAwait(false);
+        }
         GC.SuppressFinalize(this);
+    }
+
+    // The application's own close abandons a pending RequestCloseAsync decision.
+    private void CloseWithoutAsking()
+    {
+        try { _closeWithoutAsking.Cancel(); }
+        catch (AggregateException error)
+        {
+            ViewsLog.WindowCloseGuardFailed(Volatile.Read(ref _content)?.Logger ?? TraceFallbackLogger.Instance, error,
+                GetType().Name, error.GetType().FullName ?? error.GetType().Name);
+        }
+    }
+
+    // RequestCloseAsync on a host without its own close request: ask, then close the visible window as a user close
+    // does. The decision also ends when the window closes some other way.
+    private async Task<bool> RequestCloseCoreAsync(IBridgeWindow host)
+    {
+        if (GuardClose)
+        {
+            var decision = CancellationTokenSource.CreateLinkedTokenSource(_closeWithoutAsking.Token);
+            _ = CancelWhenClosedAsync(host, decision);
+            try
+            {
+                // Only a close without asking cancels the decision: the window is closed or closing then.
+                if (!await AskCanCloseAsync(decision.Token).ConfigureAwait(false)) return decision.IsCancellationRequested;
+            }
+            finally
+            {
+                // Ends the close watch; the source is left to the collector because the watch may still cancel it.
+                await decision.CancelAsync().ConfigureAwait(false);
+            }
+        }
+        if (_closeWithoutAsking.IsCancellationRequested) return true;
+        _ = await host.CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
+        return true;
+    }
+
+    private static async Task CancelWhenClosedAsync(IBridgeWindow host, CancellationTokenSource decision)
+    {
+        try
+        {
+            await host.WaitForCloseAsync(decision.Token).ConfigureAwait(false);
+            await decision.CancelAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception) { await decision.CancelAsync().ConfigureAwait(false); }
     }
 
     async ValueTask IRunicWindow.OpenAsync(IRunicWindowHost host, RunicWindowOptions options, CancellationToken cancellationToken)
@@ -177,6 +277,9 @@ public abstract class RunicWindow<TViewModel> : RunicView<TViewModel>, IRunicWin
 
     RunicWindowValidationResult IRunicWindow.Validate(IRunicWindowHost host, RunicWindowOptions options) =>
         RunicWindowOpening.Validate<TViewModel>(host, options);
+
+    internal void UseHostCloseRequest(Func<CancellationToken, ValueTask<bool>> requestClose) =>
+        Volatile.Write(ref _hostCloseRequest, requestClose);
 
     internal void AttachedBridge(WindowContentSession content, IDisposable bridge)
     {

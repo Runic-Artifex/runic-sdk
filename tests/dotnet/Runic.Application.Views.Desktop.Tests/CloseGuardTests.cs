@@ -64,11 +64,11 @@ internal sealed class CloseGuardTests
         await using (var fixture = await GuardFixture.OpenAsync<ThrowingGuardWindow>())
         {
             fixture.Native.UserClose();
-            await fixture.Logs.WaitForAsync(1051);
+            await fixture.Logs.WaitForAsync(1052);
             Require(!await fixture.Presentation.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
                 "A throwing CanCloseAsync allowed the close.");
             Require(fixture.Presentation.IsOpen, "A throwing CanCloseAsync did not keep the window open.");
-            var entry = fixture.Logs.Entries.First(static entry => entry.EventId == 1051);
+            var entry = fixture.Logs.Entries.First(static entry => entry.EventId == 1052);
             Require(entry is { Level: LogLevel.Error, Category: "Runic.Application.Views" } &&
                 entry.Message.Contains(nameof(ThrowingGuardWindow), StringComparison.Ordinal) &&
                 entry.Exception is TimeoutException,
@@ -167,12 +167,111 @@ internal sealed class CloseGuardTests
         {
             Require(fixture.Presentation.IsOpen && !fixture.Presentation.Capabilities.HasFlag(DesktopWindowCapabilities.CloseConfirmation),
                 "A window host without close confirmation did not open the guarded Window.");
-            var warning = fixture.Logs.Entries.SingleOrDefault(static entry => entry.EventId == 1052);
+            var warning = fixture.Logs.Entries.SingleOrDefault(static entry => entry.EventId == 1053);
             Require(warning is { Level: LogLevel.Warning } &&
                 warning.Message.Contains(nameof(GuardedWindow), StringComparison.Ordinal) &&
                 warning.Message.Contains("embedded-window host", StringComparison.Ordinal),
                 $"Opening a guarded Window unguarded did not log WindowCloseGuardUnavailable once: {warning}");
         }
+    }
+
+    // RunicWindow.RequestCloseAsync on the embedded window is the native close request: it shares the user close's
+    // decision, and returns whether the window closed.
+    [Test, NotInParallel(Order = 25)]
+    public async Task RequestCloseAsksTheSameGuardAsAUserClose()
+    {
+        await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>();
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Script.Decide = _ => new(answer.Task);
+
+        fixture.Native.UserClose();
+        await fixture.Script.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var request = fixture.Opened.RequestCloseAsync().AsTask();
+        answer.SetResult(false);
+        Require(!await request.WaitAsync(TimeSpan.FromSeconds(5)), "RequestCloseAsync closed a window whose guard rejected.");
+        Require(fixture.Script.AskCount == 1 && fixture.Presentation.IsOpen,
+            "RequestCloseAsync did not join the user close's decision, or the window closed.");
+
+        fixture.Script.Decide = static _ => ValueTask.FromResult(true);
+        var closed = fixture.Opened.WaitForCloseAsync().AsTask();
+        Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+            "RequestCloseAsync did not report the allowed close.");
+        await closed.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(fixture.Script.AskCount == 2 && !fixture.Native.IsOpen, "The allowed request did not close the native window.");
+        Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)) && fixture.Script.AskCount == 2,
+            "A request on a closed window asked again or reported it open.");
+    }
+
+    // Without GuardClose RequestCloseAsync closes; with it, a host whose user close cannot be guarded still guards the
+    // request, which shares one decision, and CloseAsync still closes without asking.
+    [Test, NotInParallel(Order = 26)]
+    public async Task RequestCloseGuardsEveryHostAndCloseAsyncStillDoesNotAsk()
+    {
+        await using (var fixture = await GuardFixture.OpenAsync<UnguardedWindow>())
+        {
+            Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+                "RequestCloseAsync kept an unguarded Window open.");
+            await fixture.Opened.WaitForCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            Require(fixture.Script.AskCount == 0, "An unguarded Window asked its leave guard.");
+        }
+
+        await using (var fixture = await GuardFixture.OpenAsync<GuardedWindow>(confirmsClose: false))
+        {
+            var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            fixture.Script.Decide = _ => new(answer.Task);
+            var first = fixture.Opened.RequestCloseAsync().AsTask();
+            await fixture.Script.Asked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var second = fixture.Opened.RequestCloseAsync().AsTask();
+            answer.SetResult(false);
+            Require(!await first.WaitAsync(TimeSpan.FromSeconds(5)) && !await second.WaitAsync(TimeSpan.FromSeconds(5)),
+                "A rejected request closed a window whose host cannot confirm closes.");
+            Require(fixture.Script.AskCount == 1 && fixture.Presentation.IsOpen,
+                "Concurrent requests did not share one decision, or the window closed.");
+
+            fixture.Script.Decide = static _ => ValueTask.FromResult(true);
+            var closed = fixture.Opened.WaitForCloseAsync().AsTask();
+            Require(await fixture.Opened.RequestCloseAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5)),
+                "An allowed request did not report the close.");
+            await closed.WaitAsync(TimeSpan.FromSeconds(5));
+            Require(!fixture.Native.IsOpen, "An allowed request left the native window open.");
+        }
+
+        await using (var fixture = await GuardFixture.OpenAsync<GuardedWindow>(confirmsClose: false))
+        {
+            var result = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+            Require(result.Drained && fixture.Script.AskCount == 0 && !fixture.Native.IsOpen, "CloseAsync asked the guard.");
+        }
+    }
+
+    // A request whose guard never answers ends when the application closes the window without asking: the guard's
+    // token is cancelled and the request reports the window closed.
+    [Test, NotInParallel(Order = 27)]
+    public async Task CloseAsyncEndsAPendingRequest()
+    {
+        await using var fixture = await GuardFixture.OpenAsync<GuardedWindow>(confirmsClose: false);
+        var guardToken = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Script.Decide = async cancellationToken =>
+        {
+            guardToken.TrySetResult(cancellationToken);
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return true;
+        };
+        var request = fixture.Opened.RequestCloseAsync().AsTask();
+        var token = await guardToken.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (var stop = new CancellationTokenSource(TimeSpan.FromMilliseconds(100)))
+        {
+            try
+            {
+                await fixture.Opened.RequestCloseAsync(stop.Token);
+                throw new InvalidOperationException("A request completed while its guard was still deciding.");
+            }
+            catch (OperationCanceledException) { }
+        }
+        Require(!request.IsCompleted && !token.IsCancellationRequested, "Cancelling one caller's wait ended the shared decision.");
+
+        _ = await fixture.Opened.CloseAsync(TimeSpan.FromSeconds(5)).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        Require(await request.WaitAsync(TimeSpan.FromSeconds(5)), "A request ended by CloseAsync did not report the window closed.");
+        Require(token.IsCancellationRequested && fixture.Script.AskCount == 1, "CloseAsync did not cancel the pending guard.");
     }
 }
 
@@ -181,9 +280,9 @@ sealed class GuardFixture : IAsyncDisposable
 {
     private readonly ServiceProvider _provider;
     private readonly DesktopHost _host;
-    private readonly IAsyncDisposable _window;
+    private readonly IRunicWindow _window;
 
-    private GuardFixture(ServiceProvider provider, DesktopHost host, IAsyncDisposable window, IBridgeWindow bridgeWindow,
+    private GuardFixture(ServiceProvider provider, DesktopHost host, IRunicWindow window, IBridgeWindow bridgeWindow,
         GuardedShellModel viewModel, CloseGuardScript script, RecordingLoggerFactory logs, ConfirmingWindowHost native)
     {
         _provider = provider;
@@ -197,6 +296,8 @@ sealed class GuardFixture : IAsyncDisposable
     }
 
     public IBridgeWindow Window { get; }
+    // The Window itself, as application code holds it.
+    public IRunicWindow Opened => _window;
     public DesktopWindow Presentation => ((DesktopBridgeWindow<GuardedShellModel>)Window).Presentation;
     public GuardedShellModel ViewModel { get; }
     public CloseGuardScript Script { get; }

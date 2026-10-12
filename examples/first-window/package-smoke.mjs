@@ -119,7 +119,7 @@ try {
     throw new Error(`The packaged Window did not close its host cleanly:\n${closedWindow}`);
   const closeGuard = await run("dotnet", [probe, "--probe-close-guard"], probes);
   if (!closeGuard.includes("FIRST_WINDOW_CLOSE_GUARD_OK"))
-    throw new Error(`The packaged guarded Window did not open unguarded with a warning on CS-WebUI:\n${closeGuard}`);
+    throw new Error(`The packaged guarded Window did not warn or guard RequestCloseAsync on CS-WebUI:\n${closeGuard}`);
   const missingBridge = await run("dotnet", [probe, "--probe-missing-bridge"], probes);
   if (!missingBridge.includes("FIRST_WINDOW_MISSING_BRIDGE_OK"))
     throw new Error(`The packaged Window did not report a missing Bridge registration:\n${missingBridge}`);
