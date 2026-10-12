@@ -402,7 +402,7 @@ verify_template() {
   if [[ "$framework" != angular ]]; then
     sed 's|<title>[^<]*</title>|<title>Second window</title>|' "$output/Frontend/index.html" > "$output/Frontend/settings.html"
   fi
-  # RUNIC_APPLICATION_SERVE_ONLY is a CS-WebUI host contract. Desktop variants
+  # serve_and_fetch also fetches CS-WebUI's runic-cswebui.js. Desktop variants
   # open a native window; the smoke lane opens them under Xvfb (run_desktop_smoke).
   if [[ "$manager" == npm && "$host" == cswebui ]]; then
     serve_and_fetch "$output" "$output/dotnet-runic-dev.log" "$output/dev-document.html" true \

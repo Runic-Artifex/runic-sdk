@@ -75,7 +75,7 @@ above for every frontend and package manager with the default Runic Desktop and
 ReactiveUI, plus pairwise CS-WebUI and CommunityToolkit.Mvvm variants, and
 checks that `Runic.Create` produces the same project. The pairwise variants and
 the npm projects add `--tests` and run the generated tests.
-Setting `RUNIC_APPLICATION_SERVE_ONLY=1` starts a CS-WebUI app's local server
+Setting `RUNIC_APPLICATION_SERVE_ONLY=1` starts an app's local server, on either host,
 without opening a browser and prints `RUNIC_APPLICATION_URL=<url>`. Setting
 `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` makes a Runic Desktop app print
 `RUNIC_APPLICATION_OPENED=<presentation>` once its Window has opened and

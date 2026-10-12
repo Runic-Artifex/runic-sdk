@@ -301,3 +301,9 @@ The host does not instantiate the application's native Window wrapper or run the
 generated TypeScript client or a rendering framework. Test the frontend with the
 generated typed mocks of `@runic-artifex/views/mock`; see its
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
+To drive the whole application in a browser, start it with
+`RUNIC_APPLICATION_SERVE_ONLY=1` on either host; to run script in the embedded
+Runic Desktop View from an in-process test, use
+`DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync`. See the
+[Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
+section.

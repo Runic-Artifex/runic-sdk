@@ -23,8 +23,10 @@ native prerequisites for each platform and the embedded WebView choices.
 dotnet run --project examples/first-window-desktop -c Release
 ```
 
-`--serve-only` starts the authenticated surface without opening a window, so
-an external browser test can drive the generated client; `--probe-owner`
+`RUNIC_APPLICATION_SERVE_ONLY=1` makes `RunicDesktopHost` start the
+authenticated surface without opening a window and print
+`RUNIC_APPLICATION_URL=<url>`, so an external browser test
+(`browser-smoke.mjs`) can drive the unchanged application; `--probe-owner`
 checks that closing the Window releases its ViewModel scope. CI runs both. The
 example builds the Runic packages from source; replace its `ProjectReference`
 and `Import` lines with `Runic.Application.Views.Desktop` and

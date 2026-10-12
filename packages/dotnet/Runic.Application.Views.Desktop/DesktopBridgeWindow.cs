@@ -17,6 +17,7 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     private DesktopWindow? _presentation;
     private DesktopNativeOwner? _nativeOwner;
     private DesktopWindowPlatformServices? _platformServices;
+    private Task? _served;
     private Task<BridgeWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _completion;
@@ -36,8 +37,13 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     /// <summary>The window's scoped root ViewModel.</summary>
     public TViewModel ViewModel { get; }
     /// <summary>The Desktop surface that hosts the window's web content.</summary>
+    /// <remarks>
+    /// <see cref="DesktopSurface.ExecuteJavaScriptAsync"/> runs script in the connected View, for example from an
+    /// in-process test.
+    /// </remarks>
     public DesktopSurface Surface => _surface;
     /// <summary>The opened Desktop window.</summary>
+    /// <remarks>Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> the surface serves without a presentation.</remarks>
     /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
     public DesktopWindow Presentation => Volatile.Read(ref _presentation) ??
         throw new InvalidOperationException("The Desktop presentation has not opened.");
@@ -62,6 +68,10 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
             _attachment = attachment;
         }
     }
+
+    // RUNIC_APPLICATION_SERVE_ONLY: the surface serves without a presentation, and WaitForCloseAsync also
+    // returns when serving ends.
+    internal void ServeUntil(Task stopped) => Volatile.Write(ref _served, stopped);
 
     internal void SetPresentation(DesktopWindow presentation)
     {
@@ -99,7 +109,10 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     {
         if (Volatile.Read(ref _presentation) is not { } presentation)
         {
-            await _closeStarted.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            var ended = Volatile.Read(ref _served) is { } served
+                ? Task.WhenAny(_closeStarted.Task, served)
+                : _closeStarted.Task;
+            await ended.WaitAsync(cancellationToken).ConfigureAwait(false);
             return;
         }
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

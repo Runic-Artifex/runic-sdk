@@ -4,7 +4,10 @@ import { launchChromium, pause, tail, waitFor } from "../shared/smoke.mjs";
 
 const dll = process.env.RUNIC_DESKTOP_VIEWS_DLL
   ?? fileURLToPath(new URL("./bin/Release/net10.0/FirstWindowDesktop.dll", import.meta.url));
-const host = spawn("dotnet", [dll, "--serve-only"], { stdio: ["pipe", "pipe", "pipe"] });
+// RUNIC_APPLICATION_SERVE_ONLY makes RunicDesktopHost serve the unchanged example's surface without a window
+// and print RUNIC_APPLICATION_URL=<url>, as CS-WebUI does.
+const host = spawn("dotnet", [dll],
+  { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, RUNIC_APPLICATION_SERVE_ONLY: "1" } });
 let output = "", errors = "", browser;
 host.stdout.on("data", chunk => { output += chunk; });
 host.stderr.on("data", chunk => { errors += chunk; });
@@ -14,7 +17,7 @@ const retry = (condition, label) => waitFor(condition, { label, detail });
 try {
   const url = await retry(() => {
     if (host.exitCode !== null) throw new Error(`Host exited: ${errors}`);
-    return output.match(/https?:\/\/[^\s]+/)?.[0];
+    return output.match(/RUNIC_APPLICATION_URL=(\S+)/)?.[1];
   }, "Desktop surface URL");
   browser = await launchChromium(url, { profilePrefix: "runic-desktop-views-" });
   const { evaluate } = browser;
@@ -24,11 +27,15 @@ try {
   await retry(async () => (await count()) === "1", "ReactiveUI command");
   await evaluate("location.reload()");
   await retry(async () => (await count()) === "1", "reconnected snapshot");
-  console.log("DESKTOP_VIEWS_BROWSER_OK|snapshot|reactive-command|reload");
+  // A line on standard input ends serving: WaitForCloseAsync returns and the application exits by itself.
+  host.stdin.end("\n");
+  await retry(() => host.exitCode !== null, "host exit after a standard input line");
+  if (host.exitCode !== 0) throw new Error(`Host exited with ${host.exitCode}: ${errors}`);
+  console.log("DESKTOP_VIEWS_BROWSER_OK|snapshot|reactive-command|reload|serve-only-exit");
 } finally {
   try { await browser?.close(); }
   finally {
-    host.stdin.end("\n");
+    if (host.exitCode === null && !host.stdin.writableEnded) host.stdin.end("\n");
     await pause(250);
     if (host.exitCode === null) host.kill("SIGTERM");
   }

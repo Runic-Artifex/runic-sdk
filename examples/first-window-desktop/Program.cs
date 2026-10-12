@@ -10,30 +10,11 @@ services.AddRunicReactiveModelContext();
 services.AddScoped<CounterViewModel>();
 services.AddRunicBridges();
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
-var serveOnly = args.Contains("--serve-only", StringComparer.Ordinal);
 var probeOwner = args.Contains("--probe-owner", StringComparer.Ordinal);
-var hostOptions = new DesktopHostOptions { WaitForConnection = !serveOnly && !probeOwner };
+var hostOptions = new DesktopHostOptions { WaitForConnection = !probeOwner };
 
-if (serveOnly)
-{
-    // Serves the authenticated surface without a window, for an external browser test.
-    await using var desktop = await DesktopHost.StartAsync(hostOptions);
-    await using var scope = provider.CreateAsyncScope();
-    await using var surface = await desktop.CreateSurfaceAsync(new DesktopSurfaceOptions
-    {
-        Content = new DesktopContent.Directory(Path.Combine(AppContext.BaseDirectory, "www"), "index.html"),
-    });
-    var transport = new DesktopBridgeTransport(surface);
-    var viewModel = scope.ServiceProvider.GetRequiredService<CounterViewModel>();
-    using var content = new WindowContentSession(transport, rootModel: viewModel);
-    using var attachment = scope.ServiceProvider.GetRequiredService<
-        Func<IBridgeTransport, WindowContentSession, CounterViewModel, IDisposable>>()(transport, content, viewModel);
-    Console.WriteLine(surface.Url);
-    Console.Out.Flush();
-    await Console.In.ReadLineAsync();
-    return 0;
-}
-
+// RUNIC_APPLICATION_SERVE_ONLY=1 makes the host serve the authenticated surface without opening a window,
+// for an external browser test (browser-smoke.mjs).
 return RunicDesktopHost.Run(provider, hostOptions, async host =>
 {
     await using var window = await host.OpenWindowAsync<CounterWindow>(new RunicWindowOptions { Width = 800, Height = 600 });

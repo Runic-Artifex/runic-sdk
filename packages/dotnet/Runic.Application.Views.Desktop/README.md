@@ -247,6 +247,42 @@ closing, it writes:
 
 An application shaped like the `runic-app` template then sees `WaitForCloseAsync`
 return and exits normally. Applications that keep running after a window
-closes, or that open further windows, are not meant to use it. This is the
-Desktop counterpart of CS-WebUI's `RUNIC_APPLICATION_SERVE_ONLY`. The template
+closes, or that open further windows, are not meant to use it. The template
 acceptance check uses it to run the GTK 4 template under Xvfb.
+
+Under `dotnet runic dev`, a full page reload, such as Vite's `full-reload`
+after an edit, closes the View's connection and fails a script in flight
+(`IOException`, then `No authenticated WebUI browser is connected` until the
+page reconnects), so a test waits for the View, for example for an element it
+renders, instead of assuming that a call lands; `@runic-artifex/vite-plugin-runic`
+pre-bundles its development client, so a cold Vite dependency cache no longer
+reloads the first page.
+
+Set `RUNIC_APPLICATION_SERVE_ONLY=1` to drive the unchanged application from a
+browser test, with the same contract as on
+[CS-WebUI](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.CsWebUi/README.md).
+`RunicDesktopHost` then opens no window or browser. Each window creates its
+surface, writes `RUNIC_APPLICATION_URL=<url>` to standard output, and serves
+until a line is read from standard input, a termination signal requests
+shutdown, or the process ends; then `WaitForCloseAsync` returns. The URL is
+the surface's capability URL, and the surface admits one browser. It takes
+precedence over `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. As on CS-WebUI there is
+no native owner: platform services report `OwnerUnavailable`, and a Window
+with `GuardClose` opens unguarded (event 1053). A headless Chromium, as in the
+[First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window-desktop)
+browser smoke, does not exercise the embedded WebView engine.
+
+To drive the embedded View itself from an in-process test, run script in it
+through the window's surface and click the View's own controls, such as a
+dialog's button:
+
+```csharp
+await using var window = await host.OpenWindowAsync<MainWindow>();
+var surface = ((DesktopBridgeWindow<MainViewModel>)window.Host).Surface;
+var title = await surface.ExecuteJavaScriptAsync(
+    "return document.querySelector('h1')?.textContent ?? ''", TimeSpan.FromSeconds(10));
+```
+
+`ExecuteJavaScriptAsync` needs a connected page; with
+`DesktopHostOptions.WaitForConnection` the window has connected when
+`OpenWindowAsync` returns.

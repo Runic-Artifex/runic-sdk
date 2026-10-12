@@ -23,6 +23,12 @@ namespace Runic.Application.Views.Desktop;
 /// same application on CS-WebUI.
 /// </summary>
 /// <remarks>
+/// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, as on CS-WebUI, no window or browser
+/// is opened: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
+/// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then
+/// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. The surface admits one browser, a guarded Window
+/// opens unguarded (event 1053) and platform services report <c>OwnerUnavailable</c>. This switch takes precedence
+/// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>.
 /// When the <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c> environment variable is <c>1</c>, every window opened through
 /// this host is closed as soon as it has opened (and, with <see cref="DesktopHostOptions.WaitForConnection"/>, its
 /// bridge has connected). Before closing, a warning is written to standard error (and logged as event 2002 when an
@@ -139,6 +145,15 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             var attachment = opening.AttachBridge(transport, content);
             try { owner.Attach(attachment); }
             catch { attachment.Dispose(); throw; }
+            if (ServeOnlyRequested)
+            {
+                // Without a presentation, nothing can keep a window open (D018.10), as on CS-WebUI.
+                if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("serve-only mode");
+                owner.ServeUntil(ServeOnlyStopped());
+                Console.Out.WriteLine($"RUNIC_APPLICATION_URL={surface.Url}");
+                Console.Out.Flush();
+                return owner;
+            }
             var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options));
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
             // An EmbeddedThenBrowser fallback opens without close confirmation; Runic Desktop reports
@@ -218,9 +233,33 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             Option = diagnostic.Option,
         };
 
+    internal const string ServeOnlyEnvironmentVariable = "RUNIC_APPLICATION_SERVE_ONLY";
+
+    private static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
+
+    private static readonly Lazy<Task> s_serveOnlyInput = new(ReadServeOnlyInput);
+
+    // CS-WebUI's serve-only contract: serving ends when a line is read from standard input or the process ends.
+    // A termination signal only requests shutdown, so it ends serving too.
+    private Task<Task> ServeOnlyStopped() =>
+        Task.WhenAny(s_serveOnlyInput.Value, Task.Delay(Timeout.Infinite, Desktop.ShutdownRequested));
+
+    // One reader for the process: a line ends serving for every window. End of input (for example </dev/null)
+    // is not a stop request.
+    private static Task ReadServeOnlyInput()
+    {
+        var line = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        new Thread(() =>
+        {
+            if (Console.In.ReadLine() is not null) line.TrySetResult();
+        })
+        { IsBackground = true, Name = "Runic serve-only input" }.Start();
+        return line.Task;
+    }
+
     internal const string CloseAfterOpenEnvironmentVariable = "RUNIC_APPLICATION_CLOSE_AFTER_OPEN";
 
-    // An automation contract like CS-WebUI's RUNIC_APPLICATION_SERVE_ONLY: report the presentation that opened,
+    // An automation contract like RUNIC_APPLICATION_SERVE_ONLY: report the presentation that opened,
     // then close it so the application's own WaitForCloseAsync returns.
     // The variable is inherited by child processes, so an active switch is always announced on standard error
     // and, when the application registered an ILoggerFactory, logged as event 2002.
