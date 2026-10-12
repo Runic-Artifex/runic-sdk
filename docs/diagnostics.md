@@ -197,6 +197,21 @@ lists every rename.
 on `RunicBridgeBootstrap` reports nothing, but should read
 `RunicApplicationFrontendBootstrap` before the next preview.
 
+### RUNICBRIDGE018
+
+The `Runic.Application.Views` build targets report this error. A project
+declares Runic Views and generates its composition
+(`RunicApplicationFrontendCompositionType`), but a referenced assembly already
+declares a type of the same name. Both would define `AddRunicViews()`, so the
+call would be ambiguous (`CS0121`). It typically follows an upgrade from
+0.7.0-preview.6: the WPF adapter now generates in the application, whose default
+composition name is `<project name>.RunicBridgeComposition`, and the model
+project had used that name for its own composition. A project without Views of
+its own is not affected; its bootstrap build uses the referenced type.
+
+**Fix:** set `RunicApplicationFrontendCompositionType` to another type name in
+one of the two projects, and call `AddRunicViews()` of each composition.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

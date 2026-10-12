@@ -11,6 +11,9 @@
 //     declares a View gets one RUNICBRIDGE015 warning.
 //  5. A copy of the single project that still sets the 0.7.0-preview.6 property names
 //     builds with them and gets one RUNICBRIDGE017 warning per old name.
+//  6. A copy of the split layout whose model names its composition after the application
+//     (a 0.7.0-preview.6 app after the upgrade) builds without CS0121.
+//  7. If that application declares a View too, it gets one RUNICBRIDGE018 error.
 // Usage: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs [nuget-feed] [--keep]
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -105,7 +108,47 @@ try {
   exists("Renamed/Client/src/generated/editor.ts");
   assert.ok(!existsSync(join(directory, "Renamed/Frontend")), "The old frontend directory name was ignored.");
   exists("Renamed/bin/Release/net10.0-windows/www/index.html");
-  console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off|renamed-properties");
+
+  // 6. A 0.7.0-preview.6 split app upgraded as is: the model generates its composition
+  //    under the application's default name, SplitApp.RunicBridgeComposition. The
+  //    adapter turns generation on in the application too, whose bootstrap pass then
+  //    uses the model's type instead of a stub beside it (CS0121 before W250-049).
+  cpSync(join(directory, "Split"), join(directory, "Upgraded"), { recursive: true, filter: source => !/[\\/](bin|obj|dist|generated)$/.test(source) });
+  const replaceIn = (path, from, to) => {
+    const source = readFileSync(join(directory, path), "utf8");
+    assert.ok(source.includes(from), `${path} no longer contains ${from}.`);
+    writeFileSync(join(directory, path), source.replace(from, to));
+  };
+  replaceIn("Upgraded/Model/SplitModel.csproj", "SplitModel.RunicBridgeComposition", "SplitApp.RunicBridgeComposition");
+  const upgraded = build("Upgraded/App/SplitApp.csproj");
+  assert.equal(summary(upgraded, "Warning"), 0, "The upgraded split layout reported warnings.");
+  assert.equal(count(upgraded, /CS0121/), 0, "AddRunicViews() was ambiguous.");
+  assert.ok(!existsSync(join(directory, "Upgraded/App/obj/runic-bridge/bootstrap/obj/Release/net10.0-windows/RunicBridgeComposition.Bootstrap.g.cs")),
+    "The bootstrap pass wrote a stub beside the model's composition.");
+  exists("Upgraded/App/bin/Release/net10.0-windows/www/index.html");
+
+  // 7. If that application declares a View of its own, its generated composition would
+  //    clash with the model's: one RUNICBRIDGE018 naming the property, no CS0121.
+  writeFileSync(join(directory, "Upgraded/App/StatusView.cs"), `using System.ComponentModel;
+using Runic.Application.Views;
+
+namespace SplitApp;
+
+public sealed class StatusViewModel : INotifyPropertyChanged
+{
+    public string Text { get; set; } = "";
+    public event PropertyChangedEventHandler? PropertyChanged;
+    public void Raise() => PropertyChanged?.Invoke(this, new(nameof(Text)));
+}
+
+public sealed partial class StatusWebView : RunicView<StatusViewModel>;
+`);
+  replaceIn("Upgraded/App/SplitApp.csproj", "<OutputType>WinExe</OutputType>",
+    "<OutputType>WinExe</OutputType><RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>");
+  const clash = build("Upgraded/App/SplitApp.csproj", { fail: true });
+  assert.equal(summary(clash, "Error"), 1, "Expected exactly one error.");
+  assert.ok(count(clash, /error RUNICBRIDGE018:.*SplitApp\.RunicBridgeComposition.*SplitModel.*RunicApplicationFrontendCompositionType/) > 0, "Expected RUNICBRIDGE018.");
+  console.log("WPF_BRIDGE_PACKAGE_OK|single|split|missing-frontend|generation-off|renamed-properties|upgraded-split|composition-clash");
 } finally {
   if (keep) console.log(`Kept ${directory}`);
   else rmSync(directory, { recursive: true, force: true, maxRetries: 5 });
