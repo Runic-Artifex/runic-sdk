@@ -33,6 +33,9 @@ interaction lifecycle harness. `GeneratedHarnessProcess`
 holds an exclusive checkout lock, bounds each child to 30 seconds and 512 MiB
 observed resident memory, retains bounded output, and kills and reaps a failed
 child before releasing the lock. Its supervisor runs outside Bun's event loop.
+On Unix each child starts through `/bin/sh` with `ulimit -c 0` and then `exec`, so
+an aborting child dies at once instead of staying alive while the kernel writes
+its core dump, which can outlast the 30 seconds on a loaded runner.
 
 The interaction mock uses finite queues: each scenario explicitly supplies its
 prompts, then holds the next poll. Each scenario drains its polls and handlers

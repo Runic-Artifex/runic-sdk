@@ -13,8 +13,19 @@ internal static class GeneratedHarnessProcess
             "generated-client-process.lock");
         Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
         using var lease = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        using var process = new Process { StartInfo = new ProcessStartInfo(executable) { WorkingDirectory = root,
+        using var process = new Process { StartInfo = new ProcessStartInfo { WorkingDirectory = root,
             RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false } };
+        // An aborting child stays alive while the kernel hands its core dump to the
+        // system handler. That takes seconds for Bun or .NET, and far longer on a
+        // loaded runner, so the 30 s limit would hide the cause the abort printed.
+        // Unix children start through exec with core dumps disabled and keep their PID.
+        if (OperatingSystem.IsWindows()) process.StartInfo.FileName = executable;
+        else
+        {
+            process.StartInfo.FileName = "/bin/sh";
+            foreach (var argument in new[] { "-c", "ulimit -c 0 && exec \"$@\"", "sh", executable })
+                process.StartInfo.ArgumentList.Add(argument);
+        }
         foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
         if (!process.Start()) throw new InvalidOperationException($"Could not start {executable}.");
         Console.WriteLine($"Generated client child started: PID {process.Id} ({executable}), limit 512 MiB / 30 s.");
