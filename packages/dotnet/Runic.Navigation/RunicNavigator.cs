@@ -1395,7 +1395,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 break;
         }
         foreach (var entry in plan.Removed) AddRetiring(plan, entry);
-        plan.Basis = [.. plan.Regions.Select(affected => affected.Version)];
+        plan.Basis = [.. plan.Regions.Select(affected => affected.Version), .. plan.Kept.Select(kept => kept.Version)];
         return plan;
     }
 
@@ -1407,19 +1407,41 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         return entries;
     }
 
-    // Adds a retiring entry's owned descendants (deepest first), then the entry's guard.
+    // Adds a retiring entry's descendants (deepest first), then the entry's guard. The regions an owned entry's content
+    // owns close with it, so every entry in them retires. The regions borrowed content owns live on with the content, but
+    // the departure leaves them, as a tab switch leaves the tab's page regions (W260-009): AddKept asks their pages.
     private void AddRetiring(NavigationPlan plan, NavigationEntryCore entry)
     {
-        if (entry is { Owned: true, Content: { } content } && _regionsByOwner.TryGetValue(content, out var children))
+        if (entry.Content is { } content && _regionsByOwner.TryGetValue(content, out var children))
         {
-            foreach (var child in children)
+            if (entry.Owned)
             {
-                if (!plan.Regions.Contains(child)) plan.Regions.Add(child);
-                if (!plan.Closing.Contains(child)) plan.Closing.Add(child);
-                foreach (var descendant in TopDown(child.Stack, 0)) AddRetiring(plan, descendant);
+                foreach (var child in children)
+                {
+                    if (!plan.Regions.Contains(child)) plan.Regions.Add(child);
+                    if (!plan.Closing.Contains(child)) plan.Closing.Add(child);
+                    foreach (var descendant in TopDown(child.Stack, 0)) AddRetiring(plan, descendant);
+                }
             }
+            else AddKept(plan, children);
         }
         plan.Guards.Add((entry, NavigationDepartureKind.Retire));
+    }
+
+    // Adds the current entry of each region that keeps its entries while the content owning it departs, and of the
+    // regions below it, deepest first, as retained departures. A kept region is in the plan's basis, so a commit in it
+    // supersedes the plan, but the plan neither supersedes its transitions nor changes it. Each region is visited once,
+    // so a cycle of borrowed owners ends.
+    private void AddKept(NavigationPlan plan, List<NavigationRegionCore> regions)
+    {
+        foreach (var kept in regions)
+        {
+            if (kept.Closed || kept.Stack.Length == 0 || plan.Regions.Contains(kept) || plan.Kept.Contains(kept)) continue;
+            plan.Kept.Add(kept);
+            var current = kept.Stack[^1];
+            if (current.Content is { } content && _regionsByOwner.TryGetValue(content, out var children)) AddKept(plan, children);
+            plan.Guards.Add((current, NavigationDepartureKind.Retain));
+        }
     }
 
     // ---- Results ---------------------------------------------------------
@@ -2342,6 +2364,8 @@ internal sealed class NavigationPlan
     public List<NavigationEntryCore> Removed { get; } = [];
     public List<(NavigationRegionCore Region, NavigationEntryCore[] Stack, List<NavigationEntryCore> Removed)> ChildResets { get; } = [];
     public List<NavigationRegionCore> Closing { get; } = [];
+    // Regions of borrowed content whose current entries the plan asks as retained (AddKept); checked, never changed.
+    public List<NavigationRegionCore> Kept { get; } = [];
     public NavigationEntryCore[] NewStack { get; set; } = [];
     public NavigationEntryCore? Resume { get; set; }
     public NavigationRejection? Rejection { get; private set; }
@@ -2358,6 +2382,8 @@ internal sealed class NavigationPlan
     {
         for (var index = 0; index < Regions.Count; index++)
             if (Regions[index].Version != Basis[index]) return false;
+        for (var index = 0; index < Kept.Count; index++)
+            if (Kept[index].Version != Basis[Regions.Count + index]) return false;
         return true;
     }
 }

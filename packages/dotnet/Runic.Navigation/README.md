@@ -314,16 +314,44 @@ A failed step is logged as event 1064.
   context schedules hooks (see Threading). A `Dispose` that touches
   shared model state uses `ModelContext.InvokeAsync`, and it must not await
   navigation on the same navigator.
-- A region's owner can be any object. Regions owned by an owned entry's
-  content are that entry's children, and they close when it retires.
-  `NavigationRegionOptions.WhileParentRetained` decides what a child region
-  does while its parent entry is retained: `Keep` (the default), `ResetToRoot`
-  or `Clear`. Regions owned by borrowed content or by the root close only
-  with the navigator.
+- A region's owner can be any object. The regions an entry's content owns are
+  that entry's child regions. Those of owned content close when the entry
+  retires. `NavigationRegionOptions.WhileParentRetained` decides what they do
+  while the entry is retained: `Keep` (the default), `ResetToRoot` or `Clear`.
+  Those of borrowed content keep their entries when the entry retires, because
+  the content lives on. Regions owned by the root, or by an object that is no
+  entry's content, are nobody's child regions.
 - An initial target (`CreateRegion(owner, initial)`) becomes current without a
   transition. Its content must not implement `INavigationInitialize` or
   `INavigationInitialize<TInput>`, and `Create(factory, input)` and
   `Create<T, TInput>(input)` cannot be initial targets.
+
+#### Which departures ask a child region
+
+A departure asks the guards in the departing entry's child regions, and in
+theirs, deepest first and before the entry's own guard:
+
+| The entry | Its content | Its child regions | Guards asked in them |
+| --- | --- | --- | --- |
+| Retires (`Back`, `BackTo`, `Replace`, `Reset`, `Clear`, `ClearHistory`) | Owned | Close | Every entry, as `Retire` |
+| Retires, as the tab that a selector leaves (`ReplaceBorrowedAsync`) | Borrowed | Keep their entries | The current entry of each, as `Retain` |
+| Is retained (`Push`) | Owned | Follow `WhileParentRetained` | The entries `ResetToRoot` or `Clear` removes, as `Retire`; none with `Keep` |
+| Is retained (`Push`) | Borrowed | Keep their entries | None |
+
+- A guard that rejects keeps the whole departure: the entry stays current,
+  so a tab switch leaves the tab selected, and no region changes.
+- A commit in an asked child region while the departure is guarding
+  supersedes the departure, as for owned children.
+- A tab that only refers to a region of the root asks nothing when it is
+  left. Create a tab's page regions with the tab's model as their owner:
+  `navigator.CreateRegion<IPage>(this, ...)` in the tab's constructor.
+- A window's guarded close (`GuardClose`, `GuardWindowClose`, see "Window
+  close and disposal") clears the regions it guards, so every entry in them
+  and in their owned child regions is asked as `Retire`, whichever tab is
+  selected.
+- `LeaveConfirmation` allows a `Retain` departure without asking, because a
+  page kept in its region keeps its draft. Pass `askOnRetain: true` to ask
+  before the tab is left too; a confirmed switch then runs `discard`.
 
 ### Container-resolved targets
 

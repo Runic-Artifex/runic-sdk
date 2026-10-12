@@ -86,7 +86,10 @@ public enum NavigationOperation
 /// <summary>Whether a departing entry is retained or retired.</summary>
 public enum NavigationDepartureKind
 {
-    /// <summary>The entry stays in history (a push).</summary>
+    /// <summary>
+    /// The entry stays in history: a push covers it, or the borrowed content that owns its region departs, as when a tab
+    /// switch leaves the tab's pages.
+    /// </summary>
     Retain,
 
     /// <summary>The entry retires and never becomes active again.</summary>

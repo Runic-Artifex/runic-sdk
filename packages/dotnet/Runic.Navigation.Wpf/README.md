@@ -292,8 +292,10 @@ tab is asked when the window closes even while another tab is selected:
 ```
 
 1. The user edits a customer on the Customers tab, then selects Reports.
-   Nothing is asked (see "Selecting tabs and other existing models"): the edit
-   page stays the region's current entry, and its View is discarded.
+   When the Customers model owns `Pages`, the edit page's guard is asked as a
+   retained departure (see "Selecting tabs and other existing models"). A
+   `LeaveConfirmation` without `askOnRetain` allows it: the edit page stays
+   the region's current entry with its draft, and its View is discarded.
 2. The user closes the window. The window clears the Customers page region,
    so the edit page's guard asks; "keep" leaves the window open, "discard"
    closes it.
@@ -430,17 +432,17 @@ adapter owns that coordination. On unload it detaches handlers and cancels its
 pending request; on reload it reads the committed region again. The adapter
 never owns the items or closes the region.
 
-Selecting another tab is not a departure from the regions inside the tab.
-The selection asks the guard of the tab's own model, if it has one, and no
-other guard. A page region shown inside the tab keeps its entries, and
-their drafts, while another tab is selected: its regions are owned by a
-borrowed model or the application, so they close only with the navigator.
-Prism (a tab activates a view and asks no `IConfirmNavigationRequest`) and
-Avalonia's `TabControl` and `TabbedPage` don't ask either. To ask before a tab
-switch anyway, as with MAUI Shell's cancellable `Navigating` on a tab change,
-let the tab's model implement `INavigationDepartureGuard` and ask its pages
-from there. To ask the pages when the window closes, set `GuardWindowClose`
-on their host (see "Tabs and other hosts that unload").
+Selecting another tab is a departure from the tab's page regions. The
+selection asks the current page of each region the tab's model owns, and of
+the regions below it, as a retained departure, then the guard of the tab's
+own model. A guard that keeps its page keeps the tab selected. The page
+regions keep their entries, and their drafts, while another tab is selected.
+A region the tab only refers to, owned by the application or another model,
+is not asked, so create a tab's page regions with the tab's model as their
+owner. A `LeaveConfirmation` asks on a tab switch only with `askOnRetain`.
+[Which departures ask a child region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#which-departures-ask-a-child-region)
+lists every case. To ask the pages when the window closes, set
+`GuardWindowClose` on their host (see "Tabs and other hosts that unload").
 
 ## Plain content without navigation
 
