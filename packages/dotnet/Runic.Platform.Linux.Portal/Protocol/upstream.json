@@ -4,6 +4,11 @@
   "tag": "1.22.1",
   "files": [
     {
+      "path": "data/org.freedesktop.portal.Background.xml",
+      "file": "org.freedesktop.portal.Background.xml",
+      "sha256": "bcb3cbba244ec0fdf270e10bb550242a9ec825262d634a6a182d4acee29c58f0"
+    },
+    {
       "path": "data/org.freedesktop.host.portal.Registry.xml",
       "file": "org.freedesktop.host.portal.Registry.xml",
       "sha256": "dbb1a35b43fd26d32ef2e21cb442dc4e0d9071deef0d0e9c97011eb754daa351"

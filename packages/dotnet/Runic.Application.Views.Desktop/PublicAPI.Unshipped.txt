@@ -1,2 +1,3 @@
 #nullable enable
+static Runic.Application.Views.Desktop.PlatformServices.CreateLoginStartup(string? applicationId = null) -> Runic.Platform.IDesktopLoginStartup!
 static Runic.Application.Views.Desktop.PlatformServices.CreateStatusIcon(string? applicationId = null) -> Runic.Platform.IDesktopStatusIcon!

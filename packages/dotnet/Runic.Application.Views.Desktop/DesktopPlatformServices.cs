@@ -161,6 +161,39 @@ public static class PlatformServices
             .CreateStatusIcon();
 #endif
 
+    /// <summary>Creates login startup for the application from the provider for the operating system.</summary>
+    /// <param name="applicationId">
+    /// The application's ID: on Linux the reverse-DNS ID of its installed desktop entry, which names the autostart
+    /// entry; on Windows the name of its Run value. <see langword="null"/> leaves login startup unconfigured, except
+    /// inside a Flatpak or Snap sandbox, where the desktop portal knows the application.
+    /// </param>
+    /// <remarks>
+    /// Nothing is registered until <see cref="IDesktopLoginStartup.EnableAsync"/>, which an application calls only
+    /// when the user asks. Linux writes an XDG autostart entry, or asks the Background portal inside a sandbox;
+    /// Windows writes the user's Run key. macOS has no provider yet: every request reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopLoginStartup CreateLoginStartup(string? applicationId = null) => CreateLoginStartup(applicationId, null);
+
+    internal static IDesktopLoginStartup CreateLoginStartup(string? applicationId, ILogger? logger)
+    {
+        IDesktopLoginStartup? startup = null;
+        if (OperatingSystem.IsWindows())
+            startup = applicationId is null ? null : Optional(() => CreateWindowsLoginStartup(applicationId));
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsLinux())
+            startup = new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+                .CreateLoginStartup();
+#endif
+        return startup ?? DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopLoginStartup CreateWindowsLoginStartup(string applicationId) =>
+        WindowsPlatformProvider.CreateLoginStartup(applicationId);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNotifications CreateWindowsNotifications(string applicationId) =>
         WindowsPlatformProvider.CreateNotifications(applicationId);
@@ -372,7 +405,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// Registers one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed as
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, one
-    /// <see cref="IDesktopNotifications"/> and one <see cref="IDesktopStatusIcon"/> for the application, without an
+    /// <see cref="IDesktopNotifications"/>, one <see cref="IDesktopStatusIcon"/> and one <see cref="IDesktopLoginStartup"/>
+    /// for the application, without an
     /// application ID.
     /// </summary>
     /// <remarks>
@@ -428,6 +462,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     {
         services.TryAddSingleton(static _ => PlatformServices.CreateSettings());
         services.TryAddSingleton(provider => PlatformServices.CreateNotifications(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(provider => PlatformServices.CreateLoginStartup(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(provider => PlatformServices.CreateStatusIcon(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
