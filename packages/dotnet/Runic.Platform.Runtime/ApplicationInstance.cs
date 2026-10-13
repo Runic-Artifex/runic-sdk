@@ -20,6 +20,8 @@ public static class ApplicationInstance
 {
     private const int MaxArguments = 1024, MaxLength = 64 * 1024, MaxSocketPath = 100;
     private static readonly TimeSpan ForwardTimeout = TimeSpan.FromSeconds(5);
+    // The running instance answers within ForwardTimeout of accepting; the launching process waits a little longer.
+    private static readonly TimeSpan ReplyTimeout = ForwardTimeout + TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Becomes the running instance of <paramref name="applicationId"/>, or forwards <paramref name="launch"/> to it.
@@ -64,7 +66,7 @@ public static class ApplicationInstance
                 {
                     if (TryListen(lockPath, socketPath) is { } instance)
                         return new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.Primary(instance));
-                    if (await TryForwardAsync(socketPath, launch, deadline.Token).ConfigureAwait(false))
+                    if (await TryForwardAsync(socketPath, launch, deadline.Token, cancellationToken).ConfigureAwait(false))
                         return new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.Forwarded());
                     await Task.Delay(100, deadline.Token).ConfigureAwait(false);
                 }
@@ -101,19 +103,24 @@ public static class ApplicationInstance
         catch { lockFile.Dispose(); throw; }
     }
 
-    // False when no instance listens yet, or it did not take the launch.
-    private static async Task<bool> TryForwardAsync(string socketPath, ApplicationLaunch launch, CancellationToken cancellationToken)
+    // False when no instance listens yet, or it did not take the launch. Once sent, the reply is awaited past the
+    // claim deadline, so a launch the instance took is never also reported busy.
+    private static async Task<bool> TryForwardAsync(string socketPath, ApplicationLaunch launch, CancellationToken deadline,
+        CancellationToken cancellationToken)
     {
         using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
         try
         {
-            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), cancellationToken).ConfigureAwait(false);
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), deadline).ConfigureAwait(false);
             await using var stream = new NetworkStream(socket, ownsSocket: false);
-            await stream.WriteAsync(Encode(launch), cancellationToken).ConfigureAwait(false);
+            await stream.WriteAsync(Encode(launch), deadline).ConfigureAwait(false);
+            using var replyTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            replyTimeout.CancelAfter(ReplyTimeout);
             var reply = new byte[1];
-            return await stream.ReadAsync(reply, cancellationToken).ConfigureAwait(false) == 1 && reply[0] == 1;
+            return await stream.ReadAsync(reply, replyTimeout.Token).ConfigureAwait(false) == 1 && reply[0] == 1;
         }
         catch (Exception error) when (error is SocketException or IOException) { return false; }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !deadline.IsCancellationRequested) { return false; }
     }
 
     private static string? RuntimeDirectory()
@@ -193,11 +200,14 @@ public static class ApplicationInstance
         private readonly Lock _gate = new();
         private EventHandler<ApplicationLaunch>? _launched;
         private readonly Task _accept;
+        private readonly CancellationToken _stopping;
         private int _disposed;
 
         internal RunningInstance(Socket listener, FileStream lockFile, string socketPath)
         {
             _listener = listener; _lock = lockFile; _socketPath = socketPath;
+            // Read once: the source is disposed while the pump may still be starting.
+            _stopping = _stop.Token;
             _accept = Task.Run(AcceptAsync);
             // Not awaited on disposal: a Launched handler may be the one disposing.
             _ = Task.Run(PumpAsync);
@@ -212,21 +222,21 @@ public static class ApplicationInstance
 
         private async Task AcceptAsync()
         {
-            while (!_stop.IsCancellationRequested)
+            while (!_stopping.IsCancellationRequested)
             {
                 Socket client;
-                try { client = await _listener.AcceptAsync(_stop.Token).ConfigureAwait(false); }
+                try { client = await _listener.AcceptAsync(_stopping).ConfigureAwait(false); }
                 catch (Exception error) when (error is OperationCanceledException or ObjectDisposedException or SocketException) { return; }
                 _ = ReceiveAsync(client);
             }
         }
 
-        // The launching process hears 1 once a handler received its launch. Anything else, or a closed connection,
+        // The launching process hears 1 once its launch is handed to a handler. Anything else, or a closed connection,
         // tells it to try again: this instance may be ending.
         private async Task ReceiveAsync(Socket client)
         {
             using var connection = client;
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_stopping);
             timeout.CancelAfter(ForwardTimeout);
             try
             {
@@ -256,21 +266,23 @@ public static class ApplicationInstance
 
         private async Task PumpAsync()
         {
-            try { await _subscribed.Task.WaitAsync(_stop.Token).ConfigureAwait(false); }
+            try { await _subscribed.Task.WaitAsync(_stopping).ConfigureAwait(false); }
             catch (OperationCanceledException) { return; }
             await foreach (var pending in _launches.Reader.ReadAllAsync().ConfigureAwait(false))
             {
-                if (Volatile.Read(ref _disposed) != 0 || !pending.Start()) { pending.Delivered.TrySetResult(false); continue; }
                 EventHandler<ApplicationLaunch>? handlers;
                 lock (_gate) handlers = _launched;
-                try { handlers?.Invoke(this, pending.Launch); }
+                // Without a handler, or while ending, the launching process tries again and may become the next instance.
+                if (handlers is null || Volatile.Read(ref _disposed) != 0 || !pending.Start()) { pending.Delivered.TrySetResult(false); continue; }
+                // Answered before the handler runs, so a slow handler is not reported as busy.
+                pending.Delivered.TrySetResult(true);
+                try { handlers(this, pending.Launch); }
                 catch (Exception error)
                 {
                     // As with an event raised on the thread pool, a throwing handler fails the process.
                     var capture = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error);
                     ThreadPool.QueueUserWorkItem(static state => ((System.Runtime.ExceptionServices.ExceptionDispatchInfo)state!).Throw(), capture);
                 }
-                finally { pending.Delivered.TrySetResult(true); }
             }
         }
 

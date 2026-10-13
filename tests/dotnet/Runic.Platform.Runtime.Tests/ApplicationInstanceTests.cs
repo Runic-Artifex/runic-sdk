@@ -98,6 +98,23 @@ internal sealed class ApplicationInstanceTests
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
 
+    [Test, DisplayName("INSTANCE: a launch nobody handles any more is not reported forwarded")]
+    public async Task HandlerRemovedAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var first = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            await using var instance = ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)first).Value).Instance;
+            EventHandler<ApplicationLaunch> handler = (_, _) => { };
+            instance.Launched += handler;
+            instance.Launched -= handler;
+            var second = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default).AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+            Check(second is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy }, "the launch is busy, not lost");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
     [Test, DisplayName("INSTANCE: a launch while the running instance ends becomes the next instance")]
     public async Task RelaunchDuringShutdownAsync()
     {
