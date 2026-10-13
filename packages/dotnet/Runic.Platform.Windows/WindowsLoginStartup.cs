@@ -59,6 +59,9 @@ internal sealed class WindowsLoginStartup(string applicationId,
         {
             using var run = Registry.CurrentUser.OpenSubKey(runKey, writable: true);
             run?.DeleteValue(applicationId, throwOnMissingValue: false);
+            // As on Linux, disabling also forgets that the user turned the entry off, so enabling works again.
+            using var approved = Registry.CurrentUser.OpenSubKey(approvedKey, writable: true);
+            approved?.DeleteValue(applicationId, throwOnMissingValue: false);
             return Result(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()));
         }
         catch (Exception error) when (error is System.Security.SecurityException or UnauthorizedAccessException or IOException)

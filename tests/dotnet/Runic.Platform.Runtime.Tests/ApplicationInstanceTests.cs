@@ -79,6 +79,53 @@ internal sealed class ApplicationInstanceTests
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
 
+    [Test, DisplayName("INSTANCE: a launch during start-up waits for the first handler")]
+    public async Task WaitsForTheFirstHandlerAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var first = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            await using var instance = ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)first).Value).Instance;
+            var second = ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["early"], "/"), directory, default).AsTask();
+            await Task.Delay(500);
+            Check(!second.IsCompleted, "a launch nobody received is not reported forwarded");
+            var launches = Channel.CreateUnbounded<ApplicationLaunch>();
+            instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
+            Check(await second.WaitAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the waiting launch is forwarded");
+            Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == "early", "the first handler receives it");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: a launch while the running instance ends becomes the next instance")]
+    public async Task RelaunchDuringShutdownAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var first = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            var instance = ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)first).Value).Instance;
+            // Nobody handles launches: the instance is quitting.
+            var second = ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default).AsTask();
+            await Task.Delay(300);
+            await instance.DisposeAsync();
+            var next = await second.WaitAsync(Wait);
+            Check(next is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary }, "the relaunch takes over");
+            await ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)next).Value).Instance.DisposeAsync();
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: a directory too long for a socket is unavailable")]
+    public async Task LongDirectoryAsync()
+    {
+        string directory = Path.Combine(Directory(), new string('d', 120));
+        var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+        Check(claim is PlatformResult<ApplicationInstanceClaim>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "a long path is unavailable, not an exception");
+        Check(!System.IO.Directory.Exists(directory), "nothing is created");
+    }
+
     [Test, DisplayName("INSTANCE: IDs, launches and directories others can enter are refused")]
     public async Task ValidationAsync()
     {

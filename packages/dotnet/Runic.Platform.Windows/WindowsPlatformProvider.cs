@@ -21,7 +21,7 @@ public static class WindowsPlatformProvider
         return new WindowsDesktopNotifications(applicationId);
     }
     /// <summary>Creates login startup through the user's Run key, under <paramref name="applicationId"/>.</summary>
-    /// <remarks>An entry the user turned off in Task Manager stays off: enabling reports PermissionDenied.</remarks>
+    /// <remarks>An entry the user turned off in Task Manager stays off: enabling reports PermissionDenied until the application disables it.</remarks>
     public static IDesktopLoginStartup CreateLoginStartup(string applicationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(applicationId);

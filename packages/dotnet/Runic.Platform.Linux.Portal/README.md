@@ -164,7 +164,7 @@ sandbox it writes `~/.config/autostart/<applicationId>.desktop`, which every
 XDG desktop reads at login, and marks it with `X-Runic-Application`. It never
 changes or removes an entry it did not write, and an entry the user turned off
 (`Hidden=true` or `X-GNOME-Autostart-enabled=false`) stays off: enabling reports
-`PermissionDenied`.
+`PermissionDenied`. Disabling removes the entry, and with it the user's choice.
 
 Inside Flatpak or Snap the entry is out of reach, so `EnableAsync` and
 `DisableAsync` ask the Background portal, which may ask the user and passes the

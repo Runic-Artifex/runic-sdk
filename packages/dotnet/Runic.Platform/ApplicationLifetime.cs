@@ -37,6 +37,11 @@ public interface IApplicationInstance : IAsyncDisposable
     /// Raised for each later launch, on a worker thread, one at a time and in order; dispatch window work through the
     /// application's host.
     /// </summary>
+    /// <remarks>
+    /// Launches wait for the first handler, so subscribe right after claiming, before slow start-up work. A launching
+    /// process reports itself forwarded only once a handler received its launch; one that is not received within a
+    /// few seconds, or arrives while this instance is ending, keeps trying and may become the next running instance.
+    /// </remarks>
     event EventHandler<ApplicationLaunch>? Launched;
 }
 
@@ -78,6 +83,7 @@ public interface IDesktopLoginStartup
     ValueTask<PlatformResult<PlatformUnit>> EnableAsync(LoginStartupRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Stops starting the application at login and removes what <see cref="EnableAsync"/> registered.</summary>
+    /// <remarks>It also forgets that the user turned the entry off, so a later <see cref="EnableAsync"/> registers it again.</remarks>
     ValueTask<PlatformResult<PlatformUnit>> DisableAsync(CancellationToken cancellationToken = default);
 }
 

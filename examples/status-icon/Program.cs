@@ -16,6 +16,10 @@ if (claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: Applicati
 // Without a per-user runtime directory the sample still runs, but every launch starts its own instance.
 await using var instance = (claim as PlatformResult<ApplicationInstanceClaim>.Success)?.Value is ApplicationInstanceClaim.Primary primary
     ? primary.Instance : null;
+// Activations and launches arrive on worker threads; the application loop below, which owns the windows, reads them.
+// Subscribe before start-up: a launch waits for the first handler.
+var events = Channel.CreateUnbounded<object>();
+if (instance is not null) instance.Launched += (_, launch) => events.Writer.TryWrite(launch);
 
 var services = new ServiceCollection();
 services.AddRunicReactiveModelContext();
@@ -30,20 +34,19 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions(), async host =>
 {
     var icon = provider.GetRequiredService<IDesktopStatusIcon>();
     var startup = provider.GetRequiredService<IDesktopLoginStartup>();
-    // Activations and launches arrive on worker threads; hand them to this loop, which owns the windows.
-    var events = Channel.CreateUnbounded<object>();
     icon.Activated += (_, activation) => events.Writer.TryWrite(activation);
-    if (instance is not null) instance.Launched += (_, launch) => events.Writer.TryWrite(launch);
 
-    // Null while the desktop cannot say, for example without a login startup provider.
-    bool? startsAtLogin = await startup.IsEnabledAsync() is PlatformResult<bool>.Success { Value: var enabled } ? enabled : null;
+    // A sandbox can change login startup but not report it; without a provider it cannot change either.
+    var known = await startup.IsEnabledAsync();
+    bool startsAtLogin = known is PlatformResult<bool>.Success { Value: true };
+    bool canChange = known is not PlatformResult<bool>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     DesktopStatusIconState State() => new(new DesktopIcon { ThemeName = "applications-system" }, "Status icon sample")
     {
         Tooltip = "Click to open the counter",
         Menu =
         [
             new DesktopMenuCommand("open", "Open window"),
-            new DesktopMenuCommand("login", "Start at login") { Checked = startsAtLogin ?? false, Enabled = startsAtLogin is not null },
+            new DesktopMenuCommand("login", "Start at login") { Checked = startsAtLogin, Enabled = canChange },
             new DesktopMenuSeparator(),
             new DesktopMenuCommand("quit", "Quit"),
         ],
@@ -58,10 +61,10 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions(), async host =>
         if (item is DesktopStatusIconActivation { MenuItemId: "quit" }) break;
         if (item is DesktopStatusIconActivation { MenuItemId: "login" })
         {
-            var changed = startsAtLogin == true
+            var changed = startsAtLogin
                 ? await startup.DisableAsync()
                 : await startup.EnableAsync(new LoginStartupRequest([]) { Reason = "Show the status icon after you log in." });
-            if (changed is PlatformResult<PlatformUnit>.Success) startsAtLogin = startsAtLogin != true;
+            if (changed is PlatformResult<PlatformUnit>.Success) startsAtLogin = !startsAtLogin;
             else Console.Error.WriteLine($"Start at login was not changed: {changed}");
             await icon.ShowAsync(State());
             continue;

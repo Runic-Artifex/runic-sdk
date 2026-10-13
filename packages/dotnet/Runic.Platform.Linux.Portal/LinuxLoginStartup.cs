@@ -39,7 +39,9 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
             throw new ArgumentException("Supply at most 64 arguments without NUL characters.", nameof(request));
         if (request.Reason is { Length: > 256 }) throw new ArgumentException("The reason is at most 256 characters.", nameof(request));
         cancellationToken.ThrowIfCancellationRequested();
-        var command = Command(request.Arguments);
+        List<string> command;
+        try { command = Command(request.Arguments); }
+        catch (NativeBackendUnavailableException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
         if (Sandboxed) return await RequestAsync(true, request, command, cancellationToken).ConfigureAwait(false);
         if (EntryPath() is not { } path) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         try
@@ -55,8 +57,12 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
                 return new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             string temporary = path + ".runic-" + Guid.NewGuid().ToString("N");
-            await File.WriteAllTextAsync(temporary, Entry(command, request.Reason), cancellationToken).ConfigureAwait(false);
-            File.Move(temporary, path, overwrite: true);
+            try
+            {
+                await File.WriteAllTextAsync(temporary, Entry(command, request.Reason), cancellationToken).ConfigureAwait(false);
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally { File.Delete(temporary); }
             return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)

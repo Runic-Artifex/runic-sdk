@@ -41,10 +41,17 @@ internal sealed class LoginStartupTests
             Check(await startup.IsEnabledAsync() is PlatformResult<bool>.Success { Value: false });
             Check(await startup.EnableAsync(new LoginStartupRequest([])) is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied });
 
+            // Disabling forgets the user's choice, so the application can enable it again.
+            Check(await startup.DisableAsync() is PlatformResult<PlatformUnit>.Success);
+            using (var approved = Registry.CurrentUser.OpenSubKey(root + @"\Approved"))
+                Check(approved?.GetValue("org.example.App") is null);
+            Check(await startup.EnableAsync(new LoginStartupRequest([])) is PlatformResult<PlatformUnit>.Success);
+            Check(await startup.IsEnabledAsync() is PlatformResult<bool>.Success { Value: true });
+
             Check(await startup.DisableAsync() is PlatformResult<PlatformUnit>.Success);
             using (var run = Registry.CurrentUser.OpenSubKey(root + @"\Run"))
                 Check(run?.GetValue("org.example.App") is null);
-            Console.WriteLine("PASS Windows login startup: Run value written, quoted, read, respected when turned off, removed.");
+            Console.WriteLine("PASS Windows login startup: Run value written, quoted, read, respected when turned off, removed, enabled again.");
         }
         finally { Registry.CurrentUser.DeleteSubKeyTree(root, throwOnMissingSubKey: false); }
     }

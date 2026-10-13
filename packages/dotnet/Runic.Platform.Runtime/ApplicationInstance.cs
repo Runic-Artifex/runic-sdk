@@ -18,7 +18,7 @@ namespace Runic.Platform.Runtime;
 /// </remarks>
 public static class ApplicationInstance
 {
-    private const int MaxArguments = 1024, MaxLength = 64 * 1024;
+    private const int MaxArguments = 1024, MaxLength = 64 * 1024, MaxSocketPath = 100;
     private static readonly TimeSpan ForwardTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>
@@ -29,7 +29,8 @@ public static class ApplicationInstance
     /// <param name="cancellationToken">Cancels waiting for the running instance.</param>
     /// <returns>
     /// <see cref="ApplicationInstanceClaim.Primary"/> or <see cref="ApplicationInstanceClaim.Forwarded"/>; unavailable
-    /// without a per-user runtime directory, and <see cref="PlatformFailureCode.ResourceBusy"/> when another instance
+    /// without a per-user runtime directory or when its path is too long for a socket, and
+    /// <see cref="PlatformFailureCode.ResourceBusy"/> when another instance
     /// holds the lock but does not accept the launch. The application decides whether to run anyway.
     /// </returns>
     public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
@@ -45,35 +46,33 @@ public static class ApplicationInstance
         Validate(launch);
         directory ??= RuntimeDirectory();
         if (directory is null) return new PlatformResult<ApplicationInstanceClaim>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        // Short names: Unix socket paths are limited to about 100 bytes.
+        string name = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(applicationId)))[..16];
+        string socketPath = Path.Combine(directory, name + ".sock"), lockPath = Path.Combine(directory, name + ".lock");
+        if (Encoding.UTF8.GetByteCount(socketPath) > MaxSocketPath)
+            return new PlatformResult<ApplicationInstanceClaim>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         try
         {
             CreatePrivateDirectory(directory);
-            // Short names: Unix socket paths are limited to about 100 bytes.
-            string name = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(applicationId)))[..16];
-            string socketPath = Path.Combine(directory, name + ".sock"), lockPath = Path.Combine(directory, name + ".lock");
-            FileStream? lockFile = null;
-            try { lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-            catch (IOException) { /* Another process is the running instance. */ }
-            if (lockFile is not null)
+            // Until the deadline: become the running instance once the lock is free, or hand the launch to the
+            // instance that holds it. That instance may still be starting, or ending.
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(ForwardTimeout);
+            try
             {
-                try
+                while (true)
                 {
-                    File.Delete(socketPath); // Left by an instance that ended without cleaning up.
-                    var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-                    try
-                    {
-                        listener.Bind(new UnixDomainSocketEndPoint(socketPath));
-                        listener.Listen(16);
-                    }
-                    catch { listener.Dispose(); throw; }
-                    return new PlatformResult<ApplicationInstanceClaim>.Success(
-                        new ApplicationInstanceClaim.Primary(new RunningInstance(listener, lockFile, socketPath)));
+                    if (TryListen(lockPath, socketPath) is { } instance)
+                        return new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.Primary(instance));
+                    if (await TryForwardAsync(socketPath, launch, deadline.Token).ConfigureAwait(false))
+                        return new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.Forwarded());
+                    await Task.Delay(100, deadline.Token).ConfigureAwait(false);
                 }
-                catch { await lockFile.DisposeAsync().ConfigureAwait(false); throw; }
             }
-            return await ForwardAsync(socketPath, launch, cancellationToken).ConfigureAwait(false)
-                ? new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.Forwarded())
-                : new PlatformResult<ApplicationInstanceClaim>.Failed(PlatformFailureCode.ResourceBusy);
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return new PlatformResult<ApplicationInstanceClaim>.Failed(PlatformFailureCode.ResourceBusy);
+            }
         }
         catch (Exception error) when (error is IOException or SocketException or UnauthorizedAccessException)
         {
@@ -81,34 +80,40 @@ public static class ApplicationInstance
         }
     }
 
-    // The running instance may still be starting: it holds the lock before it listens.
-    private static async Task<bool> ForwardAsync(string socketPath, ApplicationLaunch launch, CancellationToken cancellationToken)
+    // Null while another process holds the lock.
+    private static RunningInstance? TryListen(string lockPath, string socketPath)
     {
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(ForwardTimeout);
+        FileStream lockFile;
+        try { lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException) when (File.Exists(lockPath)) { return null; }
         try
         {
-            while (true)
+            File.Delete(socketPath); // Left by an instance that ended without cleaning up.
+            var listener = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+            try
             {
-                using (var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified))
-                {
-                    try
-                    {
-                        await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), deadline.Token).ConfigureAwait(false);
-                        await using var stream = new NetworkStream(socket, ownsSocket: false);
-                        await stream.WriteAsync(Encode(launch), deadline.Token).ConfigureAwait(false);
-                        var reply = new byte[1];
-                        return await stream.ReadAsync(reply, deadline.Token).ConfigureAwait(false) == 1 && reply[0] == 1;
-                    }
-                    catch (Exception error) when (error is SocketException or IOException) { /* Not listening yet; try again. */ }
-                }
-                await Task.Delay(100, deadline.Token).ConfigureAwait(false);
+                listener.Bind(new UnixDomainSocketEndPoint(socketPath));
+                listener.Listen(16);
             }
+            catch { listener.Dispose(); throw; }
+            return new RunningInstance(listener, lockFile, socketPath);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch { lockFile.Dispose(); throw; }
+    }
+
+    // False when no instance listens yet, or it did not take the launch.
+    private static async Task<bool> TryForwardAsync(string socketPath, ApplicationLaunch launch, CancellationToken cancellationToken)
+    {
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+        try
         {
-            return false;
+            await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), cancellationToken).ConfigureAwait(false);
+            await using var stream = new NetworkStream(socket, ownsSocket: false);
+            await stream.WriteAsync(Encode(launch), cancellationToken).ConfigureAwait(false);
+            var reply = new byte[1];
+            return await stream.ReadAsync(reply, cancellationToken).ConfigureAwait(false) == 1 && reply[0] == 1;
         }
+        catch (Exception error) when (error is SocketException or IOException) { return false; }
     }
 
     private static string? RuntimeDirectory()
@@ -183,7 +188,10 @@ public static class ApplicationInstance
         private readonly FileStream _lock;
         private readonly string _socketPath;
         private readonly CancellationTokenSource _stop = new();
-        private readonly Channel<ApplicationLaunch> _launches = Channel.CreateUnbounded<ApplicationLaunch>(new() { SingleReader = true });
+        private readonly Channel<Pending> _launches = Channel.CreateUnbounded<Pending>(new() { SingleReader = true });
+        private readonly TaskCompletionSource _subscribed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly Lock _gate = new();
+        private EventHandler<ApplicationLaunch>? _launched;
         private readonly Task _accept;
         private int _disposed;
 
@@ -195,7 +203,12 @@ public static class ApplicationInstance
             _ = Task.Run(PumpAsync);
         }
 
-        public event EventHandler<ApplicationLaunch>? Launched;
+        // Launches wait for the first handler, so one that arrives during start-up is not lost.
+        public event EventHandler<ApplicationLaunch>? Launched
+        {
+            add { lock (_gate) _launched += value; if (value is not null) _subscribed.TrySetResult(); }
+            remove { lock (_gate) _launched -= value; }
+        }
 
         private async Task AcceptAsync()
         {
@@ -208,6 +221,8 @@ public static class ApplicationInstance
             }
         }
 
+        // The launching process hears 1 once a handler received its launch. Anything else, or a closed connection,
+        // tells it to try again: this instance may be ending.
         private async Task ReceiveAsync(Socket client)
         {
             using var connection = client;
@@ -222,11 +237,18 @@ public static class ApplicationInstance
                 if (size is <= 0 or > MaxLength) return;
                 var body = new byte[size];
                 await stream.ReadExactlyAsync(body, timeout.Token).ConfigureAwait(false);
-                var launch = Decode(body);
-                _launches.Writer.TryWrite(launch);
-                await stream.WriteAsync(new byte[] { 1 }, timeout.Token).ConfigureAwait(false);
+                var pending = new Pending(Decode(body));
+                bool delivered = false;
+                if (_launches.Writer.TryWrite(pending))
+                {
+                    try { delivered = await pending.Delivered.Task.WaitAsync(timeout.Token).ConfigureAwait(false); }
+                    // No handler took it in time; a handler that already started it still counts.
+                    catch (OperationCanceledException) when (!pending.Abandon()) { delivered = await pending.Delivered.Task.ConfigureAwait(false); }
+                }
+                await stream.WriteAsync(new[] { delivered ? (byte)1 : (byte)0 }).ConfigureAwait(false);
             }
-            catch (Exception error) when (error is IOException or SocketException or OperationCanceledException or InvalidDataException or EndOfStreamException)
+            catch (Exception error) when (error is IOException or SocketException or OperationCanceledException or InvalidDataException
+                or EndOfStreamException or FormatException or ObjectDisposedException)
             {
                 /* A broken or malformed launch is dropped; its process reports that it could not forward. */
             }
@@ -234,16 +256,21 @@ public static class ApplicationInstance
 
         private async Task PumpAsync()
         {
-            await foreach (var launch in _launches.Reader.ReadAllAsync().ConfigureAwait(false))
+            try { await _subscribed.Task.WaitAsync(_stop.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            await foreach (var pending in _launches.Reader.ReadAllAsync().ConfigureAwait(false))
             {
-                if (Volatile.Read(ref _disposed) != 0) return;
-                try { Launched?.Invoke(this, launch); }
+                if (Volatile.Read(ref _disposed) != 0 || !pending.Start()) { pending.Delivered.TrySetResult(false); continue; }
+                EventHandler<ApplicationLaunch>? handlers;
+                lock (_gate) handlers = _launched;
+                try { handlers?.Invoke(this, pending.Launch); }
                 catch (Exception error)
                 {
                     // As with an event raised on the thread pool, a throwing handler fails the process.
                     var capture = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error);
                     ThreadPool.QueueUserWorkItem(static state => ((System.Runtime.ExceptionServices.ExceptionDispatchInfo)state!).Throw(), capture);
                 }
+                finally { pending.Delivered.TrySetResult(true); }
             }
         }
 
@@ -253,11 +280,22 @@ public static class ApplicationInstance
             await _stop.CancelAsync().ConfigureAwait(false);
             _listener.Dispose();
             _launches.Writer.TryComplete();
+            // Launches still queued were not handled; their processes try again and may become the next instance.
+            while (_launches.Reader.TryRead(out var pending)) pending.Delivered.TrySetResult(false);
             try { await _accept.ConfigureAwait(false); } catch (OperationCanceledException) { }
             try { File.Delete(_socketPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             // Released last, so a new instance never finds a socket file it did not create.
             await _lock.DisposeAsync().ConfigureAwait(false);
             _stop.Dispose();
+        }
+
+        private sealed class Pending(ApplicationLaunch launch)
+        {
+            private int _state; // 0 queued, 1 handed to the handlers, 2 abandoned by its connection
+            public ApplicationLaunch Launch => launch;
+            public TaskCompletionSource<bool> Delivered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            public bool Start() => Interlocked.CompareExchange(ref _state, 1, 0) == 0;
+            public bool Abandon() => Interlocked.CompareExchange(ref _state, 2, 0) == 0;
         }
     }
 }
