@@ -22,6 +22,8 @@ namespace Runic.Application.Views.CsWebUi;
 /// same application in a native window.
 /// </summary>
 /// <remarks>
+/// As with <c>RunicDesktopHost</c>, the application runs as long as the body passed to <c>Run</c>, with or without
+/// open Windows.
 /// CS-WebUI is supported on a best-effort basis. Its windows have no native owner, so platform services report
 /// <c>OwnerUnavailable</c>, and it reports closing for all of its windows at once. It cannot keep a window open, so a
 /// Window with <see cref="RunicWindow{TViewModel}.GuardClose"/> opens unguarded and logs

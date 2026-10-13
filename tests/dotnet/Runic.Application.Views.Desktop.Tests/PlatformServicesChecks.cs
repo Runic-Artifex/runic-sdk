@@ -112,6 +112,32 @@ internal sealed class PlatformServicesChecks
             "Disposed window services did not report the owner closed.");
     }
 
+    [Test, NotInParallel(Order = 16)]
+    public async Task PresentReportsWindowsItCannotRaise()
+    {
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory { SupportsDispatch = false },
+            WaitForConnection = false,
+        }))
+        await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
+        {
+            var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            Require(await PlatformServices.PresentAsync(new DesktopNativeOwner(window)) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+                "A window without native dispatch did not report the owner unavailable.");
+        }
+
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false }))
+        await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
+        {
+            var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            var owner = new DesktopNativeOwner(window);
+            await window.CloseAsync();
+            Require(await PlatformServices.PresentAsync(owner) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                "A closed window did not report the owner closed.");
+        }
+    }
+
     [Test, NotInParallel(Order = 17)]
     public async Task ReadmeSampleReportsAnUnboundWindow()
     {

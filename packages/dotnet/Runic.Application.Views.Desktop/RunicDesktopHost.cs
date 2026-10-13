@@ -23,6 +23,10 @@ namespace Runic.Application.Views.Desktop;
 /// same application on CS-WebUI.
 /// </summary>
 /// <remarks>
+/// The application runs as long as the body passed to <c>Run</c>: closing the last Window does not end it, and a body
+/// may run without any Window, for example behind a status icon. To keep one copy running, claim
+/// <c>ApplicationInstance.ClaimAsync</c> before <c>Run</c> and bring an open Window forward with
+/// <see cref="PlatformServices.PresentAsync"/> when another launch arrives.
 /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, as on CS-WebUI, no window or browser
 /// is opened: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
 /// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then

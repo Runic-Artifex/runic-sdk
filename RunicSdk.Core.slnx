@@ -78,6 +78,7 @@
     <Project Path="tests/native/Runic.Desktop.ComparativeStressAdapter/Runic.Desktop.ComparativeStressAdapter.csproj" />
     <Project Path="tests/native/Runic.Desktop.WebViewSmoke/Runic.Desktop.WebViewSmoke.csproj" />
     <Project Path="tests/native/Runic.Desktop.Gtk4.Smoke/Runic.Desktop.Gtk4.Smoke.csproj" />
+    <Project Path="tests/native/Runic.Lifetime.Smoke/Runic.Lifetime.Smoke.csproj" />
     <Project Path="tests/native/Runic.StatusIcon.Smoke/Runic.StatusIcon.Smoke.csproj" />
   </Folder>
   <Folder Name="/tools/">
