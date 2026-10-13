@@ -62,6 +62,13 @@ export function hostCallbacks(): Record<string | symbol, unknown> {
   return globalThis as unknown as Record<string | symbol, unknown>;
 }
 
+// A host answers a call of a route it no longer binds, such as a route of a View
+// that .NET released during the call, with an empty reply (Runic Desktop) or a
+// `disconnected` envelope (CS-WebUI). No Views route answers with an empty reply.
+export function releasedRouteError(route: string): BridgeError {
+  return new BridgeError("disconnected", "This View was released: its route is no longer bound.", { route });
+}
+
 // A throwing subscriber or an undecodable push must not stop delivery to
 // other subscribers or unwind into the .NET callback that pushed state.
 export function reportBridgeError(error: unknown, route?: string): void {

@@ -53,7 +53,10 @@ The browser host script defines `__runicBridge`:
 | `onReconnect?(listener): () => void` | Optional. Calls `listener` after the connection is re-established without a page reload; returns an unsubscribe function. |
 
 A route unbound by `RebindableBridgeTransport` answers the envelope
-`{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`.
+`{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`. Runic Desktop
+answers a call of a capability it does not bind, including a route released
+just before, with an empty reply. No Views route replies with an empty string, so
+a client reports both on every route as `disconnected`.
 
 ## Routes
 
@@ -115,7 +118,16 @@ Bridge was detached.
 { "ok": false, "state": { "revision": 13 }, "error": { "kind": "domain-failed", "message": "Save failed.", "failure": { "$case": "titleRequired" } } }
 ```
 
-`state` is null when the bridge was detached or closed. A checked write adds `receipt`:
+A call can release its own bridge before its reply captures a state, as a page's
+command that replaces or leaves the page in its navigation region does. The reply
+then has `state: null` and `released: true`: a call that succeeded stays `ok`, and
+a failed call keeps its `error`. A client resolves a successful `released` reply
+with the last state it accepted; a successful reply without state and without
+`released` is invalid. A snapshot read of a released bridge replies
+`disconnected`, and so does a checked write, which adds `released: true` too.
+
+`state` is also null when the bridge was detached or closed before the call ran;
+such a reply is `disconnected`. A checked write adds `receipt`:
 `applied` or `committed-with-error` with `snapshot: {value, version}`,
 `conflict` with `incoming`, or `rejected` with `message`.
 
@@ -189,7 +201,8 @@ A `Start` route admits a recoverable operation and answers
 `kind` is `accepted`, `duplicate`, `expired` or `rejected`; `reason` names a
 rejection (`owner-closing`, `owner-disposed`, `identity-conflict`, `capacity`,
 `unavailable`, `stream-capacity`). A failed admission before identity checks
-answers `{kind, reason}`, with `detail` as in a reply error. `contract` is
+answers `{kind, reason}`, with `detail` as in a reply error; it is `disconnected`
+when the bridge was released, and a client reports it so. `contract` is
 `{ViewModel full name}:{fingerprint}:{route prefix}`. A request id is bound to the
 command member and the canonical input digest: reusing it for other work is
 `identity-conflict`, and a retry observes the original operation.

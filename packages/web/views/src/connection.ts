@@ -2,7 +2,7 @@ import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError, type BridgeErrorKind, decodeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
 import { errorMessage, sameWire, sharedRouteFor, sharedRuntimeFor, type SharedEntry, type SharedLease, type SharedRoute } from "./runtime.js";
-import { hostCallbacks, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
+import { hostCallbacks, releasedRouteError, reportBridgeError, waitForBridge, type RunicBridgeClient } from "./transport.js";
 import * as bridgeWire from "./wire.js";
 // Interactions, operations and keyed collections are injected by the generated
 // clients that use them, so this module imports only their types.
@@ -89,7 +89,10 @@ export interface ViewConnection<TState> extends ViewClient<TState> {
 }
 
 type EnvelopeError = { readonly kind: string; readonly message: string; readonly detail?: unknown; readonly failure?: unknown };
-type Envelope = { readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null; readonly protocol?: unknown };
+// `released` is true when .NET released the View during the call, so the reply has no state.
+type Envelope = {
+  readonly ok: boolean; readonly state: unknown; readonly error: EnvelopeError | null; readonly protocol?: unknown; readonly released?: unknown;
+};
 
 /** The Views wire protocol this runtime implements (specs/application/README.md). */
 export const bridgeProtocol = 2;
@@ -123,6 +126,7 @@ function checkProtocol(reply: Envelope, entry: SharedEntry, route: string): void
 // Parses a reply and accepts its state. Returns the envelope and the accepted
 // state, which is undefined when the reply carries none.
 function parse(json: string, entry: SharedEntry, route: string): { readonly reply: Envelope; readonly state: unknown } {
+  if (json === "") throw releasedRouteError(route);
   let reply: Envelope;
   try { reply = JSON.parse(json) as Envelope; }
   catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route }); }
@@ -137,8 +141,16 @@ function parse(json: string, entry: SharedEntry, route: string): { readonly repl
 function unpack(json: string, entry: SharedEntry, route: string): unknown {
   const { reply, state } = parse(json, entry, route);
   if (!reply.ok) throw replyError(reply.error, route, "The call failed.");
-  if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.", { route });
-  return state;
+  return state ?? releasedState(reply, entry, route);
+}
+
+// A call that released its own View, such as a page command that replaced the
+// page in its region, ran: it resolves with the last state the client
+// accepted. Any other successful reply without state is invalid.
+function releasedState(reply: Envelope, entry: SharedEntry, route: string): unknown {
+  if (reply.released !== true) throw new BridgeError("failed", "The Bridge returned no state.", { route });
+  if (entry.current === undefined) throw new BridgeError("disconnected", "This View was released before its state was read.", { route });
+  return entry.current;
 }
 
 // .NET appends this to a reply's message when the call ran but its state
@@ -148,7 +160,7 @@ const stateNotSent = " The updated state could not be sent: ";
 // A declared failure resolves the outcome. When .NET could not send the state
 // after the call (D-13), the failure still resolves and the missing state is
 // reported, so the key problem is not lost behind a resolved outcome. A reply
-// without state from a detached Bridge needs no report.
+// without state from a released View needs no report.
 function unpackOutcome<TFailure>(json: string, entry: SharedEntry, route: string,
   decodeFailure: (value: unknown) => TFailure): BridgeOutcome<unknown, TFailure> {
   const { reply, state } = parse(json, entry, route);
@@ -160,8 +172,7 @@ function unpackOutcome<TFailure>(json: string, entry: SharedEntry, route: string
     return bridgeFailure(failure);
   }
   if (!reply.ok) throw replyError(reply.error, route, "The call failed.");
-  if (state === undefined) throw new BridgeError("failed", "The Bridge returned no state.", { route });
-  return bridgeSuccess(state);
+  return bridgeSuccess(state ?? releasedState(reply, entry, route));
 }
 
 // Recovery reads a snapshot up to four times, waiting 250, 500 and 1,000 ms
@@ -445,10 +456,12 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       catch (cause) { throw callFailed(bridge, "The command availability query could not complete.", name, cause); }
       if (reply === "true") return true;
       if (reply === "false") return false;
+      if (reply === "" || isDisconnectedEnvelope(reply)) throw releasedRouteError(name);
       throw new BridgeError("failed", "The command availability query returned an invalid response.", { route: name });
     }),
     writeField: (name, payload, decode) => observed(name, async () => {
       const json = await call(name, [payload]);
+      if (json === "") throw releasedRouteError(name);
       let reply: Envelope & { readonly receipt: unknown };
       try { reply = bridgeWire.object(JSON.parse(json), value => value) as unknown as typeof reply; }
       catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route: name }); }
@@ -485,6 +498,14 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
     recoverOperation: (member, requestId, decode, stream = false, decodeFailure) =>
       observed(`${route}Start${member}`, () => operationSupport().recover(operationScope, member, requestId, decode, stream, decodeFailure)),
   };
+}
+
+// The reply of a route that CS-WebUI no longer binds, on a route whose replies are not envelopes.
+function isDisconnectedEnvelope(json: string): boolean {
+  try {
+    const reply = JSON.parse(json) as Partial<Envelope> | null;
+    return reply !== null && typeof reply === "object" && reply.ok === false && reply.error?.kind === "disconnected";
+  } catch { return false; }
 }
 
 /**

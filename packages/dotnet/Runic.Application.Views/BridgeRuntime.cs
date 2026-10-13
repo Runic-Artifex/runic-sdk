@@ -910,11 +910,21 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         writer.WriteEndObject();
     });
 
+    // The reply of a setter or command after it ran.
     private string EncodeTerminal(BridgeFailure? error = null) =>
-        IsInactive ? EncodeWithoutSnapshot(error) : Encode(error);
+        IsInactive ? EncodeReleased(error) : Encode(error);
 
     private string EncodeWithoutSnapshot(BridgeFailure? error = null) =>
         Encode(error, includeSnapshot: false);
+
+    // A call can release its own bridge: a page command that replaces or leaves
+    // the page in its region detaches the page before the reply captures a
+    // state. The reply says so with `released: true` and no state; a call that
+    // succeeded stays `ok`, a failed call keeps its error. A snapshot read on a
+    // released bridge is `disconnected` instead, because it has nothing to report.
+    private static string EncodeReleased(BridgeFailure? error, bool protocol = false) => protocol
+        ? EncodeReply(error ?? new("disconnected", "The Bridge is closed."), writeState: null, protocol)
+        : EncodeReply(error, writeState: null, released: true);
 
     private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
     {
@@ -922,11 +932,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         try
         {
             var reply = EncodeReply(error, WriteSnapshot, protocol);
-            return IsInactive ? EncodeWithoutSnapshot(error) : reply;
+            return IsInactive ? EncodeReleased(error, protocol) : reply;
         }
         catch (BridgeSnapshotDetachedException)
         {
-            return EncodeWithoutSnapshot(error);
+            return EncodeReleased(error, protocol);
         }
         catch (BridgeCollectionKeyException keys)
         {
@@ -1116,11 +1126,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             });
-            return IsInactive ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed.")) : reply;
+            return IsInactive ? EncodeReleased(new("disconnected", "The Bridge is closed.")) : reply;
         }
         catch (BridgeSnapshotDetachedException)
         {
-            return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            return EncodeReleased(new("disconnected", "The Bridge is closed."));
         }
         catch (BridgeCollectionKeyException keys)
         {
@@ -1146,7 +1156,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     // The snapshot route, which a client reads first, states the wire protocol
     // version. Clients ignore envelope members they do not know.
-    private static string EncodeReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeState, bool protocol = false) => WriteJson(writer =>
+    private static string EncodeReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeState, bool protocol = false,
+        bool released = false) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteBoolean("ok", error is null);
@@ -1168,6 +1179,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             else BridgeDiagnostics.Write(writer, error.Detail);
             writer.WriteEndObject();
         }
+        if (released) writer.WriteBoolean("released", true);
         if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);
         writer.WriteEndObject();
     });
