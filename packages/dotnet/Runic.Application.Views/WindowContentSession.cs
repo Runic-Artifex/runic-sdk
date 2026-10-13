@@ -1509,20 +1509,29 @@ public sealed class WindowContentSession : IDisposable
 
         public void BeginDetaching() => (bridge as IBridgeDetachmentSignal)?.BeginDetaching();
 
+        // Lock rule: never hold _gate while waiting for a model turn. A navigator retires
+        // content off-turn, and disposing the bridge (with its nested content) waits for a
+        // turn, while a browser unmount's release turn takes _gate in OnWebUnmounted
+        // (issue #245). The state change happens under _gate, so each View is released
+        // exactly once and a concurrent unmount finds nothing to release. Taking _gate also
+        // waits for a release that OnWebUnmounted has already begun, so every View is still
+        // released before the bridge is disposed.
         public void Dispose()
         {
+            IRunicView[] views;
             lock (_gate)
             {
                 if (_disposed) return;
                 _disposed = true;
-                try
-                {
-                    foreach (var view in _presentations.Values.ToArray())
-                        ReleasePresentation(view, attached: true, mounted: true);
-                    _presentations.Clear();
-                }
-                finally { bridge.Dispose(); }
+                views = [.. _presentations.Values];
+                _presentations.Clear();
             }
+            try
+            {
+                foreach (var view in views)
+                    ReleasePresentation(view, attached: true, mounted: true);
+            }
+            finally { bridge.Dispose(); }
         }
 
         private void ReleasePresentation(IRunicView view, bool attached, bool mounted)
