@@ -108,6 +108,31 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's notifications.");
     }
 
+    // Login startup is an application singleton too. Nothing is registered with the desktop by resolving it.
+    [Test, NotInParallel(Order = 31)]
+    public async Task PlatformServicesRegisterOneLoginStartupForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var startup = provider.GetRequiredService<IDesktopLoginStartup>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(startup, first.ServiceProvider.GetRequiredService<IDesktopLoginStartup>()),
+                    "A Window scope got its own login startup.");
+            if (OperatingSystem.IsLinux())
+                Require(startup.GetType().FullName == "Runic.Platform.Linux.Portal.LinuxLoginStartup",
+                    $"Linux did not create XDG login startup: {startup.GetType().FullName}");
+            else
+                Require(await startup.IsEnabledAsync() is PlatformResult<bool>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+                    "Login startup without an application ID was not reported unconfigured.");
+        }
+
+        var custom = DesktopLoginStartup.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopLoginStartup>(), custom),
+            "AddRunicPlatformServices replaced the application's login startup.");
+    }
+
     // The status icon is an application singleton like notifications. Creating it connects to nothing; only
     // ShowAsync registers with the desktop's status area.
     [Test, NotInParallel(Order = 30)]

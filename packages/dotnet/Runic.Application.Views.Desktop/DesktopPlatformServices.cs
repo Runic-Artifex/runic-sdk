@@ -161,6 +161,39 @@ public static class PlatformServices
             .CreateStatusIcon();
 #endif
 
+    /// <summary>Creates login startup for the application from the provider for the operating system.</summary>
+    /// <param name="applicationId">
+    /// The application's ID: on Linux the reverse-DNS ID of its installed desktop entry, which names the autostart
+    /// entry; on Windows the name of its Run value. <see langword="null"/> leaves login startup unconfigured, except
+    /// inside a Flatpak or Snap sandbox, where the desktop portal knows the application.
+    /// </param>
+    /// <remarks>
+    /// Nothing is registered until <see cref="IDesktopLoginStartup.EnableAsync"/>, which an application calls only
+    /// when the user asks. Linux writes an XDG autostart entry, or asks the Background portal inside a sandbox;
+    /// Windows writes the user's Run key. macOS has no provider yet: every request reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopLoginStartup CreateLoginStartup(string? applicationId = null) => CreateLoginStartup(applicationId, null);
+
+    internal static IDesktopLoginStartup CreateLoginStartup(string? applicationId, ILogger? logger)
+    {
+        IDesktopLoginStartup? startup = null;
+        if (OperatingSystem.IsWindows())
+            startup = applicationId is null ? null : Optional(() => CreateWindowsLoginStartup(applicationId));
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsLinux())
+            startup = new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+                .CreateLoginStartup();
+#endif
+        return startup ?? DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopLoginStartup CreateWindowsLoginStartup(string applicationId) =>
+        WindowsPlatformProvider.CreateLoginStartup(applicationId);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNotifications CreateWindowsNotifications(string applicationId) =>
         WindowsPlatformProvider.CreateNotifications(applicationId);
@@ -208,6 +241,51 @@ public static class PlatformServices
         if (native is not { } selected) return WindowPlatformServices.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         return new BoundWindowPlatformServices(owner, selected);
     }
+
+    /// <summary>Asks the desktop to bring an open Desktop window to the front, for example for a second launch.</summary>
+    /// <param name="owner">The window's native owner.</param>
+    /// <param name="context">The activation token or startup ID that lets the desktop grant focus, such as
+    /// <see cref="ApplicationLaunch.PlatformContext"/> of a forwarded launch.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <remarks>
+    /// The desktop decides whether to grant focus; without a context many Wayland compositors only mark the window as
+    /// wanting attention. Linux presents GTK 3 and GTK 4 windows. A window without native dispatch, such as an
+    /// installed browser, reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
+    /// <see cref="PlatformUnavailableReason.OwnerClosed"/>; Windows and macOS report
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/> for now.
+    /// </remarks>
+    public static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopNativeOwner owner, DesktopActivationContext? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!owner.Window.IsOpen) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+        if (!owner.IsAvailable) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        try
+        {
+            var provider = CurrentProvider;
+#if RUNIC_PORTABLE_PLATFORMS
+            if (provider == DesktopPlatformProvider.LinuxGtk3) { await PresentGtk3(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
+            if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux())
+            { await PresentGtk4(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
+#endif
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        }
+        catch (OwnerClosedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+    }
+
+    private static readonly PlatformResult<PlatformUnit> Presented = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ValueTask PresentGtk3(DesktopNativeOwner owner, DesktopActivationContext? context, CancellationToken cancellationToken) =>
+        new Gtk3PortalWindowOwner(owner).PresentAsync(context, cancellationToken);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [SupportedOSPlatform("linux")]
+    private static ValueTask PresentGtk4(DesktopNativeOwner owner, DesktopActivationContext? context, CancellationToken cancellationToken) =>
+        new Gtk4PortalWindowOwner(owner).PresentAsync(context, cancellationToken);
+#endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static NativeServices CreateWindows(DesktopNativeOwner owner) => new(
@@ -372,7 +450,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// Registers one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed as
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
     /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, one
-    /// <see cref="IDesktopNotifications"/> and one <see cref="IDesktopStatusIcon"/> for the application, without an
+    /// <see cref="IDesktopNotifications"/>, one <see cref="IDesktopStatusIcon"/> and one <see cref="IDesktopLoginStartup"/>
+    /// for the application, without an
     /// application ID.
     /// </summary>
     /// <remarks>
@@ -428,6 +507,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     {
         services.TryAddSingleton(static _ => PlatformServices.CreateSettings());
         services.TryAddSingleton(provider => PlatformServices.CreateNotifications(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(provider => PlatformServices.CreateLoginStartup(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(provider => PlatformServices.CreateStatusIcon(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));

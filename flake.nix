@@ -55,6 +55,8 @@
           # Status icon checks on Plasma and Waybar; see nixos/status-icon.
           status-icon-plasma = (import ./nixos/status-icon { inherit pkgs; }).plasma;
           status-icon-waybar = (import ./nixos/status-icon { inherit pkgs; }).waybar;
+          # Single instance and login startup on Plasma; see nixos/application-lifetime.
+          application-lifetime-plasma = (import ./nixos/application-lifetime { inherit pkgs; }).plasma;
           desktop-flatpak-tools = pkgs.buildEnv {
             name = "runic-desktop-flatpak-tools";
             paths = [ pkgs.flatpak pkgs.bash pkgs.coreutils pkgs.nix ];

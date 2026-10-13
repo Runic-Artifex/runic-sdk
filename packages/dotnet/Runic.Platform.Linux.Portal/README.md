@@ -155,3 +155,24 @@ must allow owning `org.kde.StatusNotifierItem-*` names and talking to the watche
 Plasma fills a submenu when it first opens, so the first hover over a submenu
 can show nothing. The VM checks in `nixos/status-icon` drive the icon through
 Plasma 6 and through Waybar's tray.
+
+## Login startup
+
+`CreateLoginStartup(applicationId)` on `PortalApplication` or
+`PortalPlatformProvider` starts the application when the user logs in. Outside a
+sandbox it writes `~/.config/autostart/<applicationId>.desktop`, which every
+XDG desktop reads at login, and marks it with `X-Runic-Application`. It never
+changes or removes an entry it did not write, and an entry the user turned off
+(`Hidden=true` or `X-GNOME-Autostart-enabled=false`) stays off: enabling reports
+`PermissionDenied`. Disabling removes the entry, and with it the user's choice.
+
+Inside Flatpak or Snap the entry is out of reach, so `EnableAsync` and
+`DisableAsync` ask the Background portal, which may ask the user and passes the
+request's `Reason`. The portal cannot report whether autostart is on, so
+`IsEnabledAsync` returns unavailable there. Without an ID the provider works only
+in a sandbox, where the portal knows the application.
+
+```csharp
+var startup = portals.CreateLoginStartup();
+await startup.EnableAsync(new LoginStartupRequest(["--background"]) { Reason = "Keep watching for updates." });
+```

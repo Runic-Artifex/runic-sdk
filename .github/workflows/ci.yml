@@ -559,6 +559,13 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeInhibition]" --test-parameter system-only=true
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeInhibition]" --test-parameter system-only=true
+      - name: Verify Windows login startup with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeLoginStartup]"
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeLoginStartup]"
       - name: Verify Windows settings read with JIT and NativeAOT
         if: runner.os == 'Windows'
         timeout-minutes: 3

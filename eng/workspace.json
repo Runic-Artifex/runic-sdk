@@ -344,7 +344,8 @@
         "tests/dotnet/Runic.Platform.Runtime.Tests",
         "tests/native/Runic.Desktop.WebViewSmoke",
         "tests/native/Runic.Desktop.Gtk4.Smoke",
-        "tests/native/Runic.StatusIcon.Smoke"
+        "tests/native/Runic.StatusIcon.Smoke",
+        "tests/native/Runic.Lifetime.Smoke"
       ]
     }
   }

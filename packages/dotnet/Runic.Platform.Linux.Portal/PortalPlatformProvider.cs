@@ -19,6 +19,10 @@ public static class PortalPlatformProvider
     /// and appears once a status area starts.</remarks>
     public static IDesktopStatusIcon CreateStatusIcon(Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(null, diagnosticSink).CreateStatusIcon();
+    /// <summary>Creates login startup for the application with the installed desktop ID <paramref name="applicationId"/>.</summary>
+    /// <remarks>Without an ID it works only inside Flatpak or Snap, where the portal knows the application.</remarks>
+    public static IDesktopLoginStartup CreateLoginStartup(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(applicationId, diagnosticSink).CreateLoginStartup();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

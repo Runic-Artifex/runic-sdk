@@ -33,6 +33,10 @@ public sealed class PortalApplication
     /// <remarks>Its <c>Id</c> is this application ID. Status icons have no portal: a sandbox must allow owning
     /// <c>org.kde.StatusNotifierItem-*</c> names and talking to <c>org.kde.StatusNotifierWatcher</c>.</remarks>
     public IDesktopStatusIcon CreateStatusIcon() => new StatusNotifierIcon(application: this);
+    /// <summary>Creates login startup for this application. Nothing is registered until it is enabled.</summary>
+    /// <remarks>Outside a sandbox it writes <c>~/.config/autostart/&lt;application ID&gt;.desktop</c>, so it needs the
+    /// application ID; inside Flatpak or Snap it asks the Background portal, which may ask the user.</remarks>
+    public IDesktopLoginStartup CreateLoginStartup() => new LinuxLoginStartup(this);
     /// <summary>Creates file handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }
