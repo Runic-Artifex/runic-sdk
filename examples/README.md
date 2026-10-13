@@ -7,6 +7,7 @@ TypeScript clients. To start a new application, use the
 
 - [First Window](first-window/README.md) introduces one Window, ViewModel, and frontend client.
 - [First Window on Runic Desktop](first-window-desktop/README.md) hosts the same counter with Runic Desktop and ReactiveUI.
+- [Status icon](status-icon/README.md) starts without a window and opens one from its status icon and menu.
 - [Multi-window project](multi-window/README.md) opens Windows from a ReactiveUI ViewModel, shares state across Windows, and stores app settings next to the desktop's preferences.
 - [CommunityToolkit Notes](notes-view-first/README.md) shows nested content, View scopes, and typed writes.
 - [Reactive Notes](notes-reactive-views/README.md) navigates ReactiveUI ViewModels with RunicNavigator: master/detail with a result, a leave guard asked through an `Interaction`, and multiple Views over a model.

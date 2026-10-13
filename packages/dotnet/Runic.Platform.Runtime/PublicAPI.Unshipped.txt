@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Platform.Runtime.DesktopServiceValidation.StatusIcon(Runic.Platform.DesktopStatusIconState! state) -> void

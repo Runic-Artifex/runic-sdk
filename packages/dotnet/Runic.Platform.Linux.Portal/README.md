@@ -127,3 +127,31 @@ application choice and reveal, are described in the
 [desktop services guide](https://docs.runic-artifex.eu/guides/desktop-services/). It includes
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.
+
+## Status icon
+
+`CreateStatusIcon()` on `PortalApplication` or `PortalPlatformProvider` shows an
+application's icon in the desktop's status area, with a tooltip, an attention
+state and a menu. Status icons have no portal: the icon is a StatusNotifierItem
+with a `com.canonical.dbusmenu` menu, registered with
+`org.kde.StatusNotifierWatcher`. Plasma, Waybar's tray and GNOME with the
+AppIndicator extension provide that watcher.
+
+```csharp
+await using var icon = portals.CreateStatusIcon();
+icon.Activated += (_, activation) => { /* worker thread: dispatch to the application */ };
+await icon.ShowAsync(new DesktopStatusIconState(new DesktopIcon { ThemeName = "applications-system" }, "My app")
+{
+    Menu = [new DesktopMenuCommand("open", "Open window"), new DesktopMenuSeparator(), new DesktopMenuCommand("quit", "Quit")],
+});
+```
+
+Without a watcher or a status area showing icons, `ShowAsync` returns
+unavailable and reports `status-icon-no-watcher` or `status-icon-no-host`. The
+icon stays ready and registers once a watcher starts, and again after it
+restarts. `HideAsync` releases the icon's bus name, which removes it. A sandbox
+must allow owning `org.kde.StatusNotifierItem-*` names and talking to the watcher.
+
+Plasma fills a submenu when it first opens, so the first hover over a submenu
+can show nothing. The VM checks in `nixos/status-icon` drive the icon through
+Plasma 6 and through Waybar's tray.

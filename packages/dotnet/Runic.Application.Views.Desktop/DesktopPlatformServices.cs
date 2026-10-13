@@ -131,6 +131,36 @@ public static class PlatformServices
         return notifications ?? DesktopNotifications.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    /// <summary>Creates the application's status icon from the provider for the operating system.</summary>
+    /// <param name="applicationId">On Linux the reverse-DNS ID of the installed desktop entry, used as the icon's ID;
+    /// <see langword="null"/> uses the process name.</param>
+    /// <returns>A status icon that the caller disposes at shutdown.</returns>
+    /// <remarks>
+    /// Linux registers a StatusNotifierItem with the desktop's status area (Plasma, Waybar's tray, or GNOME with the
+    /// AppIndicator extension) without loading GTK. Creating it connects to nothing; the first
+    /// <see cref="IDesktopStatusIcon.ShowAsync"/> does. Windows and macOS have no provider yet: every request reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    public static IDesktopStatusIcon CreateStatusIcon(string? applicationId = null) => CreateStatusIcon(applicationId, null);
+
+    internal static IDesktopStatusIcon CreateStatusIcon(string? applicationId, ILogger? logger)
+    {
+        IDesktopStatusIcon? icon = null;
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsLinux()) icon = CreatePortalStatusIcon(applicationId, logger);
+#endif
+        return icon ?? DesktopStatusIcons.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopStatusIcon CreatePortalStatusIcon(string? applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+            .CreateStatusIcon();
+#endif
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopNotifications CreateWindowsNotifications(string applicationId) =>
         WindowsPlatformProvider.CreateNotifications(applicationId);
@@ -341,16 +371,18 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <summary>
     /// Registers one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed as
     /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/> and one
-    /// <see cref="IDesktopNotifications"/> for the application, without an application ID.
+    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, one
+    /// <see cref="IDesktopNotifications"/> and one <see cref="IDesktopStatusIcon"/> for the application, without an
+    /// application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
     /// its constructor. They bind to the window's native owner when the window opens, using
     /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. Resolved in any other scope
     /// they stay unbound and report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
-    /// <see cref="IDesktopSettings"/> and <see cref="IDesktopNotifications"/> need no window: they are singletons
-    /// created by <see cref="PlatformServices.CreateSettings"/> and <see cref="PlatformServices.CreateNotifications(string?)"/>
+    /// <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/> and <see cref="IDesktopStatusIcon"/> need
+    /// no window: they are singletons created by <see cref="PlatformServices.CreateSettings"/>,
+    /// <see cref="PlatformServices.CreateNotifications(string?)"/> and <see cref="PlatformServices.CreateStatusIcon(string?)"/>
     /// when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
@@ -396,6 +428,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     {
         services.TryAddSingleton(static _ => PlatformServices.CreateSettings());
         services.TryAddSingleton(provider => PlatformServices.CreateNotifications(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(provider => PlatformServices.CreateStatusIcon(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());

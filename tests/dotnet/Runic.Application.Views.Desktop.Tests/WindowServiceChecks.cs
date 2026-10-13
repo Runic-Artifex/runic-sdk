@@ -108,6 +108,32 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's notifications.");
     }
 
+    // The status icon is an application singleton like notifications. Creating it connects to nothing; only
+    // ShowAsync registers with the desktop's status area.
+    [Test, NotInParallel(Order = 30)]
+    public async Task PlatformServicesRegisterOneStatusIconForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var icon = provider.GetRequiredService<IDesktopStatusIcon>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(icon, first.ServiceProvider.GetRequiredService<IDesktopStatusIcon>()),
+                    "A Window scope got its own status icon.");
+            if (OperatingSystem.IsLinux())
+                Require(icon.GetType().FullName == "Runic.Platform.Linux.Portal.StatusNotifierIcon",
+                    $"Linux did not create a StatusNotifierItem: {icon.GetType().FullName}");
+            else
+                Require(await icon.HideAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+                    "A platform without a status icon provider did not report it unconfigured.");
+        }
+
+        await using var custom = DesktopStatusIcons.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopStatusIcon>(), custom),
+            "AddRunicPlatformServices replaced the application's status icon.");
+    }
+
     [Test]
     public async Task UnavailableDesktopNotificationsReportTheReason()
     {
