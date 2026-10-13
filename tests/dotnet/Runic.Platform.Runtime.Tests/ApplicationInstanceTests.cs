@@ -1,0 +1,109 @@
+using System.Threading.Channels;
+using Runic.Platform;
+using Runic.Platform.Runtime;
+using TUnit.Core;
+
+internal sealed class ApplicationInstanceTests
+{
+    private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+
+    private static string Directory() => Path.Combine(Path.GetTempPath(), "runic-instance-" + Guid.NewGuid().ToString("N")[..8]);
+
+    [Test, DisplayName("INSTANCE: a second launch reaches the running instance with its arguments, directory and token")]
+    public async Task ForwardsLaunchesAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var first = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            Check(first is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary }, "the first launch is the running instance");
+            await using var instance = ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)first).Value).Instance;
+            var launches = Channel.CreateUnbounded<ApplicationLaunch>();
+            instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
+
+            var launch = new ApplicationLaunch(["--open", "dashboard", "ümlaut", ""], "/home/alice") { PlatformContext = new DesktopActivationContext("token-1") };
+            var second = await ApplicationInstance.ClaimAsync("org.example.App", launch, directory, default);
+            Check(second is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the second launch is forwarded");
+            var received = await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+            Check(received.Arguments.SequenceEqual(launch.Arguments) && received.WorkingDirectory == "/home/alice"
+                && received.PlatformContext?.ActivationToken == "token-1" && received.PlatformContext.StartupId is null, "arguments, directory and token arrive");
+
+            var other = await ApplicationInstance.ClaimAsync("org.example.Other", new ApplicationLaunch([], "/"), directory, default);
+            Check(other is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary }, "another application has its own instance");
+            await ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)other).Value).Instance.DisposeAsync();
+
+            for (int i = 0; i < 3; i++)
+                Check(await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([i.ToString(System.Globalization.CultureInfo.InvariantCulture)], "/"), directory, default)
+                    is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "later launches are forwarded too");
+            for (int i = 0; i < 3; i++)
+                Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    "launches arrive one at a time, in order");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: ending the running instance, or a stale socket, lets the next launch take over")]
+    public async Task TakesOverAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var first = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            await ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)first).Value).Instance.DisposeAsync();
+            Check(System.IO.Directory.GetFiles(directory, "*.sock").Length == 0, "disposal removes the socket");
+
+            // A crashed instance leaves its socket behind but not its lock.
+            foreach (var lockFile in System.IO.Directory.GetFiles(directory, "*.lock"))
+                File.WriteAllText(Path.ChangeExtension(lockFile, ".sock"), "");
+            var next = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            Check(next is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary }, "a stale socket does not block the next instance");
+            await ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)next).Value).Instance.DisposeAsync();
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: a lock holder that never answers is busy, not forwarded")]
+    public async Task BusyAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var first = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            var instance = ((ApplicationInstanceClaim.Primary)((PlatformResult<ApplicationInstanceClaim>.Success)first).Value).Instance;
+            string lockPath = System.IO.Directory.GetFiles(directory, "*.lock").Single();
+            await instance.DisposeAsync();
+            using var held = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            var busy = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            Check(busy is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy }, "no answer within the timeout is busy");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: IDs, launches and directories others can enter are refused")]
+    public async Task ValidationAsync()
+    {
+        Throws<ArgumentException>(() => ApplicationInstance.ClaimAsync("../escape", new ApplicationLaunch([], "/")).AsTask().GetAwaiter().GetResult());
+        Throws<ArgumentException>(() => ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(default, "/")).AsTask().GetAwaiter().GetResult());
+        Throws<ArgumentException>(() => ApplicationInstance.Encode(new ApplicationLaunch([new string('a', 70_000)], "/")));
+        Check(ApplicationLaunch.FromProcess(["a"]).WorkingDirectory == Environment.CurrentDirectory, "this process's directory");
+        if (OperatingSystem.IsWindows()) return;
+        string directory = Directory();
+        try
+        {
+            System.IO.Directory.CreateDirectory(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.OtherExecute | UnixFileMode.OtherWrite);
+            File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.OtherExecute | UnixFileMode.OtherWrite);
+            var shared = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), directory, default);
+            Check(shared is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.IoError }, "a directory others can enter is refused");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    private static void Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
+        catch (T) { return; }
+        throw new InvalidOperationException($"expected {typeof(T).Name}");
+    }
+
+    private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+}

@@ -1,2 +1,4 @@
 #nullable enable
+Runic.Platform.Runtime.ApplicationInstance
+static Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string! applicationId, Runic.Platform.ApplicationLaunch! launch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.ApplicationInstanceClaim!>!>
 static Runic.Platform.Runtime.DesktopServiceValidation.StatusIcon(Runic.Platform.DesktopStatusIconState! state) -> void

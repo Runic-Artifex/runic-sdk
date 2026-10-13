@@ -1,5 +1,20 @@
 #nullable enable
+abstract Runic.Platform.ApplicationInstanceClaim.<Clone>$() -> Runic.Platform.ApplicationInstanceClaim!
 abstract Runic.Platform.DesktopMenuItem.<Clone>$() -> Runic.Platform.DesktopMenuItem!
+override Runic.Platform.ApplicationInstanceClaim.Equals(object? obj) -> bool
+override Runic.Platform.ApplicationInstanceClaim.Forwarded.<Clone>$() -> Runic.Platform.ApplicationInstanceClaim.Forwarded!
+override Runic.Platform.ApplicationInstanceClaim.Forwarded.Equals(object? obj) -> bool
+override Runic.Platform.ApplicationInstanceClaim.Forwarded.GetHashCode() -> int
+override Runic.Platform.ApplicationInstanceClaim.Forwarded.ToString() -> string!
+override Runic.Platform.ApplicationInstanceClaim.GetHashCode() -> int
+override Runic.Platform.ApplicationInstanceClaim.Primary.<Clone>$() -> Runic.Platform.ApplicationInstanceClaim.Primary!
+override Runic.Platform.ApplicationInstanceClaim.Primary.Equals(object? obj) -> bool
+override Runic.Platform.ApplicationInstanceClaim.Primary.GetHashCode() -> int
+override Runic.Platform.ApplicationInstanceClaim.Primary.ToString() -> string!
+override Runic.Platform.ApplicationInstanceClaim.ToString() -> string!
+override Runic.Platform.ApplicationLaunch.Equals(object? obj) -> bool
+override Runic.Platform.ApplicationLaunch.GetHashCode() -> int
+override Runic.Platform.ApplicationLaunch.ToString() -> string!
 override Runic.Platform.DesktopIcon.Equals(object? obj) -> bool
 override Runic.Platform.DesktopIcon.GetHashCode() -> int
 override Runic.Platform.DesktopIconImage.Equals(object? obj) -> bool
@@ -27,9 +42,36 @@ override Runic.Platform.DesktopStatusIconActivation.ToString() -> string!
 override Runic.Platform.DesktopStatusIconState.Equals(object? obj) -> bool
 override Runic.Platform.DesktopStatusIconState.GetHashCode() -> int
 override Runic.Platform.DesktopStatusIconState.ToString() -> string!
+override Runic.Platform.LoginStartupRequest.Equals(object? obj) -> bool
+override Runic.Platform.LoginStartupRequest.GetHashCode() -> int
+override Runic.Platform.LoginStartupRequest.ToString() -> string!
+override sealed Runic.Platform.ApplicationInstanceClaim.Forwarded.Equals(Runic.Platform.ApplicationInstanceClaim? other) -> bool
+override sealed Runic.Platform.ApplicationInstanceClaim.Primary.Equals(Runic.Platform.ApplicationInstanceClaim? other) -> bool
 override sealed Runic.Platform.DesktopMenuCommand.Equals(Runic.Platform.DesktopMenuItem? other) -> bool
 override sealed Runic.Platform.DesktopMenuSeparator.Equals(Runic.Platform.DesktopMenuItem? other) -> bool
 override sealed Runic.Platform.DesktopMenuSubmenu.Equals(Runic.Platform.DesktopMenuItem? other) -> bool
+Runic.Platform.ApplicationInstanceClaim
+Runic.Platform.ApplicationInstanceClaim.ApplicationInstanceClaim(Runic.Platform.ApplicationInstanceClaim! original) -> void
+Runic.Platform.ApplicationInstanceClaim.Forwarded
+Runic.Platform.ApplicationInstanceClaim.Forwarded.Equals(Runic.Platform.ApplicationInstanceClaim.Forwarded? other) -> bool
+Runic.Platform.ApplicationInstanceClaim.Forwarded.Forwarded() -> void
+Runic.Platform.ApplicationInstanceClaim.Primary
+Runic.Platform.ApplicationInstanceClaim.Primary.Deconstruct(out Runic.Platform.IApplicationInstance! Instance) -> void
+Runic.Platform.ApplicationInstanceClaim.Primary.Equals(Runic.Platform.ApplicationInstanceClaim.Primary? other) -> bool
+Runic.Platform.ApplicationInstanceClaim.Primary.Instance.get -> Runic.Platform.IApplicationInstance!
+Runic.Platform.ApplicationInstanceClaim.Primary.Instance.init -> void
+Runic.Platform.ApplicationInstanceClaim.Primary.Primary(Runic.Platform.IApplicationInstance! Instance) -> void
+Runic.Platform.ApplicationLaunch
+Runic.Platform.ApplicationLaunch.ApplicationLaunch(System.Collections.Immutable.ImmutableArray<string!> Arguments, string! WorkingDirectory) -> void
+Runic.Platform.ApplicationLaunch.Arguments.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.ApplicationLaunch.Arguments.init -> void
+Runic.Platform.ApplicationLaunch.<Clone>$() -> Runic.Platform.ApplicationLaunch!
+Runic.Platform.ApplicationLaunch.Deconstruct(out System.Collections.Immutable.ImmutableArray<string!> Arguments, out string! WorkingDirectory) -> void
+Runic.Platform.ApplicationLaunch.Equals(Runic.Platform.ApplicationLaunch? other) -> bool
+Runic.Platform.ApplicationLaunch.PlatformContext.get -> Runic.Platform.DesktopActivationContext?
+Runic.Platform.ApplicationLaunch.PlatformContext.init -> void
+Runic.Platform.ApplicationLaunch.WorkingDirectory.get -> string!
+Runic.Platform.ApplicationLaunch.WorkingDirectory.init -> void
 Runic.Platform.DesktopIcon
 Runic.Platform.DesktopIcon.<Clone>$() -> Runic.Platform.DesktopIcon!
 Runic.Platform.DesktopIcon.DesktopIcon() -> void
@@ -49,6 +91,7 @@ Runic.Platform.DesktopIconImage.Width.get -> int
 Runic.Platform.DesktopIconImage.Width.init -> void
 Runic.Platform.DesktopIcon.ThemeName.get -> string?
 Runic.Platform.DesktopIcon.ThemeName.init -> void
+Runic.Platform.DesktopLoginStartup
 Runic.Platform.DesktopMenuCommand
 Runic.Platform.DesktopMenuCommand.Checked.get -> bool?
 Runic.Platform.DesktopMenuCommand.Checked.init -> void
@@ -113,14 +156,39 @@ Runic.Platform.DesktopStatusIconStatus
 Runic.Platform.DesktopStatusIconStatus.Active = 1 -> Runic.Platform.DesktopStatusIconStatus
 Runic.Platform.DesktopStatusIconStatus.NeedsAttention = 2 -> Runic.Platform.DesktopStatusIconStatus
 Runic.Platform.DesktopStatusIconStatus.Passive = 0 -> Runic.Platform.DesktopStatusIconStatus
+Runic.Platform.IApplicationInstance
+Runic.Platform.IApplicationInstance.Launched -> System.EventHandler<Runic.Platform.ApplicationLaunch!>?
+Runic.Platform.IDesktopLoginStartup
+Runic.Platform.IDesktopLoginStartup.DisableAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopLoginStartup.EnableAsync(Runic.Platform.LoginStartupRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopLoginStartup.IsEnabledAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<bool>!>
 Runic.Platform.IDesktopStatusIcon
 Runic.Platform.IDesktopStatusIcon.Activated -> System.EventHandler<Runic.Platform.DesktopStatusIconActivation!>?
 Runic.Platform.IDesktopStatusIcon.HideAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.IDesktopStatusIcon.ShowAsync(Runic.Platform.DesktopStatusIconState! state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.LoginStartupRequest
+Runic.Platform.LoginStartupRequest.Arguments.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.LoginStartupRequest.Arguments.init -> void
+Runic.Platform.LoginStartupRequest.<Clone>$() -> Runic.Platform.LoginStartupRequest!
+Runic.Platform.LoginStartupRequest.Deconstruct(out System.Collections.Immutable.ImmutableArray<string!> Arguments) -> void
+Runic.Platform.LoginStartupRequest.Equals(Runic.Platform.LoginStartupRequest? other) -> bool
+Runic.Platform.LoginStartupRequest.LoginStartupRequest(System.Collections.Immutable.ImmutableArray<string!> Arguments) -> void
+Runic.Platform.LoginStartupRequest.Reason.get -> string?
+Runic.Platform.LoginStartupRequest.Reason.init -> void
+static Runic.Platform.ApplicationInstanceClaim.Forwarded.operator !=(Runic.Platform.ApplicationInstanceClaim.Forwarded? left, Runic.Platform.ApplicationInstanceClaim.Forwarded? right) -> bool
+static Runic.Platform.ApplicationInstanceClaim.Forwarded.operator ==(Runic.Platform.ApplicationInstanceClaim.Forwarded? left, Runic.Platform.ApplicationInstanceClaim.Forwarded? right) -> bool
+static Runic.Platform.ApplicationInstanceClaim.operator !=(Runic.Platform.ApplicationInstanceClaim? left, Runic.Platform.ApplicationInstanceClaim? right) -> bool
+static Runic.Platform.ApplicationInstanceClaim.operator ==(Runic.Platform.ApplicationInstanceClaim? left, Runic.Platform.ApplicationInstanceClaim? right) -> bool
+static Runic.Platform.ApplicationInstanceClaim.Primary.operator !=(Runic.Platform.ApplicationInstanceClaim.Primary? left, Runic.Platform.ApplicationInstanceClaim.Primary? right) -> bool
+static Runic.Platform.ApplicationInstanceClaim.Primary.operator ==(Runic.Platform.ApplicationInstanceClaim.Primary? left, Runic.Platform.ApplicationInstanceClaim.Primary? right) -> bool
+static Runic.Platform.ApplicationLaunch.FromProcess(System.Collections.Generic.IEnumerable<string!>! arguments) -> Runic.Platform.ApplicationLaunch!
+static Runic.Platform.ApplicationLaunch.operator !=(Runic.Platform.ApplicationLaunch? left, Runic.Platform.ApplicationLaunch? right) -> bool
+static Runic.Platform.ApplicationLaunch.operator ==(Runic.Platform.ApplicationLaunch? left, Runic.Platform.ApplicationLaunch? right) -> bool
 static Runic.Platform.DesktopIconImage.operator !=(Runic.Platform.DesktopIconImage? left, Runic.Platform.DesktopIconImage? right) -> bool
 static Runic.Platform.DesktopIconImage.operator ==(Runic.Platform.DesktopIconImage? left, Runic.Platform.DesktopIconImage? right) -> bool
 static Runic.Platform.DesktopIcon.operator !=(Runic.Platform.DesktopIcon? left, Runic.Platform.DesktopIcon? right) -> bool
 static Runic.Platform.DesktopIcon.operator ==(Runic.Platform.DesktopIcon? left, Runic.Platform.DesktopIcon? right) -> bool
+static Runic.Platform.DesktopLoginStartup.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopLoginStartup!
 static Runic.Platform.DesktopMenuCommand.operator !=(Runic.Platform.DesktopMenuCommand? left, Runic.Platform.DesktopMenuCommand? right) -> bool
 static Runic.Platform.DesktopMenuCommand.operator ==(Runic.Platform.DesktopMenuCommand? left, Runic.Platform.DesktopMenuCommand? right) -> bool
 static Runic.Platform.DesktopMenuItem.operator !=(Runic.Platform.DesktopMenuItem? left, Runic.Platform.DesktopMenuItem? right) -> bool
@@ -134,6 +202,11 @@ static Runic.Platform.DesktopStatusIconActivation.operator ==(Runic.Platform.Des
 static Runic.Platform.DesktopStatusIconState.operator !=(Runic.Platform.DesktopStatusIconState? left, Runic.Platform.DesktopStatusIconState? right) -> bool
 static Runic.Platform.DesktopStatusIconState.operator ==(Runic.Platform.DesktopStatusIconState? left, Runic.Platform.DesktopStatusIconState? right) -> bool
 static Runic.Platform.DesktopStatusIcons.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopStatusIcon!
+static Runic.Platform.LoginStartupRequest.operator !=(Runic.Platform.LoginStartupRequest? left, Runic.Platform.LoginStartupRequest? right) -> bool
+static Runic.Platform.LoginStartupRequest.operator ==(Runic.Platform.LoginStartupRequest? left, Runic.Platform.LoginStartupRequest? right) -> bool
+virtual Runic.Platform.ApplicationInstanceClaim.EqualityContract.get -> System.Type!
+virtual Runic.Platform.ApplicationInstanceClaim.Equals(Runic.Platform.ApplicationInstanceClaim? other) -> bool
+virtual Runic.Platform.ApplicationInstanceClaim.PrintMembers(System.Text.StringBuilder! builder) -> bool
 virtual Runic.Platform.DesktopMenuItem.EqualityContract.get -> System.Type!
 virtual Runic.Platform.DesktopMenuItem.Equals(Runic.Platform.DesktopMenuItem? other) -> bool
 virtual Runic.Platform.DesktopMenuItem.PrintMembers(System.Text.StringBuilder! builder) -> bool
