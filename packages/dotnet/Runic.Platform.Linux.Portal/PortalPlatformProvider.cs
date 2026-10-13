@@ -14,6 +14,11 @@ public static class PortalPlatformProvider
     /// <remarks>A supplied host ID requires a matching installed desktop entry and the host Registry portal. Diagnostic callbacks never receive notification text.</remarks>
     public static IDesktopNotifications CreateNotifications(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(applicationId, diagnosticSink).CreateNotifications();
+    /// <summary>Creates a status icon with a menu, registered with the desktop's StatusNotifierWatcher.</summary>
+    /// <remarks>Plasma, Waybar's tray and GNOME's AppIndicator extension show it; elsewhere it reports unavailable
+    /// and appears once a status area starts.</remarks>
+    public static IDesktopStatusIcon CreateStatusIcon(Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(null, diagnosticSink).CreateStatusIcon();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

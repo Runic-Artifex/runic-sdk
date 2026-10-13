@@ -1,0 +1,693 @@
+using System.Collections.Immutable;
+using System.Text;
+using Runic.Platform.Runtime;
+using Tmds.DBus.Protocol;
+
+namespace Runic.Platform.Linux.Portal;
+
+// A StatusNotifierItem with a com.canonical.dbusmenu menu, exported on the session bus and
+// registered with org.kde.StatusNotifierWatcher, which Plasma, Waybar and GNOME's AppIndicator
+// extension provide. There is no portal for status icons; sandboxed applications need to own
+// org.kde.StatusNotifierItem-* names and talk to the watcher.
+internal sealed class StatusNotifierIcon(string? address = null, string watcher = "org.kde.StatusNotifierWatcher",
+    PortalApplication? application = null) : IDesktopStatusIcon
+{
+    internal const string ItemPath = "/StatusNotifierItem", MenuPath = "/MenuBar";
+    private const string ItemInterface = "org.kde.StatusNotifierItem", WatcherInterface = "org.kde.StatusNotifierWatcher",
+        MenuInterface = "com.canonical.dbusmenu", PropertiesInterface = "org.freedesktop.DBus.Properties";
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    private static int s_instances;
+    private readonly PortalApplication _application = application ?? new PortalApplication();
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    // Bus handlers read the state on the connection's thread; ShowAsync replaces it under this lock.
+    private readonly Lock _lock = new();
+    private DesktopStatusIconState? _state;
+    private Menu _menu = Menu.Build([]);
+    private uint _revision;
+    private string? _activationToken;
+    private DBusConnection? _connection;
+    private IDisposable? _watcherOwner;
+    private string? _name;
+    private volatile bool _disposed;
+
+    public event EventHandler<DesktopStatusIconActivation>? Activated;
+
+    public async ValueTask<PlatformResult<PlatformUnit>> ShowAsync(DesktopStatusIconState state, CancellationToken cancellationToken = default)
+    {
+        DesktopServiceValidation.StatusIcon(state);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            DesktopStatusIconState? previous;
+            lock (_lock)
+            {
+                previous = _state;
+                _state = state;
+                _menu = Menu.Build(state.Menu);
+                _revision++;
+            }
+            if (_connection is null) await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            else if (previous is not null) Announce(previous, state);
+            return await RegisterAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
+        {
+            _application.Diagnose("status-icon-bus-unavailable", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
+                "Check that a D-Bus session bus is running and that a sandbox allows owning org.kde.StatusNotifierItem-* names.");
+            Reset();
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async ValueTask<PlatformResult<PlatformUnit>> HideAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            // The watcher drops an item when its bus name disappears.
+            Reset();
+            return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try { _disposed = true; Reset(); }
+        finally { _gate.Release(); }
+    }
+
+    private async Task ConnectAsync(CancellationToken cancellationToken)
+    {
+        var connection = new DBusConnection(address ?? DBusAddress.Session ?? throw new NativeBackendUnavailableException());
+        try
+        {
+            await connection.ConnectAsync().AsTask().WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
+            connection.AddMethodHandler(new ItemHandler(this));
+            connection.AddMethodHandler(new MenuHandler(this));
+            string name = $"org.kde.StatusNotifierItem-{Environment.ProcessId}-{Interlocked.Increment(ref s_instances)}";
+            if (!await connection.TryRequestNameAsync(name, RequestNameOptions.None).WaitAsync(Timeout, cancellationToken).ConfigureAwait(false))
+                throw new NativeBackendUnavailableException();
+            // A watcher that starts or restarts later forgets earlier items; register again then.
+            _watcherOwner = await connection.AddMatchAsync(new MatchRule
+            {
+                Type = MessageType.Signal, Sender = "org.freedesktop.DBus", Path = "/org/freedesktop/DBus",
+                Interface = "org.freedesktop.DBus", Member = "NameOwnerChanged", Arg0 = watcher,
+            }, static (message, _) =>
+            {
+                var reader = message.GetBodyReader();
+                _ = reader.ReadString(); _ = reader.ReadString();
+                return reader.ReadString();
+            }, notification =>
+            {
+                if (notification.HasValue && notification.Value.Length != 0) _ = RegisterAgainAsync();
+            }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
+            _connection = connection;
+            _name = name;
+        }
+        catch { connection.Dispose(); throw; }
+    }
+
+    private async Task<PlatformResult<PlatformUnit>> RegisterAsync(CancellationToken cancellationToken)
+    {
+        var connection = _connection!;
+        try
+        {
+            await connection.CallMethodAsync(WatcherCall(connection, "RegisterStatusNotifierItem", "s", _name!))
+                .WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.DBus.Error.ServiceUnknown" or "org.freedesktop.DBus.Error.NameHasNoOwner")
+        {
+            _application.Diagnose("status-icon-no-watcher", "No StatusNotifierWatcher is running.",
+                "The icon appears once a status area starts: Plasma, Waybar's tray, or GNOME with the AppIndicator extension.");
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        }
+        bool host = await connection.CallMethodAsync(WatcherCall(connection, "Get", "ss", WatcherInterface, "IsStatusNotifierHostRegistered"),
+                static (message, _) => message.GetBodyReader().ReadVariantValue().GetBool())
+            .WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
+        if (!host)
+        {
+            _application.Diagnose("status-icon-no-host", "The StatusNotifierWatcher has no status area showing icons.",
+                "The icon appears once a status area registers with the watcher.");
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        }
+        return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+    }
+
+    // A call to the watcher's own interface, or with Get to its Properties interface.
+    private MessageBuffer WatcherCall(DBusConnection connection, string member, string signature, params string[] arguments)
+    {
+        var writer = connection.GetMessageWriter();
+        try
+        {
+            writer.WriteMethodCallHeader(destination: watcher, path: "/StatusNotifierWatcher",
+                @interface: member == "Get" ? PropertiesInterface : WatcherInterface, member: member, signature: signature);
+            foreach (var argument in arguments) writer.WriteString(argument);
+            return writer.CreateMessage();
+        }
+        finally { writer.Dispose(); }
+    }
+
+    private async Task RegisterAgainAsync()
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_disposed || _connection is null) return;
+            await RegisterAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is DBusExceptionBase or TimeoutException)
+        {
+            _application.Diagnose("status-icon-register-failed", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
+                "The icon registers again when the status area restarts or on the next ShowAsync.");
+        }
+        finally { _gate.Release(); }
+    }
+
+    private void Reset()
+    {
+        _watcherOwner?.Dispose(); _watcherOwner = null;
+        _connection?.Dispose(); _connection = null;
+        _name = null;
+        lock (_lock) { _state = null; _activationToken = null; }
+    }
+
+    // Tells hosts what changed; they read the new values through Properties.
+    private void Announce(DesktopStatusIconState previous, DesktopStatusIconState state)
+    {
+        if (previous.Title != state.Title) Signal(ItemPath, ItemInterface, "NewTitle");
+        if (previous.Icon != state.Icon) Signal(ItemPath, ItemInterface, "NewIcon");
+        if (previous.AttentionIcon != state.AttentionIcon) Signal(ItemPath, ItemInterface, "NewAttentionIcon");
+        if (previous.Title != state.Title || previous.Tooltip != state.Tooltip || previous.Icon != state.Icon)
+            Signal(ItemPath, ItemInterface, "NewToolTip");
+        if (previous.Status != state.Status)
+        {
+            var writer = _connection!.GetMessageWriter();
+            try
+            {
+                writer.WriteSignalHeader(path: ItemPath, @interface: ItemInterface, member: "NewStatus", signature: "s");
+                writer.WriteString(StatusName(state.Status));
+                _connection.TrySendMessage(writer.CreateMessage());
+            }
+            finally { writer.Dispose(); }
+        }
+        uint revision;
+        lock (_lock) revision = _revision;
+        var layout = _connection!.GetMessageWriter();
+        try
+        {
+            layout.WriteSignalHeader(path: MenuPath, @interface: MenuInterface, member: "LayoutUpdated", signature: "ui");
+            layout.WriteUInt32(revision);
+            layout.WriteInt32(0);
+            _connection.TrySendMessage(layout.CreateMessage());
+        }
+        finally { layout.Dispose(); }
+    }
+
+    private void Signal(string path, string @interface, string member)
+    {
+        var writer = _connection!.GetMessageWriter();
+        try
+        {
+            writer.WriteSignalHeader(path: path, @interface: @interface, member: member);
+            _connection.TrySendMessage(writer.CreateMessage());
+        }
+        finally { writer.Dispose(); }
+    }
+
+    private void Raise(DesktopStatusIconActivationKind kind, string? menuItemId = null)
+    {
+        string? token;
+        lock (_lock) { token = _activationToken; _activationToken = null; }
+        DesktopActivationContext? context = null;
+        if (token is not null)
+        {
+            try { context = new DesktopActivationContext(activationToken: token); }
+            catch (ArgumentException) { /* An unusable token cannot raise a window; activate without it. */ }
+        }
+        var activation = new DesktopStatusIconActivation(kind, menuItemId) { PlatformContext = context };
+        ThreadPool.QueueUserWorkItem(static state =>
+        {
+            var (icon, value) = ((StatusNotifierIcon, DesktopStatusIconActivation))state!;
+            icon.Activated?.Invoke(icon, value);
+        }, (this, activation));
+    }
+
+    private static string StatusName(DesktopStatusIconStatus status) => status switch
+    {
+        DesktopStatusIconStatus.Passive => "Passive",
+        DesktopStatusIconStatus.NeedsAttention => "NeedsAttention",
+        _ => "Active",
+    };
+
+    private static readonly string[] ItemProperties =
+    [
+        "Category", "Id", "Title", "Status", "WindowId", "IconName", "IconPixmap", "OverlayIconName", "OverlayIconPixmap",
+        "AttentionIconName", "AttentionIconPixmap", "AttentionMovieName", "ToolTip", "ItemIsMenu", "Menu", "IconThemePath",
+    ];
+
+    // Writes one property as a variant: its signature, then its value.
+    private bool WriteItemProperty(ref MessageWriter writer, string name)
+    {
+        DesktopStatusIconState state;
+        lock (_lock)
+        {
+            if (_state is null) return false;
+            state = _state;
+        }
+        var attention = state.AttentionIcon ?? state.Icon;
+        switch (name)
+        {
+            case "Category": writer.WriteVariantString("ApplicationStatus"); break;
+            case "Id": writer.WriteVariantString(_application.ApplicationId ?? AppDomain.CurrentDomain.FriendlyName); break;
+            case "Title": writer.WriteVariantString(state.Title); break;
+            case "Status": writer.WriteVariantString(StatusName(state.Status)); break;
+            case "WindowId": writer.WriteVariantInt32(0); break;
+            case "IconName": writer.WriteVariantString(state.Icon.ThemeName ?? ""); break;
+            case "IconPixmap": writer.WriteSignature("a(iiay)"); WritePixmaps(ref writer, state.Icon); break;
+            case "OverlayIconName": writer.WriteVariantString(""); break;
+            case "OverlayIconPixmap": writer.WriteSignature("a(iiay)"); WritePixmaps(ref writer, null); break;
+            case "AttentionIconName": writer.WriteVariantString(attention.ThemeName ?? ""); break;
+            case "AttentionIconPixmap": writer.WriteSignature("a(iiay)"); WritePixmaps(ref writer, attention); break;
+            case "AttentionMovieName": writer.WriteVariantString(""); break;
+            case "ToolTip":
+                writer.WriteSignature("(sa(iiay)ss)");
+                writer.WriteStructureStart();
+                writer.WriteString(state.Icon.ThemeName ?? "");
+                WritePixmaps(ref writer, state.Icon);
+                writer.WriteString(state.Title);
+                writer.WriteString(state.Tooltip ?? "");
+                break;
+            case "ItemIsMenu": writer.WriteVariantBool(false); break;
+            case "Menu": writer.WriteVariantObjectPath(MenuPath); break;
+            case "IconThemePath": writer.WriteVariantString(""); break;
+            default: return false;
+        }
+        return true;
+    }
+
+    // StatusNotifierItem pixmaps are ARGB32 in network byte order.
+    private static void WritePixmaps(ref MessageWriter writer, DesktopIcon? icon)
+    {
+        var images = writer.WriteArrayStart(DBusType.Struct);
+        foreach (var image in icon?.Images ?? [])
+        {
+            writer.WriteStructureStart();
+            writer.WriteInt32(image.Width);
+            writer.WriteInt32(image.Height);
+            var argb = new byte[image.Rgba.Length];
+            for (int i = 0; i < argb.Length; i += 4)
+            {
+                argb[i] = image.Rgba[i + 3];
+                argb[i + 1] = image.Rgba[i];
+                argb[i + 2] = image.Rgba[i + 1];
+                argb[i + 3] = image.Rgba[i + 2];
+            }
+            writer.WriteArray(argb);
+        }
+        writer.WriteArrayEnd(images);
+    }
+
+    private sealed class ItemHandler(StatusNotifierIcon icon) : IPathMethodHandler
+    {
+        public string Path => ItemPath;
+        public bool HandlesChildPaths => false;
+
+        public ValueTask HandleMethodAsync(MethodContext context)
+        {
+            var request = context.Request;
+            if (context.IsDBusIntrospectRequest)
+                context.ReplyIntrospectXml([ItemXml], []);
+            else if (request.InterfaceAsString == PropertiesInterface)
+                icon.HandleItemProperties(context);
+            else if (request.InterfaceAsString == ItemInterface)
+            {
+                switch (request.MemberAsString)
+                {
+                    case "Activate": icon.Raise(DesktopStatusIconActivationKind.Primary); break;
+                    case "SecondaryActivate": icon.Raise(DesktopStatusIconActivationKind.Secondary); break;
+                    case "ProvideXdgActivationToken":
+                        string token = request.GetBodyReader().ReadString();
+                        lock (icon._lock) icon._activationToken = token;
+                        break;
+                    case "ContextMenu" or "Scroll": break; // The menu is served over dbusmenu; scrolling has no meaning here.
+                    default: context.ReplyUnknownMethodError(); return ValueTask.CompletedTask;
+                }
+                Empty(context);
+            }
+            else context.ReplyUnknownMethodError();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private void HandleItemProperties(MethodContext context)
+    {
+        var reader = context.Request.GetBodyReader();
+        switch (context.Request.MemberAsString)
+        {
+            case "Get":
+            {
+                string @interface = reader.ReadString(), name = reader.ReadString();
+                var reply = context.CreateReplyWriter("v");
+                try
+                {
+                    if (@interface != ItemInterface || !WriteItemProperty(ref reply, name))
+                    { context.ReplyError("org.freedesktop.DBus.Error.UnknownProperty", $"No property {name}."); return; }
+                    context.Reply(reply.CreateMessage());
+                }
+                finally { reply.Dispose(); }
+                break;
+            }
+            case "GetAll":
+            {
+                string @interface = reader.ReadString();
+                var reply = context.CreateReplyWriter("a{sv}");
+                try
+                {
+                    var properties = reply.WriteDictionaryStart();
+                    if (@interface == ItemInterface)
+                        foreach (var name in ItemProperties)
+                        {
+                            reply.WriteDictionaryEntryStart();
+                            reply.WriteString(name);
+                            if (!WriteItemProperty(ref reply, name)) reply.WriteVariantString("");
+                        }
+                    reply.WriteDictionaryEnd(properties);
+                    context.Reply(reply.CreateMessage());
+                }
+                finally { reply.Dispose(); }
+                break;
+            }
+            default: context.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", "Status icon properties are read-only."); break;
+        }
+    }
+
+    private sealed class MenuHandler(StatusNotifierIcon icon) : IPathMethodHandler
+    {
+        public string Path => MenuPath;
+        public bool HandlesChildPaths => false;
+
+        public ValueTask HandleMethodAsync(MethodContext context)
+        {
+            if (context.IsDBusIntrospectRequest) { context.ReplyIntrospectXml([MenuXml], []); return ValueTask.CompletedTask; }
+            Menu menu; uint revision;
+            lock (icon._lock) { menu = icon._menu; revision = icon._revision; }
+            var request = context.Request;
+            var reader = request.GetBodyReader();
+            if (request.InterfaceAsString == PropertiesInterface) { MenuProperties(context, reader); return ValueTask.CompletedTask; }
+            if (request.InterfaceAsString != MenuInterface) { context.ReplyUnknownMethodError(); return ValueTask.CompletedTask; }
+            switch (request.MemberAsString)
+            {
+                case "GetLayout":
+                {
+                    int parent = reader.ReadInt32(), depth = reader.ReadInt32();
+                    if (!menu.Nodes.TryGetValue(parent, out var node)) { UnknownId(context, parent); break; }
+                    var reply = context.CreateReplyWriter("u(ia{sv}av)");
+                    try
+                    {
+                        reply.WriteUInt32(revision);
+                        menu.WriteLayout(ref reply, node, depth);
+                        context.Reply(reply.CreateMessage());
+                    }
+                    finally { reply.Dispose(); }
+                    break;
+                }
+                case "GetGroupProperties":
+                {
+                    var ids = reader.ReadArrayOfInt32();
+                    var reply = context.CreateReplyWriter("a(ia{sv})");
+                    try
+                    {
+                        var items = reply.WriteArrayStart(DBusType.Struct);
+                        foreach (int id in ids)
+                        {
+                            if (!menu.Nodes.TryGetValue(id, out var node)) continue;
+                            reply.WriteStructureStart();
+                            reply.WriteInt32(id);
+                            Menu.WriteProperties(ref reply, node);
+                        }
+                        reply.WriteArrayEnd(items);
+                        context.Reply(reply.CreateMessage());
+                    }
+                    finally { reply.Dispose(); }
+                    break;
+                }
+                case "GetProperty":
+                {
+                    int id = reader.ReadInt32(); string name = reader.ReadString();
+                    if (!menu.Nodes.TryGetValue(id, out var node)) { UnknownId(context, id); break; }
+                    var reply = context.CreateReplyWriter("v");
+                    try
+                    {
+                        if (!Menu.WriteProperty(ref reply, node, name))
+                        { context.ReplyError("org.freedesktop.DBus.Error.InvalidArgs", $"No property {name}."); break; }
+                        context.Reply(reply.CreateMessage());
+                    }
+                    finally { reply.Dispose(); }
+                    break;
+                }
+                case "Event":
+                {
+                    int id = reader.ReadInt32(); string kind = reader.ReadString();
+                    if (!menu.Nodes.ContainsKey(id)) { UnknownId(context, id); break; }
+                    Choose(menu, id, kind);
+                    Empty(context);
+                    break;
+                }
+                case "EventGroup":
+                {
+                    var unknown = new List<int>();
+                    var events = reader.ReadArrayStart(DBusType.Struct);
+                    while (reader.HasNext(events))
+                    {
+                        reader.AlignStruct();
+                        int id = reader.ReadInt32(); string kind = reader.ReadString();
+                        _ = reader.ReadVariantValue(); _ = reader.ReadUInt32();
+                        if (menu.Nodes.ContainsKey(id)) Choose(menu, id, kind); else unknown.Add(id);
+                    }
+                    var reply = context.CreateReplyWriter("ai");
+                    try { reply.WriteArray(unknown.ToArray()); context.Reply(reply.CreateMessage()); }
+                    finally { reply.Dispose(); }
+                    break;
+                }
+                case "AboutToShow":
+                {
+                    var reply = context.CreateReplyWriter("b");
+                    try { reply.WriteBool(false); context.Reply(reply.CreateMessage()); }
+                    finally { reply.Dispose(); }
+                    break;
+                }
+                case "AboutToShowGroup":
+                {
+                    var reply = context.CreateReplyWriter("aiai");
+                    try { reply.WriteArray(Array.Empty<int>()); reply.WriteArray(Array.Empty<int>()); context.Reply(reply.CreateMessage()); }
+                    finally { reply.Dispose(); }
+                    break;
+                }
+                default: context.ReplyUnknownMethodError(); break;
+            }
+            return ValueTask.CompletedTask;
+        }
+
+        private void Choose(Menu menu, int id, string kind)
+        {
+            // Hosts also report "hovered", "opened" and "closed"; only a click chooses.
+            if (kind == "clicked" && menu.Nodes[id].Item is DesktopMenuCommand { Enabled: true } command)
+                icon.Raise(DesktopStatusIconActivationKind.MenuItem, command.Id);
+        }
+
+        private static void UnknownId(MethodContext context, int id) =>
+            context.ReplyError("org.freedesktop.DBus.Error.InvalidArgs", $"No menu entry {id}.");
+
+        private static void MenuProperties(MethodContext context, Reader reader)
+        {
+            string @interface = reader.ReadString();
+            bool all = context.Request.MemberAsString == "GetAll";
+            if (context.Request.MemberAsString is not ("Get" or "GetAll"))
+            { context.ReplyError("org.freedesktop.DBus.Error.PropertyReadOnly", "Menu properties are read-only."); return; }
+            string? name = all ? null : reader.ReadString();
+            var reply = context.CreateReplyWriter(all ? "a{sv}" : "v");
+            try
+            {
+                if (all)
+                {
+                    var properties = reply.WriteDictionaryStart();
+                    if (@interface == MenuInterface)
+                        foreach (var property in MenuObjectProperties)
+                        { reply.WriteDictionaryEntryStart(); reply.WriteString(property); WriteMenuProperty(ref reply, property); }
+                    reply.WriteDictionaryEnd(properties);
+                }
+                else if (@interface != MenuInterface || !WriteMenuProperty(ref reply, name!))
+                { context.ReplyError("org.freedesktop.DBus.Error.UnknownProperty", $"No property {name}."); return; }
+                context.Reply(reply.CreateMessage());
+            }
+            finally { reply.Dispose(); }
+        }
+
+        private static readonly string[] MenuObjectProperties = ["Version", "TextDirection", "Status", "IconThemePath"];
+        private static bool WriteMenuProperty(ref MessageWriter writer, string name)
+        {
+            switch (name)
+            {
+                case "Version": writer.WriteVariantUInt32(3); return true;
+                case "TextDirection": writer.WriteVariantString("ltr"); return true;
+                case "Status": writer.WriteVariantString("normal"); return true;
+                case "IconThemePath": writer.WriteSignature("as"); writer.WriteArray(Array.Empty<string>()); return true;
+                default: return false;
+            }
+        }
+    }
+
+    private static void Empty(MethodContext context)
+    {
+        if (context.NoReplyExpected) return;
+        var reply = context.CreateReplyWriter(null);
+        try { context.Reply(reply.CreateMessage()); }
+        finally { reply.Dispose(); }
+    }
+
+    // A dbusmenu tree: entries get numeric IDs in order, with 0 for the root.
+    private sealed class Menu
+    {
+        internal sealed record Node(int Id, DesktopMenuItem? Item, ImmutableArray<int> Children);
+        internal Dictionary<int, Node> Nodes { get; } = [];
+
+        internal static Menu Build(ImmutableArray<DesktopMenuItem> items)
+        {
+            var menu = new Menu();
+            int next = 0;
+            menu.Add(null, items, ref next);
+            return menu;
+        }
+
+        private int Add(DesktopMenuItem? item, ImmutableArray<DesktopMenuItem> children, ref int next)
+        {
+            int id = next++;
+            var ids = ImmutableArray.CreateBuilder<int>(children.Length);
+            foreach (var child in children)
+                ids.Add(Add(child, child is DesktopMenuSubmenu submenu ? submenu.Items : [], ref next));
+            Nodes[id] = new Node(id, item, ids.MoveToImmutable());
+            return id;
+        }
+
+        internal void WriteLayout(ref MessageWriter writer, Node node, int depth)
+        {
+            writer.WriteStructureStart();
+            writer.WriteInt32(node.Id);
+            WriteProperties(ref writer, node);
+            var children = writer.WriteArrayStart(DBusType.Variant);
+            if (depth != 0)
+                foreach (int child in node.Children)
+                {
+                    writer.WriteSignature("(ia{sv}av)");
+                    WriteLayout(ref writer, Nodes[child], depth - 1);
+                }
+            writer.WriteArrayEnd(children);
+        }
+
+        private static readonly string[] Properties = ["type", "label", "enabled", "toggle-type", "toggle-state", "children-display"];
+
+        // Only properties that differ from dbusmenu's defaults are sent.
+        internal static void WriteProperties(ref MessageWriter writer, Node node)
+        {
+            var properties = writer.WriteDictionaryStart();
+            foreach (var name in Properties)
+            {
+                if (!Has(node, name)) continue;
+                writer.WriteDictionaryEntryStart();
+                writer.WriteString(name);
+                WriteProperty(ref writer, node, name);
+            }
+            writer.WriteDictionaryEnd(properties);
+        }
+
+        private static bool Has(Node node, string name) => (node.Item, name) switch
+        {
+            (null, "children-display") => true,
+            (DesktopMenuSeparator, "type") => true,
+            (DesktopMenuCommand, "label") or (DesktopMenuSubmenu, "label") => true,
+            (DesktopMenuCommand { Enabled: false }, "enabled") or (DesktopMenuSubmenu { Enabled: false }, "enabled") => true,
+            (DesktopMenuCommand { Checked: not null }, "toggle-type" or "toggle-state") => true,
+            (DesktopMenuSubmenu, "children-display") => true,
+            _ => false,
+        };
+
+        internal static bool WriteProperty(ref MessageWriter writer, Node node, string name)
+        {
+            switch (name)
+            {
+                case "type": writer.WriteVariantString(node.Item is DesktopMenuSeparator ? "separator" : "standard"); return true;
+                // An underscore marks dbusmenu's access key; double it to show it literally.
+                case "label": writer.WriteVariantString(Label(node.Item).Replace("_", "__", StringComparison.Ordinal)); return true;
+                case "enabled": writer.WriteVariantBool(node.Item switch { DesktopMenuCommand c => c.Enabled, DesktopMenuSubmenu s => s.Enabled, _ => true }); return true;
+                case "visible": writer.WriteVariantBool(true); return true;
+                case "toggle-type": writer.WriteVariantString(node.Item is DesktopMenuCommand { Checked: not null } ? "checkmark" : ""); return true;
+                case "toggle-state": writer.WriteVariantInt32(node.Item is DesktopMenuCommand { Checked: true } ? 1 : 0); return true;
+                case "children-display": writer.WriteVariantString(node.Item is null or DesktopMenuSubmenu ? "submenu" : ""); return true;
+                default: return false;
+            }
+        }
+
+        private static string Label(DesktopMenuItem? item) => item switch
+        {
+            DesktopMenuCommand command => command.Label,
+            DesktopMenuSubmenu submenu => submenu.Label,
+            _ => "",
+        };
+    }
+
+    private static readonly ReadOnlyMemory<byte> ItemXml = Encoding.UTF8.GetBytes("""
+        <interface name="org.kde.StatusNotifierItem">
+          <property name="Category" type="s" access="read"/>
+          <property name="Id" type="s" access="read"/>
+          <property name="Title" type="s" access="read"/>
+          <property name="Status" type="s" access="read"/>
+          <property name="WindowId" type="i" access="read"/>
+          <property name="IconName" type="s" access="read"/>
+          <property name="IconPixmap" type="a(iiay)" access="read"/>
+          <property name="OverlayIconName" type="s" access="read"/>
+          <property name="OverlayIconPixmap" type="a(iiay)" access="read"/>
+          <property name="AttentionIconName" type="s" access="read"/>
+          <property name="AttentionIconPixmap" type="a(iiay)" access="read"/>
+          <property name="AttentionMovieName" type="s" access="read"/>
+          <property name="ToolTip" type="(sa(iiay)ss)" access="read"/>
+          <property name="ItemIsMenu" type="b" access="read"/>
+          <property name="Menu" type="o" access="read"/>
+          <property name="IconThemePath" type="s" access="read"/>
+          <method name="ContextMenu"><arg name="x" type="i" direction="in"/><arg name="y" type="i" direction="in"/></method>
+          <method name="Activate"><arg name="x" type="i" direction="in"/><arg name="y" type="i" direction="in"/></method>
+          <method name="SecondaryActivate"><arg name="x" type="i" direction="in"/><arg name="y" type="i" direction="in"/></method>
+          <method name="Scroll"><arg name="delta" type="i" direction="in"/><arg name="orientation" type="s" direction="in"/></method>
+          <method name="ProvideXdgActivationToken"><arg name="token" type="s" direction="in"/></method>
+          <signal name="NewTitle"/>
+          <signal name="NewIcon"/>
+          <signal name="NewAttentionIcon"/>
+          <signal name="NewOverlayIcon"/>
+          <signal name="NewToolTip"/>
+          <signal name="NewStatus"><arg name="status" type="s"/></signal>
+        </interface>
+        """);
+
+    private static readonly ReadOnlyMemory<byte> MenuXml = Encoding.UTF8.GetBytes("""
+        <interface name="com.canonical.dbusmenu">
+          <property name="Version" type="u" access="read"/>
+          <property name="TextDirection" type="s" access="read"/>
+          <property name="Status" type="s" access="read"/>
+          <property name="IconThemePath" type="as" access="read"/>
+          <method name="GetLayout"><arg type="i" name="parentId" direction="in"/><arg type="i" name="recursionDepth" direction="in"/><arg type="as" name="propertyNames" direction="in"/><arg type="u" name="revision" direction="out"/><arg type="(ia{sv}av)" name="layout" direction="out"/></method>
+          <method name="GetGroupProperties"><arg type="ai" name="ids" direction="in"/><arg type="as" name="propertyNames" direction="in"/><arg type="a(ia{sv})" name="properties" direction="out"/></method>
+          <method name="GetProperty"><arg type="i" name="id" direction="in"/><arg type="s" name="name" direction="in"/><arg type="v" name="value" direction="out"/></method>
+          <method name="Event"><arg type="i" name="id" direction="in"/><arg type="s" name="eventId" direction="in"/><arg type="v" name="data" direction="in"/><arg type="u" name="timestamp" direction="in"/></method>
+          <method name="EventGroup"><arg type="a(isvu)" name="events" direction="in"/><arg type="ai" name="idErrors" direction="out"/></method>
+          <method name="AboutToShow"><arg type="i" name="id" direction="in"/><arg type="b" name="needUpdate" direction="out"/></method>
+          <method name="AboutToShowGroup"><arg type="ai" name="ids" direction="in"/><arg type="ai" name="updatesNeeded" direction="out"/><arg type="ai" name="idErrors" direction="out"/></method>
+          <signal name="ItemsPropertiesUpdated"><arg type="a(ia{sv})" name="updatedProps"/><arg type="a(ias)" name="removedProps"/></signal>
+          <signal name="LayoutUpdated"><arg type="u" name="revision"/><arg type="i" name="parent"/></signal>
+          <signal name="ItemActivationRequested"><arg type="i" name="id"/><arg type="u" name="timestamp"/></signal>
+        </interface>
+        """);
+}

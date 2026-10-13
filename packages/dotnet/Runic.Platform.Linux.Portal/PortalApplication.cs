@@ -29,6 +29,10 @@ public sealed class PortalApplication
     public IDesktopSettings CreateSettings() => new PortalDesktopSettings(application: this);
     /// <summary>Creates application-scoped notifications; only one service may own this application bus name.</summary>
     public IDesktopNotifications CreateNotifications() => new PortalNotifications(application: this);
+    /// <summary>Creates a status icon with a menu, registered with the desktop's StatusNotifierWatcher.</summary>
+    /// <remarks>Its <c>Id</c> is this application ID. Status icons have no portal: a sandbox must allow owning
+    /// <c>org.kde.StatusNotifierItem-*</c> names and talking to <c>org.kde.StatusNotifierWatcher</c>.</remarks>
+    public IDesktopStatusIcon CreateStatusIcon() => new StatusNotifierIcon(application: this);
     /// <summary>Creates file handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Runic.Platform;
 
@@ -124,6 +125,64 @@ public static class DesktopServiceValidation
         }
         if (notification.ActivationUri is { } uri && (!uri.IsAbsoluteUri || uri.IsFile || uri.AbsoluteUri.Length > 2048))
             throw new ArgumentException("Notification activation requires a bounded absolute non-file URI.");
+    }
+    /// <summary>Validates a status icon's bounded content, icons and menu.</summary>
+    public static void StatusIcon(DesktopStatusIconState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (!Enum.IsDefined(state.Status)) throw new ArgumentOutOfRangeException(nameof(state), "Unknown status icon status.");
+        Text(state.Title, 256, "Status icon title");
+        if (state.Tooltip is not null && (state.Tooltip.Length > 1024 || state.Tooltip.Contains('\0')))
+            throw new ArgumentException("Status icon tooltip exceeds its bounds.", nameof(state));
+        Icon(state.Icon);
+        if (state.AttentionIcon is not null) Icon(state.AttentionIcon);
+        int count = 0;
+        Menu(state.Menu, new HashSet<string>(StringComparer.Ordinal), 0, ref count);
+    }
+    private static void Icon(DesktopIcon icon)
+    {
+        ArgumentNullException.ThrowIfNull(icon);
+        if (icon.Images.IsDefault) throw new ArgumentException("Status icon images must be initialized.");
+        if (icon.ThemeName is { } name && (name.Length is 0 or > 128 || name.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not '-' and not '_' and not '.')))
+            throw new ArgumentException("Use an icon theme name of at most 128 ASCII letters, digits, dots, underscores or hyphens.");
+        if (icon.ThemeName is null && icon.Images.Length == 0) throw new ArgumentException("A status icon needs a theme name or an image.");
+        if (icon.Images.Length > 8) throw new ArgumentException("Supply at most eight status icon images.");
+        foreach (var image in icon.Images)
+        {
+            ArgumentNullException.ThrowIfNull(image);
+            if (image.Width is < 1 or > 512 || image.Height is < 1 or > 512 || image.Rgba.IsDefault || image.Rgba.Length != image.Width * image.Height * 4)
+                throw new ArgumentException("Status icon images need 1 to 512 pixels on each side and four RGBA bytes per pixel.");
+        }
+    }
+    private static void Menu(ImmutableArray<DesktopMenuItem> items, HashSet<string> ids, int depth, ref int count)
+    {
+        if (items.IsDefault) throw new ArgumentException("Status icon menus must be initialized.");
+        if (depth > 4) throw new ArgumentException("Status icon menus nest at most four submenus deep.");
+        foreach (var item in items)
+        {
+            if (++count > 256) throw new ArgumentException("A status icon menu has at most 256 entries.");
+            switch (item)
+            {
+                case DesktopMenuCommand command:
+                    Identifier(command.Id);
+                    if (!ids.Add(command.Id)) throw new ArgumentException("Status icon menu command IDs must be unique.");
+                    Text(command.Label, 128, "Menu label");
+                    break;
+                case DesktopMenuSubmenu submenu:
+                    Text(submenu.Label, 128, "Menu label");
+                    Menu(submenu.Items, ids, depth + 1, ref count);
+                    break;
+                case DesktopMenuSeparator:
+                    break;
+                default:
+                    throw new ArgumentNullException(nameof(items), "Status icon menus cannot contain null entries.");
+            }
+        }
+    }
+    private static void Text(string text, int maximum, string what)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        if (text.Length > maximum || text.Contains('\0')) throw new ArgumentException($"{what} exceeds its bounds.");
     }
     /// <summary>Validates an application-owned routing identifier.</summary>
     public static void Identifier(string id)
