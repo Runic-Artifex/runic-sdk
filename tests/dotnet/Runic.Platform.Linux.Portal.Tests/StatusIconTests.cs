@@ -62,6 +62,7 @@ internal sealed class StatusIconTests
         string item = await watcher.Registered.Task.WaitAsync(Wait);
         Check(item.StartsWith("org.kde.StatusNotifierItem-", StringComparison.Ordinal), "registers its well-known name");
         Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Success, "registered with a host is success");
+        Check(watcher.Registrations == 1, "an update does not register the item twice");
 
         using var host = new DBusConnection(DBusAddress.Session!);
         await host.ConnectAsync();
@@ -75,6 +76,12 @@ internal sealed class StatusIconTests
         var tooltip = await Property(host, item, "ToolTip");
         Check(tooltip.GetItem(2).GetString() == "Nix Manager" && tooltip.GetItem(3).GetString() == "2 updates", "tooltip title and text");
 
+        var all = await Request(host, item, "/StatusNotifierItem", "org.freedesktop.DBus.Properties", "GetAll", "s",
+            (ref MessageWriter writer) => writer.WriteString("org.kde.StatusNotifierItem"), static (message, _) => message.GetBodyReader().ReadDictionaryOfStringToVariantValue());
+        Check(all.Count == 16 && all["Title"].Type == VariantValueType.String && all["WindowId"].Type == VariantValueType.Int32
+            && all["IconPixmap"].Type == VariantValueType.Array && all["ToolTip"].Type == VariantValueType.Struct
+            && all["ItemIsMenu"].Type == VariantValueType.Bool && all["Menu"].Type == VariantValueType.ObjectPath, "GetAll returns every property with its type");
+
         var (revision, root) = await Layout(host, item);
         Check(root.Children.Select(child => child.Props.GetValueOrDefault("label") ?? child.Props.GetValueOrDefault("type")).SequenceEqual(
             ["Open__dashboard", "separator", "Check daily", "More"]), "layout order, labels and literal underscore");
@@ -87,6 +94,27 @@ internal sealed class StatusIconTests
         Check(chosen is { Kind: DesktopStatusIconActivationKind.MenuItem, MenuItemId: "open" }, "menu click routes the command ID");
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(root.Children[3].Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
+
+        // libdbusmenu-glib (Waybar) reads entries in groups and reports unknown IDs.
+        var labels = await Request(host, item, "/MenuBar", "com.canonical.dbusmenu", "GetGroupProperties", "aias", (ref MessageWriter writer) =>
+        { writer.WriteArray(new[] { root.Children[0].Id, root.Children[2].Id }); writer.WriteArray(Array.Empty<string>()); }, static (message, _) =>
+        {
+            var reader = message.GetBodyReader();
+            var found = new List<string>();
+            var items = reader.ReadArrayStart(DBusType.Struct);
+            while (reader.HasNext(items)) { reader.AlignStruct(); _ = reader.ReadInt32(); found.Add(reader.ReadDictionaryOfStringToVariantValue()["label"].GetString()); }
+            return found;
+        });
+        Check(labels.SequenceEqual(["Open__dashboard", "Check daily"]), "group properties");
+        var unknown = await Request(host, item, "/MenuBar", "com.canonical.dbusmenu", "EventGroup", "a(isvu)", (ref MessageWriter writer) =>
+        {
+            var events = writer.WriteArrayStart(DBusType.Struct);
+            foreach (int id in new[] { root.Children[0].Id, 9999 })
+            { writer.WriteStructureStart(); writer.WriteInt32(id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); }
+            writer.WriteArrayEnd(events);
+        }, static (message, _) => message.GetBodyReader().ReadArrayOfInt32());
+        Check(unknown.SequenceEqual([9999]), "EventGroup reports unknown IDs");
+        Check(await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait) is { MenuItemId: "open" }, "EventGroup clicks route the command ID");
 
         // libdbusmenu-glib (Waybar) asks before opening; it waits for these replies.
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShowGroup", "ai", (ref MessageWriter writer) => writer.WriteArray(RootMenu))
@@ -110,11 +138,20 @@ internal sealed class StatusIconTests
         using var layoutSignal = await host.AddMatchAsync(new MatchRule { Type = MessageType.Signal, Sender = item, Member = "LayoutUpdated" },
             static (message, _) => message.GetBodyReader().ReadUInt32(), notification => { if (notification.HasValue) layout.TrySetResult(notification.Value); },
             emitOnCapturedContext: false, flags: ObserverFlags.EmitAll);
-        Check(await icon.ShowAsync(State(DesktopStatusIconStatus.NeedsAttention) with { Menu = [new DesktopMenuCommand("quit", "Quit")] }) is PlatformResult<PlatformUnit>.Success, "update");
+        Check(await icon.ShowAsync(State(DesktopStatusIconStatus.NeedsAttention) with
+        { Menu = [new DesktopMenuCommand("quit", "Quit"), new DesktopMenuCommand("check", "Check daily") { Checked = false }] }) is PlatformResult<PlatformUnit>.Success, "update");
         Check(await status.Task.WaitAsync(Wait) == "NeedsAttention", "NewStatus carries the status");
         Check(await layout.Task.WaitAsync(Wait) > revision, "LayoutUpdated carries a newer revision");
         var (_, updated) = await Layout(host, item);
-        Check(updated.Children.Count == 1 && updated.Children[0].Props["label"] == "Quit", "new menu served");
+        Check(updated.Children.Count == 2 && updated.Children[0].Props["label"] == "Quit", "new menu served");
+        Check(updated.Children[1].Id == root.Children[2].Id && updated.Children[0].Id != root.Children[0].Id, "entries keep their IDs; new ones get new IDs");
+        try
+        {
+            await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
+            { writer.WriteInt32(root.Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
+            throw new InvalidOperationException("a click on a removed entry was accepted");
+        }
+        catch (DBusErrorReplyException) { }
 
         // A restarted watcher forgets items; the icon registers again.
         await watcher.DisposeAsync();
@@ -125,6 +162,7 @@ internal sealed class StatusIconTests
         watcher.HostRegistered = false;
         Check(await icon.ShowAsync(State()) is PlatformResult<PlatformUnit>.Unavailable, "no host is unavailable");
 
+        Check(!activations.Reader.TryRead(out var stray), $"no other activation arrived: {stray}");
         Check(await icon.HideAsync() is PlatformResult<PlatformUnit>.Success, "hide");
         Check(!await NameHasOwner(host, item), "hiding releases the item's bus name");
         await watcher.DisposeAsync();
@@ -197,6 +235,21 @@ internal sealed class StatusIconTests
         return host.CallMethodAsync(call);
     }
 
+    private static Task<T> Request<T>(DBusConnection host, string item, string path, string @interface, string member, string signature, Body body,
+        MessageValueReader<T> reader)
+    {
+        var writer = host.GetMessageWriter();
+        MessageBuffer call;
+        try
+        {
+            writer.WriteMethodCallHeader(destination: item, path: path, @interface: @interface, member: member, signature: signature);
+            body(ref writer);
+            call = writer.CreateMessage();
+        }
+        finally { writer.Dispose(); }
+        return host.CallMethodAsync(call, reader);
+    }
+
     private static Task<bool> NameHasOwner(DBusConnection host, string name)
     {
         var writer = host.GetMessageWriter();
@@ -226,6 +279,7 @@ internal sealed class StatusIconTests
         private readonly DBusConnection _connection;
         private FakeWatcher(DBusConnection connection) => _connection = connection;
         public TaskCompletionSource<string> Registered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Registrations;
         public bool HostRegistered { get; set; } = true;
         public string Path => "/StatusNotifierWatcher";
         public bool HandlesChildPaths => false;
@@ -248,6 +302,7 @@ internal sealed class StatusIconTests
                 string service = reader.ReadString();
                 var reply = context.CreateReplyWriter(null);
                 try { context.Reply(reply.CreateMessage()); } finally { reply.Dispose(); }
+                Interlocked.Increment(ref Registrations);
                 Registered.TrySetResult(service);
             }
             else if (context.Request.MemberAsString == "Get")

@@ -16,18 +16,28 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     private const string ItemInterface = "org.kde.StatusNotifierItem", WatcherInterface = "org.kde.StatusNotifierWatcher",
         MenuInterface = "com.canonical.dbusmenu", PropertiesInterface = "org.freedesktop.DBus.Properties";
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+    // Hosts call ProvideXdgActivationToken just before Activate; an older token has expired.
+    private static readonly TimeSpan TokenLifetime = TimeSpan.FromSeconds(10);
     private static int s_instances;
     private readonly PortalApplication _application = application ?? new PortalApplication();
     private readonly SemaphoreSlim _gate = new(1, 1);
     // Bus handlers read the state on the connection's thread; ShowAsync replaces it under this lock.
     private readonly Lock _lock = new();
+    // dbusmenu IDs stay with their entries across menu changes, so a click in flight never lands on another entry.
+    private readonly Menu.Ids _ids = new();
+    // Activations reach the application one at a time, in order, and never after disposal.
+    private readonly System.Threading.Channels.Channel<DesktopStatusIconActivation> _activations =
+        System.Threading.Channels.Channel.CreateUnbounded<DesktopStatusIconActivation>(new() { SingleReader = true });
+    private Task? _pump;
     private DesktopStatusIconState? _state;
-    private Menu _menu = Menu.Build([]);
+    private Menu _menu = Menu.Empty;
     private uint _revision;
-    private string? _activationToken;
+    private (string Token, long Timestamp)? _activationToken;
     private DBusConnection? _connection;
     private IDisposable? _watcherOwner;
     private string? _name;
+    // Whether the current watcher knows this item; a watcher that starts or restarts does not.
+    private volatile bool _registered;
     private volatile bool _disposed;
 
     public event EventHandler<DesktopStatusIconActivation>? Activated;
@@ -44,19 +54,28 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
             {
                 previous = _state;
                 _state = state;
-                _menu = Menu.Build(state.Menu);
+                _menu = Menu.Build(state.Menu, _ids);
                 _revision++;
             }
-            if (_connection is null) await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            if (_connection is null)
+            {
+                try { await ConnectAsync(cancellationToken).ConfigureAwait(false); }
+                catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
+                {
+                    Diagnose("status-icon-bus-unavailable", error,
+                        "Check that a D-Bus session bus is running and that a sandbox allows owning org.kde.StatusNotifierItem-* names.");
+                    Reset();
+                    return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+                }
+            }
             else if (previous is not null) Announce(previous, state);
-            return await RegisterAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
-        {
-            _application.Diagnose("status-icon-bus-unavailable", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
-                "Check that a D-Bus session bus is running and that a sandbox allows owning org.kde.StatusNotifierItem-* names.");
-            Reset();
-            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+            // A failed registration keeps the icon ready: the next watcher start registers it.
+            try { return await RegisterAsync(cancellationToken).ConfigureAwait(false); }
+            catch (Exception error) when (error is DBusExceptionBase or TimeoutException)
+            {
+                Diagnose("status-icon-register-failed", error, "The icon registers when the status area restarts or on the next ShowAsync.");
+                return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+            }
         }
         finally { _gate.Release(); }
     }
@@ -77,7 +96,12 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     public async ValueTask DisposeAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { _disposed = true; Reset(); }
+        try
+        {
+            _disposed = true;
+            _activations.Writer.TryComplete();
+            Reset();
+        }
         finally { _gate.Release(); }
     }
 
@@ -104,10 +128,15 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                 return reader.ReadString();
             }, notification =>
             {
-                if (notification.HasValue && notification.Value.Length != 0) _ = RegisterAgainAsync();
+                if (!notification.HasValue) return;
+                _registered = false;
+                if (notification.Value.Length != 0) _ = RegisterAgainAsync(connection);
             }, emitOnCapturedContext: false, flags: ObserverFlags.EmitAll).AsTask().WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
             _connection = connection;
             _name = name;
+            _registered = false;
+            _pump ??= Task.Run(PumpAsync, CancellationToken.None);
+            _ = ReconnectWhenLostAsync(connection);
         }
         catch { connection.Dispose(); throw; }
     }
@@ -115,16 +144,20 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
     private async Task<PlatformResult<PlatformUnit>> RegisterAsync(CancellationToken cancellationToken)
     {
         var connection = _connection!;
-        try
+        if (!_registered)
         {
-            await connection.CallMethodAsync(WatcherCall(connection, "RegisterStatusNotifierItem", "s", _name!))
-                .WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
-        }
-        catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.DBus.Error.ServiceUnknown" or "org.freedesktop.DBus.Error.NameHasNoOwner")
-        {
-            _application.Diagnose("status-icon-no-watcher", "No StatusNotifierWatcher is running.",
-                "The icon appears once a status area starts: Plasma, Waybar's tray, or GNOME with the AppIndicator extension.");
-            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+            try
+            {
+                await connection.CallMethodAsync(WatcherCall(connection, "RegisterStatusNotifierItem", "s", _name!))
+                    .WaitAsync(Timeout, cancellationToken).ConfigureAwait(false);
+            }
+            catch (DBusErrorReplyException error) when (error.ErrorName is "org.freedesktop.DBus.Error.ServiceUnknown" or "org.freedesktop.DBus.Error.NameHasNoOwner")
+            {
+                _application.Diagnose("status-icon-no-watcher", "No StatusNotifierWatcher is running.",
+                    "The icon appears once a status area starts: Plasma, Waybar's tray, or GNOME with the AppIndicator extension.");
+                return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+            }
+            _registered = true;
         }
         bool host = await connection.CallMethodAsync(WatcherCall(connection, "Get", "ss", WatcherInterface, "IsStatusNotifierHostRegistered"),
                 static (message, _) => message.GetBodyReader().ReadVariantValue().GetBool())
@@ -152,27 +185,60 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         finally { writer.Dispose(); }
     }
 
-    private async Task RegisterAgainAsync()
+    private async Task RegisterAgainAsync(DBusConnection connection)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (_disposed || _connection is null) return;
+            if (_disposed || _connection != connection) return;
             await RegisterAsync(CancellationToken.None).ConfigureAwait(false);
         }
         catch (Exception error) when (error is DBusExceptionBase or TimeoutException)
         {
-            _application.Diagnose("status-icon-register-failed", error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name,
-                "The icon registers again when the status area restarts or on the next ShowAsync.");
+            Diagnose("status-icon-register-failed", error, "The icon registers when the status area restarts or on the next ShowAsync.");
         }
         finally { _gate.Release(); }
     }
 
-    private void Reset()
+    // A lost session bus connection takes the icon with it; connect and register again.
+    private async Task ReconnectWhenLostAsync(DBusConnection connection)
+    {
+        try { await connection.DisconnectedAsync().ConfigureAwait(false); }
+        catch (Exception) { /* Any end of the connection counts as lost. */ }
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_disposed || _connection != connection) return;
+            _application.Diagnose("status-icon-bus-lost", "The session bus connection ended.", "Reconnecting and registering the icon again.");
+            Disconnect();
+            if (_state is null) return;
+            await ConnectAsync(CancellationToken.None).ConfigureAwait(false);
+            await RegisterAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception error) when (error is DBusExceptionBase or TimeoutException or NativeBackendUnavailableException)
+        {
+            Diagnose("status-icon-bus-unavailable", error, "The icon appears again on the next ShowAsync.");
+            Disconnect();
+        }
+        finally { _gate.Release(); }
+    }
+
+    private void Diagnose(string code, Exception error, string remedy) =>
+        _application.Diagnose(code, error is DBusErrorReplyException reply ? reply.ErrorName : error.GetType().Name, remedy);
+
+    private void Disconnect()
     {
         _watcherOwner?.Dispose(); _watcherOwner = null;
-        _connection?.Dispose(); _connection = null;
+        var connection = _connection;
+        _connection = null;
+        connection?.Dispose();
         _name = null;
+        _registered = false;
+    }
+
+    private void Reset()
+    {
+        Disconnect();
         lock (_lock) { _state = null; _activationToken = null; }
     }
 
@@ -221,20 +287,30 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
 
     private void Raise(DesktopStatusIconActivationKind kind, string? menuItemId = null)
     {
-        string? token;
+        (string Token, long Timestamp)? token;
         lock (_lock) { token = _activationToken; _activationToken = null; }
         DesktopActivationContext? context = null;
-        if (token is not null)
+        if (token is { } fresh && System.Diagnostics.Stopwatch.GetElapsedTime(fresh.Timestamp) < TokenLifetime)
         {
-            try { context = new DesktopActivationContext(activationToken: token); }
+            try { context = new DesktopActivationContext(activationToken: fresh.Token); }
             catch (ArgumentException) { /* An unusable token cannot raise a window; activate without it. */ }
         }
-        var activation = new DesktopStatusIconActivation(kind, menuItemId) { PlatformContext = context };
-        ThreadPool.QueueUserWorkItem(static state =>
+        _activations.Writer.TryWrite(new DesktopStatusIconActivation(kind, menuItemId) { PlatformContext = context });
+    }
+
+    private async Task PumpAsync()
+    {
+        await foreach (var activation in _activations.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            var (icon, value) = ((StatusNotifierIcon, DesktopStatusIconActivation))state!;
-            icon.Activated?.Invoke(icon, value);
-        }, (this, activation));
+            if (_disposed) return;
+            try { Activated?.Invoke(this, activation); }
+            catch (Exception error)
+            {
+                // As with an event raised on the thread pool, a throwing handler fails the process; later activations still arrive until then.
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo capture = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error);
+                ThreadPool.QueueUserWorkItem(static state => ((System.Runtime.ExceptionServices.ExceptionDispatchInfo)state!).Throw(), capture);
+            }
+        }
     }
 
     private static string StatusName(DesktopStatusIconStatus status) => status switch
@@ -332,7 +408,7 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
                     case "SecondaryActivate": icon.Raise(DesktopStatusIconActivationKind.Secondary); break;
                     case "ProvideXdgActivationToken":
                         string token = request.GetBodyReader().ReadString();
-                        lock (icon._lock) icon._activationToken = token;
+                        lock (icon._lock) icon._activationToken = (token, System.Diagnostics.Stopwatch.GetTimestamp());
                         break;
                     case "ContextMenu" or "Scroll": break; // The menu is served over dbusmenu; scrolling has no meaning here.
                     default: context.ReplyUnknownMethodError(); return ValueTask.CompletedTask;
@@ -550,28 +626,46 @@ internal sealed class StatusNotifierIcon(string? address = null, string watcher 
         finally { reply.Dispose(); }
     }
 
-    // A dbusmenu tree: entries get numeric IDs in order, with 0 for the root.
+    // A dbusmenu tree with 0 for the root. Entries keep their numeric ID across menu changes: commands by their ID,
+    // separators and submenus by their place among their parent's entries of the same kind. IDs are never reused.
     private sealed class Menu
     {
         internal sealed record Node(int Id, DesktopMenuItem? Item, ImmutableArray<int> Children);
         internal Dictionary<int, Node> Nodes { get; } = [];
+        internal static Menu Empty { get; } = Build([], new Ids());
 
-        internal static Menu Build(ImmutableArray<DesktopMenuItem> items)
+        internal sealed class Ids
+        {
+            private readonly Dictionary<string, int> _ids = new(StringComparer.Ordinal);
+            private int _next = 1;
+            internal int For(string key) => _ids.TryGetValue(key, out int id) ? id : _ids[key] = _next++;
+        }
+
+        internal static Menu Build(ImmutableArray<DesktopMenuItem> items, Ids ids)
         {
             var menu = new Menu();
-            int next = 0;
-            menu.Add(null, items, ref next);
+            menu.Add(0, "", null, items, ids);
             return menu;
         }
 
-        private int Add(DesktopMenuItem? item, ImmutableArray<DesktopMenuItem> children, ref int next)
+        private void Add(int id, string path, DesktopMenuItem? item, ImmutableArray<DesktopMenuItem> children, Ids ids)
         {
-            int id = next++;
-            var ids = ImmutableArray.CreateBuilder<int>(children.Length);
+            var childIds = ImmutableArray.CreateBuilder<int>(children.Length);
+            int separators = 0;
+            var submenus = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var child in children)
-                ids.Add(Add(child, child is DesktopMenuSubmenu submenu ? submenu.Items : [], ref next));
-            Nodes[id] = new Node(id, item, ids.MoveToImmutable());
-            return id;
+            {
+                string key = child switch
+                {
+                    DesktopMenuCommand command => "command:" + command.Id,
+                    DesktopMenuSubmenu submenu => $"{path}/submenu:{submenu.Label}#{(submenus[submenu.Label] = submenus.GetValueOrDefault(submenu.Label) + 1)}",
+                    _ => $"{path}/separator#{++separators}",
+                };
+                int childId = ids.For(key);
+                childIds.Add(childId);
+                Add(childId, key, child, child is DesktopMenuSubmenu nested ? nested.Items : [], ids);
+            }
+            Nodes[id] = new Node(id, item, childIds.MoveToImmutable());
         }
 
         internal void WriteLayout(ref MessageWriter writer, Node node, int depth)
