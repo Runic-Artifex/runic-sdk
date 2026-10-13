@@ -309,6 +309,7 @@
       "paths": [
         "examples/first-window",
         "examples/first-window-desktop",
+        "examples/status-icon",
         "examples/multi-window",
         "examples/notes-view-first",
         "examples/notes-reactive-views",
@@ -342,7 +343,8 @@
         "tests/dotnet/Runic.Platform.Linux.Portal.Tests",
         "tests/dotnet/Runic.Platform.Runtime.Tests",
         "tests/native/Runic.Desktop.WebViewSmoke",
-        "tests/native/Runic.Desktop.Gtk4.Smoke"
+        "tests/native/Runic.Desktop.Gtk4.Smoke",
+        "tests/native/Runic.StatusIcon.Smoke"
       ]
     }
   }
