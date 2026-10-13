@@ -52,6 +52,8 @@
       packages = forAllSystems (system:
         let pkgs = import nixpkgs { inherit system; };
         in {
+          # Status icon checks on Plasma and Waybar; see nixos/status-icon.
+          status-icon-plasma = (import ./nixos/status-icon { inherit pkgs; }).plasma;
           desktop-flatpak-tools = pkgs.buildEnv {
             name = "runic-desktop-flatpak-tools";
             paths = [ pkgs.flatpak pkgs.bash pkgs.coreutils pkgs.nix ];
