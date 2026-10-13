@@ -171,4 +171,119 @@ in
           print(machine.succeed("cat /run/test/log"))
     '';
   };
+
+  # Waybar's tray is its own StatusNotifierWatcher and host. Hyprland cannot
+  # render without a GPU render node, which these VMs lack, so Waybar runs on
+  # Sway with its software renderer; the status icon only talks to Waybar.
+  waybar = pkgs.testers.runNixOSTest {
+    name = "runic-status-icon-waybar";
+    nodes.machine = {
+      imports = [ common ];
+      programs.sway.enable = true;
+      services.greetd = {
+        enable = true;
+        settings.initial_session = {
+          command = "sway --config /etc/sway/test.conf";
+          user = "alice";
+        };
+        settings.default_session = {
+          command = "sway --config /etc/sway/test.conf";
+          user = "alice";
+        };
+      };
+      environment.sessionVariables.WLR_RENDERER = "pixman";
+      environment.etc."sway/test.conf".text = ''
+        output * resolution 1280x800
+        exec /etc/waybar/start
+      '';
+      # Only the tray, on a light bar, so tests can find the blue smoke icon.
+      environment.etc."waybar/test.json".text = builtins.toJSON {
+        layer = "top";
+        position = "top";
+        height = 32;
+        modules-right = [ "tray" ];
+        tray = {
+          icon-size = 22;
+          spacing = 8;
+        };
+      };
+      environment.etc."waybar/start" = {
+        mode = "0755";
+        text = "#!/bin/sh\nexec waybar -c /etc/waybar/test.json -s /etc/waybar/test.css >> /run/test/waybar.log 2>&1\n";
+      };
+      environment.etc."waybar/test.css".text = ''
+        window#waybar { background: #e0e0e0; }
+      '';
+      environment.systemPackages = [ pkgs.waybar ];
+    };
+    testScript = helpers + ''
+      def sway(command):
+          user(f"sh -c 'SWAYSOCK=$(ls /run/user/1000/sway-ipc.*.sock) swaymsg {command}'")
+          machine.sleep(2)
+
+      def click(position, button):
+          # One quick click: GTK closes a menu opened by a press held for long.
+          sway(f'"seat - cursor set {position}; seat - cursor press {button}; seat - cursor release {button}"')
+
+      # Waybar's tray, at the right of the bar along the top.
+      def icon():
+          return find_icon(900, 0, 380, 32)
+
+      start_all()
+      with subtest("Sway starts with Waybar"):
+          machine.wait_until_succeeds("pgrep -f '[w]aybar -c'", timeout=timedelta(minutes=5))
+          machine.wait_for_file("/run/user/1000/wayland-1")
+          machine.sleep(10)
+
+      with subtest("The icon registers with Waybar's watcher"):
+          start_smoke()
+          print(items())
+          machine.sleep(3)
+          machine.screenshot("waybar-tray")
+
+      def row(position, offset):
+          # Menus open below the icon; rows are offsets from it.
+          x, y = (int(value) for value in position.split())
+          return f"{x - 86} {y + offset}"
+
+      with subtest("Waybar activates the icon and its menu"):
+          click(icon(), "button1")
+          logged("activated Primary -")
+          position = icon()
+          click(position, "button3")
+          machine.screenshot("waybar-menu")
+          click(row(position, 50), "button1")
+          logged("activated MenuItem daily")
+          logged("update daily success")
+          click(position, "button3")
+          sway(f'"seat - cursor set {row(position, 82)}"')
+          machine.sleep(2)
+          machine.screenshot("waybar-submenu")
+          # The submenu opens to the left, level with More.
+          x, y = (int(value) for value in row(position, 82).split())
+          click(f"{x - 155} {y}", "button1")
+          logged("activated MenuItem attention")
+          logged("update attention success")
+
+      with subtest("The icon registers again after Waybar restarts"):
+          machine.succeed("pkill -f '[w]aybar -c'")
+          machine.wait_until_fails("pgrep -f '[w]aybar -c'")
+          sway("exec /etc/waybar/start")
+          machine.wait_until_succeeds(
+              "runuser -u alice -- env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
+              " busctl --user get-property org.kde.StatusNotifierWatcher /StatusNotifierWatcher"
+              " org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems | grep -q StatusNotifierItem-",
+              timeout=timedelta(seconds=60),
+          )
+          machine.sleep(3)
+          machine.screenshot("waybar-restarted")
+
+      with subtest("Quit from the menu"):
+          position = icon()
+          click(position, "button3")
+          click(row(position, 113), "button1")
+          logged("quit")
+          print(machine.succeed("cat /run/test/log"))
+    '';
+  };
 }

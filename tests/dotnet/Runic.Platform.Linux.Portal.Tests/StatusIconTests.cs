@@ -8,6 +8,7 @@ using Tmds.DBus.Protocol;
 internal sealed class StatusIconTests
 {
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(5);
+    private static readonly int[] RootMenu = [0];
 
     private static DesktopStatusIconState State(DesktopStatusIconStatus status = DesktopStatusIconStatus.Active) =>
         new(new DesktopIcon { ThemeName = "system-software-update", Images = [new DesktopIconImage(1, 1, [0x10, 0x20, 0x30, 0x40])] }, "Nix Manager")
@@ -87,6 +88,10 @@ internal sealed class StatusIconTests
         await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "Event", "isvu", (ref MessageWriter writer) =>
         { writer.WriteInt32(root.Children[3].Children[0].Id); writer.WriteString("clicked"); writer.WriteVariantInt32(0); writer.WriteUInt32(0); });
 
+        // libdbusmenu-glib (Waybar) asks before opening; it waits for these replies.
+        await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShowGroup", "ai", (ref MessageWriter writer) => writer.WriteArray(RootMenu))
+            .WaitAsync(Wait);
+        await Call(host, item, "/MenuBar", "com.canonical.dbusmenu", "AboutToShow", "i", (ref MessageWriter writer) => writer.WriteInt32(0)).WaitAsync(Wait);
         await Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "ProvideXdgActivationToken", "s", (ref MessageWriter writer) => writer.WriteString("token-1"));
         await Call(host, item, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "Activate", "ii", (ref MessageWriter writer) => { writer.WriteInt32(0); writer.WriteInt32(0); });
         var primary = await activations.Reader.ReadAsync().AsTask().WaitAsync(Wait);
