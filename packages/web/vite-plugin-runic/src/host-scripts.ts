@@ -1,11 +1,13 @@
 // The Runic hosts serve these classic scripts from the web root: CS-WebUI and
 // Runic Desktop serve webui.js and runic-desktop.js, and the host packages copy
-// their client scripts into www/. Vite cannot bundle them.
+// their client scripts into www/, the referenced host's also as the
+// host-neutral runic-views.js. Vite cannot bundle them.
 const hostScriptNames = new Set([
   "webui.js",
   "runic-desktop.js",
   "runic-cswebui.js",
   "runic-desktop-views.js",
+  "runic-views.js",
 ]);
 
 const scriptTag = /<script\b([^>]*)>/gi;

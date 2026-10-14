@@ -22,6 +22,12 @@ works best), then the default browser, then the platform WebView. The
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/) describes
 the Runic Desktop host for applications that need native windows.
 
+`Frontend/index.html` loads `webui.js`, which CS-WebUI serves, and
+`runic-views.js`, the Views client that `Runic.Application.Views.CsWebUi`
+copies into `www/`. The page names no host:
+[First Window on Runic Desktop](../first-window-desktop/README.md) serves the
+same page with that host's client.
+
 ## Run it from this repository
 
 ```sh

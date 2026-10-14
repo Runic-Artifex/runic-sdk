@@ -3,15 +3,11 @@ import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { runic } from "@runic-artifex/vite-plugin-runic";
 
 export default defineConfig({
-//#if (desktopHost)
-  // runic({ desktop: true }) loads the Runic Desktop bootstrap and builds with
-  // relative asset URLs, because Runic Desktop serves each window below its own path.
-  plugins: [svelte(), runic({ desktop: true })],
-//#else
-  // Relative asset URLs keep the published www folder relocatable.
+  // Relative asset URLs keep the published www folder relocatable, and Runic
+  // Desktop serves each window below its own path. The page names no host, so
+  // one build runs on Runic Desktop and CS-WebUI.
   base: "./",
   plugins: [svelte(), runic()],
-//#endif
   build: {
     // Every HTML page a Window opens is a build input. For a second Window, add
     // "settings.html" here and open it with RunicWindowOptions { StartPage = "settings.html" }.

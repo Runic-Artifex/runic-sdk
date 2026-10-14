@@ -112,7 +112,7 @@ internal static partial class FrontendDevelopmentDocument
     {
         string[] segments = path.Split('/');
         string name = segments[^1];
-        return name is "webui.js" or "runic-desktop.js" or "runic-cswebui.js" or "runic-desktop-views.js" &&
+        return name is "webui.js" or "runic-desktop.js" or "runic-cswebui.js" or "runic-desktop-views.js" or "runic-views.js" &&
             segments[..^1].All(segment => segment is "" or "." or "..")
                 ? name
                 : null;

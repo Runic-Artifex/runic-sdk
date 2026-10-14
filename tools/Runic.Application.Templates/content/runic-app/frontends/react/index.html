@@ -5,11 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Runic Views starter</title>
     <script src="webui.js"></script>
-    <!--#if (desktopHost) -->
-    <script src="runic-desktop-views.js"></script>
-    <!--#else -->
-    <script src="runic-cswebui.js"></script>
-    <!--#endif -->
+    <!-- The host copies its Views client to runic-views.js, so one build runs on every host. -->
+    <script src="runic-views.js"></script>
   </head>
   <body>
     <div id="app"></div>
