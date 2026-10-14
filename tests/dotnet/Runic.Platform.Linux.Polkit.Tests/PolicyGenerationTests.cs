@@ -3,9 +3,13 @@ using System.Xml;
 using TUnit.Core;
 using static DeclarationTests;
 
-/// <summary>Builds small projects against the shipped targets and reads the policy and C# they generate.</summary>
+/// <summary>
+/// Builds small projects against the shipped targets, Runic.Platform's (validation and declarations) and this
+/// package's (the policy), and reads the policy and C# they generate.
+/// </summary>
 internal sealed class PolicyGenerationTests
 {
+    private static readonly string PlatformTargets = Path.Combine(AppContext.BaseDirectory, "platform-targets", "Runic.Platform.targets");
     private static readonly string Targets = Path.Combine(AppContext.BaseDirectory, "polkit-targets", "Runic.Platform.Linux.Polkit.targets");
 
     [Test, DisplayName("policy: valid XML with escaped text, defaults, annotations and matching declarations")]
@@ -88,12 +92,11 @@ internal sealed class PolicyGenerationTests
     [Test, DisplayName("policy: invalid declarations are build errors and write nothing")]
     public async Task RejectsInvalidDeclarationsAsync()
     {
+        // Runic.Platform validates these once, before the policy target reads the items.
         using var project = new FixtureProject("""
             <RunicPrivilegedAction Include="Org.Example.Bad" Program="/opt/a" Description="d" Message="m" />
             <RunicPrivilegedAction Include="org.example.relative" Program="helper" Description="d" Message="m" />
             <RunicPrivilegedAction Include="org.example.no-message" Program="/opt/b" Description="d" />
-            <RunicPrivilegedAction Include="org.example.authorization" Program="/opt/c" Description="d" Message="m" AllowActive="sometimes" />
-            <RunicPrivilegedAction Include="org.example.newline" Program="/opt/d" Description="d" Message="first&#10;second" />
             <RunicPrivilegedAction Include="org.example.verb" Program="/opt/e" Verb="x" Description="d" Message="m" />
             <RunicPrivilegedAction Include="org.example.no-verb" Program="/opt/e" Description="d" Message="m" />
             <RunicPrivilegedAction Include="org.example.twice" Program="/opt/f" Description="d" Message="m" />
@@ -101,19 +104,82 @@ internal sealed class PolicyGenerationTests
             <RunicPrivilegedAction Include="org.example.count" Program="/opt/h" Description="d" Message="m" MaximumArguments="99" />
             <RunicPrivilegedAction Include="org.example.pattern" Program="/opt/i" Description="d" Message="m" ArgumentPattern="(" />
             <RunicPrivilegedAction Include="org.example.all" Program="/opt/j" Description="d" Message="m" />
-            <RunicPrivilegedAction Include="org.example.xml" Program="/opt/k" Verb="xml" Description="d" Message="$(BadText)" />
             <RunicPrivilegedAction Include="org.example.lookaround" Program="/opt/l" Verb="look" Description="d" Message="m" ArgumentPattern="(?=a)a" />
             <RunicPrivilegedAction Include="org.example.comment" Program="/opt/m" Verb="comment" Description="d" Message="m" ArgumentPattern="(?x)[a-z]+ # letters" />
+            <RunicPrivilegedAction Include="org.example.mac" Program="/opt/n" Verb="mac" Name="MacOSDaemon" Description="d" Message="m" />
+            <RunicPrivilegedAction Include="org.example.windows" Program="/opt/o" Verb="windows" Name="WindowsElevation" Description="d" Message="m" />
+            """);
+        var (exit, output) = await project.BuildAsync();
+        Check(exit != 0, output);
+        foreach (var code in new[] { "RUNICPA002", "RUNICPA003", "RUNICPA004", "RUNICPA005", "RUNICPA006", "RUNICPA008", "RUNICPA009", "RUNICPA011" })
+            Check(output.Contains(code, StringComparison.Ordinal), $"{code} in {output}");
+        Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "nothing written");
+        Check(output.Contains("'org.example.lookaround' has an ArgumentPattern that needs backtracking", StringComparison.Ordinal), "lookarounds fail at build time");
+        Check(output.Contains("'org.example.comment' has an invalid ArgumentPattern", StringComparison.Ordinal), "a pattern valid only unanchored fails at build time");
+        foreach (var name in new[] { "All", "MacOSDaemon", "WindowsElevation" })
+            Check(output.Contains($"generates the property '{name}', which is not usable", StringComparison.Ordinal), $"the reserved name {name} is RUNICPA011");
+        Check(!output.Contains("RUNICPA012", StringComparison.Ordinal) && !output.Contains("RUNICPA013", StringComparison.Ordinal), "the policy target did not run");
+        Check(Count(output, "error RUNICPA004") == 1, $"each invalid item is reported once: {output}");
+        Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
+    }
+
+    [Test, DisplayName("policy: values the policy cannot carry are build errors and write nothing")]
+    public async Task RejectsInvalidPolicyValuesAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.authorization" Program="/opt/c" Verb="authorization" Description="d" Message="m" AllowActive="sometimes" />
+            <RunicPrivilegedAction Include="org.example.newline" Program="/opt/d" Verb="newline" Description="d" Message="first&#10;second" />
+            <RunicPrivilegedAction Include="org.example.xml" Program="/opt/k" Verb="xml" Description="d" Message="$(BadText)" />
+            <RunicPrivilegedAction Include="org.example.gui" Program="/opt/l" Verb="gui" Description="d" Message="m" AllowGui="maybe" />
             """);
         var (exit, output) = await project.BuildAsync("-p:BadText=not\uFFFEXML");
         Check(exit != 0, output);
-        foreach (var code in new[] { "RUNICPA002", "RUNICPA003", "RUNICPA004", "RUNICPA005", "RUNICPA006", "RUNICPA008", "RUNICPA009", "RUNICPA011", "RUNICPA012", "RUNICPA013" })
+        foreach (var code in new[] { "RUNICPA010", "RUNICPA012", "RUNICPA013" })
             Check(output.Contains(code, StringComparison.Ordinal), $"{code} in {output}");
-        Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "nothing written");
+        Check(output.Contains("'org.example.newline' has a line break", StringComparison.Ordinal), "a line break is RUNICPA013");
         Check(output.Contains("'org.example.xml' has a line break", StringComparison.Ordinal), "a character XML cannot carry is RUNICPA013, not a task exception");
-        Check(output.Contains("'org.example.lookaround' has an ArgumentPattern that needs backtracking", StringComparison.Ordinal), "lookarounds fail at build time");
-        Check(output.Contains("'org.example.comment' has an invalid ArgumentPattern", StringComparison.Ordinal), "a pattern valid only unanchored fails at build time");
+        Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "neither the policy nor the declarations are written");
         Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
+    }
+
+    [Test, DisplayName("declarations: per-platform metadata passes through, and validation runs on its own")]
+    public async Task PlatformMetadataAndValidationTargetAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.activate" Program="/opt/example/helper" Verb="activate"
+                                   WindowsProgram="helpers\example-helper.exe" MacProgram="Contents/MacOS/helper"
+                                   Description="Activate" Message="Authentication is required to activate." />
+            """, extraProperties: "<RunicPrivilegedActionsClassName>Actions</RunicPrivilegedActionsClassName><RunicPrivilegedActionsNamespace>Other.Space</RunicPrivilegedActionsNamespace>");
+        var (exit, output) = await project.BuildAsync("-t:RunicValidatePrivilegedActions");
+        Check(exit == 0, output);
+        Check(!File.Exists(project.Source) && !File.Exists(project.Policy), "validation writes nothing");
+        (exit, output) = await project.BuildAsync();
+        Check(exit == 0, output);
+        var source = File.ReadAllText(project.Source);
+        Check(source.Contains("namespace Other.Space;", StringComparison.Ordinal) && source.Contains("internal static partial class Actions", StringComparison.Ordinal), source);
+        Check(!source.Contains("helpers", StringComparison.Ordinal) && !source.Contains("Contents/MacOS", StringComparison.Ordinal), "platform metadata is not part of the shared declaration");
+        var properties = await project.EvaluateAsync("RunicPrivilegedActionsClassName", "RunicPrivilegedActionsNamespace", "RunicPrivilegedActionsReservedNames");
+        Check(properties.Contains("\"RunicPrivilegedActionsClassName\": \"Actions\"", StringComparison.Ordinal)
+            && properties.Contains("\"RunicPrivilegedActionsNamespace\": \"Other.Space\"", StringComparison.Ordinal)
+            && properties.Contains("All;MacOSDaemon;WindowsElevation", StringComparison.Ordinal), $"evaluated defaults: {properties}");
+    }
+
+    [Test, DisplayName("declarations: the namespace defaults to the project's RootNamespace at evaluation time")]
+    public async Task EvaluatedDefaultsAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.activate" Program="/opt/example/helper" Description="Activate" Message="m" />
+            """);
+        var properties = await project.EvaluateAsync("RunicPrivilegedActionsClassName", "RunicPrivilegedActionsNamespace");
+        Check(properties.Contains("\"RunicPrivilegedActionsClassName\": \"PrivilegedActions\"", StringComparison.Ordinal)
+            && properties.Contains("\"RunicPrivilegedActionsNamespace\": \"Example.App\"", StringComparison.Ordinal), properties);
+    }
+
+    private static int Count(string text, string value)
+    {
+        var count = 0;
+        for (var i = text.IndexOf(value, StringComparison.Ordinal); i >= 0; i = text.IndexOf(value, i + value.Length, StringComparison.Ordinal)) count++;
+        return count;
     }
 
     private static string? Text(XmlNode node, string path) => node.SelectSingleNode(path)?.InnerText;
@@ -125,7 +191,7 @@ internal sealed class PolicyGenerationTests
     {
         private readonly string _directory = Path.Combine(Path.GetTempPath(), "runic-polkit-policy-" + Guid.NewGuid().ToString("N")[..8]);
 
-        public FixtureProject(string items)
+        public FixtureProject(string items, string extraProperties = "")
         {
             Directory.CreateDirectory(_directory);
             File.WriteAllText(Path.Combine(_directory, "fixture.proj"), $"""
@@ -135,10 +201,12 @@ internal sealed class PolicyGenerationTests
                     <RootNamespace>Example.App</RootNamespace>
                     <IntermediateOutputPath>obj/</IntermediateOutputPath>
                     <RunicPolkitPolicyName>org.example.app</RunicPolkitPolicyName>
+                    {extraProperties}
                   </PropertyGroup>
                   <ItemGroup>
                 {items}
                   </ItemGroup>
+                  <Import Project="{PlatformTargets}" />
                   <Import Project="{Targets}" />
                 </Project>
                 """);
@@ -147,7 +215,17 @@ internal sealed class PolicyGenerationTests
         public string Policy => Path.Combine(_directory, "obj", "runic-privileged", "org.example.app.policy");
         public string Source => Path.Combine(_directory, "obj", "runic-privileged", "PrivilegedActions.g.cs");
 
-        public async Task<(int ExitCode, string Output)> BuildAsync(params string[] extra)
+        public async Task<string> EvaluateAsync(params string[] properties)
+        {
+            var (exit, output) = await RunAsync(["msbuild", "fixture.proj", "-nologo", .. properties.Select(p => $"-getProperty:{p}")]);
+            Check(exit == 0, output);
+            return output;
+        }
+
+        public Task<(int ExitCode, string Output)> BuildAsync(params string[] extra) =>
+            RunAsync(["msbuild", "fixture.proj", .. extra.Any(e => e.StartsWith("-t:", StringComparison.Ordinal)) ? Array.Empty<string>() : ["-t:RunicGeneratePrivilegedActions"], "-nologo", "-nodeReuse:false", "-v:m", .. extra]);
+
+        private async Task<(int ExitCode, string Output)> RunAsync(string[] arguments)
         {
             var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host ? host : "dotnet")
             {
@@ -156,7 +234,6 @@ internal sealed class PolicyGenerationTests
                 UseShellExecute = false,
                 WorkingDirectory = _directory,
             };
-            string[] arguments = ["msbuild", "fixture.proj", "-t:RunicGeneratePrivilegedActions", "-nologo", "-nodeReuse:false", "-v:m", .. extra];
             foreach (var argument in arguments)
                 start.ArgumentList.Add(argument);
             start.Environment["MSBUILDDISABLENODEREUSE"] = "1";

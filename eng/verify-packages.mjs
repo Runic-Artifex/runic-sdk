@@ -79,7 +79,10 @@ export const packageLayouts = {
   "Runic.Application.Views.CsWebUi": { includes: ["buildTransitive/Runic.Application.Views.CsWebUi.props"] },
   // The Wpf targets also suppress RUNICWPF001 in XAML-generated code (docs/experimental.md).
   "Runic.Application.Views.Wpf": { includes: ["buildTransitive/Runic.Application.Views.Wpf.props", "buildTransitive/Runic.Application.Views.Wpf.targets"] },
-  // The privileged-action targets generate the Polkit policy and declarations; the props carry their help links (W300-004).
+  // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
+  // carry their help links (W300-004).
+  "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets"] },
+  // The Polkit targets generate the policy; the props carry their help links (W300-004).
   "Runic.Platform.Linux.Polkit": {
     files: ["README.md", "Runic.Platform.Linux.Polkit.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Linux.Polkit.dll", "lib/net10.0/Runic.Platform.Linux.Polkit.xml",
       "buildTransitive/Runic.Platform.Linux.Polkit.props", "buildTransitive/Runic.Platform.Linux.Polkit.targets"],

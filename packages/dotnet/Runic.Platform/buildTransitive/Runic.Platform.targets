@@ -1,0 +1,262 @@
+<Project>
+  <!--
+    Privileged actions are declared once, as RunicPrivilegedAction items:
+
+      <RunicPrivilegedAction Include="org.example.app.activate"
+                             Program="/usr/libexec/example/example-helper"
+                             Verb="activate"
+                             Description="Activate a configuration"
+                             Message="Authentication is required to activate the configuration."
+                             MaximumArguments="1"
+                             ArgumentPattern="/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+" />
+
+    These targets validate the platform-neutral part of every item (RUNICPA001 to RUNICPA009 and RUNICPA011) in
+    RunicValidatePrivilegedActions, and write a C# class with one PrivilegedActionDeclaration per item in
+    RunicGeneratePrivilegedActions. A platform package adds its own artifacts and checks with a target that depends
+    on RunicValidatePrivilegedActions, and appends that target to RunicPrivilegedActionsDependsOn so the class is
+    written only after it succeeded: Runic.Platform.Linux.Polkit writes the Polkit policy.
+
+    Per-platform metadata that only a platform package reads, such as WindowsProgram and MacProgram, is passed
+    through untouched; see the Runic.Platform README.
+  -->
+
+  <!--
+    Evaluated after the project file, so these defaults see the project's own RootNamespace (a .props file would be
+    evaluated before it). NuGet imports this file before the targets of the packages that depend on Runic.Platform,
+    so their evaluation sees the final values.
+  -->
+  <PropertyGroup>
+    <RunicPrivilegedActionsClassName Condition="'$(RunicPrivilegedActionsClassName)' == ''">PrivilegedActions</RunicPrivilegedActionsClassName>
+    <RunicPrivilegedActionsNamespace Condition="'$(RunicPrivilegedActionsNamespace)' == ''">$(RootNamespace)</RunicPrivilegedActionsNamespace>
+    <!-- Property names a platform package generates in another part of the partial class; an action's Name cannot use them. -->
+    <RunicPrivilegedActionsReservedNames>All;MacOSDaemon;WindowsElevation;$(RunicPrivilegedActionsReservedNames)</RunicPrivilegedActionsReservedNames>
+  </PropertyGroup>
+
+  <UsingTask TaskName="RunicWritePrivilegedActionDeclarations" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Actions ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <SourceFile ParameterType="System.String" />
+      <Namespace ParameterType="System.String" />
+      <ClassName ParameterType="System.String" Required="true" />
+      <ReservedNames ParameterType="System.String[]" />
+      <ProjectFile ParameterType="System.String" />
+      <HelpLinkBase ParameterType="System.String" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Build.Framework;
+using Microsoft.Build.Utilities;
+
+// Validates RunicPrivilegedAction items and, with a SourceFile, writes their declarations. Without a SourceFile it
+// only validates (RunicValidatePrivilegedActions).
+public sealed class RunicWritePrivilegedActionDeclarations : Task
+{
+    private static readonly Regex Identifier = new Regex("^[A-Za-z_][A-Za-z0-9_]*$");
+
+    [Required] public ITaskItem[] Actions { get; set; } = Array.Empty<ITaskItem>();
+    public string SourceFile { get; set; } = "";
+    public string Namespace { get; set; } = "";
+    [Required] public string ClassName { get; set; } = "";
+    public string[] ReservedNames { get; set; } = Array.Empty<string>();
+    public string ProjectFile { get; set; } = "";
+    public string HelpLinkBase { get; set; } = "";
+
+    private sealed class Action
+    {
+        public string Id = "", Name = "", Program = "", Description = "";
+        public string Verb, ArgumentPattern;
+        public int MaximumArguments;
+    }
+
+    public override bool Execute()
+    {
+        if (!Identifier.IsMatch(ClassName)) Error("RUNICPA001", $"RunicPrivilegedActionsClassName '{ClassName}' is not a C# identifier.");
+        if (!string.IsNullOrEmpty(Namespace) && !Namespace.Split('.').All(Identifier.IsMatch))
+            Error("RUNICPA001", $"RunicPrivilegedActionsNamespace '{Namespace}' is not a C# namespace.");
+
+        var actions = new List<Action>();
+        foreach (var item in Actions)
+        {
+            var action = Read(item);
+            if (action is null) continue;
+            if (actions.Any(a => a.Id == action.Id)) Error("RUNICPA002", $"Privileged action '{action.Id}' is declared twice.");
+            if (actions.Any(a => a.Name == action.Name)) Error("RUNICPA002", $"Privileged actions '{action.Id}' and '{actions.First(a => a.Name == action.Name).Id}' both generate the property '{action.Name}'; set Name on one of them.");
+            // pkexec selects the action by the program's real path and argv[1], but the privileged program sees only
+            // argv[1]: one executable can be installed under several paths (wrapper scripts). So a verb names one
+            // action across all programs, and an action without a verb must be the only one. The other platforms'
+            // helpers select the action the same way.
+            var clash = actions.FirstOrDefault(a => a.Verb == action.Verb || a.Verb == null || action.Verb == null);
+            if (clash != null)
+                Error("RUNICPA003", $"Privileged actions '{clash.Id}' and '{action.Id}' cannot be told apart by their first argument; give every action its own Verb, and use an action without a Verb only on its own.");
+            actions.Add(action);
+        }
+        if (Log.HasLoggedErrors) return false;
+        if (string.IsNullOrEmpty(SourceFile)) return true;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(SourceFile));
+        WriteIfChanged(SourceFile, Source(actions));
+        return true;
+    }
+
+    private Action Read(ITaskItem item)
+    {
+        var action = new Action { Id = item.ItemSpec };
+        string Get(string name) { var value = item.GetMetadata(name); return string.IsNullOrEmpty(value) ? null : value; }
+        if (!IsValidId(action.Id))
+        {
+            Error("RUNICPA004", $"Privileged action ID '{action.Id}' must be a lowercase reverse-DNS name such as org.example.app.activate.");
+            return null;
+        }
+        action.Program = Get("Program") ?? "";
+        if (!IsNormalizedAbsolutePath(action.Program))
+            Error("RUNICPA005", $"Privileged action '{action.Id}' needs Program, the absolute, normalized path the program is installed at.");
+        action.Description = Get("Description") ?? "";
+        if (action.Description.Length == 0 || (Get("Message") ?? "").Length == 0)
+            Error("RUNICPA006", $"Privileged action '{action.Id}' needs a Description and a Message for the authentication dialog.");
+        action.Verb = Get("Verb");
+        if (action.Verb != null && (action.Verb.Length > 4096 || action.Verb.IndexOf('\0') >= 0))
+            Error("RUNICPA007", $"Privileged action '{action.Id}' has an invalid Verb.");
+        action.ArgumentPattern = Get("ArgumentPattern");
+        if (action.ArgumentPattern != null)
+        {
+            // The options of PrivilegedActionDeclaration.PatternOptions: NonBacktracking (1024) rejects
+            // backreferences and lookarounds here rather than when the application starts. MSBuild on .NET
+            // Framework has no NonBacktracking; there the pattern is checked without it.
+            // Alone and anchored, as PrivilegedActionDeclaration compiles it: "(?x)[a-z]+ # letters" is valid alone,
+            // but its comment swallows the anchoring group's end.
+            try
+            {
+                foreach (var pattern in new[] { action.ArgumentPattern, "^(?:" + action.ArgumentPattern + ")\\z" })
+                {
+                    try { _ = new Regex(pattern, (RegexOptions)1024 | RegexOptions.CultureInvariant); }
+                    catch (ArgumentOutOfRangeException) { _ = new Regex(pattern, RegexOptions.CultureInvariant); }
+                }
+            }
+            catch (ArgumentException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an invalid ArgumentPattern: {e.Message}"); }
+            catch (NotSupportedException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an ArgumentPattern that needs backtracking: {e.Message}"); }
+        }
+        var maximum = Get("MaximumArguments") ?? "0";
+        if (!int.TryParse(maximum, NumberStyles.None, CultureInfo.InvariantCulture, out action.MaximumArguments) || action.MaximumArguments > 64)
+            Error("RUNICPA009", $"Privileged action '{action.Id}' has MaximumArguments '{maximum}'; use a number from 0 to 64.");
+        action.Name = Get("Name") ?? PropertyName(action.Id);
+        if (!Identifier.IsMatch(action.Name) || action.Name == ClassName || ReservedNames.Contains(action.Name))
+            Error("RUNICPA011", $"Privileged action '{action.Id}' generates the property '{action.Name}', which is not usable; set Name. Reserved names: {string.Join(", ", ReservedNames)}.");
+        return action;
+    }
+
+    private string Source(List<Action> actions)
+    {
+        var s = new StringBuilder();
+        s.Append("// <auto-generated>Generated by Runic.Platform from RunicPrivilegedAction items.</auto-generated>\n");
+        s.Append("#nullable enable\n");
+        if (!string.IsNullOrEmpty(Namespace)) s.Append("namespace ").Append(Namespace).Append(";\n");
+        s.Append("\n/// <summary>The privileged actions declared by this project's RunicPrivilegedAction items.</summary>\n");
+        s.Append("[global::System.CodeDom.Compiler.GeneratedCode(\"Runic.Platform\", \"1\")]\n");
+        s.Append("internal static partial class ").Append(ClassName).Append("\n{\n");
+        foreach (var action in actions)
+        {
+            s.Append("    /// <summary><c>").Append(Escape(action.Id)).Append("</c>: ").Append(Escape(action.Description)).Append("</summary>\n");
+            s.Append("    public static global::Runic.Platform.PrivilegedActionDeclaration ").Append(action.Name)
+             .Append(" { get; } = new(").Append(Literal(action.Id)).Append(", ").Append(Literal(action.Program)).Append(")\n    {\n");
+            if (action.Verb != null) s.Append("        Verb = ").Append(Literal(action.Verb)).Append(",\n");
+            s.Append("        MaximumArguments = ").Append(action.MaximumArguments.ToString(CultureInfo.InvariantCulture)).Append(",\n");
+            if (action.ArgumentPattern != null) s.Append("        ArgumentPattern = ").Append(Literal(action.ArgumentPattern)).Append(",\n");
+            s.Append("    };\n\n");
+        }
+        s.Append("    /// <summary>Every declared action, for the provider and for the privileged program's own check.</summary>\n");
+        s.Append("    public static global::System.Collections.Generic.IReadOnlyList<global::Runic.Platform.PrivilegedActionDeclaration> All { get; } =\n");
+        s.Append("        new global::Runic.Platform.PrivilegedActionDeclaration[] { ")
+         .Append(string.Join(", ", actions.Select(a => a.Name))).Append(" };\n}\n");
+        return s.ToString();
+    }
+
+    private static string Literal(string value)
+    {
+        var s = new StringBuilder("\"");
+        foreach (var c in value)
+        {
+            if (c == '"' || c == '\\') s.Append('\\').Append(c);
+            else if (c < ' ' || c == 0x7F || c == (char)0x2028 || c == (char)0x2029 || char.IsSurrogate(c)) s.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+            else s.Append(c);
+        }
+        return s.Append('"').ToString();
+    }
+
+    private static string Escape(string value) =>
+        value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace('\r', ' ').Replace('\n', ' ');
+
+    private static string PropertyName(string id)
+    {
+        var last = id.Substring(id.LastIndexOf('.') + 1);
+        var name = new StringBuilder();
+        foreach (var part in last.Split('-'))
+            if (part.Length > 0) name.Append(char.ToUpperInvariant(part[0])).Append(part.Substring(1));
+        return name.Length > 0 && char.IsDigit(name[0]) ? "_" + name : name.ToString();
+    }
+
+    // The same rules as PrivilegedActionDeclaration.IsValidId.
+    private static bool IsValidId(string id)
+    {
+        if (id.Length == 0 || id.Length > 255 || id[0] < 'a' || id[0] > 'z') return false;
+        var segments = id.Split('.');
+        return segments.Length >= 2 && segments.All(s => s.Length > 0 && s[0] != '-' && s.All(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'));
+    }
+
+    private static bool IsNormalizedAbsolutePath(string path) =>
+        path.Length >= 2 && path.Length <= 4096 && path[0] == '/' && path[path.Length - 1] != '/' && path.IndexOf('\0') < 0
+        && path.Substring(1).Split('/').All(s => s.Length > 0 && s != "." && s != "..");
+
+    private static void WriteIfChanged(string path, string content)
+    {
+        if (File.Exists(path) && File.ReadAllText(path) == content) return;
+        File.WriteAllText(path, content, new UTF8Encoding(false));
+    }
+
+    private void Error(string code, string message) =>
+        Log.LogError(null, code, null, string.IsNullOrEmpty(HelpLinkBase) ? null : HelpLinkBase + code.ToLowerInvariant(), ProjectFile, 0, 0, 0, 0, message);
+}
+]]></Code>
+    </Task>
+  </UsingTask>
+
+  <!-- Validates every item once; platform targets that read the items depend on it. -->
+  <Target Name="RunicValidatePrivilegedActions" Condition="'@(RunicPrivilegedAction)' != ''">
+    <RunicWritePrivilegedActionDeclarations Actions="@(RunicPrivilegedAction)"
+                                            Namespace="$(RunicPrivilegedActionsNamespace)"
+                                            ClassName="$(RunicPrivilegedActionsClassName)"
+                                            ReservedNames="$(RunicPrivilegedActionsReservedNames)"
+                                            ProjectFile="$(MSBuildProjectFullPath)"
+                                            HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+  </Target>
+
+  <!-- Writes the declarations after the platform targets in RunicPrivilegedActionsDependsOn succeeded. -->
+  <Target Name="RunicGeneratePrivilegedActions"
+          BeforeTargets="AssignTargetPaths;CoreCompile"
+          DependsOnTargets="RunicValidatePrivilegedActions;$(RunicPrivilegedActionsDependsOn)"
+          Condition="'@(RunicPrivilegedAction)' != ''">
+    <PropertyGroup>
+      <!-- Set here, when the target runs: a project that imports this file in its body has no IntermediateOutputPath yet. -->
+      <RunicPrivilegedActionsIntermediateDirectory Condition="'$(RunicPrivilegedActionsIntermediateDirectory)' == ''">$(IntermediateOutputPath)runic-privileged/</RunicPrivilegedActionsIntermediateDirectory>
+    </PropertyGroup>
+    <RunicWritePrivilegedActionDeclarations Actions="@(RunicPrivilegedAction)"
+                                            SourceFile="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs"
+                                            Namespace="$(RunicPrivilegedActionsNamespace)"
+                                            ClassName="$(RunicPrivilegedActionsClassName)"
+                                            ReservedNames="$(RunicPrivilegedActionsReservedNames)"
+                                            ProjectFile="$(MSBuildProjectFullPath)"
+                                            HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+    <ItemGroup>
+      <Compile Remove="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
+      <Compile Include="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
+      <FileWrites Include="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs" />
+    </ItemGroup>
+  </Target>
+</Project>

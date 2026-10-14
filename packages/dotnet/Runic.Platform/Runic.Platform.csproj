@@ -9,9 +9,12 @@
     <PackageId>Runic.Platform</PackageId>
     <Description>Host-independent native-service contracts for Runic applications.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The privileged-action targets report RUNICPA diagnostics with links to docs/diagnostics.md at the release tag. -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="buildTransitive/Runic.Platform.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

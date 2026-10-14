@@ -52,20 +52,30 @@ off Linux, so application code is the same everywhere.
 
 ### Declared once
 
-`RunicPrivilegedAction` items are the single declaration. The package's
-`buildTransitive` targets validate them (`RUNICPA001` to `RUNICPA013`) and write:
+`RunicPrivilegedAction` items are the single declaration. Runic.Platform's
+`buildTransitive` targets validate the platform-neutral part once
+(`RUNICPA001` to `RUNICPA009` and `RUNICPA011`, in `RunicValidatePrivilegedActions`)
+and write `PrivilegedActions.g.cs`, a partial class with one
+`PrivilegedActionDeclaration` per item, compiled into the application, which
+uses it on both sides of the action. Each platform package adds its artifacts
+in a target that depends on that validation:
 
-- the Polkit policy, copied to `share/polkit-1/actions/<RunicPolkitPolicyName>.policy`
-  in the output and publish directories, for the package (W300-005) to install;
-- `PrivilegedActions.g.cs`, a class with one `PrivilegedActionDeclaration` per
-  item, compiled into the application, which uses it on both sides of the
-  action.
+- Runic.Platform.Linux.Polkit writes the Polkit policy, copied to
+  `share/polkit-1/actions/<RunicPolkitPolicyName>.policy` in the output and
+  publish directories, for the package (W300-005) to install, and checks what
+  only the policy carries (`RUNICPA010`, `RUNICPA012` to `RUNICPA014`).
+- The Windows and macOS packages read the same items. Their artifacts (a
+  manifest, a launchd plist) come from the same declaration, and per-platform
+  metadata (`WindowsProgram`, `MacProgram`) says where the helper is installed
+  when the default derived from `Program` does not fit. A platform that needs
+  more generated code adds it as another part of the partial class, under a
+  reserved property name (`WindowsElevation`, `MacOSDaemon`).
 
 A declaration holds the action ID, the program's absolute path, an optional
 verb (argv\[1\]), the maximum number of further arguments and an optional
-pattern every further argument must match completely. The Windows and macOS
-providers will read the same items: the ID is platform-neutral, and their
-artifacts (a manifest, a launchd plist) come from the same declaration.
+pattern every further argument must match completely. The ID is
+platform-neutral; `Program` is the Linux path, which other platforms map to
+their own location.
 
 Every action has its own verb, across all programs, and an action without a
 verb is allowed only on its own (`RUNICPA003`, and `ArgumentException` in
