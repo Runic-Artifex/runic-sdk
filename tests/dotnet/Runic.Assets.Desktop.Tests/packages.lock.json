@@ -84,14 +84,14 @@
       "runic.assets.aspnetcore": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.7.0-preview.8, )"
+          "Runic.Assets": "[0.7.0-preview.9, )"
         }
       },
       "runic.assets.desktop": {
         "type": "Project",
         "dependencies": {
-          "Runic.Assets": "[0.7.0-preview.8, )",
-          "Runic.Desktop": "[0.7.0-preview.8, )"
+          "Runic.Assets": "[0.7.0-preview.9, )",
+          "Runic.Desktop": "[0.7.0-preview.9, )"
         }
       },
       "runic.desktop": {
