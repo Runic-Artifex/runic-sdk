@@ -36,6 +36,7 @@ commands in the browser.
 | `--host` | `desktop`, `desktop-gtk4`, `cswebui` | `desktop` |
 | `--view-models` | `reactiveui`, `toolkit` | `reactiveui` |
 | `--tests` | Adds a TUnit test project for the Window | No test project |
+| `--nix` | Adds a Nix flake that builds the application with the Runic SDK's `buildRunicApplication` | No flake |
 | `--output`, `-o` | A directory | The project name |
 | `--template-source` | An additional NuGet source for the template | |
 
@@ -44,7 +45,7 @@ destination directory. Earlier versions named this option `--directory`, which
 still works. The creator's global `--format human|json` option selects the
 command output format.
 
-The frontend, package manager, host and ViewModel choices and `--tests` come from
+The frontend, package manager, host and ViewModel choices, `--tests` and `--nix` come from
 the template itself, so `dotnet new runic-app --help` lists the same options.
 With `--tests`, the next steps include `dotnet test --project MyApp.Tests`.
 

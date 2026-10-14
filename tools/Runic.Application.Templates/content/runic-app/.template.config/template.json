@@ -30,7 +30,8 @@
         "**/*.user"
       ],
       "modifiers": [
-        { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] }
+        { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] },
+        { "condition": "(!nix)", "exclude": [ "flake.nix" ] }
       ]
     },
     {
@@ -105,6 +106,7 @@
       "type": "parameter",
       "datatype": "choice",
       "defaultValue": "desktop",
+      "replaces": "__RUNIC_HOST__",
       "displayName": "Window host",
       "description": "How the application presents its Window.",
       "choices": [
@@ -138,6 +140,13 @@
       "defaultValue": "false",
       "displayName": "Test project",
       "description": "Adds a TUnit test project that drives the Window headlessly with Runic.Application.Testing."
+    },
+    "nix": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "displayName": "Nix flake",
+      "description": "Adds a Nix flake that builds the application in the Nix sandbox with the Runic SDK's buildRunicApplication, from packages.lock.json and the frontend's lock file."
     },
     "runicVersion": {
       "type": "parameter",
@@ -239,6 +248,18 @@
     "npmPackageName": {
       "identifier": "chain",
       "steps": [ "npmKebabCase", "npmUrlSafeCharacters", "npmMaximumLength", "npmTrimmedSeparators" ]
+    }
+  },
+  "SpecialCustomOperations": {
+    "**/*.nix": {
+      "operations": [
+        { "type": "conditional", "configuration": { "if": [ "#if" ], "else": [ "#else" ], "elseif": [ "#elif" ], "endif": [ "#endif" ], "trim": true, "wholeLine": true } }
+      ]
+    },
+    "**/.gitignore": {
+      "operations": [
+        { "type": "conditional", "configuration": { "if": [ "#if" ], "else": [ "#else" ], "elseif": [ "#elif" ], "endif": [ "#endif" ], "trim": true, "wholeLine": true } }
+      ]
     }
   },
   "primaryOutputs": [

@@ -40,8 +40,9 @@ internal sealed class CreateTests
         True(model.Options[2].Find("cswebui")!.Description.StartsWith("Opens a browser window", StringComparison.Ordinal), "CS-WebUI says it opens a browser window");
         Equal("CommunityToolkit.Mvvm", model.Options[3].Find("toolkit")!.DisplayName);
         True(model.Options.All(option => option.Choices.All(choice => choice.Description.Length > 0)), "every choice is described");
-        Equal("tests", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
+        Equal("tests,nix", string.Join(',', model.Toggles.Select(toggle => toggle.LongName)));
         Equal("Test project", model.Toggles[0].DisplayName);
+        Equal("Nix flake", model.Toggles[1].DisplayName);
         True(model.Toggles.All(toggle => toggle.Description.Length > 0), "every toggle is described");
         Equal(string.Join(',', model.Toggles.Select(toggle => toggle.LongName)), string.Join(',', Runic.Create.Program.ToggleFlags));
     }
@@ -187,7 +188,7 @@ internal sealed class CreateTests
     {
         TemplateOptionModel model = TemplateOptionModel.Load();
         OptionSelection[] defaults = model.Options.Select(option => new OptionSelection(option, option.Default)).ToArray();
-        CreatePlan plan = new("MyApp", null, "1.0.0", defaults, null, model.Toggles);
+        CreatePlan plan = new("MyApp", null, "1.0.0", defaults, null, [model.Toggles[0]]);
         Equal("dotnet new runic-app --name MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests", plan.CreateCommand);
         Equal("dnx Runic.Create@1.0.0 -- MyApp --frontend react --package-manager npm --host desktop --view-models reactiveui --tests", plan.CreatorCommand);
         True(plan.Summary.EndsWith(" · Test project", StringComparison.Ordinal), plan.Summary);
