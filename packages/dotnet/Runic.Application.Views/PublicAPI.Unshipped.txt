@@ -9,6 +9,7 @@ Runic.Application.Views.RunicPathWatchError.Path.get -> string!
 Runic.Application.Views.RunicPathWatchErrorKind
 Runic.Application.Views.RunicPathWatchErrorKind.Failed = 3 -> Runic.Application.Views.RunicPathWatchErrorKind
 Runic.Application.Views.RunicPathWatchErrorKind.Missing = 0 -> Runic.Application.Views.RunicPathWatchErrorKind
+Runic.Application.Views.RunicPathWatchErrorKind.NotGitRepository = 4 -> Runic.Application.Views.RunicPathWatchErrorKind
 Runic.Application.Views.RunicPathWatchErrorKind.Overflow = 1 -> Runic.Application.Views.RunicPathWatchErrorKind
 Runic.Application.Views.RunicPathWatchErrorKind.WatchLimit = 2 -> Runic.Application.Views.RunicPathWatchErrorKind
 Runic.Application.Views.RunicPathWatcher

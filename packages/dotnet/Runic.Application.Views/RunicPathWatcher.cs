@@ -10,7 +10,9 @@ namespace Runic.Application.Views;
 /// Events from <see cref="FileSystemWatcher"/> are debounced: a change is reported once no event arrived for
 /// <see cref="RunicPathWatcherOptions.Debounce"/>, or ten debounce intervals after the first event of a burst at
 /// the latest. The watcher then reads each affected target, and reports the targets whose state differs from the
-/// last reading, so noise such as a lock file next to a Git ref is not reported.
+/// last reading, so noise such as a lock file next to a Git ref is not reported. A target that changes and changes
+/// back within that window is therefore not reported, except a <see cref="RunicWatchTarget.File"/>, for which an
+/// event alone counts.
 /// </para>
 /// <para>
 /// Both callbacks run in turns of the model context, so they can set ViewModel state directly. The watcher
@@ -19,10 +21,12 @@ namespace Runic.Application.Views;
 /// </para>
 /// <para>
 /// Where events cannot be trusted, the watcher reads its targets every
-/// <see cref="RunicPathWatcherOptions.PollingInterval"/> instead: on network and FUSE file systems, while a
-/// directory a target needs is missing, after a watch failed to start, and with
+/// <see cref="RunicPathWatcherOptions.PollingInterval"/> instead: on network, FUSE and virtiofs file systems, while
+/// a directory a target needs is missing, after a watch failed to start, and with
 /// <see cref="RunicPathWatcherOptions.UsePolling"/>. Otherwise it still reads them every 30 seconds, or every
-/// polling interval when that is longer, to recover from events the platform lost.
+/// polling interval when that is longer, to recover from events the platform lost. It also watches the parent of
+/// each watched directory, so that a directory deleted and created again, as by <c>rm -rf</c> and <c>git clone</c>,
+/// is watched again at once.
 /// </para>
 /// </remarks>
 public sealed class RunicPathWatcher : IDisposable
@@ -36,17 +40,19 @@ public sealed class RunicPathWatcher : IDisposable
     private readonly Action<RunicPathWatchError>? _failed;
     private readonly RunicPathWatcherOptions _options;
     private readonly TargetState[] _states;
-    private readonly Dictionary<string, Subscription> _subscriptions = new(WatchPaths.Comparer);
+    private readonly Dictionary<string, IDirectoryWatchLease> _subscriptions = new(WatchPaths.Comparer);
     // Directories that cannot be watched: remote ones for good, failed ones until the next poll retries them.
     private readonly HashSet<string> _remote = new(WatchPaths.Comparer);
     private readonly Dictionary<string, RunicPathWatchErrorKind> _failedWatches = new(WatchPaths.Comparer);
     private readonly HashSet<string> _reported = new(StringComparer.Ordinal);
+    private readonly Sink _sink;
     private readonly ITimer _debounce;
     private readonly ITimer _poll;
     private CancellationTokenRegistration _closed;
     private TimeSpan _pollPeriod = Timeout.InfiniteTimeSpan;
     private DateTimeOffset? _firstPending;
     private volatile bool _disposed;
+    private int _requested;
     private int _events;
     private int _evaluations;
     private int _deliveries;
@@ -62,6 +68,7 @@ public sealed class RunicPathWatcher : IDisposable
         _changed = changed;
         _failed = failed;
         _options = options;
+        _sink = new Sink(this);
         _states = [.. targets.Select(target => new TargetState(target, target.Probe()))];
         _debounce = options.TimeProvider.CreateTimer(static state => ((RunicPathWatcher)state!).Evaluate(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _poll = options.TimeProvider.CreateTimer(static state => ((RunicPathWatcher)state!).OnPoll(), this, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
@@ -76,9 +83,9 @@ public sealed class RunicPathWatcher : IDisposable
     /// <param name="targets">The targets; a change reports the instances that changed.</param>
     /// <param name="changed">Receives each change in a turn of <paramref name="context"/>.</param>
     /// <param name="failed">
-    /// Receives problems in a turn of <paramref name="context"/>: a missing directory, lost events or a watch that
-    /// could not start. The watcher keeps working, by polling where needed. Without a callback, problems are written to
-    /// <see cref="System.Diagnostics.Trace"/> as event 1015.
+    /// Receives problems in a turn of <paramref name="context"/>: a missing directory, a checkout that is not a Git
+    /// repository, lost events or a watch that could not start. The watcher keeps working, by polling where needed.
+    /// Without a callback, problems are written to <see cref="System.Diagnostics.Trace"/> as event 1015.
     /// </param>
     /// <param name="options">Debounce, polling and time; null uses the defaults.</param>
     /// <returns>The watcher; dispose it with the ViewModel that owns it.</returns>
@@ -108,11 +115,9 @@ public sealed class RunicPathWatcher : IDisposable
 
     private void Begin()
     {
-        List<RunicPathWatchError> errors = [];
-        List<IDisposable> released = [];
-        lock (_gate) Arm(errors, released);
-        Release(released);
-        Report(errors);
+        // The targets were read in the constructor; arm their watches without reporting a change.
+        Volatile.Write(ref _requested, 1);
+        Evaluate();
         _options.Observer?.Started(this);
         // Registered last: a context that already closed disposes the watcher at once.
         if (_context is IRunicModelContextLifetime lifetime)
@@ -127,7 +132,7 @@ public sealed class RunicPathWatcher : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
-            released = [.. _subscriptions.Values.Select(subscription => subscription.Lease)];
+            released = [.. _subscriptions.Values];
             _subscriptions.Clear();
         }
         Release(released);
@@ -137,19 +142,31 @@ public sealed class RunicPathWatcher : IDisposable
         _options.Observer?.Stopped(this);
     }
 
-    // Marks targets changed as if an event named them, for RunicPathWatchTester. Returns false when none matches.
     // The watcher's state, for test failure messages.
     internal string Describe()
     {
         lock (_gate)
         {
             var states = string.Join("; ", _states.Select(state =>
-                $"{state.Target} dirty={state.Dirty} forced={state.Forced} missing={state.Probe.MissingDirectory} signature={state.Probe.Signature.Replace('\n', '|')} specs=[{string.Join(", ", state.Probe.Specs)}]"));
-            return $"disposed={_disposed} events={_events} evaluations={_evaluations} deliveries={_deliveries} poll={_pollPeriod} pending={_firstPending} "
+                $"{state.Target} dirty={state.Dirty} forced={state.Forced} missing={state.Probe.MissingDirectory} problem={state.Probe.NotRepository} signature={state.Probe.Signature.Replace('\n', '|')} specs=[{string.Join(", ", state.Probe.Specs)}]"));
+            return $"disposed={_disposed} events={Volatile.Read(ref _events)} evaluations={_evaluations} deliveries={_deliveries} poll={_pollPeriod} pending={_firstPending} "
                 + $"watches=[{string.Join(", ", _subscriptions.Keys)}] failed=[{string.Join(", ", _failedWatches.Keys)}] remote=[{string.Join(", ", _remote)}] targets: {states}";
         }
     }
 
+    // Whether the watch reads its targets only at the 30-second backstop, that is, every target has a working watch.
+    internal bool IsEventDriven
+    {
+        get
+        {
+            lock (_gate) return _pollPeriod >= Backstop && !_options.UsePolling;
+        }
+    }
+
+    // Drops platform events, so that tests can exercise the polling backstop.
+    internal bool IgnoreEvents { get; set; }
+
+    // Marks targets changed as if an event named them, for RunicPathWatchTester. Returns false when none matches.
     internal bool Signal(string path)
     {
         var full = Path.GetFullPath(path);
@@ -160,7 +177,7 @@ public sealed class RunicPathWatcher : IDisposable
             foreach (var state in _states)
             {
                 if (!string.Equals(state.Target.FullPath, full, WatchPaths.Comparison)) continue;
-                state.Dirty = state.Forced = true;
+                state.Dirty = state.Forced = state.ByEvent = true;
                 found = true;
             }
             if (found) ScheduleDebounce();
@@ -170,27 +187,40 @@ public sealed class RunicPathWatcher : IDisposable
 
     private void OnPath(string fullPath)
     {
-        Interlocked.Increment(ref _events);
+        if (IgnoreEvents) return;
         lock (_gate)
         {
             if (_disposed) return;
             var matched = false;
             foreach (var state in _states)
             {
-                if (!state.Probe.Specs.Any(spec => RunicWatchTarget.Matches(spec, fullPath))) continue;
-                state.Dirty = true;
-                // A write keeps a file's size and can keep its time stamp; trust the event.
-                if (state.Target.Kind == WatchTargetKind.File) state.Forced = true;
-                matched = true;
+                foreach (var spec in state.Probe.Specs)
+                {
+                    if (RunicWatchTarget.Matches(spec, fullPath))
+                    {
+                        state.Dirty = state.ByEvent = true;
+                        // A write keeps a file's size and can keep its time stamp; trust the event.
+                        if (state.Target.Kind == WatchTargetKind.File) state.Forced = true;
+                        matched = true;
+                    }
+                    // The parent's watch names a watched directory: it may have been replaced. Evaluating checks it.
+                    else if (WatchPaths.Comparer.Equals(spec.Directory, fullPath))
+                    {
+                        state.Dirty = state.ByEvent = true;
+                        matched = true;
+                    }
+                }
             }
-            if (matched) ScheduleDebounce();
+            if (!matched) return;
+            Interlocked.Increment(ref _events);
+            ScheduleDebounce();
         }
     }
 
-    private void OnFailure(string directory, Exception exception, bool stopped)
+    private void OnFailure(string key, string directory, Exception exception, bool stopped)
     {
         List<RunicPathWatchError> errors = [];
-        List<IDisposable> released = [];
+        IDisposable? released = null;
         lock (_gate)
         {
             if (_disposed) return;
@@ -202,10 +232,9 @@ public sealed class RunicPathWatcher : IDisposable
             }
             if (stopped)
             {
-                foreach (var (key, subscription) in _subscriptions.Where(item => WatchPaths.Comparer.Equals(item.Value.Directory, directory)).ToArray())
+                if (_subscriptions.Remove(key, out var lease))
                 {
-                    released.Add(subscription.Lease);
-                    _subscriptions.Remove(key);
+                    released = lease;
                     _failedWatches[key] = RunicPathWatchErrorKind.Failed;
                     AddOnce(errors, $"failed|{key}", new(RunicPathWatchErrorKind.Failed, directory, exception));
                 }
@@ -214,10 +243,12 @@ public sealed class RunicPathWatcher : IDisposable
                 errors.Add(new(RunicPathWatchErrorKind.Overflow, directory, exception));
             ScheduleDebounce();
         }
-        Release(released);
+        // This runs on the platform's event thread, which on macOS serves every watcher; release elsewhere.
+        if (released is not null) ThreadPool.QueueUserWorkItem(static lease => lease.Dispose(), released, preferLocal: false);
         Report(errors);
     }
 
+    // Called under the gate.
     private void ScheduleDebounce()
     {
         var now = _options.TimeProvider.GetUtcNow();
@@ -237,42 +268,91 @@ public sealed class RunicPathWatcher : IDisposable
             _failedWatches.Clear();
         }
         Evaluate();
+        // One-shot: the next read is due a full period after this one, however long it took.
+        lock (_gate)
+        {
+            if (!_disposed) _poll.Change(_pollPeriod, Timeout.InfiniteTimeSpan);
+        }
     }
 
+    // Runs one evaluation at a time. A timer that fires while another evaluation runs leaves a request for it and
+    // returns, so slow file systems never pile up blocked timer threads.
     private void Evaluate()
+    {
+        Volatile.Write(ref _requested, 1);
+        while (Volatile.Read(ref _requested) == 1 && !_disposed)
+        {
+            if (!Monitor.TryEnter(_evaluating)) return;
+            try
+            {
+                while (Interlocked.Exchange(ref _requested, 0) == 1 && !_disposed) EvaluateOnce();
+            }
+            finally
+            {
+                Monitor.Exit(_evaluating);
+            }
+        }
+    }
+
+    private void EvaluateOnce()
     {
         List<RunicPathWatchError> errors = [];
         List<IDisposable> released = [];
         RunicPathChange? change = null;
-        lock (_evaluating)
+
+        TargetState[] dirty;
+        bool[] forced;
+        bool[] byEvent;
+        lock (_gate)
         {
-            TargetState[] dirty;
-            bool[] forced;
-            lock (_gate)
-            {
-                if (_disposed) return;
-                _evaluations++;
-                _firstPending = null;
-                dirty = [.. _states.Where(state => state.Dirty)];
-                forced = [.. dirty.Select(state => state.Forced)];
-                foreach (var state in dirty) state.Dirty = state.Forced = false;
-            }
+            if (_disposed) return;
+            _evaluations++;
+            _firstPending = null;
+            dirty = [.. _states.Where(state => state.Dirty)];
+            forced = [.. dirty.Select(state => state.Forced)];
+            byEvent = [.. dirty.Select(state => state.ByEvent)];
+            foreach (var state in dirty) state.Dirty = state.Forced = state.ByEvent = false;
+        }
 
-            // Read outside the gate, so file-system latency doesn't hold up event threads.
-            var probes = dirty.Select(state => state.Target.Probe()).ToArray();
+        // Read outside the gate, so file-system latency doesn't hold up event threads.
+        var probes = dirty.Select(state => state.Target.Probe()).ToArray();
 
-            lock (_gate)
+        WatchProbe[] current;
+        Dictionary<string, IDirectoryWatchLease> subscribed;
+        HashSet<string> skipped;
+        lock (_gate)
+        {
+            if (_disposed) return;
+            List<RunicWatchTarget> changed = [];
+            var reportedByEvent = false;
+            for (var i = 0; i < dirty.Length; i++)
             {
-                if (_disposed) return;
-                List<RunicWatchTarget> changed = [];
-                for (var i = 0; i < dirty.Length; i++)
+                // Only an evaluation after Begin reports changes; the first one arms the watches.
+                if (_evaluations > 1
+                    && (forced[i] || !string.Equals(dirty[i].Probe.Signature, probes[i].Signature, StringComparison.Ordinal)))
                 {
-                    if (forced[i] || !string.Equals(dirty[i].Probe.Signature, probes[i].Signature, StringComparison.Ordinal))
-                        changed.Add(dirty[i].Target);
-                    dirty[i].Probe = probes[i];
+                    changed.Add(dirty[i].Target);
+                    reportedByEvent |= byEvent[i];
                 }
-                Arm(errors, released);
-                if (changed.Count > 0) change = new(changed);
+                dirty[i].Probe = probes[i];
+            }
+            if (changed.Count > 0) change = new(changed) { ByEvent = reportedByEvent };
+            current = [.. _states.Select(state => state.Probe)];
+            subscribed = new(_subscriptions, WatchPaths.Comparer);
+            skipped = new(_remote.Concat(_failedWatches.Keys), WatchPaths.Comparer);
+        }
+
+        var plan = PlanWatches(current, subscribed, skipped);
+
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                released.AddRange(plan.Started.Values);
+            }
+            else
+            {
+                Apply(plan, current, errors, released);
             }
         }
         Release(released);
@@ -280,74 +360,128 @@ public sealed class RunicPathWatcher : IDisposable
         if (change is not null) Deliver(change);
     }
 
-    // Starts and stops directory watches to match the targets' current probes. Called under the gate; the caller
-    // releases the leases of stopped watches after leaving it.
-    private void Arm(List<RunicPathWatchError> errors, List<IDisposable> released)
+    private sealed record WatchPlan(
+        Dictionary<string, (string Directory, bool Recursive)> Wanted,
+        Dictionary<string, IDirectoryWatchLease> Started,
+        HashSet<string> Remote,
+        Dictionary<string, (RunicPathWatchErrorKind Kind, string Directory, Exception Exception)> Failed,
+        HashSet<string> Replaced);
+
+    // Works out and starts the directory watches the targets need, outside the gate: it checks directories, file
+    // systems and identities, and starts platform watches.
+    private WatchPlan PlanWatches(WatchProbe[] probes, Dictionary<string, IDirectoryWatchLease> subscribed, HashSet<string> skipped)
     {
-        var wanted = new Dictionary<string, (string Directory, bool Recursive)>(WatchPaths.Comparer);
-        foreach (var state in _states)
+        var plan = new WatchPlan(new(WatchPaths.Comparer), new(WatchPaths.Comparer), new(WatchPaths.Comparer), new(WatchPaths.Comparer), new(WatchPaths.Comparer));
+        if (_options.UsePolling) return plan;
+        foreach (var spec in probes.SelectMany(probe => probe.Specs))
         {
-            var missingKey = $"missing|{state.Target.FullPath}";
-            if (state.Probe.MissingDirectory is { } missing)
-                AddOnce(errors, missingKey, new(RunicPathWatchErrorKind.Missing, missing, null));
-            else
-                _reported.Remove(missingKey);
-            if (_options.UsePolling) continue;
-            foreach (var spec in state.Probe.Specs)
-            {
-                if (!Directory.Exists(spec.Directory)) continue;
-                wanted.TryAdd(Key(spec.Directory, spec.Recursive), (spec.Directory, spec.Recursive));
-            }
+            if (Directory.Exists(spec.Directory))
+                plan.Wanted.TryAdd(SharedDirectoryWatches.Key(spec.Directory, spec.Recursive), (spec.Directory, spec.Recursive));
+            // The parent shows the directory being replaced, which its own watch cannot, or a missing one returning.
+            if (Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(spec.Directory)) is { } parent && Directory.Exists(parent))
+                plan.Wanted.TryAdd(SharedDirectoryWatches.Key(parent, false), (parent, false));
         }
 
-        foreach (var key in _subscriptions.Keys.Where(key => !wanted.ContainsKey(key)).ToArray())
+        foreach (var (key, (directory, recursive)) in plan.Wanted)
         {
-            released.Add(_subscriptions[key].Lease);
-            _subscriptions.Remove(key);
-        }
-        foreach (var (key, (directory, recursive)) in wanted)
-        {
-            if (_subscriptions.ContainsKey(key) || _remote.Contains(key) || _failedWatches.ContainsKey(key)) continue;
+            if (subscribed.TryGetValue(key, out var lease))
+            {
+                try
+                {
+                    if (lease.Revalidate()) plan.Replaced.Add(directory);
+                }
+                catch (Exception exception) when (IsWatchFailure(exception))
+                {
+                    plan.Failed[key] = (Classify(exception), directory, exception);
+                }
+                continue;
+            }
+            if (skipped.Contains(key)) continue;
             if (IsRemote(directory))
             {
-                _remote.Add(key);
+                plan.Remote.Add(key);
                 continue;
             }
             try
             {
-                _subscriptions.Add(key, new(directory, SharedDirectoryWatches.Acquire(directory, recursive, new Sink(this))));
-                _reported.Remove($"failed|{key}");
+                plan.Started[key] = SharedDirectoryWatches.Acquire(directory, recursive, _sink);
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException or ArgumentException)
+            catch (Exception exception) when (IsWatchFailure(exception))
             {
-                var kind = IsWatchLimit(exception) ? RunicPathWatchErrorKind.WatchLimit : RunicPathWatchErrorKind.Failed;
-                _failedWatches[key] = kind;
-                AddOnce(errors, $"failed|{key}", new(kind, directory, exception));
+                plan.Failed[key] = (Classify(exception), directory, exception);
             }
+        }
+        return plan;
+    }
+
+    // Commits a plan. Called under the gate.
+    private void Apply(WatchPlan plan, WatchProbe[] probes, List<RunicPathWatchError> errors, List<IDisposable> released)
+    {
+        _remote.UnionWith(plan.Remote);
+        foreach (var (key, lease) in plan.Started)
+        {
+            if (!_subscriptions.TryAdd(key, lease)) released.Add(lease);
+            else _reported.Remove($"failed|{key}");
+        }
+        foreach (var (key, (kind, directory, exception)) in plan.Failed)
+        {
+            if (_subscriptions.Remove(key, out var lease)) released.Add(lease);
+            _failedWatches[key] = kind;
+            AddOnce(errors, $"failed|{key}", new(kind, directory, exception));
+        }
+        foreach (var key in _subscriptions.Keys.Where(key => !plan.Wanted.ContainsKey(key)).ToArray())
+        {
+            released.Add(_subscriptions[key]);
+            _subscriptions.Remove(key);
+        }
+
+        // A replaced directory's targets missed their events: read them again.
+        if (plan.Replaced.Count > 0)
+        {
+            foreach (var state in _states)
+            {
+                if (!state.Probe.Specs.Any(spec => plan.Replaced.Contains(spec.Directory))) continue;
+                state.Dirty = true;
+            }
+            Volatile.Write(ref _requested, 1);
+        }
+
+        for (var i = 0; i < _states.Length; i++)
+        {
+            var probe = probes[i];
+            var path = _states[i].Target.FullPath;
+            if (probe.MissingDirectory is { } missing)
+                AddOnce(errors, $"missing|{path}", new(RunicPathWatchErrorKind.Missing, missing, null));
+            else
+                _reported.Remove($"missing|{path}");
+            if (probe.NotRepository is { } repository)
+                AddOnce(errors, $"repository|{path}", new(RunicPathWatchErrorKind.NotGitRepository, repository, null));
+            else
+                _reported.Remove($"repository|{path}");
         }
 
         // Poll quickly while a target lacks a watch; otherwise only as a backstop.
-        var polled = _options.UsePolling || _states.Any(state =>
-            state.Probe.MissingDirectory is not null
-            || state.Probe.Specs.Any(spec => !_subscriptions.ContainsKey(Key(spec.Directory, spec.Recursive))));
+        var polled = _options.UsePolling || probes.Any(probe =>
+            probe.MissingDirectory is not null
+            || probe.Specs.Any(spec => !_subscriptions.ContainsKey(SharedDirectoryWatches.Key(spec.Directory, spec.Recursive))));
         var period = polled ? _options.PollingInterval
             : _options.PollingInterval > Backstop ? _options.PollingInterval : Backstop;
         if (period != _pollPeriod)
         {
             _pollPeriod = period;
-            _poll.Change(period, period);
+            _poll.Change(period, Timeout.InfiniteTimeSpan);
         }
+    }
+
+    private void AddOnce(List<RunicPathWatchError> errors, string key, RunicPathWatchError error)
+    {
+        if (_reported.Add(key)) errors.Add(error);
     }
 
     // Outside the gate: disposing a FileSystemWatcher can wait for its event thread, which may be waiting for the gate.
     private static void Release(List<IDisposable> released)
     {
         foreach (var lease in released) lease.Dispose();
-    }
-
-    private void AddOnce(List<RunicPathWatchError> errors, string key, RunicPathWatchError error)
-    {
-        if (_reported.Add(key)) errors.Add(error);
     }
 
     private void Deliver(RunicPathChange change)
@@ -378,7 +512,11 @@ public sealed class RunicPathWatcher : IDisposable
         }
     }
 
-    private static string Key(string directory, bool recursive) => (recursive ? "r|" : "n|") + directory;
+    private static bool IsWatchFailure(Exception exception) =>
+        exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException or ArgumentException;
+
+    private static RunicPathWatchErrorKind Classify(Exception exception) =>
+        IsWatchLimit(exception) ? RunicPathWatchErrorKind.WatchLimit : RunicPathWatchErrorKind.Failed;
 
     private static bool IsRemote(string directory)
     {
@@ -388,8 +526,11 @@ public sealed class RunicPathWatcher : IDisposable
         {
             var drive = new DriveInfo(directory);
             if (drive.DriveType == DriveType.Network) return true;
-            // inotify sees only local changes on FUSE file systems such as sshfs.
-            return OperatingSystem.IsLinux() && drive.DriveFormat.Equals("fuse", StringComparison.OrdinalIgnoreCase);
+            // inotify sees only local changes on FUSE file systems such as sshfs, and on virtiofs, the host's shared
+            // folders in a virtual machine. .NET reports their statfs type as "fuse" (virtiofs is FUSE-based) and
+            // gives them no network drive type; "virtiofs" covers a runtime that names it.
+            return OperatingSystem.IsLinux() && drive.DriveFormat is var format
+                && (format.Equals("fuse", StringComparison.OrdinalIgnoreCase) || format.Equals("virtiofs", StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
         {
@@ -409,16 +550,17 @@ public sealed class RunicPathWatcher : IDisposable
         public WatchProbe Probe { get; set; } = probe;
         public bool Dirty { get; set; }
         public bool Forced { get; set; }
+        // An event, not a poll, named the target since its last reading.
+        public bool ByEvent { get; set; }
     }
 
-    private sealed record Subscription(string Directory, IDisposable Lease);
-
-    // The shared watch holds the sink until the watcher disposes its lease.
+    // One sink per watcher; the shared watch holds it until the watcher releases its leases.
     private sealed class Sink(RunicPathWatcher owner) : IDirectoryWatchSink
     {
         public void OnPath(string fullPath) => owner.OnPath(fullPath);
 
-        public void OnFailure(string directory, Exception exception, bool stopped) => owner.OnFailure(directory, exception, stopped);
+        public void OnFailure(string key, string directory, Exception exception, bool stopped) =>
+            owner.OnFailure(key, directory, exception, stopped);
     }
 }
 
@@ -447,6 +589,9 @@ public sealed class RunicPathChange
 
     /// <summary>Gets the targets that changed, in the order they were passed to <see cref="RunicPathWatcher.Start"/>.</summary>
     public IReadOnlyList<RunicWatchTarget> Targets { get; }
+
+    // Whether an event, rather than a poll, led to reading a target that changed. For tests.
+    internal bool ByEvent { get; init; }
 
     /// <summary>Gets whether <paramref name="target"/> is among the changed targets.</summary>
     /// <param name="target">A target passed to <see cref="RunicPathWatcher.Start"/>.</param>
@@ -477,6 +622,7 @@ public sealed class RunicPathWatchError
     {
         RunicPathWatchErrorKind.Missing => $"{Path} does not exist; polling until it does.",
         RunicPathWatchErrorKind.Overflow => $"Events for {Path} were lost; its targets were read again.",
+        RunicPathWatchErrorKind.NotGitRepository => $"{Path} is not a Git repository; watching for one to appear.",
         RunicPathWatchErrorKind.WatchLimit => $"The watch limit was reached for {Path}; polling it instead. Raise fs.inotify.max_user_watches or fs.inotify.max_user_instances. {Exception?.Message}",
         _ => $"{Path} cannot be watched; polling it instead. {Exception?.Message}",
     };
@@ -496,6 +642,12 @@ public enum RunicPathWatchErrorKind
 
     /// <summary>A watch could not start or stopped. The watcher polls instead and retries the watch on each poll.</summary>
     Failed,
+
+    /// <summary>
+    /// A <see cref="RunicWatchTarget.GitHead"/> directory exists but is not a Git repository. The watcher watches the
+    /// directory for a <c>.git</c> or <c>HEAD</c> to appear and reports the change when one does.
+    /// </summary>
+    NotGitRepository,
 }
 
 internal interface IRunicPathWatchObserver

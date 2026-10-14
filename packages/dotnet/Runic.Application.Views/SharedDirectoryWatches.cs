@@ -5,8 +5,19 @@ internal interface IDirectoryWatchSink
     // A path below the watched directory was created, deleted, written or renamed (old and new path).
     void OnPath(string fullPath);
 
-    // The watch overflowed (stopped: false) or failed and was removed (stopped: true).
-    void OnFailure(string directory, Exception exception, bool stopped);
+    // The watch with this key overflowed (stopped: false) or failed and was removed (stopped: true).
+    void OnFailure(string key, string directory, Exception exception, bool stopped);
+}
+
+internal interface IDirectoryWatchLease : IDisposable
+{
+    string Key { get; }
+
+    string Directory { get; }
+
+    // Restarts the shared watch when its directory was replaced since the watch started, and returns whether it did.
+    // Throws like Acquire when the new watch cannot start.
+    bool Revalidate();
 }
 
 // One FileSystemWatcher per directory for the whole process. On Linux every FileSystemWatcher holds its own inotify
@@ -17,26 +28,53 @@ internal static class SharedDirectoryWatches
     private static readonly object Gate = new();
     private static readonly Dictionary<string, Entry> Entries = new(WatchPaths.Comparer);
 
+    public static string Key(string directory, bool recursive) => (recursive ? "r|" : "n|") + directory;
+
     // Starts or joins the watch of a directory. Throws when the watch cannot start.
-    public static IDisposable Acquire(string directory, bool recursive, IDirectoryWatchSink sink)
+    public static IDirectoryWatchLease Acquire(string directory, bool recursive, IDirectoryWatchSink sink)
     {
-        var key = (recursive ? "r|" : "n|") + directory;
+        var key = Key(directory, recursive);
+        var identity = DirectoryIdentity.Read(directory);
+        FileSystemWatcher? replaced = null;
+        Lease lease;
         lock (Gate)
         {
             if (!Entries.TryGetValue(key, out var entry))
             {
                 entry = new Entry(key, directory, recursive);
-                entry.Start();
+                entry.Start(identity);
                 Entries.Add(key, entry);
             }
+            // Don't join a watch whose directory was replaced: it would report nothing.
+            else if (entry.IsReplacedBy(identity))
+                replaced = entry.Restart(identity);
             entry.Sinks = [.. entry.Sinks, sink];
-            return new Lease(entry, sink);
+            lease = new Lease(entry, sink);
         }
+        replaced?.Dispose();
+        return lease;
     }
 
-    private sealed class Lease(Entry entry, IDirectoryWatchSink sink) : IDisposable
+    private sealed class Lease(Entry entry, IDirectoryWatchSink sink) : IDirectoryWatchLease
     {
         private int _disposed;
+
+        public string Key => entry.Key;
+
+        public string Directory => entry.Directory;
+
+        public bool Revalidate()
+        {
+            var identity = DirectoryIdentity.Read(entry.Directory);
+            FileSystemWatcher? replaced;
+            lock (Gate)
+            {
+                if (Volatile.Read(ref _disposed) != 0 || !entry.IsCurrent || !entry.IsReplacedBy(identity)) return false;
+                replaced = entry.Restart(identity);
+            }
+            replaced?.Dispose();
+            return true;
+        }
 
         public void Dispose()
         {
@@ -56,12 +94,61 @@ internal static class SharedDirectoryWatches
     private sealed class Entry(string key, string directory, bool recursive)
     {
         private FileSystemWatcher? _watcher;
+        private string? _identity;
+
+        public string Key { get; } = key;
+
+        public string Directory { get; } = directory;
 
         public IDirectoryWatchSink[] Sinks { get; set; } = [];
 
-        public void Start()
+        // Called under Gate.
+        public bool IsCurrent => Entries.TryGetValue(Key, out var current) && ReferenceEquals(current, this);
+
+        // Called under Gate. An unknown identity never counts as a replacement.
+        public bool IsReplacedBy(string? identity) =>
+            identity is not null && _identity is not null && !string.Equals(identity, _identity, StringComparison.Ordinal);
+
+        // Called under Gate.
+        public void Start(string? identity)
         {
-            var watcher = new FileSystemWatcher(directory)
+            _watcher = Create();
+            _identity = identity;
+        }
+
+        // Called under Gate. Starts a new watcher before giving up the old one, which the caller disposes after leaving
+        // the gate. When the new one cannot start, the entry is removed so that the next lease starts afresh.
+        public FileSystemWatcher? Restart(string? identity)
+        {
+            FileSystemWatcher created;
+            try
+            {
+                created = Create();
+            }
+            catch
+            {
+                var stale = Stop();
+                stale?.Dispose();
+                throw;
+            }
+            var old = _watcher;
+            _watcher = created;
+            _identity = identity;
+            return old;
+        }
+
+        // Called under Gate. Returns the watcher for the caller to dispose after leaving the gate.
+        public FileSystemWatcher? Stop()
+        {
+            if (IsCurrent) Entries.Remove(Key);
+            var watcher = _watcher;
+            _watcher = null;
+            return watcher;
+        }
+
+        private FileSystemWatcher Create()
+        {
+            var watcher = new FileSystemWatcher(Directory)
             {
                 IncludeSubdirectories = recursive,
                 InternalBufferSize = BufferSize,
@@ -82,24 +169,15 @@ internal static class SharedDirectoryWatches
                 watcher.Dispose();
                 throw;
             }
-            _watcher = watcher;
-        }
-
-        // Called under Gate. Returns the watcher for the caller to dispose after leaving the gate.
-        public FileSystemWatcher? Stop()
-        {
-            if (Entries.TryGetValue(key, out var current) && ReferenceEquals(current, this)) Entries.Remove(key);
-            var watcher = _watcher;
-            _watcher = null;
             return watcher;
         }
 
-        private void OnChanged(object sender, FileSystemEventArgs e)
+        private void OnChanged(object? sender, FileSystemEventArgs e)
         {
             foreach (var sink in Sinks) sink.OnPath(e.FullPath);
         }
 
-        private void OnRenamed(object sender, RenamedEventArgs e)
+        private void OnRenamed(object? sender, RenamedEventArgs e)
         {
             foreach (var sink in Sinks)
             {
@@ -108,7 +186,7 @@ internal static class SharedDirectoryWatches
             }
         }
 
-        private void OnError(object sender, ErrorEventArgs e)
+        private void OnError(object? sender, ErrorEventArgs e)
         {
             var exception = e.GetException();
             var stopped = exception is not InternalBufferOverflowException;
@@ -116,13 +194,15 @@ internal static class SharedDirectoryWatches
             FileSystemWatcher? failed = null;
             lock (Gate)
             {
+                // A watcher replaced by Restart reports for a directory that is gone.
+                if (!ReferenceEquals(sender, _watcher)) return;
                 sinks = Sinks;
                 // Any other failure can leave the watcher stopped; drop it so the next lease starts a new one.
                 if (stopped) failed = Stop();
             }
             // Not on this thread: on macOS this is the FSEvents thread that disposal waits for.
             if (failed is not null) ThreadPool.QueueUserWorkItem(static watcher => watcher.Dispose(), failed, preferLocal: false);
-            foreach (var sink in sinks) sink.OnFailure(directory, exception, stopped);
+            foreach (var sink in sinks) sink.OnFailure(Key, Directory, exception, stopped);
         }
     }
 }

@@ -1636,16 +1636,20 @@ public sealed partial class OverviewViewModel : ObservableObject, IDisposable
 | --- | --- | --- |
 | `File(path)` | The file is created, deleted, replaced, renamed or written. | A settings file, `flake.lock` |
 | `Link(path)` | The path a symbolic link leads to, through every link in its chain, differs: the link was created, removed or re-pointed. Changes inside the final file or directory are not reported. | `/run/current-system`, `~/.local/state/nix/profiles/home-manager` |
-| `Directory(path, pattern)` | An entry matching the pattern is added, removed or renamed. Writes to entries are not reported. | `/nix/var/nix/profiles/system-*-link` |
-| `GitHead(repository)` | The commit `HEAD` resolves to, or the branch it names, differs: a commit, reset, switch or pull. Works in linked worktrees, whose `.git` is a file. `git pack-refs`, fetches and other branches are not reported. | A configuration checkout |
+| `Directory(path, pattern)` | The set of entry names matching the pattern differs: one is added, removed or renamed. Writes to entries, and a rename onto a name that already existed (the same set of names), are not reported. | `/nix/var/nix/profiles/system-*-link` |
+| `GitHead(repository)` | The commit `HEAD` resolves to, or the branch it names, differs: a commit, reset, switch, detach or pull. Works in linked worktrees, whose `.git` is a file, follows symbolic refs (five levels, as Git does) and supports the reftable format. `git pack-refs`, fetches and other branches are not reported with the files format. | A configuration checkout |
 
 After an event the watcher waits for `Debounce` (250 ms) without another
 event, at most ten intervals, then reads the affected targets and reports
 those whose state changed. A burst of writes, `ln -sfn`'s temporary link or
-Git's `.lock` files therefore produce one callback or none. `GitHead` reads
-`HEAD`, the loose ref and `packed-refs` itself; it starts no `git` process.
-With the reftable format any update of the ref stack counts. To react to
-work-tree edits too, add `Directory` or `File` targets for them.
+Git's `.lock` files therefore produce one callback or none. For the same
+reason a target that changes and changes back within that window, such as a
+link re-pointed from A to B and back to A, is not reported, except a `File`
+target, for which an event alone counts. `GitHead` reads `HEAD`, the loose ref
+and `packed-refs` itself; it starts no `git` process. With the reftable format
+any update of the ref stack counts, of the repository's and, in a linked
+worktree, of the worktree's own, so other branches and fetches are reported
+too. To react to work-tree edits, add `Directory` or `File` targets for them.
 
 Problems never throw on a watcher thread. They reach the `failed` callback,
 in a model turn, or `System.Diagnostics.Trace` (event 1015) without one, and the watcher
@@ -1657,6 +1661,7 @@ keeps working by polling every `PollingInterval` (2 s) where it needs to:
 | `Overflow` | The platform dropped events. | Reads the affected targets again. |
 | `WatchLimit` | `fs.inotify.max_user_watches` or `max_user_instances` is exhausted. | Polls; retries the watch on each poll. |
 | `Failed` | A watch could not start or stopped. | Polls; retries the watch on each poll. |
+| `NotGitRepository` | A `GitHead` directory exists but holds no repository. | Watches it for `.git` or `HEAD` to appear and reports the change; reads it only at the 30-second backstop. |
 
 Dispose the watcher with its ViewModel. It also stops when the model context
 closes, and no callback starts after `Dispose` returns in a model turn. Set
@@ -1687,18 +1692,25 @@ was open and observed again when a page connected after more than 5 seconds.
 
 `RunicPathWatcher` uses .NET's `FileSystemWatcher` on the directory that holds
 each watched entry, so a link replaced by a rename is seen in its parent, and
-shares one watcher per directory across the process. `PathWatcherTests`
-run the first four rows on Linux, Windows and macOS in CI; the network and
-limit rows follow the platforms' documentation.
+shares one watcher per directory across the process. It also watches that
+directory's parent: inotify and FSEvents keep a watch on a deleted directory
+and report nothing for a new directory of the same name, so the watcher
+compares the directory's identity (device and inode, or volume and file index
+on Windows) when the parent reports it, on each read and when another watcher
+joins, and starts a new watch when it was replaced. `PathWatcherTests` run the
+first five rows on Linux, Windows and macOS in CI, and check that an event,
+not a poll, reported each change; the network and limit rows follow the
+platforms' documentation.
 
 | Case | Linux (inotify) | Windows (`ReadDirectoryChangesW`) | macOS (FSEvents) |
 | --- | --- | --- | --- |
 | Link re-pointed by rename | Rename event in the parent directory | Same | Same; events can arrive later and merged, the watcher reads the targets again |
 | File written in place | Write event | Write event | Write event, merged with others |
 | Directory entry added or removed | Create, delete or rename event | Same | Same |
-| Watched directory deleted and recreated | The delete is reported; the watcher reports `Missing`, polls, and watches again when the directory returns | Same | No event for the watched directory itself: the 30-second backstop read reports the delete, then as on Linux |
-| Network and FUSE file systems | Polls: inotify reports only local changes (NFS, CIFS, sshfs) | Polls network drives and UNC paths | Polls network volumes |
-| Limits | Each `FileSystemWatcher` holds an inotify instance (`fs.inotify.max_user_instances`, 128 by default per user) and each directory a watch (`fs.inotify.max_user_watches`); `GitHead` adds one per directory under `refs/heads`. Exhausted: `WatchLimit` and polling | 64 KiB event buffer; overflow: `Overflow` | Overflow: `Overflow` |
+| Watched directory deleted and recreated | The parent's watch reports the delete; the watcher reports `Missing`, and the parent's event reports the return | Same | Same; FSEvents reports nothing for the watched directory itself, only its parent does |
+| Directory replaced before any read (`rm -rf` and `git clone`) | The old watch reports nothing more; the parent's event leads to a new watch | Same | Same |
+| Network, FUSE and virtiofs file systems | Polls: inotify reports only local changes (NFS, CIFS, sshfs, a virtual machine's shared folders) | Polls network drives and UNC paths | Polls network volumes |
+| Limits | Each `FileSystemWatcher` holds an inotify instance (`fs.inotify.max_user_instances`, 128 by default per user) and each directory a watch (`fs.inotify.max_user_watches`), its parent one more; `GitHead` adds one per directory under `refs/heads`. Exhausted: `WatchLimit` and polling | 64 KiB event buffer; overflow: `Overflow` | Overflow: `Overflow` |
 | Creating symbolic links | Allowed | Needs Developer Mode or elevation; reading them does not | Allowed |
 
 Even with working events, the watcher reads its targets every 30 seconds (or

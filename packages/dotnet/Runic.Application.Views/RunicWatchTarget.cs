@@ -94,7 +94,7 @@ public sealed class RunicWatchTarget
     private WatchProbe ProbeFile()
     {
         var (directory, name) = Split(FullPath);
-        return new(DescribeEntry(FullPath), [new(directory, name, false)], DirectoryOrMissing(directory));
+        return new(DescribeEntry(FullPath), [new(directory, name, false)], DirectoryOrMissing(directory), null);
     }
 
     private WatchProbe ProbeLink()
@@ -116,7 +116,7 @@ public sealed class RunicWatchTarget
             }
             current = System.IO.Path.GetFullPath(next, directory);
         }
-        return new(signature.ToString(), specs, DirectoryOrMissing(specs[0].Directory));
+        return new(signature.ToString(), specs, DirectoryOrMissing(specs[0].Directory), null);
     }
 
     private WatchProbe ProbeDirectory()
@@ -136,7 +136,7 @@ public sealed class RunicWatchTarget
             catch (Exception exception) when (IsFileSystemFailure(exception)) { signature.Append("unreadable"); }
         }
         else signature.Append("missing");
-        return new(signature.ToString(), [new(directory, Pattern, false)], DirectoryOrMissing(directory));
+        return new(signature.ToString(), [new(directory, Pattern, false)], DirectoryOrMissing(directory), null);
     }
 
     private WatchProbe ProbeGit()
@@ -156,13 +156,16 @@ public sealed class RunicWatchTarget
             specs.Add(new(root, ".git", false));
             var line = ReadText(dotGit)?.Trim();
             if (line is null || !line.StartsWith("gitdir:", StringComparison.Ordinal))
-                return new($"unreadable .git file", specs, null);
+                return new("unreadable .git file", specs, null, root);
             gitDirectory = WatchPaths.Canonical(System.IO.Path.GetFullPath(line["gitdir:".Length..].Trim(), root));
         }
         else if (System.IO.File.Exists(System.IO.Path.Combine(root, "HEAD")))
             gitDirectory = root; // A bare repository.
+        else if (System.IO.Directory.Exists(root))
+            // Not a repository yet: watch for .git (git init, clone) or HEAD (a bare repository) to appear.
+            return new("not a repository", [new(root, ".git", false), new(root, "HEAD", false)], null, root);
         else
-            return new("missing", [new(System.IO.Path.GetDirectoryName(root) ?? root, System.IO.Path.GetFileName(root), false)], root);
+            return new("missing", [new(System.IO.Path.GetDirectoryName(root) ?? root, System.IO.Path.GetFileName(root), false)], root, null);
 
         var common = gitDirectory;
         var commonFile = ReadText(System.IO.Path.Combine(gitDirectory, "commondir"))?.Trim();
@@ -175,23 +178,36 @@ public sealed class RunicWatchTarget
         string resolved;
         if (System.IO.Directory.Exists(reftable))
         {
-            specs.Add(new(reftable, "*", false));
+            // HEAD only names refs/heads/.invalid; the reftable stack holds it. Git replaces tables.list by a rename.
+            specs.Add(new(reftable, "tables.list", false));
             resolved = ReadText(System.IO.Path.Combine(reftable, "tables.list")) ?? "";
+            // A linked worktree keeps its HEAD and other per-worktree refs in a stack of its own.
+            var own = System.IO.Path.Combine(gitDirectory, "reftable");
+            if (!WatchPaths.Comparer.Equals(gitDirectory, common) && System.IO.Directory.Exists(own))
+            {
+                specs.Add(new(own, "tables.list", false));
+                resolved += "\n" + (ReadText(System.IO.Path.Combine(own, "tables.list")) ?? "");
+            }
         }
         else
         {
             specs.Add(new(common, "packed-refs", false));
             var heads = System.IO.Path.Combine(common, "refs", "heads");
             if (System.IO.Directory.Exists(heads)) specs.Add(new(heads, "*", true));
-            resolved = head.StartsWith("ref:", StringComparison.Ordinal) ? ResolveRef(common, head[4..].Trim()) : "";
+            resolved = head.StartsWith("ref:", StringComparison.Ordinal) ? ResolveRef(common, head[4..].Trim(), 0) : "";
         }
-        return new($"{head}\n{resolved}", specs, null);
+        return new($"{head}\n{resolved}", specs, null, null);
     }
 
-    private static string ResolveRef(string common, string name)
+    // Git follows at most five levels of symbolic refs.
+    private static string ResolveRef(string common, string name, int depth)
     {
-        var loose = ReadText(System.IO.Path.Combine(common, name.Replace('/', System.IO.Path.DirectorySeparatorChar)));
-        if (loose is not null) return loose.Trim();
+        var loose = ReadText(System.IO.Path.Combine(common, name.Replace('/', System.IO.Path.DirectorySeparatorChar)))?.Trim();
+        if (loose is not null)
+        {
+            if (!loose.StartsWith("ref:", StringComparison.Ordinal)) return loose;
+            return depth < 5 ? $"{loose}\n{ResolveRef(common, loose[4..].Trim(), depth + 1)}" : "symbolic ref loop";
+        }
         var packed = ReadText(System.IO.Path.Combine(common, "packed-refs"));
         if (packed is null) return "unborn";
         foreach (var line in packed.Split('\n'))
@@ -273,8 +289,9 @@ internal enum WatchTargetKind
 // Events under Directory whose name matches Pattern; with Recursive, every event below Directory.
 internal readonly record struct WatchSpec(string Directory, string Pattern, bool Recursive);
 
-// A target's state: what identifies it, which directories show its changes, and a directory it needs that is missing.
-internal sealed record WatchProbe(string Signature, IReadOnlyList<WatchSpec> Specs, string? MissingDirectory);
+// A target's state: what identifies it, which directories show its changes, a directory it needs that is missing,
+// and a GitHead directory that is not a repository.
+internal sealed record WatchProbe(string Signature, IReadOnlyList<WatchSpec> Specs, string? MissingDirectory, string? NotRepository);
 
 internal static class WatchPaths
 {
@@ -285,7 +302,9 @@ internal static class WatchPaths
 
     // Resolves symbolic links among the directories of an absolute path, so that a watched directory and the event
     // paths reported for it agree (macOS reports /var/folders below /private/var).
-    internal static string Canonical(string fullPath)
+    internal static string Canonical(string fullPath) => Canonical(fullPath, 0);
+
+    private static string Canonical(string fullPath, int depth)
     {
         var root = System.IO.Path.GetPathRoot(fullPath);
         if (string.IsNullOrEmpty(root)) return fullPath;
@@ -294,14 +313,12 @@ internal static class WatchPaths
         for (var i = 0; i < parts.Length; i++)
         {
             var next = System.IO.Path.Combine(current, parts[i]);
-            for (var hop = 0; hop < 40; hop++)
-            {
-                string? target;
-                try { target = new DirectoryInfo(next).LinkTarget; }
-                catch (Exception exception) when (RunicWatchTarget.IsFileSystemFailure(exception)) { target = null; }
-                if (target is null) break;
-                next = System.IO.Path.GetFullPath(target, current);
-            }
+            string? target;
+            try { target = new DirectoryInfo(next).LinkTarget; }
+            catch (Exception exception) when (RunicWatchTarget.IsFileSystemFailure(exception)) { target = null; }
+            // The target, absolute or relative, can lead through other links: resolve all of it, as realpath does.
+            if (target is not null)
+                next = depth < 40 ? Canonical(System.IO.Path.GetFullPath(target, current), depth + 1) : next;
             current = next;
         }
         return current;

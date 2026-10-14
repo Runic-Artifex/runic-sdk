@@ -30,7 +30,7 @@ internal sealed class PathWatcherTests
 
         // Replace the link atomically, as `ln -sfn` and nix-env do.
         ReplaceLink(link, b);
-        var change = await tester.NextChangeAsync();
+        var change = await EventAsync(tester, watcher);
         Require(change.Contains(target) && change.Targets.Count == 1, $"Expected the link, got {Describe(change)}.");
         Require(inContext, "The change callback did not run in the model context.");
 
@@ -60,7 +60,7 @@ internal sealed class PathWatcherTests
         CreateLink(Path.Combine(profiles, "home-manager-2-link"), store2);
         await Task.Delay(Settle);
         ReplaceLink(Path.Combine(profiles, "home-manager"), "home-manager-2-link");
-        var change = await tester.NextChangeAsync();
+        var change = await EventAsync(tester, watcher);
         var rest = await tester.DrainAsync();
         var all = rest.Prepend(change).SelectMany(item => item.Targets).ToHashSet();
         Require(all.Contains(profile) && all.Contains(generations), $"Expected the profile and its generations, got {string.Join(", ", all)}.");
@@ -81,7 +81,7 @@ internal sealed class PathWatcherTests
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
 
         Run(root.Root, "ln", "-sfn", second, current);
-        var change = await tester.NextChangeAsync();
+        var change = await EventAsync(tester, watcher);
         Require(change.Contains(target), $"Expected current-system, got {Describe(change)}.");
     }
 
@@ -98,7 +98,7 @@ internal sealed class PathWatcherTests
         // Same length, written through the existing inode.
         using (var stream = new FileStream(file, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
             stream.Write("{\"a\":2}"u8);
-        var change = await tester.NextChangeAsync();
+        var change = await EventAsync(tester, watcher);
         Require(change.Contains(target), $"Expected the file, got {Describe(change)}.");
     }
 
@@ -114,7 +114,7 @@ internal sealed class PathWatcherTests
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
 
         File.WriteAllText(Path.Combine(profiles, "system-2-link"), "2");
-        var added = await tester.NextChangeAsync();
+        var added = await EventAsync(tester, watcher);
         Require(added.Contains(target), $"Expected the added entry, got {Describe(added)}.");
 
         // Entries that don't match the pattern, and writes to matching entries, are not reported.
@@ -125,7 +125,7 @@ internal sealed class PathWatcherTests
         Require(ignored.Count == 0, $"Unrelated changes reported {ignored.Count} change(s).");
 
         File.Delete(Path.Combine(profiles, "system-1-link"));
-        var removed = await tester.NextChangeAsync();
+        var removed = await EventAsync(tester, watcher);
         Require(removed.Contains(target), $"Expected the removed entry, got {Describe(removed)}.");
     }
 
@@ -141,27 +141,101 @@ internal sealed class PathWatcherTests
         var target = RunicWatchTarget.File(file);
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, error => errors.Add(error.Kind), tester.Options);
 
+        // FSEvents reports nothing for the watched directory itself; the parent's watch reports the delete.
         Directory.Delete(directory, recursive: true);
-        // FSEvents reports nothing when the watched directory itself is deleted; the 30-second backstop read does.
-        await Task.Delay(Settle);
-        tester.Time.Advance(TimeSpan.FromSeconds(30));
-        Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), "Deleting the directory was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "Deleting the directory was not reported.");
         await Task.Delay(Settle);
         await tester.DrainAsync();
         Require(errors.Contains(RunicPathWatchErrorKind.Missing), $"Expected a Missing error, got [{string.Join(", ", errors)}].");
 
+        // While the directory is missing the target is polled; the parent's event reports its return first.
         Directory.CreateDirectory(directory);
         File.WriteAllText(file, "2");
-        Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), "Recreating the directory was not reported.");
+        // Let the event arrive while the test clock stands still, before the next 2-second poll can run.
+        await Task.Delay(Settle);
+        var returned = await NextOrDescribeAsync(tester, watcher);
+        Require(returned.Contains(target), "Recreating the directory was not reported.");
+        Require(returned.ByEvent, $"The directory's return was found by polling, not by an event. {watcher.Describe()}");
 
-        // The watch is back: a write is reported without waiting for a poll.
+        // The watch is back: a write is reported by an event.
         await Task.Delay(Settle);
         await tester.DrainAsync();
         File.WriteAllText(file, "33");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A write after the directory returned was not reported.");
+    }
+
+    [Test]
+    public async Task DirectoryReplacedWithoutAReadIsWatchedAgain()
+    {
+        using var root = new TempDirectory();
+        var directory = root.Directory("checkout");
+        var file = root.File(Path.Combine("checkout", "current"), "1");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var target = RunicWatchTarget.File(file);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, _ => { }, tester.Options);
+
+        // As `rm -rf checkout && git clone`: the directory is replaced before the watcher reads anything.
+        Directory.Delete(directory, recursive: true);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(file, "2");
+        // A watcher started now must not join the watch of the deleted directory.
+        var other = RunicWatchTarget.File(Path.Combine(directory, "other"));
+        using var late = RunicPathWatcher.Start(context, [other], _ => { }, _ => { }, tester.Options);
+        Require((await EventAsync(tester, watcher)).Contains(target), "Replacing the directory was not reported.");
         await Task.Delay(Settle);
-        tester.Time.Advance(tester.Options.Debounce);
-        var change = await NextOrDescribeAsync(tester, watcher, TimeSpan.FromSeconds(2));
-        Require(change.Contains(target), "A write after the directory returned was not reported.");
+        await tester.DrainAsync();
+
+        File.WriteAllText(file, "33");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A write in the replaced directory was not reported by an event.");
+        await Task.Delay(Settle);
+        await tester.DrainAsync();
+        File.WriteAllText(Path.Combine(directory, "other"), "x");
+        Require((await EventAsync(tester, late)).Contains(other), "A watcher started after the replacement got no event.");
+    }
+
+    [Test]
+    public async Task BackstopReadReportsChangesWithoutEvents()
+    {
+        using var root = new TempDirectory();
+        var file = root.File("state", "1");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var target = RunicWatchTarget.File(file);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
+        watcher.IgnoreEvents = true;
+
+        File.WriteAllText(file, "22");
+        var start = tester.Time.GetUtcNow();
+        var change = await NextOrDescribeAsync(tester, watcher, TimeSpan.FromSeconds(30));
+        var elapsed = tester.Time.GetUtcNow() - start;
+        Require(change.Contains(target) && !change.ByEvent && elapsed >= TimeSpan.FromSeconds(30),
+            $"Expected the 30-second backstop read to report the write, got it after {elapsed}.");
+    }
+
+    [Test]
+    public void DirectoryIdentityMatchesStat()
+    {
+        if (OperatingSystem.IsWindows()) Skip.Test("Windows identifies a directory by volume serial number and file index; there is no stat command.");
+        using var root = new TempDirectory();
+        var directory = root.Directory("d");
+        var identity = DirectoryIdentity.Read(directory);
+        var format = OperatingSystem.IsMacOS() ? new[] { "-f", "%d:%i" } : ["-c", "%d:%i"];
+        var expected = Output(root.Root, "stat", [.. format, directory]).Trim();
+        Require(identity == expected, $"DirectoryIdentity read {identity}, stat {expected}.");
+        Directory.Delete(directory);
+        Directory.CreateDirectory(directory);
+        Require(DirectoryIdentity.Read(directory) != identity, "A recreated directory kept its identity.");
+    }
+
+    // Awaits a change that an event reported: every target is watched, and an event, not a poll or the backstop
+    // read, led to reading the target that changed. Disabling events, or a watch that died, fails it.
+    private static async Task<RunicPathChange> EventAsync(RunicPathWatchTester tester, RunicPathWatcher watcher)
+    {
+        Require(watcher.IsEventDriven, $"The watcher polls instead of watching. {watcher.Describe()}");
+        var change = await NextOrDescribeAsync(tester, watcher);
+        Require(change.ByEvent, $"A poll, not an event, reported the change. {watcher.Describe()}");
+        return change;
     }
 
     private static async Task<RunicPathChange> NextOrDescribeAsync(RunicPathWatchTester tester, RunicPathWatcher watcher, TimeSpan? timeout = null)
@@ -187,7 +261,7 @@ internal sealed class PathWatcherTests
         for (var i = 0; i < 20; i++) File.AppendAllText(file, $"line {i}\n");
         // Let every event arrive while the test clock stands still, so the debounce has not elapsed.
         await Task.Delay(Settle);
-        await tester.NextChangeAsync();
+        await EventAsync(tester, watcher);
         var more = await tester.DrainAsync();
         Require(more.Count == 0 && calls == 1, $"A burst of 20 writes was reported {calls} times.");
     }
@@ -206,7 +280,7 @@ internal sealed class PathWatcherTests
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
 
         Commit(repository, "two");
-        Require((await tester.NextChangeAsync()).Contains(target), "A commit was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A commit was not reported.");
 
         // Packing refs moves nothing.
         Require(Git(repository, "pack-refs", "--all"), "git pack-refs failed.");
@@ -216,13 +290,13 @@ internal sealed class PathWatcherTests
 
         // The branch is now in packed-refs; a commit writes a loose ref again.
         Commit(repository, "three");
-        Require((await tester.NextChangeAsync()).Contains(target), "A commit after pack-refs was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A commit after pack-refs was not reported.");
 
         Require(Git(repository, "switch", "--quiet", "-c", "feature/x"), "git switch failed.");
-        Require((await tester.NextChangeAsync()).Contains(target), "Switching branch was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "Switching branch was not reported.");
 
         Require(Git(repository, "reset", "--quiet", "--hard", "HEAD~1"), "git reset failed.");
-        Require((await tester.NextChangeAsync()).Contains(target), "A reset was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A reset was not reported.");
     }
 
     [Test]
@@ -246,7 +320,70 @@ internal sealed class PathWatcherTests
         Require(other.Count == 0, $"A commit on another branch reported {other.Count} change(s).");
 
         Commit(worktree, "on side");
-        Require((await tester.NextChangeAsync()).Contains(target), "A commit in the worktree was not reported.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A commit in the worktree was not reported.");
+    }
+
+    [Test]
+    public async Task GitReftableWorktreeHeadMovesAreReported()
+    {
+        using var root = new TempDirectory();
+        var repository = root.Directory("checkout");
+        if (!Git(repository, "init", "--quiet", "--initial-branch=main", "--ref-format=reftable"))
+            Skip.Test("This git does not support the reftable ref format (git 2.45 or later).");
+        Commit(repository, "one");
+        Commit(repository, "two");
+        var worktree = root.Path("worktree");
+        Require(Git(repository, "worktree", "add", "--quiet", "-b", "side", worktree), "git worktree add failed.");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var target = RunicWatchTarget.GitHead(worktree);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
+
+        Require(Git(worktree, "switch", "--quiet", "-c", "other"), "git switch failed.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "Switching branch in a reftable worktree was not reported.");
+        Require(Git(worktree, "switch", "--quiet", "--detach", "HEAD~1"), "git switch --detach failed.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "Detaching HEAD in a reftable worktree was not reported.");
+        Require(Git(worktree, "reset", "--quiet", "--hard", "main"), "git reset failed.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A reset in a reftable worktree was not reported.");
+    }
+
+    [Test]
+    public async Task GitHeadOfANonRepositoryReportsItAndWaitsForOne()
+    {
+        using var root = new TempDirectory();
+        var directory = root.Directory("not-yet");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var errors = new List<RunicPathWatchError>();
+        var target = RunicWatchTarget.GitHead(directory);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, errors.Add, tester.Options);
+        await Task.Delay(Settle);
+        await tester.DrainAsync();
+        Require(errors.Count == 1 && errors[0].Kind == RunicPathWatchErrorKind.NotGitRepository,
+            $"Expected one NotGitRepository error, got [{string.Join(", ", errors.Select(error => error.Kind))}].");
+
+        if (!Git(directory, "init", "--quiet", "--initial-branch=main")) Skip.Test("git is not installed.");
+        Require((await EventAsync(tester, watcher)).Contains(target), "The new repository was not reported.");
+    }
+
+    [Test]
+    public async Task GitHeadFollowsSymbolicLooseRefs()
+    {
+        using var root = new TempDirectory();
+        var repository = root.Directory("checkout");
+        if (!Git(repository, "init", "--quiet", "--initial-branch=main")) Skip.Test("git is not installed.");
+        Commit(repository, "one");
+        // HEAD -> refs/heads/alias -> refs/heads/main.
+        Require(Git(repository, "symbolic-ref", "refs/heads/alias", "refs/heads/main")
+            && Git(repository, "symbolic-ref", "HEAD", "refs/heads/alias"), "git symbolic-ref failed.");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var target = RunicWatchTarget.GitHead(repository);
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
+
+        Require(Git(repository, "update-ref", "refs/heads/main", "HEAD", "HEAD"), "git update-ref failed.");
+        Commit(repository, "two");
+        Require((await EventAsync(tester, watcher)).Contains(target), "A commit through a symbolic ref was not reported.");
     }
 
     [Test]
@@ -382,6 +519,17 @@ internal sealed class PathWatcherTests
         {
             return false;
         }
+    }
+
+    private static string Output(string directory, string command, string[] arguments)
+    {
+        var info = new ProcessStartInfo(command) { WorkingDirectory = directory, RedirectStandardOutput = true };
+        foreach (var argument in arguments) info.ArgumentList.Add(argument);
+        using var process = Process.Start(info)!;
+        var output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        Require(process.ExitCode == 0, $"{command} {string.Join(' ', arguments)} failed.");
+        return output;
     }
 
     private static void Run(string directory, string command, params string[] arguments)

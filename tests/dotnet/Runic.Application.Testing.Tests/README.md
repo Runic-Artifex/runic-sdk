@@ -25,7 +25,10 @@ selected the same way, by class name. The cases run one at a time
 `PathWatcherTests` (category `FileSystem`) watch real temporary files,
 symbolic links and Git repositories. The managed CI job runs them on Linux and
 the native job on Windows and macOS. They skip, with the reason, when `git` is
-missing or Windows does not allow creating symbolic links.
+missing or Windows does not allow creating symbolic links. The cases that
+expect an event fail when a poll or the 30-second backstop read, rather than
+an event, reported the change; `BackstopReadReportsChangesWithoutEvents` and
+`PollingReportsChanges` cover those paths.
 
 ## Generated client checks
 
