@@ -68,10 +68,18 @@ the module uses `_WireState` or imports `ViewClient as _ViewClient` instead.
 
 ### RUNICBRIDGE005
 
-The model assembly or one of its dependencies could not be loaded.
+The model assembly or one of its dependencies could not be loaded, a Runic View
+could not be loaded, or a ViewModel member that the Bridge exposes has a type
+from an assembly the generator cannot load. The generator runs on
+Microsoft.NETCore.App and loads the shared frameworks that the build references,
+such as Microsoft.AspNetCore.App, but never Microsoft.WindowsDesktop.App: types
+that need WPF or Windows Forms are skipped unless they are Views, and a bridged
+member with such a type is reported at that member.
 
-**Fix:** check the bootstrap output and that every Runic package has the same
-version. `dotnet runic doctor` reports packages from different releases.
+**Fix:** mark a WPF- or Windows Forms-typed ViewModel member `[RunicIgnore]`, or
+expose a Bridge value instead. Otherwise check the bootstrap output and that
+every Runic package has the same version. `dotnet runic doctor` reports packages
+from different releases.
 
 ### RUNICBRIDGE006
 
