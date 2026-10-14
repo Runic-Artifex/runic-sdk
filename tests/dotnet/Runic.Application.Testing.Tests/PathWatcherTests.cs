@@ -142,14 +142,14 @@ internal sealed class PathWatcherTests
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, error => errors.Add(error.Kind), tester.Options);
 
         Directory.Delete(directory, recursive: true);
-        Require((await tester.NextChangeAsync()).Contains(target), "Deleting the directory was not reported.");
+        Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), "Deleting the directory was not reported.");
         await Task.Delay(Settle);
         await tester.DrainAsync();
         Require(errors.Contains(RunicPathWatchErrorKind.Missing), $"Expected a Missing error, got [{string.Join(", ", errors)}].");
 
         Directory.CreateDirectory(directory);
         File.WriteAllText(file, "2");
-        Require((await tester.NextChangeAsync()).Contains(target), "Recreating the directory was not reported.");
+        Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), "Recreating the directory was not reported.");
 
         // The watch is back: a write is reported without waiting for a poll.
         await Task.Delay(Settle);
@@ -157,8 +157,17 @@ internal sealed class PathWatcherTests
         File.WriteAllText(file, "33");
         await Task.Delay(Settle);
         tester.Time.Advance(tester.Options.Debounce);
-        var change = await tester.NextChangeAsync(TimeSpan.FromSeconds(2));
+        var change = await NextOrDescribeAsync(tester, watcher, TimeSpan.FromSeconds(2));
         Require(change.Contains(target), "A write after the directory returned was not reported.");
+    }
+
+    private static async Task<RunicPathChange> NextOrDescribeAsync(RunicPathWatchTester tester, RunicPathWatcher watcher, TimeSpan? timeout = null)
+    {
+        try { return await tester.NextChangeAsync(timeout); }
+        catch (TimeoutException exception)
+        {
+            throw new TimeoutException($"{exception.Message} Watcher: {watcher.Describe()}", exception);
+        }
     }
 
     [Test]

@@ -47,6 +47,9 @@ public sealed class RunicPathWatcher : IDisposable
     private TimeSpan _pollPeriod = Timeout.InfiniteTimeSpan;
     private DateTimeOffset? _firstPending;
     private volatile bool _disposed;
+    private int _events;
+    private int _evaluations;
+    private int _deliveries;
 
     private RunicPathWatcher(
         IRunicModelContext context,
@@ -135,6 +138,18 @@ public sealed class RunicPathWatcher : IDisposable
     }
 
     // Marks targets changed as if an event named them, for RunicPathWatchTester. Returns false when none matches.
+    // The watcher's state, for test failure messages.
+    internal string Describe()
+    {
+        lock (_gate)
+        {
+            var states = string.Join("; ", _states.Select(state =>
+                $"{state.Target} dirty={state.Dirty} forced={state.Forced} missing={state.Probe.MissingDirectory} signature={state.Probe.Signature.Replace('\n', '|')} specs=[{string.Join(", ", state.Probe.Specs)}]"));
+            return $"disposed={_disposed} events={_events} evaluations={_evaluations} deliveries={_deliveries} poll={_pollPeriod} pending={_firstPending} "
+                + $"watches=[{string.Join(", ", _subscriptions.Keys)}] failed=[{string.Join(", ", _failedWatches.Keys)}] remote=[{string.Join(", ", _remote)}] targets: {states}";
+        }
+    }
+
     internal bool Signal(string path)
     {
         var full = Path.GetFullPath(path);
@@ -155,6 +170,7 @@ public sealed class RunicPathWatcher : IDisposable
 
     private void OnPath(string fullPath)
     {
+        Interlocked.Increment(ref _events);
         lock (_gate)
         {
             if (_disposed) return;
@@ -235,6 +251,7 @@ public sealed class RunicPathWatcher : IDisposable
             lock (_gate)
             {
                 if (_disposed) return;
+                _evaluations++;
                 _firstPending = null;
                 dirty = [.. _states.Where(state => state.Dirty)];
                 forced = [.. dirty.Select(state => state.Forced)];
@@ -335,6 +352,7 @@ public sealed class RunicPathWatcher : IDisposable
 
     private void Deliver(RunicPathChange change)
     {
+        Interlocked.Increment(ref _deliveries);
         var posted = _context.TryPost(() =>
         {
             if (_disposed) return;
