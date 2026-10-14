@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" />
     <!-- The policy generation tests build small projects against the shipped targets. -->
+    <None Include="../../../packages/dotnet/Runic.Platform/buildTransitive/*" Link="platform-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../packages/dotnet/Runic.Platform.Linux.Polkit/buildTransitive/*" Link="polkit-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

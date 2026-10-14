@@ -28,6 +28,12 @@ Declare each action once, as an item in the application's project:
 </ItemGroup>
 ```
 
+The items, their shared metadata and the generated `PrivilegedActions` class
+come from Runic.Platform, which this package depends on; see
+[Declare privileged actions](../Runic.Platform/README.md#declare-privileged-actions).
+This package adds the Polkit policy and the metadata only Polkit reads
+(`IconName`, `AllowAny`, `AllowInactive`, `AllowActive` and `AllowGui`).
+
 Declare the actions in one project. When the privileged program is a separate
 project, give both projects the same items, for example from one imported
 `.props` file, and set `RunicPolkitPolicy` to `false` in all but one of them, so
@@ -47,9 +53,10 @@ exactly one policy file declares each action ID.
 
 Each build writes, under `obj/.../runic-privileged/`:
 
-- `PrivilegedActions.g.cs`: an internal `PrivilegedActions` class in the root
-  namespace with one `PrivilegedActionDeclaration` property per action and
-  `All`. Both the application and the privileged program use it.
+- `PrivilegedActions.g.cs` (from Runic.Platform's targets): an internal
+  `PrivilegedActions` class in the root namespace with one
+  `PrivilegedActionDeclaration` property per action and `All`. Both the
+  application and the privileged program use it.
 - `<RunicPolkitPolicyName>.policy`, copied to the output and publish
   directories at `share/polkit-1/actions/`. Install it in
   `/usr/share/polkit-1/actions` (or `$out/share/polkit-1/actions` in a Nix
@@ -65,7 +72,9 @@ Each build writes, under `obj/.../runic-privileged/`:
 | `RunicPrivilegedActionsClassName` | `PrivilegedActions` |
 | `RunicPrivilegedActionsNamespace` | `$(RootNamespace)` |
 
-Invalid declarations are build errors `RUNICPA001` to `RUNICPA013`, described in
+Invalid declarations are build errors `RUNICPA001` to `RUNICPA013`: Runic.Platform
+reports the shared ones first, then this package `RUNICPA010`, `RUNICPA012` and
+`RUNICPA013`, and the warning `RUNICPA014`. They are described in
 the [diagnostics catalog](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#privileged-actions).
 
 ## Run an action

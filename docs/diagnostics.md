@@ -669,10 +669,13 @@ different values.
 
 ## Privileged actions
 
-The `Runic.Platform.Linux.Polkit` build targets read `RunicPrivilegedAction`
-items and report these errors before they write the Polkit policy and the
-`PrivilegedActions` class. Nothing is written while any of them remains. See
-the [package guide](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md).
+The `Runic.Platform` build targets validate `RunicPrivilegedAction` items
+(`RUNICPA001` to `RUNICPA009` and `RUNICPA011`) before any platform target reads
+them; the `Runic.Platform.Linux.Polkit` targets then report `RUNICPA010`,
+`RUNICPA012`, `RUNICPA013` and `RUNICPA014` before they write the Polkit policy.
+The `PrivilegedActions` class is written only when none of them remains. See
+[Declare privileged actions](../packages/dotnet/Runic.Platform/README.md#declare-privileged-actions)
+and the [Polkit package guide](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md).
 
 ### RUNICPA001
 
@@ -756,8 +759,10 @@ keeps `DISPLAY` and `XAUTHORITY`.
 
 ### RUNICPA011
 
-The property name generated for the action is not a C# identifier, or is `All`
-or the class name.
+The property name generated for the action is not a C# identifier, is the
+class name, or is reserved: `All`, the property names platform packages
+generate in other parts of the class (`MacOSDaemon`, `WindowsElevation`), and
+any name in `RunicPrivilegedActionsReservedNames`.
 
 **Fix:** set `Name` on the item.
 

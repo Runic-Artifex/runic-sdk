@@ -82,11 +82,68 @@ registers `DesktopSettings.Unavailable(reason)`: reads return
 
 `IDesktopPrivilegedActions` runs a step the application declared at build time,
 a fixed program with bounded arguments, as the administrator after the
-platform's authorization prompt. Declarations are `PrivilegedActionDeclaration`
-values that the provider package generates from `RunicPrivilegedAction` items.
-The program ran is `Success` with its exit code; a refused authorization is
-`Failed(PermissionDenied)`, a dismissed prompt `Failed(UserDismissed)`, and no
-authorization service `Unavailable`. Arguments are an argument vector, never a
-shell command line. `DesktopPrivilegedActions.Unavailable(reason)` is the
-provider for hosts and platforms without one. Linux uses Polkit and pkexec
-through Runic.Platform.Linux.Polkit; Windows and macOS have no provider yet.
+platform's authorization prompt. The program ran is `Success` with its exit
+code; a refused authorization is `Failed(PermissionDenied)`, a dismissed prompt
+`Failed(UserDismissed)`, and no authorization service `Unavailable`. Arguments
+are an argument vector, never a shell command line.
+`DesktopPrivilegedActions.Unavailable(reason)` is the provider for hosts and
+platforms without one. Linux uses Polkit and pkexec through
+Runic.Platform.Linux.Polkit; Windows and macOS have no provider yet.
+
+### Declare privileged actions
+
+Declarations are `PrivilegedActionDeclaration` values that this package's build
+targets generate from `RunicPrivilegedAction` items, in any project that
+references Runic.Platform as a package:
+
+```xml
+<ItemGroup>
+  <RunicPrivilegedAction Include="org.example.app.activate"
+                         Program="/usr/libexec/example/example-helper"
+                         Verb="activate"
+                         Description="Activate a system configuration"
+                         Message="Authentication is required to activate the system configuration."
+                         MaximumArguments="1"
+                         ArgumentPattern="[A-Za-z0-9._+-]+" />
+</ItemGroup>
+```
+
+| Metadata | Meaning |
+| --- | --- |
+| Item identity | The action ID: lowercase reverse-DNS, at least two segments, the same on every platform. |
+| `Program` | The absolute, normalized Unix path of the privileged program. Linux runs it there; other platforms derive their own location from it unless their metadata below says otherwise. Required. |
+| `Verb` | The first argument, which selects the action. Every action needs its own verb, also across programs, and an action without a verb is allowed only on its own (`RUNICPA003`). |
+| `Description`, `Message` | What the authorization prompt shows, passed unchanged to the platform packages. Both required. |
+| `MaximumArguments` | Arguments accepted after the verb, 0 to 64. Default 0. |
+| `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, evaluated with `RegexOptions.NonBacktracking`. |
+| `Name` | The generated property name, when the last ID segment does not make a good one. |
+| `WindowsProgram` | Windows only: the elevated helper, as a path relative to the application's directory (such as `helpers\example-helper.exe`) or an absolute path. Default: the file name of `Program` with `.exe`, in the application's directory. |
+| `MacProgram` | macOS only: the helper, as a path relative to the application bundle (such as `Contents/MacOS/example-helper`) or an absolute path. |
+
+Platform packages read further metadata of their own, such as Polkit's
+`IconName` and `AllowActive`; see their guides. Metadata no package reads is
+ignored.
+
+Each build validates the items and writes `PrivilegedActions.g.cs` under
+`obj/.../runic-privileged/`: an internal static partial class with one
+`PrivilegedActionDeclaration` property per action and `All`. The application
+and its privileged program both use it. Invalid items are build errors
+`RUNICPA001` to `RUNICPA009` and `RUNICPA011`, described in the
+[diagnostics catalog](../../../docs/diagnostics.md#privileged-actions).
+
+| Property | Default |
+| --- | --- |
+| `RunicPrivilegedActionsClassName` | `PrivilegedActions` |
+| `RunicPrivilegedActionsNamespace` | `$(RootNamespace)` |
+| `RunicPrivilegedActionsReservedNames` | `All`, `MacOSDaemon` and `WindowsElevation`, the property names platform packages generate in other parts of the class. An action's `Name` cannot be one of them. |
+
+The class name and namespace defaults are set when the package's targets are
+evaluated, after the project file, so a project's own `RootNamespace` applies
+and platform targets can read the final values.
+
+A platform package extends the generation with a target that depends on
+`RunicValidatePrivilegedActions`, which validates the items once, and appends
+that target to `RunicPrivilegedActionsDependsOn`; `RunicGeneratePrivilegedActions`
+writes the class only after those targets succeeded. A platform package that
+generates its own part of the class uses a reserved property name, and adds any
+new one to `RunicPrivilegedActionsReservedNames`.

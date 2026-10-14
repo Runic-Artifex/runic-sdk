@@ -23,6 +23,7 @@
                            Description="Run the smoke step that asks for a password" Message="Authentication is required to run the &lt;prompt&gt; smoke step &amp; check escaping."
                            MaximumArguments="8" IconName="dialog-password" />
   </ItemGroup>
-  <!-- A package consumer gets these targets from the package's buildTransitive folder. -->
+  <!-- A package consumer gets these targets from the packages' buildTransitive folders. -->
+  <Import Project="../../../packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets" />
   <Import Project="../../../packages/dotnet/Runic.Platform.Linux.Polkit/buildTransitive/Runic.Platform.Linux.Polkit.targets" />
 </Project>
