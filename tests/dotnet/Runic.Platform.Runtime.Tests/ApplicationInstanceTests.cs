@@ -161,7 +161,18 @@ internal sealed class ApplicationInstanceTests
             int? peer = ForegroundRights.PeerProcessId(client);
             if (OperatingSystem.IsWindows())
             {
-                Check(peer == Environment.ProcessId, $"the peer is this process, not {peer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}");
+                string answers = "";
+                if (peer != Environment.ProcessId)
+                {
+                    // What Windows answers on each end, for the failure message.
+                    foreach (var (name, socket) in new[] { ("client", client), ("accepted", accepted) })
+                    {
+                        var buffer = new byte[4];
+                        try { answers += $" {name}: {socket.IOControl(0x58000100, null, buffer)} bytes, {BitConverter.ToInt32(buffer)};"; }
+                        catch (Exception error) { answers += $" {name}: {error.GetType().Name} {(error as System.Net.Sockets.SocketException)?.SocketErrorCode} {error.Message};"; }
+                    }
+                }
+                Check(peer == Environment.ProcessId, $"the peer is this process {Environment.ProcessId}, not {peer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"};{answers}");
                 // Granting needs no window and must not throw.
                 ForegroundRights.GrantPeer(client);
             }

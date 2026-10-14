@@ -24,8 +24,9 @@ internal static partial class ForegroundRights
         var processId = new byte[sizeof(int)];
         try
         {
-            return socket.IOControl(GetPeerProcessId, null, processId) == sizeof(int) && BitConverter.ToInt32(processId) is > 0 and var id
-                ? id : null;
+            // The byte count is not reported reliably; a process ID is never zero.
+            _ = socket.IOControl(GetPeerProcessId, null, processId);
+            return BitConverter.ToInt32(processId) is > 0 and var id ? id : null;
         }
         catch (Exception error) when (error is SocketException or NotSupportedException or PlatformNotSupportedException) { return null; }
     }

@@ -590,10 +590,10 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: |
-          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]"
-          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]"
-          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePresentation]"
-          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativePresentation]"
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePresentation]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativePresentation]" --output detailed
       - name: Verify NativeAOT GTK clipboard
         if: runner.os == 'Linux'
         timeout-minutes: 3
