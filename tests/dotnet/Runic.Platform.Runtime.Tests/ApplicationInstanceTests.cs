@@ -143,6 +143,60 @@ internal sealed class ApplicationInstanceTests
         Check(!System.IO.Directory.Exists(directory), "nothing is created");
     }
 
+    // The launching process grants the running instance, here another process, the foreground through the socket's
+    // peer process ID. Two processes, so the instance's ID cannot be confused with the launching process's own.
+    [Test, DisplayName("INSTANCE: a forwarded launch lets the running instance in another process take the foreground")]
+    public async Task GrantsTheRunningInstanceTheForegroundAsync()
+    {
+        string directory = Directory();
+        var granted = new List<(int ProcessId, bool Allowed)>();
+        string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Missing executable");
+        var start = new System.Diagnostics.ProcessStartInfo(executable) { RedirectStandardOutput = true, UseShellExecute = false };
+        if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Runic.Platform.Runtime.Tests.dll"));
+        start.ArgumentList.Add("--instance-primary");
+        start.ArgumentList.Add(directory);
+        using var primary = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("The running instance did not start.");
+        ForegroundRights.Granted = (processId, allowed) => { lock (granted) granted.Add((processId, allowed)); };
+        try
+        {
+            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "ready", "the other process is the running instance");
+            var claim = await ApplicationInstance.ClaimAsync("org.example.Peer", new ApplicationLaunch(["--show"], "/"), directory, default);
+            Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the launch is forwarded");
+            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "launched --show", "the running instance receives it");
+            await primary.WaitForExitAsync().WaitAsync(Wait);
+            if (OperatingSystem.IsWindows())
+            {
+                Check(granted is [{ ProcessId: var id }] && id == primary.Id,
+                    $"AllowSetForegroundWindow was called for the running instance {primary.Id}, not [{string.Join(", ", granted)}]");
+                Console.WriteLine($"AllowSetForegroundWindow({primary.Id}) {(granted[0].Allowed ? "succeeded" : "was refused: this process does not have the foreground")}");
+            }
+            else Check(granted.Count == 0, "only Windows grants the foreground");
+        }
+        finally
+        {
+            ForegroundRights.Granted = null;
+            if (!primary.HasExited) primary.Kill();
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // The child process's side: become the running instance, report one launch and end.
+    internal static async Task<int> RunPrimaryAsync(string directory)
+    {
+        var claim = await ApplicationInstance.ClaimAsync("org.example.Peer", new ApplicationLaunch([], "/"), directory, default);
+        if (claim is not PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }) return 1;
+        await using (instance)
+        {
+            var launched = new TaskCompletionSource<ApplicationLaunch>(TaskCreationOptions.RunContinuationsAsynchronously);
+            instance.Launched += (_, launch) => launched.TrySetResult(launch);
+            Console.WriteLine("ready");
+            var launch = await launched.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Console.WriteLine("launched " + string.Join(' ', launch.Arguments));
+        }
+        return 0;
+    }
+
     [Test, DisplayName("INSTANCE: IDs, launches and directories others can enter are refused")]
     public async Task ValidationAsync()
     {

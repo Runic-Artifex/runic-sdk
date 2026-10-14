@@ -30,6 +30,19 @@ public static class WindowsPlatformProvider
         if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
         return new WindowsLoginStartup(applicationId);
     }
+    // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
+    // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
+    internal static IDesktopStatusIcon CreateStatusIcon()
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsStatusIcon(); }
+
+    // Restores and raises an owned window, or flashes its taskbar button; used by PlatformServices.PresentAsync.
+    internal static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(INativePickerOwner owner, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(owner);
+        if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException();
+        return WindowsWindowPresentation.PresentAsync(owner, cancellationToken);
+    }
+
     /// <summary>Creates owned shell handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsFileLauncher(owner); }

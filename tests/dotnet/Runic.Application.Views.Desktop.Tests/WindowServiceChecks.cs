@@ -148,6 +148,10 @@ internal sealed class WindowServiceChecks
             if (OperatingSystem.IsLinux())
                 Require(icon.GetType().FullName == "Runic.Platform.Linux.Portal.StatusNotifierIcon",
                     $"Linux did not create a StatusNotifierItem: {icon.GetType().FullName}");
+            else if (OperatingSystem.IsWindows())
+                Require(icon.GetType().FullName == "Runic.Platform.Windows.WindowsStatusIcon"
+                    && await icon.HideAsync() is PlatformResult<PlatformUnit>.Success,
+                    $"Windows did not create a notification-area icon: {icon.GetType().FullName}");
             else
                 Require(await icon.HideAsync() is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
                     "A platform without a status icon provider did not report it unconfigured.");

@@ -137,9 +137,10 @@ public static class PlatformServices
     /// <returns>A status icon that the caller disposes at shutdown.</returns>
     /// <remarks>
     /// Linux registers a StatusNotifierItem with the desktop's status area (Plasma, Waybar's tray, or GNOME with the
-    /// AppIndicator extension) without loading GTK. Creating it connects to nothing; the first
-    /// <see cref="IDesktopStatusIcon.ShowAsync"/> does. Windows and macOS have no provider yet: every request reports
-    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// AppIndicator extension) without loading GTK. Windows adds a notification-area icon with <c>Shell_NotifyIcon</c>
+    /// from RGBA images, ignoring theme names, and adds it again when Explorer restarts. Creating it connects to
+    /// nothing; the first <see cref="IDesktopStatusIcon.ShowAsync"/> does. macOS has no provider yet: every request
+    /// reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -148,8 +149,9 @@ public static class PlatformServices
     internal static IDesktopStatusIcon CreateStatusIcon(string? applicationId, ILogger? logger)
     {
         IDesktopStatusIcon? icon = null;
+        if (OperatingSystem.IsWindows()) icon = Optional(CreateWindowsStatusIcon);
 #if RUNIC_PORTABLE_PLATFORMS
-        if (OperatingSystem.IsLinux()) icon = CreatePortalStatusIcon(applicationId, logger);
+        else if (OperatingSystem.IsLinux()) icon = CreatePortalStatusIcon(applicationId, logger);
 #endif
         return icon ?? DesktopStatusIcons.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -189,6 +191,9 @@ public static class PlatformServices
 #endif
         return startup ?? DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopStatusIcon CreateWindowsStatusIcon() => WindowsPlatformProvider.CreateStatusIcon();
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopLoginStartup CreateWindowsLoginStartup(string applicationId) =>
@@ -249,9 +254,13 @@ public static class PlatformServices
     /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
     /// <remarks>
     /// The desktop decides whether to grant focus; without a context many Wayland compositors only mark the window as
-    /// wanting attention. Linux presents GTK 3 and GTK 4 windows. A window without native dispatch, such as an
-    /// installed browser, reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
-    /// <see cref="PlatformUnavailableReason.OwnerClosed"/>; Windows and macOS report
+    /// wanting attention. Linux presents GTK 3 and GTK 4 windows. Windows restores a minimized window or shows a hidden one, and brings it to
+    /// the foreground when the desktop allows it, as it does for the running instance after
+    /// <see cref="Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> forwards a launch; when
+    /// Windows refuses, the taskbar button flashes and the result is <see cref="PlatformFailureCode.PermissionDenied"/>.
+    /// A window without native dispatch, such as an installed browser, reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
+    /// <see cref="PlatformUnavailableReason.OwnerClosed"/>; macOS reports
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/> for now.
     /// </remarks>
     public static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopNativeOwner owner, DesktopActivationContext? context = null,
@@ -264,6 +273,11 @@ public static class PlatformServices
         try
         {
             var provider = CurrentProvider;
+            if (provider == DesktopPlatformProvider.Windows && OperatingSystem.IsWindows())
+            {
+                try { return await PresentWindows(owner, cancellationToken).ConfigureAwait(false); }
+                catch (PlatformNotSupportedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured); }
+            }
 #if RUNIC_PORTABLE_PLATFORMS
             if (provider == DesktopPlatformProvider.LinuxGtk3) { await PresentGtk3(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
             if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux())
@@ -275,6 +289,10 @@ public static class PlatformServices
     }
 
     private static readonly PlatformResult<PlatformUnit> Presented = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ValueTask<PlatformResult<PlatformUnit>> PresentWindows(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
+        WindowsPlatformProvider.PresentAsync(owner, cancellationToken);
 
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
