@@ -468,10 +468,16 @@ when the image was linked with `IlcStandaloneGCSupport`, and EventPipe with
 the diagnostic server (`DOTNET_DiagnosticPorts` connects to an IPC peer that
 can set environment variables and start sessions; `DOTNET_EventPipeOutputPath`
 writes a file) when linked with `EventSourceSupport`. `RunicElevatedHelper`
-forces both off, overriding the project, and sets
-`System.Globalization.UseNls`, so ICU, which
+forces both off and turns on `InvariantGlobalization`, so ICU, which
 `DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU` could load from another directory,
-is never used. What remains (`gcServer`, `gcConservative`, the stress log and
+is never loaded. The invariant mode is compiled in as a constant; the
+`System.Globalization.UseNls` switch would not do, because
+`DOTNET_SYSTEM_GLOBALIZATION_USENLS=0` in the environment overrides it. Global
+properties or later imports can still override the targets' values, so the
+publish and the native link check them again: a helper published or linked
+with EventSource, the standalone GC (`eventpipe-enabled` or
+`standalonegc-enabled` among the linked libraries) or without invariant
+globalization fails with `RUNICEL005`. What remains (`gcServer`, `gcConservative`, the stress log and
 the GC heap settings) changes performance only; crash dumps
 (`DOTNET_DbgEnableMiniDump`, createdump) exist only in the Unix runtime. The
 helper is linked with `/DEPENDENTLOADFLAG:0x800`, so static imports that are
@@ -566,7 +572,9 @@ reads the owner and DACL of the helper and of every directory above it
   directory above (creating a new subdirectory, which Authenticated Users may
   do in `C:\`, replaces nothing);
 - no symbolic link, junction or mount point in the path, a fixed local drive
-  that is not a SUBST drive (drive letters belong to a logon session, which the
+  whose letter names a volume (`GetVolumeNameForVolumeMountPointW`), so not a
+  SUBST drive or a letter defined to a raw device path (drive letters belong to
+  a logon session, which the
   elevated helper does not share), and no network, device or drive-relative
   path; and a NativeAOT image (above). Inherit-only entries,
   `CREATOR OWNER` and `OWNER RIGHTS` are ignored; an unknown entry type fails

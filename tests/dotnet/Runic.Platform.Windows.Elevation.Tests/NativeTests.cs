@@ -153,15 +153,19 @@ internal sealed partial class NativeTests
         Check(WindowsElevationHost.Instance.CheckProgram(Path.Combine(HelperDirectory(), "Runic.Elevation.Smoke.exe")) == ProgramCheck.Trusted, "the installed helper is trusted");
     }
 
-    [Test, Explicit, Category("RealElevation"), DisplayName("runas: a JIT build of the helper under Program Files is refused before the prompt")]
+    [Test, Explicit, Category("RealElevation"), DisplayName("runas: a JIT build and a single-file JIT build of the helper under Program Files are refused before the prompt")]
     public async Task RealJitHelperAsync()
     {
         if (!OperatingSystem.IsWindows()) return;
-        var directory = TestContext.Parameters.TryGetValue("jit-helper-directory", out var values) && values.LastOrDefault() is { Length: > 0 } value
-            ? value
-            : throw new InvalidOperationException("Pass --test-parameter jit-helper-directory=<an installed JIT build of the smoke helper>.");
-        var result = await Real(new WindowsElevationOptions { ApplicationDirectory = directory }).RunAsync(new(PrivilegedActions.Flood, ["1"]));
-        Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 4 }), $"JIT helper: {result}");
+        foreach (var parameter in new[] { "jit-helper-directory", "singlefile-helper-directory" })
+        {
+            var directory = TestContext.Parameters.TryGetValue(parameter, out var values) && values.LastOrDefault() is { Length: > 0 } value
+                ? value
+                : throw new InvalidOperationException($"Pass --test-parameter {parameter}=<an installed JIT build of the smoke helper>.");
+            Check(!File.Exists(Path.Combine(directory, "Runic.Elevation.Smoke.dll")) || parameter == "jit-helper-directory", $"{parameter} has only the executable");
+            var result = await Real(new WindowsElevationOptions { ApplicationDirectory = directory }).RunAsync(new(PrivilegedActions.Flood, ["1"]));
+            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 4 }), $"{parameter}: {result}");
+        }
         Check(HelperImage.Check(Path.Combine(HelperDirectory(), "Runic.Elevation.Smoke.exe")) == ProgramCheck.Trusted, "the NativeAOT helper passes");
     }
 

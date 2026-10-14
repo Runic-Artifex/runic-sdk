@@ -850,3 +850,17 @@ helper starts would not inherit the output it sends to the application.
 
 **Fix:** set `OutputType` to `Exe`; the provider starts the helper with its
 window hidden.
+
+### RUNICEL005
+
+An elevated helper is published or linked with `EventSourceSupport` or
+`IlcStandaloneGCSupport` turned on, or with `InvariantGlobalization` off, for
+example through a global property or a later import that overrides the
+package's values. The NativeAOT runtime reads its settings from the user's
+environment before `Main`: EventPipe would connect to `DOTNET_DiagnosticPorts`
+or write `DOTNET_EventPipeOutputPath`, the standalone GC would load
+`DOTNET_GCPath`, and ICU could be loaded through
+`DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU`.
+
+**Fix:** remove the setting; the package turns them off and invariant
+globalization on for helpers.

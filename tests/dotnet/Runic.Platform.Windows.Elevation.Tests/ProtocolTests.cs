@@ -172,6 +172,71 @@ internal sealed partial class ProtocolTests
         finally { Directory.Delete(directory, recursive: true); }
     }
 
+    [Test, DisplayName("image: the SDK's apphost and single-file host carry the marker the check looks for")]
+    public void RealHostImages()
+    {
+        var hosts = SdkHostImages().ToList();
+        Console.WriteLine(string.Join("\n", hosts));
+        Check(hosts.Any(h => Path.GetFileNameWithoutExtension(h) == "apphost"), "no apphost found in the SDK's packs");
+        Console.WriteLine(hosts.Any(h => Path.GetFileNameWithoutExtension(h) == "singlefilehost") ? "single-file host checked" : "no single-file host restored here");
+        foreach (var host in hosts)
+        {
+            // Under the name of a helper, with nothing beside it: only the image's marker gives it away.
+            var directory = Path.Combine(Path.GetTempPath(), "runic-elevation-host-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(directory);
+            try
+            {
+                var helper = Path.Combine(directory, "helper.exe");
+                File.Copy(host, helper);
+                Check(HelperImage.Check(helper) == ProgramCheck.NotNativeAot, host);
+            }
+            finally { Directory.Delete(directory, recursive: true); }
+        }
+    }
+
+    [Test, DisplayName("image: an image that cannot be read is reported as unreadable")]
+    public void UnreadableImage()
+    {
+        if (OperatingSystem.IsWindows() || Environment.UserName == "root") return;
+        var directory = Path.Combine(Path.GetTempPath(), "runic-elevation-unreadable-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(directory);
+        var helper = Path.Combine(directory, "helper.exe");
+        File.WriteAllBytes(helper, new byte[16]);
+        try
+        {
+            File.SetUnixFileMode(helper, UnixFileMode.None);
+            Check(HelperImage.Check(helper) == ProgramCheck.Unreadable, "unreadable");
+            Check(ElevationOutcome.ProgramDiagnostic(ProgramCheck.Unreadable).Code == 9, "its own diagnostic");
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    // apphost from the SDK's host packs, and singlefilehost from the host and runtime packs a publish restored.
+    private static IEnumerable<string> SdkHostImages()
+    {
+        var roots = new List<string>();
+        if (Environment.GetEnvironmentVariable("DOTNET_ROOT") is { Length: > 0 } root) roots.Add(root);
+        if (Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host) roots.Add(Path.GetDirectoryName(host)!);
+        foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var dotnet = Path.Combine(directory, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet");
+            if (!File.Exists(dotnet)) continue;
+            var target = File.ResolveLinkTarget(dotnet, returnFinalTarget: true)?.FullName ?? dotnet;
+            roots.Add(Path.GetDirectoryName(target)!);
+        }
+        var names = new[] { "apphost", "apphost.exe", "singlefilehost", "singlefilehost.exe" };
+        var packs = roots.Select(r => Path.Combine(r, "packs")).Where(Directory.Exists).Distinct();
+        var nuget = Environment.GetEnvironmentVariable("NUGET_PACKAGES") is { Length: > 0 } cache ? cache
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages");
+        var found = packs.SelectMany(p => Directory.EnumerateDirectories(p, "Microsoft.NETCore.App.Host.*"))
+            .SelectMany(d => Directory.EnumerateFiles(d, "*", SearchOption.AllDirectories)).Where(f => names.Contains(Path.GetFileName(f))).ToList();
+        if (Directory.Exists(nuget))
+            found.AddRange(Directory.EnumerateDirectories(nuget, "microsoft.netcore.app.host.*")
+                .Concat(Directory.EnumerateDirectories(nuget, "microsoft.netcore.app.runtime.*"))
+                .SelectMany(d => Directory.EnumerateFiles(d, "singlefilehost*", SearchOption.AllDirectories)).Take(2));
+        return found.Distinct().Take(6);
+    }
+
     [Test, DisplayName("outcomes: declined, refused by policy, unsigned, no prompt service, and the helper's reports")]
     public void Outcomes()
     {

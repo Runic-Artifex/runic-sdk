@@ -17,10 +17,12 @@ internal sealed class WindowsElevationHost : IElevationHost
     public ProgramCheck CheckProgram(string path)
     {
         // path is drive-absolute and normalized (HelperLocation). A network drive is refused: who can change it is
-        // decided elsewhere. A SUBST drive reports its target's drive type, and drive letters belong to a logon
-        // session, which an elevated process does not share with the caller, so it is refused as well.
+        // decided elsewhere. The drive letter must name a volume: a SUBST drive, or a letter defined to a raw device
+        // path, reports its target's drive type, and drive letters belong to a logon session, which an elevated
+        // process does not share with the caller.
         var root = path[..3];
-        if (GetDriveType(root) != DriveFixed || IsSubstitutedDrive(path[..2])) return ProgramCheck.Replaceable;
+        if (GetDriveType(root) != DriveFixed) return ProgramCheck.Replaceable;
+        if (IsSubstitutedDrive(path[..2]) || !IsVolume(root)) return ProgramCheck.NotRealPath;
         var segments = path[3..].Split('\\');
         var components = new List<PathComponent>(segments.Length + 1);
         var current = root;
@@ -39,6 +41,13 @@ internal sealed class WindowsElevationHost : IElevationHost
         }
         var trust = ProgramTrust.Evaluate(components);
         return trust == ProgramCheck.Trusted ? HelperImage.Check(path) : trust;
+    }
+
+    // GetVolumeNameForVolumeMountPoint fails for a drive letter that is not a volume's mount point.
+    private static unsafe bool IsVolume(string root)
+    {
+        var name = stackalloc char[64];
+        return GetVolumeNameForVolumeMountPoint(root, name, 64);
     }
 
     // A SUBST drive's device is "\??\<target>"; a volume's is "\Device\...".

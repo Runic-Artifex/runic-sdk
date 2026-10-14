@@ -10,6 +10,8 @@ internal enum ProgramCheck
     Replaceable,
     /// <summary>The helper is a .NET apphost or single-file bundle, or runtime files lie beside it: a JIT build.</summary>
     NotNativeAot,
+    /// <summary>The helper's image could not be read to check what kind of build it is.</summary>
+    Unreadable,
 }
 
 /// <summary>Where a path component sits relative to the helper, which decides which rights matter.</summary>
@@ -117,7 +119,7 @@ internal static class HelperImage
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return ProgramCheck.Replaceable;
+            return ProgramCheck.Unreadable;
         }
     }
 
@@ -254,7 +256,8 @@ internal static class ElevationOutcome
     public static PlatformDiagnostic ProgramDiagnostic(ProgramCheck check) => check switch
     {
         ProgramCheck.Missing => new(Domain, 1, "The declared helper does not exist."),
-        ProgramCheck.NotRealPath => new(Domain, 2, "The declared helper's path contains a symbolic link, junction, mount point or substituted drive."),
+        ProgramCheck.NotRealPath => new(Domain, 2, "The declared helper's path contains a symbolic link, junction or mount point, or its drive letter is substituted or has no volume."),
+        ProgramCheck.Unreadable => new(Domain, 9, "The declared helper could not be read to check that it is a NativeAOT build."),
         ProgramCheck.NotNativeAot => new(Domain, 4, "The helper is not a NativeAOT build, so its runtime would load code from the user's environment when it starts."),
         _ => new(Domain, 3, "The declared helper, or a directory above it, is not owned by administrators or can be changed by other users."),
     };

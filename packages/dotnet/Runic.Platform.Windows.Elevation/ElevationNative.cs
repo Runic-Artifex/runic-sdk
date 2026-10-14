@@ -126,6 +126,10 @@ internal static unsafe partial class ElevationNative
     [LibraryImport("kernel32.dll", EntryPoint = "QueryDosDeviceW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
     public static partial uint QueryDosDevice(string device, char* target, uint size);
 
+    [LibraryImport("kernel32.dll", EntryPoint = "GetVolumeNameForVolumeMountPointW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetVolumeNameForVolumeMountPoint(string mountPoint, char* volumeName, uint size);
+
     [LibraryImport("kernel32.dll", EntryPoint = "GetSystemWindowsDirectoryW", SetLastError = true)]
     public static partial uint GetSystemWindowsDirectory(char* buffer, uint size);
 

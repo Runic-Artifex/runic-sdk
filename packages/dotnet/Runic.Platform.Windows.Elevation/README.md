@@ -100,7 +100,9 @@ descriptors of the helper and every directory above it: owned by SYSTEM,
 Administrators or TrustedInstaller, no one else may write the helper or add
 files to its directory, or delete, rename or re-permission a directory above
 it, and no component may be a symbolic link, junction, network drive or
-substituted (SUBST) drive. A JIT build of the helper is refused here too.
+drive letter that names no volume, such as a SUBST drive. A JIT build of the
+helper (runtime files beside it, or a .NET apphost or single-file host) is
+refused here too, and an image the application cannot read.
 
 ```xml
 <PropertyGroup>
@@ -126,9 +128,12 @@ reads its settings from the user's environment before `Main`, it also turns
 off the standalone GC (`DOTNET_GCPath` would load a DLL), EventSource and
 EventPipe (`DOTNET_DiagnosticPorts` would connect the helper to a diagnostic
 peer, `DOTNET_EventPipeOutputPath` would write a file) and ICU
-(`System.Globalization.UseNls`, so `DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU`
-loads nothing), overriding the project, and links the helper so its static
-imports load from System32 only (`/DEPENDENTLOADFLAG:0x800`). It requires:
+(`InvariantGlobalization`, compiled in, so
+`DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU` loads nothing; culture-specific
+formatting and sorting are not available in the helper), and links the helper
+so its static imports load from System32 only (`/DEPENDENTLOADFLAG:0x800`).
+Setting any of these back, also through a global property, fails the publish
+or the native link (`RUNICEL005`). It requires:
 
 - **NativeAOT** (`RUNICEL002` for every publish and every build for a runtime
   identifier). An elevated process takes its environment from the user's

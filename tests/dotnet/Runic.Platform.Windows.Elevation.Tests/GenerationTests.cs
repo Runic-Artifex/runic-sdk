@@ -52,11 +52,11 @@ internal sealed class GenerationTests
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper");
             Check(exit != 0 && output.Contains("RUNICEL002", StringComparison.Ordinal) && output.Contains("RUNICEL004", StringComparison.Ordinal)
                 && !output.Contains("RUNICEL003", StringComparison.Ordinal), $"the package's manifest, no NativeAOT for a RID, a library: {output}");
-            var pinned = await project.EvaluateAsync("IlcStandaloneGCSupport", "EventSourceSupport");
-            Check(pinned.Contains("\"IlcStandaloneGCSupport\": \"false\"", StringComparison.Ordinal) && pinned.Contains("\"EventSourceSupport\": \"false\"", StringComparison.Ordinal),
-                $"the standalone GC and EventPipe are off: {pinned}");
-            var items = await project.EvaluateItemsAsync("RuntimeHostConfigurationOption", "LinkerArg");
-            Check(items.Contains("System.Globalization.UseNls", StringComparison.Ordinal) && items.Contains("/DEPENDENTLOADFLAG:0x800", StringComparison.Ordinal), $"NLS and the load flag: {items}");
+            var pinned = await project.EvaluateAsync("IlcStandaloneGCSupport", "EventSourceSupport", "InvariantGlobalization");
+            Check(pinned.Contains("\"IlcStandaloneGCSupport\": \"false\"", StringComparison.Ordinal) && pinned.Contains("\"EventSourceSupport\": \"false\"", StringComparison.Ordinal)
+                && pinned.Contains("\"InvariantGlobalization\": \"true\"", StringComparison.Ordinal), $"the standalone GC and EventPipe are off, globalization invariant: {pinned}");
+            var items = await project.EvaluateItemsAsync("LinkerArg");
+            Check(items.Contains("/DEPENDENTLOADFLAG:0x800", StringComparison.Ordinal), $"the load flag: {items}");
             var manifest = await project.EvaluateAsync("ApplicationManifest");
             Check(manifest.EndsWith("Runic.Platform.Windows.Elevation.manifest", StringComparison.Ordinal), manifest);
             Check(File.ReadAllText(manifest).Contains("level=\"requireAdministrator\"", StringComparison.Ordinal), "the package's manifest requires administrator");
@@ -76,8 +76,31 @@ internal sealed class GenerationTests
         }
         using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot><RuntimeIdentifier>win-x64</RuntimeIdentifier>"))
         {
-            var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper;RunicCheckElevatedHelperPublish");
+            var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper;RunicCheckElevatedHelperPublish;RunicCheckElevatedHelperNative");
             Check(exit == 0, $"a NativeAOT helper: {output}");
+            // Global properties override the package's values; the checks see them.
+            (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperPublish", "-p:EventSourceSupport=true");
+            Check(exit != 0 && output.Contains("RUNICEL005", StringComparison.Ordinal), $"EventSourceSupport=true: {output}");
+            (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperPublish", "-p:IlcStandaloneGCSupport=true");
+            Check(exit != 0 && output.Contains("RUNICEL005", StringComparison.Ordinal), $"IlcStandaloneGCSupport=true: {output}");
+            (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper;RunicCheckElevatedHelperPublish", "-p:InvariantGlobalization=false");
+            Check(exit != 0 && output.Split('\n').Count(l => l.Contains("error RUNICEL005", StringComparison.Ordinal)) >= 2, $"InvariantGlobalization=false: {output}");
+            (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperNative", "-p:InvariantGlobalization=false");
+            Check(exit != 0 && output.Contains("RUNICEL005", StringComparison.Ordinal), $"linking without invariant globalization: {output}");
+        }
+        // The libraries the native link would use, as ILCompiler's targets add them.
+        foreach (var library in new[] { "eventpipe-enabled", "standalonegc-enabled" })
+        {
+            using var project = new FixtureProject($"""<NativeLibrary Include="sdk/{library}.lib" /><NativeLibrary Include="sdk/Runtime.WorkstationGC.lib" />""",
+                "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot>");
+            var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperNative");
+            Check(exit != 0 && output.Contains("RUNICEL005", StringComparison.Ordinal), $"{library}: {output}");
+        }
+        using (var project = new FixtureProject("""<NativeLibrary Include="sdk/eventpipe-disabled.lib" /><NativeLibrary Include="sdk/standalonegc-disabled.lib" />""",
+            "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Exe</OutputType><PublishAot>true</PublishAot>"))
+        {
+            var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelperNative");
+            Check(exit == 0, $"the disabled libraries: {output}");
         }
     }
 

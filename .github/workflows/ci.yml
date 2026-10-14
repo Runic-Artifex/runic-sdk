@@ -591,7 +591,13 @@ jobs:
           $jit = Join-Path $env:ProgramFiles 'Runic Elevation Smoke JIT'
           New-Item -ItemType Directory -Force $jit | Out-Null
           Copy-Item tests/native/Runic.Elevation.Smoke/bin/Release/net10.0/* $jit -Recurse
-          foreach ($installed in @($helper, $jit)) {
+          # And a self-contained single-file JIT publish, with nothing beside it: only its image's bundle marker shows
+          # what it is. RunicElevatedHelper=false lets it publish without NativeAOT.
+          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:RunicElevatedHelper=false -o artifacts/elevation-singlefile
+          $singleFile = Join-Path $env:ProgramFiles 'Runic Elevation Smoke SingleFile'
+          New-Item -ItemType Directory -Force $singleFile | Out-Null
+          Copy-Item artifacts/elevation-singlefile/Runic.Elevation.Smoke.exe $singleFile
+          foreach ($installed in @($helper, $jit, $singleFile)) {
             icacls $installed /setowner '*S-1-5-32-544' /T /C
             icacls $installed /reset /T /C
           }
@@ -603,7 +609,7 @@ jobs:
             Write-Host "== $tests"
             & $tests --output detailed
             & $tests --treenode-filter '/*/*/*/*[Category=NativeElevation]' --output detailed
-            & $tests --treenode-filter '/*/*/*/*[Category=RealElevation]' --test-parameter "helper-directory=$helper" --test-parameter "jit-helper-directory=$jit" --output detailed
+            & $tests --treenode-filter '/*/*/*/*[Category=RealElevation]' --test-parameter "helper-directory=$helper" --test-parameter "jit-helper-directory=$jit" --test-parameter "singlefile-helper-directory=$singleFile" --output detailed
           }
       - name: Build native clipboard conformance
         run: dotnet build tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests -c Release -p:TreatWarningsAsErrors=true
