@@ -13,7 +13,11 @@ export default defineConfig({ plugins: [runic({ desktop: true })] });
 
 `desktop: true` inserts the Desktop bootstrap script and sets a relocatable
 production base. For a CS-WebUI frontend, use `runic({ devtools: false })` or
-omit the plugin entirely. `virtual:runic/client` and the `/client` entry point
+omit the plugin entirely. A Runic Views frontend needs neither: its page loads
+`runic-views.js`, the Views client that every host provides, so `runic()` with
+`base: "./"` builds one page for Runic Desktop and CS-WebUI. The Views build
+passes the host it builds for as `RUNIC_APPLICATION_HOST` for a configuration
+that still differs per host. `virtual:runic/client` and the `/client` entry point
 provide bounded diagnostics and HMR resource ownership helpers. The optional
 `@vitejs/devtools` peer enables the Runic dock; register `DevTools()` in your
 Vite configuration when selecting `devtools: true`.
@@ -34,8 +38,8 @@ client: with a cold `node_modules/.vite` cache, the first page would otherwise
 discover it, and Vite would reload the page and close the host's connection.
 
 The native host serves `webui.js` and its client script (`runic-desktop.js`,
-`runic-cswebui.js` or `runic-desktop-views.js`) from the root of the web
-content, outside the Vite build. The plugin leaves those classic script tags
+`runic-views.js`, `runic-cswebui.js` or `runic-desktop-views.js`) from the root
+of the web content, outside the Vite build. The plugin leaves those classic script tags
 unbundled, so `vite build` prints no "can't be bundled without
 type="module"" warning, and points them at the web root from every page: a
 nested page such as `pages/settings.html` loads `../webui.js` in the build and

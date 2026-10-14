@@ -14,8 +14,9 @@ services described in the
 | [`Frontend/src/app.ts`](Frontend/src/app.ts) | Uses the same generated client contract as the CS-WebUI examples. |
 
 The Desktop surface serves `webui.js`, and `Runic.Application.Views.Desktop` copies
-`runic-desktop-views.js` into `www`; `Frontend/index.html` loads both before
-the generated client. The
+its Views client into `www` as `runic-views.js`; `Frontend/index.html` loads both
+before the generated client. The page names no host, so it is the same page
+that CS-WebUI serves in [First Window](../first-window/README.md). The
 [Runic.Desktop guide](../../packages/dotnet/Runic.Desktop/README.md) lists the
 native prerequisites for each platform and the embedded WebView choices.
 

@@ -133,6 +133,7 @@ test("builds host scripts from the web root without bundling warnings, also for 
     `<script src="webui.js"></script>`,
     `<script src="./runic-desktop-views.js"></script>`,
     `<script src="/runic-cswebui.js"></script>`,
+    `<script src="runic-views.js"></script>`,
   ].join("\n");
   const page = (title) => `<!doctype html>
 <html><head><title>${title}</title>
@@ -169,11 +170,11 @@ ${hostScripts}
     });
     // Other classic scripts still warn, so the logger sees the build's warnings.
     assert.ok(warnings.some((message) => /unrelated\.js.*can't be bundled/.test(message)), warnings.join("\n"));
-    assert.equal(warnings.some((message) => /(webui|runic-desktop-views|runic-cswebui)\.js/.test(message)), false, warnings.join("\n"));
+    assert.equal(warnings.some((message) => /(webui|runic-desktop-views|runic-cswebui|runic-views)\.js/.test(message)), false, warnings.join("\n"));
 
     for (const [file, prefix] of [["index.html", "./"], ["pages/settings.html", "../"], ["pages/deep/about.html", "../../"]]) {
       const html = await readFile(join(root, "dist", file), "utf8");
-      for (const script of ["runic-desktop.js", "webui.js", "runic-desktop-views.js", "runic-cswebui.js"]) {
+      for (const script of ["runic-desktop.js", "webui.js", "runic-desktop-views.js", "runic-cswebui.js", "runic-views.js"]) {
         assert.ok(html.replace(/<script\s+/g, "<script ").includes(`<script src="${prefix}${script}"></script>`), `${file} loads ${prefix}${script}:\n${html}`);
       }
       assert.doesNotMatch(html, /vite-ignore/);

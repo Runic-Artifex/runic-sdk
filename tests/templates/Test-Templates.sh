@@ -208,6 +208,8 @@ serve_and_fetch() {
   local cookies="$document.cookies"
   curl -fsS -c "$cookies" -b "$cookies" "$url/index.html" > "$document"
   curl -fsS -c "$cookies" -b "$cookies" "$url/runic-cswebui.js" > /dev/null
+  curl -fsS -c "$cookies" -b "$cookies" "$url/runic-views.js" > "$document.runic-views.js"
+  grep -Fq 'CS-WebUI owns the browser transport' "$document.runic-views.js"
   # A second window's page is served from the same web root as index.html.
   local pages=("$document")
   if [[ -f "$directory/Frontend/settings.html" ]]; then
@@ -306,17 +308,29 @@ verify_template() {
   grep -Fq 'await window.WaitForCloseAsync();' "$output/Program.cs"
   local index_html="$output/Frontend/index.html"
   [[ "$framework" == angular ]] && index_html="$output/Frontend/src/index.html"
+  # The page names no host: every host serves its Views client as runic-views.js (#237).
+  grep -Fq '<script src="runic-views.js"></script>' "$index_html"
+  if grep -nE 'runic-(cswebui|desktop-views|desktop)\.js' "$index_html"; then
+    echo "The $host frontend names a host script." >&2
+    exit 1
+  fi
+  if [[ "$framework" != angular ]]; then
+    grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
+    if grep -n 'desktop' "$output/Frontend/vite.config.ts"; then
+      echo "The $host Vite configuration chooses a host." >&2
+      exit 1
+    fi
+  fi
+  local host_client
   case "$host" in
     cswebui)
+      host_client=runic-cswebui.js
       grep -Fq 'Runic.Application.Views.CsWebUi' "$output/$project_name.csproj"
-      grep -Fq 'runic-cswebui.js' "$index_html"
       grep -Fq 'return RunicCsWebUiHost.Run(provider, RunAsync);' "$output/Program.cs"
-      [[ "$framework" == angular ]] || grep -Fq 'runic()' "$output/Frontend/vite.config.ts"
       ;;
     desktop|desktop-gtk4)
+      host_client=runic-desktop-views.js
       grep -Fq 'Runic.Application.Views.Desktop' "$output/$project_name.csproj"
-      grep -Fq 'runic-desktop-views.js' "$index_html"
-      [[ "$framework" == angular ]] || grep -Fq 'runic({ desktop: true })' "$output/Frontend/vite.config.ts"
       grep -Fq 'return RunicDesktopHost.Run(provider, options, RunAsync);' "$output/Program.cs"
       grep -Fq 'DiagnosticSink = ReportDiagnostic' "$output/Program.cs"
       ;;
@@ -458,10 +472,29 @@ verify_template() {
   if [[ "$framework" != angular ]]; then
     test -f "$output/bin/Release/net10.0/www/settings.html"
   fi
+  # The referenced host's client is the page's runic-views.js.
+  cmp "$output/bin/Release/net10.0/www/$host_client" "$output/bin/Release/net10.0/www/runic-views.js"
+  # A changed frontend rebuilds, and www/ mirrors the new dist/: the assets of
+  # the earlier build are gone, and the host scripts stay (#236).
+  local entry
+  entry="$(find "$output/Frontend/src" -maxdepth 1 -name 'main.ts*' | head -n 1)"
+  printf '\nconsole.info("Runic template rebuild check");\n' >> "$entry"
+  dotnet build "$output/$project_name.csproj" --configuration Release --no-restore > "$output/rebuild.log"
+  local built_files served_files
+  built_files="$(cd "$output/Frontend/dist" && find . -type f | sort)"
+  served_files="$(cd "$output/bin/Release/net10.0/www" && find . -type f \
+    ! -name runic-views.js ! -name runic-cswebui.js ! -name runic-desktop-views.js | sort)"
+  if [[ "$built_files" != "$served_files" ]]; then
+    echo "www/ does not mirror Frontend/dist after a frontend change." >&2
+    diff <(echo "$built_files") <(echo "$served_files") >&2 || true
+    exit 1
+  fi
+  grep -rFq 'Runic template rebuild check' "$output/bin/Release/net10.0/www"
   if [[ "$framework" != angular && "$manager" == npm ]]; then
     dotnet publish "$output/$project_name.csproj" --configuration Release --no-restore --no-build \
       --output "$output/publish" > "$output/publish.log"
     test -f "$output/publish/www/settings.html"
+    cmp "$output/publish/www/$host_client" "$output/publish/www/runic-views.js"
   fi
   # Runic Desktop serves each Window below its own path, where root-absolute
   # asset URLs leave the page blank. Desktop variants are not started here.
@@ -470,14 +503,12 @@ verify_template() {
     exit 1
   fi
   test -f "$output/Frontend/src/generated/workspace.ts"
-  # runic({ desktop: true }) loads the Runic Desktop bootstrap; CS-WebUI does not serve it.
-  if [[ "$framework" != angular ]]; then
-    if [[ "$host" == desktop* ]]; then
-      grep -Fq '<script src="./runic-desktop.js"></script>' "$output/Frontend/dist/index.html"
-    elif grep -Fq 'runic-desktop.js' "$output/Frontend/dist/index.html"; then
-      echo "The CS-WebUI frontend loads the Runic Desktop bootstrap." >&2
-      exit 1
-    fi
+  # One frontend build runs on every host: the built page loads runic-views.js
+  # and no host-specific script, such as the Runic Desktop bootstrap.
+  grep -Eq '<script\s[^>]*src="(\./)?runic-views\.js"' "$output/Frontend/dist/index.html"
+  if grep -nE 'runic-(cswebui|desktop-views|desktop)\.js' "$output/Frontend/dist/index.html"; then
+    echo "The built $host frontend loads a host-specific script." >&2
+    exit 1
   fi
   # Every path in the README's project layout exists once the project is built.
   local layout_paths

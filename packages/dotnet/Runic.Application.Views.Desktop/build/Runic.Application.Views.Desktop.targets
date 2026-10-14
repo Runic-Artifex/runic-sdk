@@ -1,14 +1,40 @@
 <Project>
+  <!-- Runic Desktop serves a page that loads webui.js and its Views client. The
+       client is copied as runic-desktop-views.js and, when RunicApplicationHost is
+       desktop, as runic-views.js, the host-neutral name a page can load on
+       every host. RunicViewsResolveHost in Runic.Application.Views sets
+       RunicApplicationHost to the only host referenced before the build. -->
+  <PropertyGroup>
+    <_RunicApplicationHostNames>$(_RunicApplicationHostNames);desktop</_RunicApplicationHostNames>
+    <!-- The Views www/ mirror runs these first and records runic-views.js, so
+         it deletes a copy that no host makes any more. -->
+    <_RunicApplicationHostCopyTargets>$(_RunicApplicationHostCopyTargets);RunicViewsCopyDesktopClient</_RunicApplicationHostCopyTargets>
+    <_RunicApplicationHostPublishCopyTargets>$(_RunicApplicationHostPublishCopyTargets);RunicViewsCopyDesktopClientForPublish</_RunicApplicationHostPublishCopyTargets>
+  </PropertyGroup>
   <Target Name="RunicViewsCopyDesktopClient" AfterTargets="Build"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
           DestinationFiles="$(TargetDir)www/runic-desktop-views.js"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
+          DestinationFiles="$(TargetDir)www/runic-views.js"
+          SkipUnchangedFiles="true"
+          Condition="'$(RunicApplicationHost)' == 'desktop'" />
+    <ItemGroup Condition="'$(RunicApplicationHost)' == 'desktop'">
+      <_RunicBridgeWwwFile Include="$(TargetDir)www/runic-views.js" />
+    </ItemGroup>
   </Target>
   <Target Name="RunicViewsCopyDesktopClientForPublish" AfterTargets="Publish"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
           DestinationFiles="$(PublishDir)www/runic-desktop-views.js"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
+          DestinationFiles="$(PublishDir)www/runic-views.js"
+          SkipUnchangedFiles="true"
+          Condition="'$(RunicApplicationHost)' == 'desktop'" />
+    <ItemGroup Condition="'$(RunicApplicationHost)' == 'desktop'">
+      <_RunicBridgePublishedWwwFile Include="$(PublishDir)www/runic-views.js" />
+    </ItemGroup>
   </Target>
 </Project>

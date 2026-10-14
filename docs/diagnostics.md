@@ -216,6 +216,23 @@ its own is not affected; its bootstrap build uses the referenced type.
 **Fix:** set `RunicApplicationFrontendCompositionType` to another type name in
 one of the two projects, and call `AddRunicViews()` of each composition.
 
+### RUNICBRIDGE019
+
+A warning from the `Runic.Application.Views` build targets. The build cannot
+tell which host's Views client to copy to `www/runic-views.js`, the
+host-neutral script a page loads, and copies none, so a page that loads it gets
+no Bridge. It is reported when an application references more than one host
+adapter (`Runic.Application.Views.Desktop` or `Runic.Application.Views.Wpf`, and
+`Runic.Application.Views.CsWebUi`) without `RunicApplicationHost` and a page it
+copies to `www/` loads `runic-views.js`, or when `RunicApplicationHost` names a
+host that the application does not reference. Pages that load
+`runic-desktop-views.js` or `runic-cswebui.js` directly choose their host at run
+time and report nothing; libraries and test projects report nothing either.
+
+**Fix:** set `RunicApplicationHost` to `desktop` or `cswebui` in the project or
+on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,
+to the host that the application runs on.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
