@@ -57,6 +57,8 @@
           status-icon-waybar = (import ./nixos/status-icon { inherit pkgs; }).waybar;
           # Single instance and login startup on Plasma; see nixos/application-lifetime.
           application-lifetime-plasma = (import ./nixos/application-lifetime { inherit pkgs; }).plasma;
+          # Privileged actions against a real Polkit; see nixos/privileged-operations.
+          privileged-operations-polkit = (import ./nixos/privileged-operations { inherit pkgs; }).polkit;
           desktop-flatpak-tools = pkgs.buildEnv {
             name = "runic-desktop-flatpak-tools";
             paths = [ pkgs.flatpak pkgs.bash pkgs.coreutils pkgs.nix ];

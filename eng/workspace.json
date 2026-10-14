@@ -147,6 +147,10 @@
     {
       "name": "Runic.Platform.Linux.Gtk4",
       "project": "packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj"
+    },
+    {
+      "name": "Runic.Platform.Linux.Polkit",
+      "project": "packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj"
     }
   ],
   "components": {
@@ -346,7 +350,10 @@
         "tests/native/Runic.Desktop.WebViewSmoke",
         "tests/native/Runic.Desktop.Gtk4.Smoke",
         "tests/native/Runic.StatusIcon.Smoke",
-        "tests/native/Runic.Lifetime.Smoke"
+        "tests/native/Runic.Lifetime.Smoke",
+        "packages/dotnet/Runic.Platform.Linux.Polkit",
+        "tests/dotnet/Runic.Platform.Linux.Polkit.Tests",
+        "tests/native/Runic.Privileged.Smoke"
       ]
     }
   }

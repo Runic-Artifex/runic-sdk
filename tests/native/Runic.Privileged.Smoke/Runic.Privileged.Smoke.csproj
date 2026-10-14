@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>Runic.Privileged.Smoke</RootNamespace>
+    <!-- nixos/privileged-operations installs the published smoke here, in a directory only root can change. -->
+    <RunicPrivilegedSmokeProgram Condition="'$(RunicPrivilegedSmokeProgram)' == ''">/var/lib/runic-privileged/Runic.Privileged.Smoke</RunicPrivilegedSmokeProgram>
+    <RunicPolkitPolicyName>dev.runic.privileged-smoke</RunicPolkitPolicyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <RunicPrivilegedAction Include="dev.runic.privileged-smoke.allowed" Program="$(RunicPrivilegedSmokeProgram)" Verb="allowed"
+                           Description="Run the allowed smoke step" Message="Authentication is required to run the allowed smoke step."
+                           MaximumArguments="8" />
+    <RunicPrivilegedAction Include="dev.runic.privileged-smoke.denied" Program="$(RunicPrivilegedSmokeProgram)" Verb="denied"
+                           Description="Run the denied smoke step" Message="Authentication is required to run the denied smoke step."
+                           MaximumArguments="8" />
+    <RunicPrivilegedAction Include="dev.runic.privileged-smoke.prompt" Program="$(RunicPrivilegedSmokeProgram)" Verb="prompt"
+                           Description="Run the smoke step that asks for a password" Message="Authentication is required to run the &lt;prompt&gt; smoke step &amp; check escaping."
+                           MaximumArguments="8" IconName="dialog-password" />
+  </ItemGroup>
+  <!-- A package consumer gets these targets from the package's buildTransitive folder. -->
+  <Import Project="../../../packages/dotnet/Runic.Platform.Linux.Polkit/buildTransitive/Runic.Platform.Linux.Polkit.targets" />
+</Project>

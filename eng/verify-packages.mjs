@@ -79,6 +79,13 @@ export const packageLayouts = {
   "Runic.Application.Views.CsWebUi": { includes: ["buildTransitive/Runic.Application.Views.CsWebUi.props"] },
   // The Wpf targets also suppress RUNICWPF001 in XAML-generated code (docs/experimental.md).
   "Runic.Application.Views.Wpf": { includes: ["buildTransitive/Runic.Application.Views.Wpf.props", "buildTransitive/Runic.Application.Views.Wpf.targets"] },
+  // The privileged-action targets generate the Polkit policy and declarations; the props carry their help links (W300-004).
+  "Runic.Platform.Linux.Polkit": {
+    files: ["README.md", "Runic.Platform.Linux.Polkit.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Linux.Polkit.dll", "lib/net10.0/Runic.Platform.Linux.Polkit.xml",
+      "buildTransitive/Runic.Platform.Linux.Polkit.props", "buildTransitive/Runic.Platform.Linux.Polkit.targets"],
+    dependencies: ["Runic.Platform"],
+    exactDependencies: ["Runic.Platform"],
+  },
 };
 
 export function verifyPackageLayout(nupkg, name, version, layout = packageLayouts[name]) {
