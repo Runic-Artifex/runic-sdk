@@ -61,9 +61,10 @@ static int Helper(string[] args)
             File.WriteAllText(created, "x");
             if (OperatingSystem.IsLinux()) Console.WriteLine($"state created mode={Convert.ToString((int)File.GetUnixFileMode(created), 8)}");
             var limits = File.ReadAllLines("/proc/self/limits");
-            foreach (var name in new[] { "Max core file size", "Max file size", "Max open files" })
+            foreach (var name in new[] { "Max core file size", "Max file size", "Max open files", "Max cpu time", "Max address space", "Max data size" })
                 Console.WriteLine($"state limit {name}: {string.Join(' ', (limits.FirstOrDefault(l => l.StartsWith(name, StringComparison.Ordinal)) ?? "?")[name.Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2))}");
             Console.WriteLine($"state cgroup={File.ReadAllText("/proc/self/cgroup").Trim()}");
+            Console.WriteLine($"state nice={File.ReadAllText("/proc/self/stat").Split(')')[^1].Split(' ', StringSplitOptions.RemoveEmptyEntries)[16]} oom_score_adj={File.ReadAllText("/proc/self/oom_score_adj").Trim()}");
             return 0;
         case "ignore":
             Log($"ignoring input, pid {Environment.ProcessId}");
@@ -72,7 +73,7 @@ static int Helper(string[] args)
                 Thread.Sleep(500);
                 Log($"still running {tick}{(TryWrite($"helper tick {tick}") ? "" : ", standard output is closed")}");
             }
-            // A child inherits standard output; .NET ignores SIGPIPE, but the child gets the default disposition.
+            // A child inherits standard output and the ignored SIGPIPE, so its write fails with EPIPE.
             using (var child = System.Diagnostics.Process.Start("/bin/sh", ["-c", "echo from child"]))
             {
                 child.WaitForExit();

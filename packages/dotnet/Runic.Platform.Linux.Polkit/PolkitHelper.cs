@@ -45,37 +45,47 @@ public static partial class PolkitHelper
     /// </summary>
     /// <remarks>
     /// <list type="bullet">
-    /// <item>The working directory becomes <c>/</c> and the umask <c>022</c>.</item>
+    /// <item>The working directory becomes <c>/</c>, the umask <c>022</c> and the nice value 0.</item>
     /// <item>Signals the caller ignored are handled by default again, except <c>SIGPIPE</c>, which .NET ignores
-    /// itself; the calling thread's signal mask becomes empty, and threads and processes started later inherit it.</item>
-    /// <item>Core dumps are off (<c>RLIMIT_CORE</c> 0), the file size limit is lifted (<c>RLIMIT_FSIZE</c>) and at
-    /// least 1024 open files are allowed (<c>RLIMIT_NOFILE</c>).</item>
+    /// itself. The signal mask is per thread: the calling thread's becomes empty, and threads and processes it starts
+    /// later inherit that, but threads the runtime started earlier keep the caller's.</item>
+    /// <item>Core dumps are off (<c>RLIMIT_CORE</c> 0); the CPU time, address space, data and file size limits are
+    /// lifted (<c>RLIMIT_CPU</c>, <c>RLIMIT_AS</c>, <c>RLIMIT_DATA</c>, <c>RLIMIT_FSIZE</c>); at least 1024 open
+    /// files are allowed (<c>RLIMIT_NOFILE</c>); and <c>oom_score_adj</c> is 0.</item>
     /// </list>
+    /// The scheduling policy, CPU affinity and <c>RLIMIT_STACK</c> stay as the caller set them.
     /// </remarks>
     /// <returns>
-    /// False, without changing anything, when the effective user is not root or <c>PKEXEC_UID</c> is missing, as
-    /// when pkexec ran with <c>--user</c>; do not act then.
+    /// False when the effective user is not root (as when pkexec ran with <c>--user</c> and a user other than root),
+    /// <c>PKEXEC_UID</c> is missing, the process is 32-bit, or any reset fails; do not act then. Some state may
+    /// already be reset when a later step fails.
     /// </returns>
     public static bool Initialize()
     {
         lock (s_initializeLock)
         {
-            if (s_initialized is { } done) return done;
-            if (GetCallerUserId() is null)
-            {
-                s_initialized = false;
-                return false;
-            }
-            Environment.CurrentDirectory = "/";
-            _ = Umask(0x12); // 022
-            ResetSignals();
-            SetLimit(RlimitCore, 0, 0);
-            SetLimit(RlimitFsize, nuint.MaxValue, nuint.MaxValue);
-            if (GetLimit(RlimitNofile, out var soft, out var hard) && (soft < 1024 || hard < 1024))
-                SetLimit(RlimitNofile, Math.Max(soft, 1024), Math.Max(hard, 1024));
-            s_initialized = true;
-            return true;
+            s_initialized ??= GetCallerUserId() is not null && Reset();
+            return s_initialized.Value;
         }
+    }
+
+    private static bool Reset()
+    {
+        // rlim_t is 64 bits on 64-bit Linux with glibc and on every musl target; 32-bit glibc differs, so only
+        // 64-bit processes are supported.
+        if (!Environment.Is64BitProcess) return false;
+        try { Environment.CurrentDirectory = "/"; }
+        catch (IOException) { return false; }
+        _ = Umask(0x12); // 022; umask cannot fail
+        if (SetPriority(PrioProcess, 0, 0) != 0 || !ResetSignals()) return false;
+        if (!SetLimit(RlimitCore, 0, 0)) return false;
+        foreach (var resource in new[] { RlimitCpu, RlimitFsize, RlimitData, RlimitAs })
+            if (!SetLimit(resource, ulong.MaxValue, ulong.MaxValue)) return false;
+        if (!GetLimit(RlimitNofile, out var soft, out var hard)) return false;
+        if ((soft < 1024 || hard < 1024) && !SetLimit(RlimitNofile, Math.Max(soft, 1024), Math.Max(hard, 1024))) return false;
+        try { File.WriteAllText("/proc/self/oom_score_adj", "0"); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+        return true;
     }
 
     /// <summary>
@@ -150,38 +160,39 @@ public static partial class PolkitHelper
     }
 
     private const int SigKill = 9, SigPipe = 13, SigStop = 19, SigSetMask = 2;
-    private const int RlimitFsize = 1, RlimitCore = 4, RlimitNofile = 7;
+    private const int RlimitCpu = 0, RlimitFsize = 1, RlimitData = 2, RlimitCore = 4, RlimitNofile = 7, RlimitAs = 9;
+    private const int PrioProcess = 0;
 
-    private static unsafe void ResetSignals()
+    private static unsafe bool ResetSignals()
     {
         // Ignored dispositions survive exec; handlers do not, so a handler here is the runtime's own.
         var action = stackalloc byte[256]; // struct sigaction, 152 bytes on glibc and musl; the handler comes first
         for (var signal = 1; signal < 32; signal++)
         {
             if (signal is SigKill or SigStop or SigPipe) continue;
-            if (SigAction(signal, null, action) == 0 && *(nint*)action == 1 /* SIG_IGN */)
-                _ = Signal(signal, 0 /* SIG_DFL */);
+            if (SigAction(signal, null, action) != 0) return false;
+            if (*(nint*)action == 1 /* SIG_IGN */ && Signal(signal, 0 /* SIG_DFL */) == -1 /* SIG_ERR */) return false;
         }
         var empty = stackalloc byte[128]; // sigset_t
         new Span<byte>(empty, 128).Clear();
-        _ = SigProcMask(SigSetMask, empty, null);
+        return SigProcMask(SigSetMask, empty, null) == 0;
     }
 
-    private static unsafe bool GetLimit(int resource, out nuint soft, out nuint hard)
+    private static unsafe bool GetLimit(int resource, out ulong soft, out ulong hard)
     {
-        var limit = stackalloc nuint[2];
+        var limit = stackalloc ulong[2];
         var ok = GetRLimit(resource, limit) == 0;
         soft = limit[0];
         hard = limit[1];
         return ok;
     }
 
-    private static unsafe void SetLimit(int resource, nuint soft, nuint hard)
+    private static unsafe bool SetLimit(int resource, ulong soft, ulong hard)
     {
-        var limit = stackalloc nuint[2];
+        var limit = stackalloc ulong[2];
         limit[0] = soft;
         limit[1] = hard;
-        _ = SetRLimit(resource, limit);
+        return SetRLimit(resource, limit) == 0;
     }
 
     [LibraryImport("libc", EntryPoint = "geteuid")]
@@ -199,10 +210,13 @@ public static partial class PolkitHelper
     [LibraryImport("libc", EntryPoint = "sigprocmask")]
     private static unsafe partial int SigProcMask(int how, byte* set, byte* previous);
 
-    // rlim_t is unsigned long on 64-bit Linux and in the 32-bit glibc ABI without _FILE_OFFSET_BITS=64.
+    // struct rlimit: two 64-bit rlim_t; Reset runs only in 64-bit processes.
     [LibraryImport("libc", EntryPoint = "getrlimit")]
-    private static unsafe partial int GetRLimit(int resource, nuint* limit);
+    private static unsafe partial int GetRLimit(int resource, ulong* limit);
 
     [LibraryImport("libc", EntryPoint = "setrlimit")]
-    private static unsafe partial int SetRLimit(int resource, nuint* limit);
+    private static unsafe partial int SetRLimit(int resource, ulong* limit);
+
+    [LibraryImport("libc", EntryPoint = "setpriority")]
+    private static partial int SetPriority(int which, uint who, int priority);
 }

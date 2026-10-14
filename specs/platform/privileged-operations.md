@@ -29,10 +29,10 @@ off Linux, so application code is the same everywhere.
 | | Linux | Windows | macOS |
 | --- | --- | --- | --- |
 | API | Polkit action with `org.freedesktop.policykit.exec.path` and `exec.argv1` annotations; pkexec runs the program. | `ShellExecuteExW` with the `runas` verb and `SEE_MASK_NOCLOSEPROCESS` (UAC consent or credential prompt). | `SMAppService.daemon(plistName:)` registers a launchd daemon in the app bundle; XPC to it; Authorization Services (`AuthorizationCopyRights`) for the per-action prompt. |
-| Minimum | polkit 0.107 for `exec.argv1` (2012); `--disable-internal-agent` is older. Messages checked against polkit 0.105 to 127. `statx` (glibc 2.28, Linux 4.11). | Windows Vista for UAC; the SDK's Windows 10/11 baseline. | macOS 13 for `SMAppService` and `NSXPCConnection.setCodeSigningRequirement`. |
+| Minimum | polkit 0.107 for `exec.argv1` (2012); `--disable-internal-agent` is older. Messages checked against polkit 0.105 to 127. `statx` (glibc 2.28, Linux 4.11). | Windows Vista for UAC; the SDK's Windows 10/11 baseline. | macOS 14 for launch constraints (`SMAppService` and `NSXPCConnection.setCodeSigningRequirement` need 13); the SDK's macOS baseline, from the .NET 10 support policy, is 15. |
 | Permissions | None for the caller. The policy decides who may run the action; installing the policy needs root. | None for the caller; the user approves each run. A standard user needs an administrator's credentials. | The user approves the daemon once in System Settings > General > Login Items; each action asks for authorization. |
 | Packaging | The `.policy` file in `share/polkit-1/actions`; the program at a path only root can change. pkexec must be setuid (NixOS: `security.polkit.enable`, `security.wrappers.pkexec`). | The helper installed under Program Files, Authenticode-signed so the consent prompt names the publisher, with a `requireAdministrator` manifest. No policy file. | A signed, notarized app bundle with hardened runtime; the daemon's plist in `Contents/Library/LaunchDaemons` (`BundleProgram`, `AssociatedBundleIdentifiers`, `MachServices`) and the helper in the bundle. |
-| NativeAOT | Works: `Process`, `LibraryImport` for `statx`, `kill` and `geteuid`, non-backtracking `Regex`. The smoke publishes without trim or AOT warnings. | Expected to work: CsWin32 or `LibraryImport` for `ShellExecuteExW`, `GetExitCodeProcess`, `CreateNamedPipeW`. | Expected to work with Runic.Platform.MacOS's Objective-C interop, which already builds blocks for XPC handlers; Security.framework is a C API. |
+| NativeAOT | Works: `Process`, `LibraryImport` for `statx`, `kill`, `syscall` (pidfd), `getuid`, `geteuid`, `umask`, `sigaction`, `signal`, `sigprocmask`, `getrlimit`, `setrlimit`, `setpriority` and `close`, non-backtracking `Regex`. The smoke publishes without trim or AOT warnings. | Expected to work: CsWin32 or `LibraryImport` for `ShellExecuteExW`, `GetExitCodeProcess`, `CreateNamedPipeW`. | Expected to work with Runic.Platform.MacOS's Objective-C interop, which already builds blocks for XPC handlers; Security.framework is a C API. |
 
 ### Rejected options
 
@@ -224,15 +224,25 @@ pkexec does not reset everything the caller sets up. The program starts in root'
 home directory unless the caller passes `--keep-cwd` (polkit 121 and later), and
 inherits the caller's umask, ignored signals, signal mask and resource limits.
 `PolkitHelper.Initialize`, which `Match` calls before anything else, changes to
-`/`, sets the umask to `022`, restores ignored signals to their default
-disposition (except `SIGPIPE`, which .NET ignores itself; handlers do not
-survive `exec`, so any other handler is the runtime's), empties the calling
-thread's signal mask, sets `RLIMIT_CORE` to 0, lifts `RLIMIT_FSIZE` and raises
-`RLIMIT_NOFILE` to at least 1024. It refuses, and `Match` returns null, when the
-effective user is not root or `PKEXEC_UID` is missing, as when pkexec ran with
-`--user`. The VM test runs the helper with `umask 000`, `--keep-cwd` in `/tmp`,
-an ignored SIGHUP and a soft limit of 256 files, and sees `/`, `022`, a file
-created with mode 644, SIGHUP back to default, no core dumps and 1024 files.
+`/`, sets the umask to `022` and the nice value to 0, restores ignored signals
+to their default disposition (except `SIGPIPE`, which .NET ignores itself;
+handlers do not survive `exec`, so any other handler is the runtime's), empties
+the calling thread's signal mask, sets `RLIMIT_CORE` to 0, lifts `RLIMIT_CPU`
+(SIGXCPU, now at its default, would otherwise kill the step), `RLIMIT_AS`,
+`RLIMIT_DATA` and `RLIMIT_FSIZE`, raises `RLIMIT_NOFILE` to at least 1024 and
+writes 0 to `oom_score_adj`. It refuses, and `Match` returns null, when the
+effective user is not root, `PKEXEC_UID` is missing, the process is 32-bit
+(where `rlim_t` differs between glibc and musl) or any of these calls fails.
+pkexec always sets `PKEXEC_UID`; `--user` with another user is refused by the
+root check, and `--user root` is the default case. The VM test runs the helper
+with `umask 000`, `--keep-cwd` in `/tmp`, an ignored SIGHUP, a soft limit of 256
+files, a CPU time limit of 100 s, nice 5 and an OOM score adjustment of 500, and
+sees `/`, `022`, a file created with mode 644, SIGHUP back to default, no core
+dumps, 1024 files, unlimited CPU time, nice 0 and an adjustment of 0.
+
+The scheduling policy, CPU affinity and `RLIMIT_STACK` remain as the caller set
+them (residual risks below): they can slow the step or make it fail, but not
+change what it does.
 The signal mask is per thread: threads the runtime started before `Initialize`
 keep the inherited mask, so the program should call it first and start child
 processes from that thread or threads created after it.
@@ -245,9 +255,11 @@ the user's systemd instance, that cgroup is delegated to the user, who can
 freeze or kill the root process through `cgroup.kill` or `cgroup.freeze`. The
 VM test verifies it: the helper started from `systemd-run --user` runs as root
 in `user@1000.service/app.slice/…`, and the user's write to `cgroup.kill` ends
-it. The user could already stop the action by killing the application, so this
-adds no privilege, but a privileged step must not assume it runs to the end;
-steps that must finish run in their own system unit.
+it. Killing the application only closes the program's input, which a program
+may ignore; the cgroup lets the user freeze or kill a root step that ignores
+its input at any point it chooses, as a CPU time limit would have before
+`Initialize` lifted it. A privileged step must therefore not assume it runs to
+the end: steps that must finish run in their own system unit.
 
 ### TOCTOU on the program path
 
@@ -303,9 +315,12 @@ rejects line breaks, other control characters and characters XML cannot carry
 A pattern is compiled on its own before it is anchored as `^(?:pattern)\z`, so
 `a)|(b` cannot close the anchoring group and match a part of an argument. The
 build and the runtime use the same options (`NonBacktracking`,
-`CultureInvariant`), so backreferences and lookarounds are build errors. .NET's
-`\d` and `\w` are Unicode-wide and a negated class such as `[^/]` matches a line
-break, so patterns list the allowed characters. The privileged program resolves
+`CultureInvariant`) and both compile the pattern alone and anchored, so
+backreferences, lookarounds and a pattern such as `(?x)[a-z]+ # letters`,
+whose comment swallows the anchoring group's end, are build errors. .NET's
+`\d` and `\w` are Unicode-wide, a negated class such as `[^/]` matches a line
+break, and an inline `(?i)` makes `[a-z]` match the Kelvin sign (U+212A), so
+patterns list the allowed characters without inline options. The privileged program resolves
 paths (`realpath`), checks the resolved path again and uses only it.
 
 ### Residual risks
@@ -321,6 +336,8 @@ paths (`realpath`), checks the resolved path again and uses only it.
 - When the application dies, the program is not signalled; see "When the
   application dies". The caller can also kill it through its cgroup.
 - A program that exits with 126 or 127 is reported as an authorization outcome.
+- The caller still chooses the program's scheduling policy, CPU affinity and
+  `RLIMIT_STACK`; `Initialize` resets the nice value but not these.
 
 ## Windows design (follow-up)
 
@@ -370,13 +387,17 @@ paths (`realpath`), checks the resolved path again and uses only it.
   requirement.
 - The daemon defines each right in the authorization database with the
   declared message, as an admin rule that is **not shared and has no timeout**
-  (`shared = false`, `timeout = 0`). The built-in `authenticate-admin` rule is
+  (`shared = false`, `timeout = 0`; whether 0 means "never reuse" is to verify:
+  Apple's own `authenticate-admin-nonshared` uses 30 seconds). The built-in
+  `authenticate-admin` rule is
   shared and lasts 300 seconds, so one authorization would also cover other
   rights and later runs.
 - Who verifies what: `SMAppService` registers only a daemon inside the app's
   signed bundle, and launchd starts the `BundleProgram` at its bundle path;
-  the plist sets launch constraints (macOS 14) so launchd runs it only with the
-  app's Team ID signature. The daemon checks the client's code signature on
+  the plist sets launch constraints so launchd runs it only with the app's Team
+  ID signature. Launch constraints need macOS 14, so the provider requires 14;
+  on 13, nothing but the bundle's own file permissions would stop a replaced
+  daemon binary from running as root. The SDK's macOS baseline is 15 anyway. The daemon checks the client's code signature on
   every XPC connection, and before it spawns the declared program it checks
   that program's code signature against the same designated requirement, since
   it runs it as root. The bundle is signed with the hardened runtime and

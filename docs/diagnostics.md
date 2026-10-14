@@ -737,7 +737,9 @@ time, so backreferences and lookarounds are rejected here.
 
 **Fix:** correct the pattern. It is matched against the whole argument. List
 the allowed characters: `\d` and `\w` match every script's digits and letters,
-and a negated class such as `[^/]` matches a line break.
+a negated class such as `[^/]` matches a line break, an inline `(?i)` makes
+`[a-z]` match the Kelvin sign (U+212A), and `(?x)` turns `#` into a comment.
+The pattern must be valid both alone and anchored as `^(?:pattern)\z`.
 
 ### RUNICPA009
 

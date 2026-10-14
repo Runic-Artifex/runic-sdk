@@ -53,6 +53,7 @@ internal sealed class DeclarationTests
         Throws<NotSupportedException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = @"(a)\1" }, "backreferences need backtracking");
         Throws<NotSupportedException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "(?=a)a" }, "lookarounds need backtracking");
         Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "a)|(b" }, "a pattern that would escape the anchors");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "(?x)[a-z]+ # letters" }, "a comment that swallows the anchor");
         var newline = new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 1, ArgumentPattern = "[^/]+" };
         Check(newline.AcceptsArguments(["a\nb"]), "a negated class matches a line break, as the documentation warns");
     }

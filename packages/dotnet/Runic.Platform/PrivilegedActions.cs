@@ -9,8 +9,9 @@ namespace Runic.Platform;
 /// </summary>
 /// <remarks>
 /// Declare actions with <c>RunicPrivilegedAction</c> items, which generate these declarations and the platform
-/// artifacts (a Polkit policy on Linux). The privileged program must check its own arguments again, for example
-/// with <see cref="AcceptsArguments"/>: any local user can start it through the platform's tool with any arguments.
+/// artifacts (a Polkit policy on Linux). The privileged program must check its own arguments again, with the
+/// provider's helper (on Linux <c>PolkitHelper.Match</c>, which also resets the process state the caller chose)
+/// and its own rules: any local user can start it through the platform's tool with any arguments.
 /// </remarks>
 public sealed class PrivilegedActionDeclaration
 {
@@ -77,8 +78,9 @@ public sealed class PrivilegedActionDeclaration
     /// </summary>
     /// <remarks>
     /// .NET character classes are Unicode-wide: <c>\d</c> and <c>\w</c> match digits and letters of every script.
-    /// A negated class such as <c>[^/]</c> also matches a line break. Spell out the allowed characters, for example
-    /// <c>[A-Za-z0-9._+-]</c>.
+    /// A negated class such as <c>[^/]</c> also matches a line break. An inline <c>(?i)</c> makes <c>[a-z]</c> match the
+    /// Kelvin sign (U+212A) too, and <c>(?x)</c> turns <c>#</c> into a comment. Spell out the allowed characters, for
+    /// example <c>[A-Za-z0-9._+-]</c>, without inline options.
     /// </remarks>
     /// <exception cref="ArgumentException">The pattern is invalid on its own, for example with an unbalanced group.</exception>
     /// <exception cref="NotSupportedException">The pattern needs backtracking (backreferences or lookarounds).</exception>

@@ -40,7 +40,7 @@ exactly one policy file declares each action ID.
 | `Verb` | The first argument, which selects the action (the policy's `org.freedesktop.policykit.exec.argv1`, polkit 0.107 and later). Every action needs its own verb, also across programs: pkexec matches the program's path and the verb, but the privileged program sees only the verb, and one executable may be installed under several paths. An action without a verb is allowed only on its own (`RUNICPA003`). |
 | `Description`, `Message`, `IconName` | What the authentication dialog shows. One line each. |
 | `MaximumArguments` | Arguments accepted after the verb, 0 to 64. Default 0. |
-| `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, compiled with `RegexOptions.NonBacktracking`, so backreferences and lookarounds are build errors. `\d` and `\w` match every script's digits and letters, and a negated class such as `[^/]` matches a line break: list the allowed characters instead. |
+| `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, compiled with `RegexOptions.NonBacktracking`, so backreferences and lookarounds are build errors. `\d` and `\w` match every script's digits and letters, a negated class such as `[^/]` matches a line break, an inline `(?i)` makes `[a-z]` match the Kelvin sign (U+212A), and `(?x)` turns `#` into a comment: list the allowed characters, without inline options. The pattern is checked alone and anchored at build time. |
 | `AllowAny`, `AllowInactive`, `AllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. `yes`, `auth_self` and `auth_self_keep` are warnings (`RUNICPA014`): grant passwordless access to specific users in a site rule in `/etc/polkit-1/rules.d` instead. |
 | `AllowGui` | `true` keeps `DISPLAY` and `XAUTHORITY` for a program that opens windows as root. Default off. |
 | `Name` | The generated property name, when the last ID segment does not make a good one. |
@@ -161,11 +161,21 @@ var stop = PolkitHelper.WatchStandardInput(); // cancelled when the application 
   activates a system must stay `auth_admin`.
 - `PolkitHelper.Initialize`, which `Match` calls, resets what pkexec takes over
   from the caller: the working directory becomes `/` (pkexec `--keep-cwd` keeps
-  the caller's), the umask `022`, signals the caller ignored are default again
-  (except `SIGPIPE`, which .NET ignores itself), the signal mask is emptied,
-  core dumps are off, the file size limit is lifted and at least 1024 open files
-  are allowed. It refuses when the process does not run as root or pkexec ran
-  with `--user`. Call it first in `Main` if the program does not use `Match`.
+  the caller's), the umask `022` and the nice value 0; signals the caller
+  ignored are default again (except `SIGPIPE`, which .NET ignores itself); the
+  signal mask is emptied; core dumps are off; the CPU time, address space, data
+  and file size limits are lifted; at least 1024 open files are allowed; and
+  `oom_score_adj` is 0. The scheduling policy, CPU affinity and stack limit stay
+  as the caller set them.
+- The signal mask is per thread: `Initialize` empties the calling thread's, and
+  threads and processes started from it later inherit that, but threads the
+  runtime started before keep the caller's mask. Call `Match` (or
+  `Initialize`) first in `Main`, before starting threads or processes, and
+  start child processes from that thread or threads created after it.
+- `Initialize` returns false, and `Match` null, when the process is not root
+  (as when pkexec ran with `--user` and another user; `--user root` is
+  accepted), is a 32-bit process, or a reset fails. pkexec always sets
+  `PKEXEC_UID`.
 - pkexec clears the environment; `PATH` is a fixed list (root's system profile
   on NixOS). Call tools by absolute path and read nothing from the caller's
   environment; `PKEXEC_UID` names the caller.

@@ -124,10 +124,15 @@ public sealed class RunicWritePrivilegedActions : Task
             // The options of PrivilegedActionDeclaration.PatternOptions: NonBacktracking (1024) rejects
             // backreferences and lookarounds here rather than when the application starts. MSBuild on .NET
             // Framework has no NonBacktracking; there the pattern is checked without it.
+            // Alone and anchored, as PrivilegedActionDeclaration compiles it: "(?x)[a-z]+ # letters" is valid alone,
+            // but its comment swallows the anchoring group's end.
             try
             {
-                try { _ = new Regex(action.ArgumentPattern, (RegexOptions)1024 | RegexOptions.CultureInvariant); }
-                catch (ArgumentOutOfRangeException) { _ = new Regex(action.ArgumentPattern, RegexOptions.CultureInvariant); }
+                foreach (var pattern in new[] { action.ArgumentPattern, "^(?:" + action.ArgumentPattern + ")\\z" })
+                {
+                    try { _ = new Regex(pattern, (RegexOptions)1024 | RegexOptions.CultureInvariant); }
+                    catch (ArgumentOutOfRangeException) { _ = new Regex(pattern, RegexOptions.CultureInvariant); }
+                }
             }
             catch (ArgumentException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an invalid ArgumentPattern: {e.Message}"); }
             catch (NotSupportedException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an ArgumentPattern that needs backtracking: {e.Message}"); }

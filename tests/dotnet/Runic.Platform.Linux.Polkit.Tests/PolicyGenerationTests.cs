@@ -103,6 +103,7 @@ internal sealed class PolicyGenerationTests
             <RunicPrivilegedAction Include="org.example.all" Program="/opt/j" Description="d" Message="m" />
             <RunicPrivilegedAction Include="org.example.xml" Program="/opt/k" Verb="xml" Description="d" Message="$(BadText)" />
             <RunicPrivilegedAction Include="org.example.lookaround" Program="/opt/l" Verb="look" Description="d" Message="m" ArgumentPattern="(?=a)a" />
+            <RunicPrivilegedAction Include="org.example.comment" Program="/opt/m" Verb="comment" Description="d" Message="m" ArgumentPattern="(?x)[a-z]+ # letters" />
             """);
         var (exit, output) = await project.BuildAsync("-p:BadText=not\uFFFEXML");
         Check(exit != 0, output);
@@ -111,6 +112,7 @@ internal sealed class PolicyGenerationTests
         Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "nothing written");
         Check(output.Contains("'org.example.xml' has a line break", StringComparison.Ordinal), "a character XML cannot carry is RUNICPA013, not a task exception");
         Check(output.Contains("'org.example.lookaround' has an ArgumentPattern that needs backtracking", StringComparison.Ordinal), "lookarounds fail at build time");
+        Check(output.Contains("'org.example.comment' has an invalid ArgumentPattern", StringComparison.Ordinal), "a pattern valid only unanchored fails at build time");
         Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
     }
 

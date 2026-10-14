@@ -121,11 +121,11 @@ in
           machine.succeed(f"rm -f {smoke_log}")
           return machine.succeed(f"setpriv --reuid=alice --regid=users --init-groups {command} >/dev/null 2>&1 & echo $!").strip()
 
-      with subtest("The helper resets the working directory, umask, ignored signals and limits the caller chose"):
+      with subtest("The helper resets the working directory, umask, ignored signals, limits, nice value and OOM score the caller chose"):
           state = machine.succeed(
               # nohup ignores SIGHUP; an ignored signal survives exec.
-              "runuser -u alice -- sh -c \"umask 000; ulimit -S -n 256; cd /tmp;"
-              f" exec nohup /run/wrappers/bin/pkexec --keep-cwd {program} allowed state\" 2>&1")
+              "runuser -u alice -- sh -c \"umask 000; ulimit -S -n 256; ulimit -t 100; echo 500 > /proc/self/oom_score_adj; cd /tmp;"
+              f" exec nice -n 5 nohup /run/wrappers/bin/pkexec --keep-cwd {program} allowed state\" 2>&1")
           print(state)
           before_line = next(l for l in state.splitlines() if l.startswith("state before "))
           after_line = next(l for l in state.splitlines() if l.startswith("state after "))
@@ -138,6 +138,9 @@ in
           assert after & ~(1 << 12) == 0, f"only SIGPIPE, which .NET ignores itself, stays ignored: {after:x}"
           assert int(field(after_line, "sigblk"), 16) == 0, after_line
           assert "state limit Max core file size: 0 0" in state, state
+          assert "state limit Max cpu time: unlimited unlimited" in state, "the caller's CPU time limit of 100 s was lifted"
+          assert "state limit Max address space: unlimited unlimited" in state and "state limit Max data size: unlimited unlimited" in state, state
+          assert "state nice=0 oom_score_adj=0" in state, "nice 5 and oom_score_adj 500 from the caller were reset"
           nofile = int(state.split("state limit Max open files: ")[1].split()[0])
           assert nofile >= 1024, f"the caller's soft limit of 256 open files was raised: {nofile}"
 

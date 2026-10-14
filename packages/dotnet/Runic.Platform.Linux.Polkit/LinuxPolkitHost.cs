@@ -60,7 +60,8 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
     private const int ModeTypeMask = 0xF000, ModeRegular = 0x8000, ModeDirectory = 0x4000, ModeSymlink = 0xA000;
     private const int SetUserId = 0x800, Sticky = 0x200, GroupOrOtherWrite = 0x12, OtherWrite = 0x2, AnyExecute = 0x49;
     private const int ENOENT = 2, ENOTDIR = 20, ENOSYS = 38, SIGKILL = 9;
-    // The same numbers on every Linux architecture: syscalls added after 4.20 share one table.
+    // The same numbers on every architecture .NET supports on Linux (x64, arm64, arm, riscv64, loongarch64, s390x,
+    // ppc64le): syscalls added since Linux 5.1 share one numbering.
     private const int SysPidfdSendSignal = 424, SysPidfdOpen = 434;
 
     public string? FindPkexec(string? configured)
@@ -117,9 +118,9 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
 
     public bool TryStopBeforeStart(Process process, ProcessHandle pidfd)
     {
-        // A caller running as root (sudo) can signal the program too, so a successful kill would not prove that
+        // A caller running as root (sudo, or a setuid program) can signal the program too, so a successful kill would not prove that
         // nothing started; it waits for the program like an ordinary caller does after authorization.
-        if (GetRealUserId() == 0) return false;
+        if (GetRealUserId() == 0 || GetEffectiveUserId() == 0) return false;
         try
         {
             if (process.HasExited) return false;
@@ -162,4 +163,7 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
 
     [LibraryImport("libc", EntryPoint = "getuid")]
     private static partial uint GetRealUserId();
+
+    [LibraryImport("libc", EntryPoint = "geteuid")]
+    private static partial uint GetEffectiveUserId();
 }
