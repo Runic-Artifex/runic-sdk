@@ -113,6 +113,8 @@ public sealed class ContentLifecycleTests
         var context = new CountingThreadContext();
         using var transport = new InMemoryViewTransport();
         var session = new WindowContentSession(transport, rootModel: root, modelContext: context);
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
         var deadlocked = false;
         try
         {
@@ -123,8 +125,6 @@ public sealed class ContentLifecycleTests
                 Require(transport.Call($"{route}Mount", Browser("browser:view")) == "ok", $"{route} did not mount.");
             Require(views.Attached == 3, $"Mounting created {views.Attached} Views instead of 3.");
 
-            using var started = new ManualResetEventSlim();
-            using var release = new ManualResetEventSlim();
             Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The model thread did not accept a turn.");
             Require(started.Wait(TimeSpan.FromSeconds(5)), "The model thread did not start the blocking turn.");
             var queued = context.Invocations;
@@ -152,6 +152,8 @@ public sealed class ContentLifecycleTests
         }
         finally
         {
+            // A failed check before the release must not leave the model thread blocked.
+            release.Set();
             // A deadlocked session cannot be disposed; its threads stay blocked.
             if (!deadlocked)
             {
