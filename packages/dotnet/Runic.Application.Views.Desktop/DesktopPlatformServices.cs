@@ -140,7 +140,8 @@ public static class PlatformServices
     /// AppIndicator extension) without loading GTK. Windows adds a notification-area icon with <c>Shell_NotifyIcon</c>
     /// from RGBA images, ignoring theme names, and adds it again when Explorer restarts. Creating it connects to
     /// nothing; the first <see cref="IDesktopStatusIcon.ShowAsync"/> does. macOS shows an <c>NSStatusItem</c> in the
-    /// menu bar once the Desktop event loop runs, and ignores <paramref name="applicationId"/>.
+    /// menu bar once the Desktop event loop runs, and reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>
+    /// without that loop; it ignores <paramref name="applicationId"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -269,8 +270,9 @@ public static class PlatformServices
     /// the foreground when the desktop allows it, as it does for the running instance after
     /// <see cref="Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> forwards a launch; when
     /// Windows refuses, the taskbar button flashes and the result is <see cref="PlatformFailureCode.PermissionDenied"/>.
-    /// macOS activates the application and orders the window front, also a hidden or minimized one, and needs no
-    /// context. A window without native dispatch, such as an installed browser, reports
+    /// macOS orders the window front, also a hidden or minimized one, and asks to activate the application, which
+    /// macOS 14 and later grants only when the active application yields, as a forwarding launch does; otherwise the
+    /// result is <see cref="PlatformFailureCode.PermissionDenied"/>. It needs no context. A window without native dispatch, such as an installed browser, reports
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
     /// <see cref="PlatformUnavailableReason.OwnerClosed"/>.
     /// </remarks>
@@ -294,7 +296,7 @@ public static class PlatformServices
             if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux())
             { await PresentGtk4(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
             if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS())
-            { await PresentMacOS(owner, cancellationToken).ConfigureAwait(false); return Presented; }
+                return await PresentMacOS(owner, cancellationToken).ConfigureAwait(false);
 #endif
             return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         }
@@ -319,7 +321,7 @@ public static class PlatformServices
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SupportedOSPlatform("macos")]
-    private static ValueTask PresentMacOS(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
+    private static ValueTask<PlatformResult<PlatformUnit>> PresentMacOS(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
         MacWindowPresenter.PresentAsync(owner, cancellationToken);
 #endif
 

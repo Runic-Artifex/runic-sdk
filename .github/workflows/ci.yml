@@ -637,8 +637,9 @@ jobs:
         run: |
           dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
           ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
-      # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms.
-      - name: Exercise page zoom keys in the macOS window
+      # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms;
+      # Command and A, C, V copy and paste through the Edit menu, and Command and Q asks the close guard.
+      - name: Exercise page zoom, Edit and Quit keys in the macOS window
         if: runner.os == 'macOS'
         timeout-minutes: 5
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom

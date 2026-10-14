@@ -23,8 +23,12 @@ file access and the per-platform verification status.
 `PlatformServices.CreateStatusIcon()` in `Runic.Application.Views.Desktop`, and
 `AddRunicPlatformServices()`, create an `NSStatusItem` in the menu bar from
 `NSStatusBar.systemStatusBar`. It is created, changed and released on the main
-thread once the Desktop event loop runs, with or without an open window, and
-needs no permission. Its button shows the icon, the title as its accessibility
+thread, with or without an open window, and needs no permission. Only the
+Desktop event loop (`DesktopEventLoop.Run`, which `RunicDesktopHost.Run` uses)
+services that thread: without it, `ShowAsync` and `HideAsync` report
+`BackendUnavailable` after five seconds and disposal ends. A show that was
+cancelled or gave up never runs later, and a hide always follows every earlier
+request, so the icon never appears after a hide reported success. Its button shows the icon, the title as its accessibility
 label, and the title and tooltip as its help text.
 
 - **Images.** The RGBA images become one `NSImage`, 18 points high, with a
@@ -40,7 +44,11 @@ label, and the title and tooltip as its help text.
   click or a Control-click opens the menu, built from the state at that moment;
   with an empty menu it does nothing. The menu is assigned only while it is open,
   because an item with a menu never sends its button's action. Checkable items
-  show a check mark and are not toggled by the provider.
+  show a check mark and are not toggled by the provider. A hide or disposal
+  while the menu is open closes it first.
+- **VoiceOver.** The press action raises `Primary`, and the show-menu action
+  (VoiceOver and Shift and M) opens the same menu as a right click; the button
+  is given that action through a subclass made at run time.
 
 A windowless application without a bundle runs as an accessory application: no
 Dock icon and no menu bar of its own until it opens a window, which makes it a
@@ -64,17 +72,26 @@ that the user turned off there, stays off: `EnableAsync` reports
 starts the bundle itself, so the request's arguments are not passed; an
 application that starts differently at login decides that from its own settings.
 A process outside an application bundle, such as `dotnet run`, and macOS 12
-report `BackendUnavailable`. Registration needs a signed bundle; an unsigned
-one reports the `SMAppService` error as a diagnostic.
+report `BackendUnavailable`. Registration needs a signed bundle; an invalid
+signature reports `InvalidData`, and other `SMAppService` errors keep their
+domain and code in the diagnostic. A call that succeeds without changing the
+login item's status reports that as an `IoError`.
 
 ## Window presentation
 
-`PlatformServices.PresentAsync(owner)` activates the application and orders a
-Desktop window front as the key window on its main thread, also a hidden or
-minimized one. macOS needs no activation token, so the context is ignored.
+`PlatformServices.PresentAsync(owner)` orders a Desktop window front as the key
+window on its main thread, also a hidden or minimized one, and asks to activate
+the application (`activate` on macOS 14 and later). macOS 14 activates only when
+the active application yields: a second launch that runs AppKit on its main
+thread, as one from Finder or the Dock does, yields to the running instance before
+it forwards its arguments. When macOS keeps another application active, the
+result is `PermissionDenied` and the window is in front of the application's other
+windows. macOS needs no activation token, so the context is ignored.
 
 The `NativeAppKit` category of `tests/dotnet/Runic.Platform.Runtime.Tests` runs
 these on the macOS CI runner, under JIT and NativeAOT, without a user: a real
 status item without a window, its images, menu and actions, the unbundled
-login item, and presenting a hidden window. Opening the menu by hand, light and
-dark menu bars, and a signed bundle's login item are manual checks.
+login item, and presenting a hidden window. They also open the menu through
+VoiceOver's show-menu action, hide the item while the menu is open, and check that
+a cancelled or timed-out show never appears later. Opening the menu by hand, light
+and dark menu bars, and a signed bundle's login item are manual checks.

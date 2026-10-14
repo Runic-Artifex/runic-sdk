@@ -304,14 +304,30 @@ applies as well.
 WKWebView offers page zoom but no zoom keys: Safari zooms from its View menu. When
 the first window opens, the macOS host adds Zoom In (Command and + or =), Zoom Out
 (Command and −) and Actual Size (Command and 0), in the Linux steps, to the View
-menu of the application's main menu, creating the View menu, and a main menu with
-an application menu (Hide) when there is none. The web
-view has keyboard focus when the window opens, so WKWebView hands each Command key
-to the page first, and the menu acts only on a key whose `keydown` the page did not
-cancel with `preventDefault()`, also while a text field has focus. A View menu
-that already has an item for Command and = keeps its own items, and a main menu
-the application sets later replaces these. A trackpad pinch magnifies the page, as in Safari, and Actual Size
-undoes it too. Control and these keys do nothing on macOS. On macOS, Tab reaches
+menu of the application's main menu, which it finds by its full-screen or sidebar
+items and otherwise creates. The web view has keyboard focus when the window opens,
+so WKWebView hands each Command key to the page first, and the menu acts only on a
+key whose `keydown` the page did not cancel with `preventDefault()`, also while a
+text field has focus. A main menu that already has Command and = or + keeps its own
+items, and a main menu the application sets later replaces these. A trackpad pinch magnifies the page, as in Safari, and Actual Size
+undoes it too. Control and these keys do nothing on macOS.
+
+The macOS host also gives the application the standard menus, unless it supplies
+its own main menu (one with key equivalents) before the first window opens. It
+completes AppKit's empty default menu instead of adding a second one:
+
+- the application menu: About, Hide (Command and H), Hide Others (Option,
+  Command and H), Show All and Quit (Command and Q). Quit asks every window to
+  close, as its close button does, so a close guard (`ConfirmCloseAsync`) can keep
+  its window open; the application ends when its code returns, as after closing
+  the windows by hand;
+- Edit: Undo, Redo, Cut, Copy, Paste and Select All with their usual Command keys.
+  They send AppKit's standard actions to the focused web view, so text fields copy
+  and paste as in Safari;
+- Window: Minimize (Command and M), Zoom and Bring All to Front.
+
+The menu titles are English. CI checks Command and A, C and V between two text
+fields, and Command and Q through a close guard, on the macOS runner. On macOS, Tab reaches
 buttons and links only with Keyboard Navigation turned on in the system settings,
 as in Safari.
 

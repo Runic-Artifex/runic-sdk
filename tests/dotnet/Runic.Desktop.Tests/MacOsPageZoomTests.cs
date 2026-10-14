@@ -40,3 +40,53 @@ public sealed class MacOsPageZoomTests
         Assert.Equal(1.0, MacOsPageZoom.Apply(PageZoomCommand.Reset, 2.4));
     }
 }
+
+// The standard menus of the macOS host (#272).
+public sealed class MacOsMainMenuTests
+{
+    private static string Key(MacOsMainMenu.Item item) =>
+        ((item.Modifiers & MacOsMainMenu.Shift) != 0 ? "Shift+" : "") + ((item.Modifiers & MacOsMainMenu.Option) != 0 ? "Option+" : "")
+        + ((item.Modifiers & MacOsMainMenu.Command) != 0 ? "Command+" : "") + item.KeyEquivalent;
+
+    [Test]
+    public void ApplicationMenuHasTheStandardItems()
+    {
+        Assert.Equal(["About {0}", "", "Hide {0}", "Hide Others", "Show All", "", "Quit {0}"], MacOsMainMenu.Application.Select(item => item.Title));
+        var quit = MacOsMainMenu.Application[^1];
+        Assert.Equal(("runicQuit:", "Command+q", true), (quit.Action, Key(quit), quit.OwnTarget));
+        Assert.Equal("Option+Command+h", Key(MacOsMainMenu.Application[3]));
+        Assert.Equal(["orderFrontStandardAboutPanel:", "hide:", "hideOtherApplications:", "unhideAllApplications:"],
+            MacOsMainMenu.Application.Where(item => item.Action is not null && !item.OwnTarget).Select(item => item.Action!));
+    }
+
+    [Test]
+    public void EditAndWindowSendStandardActionsAlongTheResponderChain()
+    {
+        Assert.Equal(["undo:/Command+z", "redo:/Shift+Command+z", "cut:/Command+x", "copy:/Command+c", "paste:/Command+v", "selectAll:/Command+a"],
+            MacOsMainMenu.Edit.Where(item => item.Action is not null).Select(item => $"{item.Action}/{Key(item)}"));
+        Assert.Equal(["performMiniaturize:/Command+m", "performZoom:/", "arrangeInFront:/"],
+            MacOsMainMenu.Window.Where(item => item.Action is not null).Select(item => $"{item.Action}/{Key(item)}"));
+        Assert.DoesNotContain(MacOsMainMenu.Edit.Concat(MacOsMainMenu.Window), item => item.OwnTarget);
+        Assert.Contains("copy:", MacOsMainMenu.EditActions);
+        Assert.Contains("toggleFullScreen:", MacOsMainMenu.ViewActions);
+        Assert.Contains("performMiniaturize:", MacOsMainMenu.WindowActions);
+    }
+
+    [Test]
+    public void ZoomKeysCountOnlyWithCommandAlone()
+    {
+        Assert.True(MacOsMainMenu.IsCommandKey("=", MacOsMainMenu.Command, "="));
+        Assert.True(MacOsMainMenu.IsCommandKey("=", MacOsMainMenu.Command | (1UL << 21), "=")); // the keypad flag
+        Assert.False(MacOsMainMenu.IsCommandKey("=", MacOsMainMenu.Command | MacOsMainMenu.Option, "="));
+        Assert.False(MacOsMainMenu.IsCommandKey("=", 1UL << 18, "=")); // Control
+        Assert.False(MacOsMainMenu.IsCommandKey("+", MacOsMainMenu.Command, "="));
+    }
+
+    [Test]
+    public void CompletesOnlyAnEmptyOrMissingMainMenu()
+    {
+        Assert.True(MacOsMainMenu.Completes(hasMainMenu: false, hasKeyEquivalent: false));
+        Assert.True(MacOsMainMenu.Completes(hasMainMenu: true, hasKeyEquivalent: false)); // AppKit's default menu
+        Assert.False(MacOsMainMenu.Completes(hasMainMenu: true, hasKeyEquivalent: true)); // the application's own
+    }
+}

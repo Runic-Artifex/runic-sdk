@@ -19,6 +19,7 @@ internal sealed class MacAppKitNativeTests
     {
         if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException("The AppKit checks need macOS.");
         await StatusItemAsync();
+        await StatusItemQueueAsync();
         await LoginItemAsync();
         await PresentationAsync(cancellationToken);
     }
@@ -55,9 +56,26 @@ internal sealed class MacAppKitNativeTests
         Require(await ApplicationAsync(static application => Send(application, Sel("activationPolicy"))) == 1,
             "A windowless unbundled process should run as an accessory application.");
 
-        await icon.PressAsync();
+        await icon.PressAsync(accessibility: false);
         await ExpectAsync(activations, DesktopStatusIconActivationKind.Primary, null);
-        Pass("pressing the button raises the primary activation");
+        // VoiceOver's press: the current event is then no mouse release in the button's window.
+        await icon.PressAsync(accessibility: true);
+        await ExpectAsync(activations, DesktopStatusIconActivationKind.Primary, null);
+        Pass("pressing the button, also through accessibility, raises the primary activation");
+
+        var opened = await icon.ShowMenuAsync(async () => await icon.CloseMenuAsync().AsTask().WaitAsync(Step));
+        Require(opened is { Handled: true, Opened: true, MenuKept: false }, $"VoiceOver's show-menu action did not open the menu once: {opened}.");
+        Require(await icon.InspectAsync() is { Shown: true }, "Closing the menu removed the item.");
+        await icon.PressAsync(accessibility: false);
+        await ExpectAsync(activations, DesktopStatusIconActivationKind.Primary, null);
+        Pass("VoiceOver's show-menu action opens the menu, which the item gives back when it closes, so a press is primary again");
+
+        PlatformResult<PlatformUnit>? hidden = null;
+        var whileOpen = await icon.ShowMenuAsync(async () => hidden = await icon.HideAsync().AsTask().WaitAsync(Step));
+        Require(whileOpen.Opened && hidden is PlatformResult<PlatformUnit>.Success, $"Hiding with the menu open: {whileOpen}, {hidden}.");
+        Require(await icon.InspectAsync() is { Shown: false }, "Hiding with the menu open left the item.");
+        Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "The item did not come back after the menu.");
+        Pass("hiding while the menu is open closes it first, then removes the item");
 
         var menu = await icon.ChooseMenuItemAsync(0);
         Require(menu == "Open window;Check daily[on];-;More(Ask for attention;Unavailable[disabled]);Quit", $"Unexpected menu {menu}.");
@@ -85,6 +103,53 @@ internal sealed class MacAppKitNativeTests
         Pass("hiding removes the item and showing adds it again");
     }
 
+    // Requests reach the main thread in order: a show the caller gave up on never runs after a later hide, and without
+    // a serviced main queue a request reports unavailable instead of waiting, and disposal ends.
+    private static async Task StatusItemQueueAsync()
+    {
+        var state = new DesktopStatusIconState(new DesktopIcon { Images = [Glyph(16, 0)] }, "Runic queue");
+        await using (var icon = new MacStatusIcon())
+        {
+            Require(await icon.ShowAsync(state).AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Show.");
+            Require(await icon.HideAsync().AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hide.");
+            var busy = BusyMainThreadAsync(TimeSpan.FromSeconds(2));
+            using (var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
+            {
+                try
+                {
+                    await icon.ShowAsync(state, cancel.Token);
+                    throw new InvalidOperationException("A show cancelled while the main thread was busy completed.");
+                }
+                catch (OperationCanceledException) { }
+            }
+            Require(await icon.HideAsync().AsTask().WaitAsync(Step) is PlatformResult<PlatformUnit>.Success, "Hide after a cancelled show.");
+            await busy;
+            Require(await icon.InspectAsync() is { Shown: false }, "A cancelled show appeared after a later hide.");
+            Pass("a cancelled show does not appear after a later hide");
+        }
+
+        var timeout = MacStatusIcon.MainThreadTimeout;
+        MacStatusIcon.MainThreadTimeout = TimeSpan.FromMilliseconds(300);
+        try
+        {
+            var icon = new MacStatusIcon();
+            var busy = BusyMainThreadAsync(TimeSpan.FromSeconds(2));
+            var result = await icon.ShowAsync(state).AsTask().WaitAsync(Step);
+            Require(result is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable), $"Show without a serviced main queue: {result}.");
+            await icon.DisposeAsync().AsTask().WaitAsync(Step);
+            await busy;
+            Require(await icon.InspectAsync() is { Shown: false }, "The abandoned show ran later.");
+            Pass("without a serviced main queue a show reports unavailable, never runs later, and disposal ends");
+        }
+        finally { MacStatusIcon.MainThreadTimeout = timeout; }
+    }
+
+    private static Task BusyMainThreadAsync(TimeSpan duration)
+    {
+        var busy = MacOsMainQueue.InvokeAsync(() => Thread.Sleep(duration)).AsTask();
+        return Task.WhenAll(busy, Task.Delay(100));
+    }
+
     private static async Task LoginItemAsync()
     {
         Require(MacLoginStartup.IsServiceAvailable, "SMAppService should exist on the macOS 13+ runner.");
@@ -99,6 +164,8 @@ internal sealed class MacAppKitNativeTests
 
     private static async Task PresentationAsync(CancellationToken cancellationToken)
     {
+        // AppKit gave the process a default main menu; without one the host builds the whole menu itself.
+        await MacOsMainQueue.InvokeAsync(static () => Arg(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("setMainMenu:"), 0));
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WaitForConnection = false }, cancellationToken);
         await using var surface = await host.CreateSurfaceAsync(new()
         {
@@ -117,18 +184,21 @@ internal sealed class MacAppKitNativeTests
         Require(await ApplicationAsync(static application => Send(application, Sel("activationPolicy"))) == 0,
             "An unbundled process with a window should run as a regular application.");
         var menu = await MenuAsync();
-        Require(menu.Contains("View(", StringComparison.Ordinal) && menu.Contains("Zoom In", StringComparison.Ordinal)
-            && menu.Contains("Actual Size", StringComparison.Ordinal), $"The window host adds a View menu with the zoom items: {menu}.");
+        foreach (var expected in new[] { "About ", "Hide Others;Show All;;Quit ", "Edit(Undo;Redo;;Cut;Copy;Paste;Select All", "View(Actual Size;Zoom In",
+            "Window(Minimize;Zoom;;Bring All to Front" })
+            Require(menu.Contains(expected, StringComparison.Ordinal), $"The window host's main menu lacks {expected}: {menu}.");
         Pass($"the main menu has the zoom items: {menu}");
-        await MacWindowPresenter.PresentAsync(owner, cancellationToken);
+        var presented = await MacWindowPresenter.PresentAsync(owner, cancellationToken);
         await WaitAsync(() => WindowAsync(owner, static handle => Bool(handle, Sel("isVisible")) != 0), "the presented window is visible");
         var key = await WindowAsync(owner, static handle => Bool(handle, Sel("isKeyWindow")) != 0);
-        var active = await ApplicationAsync(static application => Bool(application, Sel("isActive")));
-        Pass($"presenting orders a hidden window front (key window: {key}, application active: {active != 0})");
+        var active = await ApplicationAsync(static application => Bool(application, Sel("isActive"))) != 0;
+        // The runner's GUI session lets the process activate.
+        Require(key || active, $"The presented window is neither key nor in an active application: {presented}.");
+        Pass($"presenting orders a hidden window front: {presented} (key window: {key}, application active: {active})");
         await window.CloseAsync(cancellationToken);
         try
         {
-            await MacWindowPresenter.PresentAsync(owner, cancellationToken);
+            _ = await MacWindowPresenter.PresentAsync(owner, cancellationToken);
             throw new InvalidOperationException("Presenting a closed window succeeded.");
         }
         catch (OwnerClosedException) { Pass("presenting a closed window reports it closed"); }

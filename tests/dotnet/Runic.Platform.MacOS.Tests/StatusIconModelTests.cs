@@ -27,6 +27,15 @@ internal sealed class StatusIconModelTests
         Check(MacStatusIconModel.Classify(type, flags, hasMenu) == Enum.Parse<MacStatusClick>(expected), $"{type}/{flags}/{hasMenu} is not {expected}.");
 
     [Test]
+    public void OnlyMouseReleasesSendTheAction()
+    {
+        foreach (var type in new[] { LeftUp, RightUp, OtherUp })
+            Check(MacStatusIconModel.IsMouseUp(type), $"{type} is a release.");
+        foreach (var type in new[] { 0L, MacStatusIconModel.LeftMouseDown, MacStatusIconModel.RightMouseDown, 10L, 11L })
+            Check(!MacStatusIconModel.IsMouseUp(type), $"{type} is no release.");
+    }
+
+    [Test]
     public void ButtonActionFollowsEveryMouseButton() =>
         Check(MacStatusIconModel.ActionMask == ((1UL << 2) | (1UL << 4) | (1UL << 26)), $"Unexpected mask {MacStatusIconModel.ActionMask:x}.");
 
@@ -140,6 +149,7 @@ internal sealed class StatusIconModelTests
     [Test]
     public void LoginItemOutcomes()
     {
+        const string Domain = "SMAppServiceErrorDomain";
         Check(MacLoginStartupModel.IsApplicationBundle("org.example.App", "/Applications/Example.app"), "A bundle.");
         Check(MacLoginStartupModel.IsApplicationBundle("org.example.App", "/Applications/Example.APP/"), "Case and trailing slash.");
         Check(!MacLoginStartupModel.IsApplicationBundle("", "/Applications/Example.app"), "No identifier.");
@@ -149,22 +159,34 @@ internal sealed class StatusIconModelTests
             Check(MacLoginStartupModel.Enabled(status) is PlatformResult<bool>.Success { Value: false }, $"Status {status} does not start at login.");
         Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusEnabled, null) is PlatformResult<PlatformUnit>.Success, "Registered.");
         // An error does not matter once the status says the item is registered.
-        Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusEnabled, new("SMAppServiceErrorDomain", 1)) is PlatformResult<PlatformUnit>.Success,
-            "Status decides.");
+        Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusEnabled, new(Domain, 1)) is PlatformResult<PlatformUnit>.Success, "Status decides.");
         var approval = MacLoginStartupModel.Registered(MacLoginStartupModel.StatusRequiresApproval, null);
         Check(approval is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic: { } hint }
             && hint.Message!.Contains("System Settings", StringComparison.Ordinal), $"{approval}");
-        Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, new("SMAppServiceErrorDomain", 1))
-            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Code: 1 }, "Not permitted.");
-        Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotFound, new("SMAppServiceErrorDomain", 22))
-            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Code: 22 }, "Other errors.");
-        Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, null)
-            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "SMAppServiceStatus" }, "No error, not registered.");
-        Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusNotFound, new("SMAppServiceErrorDomain", 113)) is PlatformResult<PlatformUnit>.Success,
-            "Gone is gone.");
-        Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusEnabled, new("SMAppServiceErrorDomain", 1))
+        Check(Outcome(new(Domain, 1)) is (PlatformFailureCode.PermissionDenied, 1), "Not permitted.");
+        Check(Outcome(new("NSPOSIXErrorDomain", 1)) is (PlatformFailureCode.PermissionDenied, 1), "EPERM.");
+        Check(Outcome(new(Domain, MacLoginStartupModel.ErrorLaunchDeniedByUser)) is (PlatformFailureCode.PermissionDenied, 11), "Denied by the user.");
+        var unsigned = MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, new(Domain, MacLoginStartupModel.ErrorInvalidSignature));
+        Check(unsigned is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic: { Code: 3, Message: { } signature } }
+            && signature.Contains("sign", StringComparison.Ordinal), $"{unsigned}");
+        Check(Outcome(new("NSCocoaErrorDomain", 11)) is (PlatformFailureCode.IoError, 11), "Code 11 of another domain is no denial.");
+        Check(Outcome(new(Domain, 22)) is (PlatformFailureCode.IoError, 22), "Other errors.");
+        // A call that succeeded without changing the status says so, and is no denial.
+        var unchanged = MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, null);
+        Check(unchanged is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic: { Domain: "SMAppServiceStatus", Message: { } text } }
+            && text.Contains("did not change", StringComparison.Ordinal), $"{unchanged}");
+        Check(MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, new(Domain, MacLoginStartupModel.ErrorAlreadyRegistered))
+            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Domain: "SMAppServiceStatus" }, "Already registered but not enabled.");
+        Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusNotFound, new(Domain, 113)) is PlatformResult<PlatformUnit>.Success, "Gone is gone.");
+        Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusEnabled, new(Domain, 1))
             is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied }, "Still registered.");
+        Check(MacLoginStartupModel.Unregistered(MacLoginStartupModel.StatusEnabled, null)
+            is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.IoError, Diagnostic.Message: { } } , "Removal accepted, still registered.");
     }
+
+    private static (PlatformFailureCode, long)? Outcome(PlatformDiagnostic error) =>
+        MacLoginStartupModel.Registered(MacLoginStartupModel.StatusNotRegistered, error) is PlatformResult<PlatformUnit>.Failed { Diagnostic: { } diagnostic } failed
+            ? (failed.Code, diagnostic.Code) : null;
 
     private static DesktopIconImage Image(int width, int height, byte r, byte g, byte b, byte a)
     {

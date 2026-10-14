@@ -21,8 +21,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> Hosts = new();
     private static readonly ConcurrentQueue<NativeDispatchWork> MainQueue = new();
     private static readonly nint DelegateClass = CreateDelegateClass();
-    private static readonly nint ZoomTargetClass = CreateZoomTargetClass();
-    private static nint s_zoomTarget;
+    private static readonly nint MenuTargetClass = CreateMenuTargetClass();
+    private static nint s_menuTarget;
 
     private readonly TaskCompletionSource _closed = NewCompletionSource();
     private nint _application;
@@ -265,7 +265,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendBoolLong(_application, "setActivationPolicy:", ApplicationActivationPolicyRegular);
         }
         Api.SendVoid(_application, "finishLaunching");
-        InstallZoomMenu(_application);
+        InstallMainMenu(_application);
 
         var style = options.Frameless || options.Kiosk
             ? StyleBorderless | (options.Resizable ? StyleResizable : 0)
@@ -369,48 +369,82 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    // Adds the zoom items to the View menu of the application's main menu, once. Without a main menu the host
-    // creates one with an application menu; AppKit can also start an application with a main menu of its own.
-    // A View menu that already has an item for Command and = keeps its items. Main thread only.
-    private static void InstallZoomMenu(nint application)
+    // Completes the application's main menu once, when its first window opens (MacOsMainMenu). Main thread only.
+    private static void InstallMainMenu(nint application)
     {
-        if (s_zoomTarget != 0 || ZoomTargetClass == 0)
+        if (s_menuTarget != 0 || MenuTargetClass == 0)
         {
             return;
         }
-        s_zoomTarget = Api.SendNint(Api.SendNint(ZoomTargetClass, "alloc"), "init");
+        s_menuTarget = Api.SendNint(Api.SendNint(MenuTargetClass, "alloc"), "init");
         var mainMenu = Api.SendNint(application, "mainMenu");
+        bool complete = MacOsMainMenu.Completes(mainMenu != 0, mainMenu != 0 && Api.HasAnyKeyEquivalent(mainMenu));
         if (mainMenu == 0)
         {
             mainMenu = Api.NewMenu("");
-            // The first item's menu is the application menu, which AppKit titles with the application's name.
-            var name = Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName");
-            var applicationMenu = Api.NewMenu("");
-            Api.AddMenuItem(applicationMenu, "Hide " + Api.Text(name), "hide:", "h", MacOsPageZoom.CommandModifier, 0, false);
-            Api.AddSubmenu(mainMenu, "", applicationMenu);
-            Api.SendVoid(applicationMenu, "release");
             Api.SendVoidNint(application, "setMainMenu:", mainMenu);
             Api.SendVoid(mainMenu, "release");
         }
-        var view = Api.Submenu(mainMenu, "View");
-        if (view == 0)
+        if (complete)
         {
-            view = Api.NewMenu("View");
-            Api.AddSubmenu(mainMenu, "View", view);
-            Api.SendVoid(view, "release");
+            var name = Api.Text(Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName"));
+            // The first item's menu is the application menu, which AppKit titles with the application's name.
+            var applicationMenu = Api.SendNint(mainMenu, "numberOfItems") > 0
+                ? Api.SendNint(Api.SendNintNint(mainMenu, "itemAtIndex:", 0), "submenu") : 0;
+            if (applicationMenu == 0)
+            {
+                applicationMenu = Api.InsertSubmenu(mainMenu, "", 0, null);
+            }
+            if (Api.SendNint(applicationMenu, "numberOfItems") == 0)
+            {
+                Api.AddItems(applicationMenu, MacOsMainMenu.Application, name, s_menuTarget);
+            }
+            if (Api.FindSubmenu(mainMenu, MacOsMainMenu.EditIdentifier, MacOsMainMenu.EditActions) == 0)
+            {
+                Api.AddItems(Api.InsertSubmenu(mainMenu, "Edit", 1, MacOsMainMenu.EditIdentifier), MacOsMainMenu.Edit, name, s_menuTarget);
+            }
         }
-        else if (Api.HasKeyEquivalent(view, "="))
+        // The zoom items go into any main menu that has no Command and = or + of its own.
+        if (!Api.HasCommandKey(mainMenu, "=") && !Api.HasCommandKey(mainMenu, "+"))
         {
-            return;
+            var view = Api.FindSubmenu(mainMenu, MacOsMainMenu.ViewIdentifier, MacOsMainMenu.ViewActions);
+            if (view == 0)
+            {
+                var edit = Api.IndexOfSubmenu(mainMenu, Api.FindSubmenu(mainMenu, MacOsMainMenu.EditIdentifier, MacOsMainMenu.EditActions));
+                view = Api.InsertSubmenu(mainMenu, "View", edit >= 0 ? edit + 1 : Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.ViewIdentifier);
+            }
+            else if (Api.SendNint(view, "numberOfItems") > 0)
+            {
+                Api.SendVoidNint(view, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+            }
+            foreach (var item in MacOsPageZoom.MenuItems)
+            {
+                Api.AddMenuItem(view, item.Title, MacOsPageZoom.Selector(item.Command), item.KeyEquivalent, MacOsPageZoom.CommandModifier,
+                    s_menuTarget, item.Hidden);
+            }
         }
-        else if (Api.SendNint(view, "numberOfItems") > 0)
+        if (complete && Api.SendNint(application, "windowsMenu") == 0
+            && Api.FindSubmenu(mainMenu, MacOsMainMenu.WindowIdentifier, MacOsMainMenu.WindowActions) == 0)
         {
-            Api.SendVoidNint(view, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+            var window = Api.InsertSubmenu(mainMenu, "Window", Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.WindowIdentifier);
+            Api.AddItems(window, MacOsMainMenu.Window, "", s_menuTarget);
+            Api.SendVoidNint(application, "setWindowsMenu:", window);
         }
-        foreach (var item in MacOsPageZoom.MenuItems)
+    }
+
+    // Quit asks every window to close, as its close button does: a close guard decides for its window.
+    private static void QuitApplication()
+    {
+        foreach (var host in Hosts.Values.ToArray())
         {
-            Api.AddMenuItem(view, item.Title, MacOsPageZoom.Selector(item.Command), item.KeyEquivalent, MacOsPageZoom.CommandModifier,
-                s_zoomTarget, item.Hidden);
+            if (host._closeRequested is { } requestClose)
+            {
+                requestClose();
+            }
+            else if (host.IsOpen)
+            {
+                Api.SendVoid(host._window, "close");
+            }
         }
     }
 
@@ -475,18 +509,18 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         return type;
     }
 
-    private static unsafe nint CreateZoomTargetClass()
+    private static unsafe nint CreateMenuTargetClass()
     {
         if (!OperatingSystem.IsMacOS() || !Api.IsAvailable)
         {
             return 0;
         }
-        var existing = Api.GetClass("RunicDesktopZoomTarget");
+        var existing = Api.GetClass("RunicDesktopMenuTarget");
         if (existing != 0)
         {
             return existing;
         }
-        var type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopZoomTarget");
+        var type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopMenuTarget");
         if (type == 0)
         {
             return 0;
@@ -494,6 +528,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.In), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ZoomIn, "v@:@");
         Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Out), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ZoomOut, "v@:@");
         Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Reset), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ActualSize, "v@:@");
+        Api.AddMethod(type, MacOsMainMenu.QuitAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&Quit, "v@:@");
         Api.RegisterClassPair(type);
         return type;
     }
@@ -506,6 +541,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static void ActualSize(nint self, nint selector, nint sender) => ZoomKeyWindow(PageZoomCommand.Reset);
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void Quit(nint self, nint selector, nint sender)
+    {
+        try
+        {
+            QuitApplication();
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
 
     private static void ZoomKeyWindow(PageZoomCommand command)
     {
@@ -638,39 +686,86 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
         }
 
-        // The submenu of the item with this title, or 0.
-        internal nint Submenu(nint menu, string title)
+        // Inserts an item with a new submenu at the index and returns the submenu, which the item retains.
+        internal nint InsertSubmenu(nint menu, string title, nint index, string? identifier)
         {
-            var text = CreateString(title);
-            try
+            var submenu = NewMenu(title);
+            var item = AllocMenuItem(title, 0, "");
+            SendVoidNint(item, "setSubmenu:", submenu);
+            if (identifier is not null)
             {
-                var item = SendNintNint(menu, "itemWithTitle:", text);
-                return item == 0 ? 0 : SendNint(item, "submenu");
-            }
-            finally
-            {
+                var text = CreateString(identifier);
+                SendVoidNint(item, "setIdentifier:", text);
                 SendVoid(text, "release");
+            }
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(menu, Selector("insertItem:atIndex:"), item,
+                Math.Min(index, SendNint(menu, "numberOfItems")));
+            SendVoid(item, "release");
+            SendVoid(submenu, "release");
+            return submenu;
+        }
+
+        internal void AddItems(nint menu, IEnumerable<MacOsMainMenu.Item> items, string name, nint target)
+        {
+            foreach (var item in items)
+            {
+                if (item.Action is null)
+                {
+                    SendVoidNint(menu, "addItem:", SendNint(GetClass("NSMenuItem"), "separatorItem"));
+                    continue;
+                }
+                AddMenuItem(menu, string.Format(System.Globalization.CultureInfo.InvariantCulture, item.Title, name), item.Action,
+                    item.KeyEquivalent, item.Modifiers, item.OwnTarget ? target : 0, false);
             }
         }
 
-        internal bool HasKeyEquivalent(nint menu, string keyEquivalent)
+        // The submenu of a top-level item with the identifier, or whose submenu has one of the actions; 0 otherwise.
+        internal nint FindSubmenu(nint mainMenu, string identifier, string[] actions)
+        {
+            for (nint index = 0, count = SendNint(mainMenu, "numberOfItems"); index < count; index++)
+            {
+                var item = SendNintNint(mainMenu, "itemAtIndex:", index);
+                var submenu = SendNint(item, "submenu");
+                if (submenu == 0)
+                {
+                    continue;
+                }
+                if (Text(SendNint(item, "identifier")) == identifier)
+                {
+                    return submenu;
+                }
+                for (nint child = 0, children = SendNint(submenu, "numberOfItems"); child < children; child++)
+                {
+                    var action = SendNint(SendNintNint(submenu, "itemAtIndex:", child), "action");
+                    if (action != 0 && actions.Contains(Marshal.PtrToStringUTF8(Native.SelGetName(action)), StringComparer.Ordinal))
+                    {
+                        return submenu;
+                    }
+                }
+            }
+            return 0;
+        }
+
+        internal nint IndexOfSubmenu(nint mainMenu, nint submenu) =>
+            submenu == 0 ? -1 : SendNintNint(mainMenu, "indexOfItemWithSubmenu:", submenu);
+
+        // Whether the menu or a submenu has an item for Command and the key, without other modifiers.
+        internal bool HasCommandKey(nint menu, string key) => AnyItem(menu, item =>
+            MacOsMainMenu.IsCommandKey(Text(SendNint(item, "keyEquivalent")), unchecked((ulong)SendNint(item, "keyEquivalentModifierMask")), key));
+
+        internal bool HasAnyKeyEquivalent(nint menu) => AnyItem(menu, item => Text(SendNint(item, "keyEquivalent")).Length > 0);
+
+        private bool AnyItem(nint menu, Func<nint, bool> match)
         {
             for (nint index = 0, count = SendNint(menu, "numberOfItems"); index < count; index++)
             {
-                if (Text(SendNint(SendNintNint(menu, "itemAtIndex:", index), "keyEquivalent")) == keyEquivalent)
+                var item = SendNintNint(menu, "itemAtIndex:", index);
+                if (match(item) || (SendNint(item, "submenu") is var submenu and not 0 && AnyItem(submenu, match)))
                 {
                     return true;
                 }
             }
             return false;
-        }
-
-        internal void AddSubmenu(nint menu, string title, nint submenu)
-        {
-            var item = AllocMenuItem(title, 0, "");
-            SendVoidNint(item, "setSubmenu:", submenu);
-            SendVoidNint(menu, "addItem:", item);
-            SendVoid(item, "release");
         }
 
         // A target of 0 sends the action along the responder chain. A hidden item answers its key equivalent
@@ -848,6 +943,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_getClass")]
         internal static unsafe partial nint ObjCGetClass(byte* name);
+
+        [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "sel_getName")]
+        internal static partial nint SelGetName(nint selector);
 
         [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "sel_registerName")]
         internal static unsafe partial nint SelRegisterName(byte* name);

@@ -75,13 +75,18 @@ internal sealed class MacLoginStartup : IDesktopLoginStartup
     private static ValueTask<PlatformResult<T>> Result<T>(PlatformResult<T> result) => ValueTask.FromResult(result);
 }
 
-// SMAppService outcomes, without AppKit. The status after a call decides, so error codes, whose domains differ
-// between macOS versions, only classify a call that changed nothing.
+// SMAppService outcomes, without AppKit. The status after a call decides whether the application starts at login;
+// an error classifies a call that left the status unchanged.
 internal static class MacLoginStartupModel
 {
     // SMAppServiceStatus.
     internal const long StatusNotRegistered = 0, StatusEnabled = 1, StatusRequiresApproval = 2, StatusNotFound = 3;
-    // EPERM, which SMAppService reports for a denied or unsigned registration.
+    // ServiceManagement's errors (SMErrors.h), which SMAppService reports in SMAppServiceErrorDomain.
+    internal const long ErrorInternalFailure = 2, ErrorInvalidSignature = 3, ErrorAuthorizationFailure = 4,
+        ErrorJobNotFound = 6, ErrorServiceUnavailable = 7, ErrorJobPlistNotFound = 8, ErrorLaunchDeniedByUser = 11,
+        ErrorAlreadyRegistered = 12;
+    // EPERM in NSPOSIXErrorDomain, and the code macOS also reports in SMAppServiceErrorDomain for an operation it
+    // does not permit.
     private const long OperationNotPermitted = 1;
 
     /// <summary>The hint attached to a registration that waits for the user.</summary>
@@ -96,19 +101,44 @@ internal static class MacLoginStartupModel
     /// <summary>Whether the application starts at login. One that waits for approval or that the user turned off does not.</summary>
     internal static PlatformResult<bool> Enabled(long status) => new PlatformResult<bool>.Success(status == StatusEnabled);
 
-    /// <summary>The outcome of registering: enabled, or denied until the user approves it in System Settings.</summary>
+    /// <summary>The outcome of registering: enabled, denied until the user approves it, or the call's failure.</summary>
     internal static PlatformResult<PlatformUnit> Registered(long status, PlatformDiagnostic? error) => status switch
     {
         StatusEnabled => new PlatformResult<PlatformUnit>.Success(new PlatformUnit()),
         StatusRequiresApproval => new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.PermissionDenied, ApprovalHint),
-        _ => Failed(error ?? new PlatformDiagnostic("SMAppServiceStatus", status)),
+        _ when error is { Code: ErrorAlreadyRegistered } => Unchanged(status, "SMAppService reports the login item registered, but its status is not enabled."),
+        _ when error is not null => Failed(error),
+        _ => Unchanged(status, "SMAppService accepted the registration, but the login item's status did not change."),
     };
 
     /// <summary>The outcome of unregistering: success once the item is gone.</summary>
     internal static PlatformResult<PlatformUnit> Unregistered(long status, PlatformDiagnostic? error) =>
         IsUnregistered(status) ? new PlatformResult<PlatformUnit>.Success(new PlatformUnit())
-        : Failed(error ?? new PlatformDiagnostic("SMAppServiceStatus", status));
+        : error is not null && !IsNotFound(error) ? Failed(error)
+        : Unchanged(status, "SMAppService accepted the removal, but the login item is still registered.");
 
-    private static PlatformResult<PlatformUnit> Failed(PlatformDiagnostic error) =>
-        new PlatformResult<PlatformUnit>.Failed(error.Code == OperationNotPermitted ? PlatformFailureCode.PermissionDenied : PlatformFailureCode.IoError, error);
+    private static bool IsNotFound(PlatformDiagnostic error) => IsServiceManagement(error) && error.Code is ErrorJobNotFound or ErrorJobPlistNotFound;
+
+    private static bool IsServiceManagement(PlatformDiagnostic error) =>
+        error.Domain.Contains("SMAppService", StringComparison.Ordinal) || error.Domain.Contains("ServiceManagement", StringComparison.Ordinal);
+
+    /// <summary>Classifies an SMAppService error, with a hint for the ones an application can act on.</summary>
+    internal static PlatformResult<PlatformUnit> Failed(PlatformDiagnostic error)
+    {
+        bool serviceManagement = IsServiceManagement(error);
+        bool posix = error.Domain == "NSPOSIXErrorDomain";
+        var (code, hint) = error.Code switch
+        {
+            OperationNotPermitted when serviceManagement || posix => (PlatformFailureCode.PermissionDenied, "macOS did not permit the login item."),
+            ErrorLaunchDeniedByUser or ErrorAuthorizationFailure when serviceManagement => (PlatformFailureCode.PermissionDenied, ApprovalHint.Message),
+            ErrorInvalidSignature when serviceManagement => (PlatformFailureCode.InvalidData,
+                "The application bundle's code signature is invalid; sign the bundle to register it as a login item."),
+            ErrorServiceUnavailable or ErrorInternalFailure when serviceManagement => (PlatformFailureCode.IoError, "ServiceManagement could not register the login item."),
+            _ => (PlatformFailureCode.IoError, null),
+        };
+        return new PlatformResult<PlatformUnit>.Failed(code, error.Message is null && hint is not null ? error with { Message = hint } : error);
+    }
+
+    private static PlatformResult<PlatformUnit> Unchanged(long status, string message) =>
+        new PlatformResult<PlatformUnit>.Failed(PlatformFailureCode.IoError, new PlatformDiagnostic("SMAppServiceStatus", status, message));
 }

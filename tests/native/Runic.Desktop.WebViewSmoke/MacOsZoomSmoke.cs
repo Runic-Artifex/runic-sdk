@@ -11,20 +11,32 @@ internal static partial class MacOsZoomSmoke
     private static readonly TimeSpan StepTimeout = TimeSpan.FromSeconds(15);
     private const ulong Command = 0x100000, Shift = 0x20000, NumericPad = 0x200000;
     // Virtual key codes of the ANSI layout: =, -, 0 and the keypad's +.
-    private const ushort KeyEqual = 0x18, KeyMinus = 0x1b, KeyZero = 0x1d, KeypadPlus = 0x45;
+    private const ushort KeyEqual = 0x18, KeyMinus = 0x1b, KeyZero = 0x1d, KeypadPlus = 0x45, KeyA = 0x00, KeyC = 0x08, KeyV = 0x09, KeyQ = 0x0c;
+    // Command+Q asks the window to close: the guard refuses the first time and allows the second.
+    private static int s_closeRequests;
+
+    private static ValueTask<bool> ConfirmCloseAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(Interlocked.Increment(ref s_closeRequests) > 1);
 
     internal static void Run(DesktopHostOptions hostOptions) => DesktopEventLoop.Run(async () =>
     {
         await using var host = await DesktopHost.StartAsync(hostOptions);
         await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(Page) });
-        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Width = 640, Height = 480 });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            Width = 640,
+            Height = 480,
+            ConfirmCloseAsync = ConfirmCloseAsync,
+        });
         try
         {
             await ExerciseAsync(surface, window);
+            await ExerciseEditAndQuitAsync(surface, window);
         }
         finally
         {
-            await window.CloseAsync();
+            if (window.IsOpen) await window.CloseAsync();
         }
     });
 
@@ -78,6 +90,51 @@ internal static partial class MacOsZoomSmoke
         Pass("Zoom stops at 300 %.");
         await ExpectZoomAsync(window, "Command+0", KeyZero, Command, 1.0);
         Console.WriteLine("ZOOM DONE");
+    }
+
+    // The Edit menu copies and pastes through the focused WKWebView, and Quit takes the window's close path.
+    private static async Task ExerciseEditAndQuitAsync(DesktopSurface surface, DesktopWindow window)
+    {
+        await surface.ExecuteJavaScriptAsync("const s = document.getElementById('source'); s.value = 'Runic clipboard'; s.focus(); return true;", StepTimeout);
+        await SendAsync(window, KeyA, Command);
+        await SendAsync(window, KeyC, Command);
+        await surface.ExecuteJavaScriptAsync("document.getElementById('target').focus(); return true;", StepTimeout);
+        await SendAsync(window, KeyV, Command);
+        await WaitForPageAsync(surface, "return document.getElementById('target').value;", "Runic clipboard", "the pasted text");
+        Pass("Command and A, C and V select, copy and paste text between fields through the Edit menu.");
+
+        await SendAsync(window, KeyQ, Command);
+        await WaitAsync(() => Volatile.Read(ref s_closeRequests) == 1, "the close guard asked by Command and Q");
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        if (!window.IsOpen) throw new InvalidOperationException("Command and Q closed the window although its guard refused.");
+        Pass("Command and Q asks the window's close guard, which can keep it open.");
+        await SendAsync(window, KeyQ, Command);
+        await window.WaitForCloseAsync().AsTask().WaitAsync(StepTimeout);
+        Pass("Command and Q closes the window once its guard allows it.");
+    }
+
+    private static async Task WaitForPageAsync(DesktopSurface surface, string script, string expected, string description)
+    {
+        var deadline = DateTime.UtcNow + StepTimeout;
+        string value;
+        do
+        {
+            value = await surface.ExecuteJavaScriptAsync(script, StepTimeout);
+            if (value == expected) return;
+            await Task.Delay(100);
+        }
+        while (DateTime.UtcNow < deadline);
+        throw new TimeoutException($"Expected {description} '{expected}'; the page has '{value}'.");
+    }
+
+    private static async Task WaitAsync(Func<bool> check, string description)
+    {
+        var deadline = DateTime.UtcNow + StepTimeout;
+        while (!check())
+        {
+            if (DateTime.UtcNow > deadline) throw new TimeoutException($"Expected {description}.");
+            await Task.Delay(100);
+        }
     }
 
     private static async Task ExpectZoomAsync(DesktopWindow window, string keys, ushort key, ulong flags, double expected, bool settle = false)
@@ -193,6 +250,6 @@ internal static partial class MacOsZoomSmoke
           if (window.claimZoom && (event.key === "=" || event.key === "+")) { event.preventDefault(); window.claimed++; }
         });
         </script></head>
-        <body><main><h1>Zoom</h1><p>Command and + zooms.</p><input aria-label="Field"></main></body></html>
+        <body><main><h1>Zoom</h1><p>Command and + zooms.</p><input aria-label="Field"><input id="source" aria-label="Source"><input id="target" aria-label="Target"></main></body></html>
         """;
 }

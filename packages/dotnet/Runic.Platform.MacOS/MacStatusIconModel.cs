@@ -71,7 +71,13 @@ internal static class MacStatusIconModel
     // The menu bar is 22 points high (24 on some displays); its icons are 18 points high.
     internal const double IconHeight = 18;
 
+    /// <summary>Whether the event type is a mouse button release, the only event that sends the button's action.</summary>
+    internal static bool IsMouseUp(long eventType) => eventType is LeftMouseUp or RightMouseUp or OtherMouseUp;
+
     /// <summary>Maps the event that sent the button's action to what the click does.</summary>
+    /// <param name="eventType">The type of the current event when it is a mouse release in the button's window, else 0.</param>
+    /// <param name="modifierFlags">That event's modifier flags.</param>
+    /// <param name="hasMenu">Whether the state has a menu.</param>
     /// <remarks>
     /// A right click, or a left click with Control, opens the menu, as for other menu bar items; with an empty menu it
     /// does nothing. A middle click is the secondary action. Everything else is the primary action, including a press

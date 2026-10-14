@@ -9,14 +9,13 @@ using static Runic.Platform.MacOS.MacDesktopNative;
 namespace Runic.Platform.MacOS;
 
 // An NSStatusItem from NSStatusBar.systemStatusBar. AppKit objects are created, changed and released on the main
-// thread, which the Desktop event loop services while the application runs. The menu is built from the state and
-// opened on demand: an item with an assigned menu opens it on every click and never sends the button's action.
+// thread, which only the Desktop event loop services: without it, requests report BackendUnavailable after
+// MainThreadTimeout. The menu is built from the state and opened on demand: an item with an assigned menu opens it
+// on every click and never sends the button's action.
 internal sealed partial class MacStatusIcon : IDesktopStatusIcon
 {
     private const double VariableLength = -1;
     private const long NoImage = 0, ImageOnly = 1, StateOff = 0, StateOn = 1;
-    // Without a running Desktop event loop the main queue never runs; the process is ending then.
-    private static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<nint, MacStatusIcon> Owners = new();
     private static readonly Lazy<nint> TargetClass = new(CreateTargetClass);
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -24,12 +23,17 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
     private readonly Channel<DesktopStatusIconActivation> _activations =
         Channel.CreateUnbounded<DesktopStatusIconActivation>(new() { SingleReader = true });
     private Task? _pump;
-    // Whether native objects exist that disposal releases on the main thread.
-    private volatile bool _shown, _native, _disposed;
+    // Whether a request reached the main queue, so later ones queue their own cleanup behind it.
+    private volatile bool _queued, _disposed;
     // Main thread only.
     private nint _item, _target, _menu;
     private DesktopStatusIconState? _state;
     private MacStatusMenu? _openMenu;
+    // While the menu is open, AppKit uses the item and the menu: removal and release wait until it closes.
+    private bool _tracking, _removeAfterMenu, _releaseAfterMenu;
+
+    /// <summary>How long a request waits for the main thread. Only the Desktop event loop services it.</summary>
+    internal static TimeSpan MainThreadTimeout { get; set; } = TimeSpan.FromSeconds(5);
 
     public event EventHandler<DesktopStatusIconActivation>? Activated;
 
@@ -42,7 +46,9 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
             ObjectDisposedException.ThrowIf(_disposed, this);
             _pump ??= Task.Run(PumpAsync, CancellationToken.None);
             PlatformResult<PlatformUnit> result = new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
-            await MacOsMainQueue.InvokeAsync(() => result = Show(state)).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+            _queued = true;
+            // A show the caller gave up on does not run later, so it never undoes a later hide.
+            await OnMainThreadAsync(() => result = Show(state), abandonable: true, cancellationToken).ConfigureAwait(false);
             return result;
         }
         finally { _gate.Release(); }
@@ -54,7 +60,10 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_shown) await MacOsMainQueue.InvokeAsync(Remove).AsTask().WaitAsync(cancellationToken).ConfigureAwait(false);
+            // Queued behind every earlier request, which the main queue runs in order. It stays queued when the wait
+            // ends, so the item goes once the event loop runs again.
+            if (_queued && !await OnMainThreadAsync(Remove, abandonable: false, cancellationToken).ConfigureAwait(false))
+                return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
         }
         finally { _gate.Release(); }
@@ -62,26 +71,45 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
 
     public async ValueTask DisposeAsync()
     {
-        await _gate.WaitAsync().ConfigureAwait(false);
+        // Requests wait at most MainThreadTimeout, so the gate is free by then.
+        bool entered = await _gate.WaitAsync(MainThreadTimeout + MainThreadTimeout).ConfigureAwait(false);
         try
         {
             if (_disposed) return;
             _disposed = true;
             _activations.Writer.TryComplete();
-            if (_native)
-            {
-                try
-                {
-                    await MacOsMainQueue.InvokeAsync(() =>
-                    {
-                        Remove();
-                        if (_target != 0) { Owners.TryRemove(_target, out _); Release(_target); _target = 0; }
-                    }).AsTask().WaitAsync(ReleaseTimeout).ConfigureAwait(false);
-                }
-                catch (TimeoutException) { /* No event loop runs any more: the item ends with the process. */ }
-            }
+            // Without an event loop the item ends with the process.
+            if (_queued) await OnMainThreadAsync(ReleaseAll, abandonable: false, CancellationToken.None).ConfigureAwait(false);
         }
-        finally { _gate.Release(); }
+        finally { if (entered) _gate.Release(); }
+    }
+
+    // Runs work on the main thread and reports whether it ran within MainThreadTimeout. Abandonable work that has not
+    // started when the wait ends never runs; other work stays queued.
+    private static async Task<bool> OnMainThreadAsync(Action work, bool abandonable, CancellationToken cancellationToken)
+    {
+        var state = new StrongBox<int>(); // 0 queued, 1 started, 2 abandoned
+        var queued = MacOsMainQueue.InvokeAsync(() =>
+        {
+            if (abandonable && Interlocked.CompareExchange(ref state.Value, 1, 0) != 0) return;
+            work();
+        }).AsTask();
+        try
+        {
+            await queued.WaitAsync(MainThreadTimeout, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception error) when (error is TimeoutException or OperationCanceledException)
+        {
+            if (abandonable && Interlocked.CompareExchange(ref state.Value, 2, 0) == 1)
+            {
+                // It started on the main thread, which finishes it promptly.
+                await queued.ConfigureAwait(false);
+                return true;
+            }
+            if (error is OperationCanceledException) throw;
+            return false;
+        }
     }
 
     private PlatformResult<PlatformUnit> Show(DesktopStatusIconState state)
@@ -89,11 +117,11 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         if (_disposed || !MacAppKit.IsAvailable) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         using var pool = new Pool();
         MacAppKit.EnsureApplication();
+        _removeAfterMenu = false;
         if (_target == 0)
         {
             _target = Send(Send(TargetClass.Value, Sel("alloc")), Sel("init"));
             Owners[_target] = this;
-            _native = true;
         }
         if (_item == 0)
         {
@@ -103,6 +131,7 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         }
         var button = Send(_item, Sel("button"));
         if (button == 0) { Remove(); return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable); }
+        MacStatusButton.Adopt(button);
         var image = CreateImage(MacStatusIconModel.ShownIcon(state));
         try
         {
@@ -118,13 +147,18 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         Arg(button, Sel("setAction:"), Sel("runicStatusItemClicked:"));
         Arg(button, Sel("sendActionOn:"), unchecked((nint)MacStatusIconModel.ActionMask));
         _state = state;
-        _shown = true;
         return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
     }
 
-    // Main thread only.
+    // Main thread only. While the menu is open, closes it and removes the item once AppKit is done with it.
     private void Remove()
     {
+        if (_tracking)
+        {
+            _removeAfterMenu = true;
+            Send(_menu, Sel("cancelTracking"));
+            return;
+        }
         if (_item != 0)
         {
             using var pool = new Pool();
@@ -135,7 +169,14 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         Release(_menu);
         _menu = 0;
         _openMenu = null;
-        _shown = false;
+    }
+
+    // Main thread only: removes the item and releases the action target, after the menu closes if it is open.
+    private void ReleaseAll()
+    {
+        Remove();
+        if (_tracking) { _releaseAfterMenu = true; return; }
+        if (_target != 0) { Owners.TryRemove(_target, out _); Release(_target); _target = 0; }
     }
 
     // An NSImage with one representation per image, all the same size in points, so AppKit picks the one that suits
@@ -164,13 +205,16 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         return image;
     }
 
-    private void Clicked()
+    private void Clicked(nint button)
     {
         if (_item == 0 || _state is not { } state) return;
+        // A press from VoiceOver or performClick: has no mouse event; the current event is then an older one.
         var currentEvent = Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("currentEvent"));
         long type = currentEvent == 0 ? 0 : Send(currentEvent, Sel("type"));
-        ulong flags = currentEvent == 0 ? 0 : unchecked((ulong)Send(currentEvent, Sel("modifierFlags")));
-        switch (MacStatusIconModel.Classify(type, flags, state.Menu.Length > 0))
+        bool fromButton = currentEvent != 0 && MacStatusIconModel.IsMouseUp(type)
+            && Send(currentEvent, Sel("window")) == Send(button, Sel("window"));
+        ulong flags = fromButton ? unchecked((ulong)Send(currentEvent, Sel("modifierFlags"))) : 0;
+        switch (MacStatusIconModel.Classify(fromButton ? type : 0, flags, state.Menu.Length > 0))
         {
             case MacStatusClick.Primary: Raise(DesktopStatusIconActivationKind.Primary); break;
             case MacStatusClick.Secondary: Raise(DesktopStatusIconActivationKind.Secondary); break;
@@ -178,15 +222,33 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         }
     }
 
-    // Assigns the menu for one click: performClick: opens it, and menuDidClose: takes it back, so the next primary
-    // click sends the button's action again. The menu stays retained until the next one, because AppKit sends the
-    // chosen item's action after the menu closes.
-    private void OpenMenu(DesktopStatusIconState state)
+    // Opens the menu for a right click or VoiceOver's show-menu action: assigned to the item, opened with
+    // performClick:, which returns once the menu closes, and taken back at once, so the next click sends the
+    // button's action again. menuDidClose: takes it back too, should AppKit return earlier. The menu stays retained
+    // until the next one, because AppKit sends the chosen item's action after the menu closes.
+    private bool OpenMenu(DesktopStatusIconState state)
     {
+        if (_tracking || _item == 0 || state.Menu.Length == 0) return false;
         BuildMenu(state);
         Arg(_menu, Sel("setDelegate:"), _target);
         Arg(_item, Sel("setMenu:"), _menu);
-        Arg(Send(_item, Sel("button")), Sel("performClick:"), 0);
+        _tracking = true;
+        try { Arg(Send(_item, Sel("button")), Sel("performClick:"), 0); }
+        finally
+        {
+            _tracking = false;
+            if (_item != 0) Arg(_item, Sel("setMenu:"), 0);
+            if (_releaseAfterMenu) { _releaseAfterMenu = false; _removeAfterMenu = false; ReleaseAll(); }
+            else if (_removeAfterMenu) { _removeAfterMenu = false; Remove(); }
+        }
+        return true;
+    }
+
+    // VoiceOver's show-menu action on the button (MacStatusButton).
+    internal static bool ShowMenu(nint button)
+    {
+        using var pool = new Pool();
+        return Owners.TryGetValue(Send(button, Sel("target")), out var icon) && icon._state is { } state && icon.OpenMenu(state);
     }
 
     private void BuildMenu(DesktopStatusIconState state)
@@ -259,6 +321,7 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         if (type == 0) throw new InvalidOperationException("The status item target class could not be created.");
         AddMethod(type, Sel("runicStatusItemClicked:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnClicked, "v@:@");
         AddMethod(type, Sel("runicStatusMenuItem:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnMenuItem, "v@:@");
+        AddMethod(type, Sel("menuWillOpen:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnMenuWillOpen, "v@:@");
         AddMethod(type, Sel("menuDidClose:"), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnMenuDidClose, "v@:@");
         RegisterClass(type);
         return type;
@@ -270,7 +333,7 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         try
         {
             using var pool = new Pool();
-            if (Owners.TryGetValue(self, out var icon)) icon.Clicked();
+            if (Owners.TryGetValue(self, out var icon)) icon.Clicked(sender);
         }
         catch { /* Never unwind through AppKit. */ }
     }
@@ -284,6 +347,12 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
                 icon.Raise(DesktopStatusIconActivationKind.MenuItem, id);
         }
         catch { /* Never unwind through AppKit. */ }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnMenuWillOpen(nint self, nint selector, nint menu)
+    {
+        if (Owners.TryGetValue(self, out var icon)) icon._menuOpenings++;
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -317,11 +386,46 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         return snapshot;
     }
 
-    // Sends the button's action as a press does (performClick: with no menu assigned).
-    internal ValueTask PressAsync() => MacOsMainQueue.InvokeAsync(() =>
+    // Main thread only: how often the menu opened, for the native tests.
+    private int _menuOpenings;
+
+    // Presses the button as VoiceOver does (accessibilityPerformPress), or with performClick:.
+    internal ValueTask PressAsync(bool accessibility) => MacOsMainQueue.InvokeAsync(() =>
     {
         using var pool = new Pool();
-        if (_item != 0) Arg(Send(_item, Sel("button")), Sel("performClick:"), 0);
+        if (_item == 0) return;
+        var button = Send(_item, Sel("button"));
+        if (accessibility) Bool(button, Sel("accessibilityPerformPress"));
+        else Arg(button, Sel("performClick:"), 0);
+    });
+
+    // VoiceOver's show-menu action. It returns once the menu closes; whileOpen runs on the main thread while it is
+    // open, through the main queue, which AppKit services during menu tracking. Reports whether the action was
+    // handled, whether the menu opened, and whether the item still holds the menu afterwards.
+    internal async ValueTask<(bool Handled, bool Opened, bool MenuKept)> ShowMenuAsync(Func<ValueTask> whileOpen)
+    {
+        int before = 0;
+        bool handled = false, kept = false;
+        await MacOsMainQueue.InvokeAsync(() => before = _menuOpenings).ConfigureAwait(false);
+        var opening = MacOsMainQueue.InvokeAsync(() =>
+        {
+            using var pool = new Pool();
+            if (_item == 0) return;
+            handled = Bool(Send(_item, Sel("button")), Sel("accessibilityPerformShowMenu")) != 0;
+            kept = _item != 0 && Send(_item, Sel("menu")) != 0;
+        }).AsTask();
+        await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+        await whileOpen().ConfigureAwait(false);
+        await opening.WaitAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+        int after = 0;
+        await MacOsMainQueue.InvokeAsync(() => after = _menuOpenings).ConfigureAwait(false);
+        return (handled, after > before, kept);
+    }
+
+    // Closes an open menu, as Escape does.
+    internal ValueTask CloseMenuAsync() => MacOsMainQueue.InvokeAsync(() =>
+    {
+        if (_tracking) Send(_menu, Sel("cancelTracking"));
     });
 
     // Builds the menu the next right click opens, describes it and chooses the item at the index path, without
