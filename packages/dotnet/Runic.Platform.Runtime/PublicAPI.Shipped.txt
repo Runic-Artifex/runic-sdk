@@ -108,3 +108,6 @@ Runic.Platform.Runtime.NativeFileLocation.DocumentPortal = 1 -> Runic.Platform.R
 Runic.Platform.Runtime.NativeFileLocation.Host = 0 -> Runic.Platform.Runtime.NativeFileLocation
 Runic.Platform.Runtime.NativeFileSelection.Location.get -> Runic.Platform.Runtime.NativeFileLocation
 Runic.Platform.Runtime.NativeFileSelection.Location.init -> void
+Runic.Platform.Runtime.ApplicationInstance
+static Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string! applicationId, Runic.Platform.ApplicationLaunch! launch, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.ApplicationInstanceClaim!>!>
+static Runic.Platform.Runtime.DesktopServiceValidation.StatusIcon(Runic.Platform.DesktopStatusIconState! state) -> void

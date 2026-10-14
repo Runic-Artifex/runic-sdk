@@ -1,11 +1,1 @@
 #nullable enable
-Runic.Application.Testing.RunicServeOnlyApplication
-Runic.Application.Testing.RunicServeOnlyApplication.DisposeAsync() -> System.Threading.Tasks.ValueTask
-Runic.Application.Testing.RunicServeOnlyApplication.GetDescendantProcesses() -> System.Collections.Generic.IReadOnlyList<System.Diagnostics.Process!>!
-Runic.Application.Testing.RunicServeOnlyApplication.ProcessId.get -> int
-Runic.Application.Testing.RunicServeOnlyApplication.StandardError.get -> string!
-Runic.Application.Testing.RunicServeOnlyApplication.StandardOutput.get -> string!
-Runic.Application.Testing.RunicServeOnlyApplication.StopAsync(System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<int>!
-Runic.Application.Testing.RunicServeOnlyApplication.Url.get -> System.Uri!
-static Runic.Application.Testing.RunicServeOnlyApplication.StartAsync(System.Diagnostics.ProcessStartInfo! startInfo, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicServeOnlyApplication!>!
-static Runic.Application.Testing.RunicServeOnlyApplication.CreateStartInfo(string! applicationPath) -> System.Diagnostics.ProcessStartInfo!

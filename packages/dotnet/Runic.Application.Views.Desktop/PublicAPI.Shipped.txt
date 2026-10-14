@@ -54,3 +54,6 @@ Runic.Application.Views.Desktop.RunicDesktopHost.WindowOptions.init -> void
 static Runic.Application.Views.Desktop.PlatformServices.CreateSettings() -> Runic.Platform.IDesktopSettings!
 static Runic.Application.Views.Desktop.DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! applicationId) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
 static Runic.Application.Views.Desktop.PlatformServices.CreateNotifications(string? applicationId = null) -> Runic.Platform.IDesktopNotifications!
+static Runic.Application.Views.Desktop.PlatformServices.CreateLoginStartup(string? applicationId = null) -> Runic.Platform.IDesktopLoginStartup!
+static Runic.Application.Views.Desktop.PlatformServices.CreateStatusIcon(string? applicationId = null) -> Runic.Platform.IDesktopStatusIcon!
+static Runic.Application.Views.Desktop.PlatformServices.PresentAsync(Runic.Application.Views.Desktop.DesktopNativeOwner! owner, Runic.Platform.DesktopActivationContext? context = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
