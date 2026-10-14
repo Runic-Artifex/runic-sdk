@@ -311,7 +311,7 @@ test("a RunicApplicationFrontendInput outside the frontend directory rebuilds th
 test("RunicApplicationHost and the build environment are part of the build state", () => {
   const app = fixture("build-state", { name: "app", private: true },
     `  <ItemGroup><RunicApplicationFrontendBuildEnvironment Include="APP_FLAVOR" /></ItemGroup>`);
-  const env = { VITE_TITLE: "", APP_FLAVOR: "", NODE_ENV: "" };
+  const env = { APP_FLAVOR: "", NODE_ENV: "" };
   let result = build(app, { properties: ["RunicApplicationHost=desktop"], env });
   assert.equal(result.status, 0, result.output);
   assert.equal(builds(result), 1);
@@ -324,15 +324,23 @@ test("RunicApplicationHost and the build environment are part of the build state
   assert.equal(builds(build(app, { properties: ["RunicApplicationHost=cswebui"], env })), 0);
 
   const host = ["RunicApplicationHost=cswebui"];
-  for (const [name, value] of [["VITE_TITLE", "Notes"], ["NODE_ENV", "development"], ["APP_FLAVOR", "store"]]) {
+  for (const [name, value] of [["NODE_ENV", "development"], ["APP_FLAVOR", "store"]]) {
     env[name] = value;
     assert.equal(builds(build(app, { properties: host, env })), 1, `A changed ${name} builds the frontend again.`);
     assert.equal(builds(build(app, { properties: host, env })), 0, `An unchanged ${name} does not.`);
   }
   assert.equal(builds(build(app, { properties: host, env: { ...env, UNRELATED_SETTING: "1" } })), 0,
     "Other environment variables are not part of the build state.");
-  assert.doesNotMatch(readFileSync(join(app.project, "obj/Debug/net10.0/runic-bridge-frontend.state"), "utf8"), /Notes|store/,
-    "Only a hash of the environment is written.");
+  assert.match(readFileSync(join(app.project, "obj/runic-bridge-frontend.state"), "utf8"), /^-?\d+\s*$/,
+    "Only a hash of the build state is written.");
+
+  // dist/ serves every configuration: a configuration whose state differs from the one that built it rebuilds.
+  const flavor = value => ({ ...env, APP_FLAVOR: value });
+  assert.equal(builds(build(app, { properties: host, env: flavor("debug") })), 1);
+  assert.equal(builds(build(app, { properties: [...host, "Configuration=Release"], env: flavor("release") })), 1);
+  assert.equal(builds(build(app, { properties: host, env: flavor("debug") })), 1,
+    "Debug builds again after Release replaced dist/ with another build state.");
+  assert.equal(builds(build(app, { properties: host, env: flavor("debug") })), 0);
 });
 
 // #236: www/ kept the assets of earlier builds, so a page built for another host kept being served.
@@ -356,27 +364,41 @@ test("www mirrors dist and keeps the files that the frontend copy did not write"
     "The asset of the earlier build is deleted; other files stay.");
   assert.match(readFileSync(join(www, "index.html"), "utf8"), /index-2\.js/);
 
+  // A recorded file that someone wrote since the last copy stays.
+  const rewritten = join(www, "assets/index-2.js");
+  writeFileSync(rewritten, "an operator's file");
+  utimesSync(rewritten, new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+
   // dotnet runic dev turns the copy off and writes its own document: nothing is deleted then.
   writeFileSync(join(app.frontend, "asset-name"), "index-3");
   result = build(app, { ...copy, properties: [...copy.properties, "RunicApplicationFrontendCopyEnabled=false"] });
   assert.equal(result.status, 0, result.output);
   assert.ok(existsSync(join(www, "assets/index-2.js")));
   result = build(app, copy);
-  assert.deepEqual(files(www), ["assets/index-3.js", "assets/older.js", "data/user.json", "index.html", "runic-views.js"]);
+  assert.deepEqual(files(www), ["assets/index-2.js", "assets/index-3.js", "assets/older.js", "data/user.json", "index.html", "runic-views.js"],
+    "The rewritten asset of the earlier build stays.");
+  assert.equal(readFileSync(rewritten, "utf8"), "an operator's file");
 });
 
 // #237: a page that loads runic-views.js runs on every host; the referenced host supplies the client.
-test("the referenced host copies its Views client as runic-views.js", () => {
-  const hostTargets = name => resolve(root, `packages/dotnet/Runic.Application.Views.${name}/build/Runic.Application.Views.${name}.targets`);
-  const client = name => readFileSync(resolve(root, `packages/dotnet/Runic.Application.Views.${name}/www/${{ Desktop: "runic-desktop-views.js", CsWebUi: "runic-cswebui.js" }[name]}`), "utf8");
-  const hostProject = (name, hosts) => {
-    const project = join(directory, name);
-    mkdirSync(project, { recursive: true });
-    writeFileSync(join(project, "App.proj"), `<Project>
+const hostTargets = name => resolve(root, `packages/dotnet/Runic.Application.Views.${name}/build/Runic.Application.Views.${name}.targets`);
+const hostClient = name => readFileSync(resolve(root,
+  `packages/dotnet/Runic.Application.Views.${name}/www/${{ Desktop: "runic-desktop-views.js", CsWebUi: "runic-cswebui.js" }[name]}`), "utf8");
+
+// An application with a built page and the given host packages. Its page loads runic-views.js unless told otherwise.
+function hostProject(name, hosts, script = "runic-views.js") {
+  const project = join(directory, name);
+  mkdirSync(join(project, "frontend/dist"), { recursive: true });
+  writeFileSync(join(project, "frontend/dist/index.html"), `<script src="webui.js"></script><script src="./${script}"></script>`);
+  writeFileSync(join(project, "App.proj"), `<Project>
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <AssemblyName>App</AssemblyName>
     <TargetDir>$(MSBuildProjectDirectory)/bin/</TargetDir>
+    <PublishDir>$(MSBuildProjectDirectory)/publish/</PublishDir>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/frontend</RunicApplicationFrontendDirectory>
     <Configuration>Debug</Configuration>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -384,44 +406,83 @@ test("the referenced host copies its Views client as runic-views.js", () => {
 ${hosts.map(host => `  <Import Project="${hostTargets(host)}" />`).join("\n")}
 </Project>
 `);
-    return { project, hosts };
-  };
-  const copy = ({ project, hosts }, host) => {
-    rmSync(join(project, "bin"), { recursive: true, force: true });
-    const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"),
-      `-t:RunicViewsResolveHost;${hosts.map(name => `RunicViewsCopy${name}Client`).join(";")}`,
-      ...(host ? [`-p:RunicApplicationHost=${host}`] : []),
-      "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
-    const output = `${result.stdout}${result.stderr}`;
-    const views = join(project, "bin/www/runic-views.js");
-    return { status: result.status, output, views: existsSync(views) ? readFileSync(views, "utf8") : undefined,
-      warnings: [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE019:/.test(line)).map(line => line.trim()))] };
-  };
+  return project;
+}
 
+// Copies the page and the host clients as a build (or publish) does, without deleting earlier output.
+function copyHost(project, host, { publish = false } = {}) {
+  const targets = publish
+    ? "RunicViewsResolveHost;RunicViewsCopyFrontendForPublish;RunicViewsMirrorFrontendForPublish"
+    : "RunicViewsResolveHost;RunicViewsCopyFrontend;RunicViewsMirrorFrontend";
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), `-t:${targets}`,
+    ...(host ? [`-p:RunicApplicationHost=${host}`] : []),
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  const output = `${result.stdout}${result.stderr}`;
+  const views = join(project, publish ? "publish/www/runic-views.js" : "bin/www/runic-views.js");
+  return { status: result.status, output, views: existsSync(views) ? readFileSync(views, "utf8") : undefined,
+    warnings: [...new Set(output.split("\n").filter(line => / warning RUNICBRIDGE019:/.test(line)).map(line => line.trim()))] };
+}
+
+test("the referenced host copies its Views client as runic-views.js", () => {
   for (const host of ["Desktop", "CsWebUi"]) {
-    const project = hostProject(`only-${host}`, [host]);
-    const result = copy(project);
+    const result = copyHost(hostProject(`only-${host}`, [host]));
     assert.equal(result.status, 0, result.output);
-    assert.equal(result.views, client(host), `The only host, ${host}, needs no RunicApplicationHost.`);
+    assert.equal(result.views, hostClient(host), `The only host, ${host}, needs no RunicApplicationHost.`);
     assert.deepEqual(result.warnings, []);
   }
 
   const both = hostProject("both-hosts", ["Desktop", "CsWebUi"]);
-  let result = copy(both);
+  let result = copyHost(both);
   assert.equal(result.status, 0, result.output);
   assert.equal(result.views, undefined, "With two hosts, neither is chosen silently.");
   assert.equal(result.warnings.length, 1, result.output);
-  assert.match(result.warnings[0], /references more than one Runic host \(desktop, cswebui\)/);
+  assert.match(result.warnings[0], /references more than one Runic host \(desktop, cswebui\), and its page index\.html loads runic-views\.js/);
 
   for (const [host, name] of [["desktop", "Desktop"], ["cswebui", "CsWebUi"]]) {
-    result = copy(both, host);
+    result = copyHost(both, host);
     assert.equal(result.status, 0, result.output);
-    assert.equal(result.views, client(name), `RunicApplicationHost=${host} copies that host's client.`);
+    assert.equal(result.views, hostClient(name), `RunicApplicationHost=${host} copies that host's client.`);
     assert.deepEqual(result.warnings, []);
   }
+});
 
-  result = copy(both, "wpf");
-  assert.equal(result.views, undefined);
-  assert.equal(result.warnings.length, 1, result.output);
-  assert.match(result.warnings[0], /RunicApplicationHost is 'wpf', but App references no such Runic host/);
+// Review of #256: a runic-views.js of an earlier build must not outlive the host choice.
+test("a runic-views.js that no host copies any more is deleted, on build and publish", () => {
+  const both = hostProject("stale-views", ["Desktop", "CsWebUi"]);
+  for (const publish of [false, true]) {
+    let result = copyHost(both, "desktop", { publish });
+    assert.equal(result.views, hostClient("Desktop"), result.output);
+    result = copyHost(both, undefined, { publish });
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.views, undefined, `Without a host, the Desktop client is gone (publish: ${publish}).`);
+
+    copyHost(both, "cswebui", { publish });
+    result = copyHost(both, "wpf", { publish });
+    assert.equal(result.views, undefined, `An unknown host leaves no client behind (publish: ${publish}).`);
+    if (!publish) {
+      assert.equal(result.warnings.length, 1, result.output);
+      assert.match(result.warnings[0], /RunicApplicationHost is 'wpf', but App references no such Runic host/);
+    }
+  }
+});
+
+// Review of #256: an application that loads a host's own client chooses its host at run time.
+test("several hosts without RunicApplicationHost are silent when the page loads a host's own client", () => {
+  for (const script of ["runic-cswebui.js", "runic-desktop-views.js"]) {
+    const project = hostProject(`runtime-host-${script}`, ["Desktop", "CsWebUi"], script);
+    const result = copyHost(project);
+    assert.equal(result.status, 0, result.output);
+    assert.deepEqual(result.warnings, [], result.output);
+    assert.ok(existsSync(join(project, `bin/www/${script}`)));
+  }
+});
+
+// Review of #256: a library or test project does not warn about a repository-wide RunicApplicationHost.
+test("an unknown RunicApplicationHost does not warn in a library", () => {
+  const project = hostProject("library-host", ["Desktop"]);
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsResolveHost",
+    "-p:RunicApplicationHost=cswebui", "-p:OutputType=Library",
+    "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  assert.equal(result.status, 0, result.stdout);
+  assert.doesNotMatch(result.stdout, /RUNICBRIDGE019/);
 });

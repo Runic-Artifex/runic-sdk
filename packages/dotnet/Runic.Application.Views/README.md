@@ -834,8 +834,9 @@ that the frontend imports through a Vite alias; a change rebuilds the frontend:
 ```
 
 `RunicApplicationFrontendBuildEnvironment` names an environment variable that
-changes the built frontend, in addition to `NODE_ENV` and every `VITE_*`
-variable, which are always tracked (see [Incremental generation](#incremental-generation)):
+changes the built frontend, such as a `VITE_*` variable set in the shell, in
+addition to `NODE_ENV`, which is always tracked. `.env` files in the frontend
+directory are inputs already (see [Incremental generation](#incremental-generation)):
 
 ```xml
 <ItemGroup>
@@ -908,11 +909,16 @@ compare on Runic Desktop, chooses the client with `RunicApplicationHost`:
 dotnet run -p:RunicApplicationHost=desktop
 ```
 
-Without it, such a project gets warning `RUNICBRIDGE019` and no
-`www/runic-views.js`. The frontend build receives the host as the
-`RUNIC_APPLICATION_HOST` environment variable and is part of its build state,
-so a Vite configuration that still needs a host-specific build can read it and
-is rebuilt when it changes.
+Without it, such a project copies no `www/runic-views.js`, and gets warning
+`RUNICBRIDGE019` when a copied page loads `runic-views.js`. A page that loads
+`runic-cswebui.js` or `runic-desktop-views.js` itself builds without the
+warning. The frontend build receives the host as the `RUNIC_APPLICATION_HOST`
+environment variable and is part of its build state, so a Vite configuration
+that still needs a host-specific build can read it and is rebuilt when it
+changes. A frontend that a referenced project builds, such as the model project
+of a WPF application, sees that project's host, which is empty when it
+references no host package; such a frontend cannot depend on the application's
+host.
 
 ## Typed commands and checked writes
 
@@ -1277,9 +1283,11 @@ included), or when its build state changed. The inputs are the files under
 `RunicApplicationFrontendDirectory` (excluding `node_modules`, `dist`, `build`, `bin`, `obj`
 and dot-directories), the generated TypeScript, the project file and
 `RunicApplicationFrontendInput` items. The build state is a hash of the build
-command, `RunicApplicationHost`, `NODE_ENV`, every `VITE_*` environment variable
-and the variables named by `RunicApplicationFrontendBuildEnvironment` items; only
-the hash is written to `obj/`. Generated TypeScript is rewritten only when its
+command, `RunicApplicationHost`, `NODE_ENV` and the environment variables named by
+`RunicApplicationFrontendBuildEnvironment` items; only the hash is written, to
+`obj/runic-bridge-frontend.state`. `dist` serves every configuration and target
+framework, so a build whose state differs from the one that last built `dist`
+builds it again, for example Debug after a Release build with other variables. Generated TypeScript is rewritten only when its
 content changes, so C#-only edits skip the frontend build.
 `RunicApplicationFrontendInput` items are the extension point for inputs outside
 the frontend directory, such as workspace packages, shared components imported
@@ -1287,11 +1295,13 @@ through a Vite alias, or generated assets; declare them in the project, or add
 them from a target that runs before `RunicViewsGenerateBridge` (the translations
 editor is an example). Delete the stamp or rebuild to force a frontend build.
 
-The copy to `www/` mirrors `dist`. Each copy records the files it wrote in
-`obj/`, and the next one deletes those that no frontend has any more, such as
-assets with an earlier hash. It deletes nothing else: the host client scripts,
-a `dotnet runic dev` document and files the application puts in `www/` itself
-stay. Files that a build before 0.7.0-preview.9 left behind are not recorded;
+The copy to `www/` mirrors `dist`. Each copy records the files it wrote, with
+their last write times, in `obj/`, and the next one deletes those that no
+frontend has any more, such as assets with an earlier hash, or a
+`runic-views.js` that no host copies any more. A recorded file whose time has
+changed since, because someone else wrote it, stays. Nothing else is deleted:
+the host-specific client scripts, a `dotnet runic dev` document and files the
+application puts in `www/` itself stay. Files that a build before 0.7.0-preview.9 left behind are not recorded;
 delete `www/` once to drop them. Set
 `RunicApplicationFrontendBuildEnabled=false` when another tool, such as a running dev server,
 owns the frontend build; `dotnet runic dev` does this while its development

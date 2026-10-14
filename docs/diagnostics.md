@@ -220,12 +220,14 @@ one of the two projects, and call `AddRunicViews()` of each composition.
 
 A warning from the `Runic.Application.Views` build targets. The build cannot
 tell which host's Views client to copy to `www/runic-views.js`, the
-host-neutral script a page loads: an application references more than one host
+host-neutral script a page loads, and copies none, so a page that loads it gets
+no Bridge. It is reported when an application references more than one host
 adapter (`Runic.Application.Views.Desktop` or `Runic.Application.Views.Wpf`, and
-`Runic.Application.Views.CsWebUi`) without `RunicApplicationHost`, or
-`RunicApplicationHost` names a host that the project does not reference. No
-`runic-views.js` is copied, so a page that loads it gets no Bridge. Pages that
-load `runic-desktop-views.js` or `runic-cswebui.js` directly are unaffected.
+`Runic.Application.Views.CsWebUi`) without `RunicApplicationHost` and a page it
+copies to `www/` loads `runic-views.js`, or when `RunicApplicationHost` names a
+host that the application does not reference. Pages that load
+`runic-desktop-views.js` or `runic-cswebui.js` directly choose their host at run
+time and report nothing; libraries and test projects report nothing either.
 
 **Fix:** set `RunicApplicationHost` to `desktop` or `cswebui` in the project or
 on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,

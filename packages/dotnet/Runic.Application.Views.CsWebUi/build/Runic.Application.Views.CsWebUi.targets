@@ -6,6 +6,10 @@
        RunicApplicationHost to the only host referenced before the build. -->
   <PropertyGroup>
     <_RunicApplicationHostNames>$(_RunicApplicationHostNames);cswebui</_RunicApplicationHostNames>
+    <!-- The Views www/ mirror runs these first and records runic-views.js, so
+         it deletes a copy that no host makes any more. -->
+    <_RunicApplicationHostCopyTargets>$(_RunicApplicationHostCopyTargets);RunicViewsCopyCsWebUiClient</_RunicApplicationHostCopyTargets>
+    <_RunicApplicationHostPublishCopyTargets>$(_RunicApplicationHostPublishCopyTargets);RunicViewsCopyCsWebUiClientForPublish</_RunicApplicationHostPublishCopyTargets>
   </PropertyGroup>
   <Target Name="RunicViewsCopyCsWebUiClient" AfterTargets="Build"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
@@ -16,6 +20,9 @@
           DestinationFiles="$(TargetDir)www/runic-views.js"
           SkipUnchangedFiles="true"
           Condition="'$(RunicApplicationHost)' == 'cswebui'" />
+    <ItemGroup Condition="'$(RunicApplicationHost)' == 'cswebui'">
+      <_RunicBridgeWwwFile Include="$(TargetDir)www/runic-views.js" />
+    </ItemGroup>
   </Target>
   <Target Name="RunicViewsCopyCsWebUiClientForPublish" AfterTargets="Publish"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
@@ -26,5 +33,8 @@
           DestinationFiles="$(PublishDir)www/runic-views.js"
           SkipUnchangedFiles="true"
           Condition="'$(RunicApplicationHost)' == 'cswebui'" />
+    <ItemGroup Condition="'$(RunicApplicationHost)' == 'cswebui'">
+      <_RunicBridgePublishedWwwFile Include="$(PublishDir)www/runic-views.js" />
+    </ItemGroup>
   </Target>
 </Project>
