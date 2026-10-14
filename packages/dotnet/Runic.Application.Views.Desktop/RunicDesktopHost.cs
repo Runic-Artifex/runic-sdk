@@ -99,6 +99,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// see <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>. Ctrl+C and SIGTERM close
     /// the open windows, so <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns, and cancel
     /// <see cref="DesktopHost.ShutdownRequested"/>. Dispose <paramref name="services"/> after this method returns.
+    /// When <see cref="DesktopHostOptions.LoggerFactory"/> is not set, the host logs through the
+    /// <c>ILoggerFactory</c> registered in <paramref name="services"/>, if any.
     /// </remarks>
     /// <param name="services">The application's service provider.</param>
     /// <param name="options">The Desktop host options, for example <c>new DesktopHostOptions().WithGtk4()</c>.</param>
@@ -109,6 +111,10 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(application);
+        // The Desktop host logs shutdown, close confirmation, configuration and browser-launch messages through
+        // the application's logging, as the Views in its windows do; it writes them to Trace only without one.
+        if (options.LoggerFactory is null && services.GetService<ILoggerFactory>() is { } loggerFactory)
+            options = options with { LoggerFactory = loggerFactory };
         return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop)));
     }
 

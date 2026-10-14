@@ -119,8 +119,9 @@ public sealed record DesktopHostOptions
     public Action<DesktopDiagnostic>? DiagnosticSink { get; init; }
 
     /// <summary>
-    /// Gets an optional logger factory for window failures, such as a failed close confirmation.
-    /// When omitted, they are written to <see cref="System.Diagnostics.Trace"/>.
+    /// Gets an optional logger factory for host and window messages, such as a shutdown request or a failed close
+    /// confirmation. <c>RunicDesktopHost.Run</c> sets it to the application's registered <c>ILoggerFactory</c> when
+    /// it is not set. When omitted, they are written to <see cref="System.Diagnostics.Trace"/>.
     /// </summary>
     public ILoggerFactory? LoggerFactory { get; init; }
 }

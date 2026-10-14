@@ -1821,7 +1821,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
             if (!deleted)
             {
-                _ = DeleteGeneratedProfileLaterAsync(profilePath);
+                _ = DeleteGeneratedProfileLaterAsync(profilePath, _runtimeOptions?.Logger);
             }
         }
     }
@@ -1830,7 +1830,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     // bounded wait, for example after a stalled launch was killed. Keep retrying in
     // the background so the profile is not leaked. WebUiApplication also keeps it
     // registered for DeleteAllProfiles until a deletion succeeds.
-    private static async Task DeleteGeneratedProfileLaterAsync(string path)
+    private static async Task DeleteGeneratedProfileLaterAsync(string path, Microsoft.Extensions.Logging.ILogger? logger)
     {
         for (var retry = 0; retry < 60; retry++)
         {
@@ -1840,7 +1840,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 return;
             }
         }
-        Trace.TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.");
+        if (logger is not null) DesktopLog.BrowserProfileNotDeleted(logger);
+        else Trace.TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.");
     }
 
     private static TaskCompletionSource NewCompletionSource() =>
@@ -1972,7 +1973,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            Trace.TraceWarning($"The diagnostic sink failed for {BrowserLaunchStalledCode}: {exception.GetType().FullName}");
+            if (_runtimeOptions?.Logger is { } sinkLogger)
+                DesktopLog.DiagnosticSinkFailed(sinkLogger, exception, BrowserLaunchStalledCode, DesktopLog.ErrorType(exception));
+            else Trace.TraceWarning($"The diagnostic sink failed for {BrowserLaunchStalledCode}: {exception.GetType().FullName}");
         }
         if (_runtimeOptions?.Logger is { } logger)
         {
