@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Runic.Application.Views;
 using TUnit.Core;
 
@@ -139,6 +140,22 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class RowsView : RunicView<RowsViewModel>;
                 public sealed class NotesViewModel : FixtureModel { public string Text => ""; }
                 public sealed partial class NotesView : RunicView<NotesViewModel>;
+                // A union case crosses the Bridge; a custom codec's members do not.
+                [RunicUnion(typeof(Circle))] public abstract class Shape { }
+                [RunicUnionCase("circle")] public sealed class Circle : Shape { public System.Windows.Media.Brush? Stroke { get; init; } }
+                public sealed class ShapesViewModel : FixtureModel { public Shape? Current { get; } }
+                public sealed partial class ShapesView : RunicView<ShapesViewModel>;
+                public sealed class SwatchCodec { }
+                [RunicBridgeCodec(typeof(SwatchCodec))] public sealed class Swatch { public System.Windows.Media.Brush? Paint { get; init; } }
+                public sealed class SwatchViewModel : FixtureModel { public Swatch Current { get; } = new(); }
+                public sealed partial class SwatchView : RunicView<SwatchViewModel>;
+                // A command's failure value crosses the Bridge.
+                public sealed class SaveError { public System.Windows.Media.Brush? Highlight { get; init; } }
+                public sealed class SaveViewModel : FixtureModel
+                {
+                    [RunicFailure(typeof(SaveError))] public IRelayCommand SaveCommand { get; } = new RelayCommand(() => { });
+                }
+                public sealed partial class SaveView : RunicView<SaveViewModel>;
                 """;
             var exposedSource = Preamble + Exposed;
             var (exposedExit, exposedOutput, exposedDirectory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "WpfExposed",
@@ -146,15 +163,20 @@ internal sealed partial class CodegenDiagnosticsTests
             var errors = exposedOutput.Split('\n').Where(line => line.Contains(": error ", StringComparison.Ordinal)).ToArray();
             string At(string declaration) =>
                 $"{Path.Combine(exposedDirectory, "Fixture.cs")}({exposedSource[..exposedSource.IndexOf(declaration, StringComparison.Ordinal)].Count(character => character == '\n') + 1},";
-            Require(exposedExit != 0 && errors.Length == 2
+            Require(exposedExit != 0 && errors.Length == 4
                     && errors.Any(line => line.StartsWith(At("public System.Windows.Media.ImageSource? Cover"), StringComparison.Ordinal)
                         && line.Contains("error RUNICBRIDGE005: CanvasViewModel.Cover: its type needs the assembly PresentationCore", StringComparison.Ordinal)
                         && line.Contains("cannot depend on Windows Desktop (WPF or Windows Forms) types", StringComparison.Ordinal)
                         && line.Contains("[RunicIgnore]", StringComparison.Ordinal))
                     && errors.Any(line => line.StartsWith(At("public System.Windows.Media.Brush? Fill"), StringComparison.Ordinal)
                         && line.Contains("error RUNICBRIDGE005: RowsViewModel.Rows.Fill: its type needs the assembly PresentationCore", StringComparison.Ordinal))
-                    && !exposedOutput.Contains("NotesViewModel", StringComparison.Ordinal),
-                $"Expected one RUNICBRIDGE005 at each WPF-typed member and none for NotesViewModel.\n{exposedOutput}");
+                    && errors.Any(line => line.StartsWith(At("public System.Windows.Media.Brush? Stroke"), StringComparison.Ordinal)
+                        && line.Contains("error RUNICBRIDGE005: ShapesViewModel.Current.Stroke:", StringComparison.Ordinal))
+                    && errors.Any(line => line.StartsWith(At("public System.Windows.Media.Brush? Highlight"), StringComparison.Ordinal)
+                        && line.Contains("error RUNICBRIDGE005: SaveViewModel.SaveCommand.failure.Highlight:", StringComparison.Ordinal))
+                    && !exposedOutput.Contains("NotesViewModel", StringComparison.Ordinal)
+                    && !exposedOutput.Contains("SwatchViewModel", StringComparison.Ordinal),
+                $"Expected one RUNICBRIDGE005 at each WPF-typed member that crosses the Bridge, and none for NotesViewModel or the custom codec.\n{exposedOutput}");
 
             // A View that does not load because of a WPF type is reported by name.
             var (viewExit, viewOutput, _) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "WpfView", Preamble + """
@@ -170,9 +192,43 @@ internal sealed partial class CodegenDiagnosticsTests
             Require(viewExit != 0 && viewOutput.Contains("error RUNICBRIDGE005: FixtureWpfView: the Runic View Fixture.DialogView could not be loaded because the assembly PresentationFramework could not be loaded.", StringComparison.Ordinal),
                 $"A View that needs WPF was not reported by name.\n{viewOutput}");
 
+            // A type whose base class is in a missing assembly that may declare a
+            // View base (not a Windows Desktop or shared framework assembly) may be
+            // a View: it is reported instead of skipped.
+            var shared = StandIn("Fixture.Shared", "namespace Shared; public abstract class PageBase { }");
+            var (possibleExit, possibleOutput, _) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "PossibleView", Preamble + """
+                public sealed class SettingsPage : Shared.PageBase { }
+                public sealed class NotesViewModel : FixtureModel { public string Text => ""; }
+                public sealed partial class NotesView : RunicView<NotesViewModel>;
+                """, [shared]).ConfigureAwait(false);
+            Require(possibleExit != 0 && possibleOutput.Contains("error RUNICBRIDGE005: FixturePossibleView: Fixture.SettingsPage could not be loaded because the assembly Fixture.Shared could not be loaded", StringComparison.Ordinal)
+                    && possibleOutput.Contains("cannot tell whether it is a Runic View", StringComparison.Ordinal),
+                $"A type whose base class could not be loaded was skipped.\n{possibleOutput}");
+
+        }
+        finally
+        {
+            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task GeneratorLoadsTheApplicationsSharedFrameworksAsync()
+    {
+        if (SharedFramework("Microsoft.AspNetCore.App") is not { } aspNetCoreDirectory)
+        {
+            Skip.Test("The ASP.NET Core runtime (Microsoft.AspNetCore.App) is not installed beside this .NET runtime.");
+            return;
+        }
+        var root = FindWorkspaceRoot();
+        var configuration = typeof(CodegenDiagnosticsTests).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Release";
+        var generator = Path.Combine(root, "tools", "Runic.Application.Views.Codegen", "bin", configuration, "net10.0", "BridgeCodegen.dll");
+        var temporaryRoot = Path.Combine(Path.GetTempPath(), $"runic-codegen-aspnetcore-{Guid.NewGuid():N}");
+        try
+        {
             // #270: a hosted service derives from BackgroundService, which an
             // application on Microsoft.AspNetCore.App gets from that framework.
-            var hosting = Path.Combine(SharedFramework("Microsoft.AspNetCore.App"), "Microsoft.Extensions.Hosting.Abstractions.dll");
+            var hosting = Path.Combine(aspNetCoreDirectory, "Microsoft.Extensions.Hosting.Abstractions.dll");
             var aspNetCore = new[] { MetadataReference.CreateFromImage(File.ReadAllBytes(hosting)) };
             const string Hosted = """
                 public sealed class Heartbeat : Microsoft.Extensions.Hosting.BackgroundService
@@ -192,10 +248,27 @@ internal sealed partial class CodegenDiagnosticsTests
             // Without the framework, the hosted service is skipped, not the generation.
             var (unresolvedExit, unresolvedOutput, unresolvedDirectory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "HostedServiceWithoutFramework",
                 Preamble + Hosted, aspNetCore).ConfigureAwait(false);
+            // It is a warning: the assembly may be missing at run time too.
             Require(unresolvedExit == 0
-                    && unresolvedOutput.Contains("skipped 1 types that depend on Microsoft.Extensions.Hosting.Abstractions, which the Bridge generator could not load. None of them is a Runic View.", StringComparison.Ordinal)
+                    && unresolvedOutput.Split('\n').Any(line => line.StartsWith("warning RUNICBRIDGE020: FixtureHostedServiceWithoutFramework: skipped 1 types that depend on Microsoft.Extensions.Hosting.Abstractions, which the Bridge generator could not load. None of them is a Runic View", StringComparison.Ordinal)
+                        && line.TrimEnd().EndsWith($" See {HelpLink("RUNICBRIDGE020")}", StringComparison.Ordinal))
                     && File.Exists(Path.Combine(unresolvedDirectory, "cs", "Fixture.StatusViewModel.Bridge.g.cs")),
-                $"A type that needs a framework the generator lacks failed the generation.\n{unresolvedOutput}");
+                $"A type that needs a framework the generator lacks failed the generation or was not reported as RUNICBRIDGE020.\n{unresolvedOutput}");
+            // Optional generation without Views keeps the previous output when
+            // types were skipped: they may have been the Views.
+            const string HostedOnly = """
+                public sealed class Heartbeat : Microsoft.Extensions.Hosting.BackgroundService
+                {
+                    protected override System.Threading.Tasks.Task ExecuteAsync(System.Threading.CancellationToken stoppingToken) =>
+                        System.Threading.Tasks.Task.CompletedTask;
+                }
+                """;
+            var (optionalExit, optionalOutput, optionalDirectory) = await RunGeneratorFixtureAsync(generator, temporaryRoot, "HostedServiceWithoutFramework",
+                Preamble + HostedOnly, aspNetCore, "--optional").ConfigureAwait(false);
+            Require(optionalExit != 0 && optionalOutput.Contains("error RUNICBRIDGE005: FixtureHostedServiceWithoutFramework: no Runic Window/View classes were found, but types were skipped because Microsoft.Extensions.Hosting.Abstractions could not be loaded", StringComparison.Ordinal)
+                    && File.Exists(Path.Combine(optionalDirectory, "cs", "Fixture.StatusViewModel.Bridge.g.cs"))
+                    && !File.Exists(Path.Combine(optionalDirectory, "cs", "RunicBridge.NoViews.marker")),
+                $"Optional generation removed the output of an assembly whose types were skipped.\n{optionalOutput}");
         }
         finally
         {
@@ -203,21 +276,27 @@ internal sealed partial class CodegenDiagnosticsTests
         }
     }
 
+    /// <summary>A fixture compilation against this process's assemblies, named <paramref name="name"/>.</summary>
+    internal static CSharpCompilation CompileFixture(string name, string source, IEnumerable<MetadataReference> references) =>
+        Compile(name, source, additionalReferences: references).WithAssemblyName(name);
+
     private static PortableExecutableReference StandIn(string name, string source)
     {
         using var image = new MemoryStream();
-        var emitted = Compile(name, source).WithAssemblyName(name).Emit(image);
+        var emitted = CompileFixture(name, source, []).Emit(image);
         Require(emitted.Success, $"The {name} stand-in did not compile.\n{string.Join('\n', emitted.Diagnostics)}");
         return MetadataReference.CreateFromImage(image.ToArray());
     }
 
-    // The installed shared framework of this runtime's version, else its newest one.
-    private static string SharedFramework(string name)
+    // The installed shared framework of this runtime's version, else its newest
+    // one, or null when it is not installed.
+    private static string? SharedFramework(string name)
     {
         var runtime = new DirectoryInfo(Path.GetDirectoryName(typeof(object).Assembly.Location)!);
         var framework = Path.Combine(runtime.Parent!.Parent!.FullName, name);
+        if (!Directory.Exists(framework)) return null;
         var exact = Path.Combine(framework, runtime.Name);
         return Directory.Exists(exact) ? exact
-            : Directory.GetDirectories(framework).OrderByDescending(path => Version.TryParse(Path.GetFileName(path).Split('-')[0], out var version) ? version : null).First();
+            : Directory.GetDirectories(framework).OrderByDescending(path => Version.TryParse(Path.GetFileName(path).Split('-')[0], out var version) ? version : null).FirstOrDefault();
     }
 }

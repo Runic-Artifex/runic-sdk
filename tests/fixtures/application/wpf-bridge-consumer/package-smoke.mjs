@@ -70,6 +70,12 @@ try {
 
   // 1. Single project: generation is on through the adapter, without duplicate members.
   const single = build("Single/WpfSingle.csproj");
+  // The BackgroundService loads from Microsoft.AspNetCore.App, which the build passes
+  // to the generator with --framework; without it the type is skipped (RUNICBRIDGE020).
+  assert.equal(count(single, /RUNICBRIDGE020|Microsoft\.Extensions\.Hosting\.Abstractions/), 0,
+    "The generator did not load the BackgroundService from Microsoft.AspNetCore.App.");
+  assert.ok(count(single, /WpfSingle: skipped \d+ types that depend on PresentationCore, PresentationFramework\./) > 0,
+    "The generator did not skip the WPF types.");
   assert.equal(summary(single, "Warning"), 0, "The single project reported warnings.");
   exists("Single/Frontend/src/generated/editor.ts");
   exists("Single/obj/Release/net10.0-windows/runic-bridge/RunicBridgeComposition.g.cs");

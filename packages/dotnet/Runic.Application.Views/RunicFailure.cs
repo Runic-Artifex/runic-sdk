@@ -150,7 +150,7 @@ internal static class BridgeCommandSources
             // By attribute name: any method of the ViewModel may carry an
             // attribute whose type the code generator cannot load.
             .Select(method => (Method: method, Convention: BridgeAttributeNames.Of(method)
-                .Select(BridgeMvvmConventions.CommandSource)
+                .Select(attribute => BridgeMvvmConventions.CommandSource(attribute.Name))
                 .FirstOrDefault(convention => convention is not null)))
             .Where(source => source.Convention is not null)
             .OrderBy(source => source.Method.MetadataToken)

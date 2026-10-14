@@ -91,6 +91,11 @@ try
         }
         if (Diagnostics.HasErrors) return;
         var models = viewTypes.Keys.Select(type => (Model: type, Name: PublicName(type))).ToArray();
+        // Without Views, optional generation removes the generated output. Not
+        // when types were skipped for a missing assembly: they may be the Views.
+        if (models.Length == 0 && optional && BridgeLoading.SkippedFor.Count > 0)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.AssemblyLoad,
+                $"{assembly.GetName().Name}: no Runic Window/View classes were found, but types were skipped because {string.Join(", ", BridgeLoading.SkippedFor)} could not be loaded, so the generated output is kept. Make the assembly available in the build output.");
         if (models.Length == 0 && optional)
         {
             // Bridge generation was on by default, not requested: an assembly
@@ -1537,6 +1542,8 @@ static class BridgeDiagnosticCodes
     internal const string Failure = "RUNICBRIDGE012";
     /// <summary>Warning: a ViewModel that a content slot or navigation region admits has no View.</summary>
     internal const string MissingView = "RUNICBRIDGE013";
+    /// <summary>Warning: types were skipped because an assembly other than a Windows Desktop one could not be loaded.</summary>
+    internal const string SkippedTypes = "RUNICBRIDGE020";
     // RUNICBRIDGE014 (missing frontend), RUNICBRIDGE015 (generation off with a
     // declared View) and RUNICBRIDGE016 (failed frontend command) are reported
     // by Runic.Application.Views.targets.

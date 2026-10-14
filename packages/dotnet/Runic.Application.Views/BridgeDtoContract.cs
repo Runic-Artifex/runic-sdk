@@ -24,10 +24,14 @@ internal static class BridgeDtoContract
     internal static bool IsRunicIgnored(PropertyInfo property) =>
         InheritanceChain(property).Any(declared => BridgeAttributeNames.Has(declared, RunicIgnore));
 
+    // An unconditional [JsonIgnore]: Condition is Always, its default. The
+    // nearest declaration wins, as with GetCustomAttribute(inherit: true).
     internal static bool IsIgnored(PropertyInfo property, bool honorJsonIgnore) =>
         IsRunicIgnored(property) ||
-        honorJsonIgnore && InheritanceChain(property).FirstOrDefault(declared => BridgeAttributeNames.Has(declared, JsonIgnore)) is { } annotated
-            && annotated.GetCustomAttribute<JsonIgnoreAttribute>(inherit: false)?.Condition == JsonIgnoreCondition.Always;
+        honorJsonIgnore && InheritanceChain(property).Select(declared => BridgeAttributeNames.Find(declared, JsonIgnore))
+                .FirstOrDefault(entry => entry is not null) is { } jsonIgnore
+            && (jsonIgnore.NamedArguments().TryGetValue(nameof(JsonIgnoreAttribute.Condition), out var condition)
+                ? Convert.ToInt32(condition, System.Globalization.CultureInfo.InvariantCulture) : (int)JsonIgnoreCondition.Always) == (int)JsonIgnoreCondition.Always;
 
     /// <summary>
     /// The property, then each base property it overrides, nearest first: the

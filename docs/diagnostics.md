@@ -249,6 +249,20 @@ time and report nothing; libraries and test projects report nothing either.
 on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,
 to the host that the application runs on.
 
+### RUNICBRIDGE020
+
+A warning. The generator skipped types of the application assembly because an
+assembly they need could not be loaded, and that assembly is not a Windows
+Desktop (WPF or Windows Forms) one, whose types are skipped without a warning.
+None of the skipped types is a Runic View, but the assembly may also be missing
+when the application runs. The generator loads the assemblies of the shared
+frameworks that the build references, such as Microsoft.AspNetCore.App. With
+optional generation and no Views, it reports `RUNICBRIDGE005` instead and keeps
+the generated output.
+
+**Fix:** reference the shared framework or package that contains the assembly,
+or make the assembly available in the build output.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
