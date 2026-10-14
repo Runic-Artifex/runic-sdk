@@ -151,6 +151,10 @@
     {
       "name": "Runic.Platform.Linux.Polkit",
       "project": "packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj"
+    },
+    {
+      "name": "Runic.Platform.Windows.Elevation",
+      "project": "packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj"
     }
   ],
   "components": {
@@ -354,6 +358,9 @@
         "packages/dotnet/Runic.Platform.Linux.Polkit",
         "tests/dotnet/Runic.Platform.Linux.Polkit.Tests",
         "tests/native/Runic.Privileged.Smoke",
+        "packages/dotnet/Runic.Platform.Windows.Elevation",
+        "tests/dotnet/Runic.Platform.Windows.Elevation.Tests",
+        "tests/native/Runic.Elevation.Smoke",
         "specs/platform"
       ]
     }

@@ -1,0 +1,15 @@
+<Project>
+  <!-- The smoke helper's actions, imported by the helper and by Runic.Platform.Windows.Elevation.Tests, its caller. -->
+  <ItemGroup>
+    <RunicPrivilegedAction Include="dev.runic.elevation-smoke.report" Program="/opt/runic/Runic.Elevation.Smoke" Verb="report"
+                           Description="Report the arguments" Message="Run the elevation smoke's report step." MaximumArguments="8" />
+    <RunicPrivilegedAction Include="dev.runic.elevation-smoke.wait" Program="/opt/runic/Runic.Elevation.Smoke" Verb="wait"
+                           Description="Wait for cancellation" Message="Run the elevation smoke's wait step." />
+    <RunicPrivilegedAction Include="dev.runic.elevation-smoke.ignore" Program="/opt/runic/Runic.Elevation.Smoke" Verb="ignore"
+                           Description="Ignore cancellation" Message="Run the elevation smoke's ignore step." />
+    <RunicPrivilegedAction Include="dev.runic.elevation-smoke.flood" Program="/opt/runic/Runic.Elevation.Smoke" Verb="flood"
+                           Description="Write many lines" Message="Run the elevation smoke's flood step." MaximumArguments="1" ArgumentPattern="[0-9]{1,6}" />
+    <RunicPrivilegedAction Include="dev.runic.elevation-smoke.environment" Program="/opt/runic/Runic.Elevation.Smoke" Verb="environment"
+                           Description="Report the process state" Message="Run the elevation smoke's environment step." />
+  </ItemGroup>
+</Project>

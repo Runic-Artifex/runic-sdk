@@ -151,6 +151,11 @@
       "version": "0.7.0-preview.9"
     },
     {
+      "ecosystem": "nuget",
+      "identity": "Runic.Platform.Windows.Elevation",
+      "version": "0.7.0-preview.9"
+    },
+    {
       "ecosystem": "npm",
       "identity": "@runic-artifex/angular",
       "version": "0.7.0-preview.9"

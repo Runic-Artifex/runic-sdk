@@ -1,0 +1,28 @@
+#nullable enable
+const Runic.Platform.Windows.Elevation.WindowsPrivilegedActions.TerminatedExitCode = 1223 -> int
+override Runic.Platform.Windows.Elevation.WindowsElevationOptions.Equals(object? obj) -> bool
+override Runic.Platform.Windows.Elevation.WindowsElevationOptions.GetHashCode() -> int
+override Runic.Platform.Windows.Elevation.WindowsElevationOptions.ToString() -> string!
+Runic.Platform.Windows.Elevation.ElevatedHelper
+Runic.Platform.Windows.Elevation.WindowsElevationOptions
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.ApplicationDirectory.get -> string?
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.ApplicationDirectory.init -> void
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.<Clone>$() -> Runic.Platform.Windows.Elevation.WindowsElevationOptions!
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.Equals(Runic.Platform.Windows.Elevation.WindowsElevationOptions? other) -> bool
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.OwnerWindow.get -> nint
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.OwnerWindow.init -> void
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.Programs.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>?
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.Programs.init -> void
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.TerminateAfterCancellation.get -> System.TimeSpan?
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.TerminateAfterCancellation.init -> void
+Runic.Platform.Windows.Elevation.WindowsElevationOptions.WindowsElevationOptions() -> void
+Runic.Platform.Windows.Elevation.WindowsPrivilegedActions
+Runic.Platform.Windows.Elevation.WindowsPrivilegedActions.RunAsync(Runic.Platform.PrivilegedActionRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PrivilegedActionCompletion!>!>
+static Runic.Platform.Windows.Elevation.ElevatedHelper.GetCallerImagePath() -> string?
+static Runic.Platform.Windows.Elevation.ElevatedHelper.GetCallerProcessId() -> int?
+static Runic.Platform.Windows.Elevation.ElevatedHelper.Initialize() -> bool
+static Runic.Platform.Windows.Elevation.ElevatedHelper.Match(System.Collections.Generic.IEnumerable<Runic.Platform.PrivilegedActionDeclaration!>! actions, System.Collections.Generic.IReadOnlyList<string!>! arguments, out System.Collections.Immutable.ImmutableArray<string!> actionArguments) -> Runic.Platform.PrivilegedActionDeclaration?
+static Runic.Platform.Windows.Elevation.ElevatedHelper.WatchCancellation() -> System.Threading.CancellationToken
+static Runic.Platform.Windows.Elevation.WindowsElevationOptions.operator !=(Runic.Platform.Windows.Elevation.WindowsElevationOptions? left, Runic.Platform.Windows.Elevation.WindowsElevationOptions? right) -> bool
+static Runic.Platform.Windows.Elevation.WindowsElevationOptions.operator ==(Runic.Platform.Windows.Elevation.WindowsElevationOptions? left, Runic.Platform.Windows.Elevation.WindowsElevationOptions? right) -> bool
+static Runic.Platform.Windows.Elevation.WindowsPrivilegedActions.Create(System.Collections.Generic.IEnumerable<Runic.Platform.PrivilegedActionDeclaration!>! actions, Runic.Platform.Windows.Elevation.WindowsElevationOptions? options = null) -> Runic.Platform.IDesktopPrivilegedActions!

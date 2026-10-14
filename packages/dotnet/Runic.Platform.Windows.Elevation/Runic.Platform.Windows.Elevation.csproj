@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsAotCompatible>true</IsAotCompatible>
+    <PackageId>Runic.Platform.Windows.Elevation</PackageId>
+    <Description>Declared privileged actions for Runic applications on Windows: a UAC-elevated NativeAOT helper started with runas, with output and cancellation over a named pipe.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The targets report RUNICEL diagnostics with links to docs/diagnostics.md at the release tag. -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
+    <!-- New in this release: nothing to validate against until it ships. -->
+    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
+    <RunicPackageFirstReleaseVersion>0.7.0-preview.10</RunicPackageFirstReleaseVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
+    <InternalsVisibleTo Include="Runic.Platform.Windows.Elevation.Tests" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Platform.Windows.Elevation.targets" Pack="true" PackagePath="buildTransitive/" />
+    <None Include="buildTransitive/Runic.Platform.Windows.Elevation.manifest" Pack="true" PackagePath="buildTransitive/" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

@@ -88,7 +88,8 @@ code; a refused authorization is `Failed(PermissionDenied)`, a dismissed prompt
 are an argument vector, never a shell command line.
 `DesktopPrivilegedActions.Unavailable(reason)` is the provider for hosts and
 platforms without one. Linux uses Polkit and pkexec through
-Runic.Platform.Linux.Polkit; Windows and macOS have no provider yet.
+Runic.Platform.Linux.Polkit, and Windows a UAC-elevated helper through
+Runic.Platform.Windows.Elevation; macOS has no provider yet.
 
 ### Declare privileged actions
 

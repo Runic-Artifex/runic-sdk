@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- The executable is also the stand-in helper (see Program.cs), so the entry point is hand-written. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <RootNamespace>Runic.Elevation.Smoke</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" />
+    <Compile Include="../../native/Runic.Elevation.Smoke/SmokeActions.cs" Link="SmokeActions.cs" />
+    <!-- The generation tests build small projects against the shipped targets. -->
+    <None Include="../../../packages/dotnet/Runic.Platform/buildTransitive/*" Link="platform-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../packages/dotnet/Runic.Platform.Windows.Elevation/buildTransitive/*" Link="elevation-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- The same actions as the smoke helper, which the RealElevation cases start. -->
+  <Import Project="../../native/Runic.Elevation.Smoke/actions.props" />
+  <Import Project="../../../packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets" />
+  <Import Project="../../../packages/dotnet/Runic.Platform.Windows.Elevation/buildTransitive/Runic.Platform.Windows.Elevation.targets" />
+  <Import Project="../../../eng/build/application.targets" />
+</Project>
