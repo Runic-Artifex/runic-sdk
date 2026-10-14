@@ -63,7 +63,7 @@ internal sealed class MacAppKitNativeTests
         await ExpectAsync(activations, DesktopStatusIconActivationKind.Primary, null);
         Pass("pressing the button, also through accessibility, raises the primary activation");
 
-        var opened = await icon.ShowMenuAsync(async () => await icon.CloseMenuAsync().AsTask().WaitAsync(Step));
+        var opened = await icon.ShowMenuAsync(() => { icon.CloseMenu(); return ValueTask.CompletedTask; });
         Require(opened is { Handled: true, Opened: true, MenuKept: false }, $"VoiceOver's show-menu action did not open the menu once: {opened}.");
         Require(await icon.InspectAsync() is { Shown: true }, "Closing the menu removed the item.");
         await icon.PressAsync(accessibility: false);

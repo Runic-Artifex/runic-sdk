@@ -29,8 +29,10 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
     private nint _item, _target, _menu;
     private DesktopStatusIconState? _state;
     private MacStatusMenu? _openMenu;
-    // While the menu is open, AppKit uses the item and the menu: removal and release wait until it closes.
-    private bool _tracking, _removeAfterMenu, _releaseAfterMenu;
+    // While the menu is open, AppKit uses the item and the menu, and does not run the main queue: requests wait
+    // until it closes, and removal and release wait for performClick: to return.
+    private volatile bool _tracking;
+    private bool _removeAfterMenu, _releaseAfterMenu;
 
     /// <summary>How long a request waits for the main thread. Only the Desktop event loop services it.</summary>
     internal static TimeSpan MainThreadTimeout { get; set; } = TimeSpan.FromSeconds(5);
@@ -61,7 +63,8 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             // Queued behind every earlier request, which the main queue runs in order. It stays queued when the wait
-            // ends, so the item goes once the event loop runs again.
+            // ends, so the item goes once the event loop runs again. An open menu closes first.
+            CloseOpenMenu();
             if (_queued && !await OnMainThreadAsync(Remove, abandonable: false, cancellationToken).ConfigureAwait(false))
                 return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
             return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
@@ -79,6 +82,7 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
             _disposed = true;
             _activations.Writer.TryComplete();
             // Without an event loop the item ends with the process.
+            CloseOpenMenu();
             if (_queued) await OnMainThreadAsync(ReleaseAll, abandonable: false, CancellationToken.None).ConfigureAwait(false);
         }
         finally { if (entered) _gate.Release(); }
@@ -399,9 +403,9 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         else Arg(button, Sel("performClick:"), 0);
     });
 
-    // VoiceOver's show-menu action. It returns once the menu closes; whileOpen runs on the main thread while it is
-    // open, through the main queue, which AppKit services during menu tracking. Reports whether the action was
-    // handled, whether the menu opened, and whether the item still holds the menu afterwards.
+    // VoiceOver's show-menu action. It returns once the menu closes; whileOpen runs on a worker thread while it is
+    // open, when the main queue waits. Reports whether the action was handled, whether the menu opened, and whether
+    // the item still holds the menu afterwards.
     internal async ValueTask<(bool Handled, bool Opened, bool MenuKept)> ShowMenuAsync(Func<ValueTask> whileOpen)
     {
         int before = 0;
@@ -416,17 +420,38 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
         }).AsTask();
         await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         await whileOpen().ConfigureAwait(false);
-        await opening.WaitAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false);
+        try { await opening.WaitAsync(TimeSpan.FromSeconds(15)).ConfigureAwait(false); }
+        catch (TimeoutException)
+        {
+            // Leave no menu open, which would keep the main thread from the rest of the process.
+            CloseOpenMenu();
+            throw;
+        }
         int after = 0;
         await MacOsMainQueue.InvokeAsync(() => after = _menuOpenings).ConfigureAwait(false);
         return (handled, after > before, kept);
     }
 
     // Closes an open menu, as Escape does.
-    internal ValueTask CloseMenuAsync() => MacOsMainQueue.InvokeAsync(() =>
+    internal void CloseMenu() => CloseOpenMenu();
+
+    // The main queue waits while the menu is open, so an Escape key press is posted to the application's event queue,
+    // which postEvent:atStart: accepts from any thread and the menu reads.
+    private void CloseOpenMenu()
     {
-        if (_tracking) Send(_menu, Sel("cancelTracking"));
-    });
+        if (!_tracking) return;
+        using var pool = new Pool();
+        var escape = CreateKeyboardEvent(0, EscapeKey, true);
+        if (escape == 0) return;
+        try { Args(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("postEvent:atStart:"), Arg(Class("NSEvent"), Sel("eventWithCGEvent:"), escape), 1); }
+        finally { CFRelease(escape); }
+    }
+
+    private const ushort EscapeKey = 0x35;
+    [LibraryImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", EntryPoint = "CGEventCreateKeyboardEvent")]
+    private static partial nint CreateKeyboardEvent(nint source, ushort key, [MarshalAs(UnmanagedType.U1)] bool down);
+    [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRelease")]
+    private static partial void CFRelease(nint value);
 
     // Builds the menu the next right click opens, describes it and chooses the item at the index path, without
     // opening it: a menu that is open runs a modal tracking loop until the user closes it.
