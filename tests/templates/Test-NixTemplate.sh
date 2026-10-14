@@ -48,7 +48,7 @@ dotnet new install "$work"/template/Runic.Application.Templates.*.nupkg --debug:
 # Builds a flake output; a fixed-output hash that the project leaves as lib.fakeHash is replaced by the one Nix reports.
 build() {
   local project="$1" output="$2" log="$work/build.log"
-  local -a flake=(--override-input runic-sdk "git+file://$sdk" --override-input nixpkgs "$nixpkgs" --no-write-lock-file)
+  local -a flake=(--override-input runic-sdk "git+file://$sdk?shallow=1" --override-input nixpkgs "$nixpkgs" --no-write-lock-file)
   for _ in 1 2; do
     if nix build "$project#$output" "${flake[@]}" -L --out-link "$project/result-$output" > "$log" 2>&1; then
       return 0
