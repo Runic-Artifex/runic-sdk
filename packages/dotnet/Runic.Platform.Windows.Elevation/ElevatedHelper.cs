@@ -183,7 +183,6 @@ public static class ElevatedHelper
     {
         private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(10);
         private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(5);
-        private static string? s_temporaryDirectory;
 
         public static bool Initialize()
         {
@@ -230,7 +229,12 @@ public static class ElevatedHelper
                 if (path.Length > 0) Environment.SetEnvironmentVariable(name, path);
             }
             if (CreatePrivateDirectory(Path.Combine(windows, "Temp")) is not { } temporary) return false;
-            s_temporaryDirectory = temporary;
+            // Registered before the output's handler, so it runs first; tools that still run lose their files.
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+            {
+                try { Directory.Delete(temporary, recursive: true); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            };
             Environment.SetEnvironmentVariable("TEMP", temporary);
             Environment.SetEnvironmentVariable("TMP", temporary);
             return true;
@@ -379,11 +383,6 @@ public static class ElevatedHelper
                 var deadline = DateTime.UtcNow + DrainTimeout;
                 foreach (var pump in _pumps) pump.Join(Max(deadline - DateTime.UtcNow));
                 channel.Dispose();
-                if (s_temporaryDirectory is { } temporary)
-                {
-                    try { Directory.Delete(temporary, recursive: true); }
-                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-                }
             }
 
             private static TimeSpan Max(TimeSpan value) => value > TimeSpan.Zero ? value : TimeSpan.Zero;

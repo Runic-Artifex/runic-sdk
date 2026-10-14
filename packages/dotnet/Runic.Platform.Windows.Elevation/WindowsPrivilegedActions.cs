@@ -177,6 +177,11 @@ internal sealed class ElevationRun(IElevationHost host, IElevationPipe pipe, Win
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             throw;
         }
+        catch
+        {
+            pipe.Dispose();
+            throw;
+        }
         var launched = await launch.ConfigureAwait(false);
         if (launched.Process is not { } process)
         {

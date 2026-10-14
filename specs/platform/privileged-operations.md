@@ -632,3 +632,28 @@ validated" policy.
   chose; killing the caller stops a helper that watches its input, while one
   that ignores it runs on and its child's write to the closed output fails; and
   the root helper in the caller's user cgroup is killed through `cgroup.kill`.
+- Windows (W300-025): `tests/dotnet/Runic.Platform.Windows.Elevation.Tests`,
+  20 portable cases on every OS (three runs in a row, and under NativeAOT): the
+  command line against the C runtime's rules and `CommandLineToArgvW`, frames,
+  lines, helper locations, the trust evaluation over sample DACLs, outcome
+  mapping, matching, and the whole caller flow against an in-process helper
+  speaking the protocol: every outcome, both channels, backpressure, callback
+  failures and every cancellation phase. The Windows native CI job runs them
+  with JIT and NativeAOT, plus 6 stand-in cases over the real pipe (DACL,
+  impostor client disconnected, a helper whose parent is not the server
+  refused, environment and `TEMP` reset, inherited output of child processes,
+  cancellation and termination, a JIT helper refused) and 6 cases with the
+  NativeAOT smoke helper installed under Program Files and started through
+  real `ShellExecuteExW` runas. The runner is an administrator with UAC on
+  and `ConsentPromptBehaviorAdmin` 0, so it elevates without a prompt; the
+  helper ran elevated with its exact arguments, the `requireAdministrator`
+  manifest embedded, System32 as working directory, a fixed `Path`, a private
+  `TEMP` and without the caller's variables; cancellation stopped a waiting
+  helper with its own exit code and terminated one that ignored it through the
+  process handle; 20,000 lines arrived in order through a slow callback; and a
+  copy in the user's temporary directory was refused before any prompt.
+  Not verified by CI: a prompt that a person answers (consent, credentials,
+  No), the not-elevated report from a real `runas` with UAC off (the runner is
+  elevated; it is covered with the fake host), over-the-shoulder elevation,
+  terminating through the handle that UAC returns to a non-elevated caller,
+  and an Authenticode-signed helper.
