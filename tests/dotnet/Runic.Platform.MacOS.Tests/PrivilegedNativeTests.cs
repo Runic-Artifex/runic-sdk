@@ -149,8 +149,11 @@ internal sealed class PrivilegedNativeTests
         using (var daemon = new InProcessDaemon([Shell], daemonRequirement: Other))
         {
             var result = await daemon.Provider.RunAsync(new(Shell, ["true"]));
-            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 5 }, "the daemon is not signed as required: " + Describe(result));
-            Check(daemon.Authority.Checks == 0, "nothing reached the daemon's checks");
+            Console.WriteLine($"daemon not signed as required: {Describe(result)}");
+            // libxpc reports the failed requirement (InvalidData), or only invalidates the connection (Unavailable).
+            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 5 }
+                or PlatformResult<PrivilegedActionCompletion>.Unavailable, "the daemon is not signed as required: " + Describe(result));
+            Check(daemon.Authority.Checks == 0 && daemon.Authority.Ensured == 0, "nothing was sent to the daemon");
         }
         using (var daemon = new InProcessDaemon([Shell], applicationRequirement: Other))
         {

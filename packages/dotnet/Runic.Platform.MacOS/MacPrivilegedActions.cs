@@ -223,6 +223,8 @@ internal sealed class MacXpcChannel : IMacPrivilegedChannel
     private readonly nint _queue;
     private readonly bool _requirementSet;
     private Action<PrivilegedOutputChannel, byte[]>? _output;
+    private TaskCompletionSource<MacReply>? _pending;
+    private volatile bool _peerRejected;
     private int _disposed;
 
     private MacXpcChannel(Func<nint, nint> connect, string daemonRequirement)
@@ -296,7 +298,13 @@ internal sealed class MacXpcChannel : IMacPrivilegedChannel
             return Task.FromResult(new MacReply(_connection == 0 ? MacReplyStatus.Unreachable : MacReplyStatus.UntrustedDaemon));
         }
         var completion = new TaskCompletionSource<MacReply>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var handler = MacDesktopBlock.Create(reply => completion.TrySetResult(ParseReply(reply)));
+        _pending = completion;
+        var handler = MacDesktopBlock.Create(reply =>
+        {
+            var parsed = ParseReply(reply);
+            // libxpc may report a daemon that fails the requirement to the event handler and only invalidate the reply.
+            completion.TrySetResult(_peerRejected && parsed.Status == MacReplyStatus.Unreachable ? new(MacReplyStatus.UntrustedDaemon) : parsed);
+        });
         try { MacXpc.SendWithReply(_connection, message, _queue, handler); }
         finally
         {
@@ -318,6 +326,12 @@ internal sealed class MacXpcChannel : IMacPrivilegedChannel
     // Messages the daemon sends on this connection: output lines, each acknowledged after the callback returned.
     private void OnEvent(nint message)
     {
+        if (message != 0 && message == MacXpc.ErrorPeerCodeSigningRequirement)
+        {
+            _peerRejected = true;
+            _pending?.TrySetResult(new(MacReplyStatus.UntrustedDaemon));
+            return;
+        }
         if (!MacXpc.IsDictionary(message) || MacXpc.GetString(message, Op) != Output) return;
         var channel = MacXpc.GetInt64(message, Channel) == 2 ? PrivilegedOutputChannel.StandardError : PrivilegedOutputChannel.StandardOutput;
         if (MacXpc.GetData(message, Data) is { } line) _output?.Invoke(channel, line);

@@ -92,13 +92,14 @@ internal sealed class PrivilegedRootTests
             host.Mode = CredentialMode.NoCredential;
             result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
             Console.WriteLine($"no credential: {Describe(result)} {(result as PlatformResult<PrivilegedActionCompletion>.Failed)?.Diagnostic}");
-            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Domain: MacPrivilegedOutcome.AuthorizationDomain },
-                "the daemon refuses an authorization without the right");
+            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Message: not null } failed
+                && failed.Diagnostic!.Message!.Contains("daemon", StringComparison.Ordinal), "the daemon refuses an authorization without the right");
 
             host.Mode = CredentialMode.Stale;
             result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
             Console.WriteLine($"stale external form: {Describe(result)} {(result as PlatformResult<PrivilegedActionCompletion>.Failed)?.Diagnostic}");
-            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied }, "the form of a finished run grants nothing");
+            Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.PermissionDenied, Diagnostic.Message: not null } stale
+                && stale.Diagnostic!.Message!.Contains("daemon", StringComparison.Ordinal), "the daemon refuses the form of a finished run");
             Console.WriteLine("PASS a wrong password, an authorization without the right and a finished run's form are denied");
 
             // The evidence for the rule's timeout: authd compares a credential's age with the timeout when it checks a
@@ -231,7 +232,7 @@ internal sealed class PrivilegedRootTests
                 case CredentialMode.WrongPassword:
                     return AuthorizeWithCredentials(right, user, password + "x");
                 case CredentialMode.NoCredential:
-                    return MacPrivilegedSystemHost.AuthorizeWithFlags(right, 0);
+                    return WithoutRight();
                 case CredentialMode.Stale:
                     return new MacAuthorizationGrant(0, _lastForm ?? new byte[32], null);
                 default:
@@ -239,6 +240,16 @@ internal sealed class PrivilegedRootTests
                     _lastForm = grant.ExternalForm;
                     return grant;
             }
+        }
+
+        // An authorization that never asked for the right, as a client that skips the dialog would send.
+        private static unsafe MacAuthorizationGrant WithoutRight()
+        {
+            var status = MacSecurity.AuthorizationCreate(null, null, 0, out var authorization);
+            if (status != 0) return new MacAuthorizationGrant(status, null, null);
+            var form = new byte[MacSecurity.ExternalFormLength];
+            fixed (byte* bytes = form) status = MacSecurity.AuthorizationMakeExternalForm(authorization, bytes);
+            return new MacAuthorizationGrant(status, form, () => { _ = MacSecurity.AuthorizationFree(authorization, MacSecurity.FlagDestroyRights); });
         }
 
         internal static unsafe MacAuthorizationGrant AuthorizeWithCredentials(string right, string user, string password)
