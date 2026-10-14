@@ -4,6 +4,8 @@
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- DirectoryIdentity reads stat and GetFileInformationByHandle through LibraryImport. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PackageId>Runic.Application.Views</PackageId>
     <Description>Host-neutral Window and View runtime with generated typed TypeScript clients.</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -272,6 +272,11 @@ internal static partial class ViewsLog
         Message = "Accepted application work failed with its declared failure {FailureType}.")]
     internal static partial void AcceptedWorkDomainFailed(ILogger logger, Exception? exception, string failureType);
 
+    // A RunicPathWatcher started without a failed callback works around a problem by polling or reading again.
+    [LoggerMessage(EventId = 1015, EventName = "PathWatchProblem", Level = LogLevel.Warning,
+        Message = "Path watcher: {Problem}")]
+    internal static partial void PathWatchProblem(ILogger logger, Exception? exception, string problem);
+
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
     internal static partial void MountFailed(ILogger logger, Exception? exception, string route, string errorType);
