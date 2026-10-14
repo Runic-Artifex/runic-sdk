@@ -353,7 +353,8 @@
         "tests/native/Runic.Lifetime.Smoke",
         "packages/dotnet/Runic.Platform.Linux.Polkit",
         "tests/dotnet/Runic.Platform.Linux.Polkit.Tests",
-        "tests/native/Runic.Privileged.Smoke"
+        "tests/native/Runic.Privileged.Smoke",
+        "specs/platform"
       ]
     }
   }

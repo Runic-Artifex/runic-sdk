@@ -77,3 +77,16 @@ registers `DesktopSettings.Unavailable(reason)`: reads return
 `IDesktopNotifications` is registered the same way; without a provider it is
 `DesktopNotifications.Unavailable(reason)`, whose requests return
 `Unavailable(reason)` and which never raises `Activated`.
+
+## Privileged actions
+
+`IDesktopPrivilegedActions` runs a step the application declared at build time,
+a fixed program with bounded arguments, as the administrator after the
+platform's authorization prompt. Declarations are `PrivilegedActionDeclaration`
+values that the provider package generates from `RunicPrivilegedAction` items.
+The program ran is `Success` with its exit code; a refused authorization is
+`Failed(PermissionDenied)`, a dismissed prompt `Failed(UserDismissed)`, and no
+authorization service `Unavailable`. Arguments are an argument vector, never a
+shell command line. `DesktopPrivilegedActions.Unavailable(reason)` is the
+provider for hosts and platforms without one. Linux uses Polkit and pkexec
+through Runic.Platform.Linux.Polkit; Windows and macOS have no provider yet.

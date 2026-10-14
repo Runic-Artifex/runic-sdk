@@ -77,7 +77,10 @@ internal sealed class DeclarationTests
         Check(PolkitHelper.MatchCore(all, ["collect", "extra"], "/opt/app/helper", out _) is null, "too many arguments");
         Check(PolkitHelper.MatchCore(all, ["unknown"], "/opt/app/helper", out _) is null, "unknown verb");
         Check(PolkitHelper.MatchCore(all, [], "/opt/app/helper", out _) is null, "no verb");
-        Check(PolkitHelper.MatchCore(all, ["activate", "boot"], "/tmp/copy/helper", out _) is null, "another executable");
+        Check(PolkitHelper.MatchCore(all, ["activate", "boot"], "/tmp/copy/helper", out _) is null, "two programs declare the verb and neither is this one");
+        Check(PolkitHelper.MatchCore(all, ["activate", "x"], "/opt/other/helper", out rest) == other && rest.SequenceEqual(["x"]), "this executable settles the tie");
+        Check(PolkitHelper.MatchCore([activate, collect], ["collect"], "/nix/store/abc-app/lib/app/helper", out _) == collect,
+            "a wrapper script may start the program, so the process path need not be the declared program");
         Check(PolkitHelper.GetCallerUserId() is null || Environment.GetEnvironmentVariable("PKEXEC_UID") is not null, "not started by pkexec");
     }
 

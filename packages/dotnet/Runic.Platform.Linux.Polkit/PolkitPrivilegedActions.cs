@@ -172,11 +172,13 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
             var started = new TaskCompletionSource<PkexecRun?>(TaskCreationOptions.RunContinuationsAsynchronously);
             var thread = new Thread(() =>
             {
+                // An exception must not escape this thread: it would end the application.
                 Process? process;
                 try { process = Process.Start(start); }
-                catch (System.ComponentModel.Win32Exception)
+                catch (System.ComponentModel.Win32Exception) { process = null; }
+                catch (Exception e)
                 {
-                    started.SetResult(null);
+                    started.SetException(e);
                     return;
                 }
                 if (process is null)
@@ -186,8 +188,12 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
                 }
                 var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
                 started.SetResult(new PkexecRun(process, exited.Task));
-                process.WaitForExit();
-                exited.SetResult(process.ExitCode);
+                try
+                {
+                    process.WaitForExit();
+                    exited.SetResult(process.ExitCode);
+                }
+                catch (Exception e) { exited.SetException(e); }
             })
             {
                 IsBackground = true,

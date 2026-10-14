@@ -27,9 +27,13 @@ public static partial class PolkitHelper
 
     /// <summary>
     /// Finds the action that <paramref name="arguments"/>, this process's arguments without the program name,
-    /// select: its program is this executable, its verb is the first argument, and the remaining arguments are
-    /// within it.
+    /// select: its verb is the first argument (or it has none), and the remaining arguments are within it.
     /// </summary>
+    /// <remarks>
+    /// When actions of several programs have the verb, the one whose program is this executable wins; otherwise the
+    /// invocation is ambiguous and nothing matches. The program is not required to be this executable, because
+    /// packaging often declares a wrapper script, such as the one <c>buildDotnetModule</c> installs, that starts it.
+    /// </remarks>
     /// <param name="actions">The declared actions, usually the generated <c>PrivilegedActions.All</c>.</param>
     /// <param name="arguments">The arguments passed to this process.</param>
     /// <param name="actionArguments">The arguments after the verb, when an action matched.</param>
@@ -44,17 +48,16 @@ public static partial class PolkitHelper
     internal static PrivilegedActionDeclaration? MatchCore(IEnumerable<PrivilegedActionDeclaration> actions, IReadOnlyList<string> arguments, string? processPath, out ImmutableArray<string> actionArguments)
     {
         actionArguments = default;
-        foreach (var action in actions)
-        {
-            if (action.Program != processPath) continue;
-            var skip = action.Verb is null ? 0 : 1;
-            if (skip == 1 && (arguments.Count == 0 || arguments[0] != action.Verb)) continue;
-            var rest = arguments.Skip(skip).ToImmutableArray();
-            if (!action.AcceptsArguments(rest)) return null;
-            actionArguments = rest;
-            return action;
-        }
-        return null;
+        var candidates = actions.Where(a => a.Verb is null || (arguments.Count > 0 && arguments[0] == a.Verb)).ToList();
+        // A verb is more specific than none; then this executable's own declaration settles a tie.
+        if (candidates.Any(a => a.Verb is not null)) candidates.RemoveAll(a => a.Verb is null);
+        if (candidates.Count > 1) candidates.RemoveAll(a => a.Program != processPath);
+        if (candidates.Count != 1) return null;
+        var action = candidates[0];
+        var rest = arguments.Skip(action.Verb is null ? 0 : 1).ToImmutableArray();
+        if (!action.AcceptsArguments(rest)) return null;
+        actionArguments = rest;
+        return action;
     }
 
     /// <summary>
