@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows;
@@ -196,7 +195,12 @@ public class RunicViewHost : Decorator
         if (target is RunicViewHost { IsLoaded: true } host) host.Request();
     }
 
-    private void Request() => _ = _lifecycle.RequestAsync(() => IsLoaded && Model is not null, OpenAsync, ShowFallback);
+    private void Request()
+    {
+        // Runs on the UI thread, which owns Services; the change, its fallback and its cleanup log through it.
+        _lifecycle.Logger = WpfViewsLog.For(Services);
+        _ = _lifecycle.RequestAsync(() => IsLoaded && Model is not null, OpenAsync, ShowFallback);
+    }
 
     private async Task OpenAsync(PresentationLifecycle lifecycle, CancellationToken cancellationToken)
     {
@@ -245,7 +249,7 @@ public class RunicViewHost : Decorator
 
     private void ShowFallback(PresentationLifecycle lifecycle, Exception error)
     {
-        Trace.TraceWarning($"RunicViewHost could not open the web presentation; showing the fallback. {error}");
+        WpfViewsLog.FallbackShown(lifecycle.Logger, error, WpfViewsLog.ErrorType(error));
         if (!IsLoaded) return;
         var presenter = _fallback = new ContentPresenter { Content = Fallback };
         Child = presenter;

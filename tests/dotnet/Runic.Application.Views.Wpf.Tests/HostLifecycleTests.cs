@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
@@ -132,6 +133,32 @@ internal sealed class HostLifecycleTests
             throw new InvalidOperationException("A model without a Bridge was accepted.");
         }
         catch (InvalidOperationException error) when (error.Message.Contains("AddRunicViews", StringComparison.Ordinal)) { }
+    }
+
+    // Failures of the fallback and of a release go to the host's logger, not to Trace, when it has one (#249).
+    [Test, NotInParallel("WpfSuite", Order = 13)]
+    public async Task FailuresLogThroughTheHostLogger()
+    {
+        var logger = new RecordingLogger();
+        var lifecycle = new PresentationLifecycle { Logger = logger };
+        await lifecycle.RequestAsync(() => true, (owner, _) =>
+        {
+            owner.Own(() => throw new System.IO.IOException("Release failed."));
+            throw new PlatformNotSupportedException("No WebView2.");
+        }, (_, _) => throw new InvalidOperationException("Fallback failed."));
+        Program.Check(lifecycle.State == RunicViewHostState.Failed, "The failure did not settle as Failed.");
+        Program.Check(logger.Entries.SequenceEqual([(1113, "ViewHostCleanupFailed", typeof(System.IO.IOException)),
+                (1111, "ViewHostFallbackFailed", typeof(InvalidOperationException))]),
+            $"The host logged {string.Join(", ", logger.Entries)}.");
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        internal List<(int Id, string? Name, Type? Exception)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Add((eventId.Id, eventId.Name, exception?.GetType()));
     }
 
     private class BaseModel;

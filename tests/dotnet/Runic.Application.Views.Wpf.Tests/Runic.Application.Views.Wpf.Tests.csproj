@@ -29,6 +29,7 @@
     <Compile Include="../../../packages/dotnet/Runic.Application.Views.Wpf/WpfPresentationOptions.cs" Link="Host/WpfPresentationOptions.cs" />
     <Compile Include="../../../packages/dotnet/Runic.Application.Views.Wpf/WpfDiagnostics.cs" Link="Host/WpfDiagnostics.cs" />
     <Compile Include="../../../packages/dotnet/Runic.Application.Views.Wpf/PresentationLifecycle.cs" Link="Host/PresentationLifecycle.cs" />
+    <Compile Include="../../../packages/dotnet/Runic.Application.Views.Wpf/WpfViewsLog.cs" Link="Host/WpfViewsLog.cs" />
     <Compile Include="../../../packages/dotnet/Runic.Application.Views.Wpf/RunicViewHostState.cs" Link="Host/RunicViewHostState.cs" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />

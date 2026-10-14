@@ -23,6 +23,9 @@
     <ProjectReference Include="../Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <InternalsVisibleTo Include="Runic.Application.Views.Desktop.Tests" />
+    <!-- The WPF child view passes its logger to the transport (DesktopBridgeTransport(surface, logger)). -->
+    <InternalsVisibleTo Include="Runic.Application.Views.Wpf" />
+    <InternalsVisibleTo Include="Runic.Application.Views.Wpf.Tests" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <None Include="build/Runic.Application.Views.Desktop.props" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Desktop.props" />
     <None Include="build/Runic.Application.Views.Desktop.targets" Pack="true" PackagePath="buildTransitive/Runic.Application.Views.Desktop.targets" />

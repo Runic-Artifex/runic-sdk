@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Application.Views.Wpf;
 
@@ -15,6 +15,8 @@ internal sealed class PresentationLifecycle
     internal RunicViewHostState State { get; private set; }
     internal Exception? Error { get; private set; }
     internal event Action? Changed;
+    // Where failures of a change, its fallback or its cleanup go. The host sets it from its services on the UI thread.
+    internal ILogger Logger { get; set; } = TraceFallbackLogger.Instance;
 
     // Each request supersedes earlier ones: it cancels an open in progress, and a request still waiting for the
     // previous change is skipped, because this one applies the current state. Every change first releases what the
@@ -72,12 +74,12 @@ internal sealed class PresentationLifecycle
                 // A presentation failure: the borrowed model and services stay, and the fallback presents them.
                 await ReleaseAsync();
                 try { failed?.Invoke(this, error); }
-                catch (Exception fallbackError) { Trace.TraceError($"RunicViewHost fallback failed: {fallbackError}"); }
+                catch (Exception fallbackError) { WpfViewsLog.FallbackFailed(Logger, fallbackError, WpfViewsLog.ErrorType(fallbackError)); }
                 Set(RunicViewHostState.Failed, error);
             }
             finally { Interlocked.CompareExchange(ref _opening, null, opening); }
         }
-        catch (Exception error) { Trace.TraceError($"RunicViewHost presentation change failed: {error}"); }
+        catch (Exception error) { WpfViewsLog.PresentationChangeFailed(Logger, error, WpfViewsLog.ErrorType(error)); }
     }
 
     private async Task ReleaseAsync()
@@ -85,7 +87,7 @@ internal sealed class PresentationLifecycle
         while (_owned.TryPop(out var release))
         {
             try { await release(); }
-            catch (Exception error) { Trace.TraceError($"RunicViewHost presentation cleanup failed: {error}"); }
+            catch (Exception error) { WpfViewsLog.CleanupFailed(Logger, error, WpfViewsLog.ErrorType(error)); }
         }
     }
 

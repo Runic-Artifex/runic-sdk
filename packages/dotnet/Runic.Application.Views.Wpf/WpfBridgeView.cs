@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
@@ -19,14 +18,16 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
     private readonly WindowContentSession _content;
     private readonly IDisposable _connections;
     private readonly IDisposable _attachment;
+    private readonly ILogger _logger;
     private DesktopWindow? _presentation;
     private Task<BridgeWindowCloseResult>? _close;
     private readonly TaskCompletionSource _closeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private bool _opening;
 
     internal WpfBridgeView(DesktopSurface surface, DesktopBridgeTransport transport, WindowContentSession content,
-        IDisposable connections, IDisposable attachment, TViewModel viewModel)
+        IDisposable connections, IDisposable attachment, TViewModel viewModel, ILogger? logger = null)
     {
+        _logger = logger ?? TraceFallbackLogger.Instance;
         Surface = surface;
         ViewModel = viewModel;
         _transport = transport;
@@ -81,7 +82,7 @@ public sealed class WpfBridgeView<TViewModel> : IBridgeWindow, IWpfBridgeView wh
             var result = await CloseAsync(TimeSpan.Zero).ConfigureAwait(false);
             await result.Completion.ConfigureAwait(false);
         }
-        catch (Exception error) { Trace.TraceError($"WPF child view cleanup failed: {error}"); }
+        catch (Exception error) { WpfViewsLog.ChildViewCleanupFailed(_logger, error, WpfViewsLog.ErrorType(error)); }
     }
 
     /// <inheritdoc />
@@ -226,14 +227,15 @@ public static class WpfBridgeViewExtensions
         IDisposable? connections = null;
         try
         {
+            var loggerFactory = services.GetService<ILoggerFactory>();
             surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
-            transport = new DesktopBridgeTransport(surface);
+            transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
             content = new WindowContentSession(transport, new WindowContentSessionOptions
             {
                 RootModel = viewModel,
                 ModelContext = modelContext ?? services.GetService<IRunicModelContext>(),
                 ViewLocator = services.GetService<IRunicViewLocator>(),
-                LoggerFactory = services.GetService<ILoggerFactory>(),
+                LoggerFactory = loggerFactory,
             });
             var session = content;
             connections = surface.SubscribeConnectionEvents(invocation =>
@@ -242,7 +244,7 @@ public static class WpfBridgeViewExtensions
                     session.ReleaseConnection(invocation.Session.Id.ToString(CultureInfo.InvariantCulture));
             });
             var attachment = attachWithContent is not null ? attachWithContent(transport, content, viewModel) : attach!(transport, viewModel);
-            return new(surface, transport, content, connections, attachment, viewModel);
+            return new(surface, transport, content, connections, attachment, viewModel, WpfViewsLog.For(loggerFactory));
         }
         catch
         {

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection.Metadata;
 
 [assembly: MetadataUpdateHandler(typeof(Runic.Application.Views.RunicBridgeHotReload))]
@@ -6,6 +5,11 @@ using System.Reflection.Metadata;
 namespace Runic.Application.Views;
 
 /// <summary>Refreshes active browser snapshots after an in-process .NET code update.</summary>
+/// <remarks>
+/// Messages go to the logger of the window session that owns the affected Bridge (events 1100-1102), or to
+/// <see cref="System.Diagnostics.Trace"/> without one. The <c>RUNIC_IDE_CONTRACT_RESTART_REQUIRED</c> line for IDEs
+/// is always written to standard error.
+/// </remarks>
 public static class RunicBridgeHotReload
 {
     private static readonly object Gate = new();
@@ -56,15 +60,18 @@ public static class RunicBridgeHotReload
             }
             var message = $"RUNIC_IDE_CONTRACT_RESTART_REQUIRED|{mismatch}";
             Console.Error.WriteLine(message);
-            Trace.TraceError(message);
+            ViewsLog.HotReloadRestartRequired(bridge.Logger, mismatch);
             try { RestartRequired?.Invoke(mismatch); }
-            catch (Exception error) { Trace.TraceWarning($"Runic restart notification failed: {error}"); }
+            catch (Exception error) { ViewsLog.HotReloadRestartNotificationFailed(bridge.Logger, error, BridgeTelemetry.ErrorType(error)); }
             return;
         }
         foreach (var bridge in current)
         {
             try { bridge.RefreshAfterHotReload(); }
-            catch (Exception error) { Trace.TraceWarning($"A Runic Bridge Hot Reload refresh failed: {error}"); }
+            catch (Exception error)
+            {
+                ViewsLog.HotReloadRefreshFailed(bridge.Logger, error, bridge.ContractModelType.Name, BridgeTelemetry.ErrorType(error));
+            }
         }
     }
 }
