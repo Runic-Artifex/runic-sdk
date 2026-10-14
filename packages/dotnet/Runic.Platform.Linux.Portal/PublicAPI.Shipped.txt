@@ -32,3 +32,7 @@ static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateSettings() -> Ru
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateUnparentedFileDialogs() -> Runic.Platform.Runtime.IPickerBackend!
 Runic.Platform.Linux.Portal.PortalApplication.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 static Runic.Platform.Linux.Portal.PortalPlatformProvider.OpenUriAsync(Runic.Platform.Runtime.IPortalWindowOwner! owner, System.Uri! uri, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.Linux.Portal.PortalApplication.CreateLoginStartup() -> Runic.Platform.IDesktopLoginStartup!
+Runic.Platform.Linux.Portal.PortalApplication.CreateStatusIcon() -> Runic.Platform.IDesktopStatusIcon!
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateLoginStartup(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopLoginStartup!
+static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateStatusIcon(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopStatusIcon!

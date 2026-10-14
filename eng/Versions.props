@@ -2,7 +2,7 @@
   <PropertyGroup>
     <RunicSdkVersion>0.7.0-preview.9</RunicSdkVersion>
     <!-- Last published release; package validation compares shipping libraries with it. -->
-    <RunicPackageValidationBaselineVersion>0.7.0-preview.8</RunicPackageValidationBaselineVersion>
+    <RunicPackageValidationBaselineVersion>0.7.0-preview.9</RunicPackageValidationBaselineVersion>
     <Version Condition="'$(Version)' == ''">$(RunicSdkVersion)</Version>
     <PackageVersion Condition="'$(PackageVersion)' == ''">$(RunicSdkVersion)</PackageVersion>
   </PropertyGroup>

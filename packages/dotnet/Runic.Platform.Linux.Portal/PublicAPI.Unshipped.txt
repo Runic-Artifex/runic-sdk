@@ -1,5 +1,1 @@
 #nullable enable
-Runic.Platform.Linux.Portal.PortalApplication.CreateLoginStartup() -> Runic.Platform.IDesktopLoginStartup!
-Runic.Platform.Linux.Portal.PortalApplication.CreateStatusIcon() -> Runic.Platform.IDesktopStatusIcon!
-static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateLoginStartup(string? applicationId = null, System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopLoginStartup!
-static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateStatusIcon(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopStatusIcon!

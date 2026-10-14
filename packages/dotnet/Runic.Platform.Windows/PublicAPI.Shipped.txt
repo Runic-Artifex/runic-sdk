@@ -6,3 +6,4 @@ static Runic.Platform.Windows.WindowsPlatformProvider.CreateInhibition() -> Runi
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateNotifications(string! applicationId) -> Runic.Platform.IDesktopNotifications!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateLoginStartup(string! applicationId) -> Runic.Platform.IDesktopLoginStartup!
