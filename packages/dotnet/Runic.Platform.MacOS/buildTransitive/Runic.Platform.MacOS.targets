@@ -235,7 +235,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
       <RunicMacPrivilegedDaemonIdentifier Condition="'$(RunicMacPrivilegedDaemonIdentifier)' == ''">$(RunicMacPrivilegedDaemonLabel)</RunicMacPrivilegedDaemonIdentifier>
       <RunicMacLaunchDaemonOutputPath Condition="'$(RunicMacLaunchDaemonOutputPath)' == ''">Library/LaunchDaemons/</RunicMacLaunchDaemonOutputPath>
       <RunicMacLaunchDaemonPlist Condition="'$(RunicMacLaunchDaemonPlist)' == ''">true</RunicMacLaunchDaemonPlist>
-      <_RunicMacPrivilegedDirectory>$(IntermediateOutputPath)runic-privileged-macos/</_RunicMacPrivilegedDirectory>
+      <_RunicPrivilegedMacDirectory>$(IntermediateOutputPath)runic-privileged-macos/</_RunicPrivilegedMacDirectory>
     </PropertyGroup>
     <RunicWriteMacPrivilegedDaemon Actions="@(RunicPrivilegedAction)"
                                    Label="$(RunicMacPrivilegedDaemonLabel)"
@@ -243,18 +243,18 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
                                    TeamIdentifier="$(RunicMacTeamIdentifier)"
                                    DaemonIdentifier="$(RunicMacPrivilegedDaemonIdentifier)"
                                    DaemonProgram="$(RunicMacPrivilegedDaemonProgram)"
-                                   PlistFile="$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
-                                   SourceFile="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs"
+                                   PlistFile="$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
+                                   SourceFile="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs"
                                    Namespace="$(RunicPrivilegedActionsNamespace)"
                                    ClassName="$(RunicPrivilegedActionsClassName)"
                                    ProjectFile="$(MSBuildProjectFullPath)"
                                    HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
     <ItemGroup>
-      <Compile Remove="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs" />
-      <Compile Include="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs" />
-      <FileWrites Include="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs;$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
-      <None Remove="$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
-      <None Include="$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
+      <Compile Remove="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs" />
+      <Compile Include="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs" />
+      <FileWrites Include="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs;$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
+      <None Remove="$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
+      <None Include="$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
             Condition="'$(RunicMacLaunchDaemonPlist)' == 'true'"
             Link="$(RunicMacLaunchDaemonOutputPath)$(RunicMacPrivilegedDaemonLabel).plist"
             CopyToOutputDirectory="PreserveNewest"

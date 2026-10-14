@@ -759,7 +759,10 @@ service, and untrusted input that reaches the application.
   `HOME`, `USER`, `LOGNAME`, `RUNIC_CALLER_UID` and locale variables whose values
   are letters, digits and `_.@-`. No `DYLD_` variable reaches it.
 - **Replay.** The external form is a handle to the run's authorization in
-  authd; the daemon accepts it only from the application, it grants only the
+  authd. libxpc checks the daemon's requirement on what the daemon sends back,
+  so the application sends the form only after `prepare` came back from a peer
+  that satisfied `DaemonRequirement` (a service that fails it receives
+  `prepare` and nothing else). The daemon accepts it only from the application, it grants only the
   action's right for 30 seconds, and the application destroys it when the run
   ends. The root test replays a finished run's form and is denied.
 

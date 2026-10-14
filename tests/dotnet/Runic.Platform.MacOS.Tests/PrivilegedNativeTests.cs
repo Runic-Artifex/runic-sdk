@@ -153,7 +153,9 @@ internal sealed class PrivilegedNativeTests
             // libxpc reports the failed requirement (InvalidData), or only invalidates the connection (Unavailable).
             Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 5 }
                 or PlatformResult<PrivilegedActionCompletion>.Unavailable, "the daemon is not signed as required: " + Describe(result));
-            Check(daemon.Authority.Checks == 0 && daemon.Authority.Ensured == 0, "nothing was sent to the daemon");
+            // libxpc checks the daemon's requirement on what comes back, so the prepare message reaches the service,
+            // but the client stops at its reply: no authorization and no external form is ever sent.
+            Check(daemon.Authority.Checks == 0, "no run reached the service");
         }
         using (var daemon = new InProcessDaemon([Shell], applicationRequirement: Other))
         {
