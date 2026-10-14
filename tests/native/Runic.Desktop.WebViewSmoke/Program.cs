@@ -23,7 +23,11 @@ try
         throw new PlatformNotSupportedException("The platform embedded WebView runtime is not available.");
     }
 
-    if (args.Contains("--ui-automation", StringComparer.Ordinal))
+    if (args.Contains("--keyboard", StringComparer.Ordinal))
+    {
+        await KeyboardSmoke.RunAsync(CreateHostOptions(), "gtk3");
+    }
+    else if (args.Contains("--ui-automation", StringComparer.Ordinal))
     {
         await RunWindowsUiAutomationSmokeAsync();
     }
