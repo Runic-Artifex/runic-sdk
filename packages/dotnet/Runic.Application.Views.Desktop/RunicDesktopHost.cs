@@ -32,7 +32,10 @@ namespace Runic.Application.Views.Desktop;
 /// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then
 /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. The surface admits one browser, a guarded Window
 /// opens unguarded (event 1053) and platform services report <c>OwnerUnavailable</c>. This switch takes precedence
-/// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>.
+/// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>. <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/>
+/// makes the same decision: it skips the findings of <see cref="DesktopHost.Validate"/> about what this machine lacks
+/// to present a window, such as <c>graphical-session-missing</c>, because no presentation opens, and still reports
+/// configuration errors such as <c>window-option-invalid</c>.
 /// When the <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c> environment variable is <c>1</c>, every window opened through
 /// this host is closed as soon as it has opened (and, with <see cref="DesktopHostOptions.WaitForConnection"/>, its
 /// bridge has connected). Before closing, a warning is written to standard error (and logged as event 2002 when an
@@ -121,8 +124,52 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         finally { lent?.Return(); }
     }
 
-    IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options) =>
-        [.. Desktop.Validate(WindowOptionsFor(options)).Diagnostics.Select(ToWindowDiagnostic)];
+    IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
+    {
+        var windowOptions = WindowOptionsFor(options);
+        if (!ServeOnlyRequested) return [.. Desktop.Validate(windowOptions).Diagnostics.Select(ToWindowDiagnostic)];
+        // Validation makes the serve-only decision of OpenAsync (#238): a serve-only window has no presentation, so
+        // what this machine lacks to present one does not apply. The configuration is still checked, since it fails
+        // on every launch that presents a window. The preflight runs DesktopHost.Validate's checks without logging the
+        // skipped findings as errors.
+        try
+        {
+            var preflight = Desktop.GetPresentationPreflight(windowOptions);
+            return [.. preflight.Diagnostics.Concat(preflight.OptionDiagnostics)
+                .Where(static diagnostic => !PresentationEnvironmentCodes.Contains(diagnostic.Code))
+                .Select(ToWindowDiagnostic)];
+        }
+        catch (ArgumentException error)
+        {
+            // DesktopHost.Validate reports an invalid option with this code.
+            return [new RunicWindowDiagnostic(InvalidOptionCode, error.Message, "Correct the DesktopWindowOptions value.")];
+        }
+    }
+
+    private const string InvalidOptionCode = "window-option-invalid";
+
+    // The Runic Desktop codes for a presentation prerequisite this machine or process lacks: a runtime, a display, an
+    // installed browser, the main thread. Everything else, such as an invalid option, an unsupported browser or a
+    // missing provider reference, is the application's configuration.
+    private static readonly System.Collections.Frozen.FrozenSet<string> PresentationEnvironmentCodes =
+        System.Collections.Frozen.FrozenSet.ToFrozenSet(
+        [
+            "browser-not-found",
+            "custom-window-host-unavailable",
+            "embedded-platform-unsupported",
+            "event-loop-unavailable",
+            "graphical-session-missing",
+            "gtk4-display-unavailable",
+            "gtk4-runtime-missing",
+            "linux-embedded-backend-conflict",
+            "macos-main-thread-required",
+            "presentation-unavailable",
+            "webkit-runtime-missing",
+            "webkitgtk-runtime-missing",
+            "webkitgtk6-runtime-missing",
+            "webview2-loader-unavailable",
+            "webview2-runtime-missing",
+        ], StringComparer.Ordinal);
 
     async ValueTask<IBridgeWindow> IRunicWindowHost.OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening,
         CancellationToken cancellationToken)

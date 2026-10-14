@@ -14,6 +14,12 @@ internal static class Program
     {
         // Before any await: RunicDesktopHost.Run needs the process main thread on macOS.
         if (args is [LoggingApplication.Argument]) return LoggingApplication.Run();
+        // The application's child process: it runs until it is killed.
+        if (args is [LoggingApplication.ChildProcessArgument])
+        {
+            Thread.Sleep(Timeout.Infinite);
+            return 0;
+        }
         ITestApplicationBuilder builder = await TestApplication.CreateBuilderAsync(args).ConfigureAwait(false);
         builder.AddSelfRegisteredExtensions(args);
         using ITestApplication application = await builder.BuildAsync().ConfigureAwait(false);
