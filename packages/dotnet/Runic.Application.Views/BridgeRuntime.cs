@@ -910,11 +910,21 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         writer.WriteEndObject();
     });
 
+    // The reply of a setter or command after it ran.
     private string EncodeTerminal(BridgeFailure? error = null) =>
-        IsInactive ? EncodeWithoutSnapshot(error) : Encode(error);
+        IsInactive ? EncodeReleased(error) : Encode(error);
 
     private string EncodeWithoutSnapshot(BridgeFailure? error = null) =>
         Encode(error, includeSnapshot: false);
+
+    // A call can release its own bridge: a page command that replaces or leaves
+    // the page in its region detaches the page before the reply captures a
+    // state. The reply says so with `released: true` and no state; a call that
+    // succeeded stays `ok`, a failed call keeps its error. A snapshot read on a
+    // released bridge is `disconnected` instead, because it has nothing to report.
+    private static string EncodeReleased(BridgeFailure? error, bool protocol = false) => protocol
+        ? EncodeReply(error ?? new("disconnected", "The Bridge is closed."), writeState: null, protocol)
+        : EncodeReply(error, writeState: null, released: true);
 
     private string Encode(BridgeFailure? error = null, bool includeSnapshot = true, bool protocol = false)
     {
@@ -922,29 +932,35 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         try
         {
             var reply = EncodeReply(error, WriteSnapshot, protocol);
-            return IsInactive ? EncodeWithoutSnapshot(error) : reply;
+            return IsInactive ? EncodeReleased(error, protocol) : reply;
         }
-        catch (BridgeSnapshotDetachedException)
+        // A release during the capture can also surface from a part of the
+        // bridge it disposed, such as a checked field's write registry.
+        catch (Exception released) when (released is BridgeSnapshotDetachedException || IsInactive)
         {
-            return EncodeWithoutSnapshot(error);
+            return EncodeReleased(error, protocol);
         }
         catch (BridgeCollectionKeyException keys)
         {
-            // An explicit read or reply fails with the reason instead of a
-            // state. A reply after a setter or command says that the call
-            // itself ran, so a client does not blindly retry it.
             LogRejectedKeys(keys);
-            var failure = RejectedKeysReply(keys);
-            if (protocol) return EncodeWithoutSnapshot(failure);
-            return EncodeWithoutSnapshot(error is null
-                ? failure with { Message = $"The call ran, but the updated state could not be sent: {failure.Message}" }
-                : error with
-                {
-                    Message = $"{error.Message} The updated state could not be sent: {failure.Message}",
-                    // D-1: a domain failure never carries detail; its failure is the contract.
-                    Detail = error.Kind == BridgeFailure.DomainFailed ? null : error.Detail ?? failure.Detail,
-                });
+            return EncodeStateNotSent(error, RejectedKeysReply(keys), protocol);
         }
+    }
+
+    // An explicit read fails with the reason instead of a state. A reply after
+    // a setter or command says that the call itself ran, so a client does not
+    // blindly retry it.
+    private string EncodeStateNotSent(BridgeFailure? error, BridgeFailure failure, bool protocol)
+    {
+        if (protocol) return EncodeWithoutSnapshot(failure);
+        return EncodeWithoutSnapshot(error is null
+            ? failure with { Message = $"The call ran, but the updated state could not be sent: {failure.Message}" }
+            : error with
+            {
+                Message = $"{error.Message} The updated state could not be sent: {failure.Message}",
+                // D-1: a domain failure never carries detail; its failure is the contract.
+                Detail = error.Kind == BridgeFailure.DomainFailed ? null : error.Detail ?? failure.Detail,
+            });
     }
 
     // Writes the state straight into the reply or delivery writer: a reply
@@ -1116,22 +1132,23 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 writer.WriteEndObject();
                 writer.WriteEndObject();
             });
-            return IsInactive ? EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed.")) : reply;
+            return IsInactive ? EncodeReleased(new("disconnected", "The Bridge is closed.")) : reply;
         }
-        catch (BridgeSnapshotDetachedException)
+        catch (Exception released) when (released is BridgeSnapshotDetachedException || IsInactive)
         {
-            return EncodeWithoutSnapshot(new("disconnected", "The Bridge is closed."));
+            return EncodeReleased(new("disconnected", "The Bridge is closed."));
         }
         catch (BridgeCollectionKeyException keys)
         {
             LogRejectedKeys(keys);
-            var failure = RejectedKeysReply(keys);
-            return EncodeWithoutSnapshot(failure with
-            {
-                Message = $"The field write was processed, but the updated state and receipt could not be sent: {failure.Message}",
-            });
+            return EncodeFieldWriteNotSent(RejectedKeysReply(keys));
         }
     }
+
+    private string EncodeFieldWriteNotSent(BridgeFailure failure) => EncodeWithoutSnapshot(failure with
+    {
+        Message = $"The field write was processed, but the updated state and receipt could not be sent: {failure.Message}",
+    });
 
     private static void WriteFieldSnapshot(Utf8JsonWriter writer, string name, BridgeFieldSnapshot<object?> snapshot,
         CheckedPropertyDescriptor<T> descriptor)
@@ -1146,7 +1163,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     // The snapshot route, which a client reads first, states the wire protocol
     // version. Clients ignore envelope members they do not know.
-    private static string EncodeReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeState, bool protocol = false) => WriteJson(writer =>
+    private static string EncodeReply(BridgeFailure? error, Action<Utf8JsonWriter>? writeState, bool protocol = false,
+        bool released = false) => WriteJson(writer =>
     {
         writer.WriteStartObject();
         writer.WriteBoolean("ok", error is null);
@@ -1168,6 +1186,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             else BridgeDiagnostics.Write(writer, error.Detail);
             writer.WriteEndObject();
         }
+        if (released) writer.WriteBoolean("released", true);
         if (protocol) writer.WriteNumber("protocol", BridgeProtocol.Version);
         writer.WriteEndObject();
     });

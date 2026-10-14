@@ -1,7 +1,7 @@
 import { emitBridgeDiagnostic, emitErrorDiagnostic } from "./diagnostics.js";
 import { BridgeError, BridgeOperationUncertainError, decodeFailureDetail, type BridgeFailureDetail } from "./errors.js";
 import { bridgeFailure, bridgeSuccess, type BridgeOutcome } from "./outcome.js";
-import type { RunicBridgeClient } from "./transport.js";
+import { releasedRouteError, type RunicBridgeClient } from "./transport.js";
 
 /**
  * `domain-failed` means the command failed with its declared failure type.
@@ -346,9 +346,15 @@ export const bridgeOperations: BridgeOperations = {
         throw new BridgeOperationUncertainError(scope.contract, requestId, "The operation admission could not be recovered.", { cause });
       return operations.handle(member, requestId, decode, decodeFailure, stream, recovered.kind === "running" ? undefined : recovered);
     }
-    let admission: { readonly kind?: string; readonly reason?: string; readonly terminal?: unknown; readonly detail?: unknown };
+    let admission: {
+      readonly kind?: string; readonly reason?: string; readonly terminal?: unknown; readonly detail?: unknown;
+      readonly error?: { readonly kind?: unknown } | null;
+    };
     try { admission = JSON.parse(reply) as typeof admission; }
     catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
+    // A released View answers `{kind: "disconnected"}`, or the host's disconnected envelope once its route is unbound.
+    if (admission.kind === "disconnected") throw new BridgeError("disconnected", admission.reason ?? "This View was released.", { route: startRoute });
+    if (admission.error?.kind === "disconnected") throw releasedRouteError(startRoute);
     if (admission.kind === "accepted" || admission.kind === "duplicate") {
       const terminal = admission.terminal === null || admission.terminal === undefined
         ? undefined : operations.parseStatus(JSON.stringify(admission.terminal), requestId, decode, decodeFailure);

@@ -62,6 +62,14 @@ export function hostCallbacks(): Record<string | symbol, unknown> {
   return globalThis as unknown as Record<string | symbol, unknown>;
 }
 
+// A host answers a late call of a route it released, such as a route of a View
+// that .NET released during the call, with a `disconnected` envelope. Runic
+// Desktop and CS-WebUI send the same one. An empty reply (a Runic Desktop handler
+// that threw, or a capability that was never admitted) stays an invalid response.
+export function releasedRouteError(route: string): BridgeError {
+  return new BridgeError("disconnected", "This View was released: its route is no longer bound.", { route });
+}
+
 // A throwing subscriber or an undecodable push must not stop delivery to
 // other subscribers or unwind into the .NET callback that pushed state.
 export function reportBridgeError(error: unknown, route?: string): void {

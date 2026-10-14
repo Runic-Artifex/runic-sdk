@@ -470,6 +470,10 @@ A `BridgeError` names what failed and why:
   plain Vite server; the message says how to fix it). A reply kind the client
   does not know, including a declared failure of a command whose client does not
   declare it, is `failed`.
+- A command that replaces or leaves its own page in a navigation region ran,
+  so its call resolves, with the last state the client accepted, although .NET
+  released the page's View before the reply. A later call of the released View,
+  including its snapshot read, rejects with `disconnected`.
 - `route` is the Bridge route that failed, such as `counterIncrement`.
 - `cause` is the underlying error, such as the transport rejection or the
   decoder error of an invalid state.

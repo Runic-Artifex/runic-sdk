@@ -207,8 +207,10 @@ public sealed class DesktopApiTests
         Assert.Empty(diagnostics);
 
         // The owner released the capability while the page's call was in flight: late, so no diagnostic and no handler.
+        // The reply is the disconnected envelope CS-WebUI sends for an unbound route.
+        const string released = "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";
         registration.Dispose();
-        Assert.Equal("", await CallAsync("page.unmount"));
+        Assert.Equal(released, await CallAsync("page.unmount"));
         Assert.Equal(1, Volatile.Read(ref invocations));
         Assert.Empty(diagnostics);
 
@@ -216,10 +218,11 @@ public sealed class DesktopApiTests
         var replacement = surface.RegisterCapability("page.unmount", handler);
         Assert.Equal("served", await CallAsync("page.unmount"));
         replacement.Dispose();
-        Assert.Equal("", await CallAsync("page.unmount"));
+        Assert.Equal(released, await CallAsync("page.unmount"));
         Assert.Empty(diagnostics);
 
-        // A name that was never admitted is still an error, and names the capability; the page's text is bounded and printable.
+        // A name that was never admitted is still an error with an empty reply, and names the capability; the page's
+        // text is bounded and printable.
         Assert.Equal("", await CallAsync("page.never"));
         var unadmitted = Assert.Single(diagnostics);
         Assert.Equal(DesktopErrorCategory.CapabilityDenied, unadmitted.Category);
