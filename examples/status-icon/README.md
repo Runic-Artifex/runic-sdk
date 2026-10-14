@@ -35,5 +35,14 @@ sample's state names only a theme icon, which Windows ignores, so the icon is
 the application's own; supply RGBA images in `DesktopIcon.Images` for your own.
 Login startup uses the user's Run key. A second launch lets the running instance
 take the foreground before it forwards; if Windows still refuses, the
-counter's taskbar button flashes. macOS has no status icon provider and no
-login startup yet.
+counter's taskbar button flashes.
+
+On macOS the icon is an `NSStatusItem` in the menu bar. The sample's icon names
+only a theme icon, which macOS lacks, so the menu bar shows its title as text;
+supply `Images` to show an icon. A click opens the counter, and a right click or
+a Control-click opens the menu. Without a bundle the sample runs without a Dock
+icon until it opens the counter; a bundle that never shows one sets
+`LSUIElement` (see [Runic.Platform.MacOS](../../packages/dotnet/Runic.Platform.MacOS/README.md#status-icon)).
+**Start at login** needs a signed application bundle and macOS 13. Under
+`dotnet run`, login startup reports unavailable and the item changes nothing. A
+second launch brings the counter forward without an activation token.
