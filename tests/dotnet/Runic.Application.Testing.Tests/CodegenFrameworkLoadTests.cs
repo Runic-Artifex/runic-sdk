@@ -208,7 +208,10 @@ internal sealed partial class CodegenDiagnosticsTests
         }
         finally
         {
-            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+            // This process loaded FixtureWpfApplication.dll, which Windows does
+            // not let it delete; the system cleans the temporary directory then.
+            try { if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
     }
 
