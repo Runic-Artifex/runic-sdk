@@ -243,6 +243,48 @@ reading. On Runic Desktop the user reaches the content with Orca's browse-mode
 keys, such as H for the next heading. Give the page a `<title>` that names it,
 a `main` landmark and headings.
 
+## Keyboard and zoom in embedded windows
+
+Embedded windows behave like a browser window for focus and zoom:
+
+| | WebKitGTK (GTK 3 and GTK 4) | WebView2 (Windows) | WKWebView (macOS) |
+| --- | --- | --- | --- |
+| Tab after the last control | Focuses the first control | Focuses the first control (WebView2) | Focuses the first control (WebKit) |
+| Shift+Tab before the first control | Focuses the last control | Focuses the last control | Focuses the last control |
+| Ctrl and + or =, Ctrl and − | Zoom in or out in steps from 30 % to 300 % | Browser zoom (WebView2) | Not available |
+| Ctrl and 0 | Resets the zoom to 100 % | Browser zoom | Not available |
+| Ctrl and the scroll wheel | Zooms in or out | Browser zoom | Not available |
+
+WebKitGTK cannot move focus from the end of a page to its start by itself: it gives
+focus to the GTK window, which has nothing else to focus, and the page is left with no
+focused element. Screen readers then say nothing. Runic Desktop keeps focus in the
+view and focuses the first control after Tab (or the last after Shift+Tab). It uses
+the sequential focus order of the top document: positive `tabindex` values first,
+then document order, including open shadow roots. A focused frame inside the page
+wraps as WebKit decides.
+
+On Linux the zoom steps are 30, 50, 67, 80, 90, 100, 110, 120, 133, 150, 170, 200,
+240 and 300 %. The page receives every key and wheel event first:
+
+- A page that handles Ctrl and +, − or 0 itself calls `preventDefault()` on its
+  `keydown` event; the window then does not zoom. A key the page leaves alone zooms,
+  also while a text field has focus.
+- A page that handles Ctrl and the wheel itself calls `preventDefault()` on its
+  `wheel` event, from a listener registered with `{ passive: false }`; the window
+  then neither zooms nor scrolls.
+- A page that cancels Tab, such as a dialog that keeps focus inside itself, keeps
+  focus where it put it.
+
+There is no option to turn zoom off or to set the initial zoom: a page that must not
+zoom cancels these events, which works with WebView2 too. GNOME's large text setting
+applies as well.
+
+On Windows and macOS the behaviour is the engine's own: Runic Desktop leaves
+WebView2's browser keys and zoom control at their defaults. WKWebView offers no zoom
+keys and Runic Desktop does not add them yet; use the system's zoom or larger text
+settings. On macOS, Tab reaches buttons and links only with Keyboard Navigation
+turned on in the system settings, as in Safari.
+
 ## Security notes
 
 - A local client that holds the session credential can take the only Bridge
