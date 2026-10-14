@@ -251,9 +251,15 @@ and logical View lifetimes. `DesktopHostOptions` and `DesktopWindowOptions`
 select the browser or embedded backend; the Runic Desktop guide lists the
 native prerequisites for each platform.
 
-The package's build targets copy `runic-desktop-views.js` into `www/`. Load
-`webui.js` (served by the surface) and `runic-desktop-views.js` before the
-generated client in `index.html`. The adapter uses the same host-neutral client
+The package's build targets copy `runic-desktop-views.js` into `www/`, also as
+`runic-views.js`. Load `webui.js` (served by the surface) and `runic-views.js`
+before the generated client in `index.html`; the same page then runs on
+CS-WebUI, whose package copies its own client as `runic-views.js`. A project
+that references both hosts sets `RunicApplicationHost` (`desktop` or
+`cswebui`); see
+[the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
+Pages that load `runic-desktop-views.js` keep working. `runic({ desktop: true })`
+is not needed for a Views page. The adapter uses the same host-neutral client
 contract as the CS-WebUI adapter, and its build defaults match
 `Runic.Application.Views.CsWebUi`, so `AddRunicViews()` is generated in
 `<ProjectName>.RunicBridgeComposition`.

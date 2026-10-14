@@ -124,8 +124,10 @@ the current state first, calls reject with the runtime's `BridgeError`, and
 `@runic-artifex/angular` (`injectView()`) bind clients to component
 lifetimes.
 
-`Frontend/index.html` loads `webui.js` and the host's client script
-(`runic-cswebui.js` or `runic-desktop-views.js`) before the module. The
+`Frontend/index.html` loads `webui.js` and `runic-views.js` before the module.
+The host serves `webui.js`, and the host package copies its Views client into
+`www/` as `runic-views.js`, so the page names no host and one frontend build runs
+on Runic Desktop and CS-WebUI (see [The host of a page](#the-host-of-a-page)). The
 [First Window example](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window)
 is this application with a complete frontend.
 
@@ -307,7 +309,8 @@ the default `index.html`, so keep it in the list. The `runic-app` template's
 ```ts
 // Frontend/vite.config.ts (Vite 8)
 export default defineConfig({
-  plugins: [svelte(), runic({ desktop: true })],
+  base: "./",
+  plugins: [svelte(), runic()],
   build: {
     rolldownOptions: { input: ["index.html", "settings.html"] },
     outDir: "dist",
@@ -786,9 +789,9 @@ commands.
 
 The build targets ship in this package and apply to every project that
 references a host adapter. A project needs none of these properties unless it
-departs from the conventional `Frontend` folder. Every property starts with
-`RunicApplicationFrontend`, as do the development-server properties of
-`dotnet runic dev`. The `RunicBridge*` and `RunicViewsWindowProject` names of
+departs from the conventional `Frontend` folder. Every property except
+`RunicApplicationHost` starts with `RunicApplicationFrontend`, as do the
+development-server properties of `dotnet runic dev`. The `RunicBridge*` and `RunicViewsWindowProject` names of
 0.7.0-preview.6 and earlier still apply in this preview with warning
 `RUNICBRIDGE017`; the [rename table](#moved-and-renamed-since-070-preview6)
 maps them. Underscore-prefixed properties, `RunicApplicationHostAdapter` (which
@@ -803,7 +806,8 @@ the host adapters set) and the `RunicViews*` target names are not settings.
 | `RunicApplicationFrontendInstallCommand` | `npm ci`, `pnpm install --frozen-lockfile`, or `bun install --frozen-lockfile`, each with `--ignore-scripts` | Runs before the frontend build when `package.json` or a lock file changed since the last install (stamp: `obj/runic-bridge-frontend-install.stamp`), or when declared dependencies have no `node_modules`. A `package.json` without dependencies needs no `node_modules`. |
 | `RunicApplicationFrontendInstallEnabled` | `true` | Set `false` when a workspace install owns the frontend packages. |
 | `RunicApplicationFrontendBuildEnabled` | `true` | Set `false` when another tool owns the frontend build. TypeScript is still generated. |
-| `RunicApplicationFrontendCopyEnabled` | `true` | Copies `<frontend>/dist` to `www/` in the build output. Publish always copies it. |
+| `RunicApplicationFrontendCopyEnabled` | `true` | Mirrors `<frontend>/dist` to `www/` in the build output: a file that an earlier copy wrote and `dist` no longer has is deleted. Publish always mirrors it. |
+| `RunicApplicationHost` | the only host adapter referenced | `desktop` or `cswebui`: whose Views client the build copies to `www/runic-views.js`. Set it when a project references both hosts. The frontend build receives it as `RUNIC_APPLICATION_HOST`. |
 | `RunicApplicationFrontendCompositionType` | `<project name>.RunicBridgeComposition` (host adapters) | Generated composition class. |
 | `RunicApplicationFrontendModelAssembly` | the project itself | Inspect a separately built ViewModel assembly instead of a bootstrap build. |
 | `RunicApplicationFrontendReactiveUiFlavor` | none | `primitives` or `reactive` for ReactiveUI projects. |
@@ -818,6 +822,26 @@ the host adapters set) and the `RunicViews*` target names are not settings.
 the frontend. The
 [`dotnet runic` README](https://github.com/Runic-Artifex/runic-sdk/blob/main/tools/dotnet-runic/README.md)
 lists the development-server properties it reads.
+
+Two items extend the frontend build. `RunicApplicationFrontendInput` adds an
+input outside the frontend directory, such as a monorepo's shared components
+that the frontend imports through a Vite alias; a change rebuilds the frontend:
+
+```xml
+<ItemGroup>
+  <RunicApplicationFrontendInput Include="../ui/lib/**/*;../src/locales/**/*" />
+</ItemGroup>
+```
+
+`RunicApplicationFrontendBuildEnvironment` names an environment variable that
+changes the built frontend, in addition to `NODE_ENV` and every `VITE_*`
+variable, which are always tracked (see [Incremental generation](#incremental-generation)):
+
+```xml
+<ItemGroup>
+  <RunicApplicationFrontendBuildEnvironment Include="APP_FLAVOR" />
+</ItemGroup>
+```
 
 Bridge generation turns on by default for a project that references
 `Runic.Application.Views` directly, references a host adapter
@@ -862,6 +886,33 @@ compiles the code that the real project generated.
 A single-project application is compiled twice: a bootstrap pass with an empty
 generated composition, which the generator inspects, then the real build with
 the generated code. `RunicApplicationFrontendBootstrap` is `true` only in the bootstrap pass.
+
+### The host of a page
+
+A page loads `webui.js`, which the host serves, and `runic-views.js`, the host's
+Views client, which the host package copies into `www/`:
+`Runic.Application.Views.Desktop` (and so `Runic.Application.Views.Wpf`) copies
+`runic-desktop-views.js`, `Runic.Application.Views.CsWebUi` copies
+`runic-cswebui.js`. Both are also copied under those names, so a page that loads
+one of them directly keeps working. Neither `index.html` nor the Vite
+configuration names a host, so the same `dist/` runs on every host, and
+switching hosts changes the host package and `Program.cs`, not the frontend.
+`runic({ desktop: true })` from `@runic-artifex/vite-plugin-runic` is not needed
+for Views: it adds the Runic Desktop bootstrap script, which CS-WebUI does not
+serve.
+
+A project that references both hosts, for example to ship on CS-WebUI and
+compare on Runic Desktop, chooses the client with `RunicApplicationHost`:
+
+```sh
+dotnet run -p:RunicApplicationHost=desktop
+```
+
+Without it, such a project gets warning `RUNICBRIDGE019` and no
+`www/runic-views.js`. The frontend build receives the host as the
+`RUNIC_APPLICATION_HOST` environment variable and is part of its build state,
+so a Vite configuration that still needs a host-specific build can read it and
+is rebuilt when it changes.
 
 ## Typed commands and checked writes
 
@@ -1219,15 +1270,29 @@ outputs invalidate the cache; unchanged generated files keep their timestamps.
 Set `RUNIC_BRIDGE_CODEGEN_FORCE=1` or `RUNIC_BRIDGE_CODEGEN_CACHE=0` to bypass it.
 
 The configured frontend build command (`RunicApplicationFrontendBuildCommand`) runs
-only when one of its inputs is newer than
-`obj/<Configuration>/<TargetFramework>/runic-bridge-frontend.stamp`: files under
+when one of its inputs is newer than
+`obj/<Configuration>/<TargetFramework>/runic-bridge-frontend.stamp`, when a file
+that the last build left in `<frontend>/dist` is missing (a deleted `dist`
+included), or when its build state changed. The inputs are the files under
 `RunicApplicationFrontendDirectory` (excluding `node_modules`, `dist`, `build`, `bin`, `obj`
-and dot-directories), the generated TypeScript, and the project file. Generated
-TypeScript is rewritten only when its content changes, so C#-only edits skip the
-frontend build. Add `RunicApplicationFrontendInput` items, from a target that runs
-before `RunicViewsGenerateBridge`, for inputs outside the frontend directory such
-as workspace packages or generated assets; the translations editor is an example.
-Delete the stamp or rebuild to force a frontend build. Set
+and dot-directories), the generated TypeScript, the project file and
+`RunicApplicationFrontendInput` items. The build state is a hash of the build
+command, `RunicApplicationHost`, `NODE_ENV`, every `VITE_*` environment variable
+and the variables named by `RunicApplicationFrontendBuildEnvironment` items; only
+the hash is written to `obj/`. Generated TypeScript is rewritten only when its
+content changes, so C#-only edits skip the frontend build.
+`RunicApplicationFrontendInput` items are the extension point for inputs outside
+the frontend directory, such as workspace packages, shared components imported
+through a Vite alias, or generated assets; declare them in the project, or add
+them from a target that runs before `RunicViewsGenerateBridge` (the translations
+editor is an example). Delete the stamp or rebuild to force a frontend build.
+
+The copy to `www/` mirrors `dist`. Each copy records the files it wrote in
+`obj/`, and the next one deletes those that no frontend has any more, such as
+assets with an earlier hash. It deletes nothing else: the host client scripts,
+a `dotnet runic dev` document and files the application puts in `www/` itself
+stay. Files that a build before 0.7.0-preview.9 left behind are not recorded;
+delete `www/` once to drop them. Set
 `RunicApplicationFrontendBuildEnabled=false` when another tool, such as a running dev server,
 owns the frontend build; `dotnet runic dev` does this while its development
 server runs.

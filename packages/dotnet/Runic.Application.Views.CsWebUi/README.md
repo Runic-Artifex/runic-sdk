@@ -117,9 +117,14 @@ when no display opens. Give a headless run a display, for example with
 ## Build output
 
 The package's build targets copy `runic-cswebui.js` into `www/` next to the
-built frontend. Load `webui.js` (served by WebUI) and `runic-cswebui.js` before
-the generated client in `index.html`. The script adapts `window.webui` to the
-generated client's transport contract.
+built frontend, also as `runic-views.js`. Load `webui.js` (served by WebUI) and
+`runic-views.js` before the generated client in `index.html`; the same page then
+runs on Runic Desktop, whose package copies its own client as `runic-views.js`.
+A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
+`desktop`); see
+[the host of a page](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#the-host-of-a-page).
+Pages that load `runic-cswebui.js` keep working. The script adapts
+`window.webui` to the generated client's transport contract.
 
 Native WebUI can assign one event slot to two calls that arrive together, and
 one of them then never receives a reply. The script therefore sends the next
