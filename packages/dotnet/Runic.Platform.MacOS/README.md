@@ -97,3 +97,113 @@ login item, and presenting a hidden window. They also open the menu through
 VoiceOver's show-menu action, hide the item while the menu is open, and check that
 a cancelled or timed-out show never appears later. Opening the menu by hand, light
 and dark menu bars, and a signed bundle's login item are manual checks.
+
+## Privileged actions
+
+`MacPrivilegedActions.Create(PrivilegedActions.All, PrivilegedActions.MacOSDaemon)`
+runs the actions declared with `RunicPrivilegedAction` items (see
+[Declare privileged actions](../Runic.Platform/README.md#declare-privileged-actions))
+as root on macOS 14 and later. A launch daemon in the application bundle runs
+them: the application asks for the action's Authorization Services right, which
+shows the authorization dialog, and sends the authorization's external form and
+the argument vector to the daemon over XPC. The daemon checks the right again
+without interaction and starts the program. The design and its security review
+are in [the privileged operations specification](../../../specs/platform/privileged-operations.md#macos-design).
+
+### Build
+
+Setting `RunicMacPrivilegedDaemonLabel` turns the macOS generation on; without
+it these targets do nothing.
+
+```xml
+<PropertyGroup>
+  <RunicMacPrivilegedDaemonLabel>org.example.app.privileged</RunicMacPrivilegedDaemonLabel>
+  <RunicMacBundleIdentifier>org.example.app</RunicMacBundleIdentifier>
+  <RunicMacTeamIdentifier>ABCDE12345</RunicMacTeamIdentifier>
+  <RunicMacPrivilegedDaemonProgram>Contents/MacOS/example-privileged</RunicMacPrivilegedDaemonProgram>
+</PropertyGroup>
+```
+
+| Property | Meaning |
+| --- | --- |
+| `RunicMacPrivilegedDaemonLabel` | The launchd label, the XPC Mach service name and the property list's name. |
+| `RunicMacBundleIdentifier` | The application's bundle identifier and code-signing identifier. Default: `$(ApplicationId)`. |
+| `RunicMacTeamIdentifier` | The Team ID that signs the application, the daemon and bundled programs. |
+| `RunicMacPrivilegedDaemonProgram` | The daemon executable's path in the bundle. |
+| `RunicMacPrivilegedDaemonIdentifier` | The daemon's code-signing identifier. Default: the label. |
+| `RunicMacLaunchDaemonOutputPath` | Where the property list goes in the output and publish directories. Default: `Library/LaunchDaemons/`. |
+| `RunicMacLaunchDaemonPlist` | `false` in a second project that imports the same items, so only one copies the property list. |
+
+Each build writes `<label>.plist`, the daemon's launchd property list
+(`Label`, `BundleProgram`, `MachServices`, `AssociatedBundleIdentifiers` and a
+`SpawnConstraint` launch constraint with the Team ID and the daemon's signing
+identifier), and adds `MacOSDaemon`, a `MacPrivilegedDaemonDefinition`, to the
+`PrivilegedActions` class. An item's `MacProgram` metadata says where the daemon
+finds the program: a path inside the bundle such as `Contents/MacOS/helper`, or
+an absolute path; without it the daemon runs `Program`. Invalid settings are
+build errors `RUNICPA101` to `RUNICPA104`, described in the
+[diagnostics catalog](../../../docs/diagnostics.md#runicpa101).
+
+### The daemon
+
+The daemon is a small executable, preferably NativeAOT, whose `Main` is:
+
+```csharp
+return MacPrivilegedDaemon.Run(PrivilegedActions.All, PrivilegedActions.MacOSDaemon);
+```
+
+`Run` returns only when the daemon cannot start: not macOS 14, not root, not
+started by launchd, not signed as `DaemonRequirement`, or the rights cannot be
+defined. It defines each action's right in the authorization database, named
+after the action ID, with the item's `Message` as the dialog text: an
+administrator rule that is not shared and whose credential lasts 30 seconds.
+For every XPC connection it requires the client to satisfy
+`ApplicationRequirement`, by default an Apple-issued certificate for the Team
+ID and the application's identifier. It accepts a declared action with
+arguments within its declaration, checks the right without interaction and
+starts the program with `posix_spawn`: the argument vector, `/` as working
+directory, umask 022, default signal dispositions, an empty signal mask, no
+open files but the three pipes, and only `PATH`, `HOME`, `USER`, `LOGNAME`,
+`RUNIC_CALLER_UID` (the user ID of the application's process) and the locale
+variables. A program whose path only root can change (such as `/usr/bin` or
+`/usr/libexec`) runs directly; any other, including one in the bundle, must
+satisfy `ProgramRequirement` (by default the Team ID), checked on disk and again
+in the started process before it runs.
+
+### Packaging
+
+Copy the property list to `Contents/Library/LaunchDaemons/` and the daemon to
+the path in `RunicMacPrivilegedDaemonProgram`. Sign the daemon with the hardened
+runtime and its identifier (`codesign --options runtime --identifier
+org.example.app.privileged ...`), then the bundle, and notarize it. The
+application calls `MacPrivilegedActions.RegisterDaemon` once (from a setting or
+the first use); macOS then asks the user to approve it in System Settings,
+General, Login Items, which `OpenLoginItemsSettings` opens.
+`GetDaemonStatus` reports the state; `UnregisterDaemon` removes the daemon.
+
+### Outcomes
+
+| Situation | Result |
+| --- | --- |
+| The program ran | `Success` with its exit code (128 plus the signal when a signal ended it) |
+| The user cancelled the dialog (`errAuthorizationCanceled`, -60006) | `Failed(UserDismissed)` |
+| Authorization refused (`errAuthorizationDenied`, -60005), or the daemon's check failed | `Failed(PermissionDenied)` with the `OSStatus` |
+| No dialog possible (-60007); the daemon not registered, waiting for approval or not found; macOS before 14; an unbundled process or one not signed as `ApplicationRequirement` | `Unavailable(BackendUnavailable)` |
+| The program is missing or not trusted, the XPC service is not the daemon, or the daemon does not declare the action | `Failed(InvalidData)`; nothing runs |
+| The daemon could not start the program, or the connection broke | `Failed(IoError)` |
+| Cancelled before the program started | `OperationCanceledException` |
+
+Cancellation follows Linux. Before the program starts, the run throws
+`OperationCanceledException`; an open authorization dialog cannot be withdrawn,
+so it stays until the user answers, and the rights are destroyed then. Once the
+program runs, cancellation closes its standard input and the result reports how
+it ended. The program's output arrives one line at a time, and the daemon reads
+no further output until the callback returned. When the application quits, the
+program's standard input ends and its further output is discarded.
+
+The `NativePrivileged` category of `tests/dotnet/Runic.Platform.MacOS.Tests`
+runs the XPC protocol, both code-signing checks, the program checks and
+Authorization Services with the daemon in the test process, and
+`NativePrivilegedRoot` installs the test executable as a root launch daemon
+with real rights. Registration through `SMAppService`, the launch constraint,
+the dialog and a notarized bundle are manual checks.

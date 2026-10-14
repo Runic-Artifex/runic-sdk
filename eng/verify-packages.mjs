@@ -82,6 +82,8 @@ export const packageLayouts = {
   // The privileged-action targets validate RunicPrivilegedAction items and generate their declarations; the props
   // carry their help links (W300-004).
   "Runic.Platform": { includes: ["buildTransitive/Runic.Platform.props", "buildTransitive/Runic.Platform.targets"] },
+  // The macOS targets generate the launch daemon's property list; the props carry their help links (W300-026).
+  "Runic.Platform.MacOS": { includes: ["buildTransitive/Runic.Platform.MacOS.props", "buildTransitive/Runic.Platform.MacOS.targets"] },
   // The Polkit targets generate the policy; the props carry their help links (W300-004).
   "Runic.Platform.Linux.Polkit": {
     files: ["README.md", "Runic.Platform.Linux.Polkit.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Linux.Polkit.dll", "lib/net10.0/Runic.Platform.Linux.Polkit.xml",

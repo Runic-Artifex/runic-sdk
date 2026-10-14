@@ -1,0 +1,264 @@
+<Project>
+  <!--
+    The macOS launch daemon for privileged actions, generated from the same RunicPrivilegedAction items as the other
+    platforms' artifacts. Nothing happens unless the project sets RunicMacPrivilegedDaemonLabel:
+
+      <PropertyGroup>
+        <RunicMacPrivilegedDaemonLabel>org.example.app.privileged</RunicMacPrivilegedDaemonLabel>
+        <RunicMacBundleIdentifier>org.example.app</RunicMacBundleIdentifier>
+        <RunicMacTeamIdentifier>ABCDE12345</RunicMacTeamIdentifier>
+        <RunicMacPrivilegedDaemonProgram>Contents/MacOS/example-privileged</RunicMacPrivilegedDaemonProgram>
+      </PropertyGroup>
+
+    Each build then writes the daemon's launchd property list, copied to the output and publish directories at
+    $(RunicMacLaunchDaemonOutputPath)<label>.plist for the bundle's Contents/Library/LaunchDaemons, and a part of the
+    PrivilegedActions class with MacOSDaemon, the daemon's definition. An item's optional MacProgram metadata is where
+    the daemon finds the program: a path inside the bundle, such as Contents/MacOS/helper, or an absolute path.
+
+    Runic.Platform's RunicValidatePrivilegedActions checks the platform-neutral part of the items first; this target
+    reports RUNICPA101 to RUNICPA104, and Runic.Platform writes the declarations only after it succeeded.
+  -->
+
+  <PropertyGroup>
+    <RunicPrivilegedActionsDependsOn>$(RunicPrivilegedActionsDependsOn);RunicGenerateMacPrivilegedDaemon</RunicPrivilegedActionsDependsOn>
+  </PropertyGroup>
+
+  <UsingTask TaskName="RunicWriteMacPrivilegedDaemon" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Actions ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <Label ParameterType="System.String" Required="true" />
+      <BundleIdentifier ParameterType="System.String" />
+      <TeamIdentifier ParameterType="System.String" />
+      <DaemonIdentifier ParameterType="System.String" />
+      <DaemonProgram ParameterType="System.String" />
+      <PlistFile ParameterType="System.String" Required="true" />
+      <SourceFile ParameterType="System.String" Required="true" />
+      <Namespace ParameterType="System.String" />
+      <ClassName ParameterType="System.String" Required="true" />
+      <ProjectFile ParameterType="System.String" />
+      <HelpLinkBase ParameterType="System.String" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Xml;
+using Microsoft.Build.Framework;
+using Microsoft.Build.Utilities;
+
+public sealed class RunicWriteMacPrivilegedDaemon : Task
+{
+    // The same rules as MacPrivilegedNames in Runic.Platform.MacOS.
+    private static readonly string[] ReservedRightPrefixes = { "system.", "config.", "com.apple.", "authenticate", "admin", "allow", "default" };
+
+    [Required] public ITaskItem[] Actions { get; set; } = new ITaskItem[0];
+    [Required] public string Label { get; set; } = "";
+    public string BundleIdentifier { get; set; } = "";
+    public string TeamIdentifier { get; set; } = "";
+    public string DaemonIdentifier { get; set; } = "";
+    public string DaemonProgram { get; set; } = "";
+    [Required] public string PlistFile { get; set; } = "";
+    [Required] public string SourceFile { get; set; } = "";
+    public string Namespace { get; set; } = "";
+    [Required] public string ClassName { get; set; } = "";
+    public string ProjectFile { get; set; } = "";
+    public string HelpLinkBase { get; set; } = "";
+
+    private sealed class Right
+    {
+        public string Id = "", Message = "", Program;
+    }
+
+    public override bool Execute()
+    {
+        if (!IsIdentifier(Label)) Error("RUNICPA101", $"RunicMacPrivilegedDaemonLabel '{Label}' must be a reverse-DNS name of ASCII letters, digits and hyphens, such as org.example.app.privileged.");
+        if (!IsIdentifier(BundleIdentifier ?? "")) Error("RUNICPA101", $"RunicMacBundleIdentifier '{BundleIdentifier}' must be the application's bundle identifier, a reverse-DNS name.");
+        if (!IsTeamIdentifier(TeamIdentifier ?? "")) Error("RUNICPA101", $"RunicMacTeamIdentifier '{TeamIdentifier}' must be the ten-character Team ID that signs the application; the daemon's launch constraint requires it.");
+        if (!IsIdentifier(DaemonIdentifier ?? "")) Error("RUNICPA101", $"RunicMacPrivilegedDaemonIdentifier '{DaemonIdentifier}' must be the daemon's code-signing identifier, a reverse-DNS name.");
+        if (!IsProgramPath(DaemonProgram ?? "") || !DaemonProgram.StartsWith("Contents/", StringComparison.Ordinal))
+            Error("RUNICPA101", $"RunicMacPrivilegedDaemonProgram '{DaemonProgram}' must be the daemon executable's path in the bundle, such as Contents/MacOS/example-privileged.");
+
+        var rights = new List<Right>();
+        foreach (var item in Actions)
+        {
+            var right = new Right { Id = item.ItemSpec, Message = item.GetMetadata("Message") ?? "" };
+            foreach (var prefix in ReservedRightPrefixes)
+                if (right.Id.StartsWith(prefix, StringComparison.Ordinal))
+                    Error("RUNICPA102", $"Privileged action '{right.Id}' names an Authorization Services right in a namespace macOS reserves ('{prefix}'); use the application's own reverse-DNS prefix.");
+            if (right.Message.Length == 0 || right.Message.Length > 1024 || right.Message.IndexOf('\0') >= 0)
+                Error("RUNICPA103", $"Privileged action '{right.Id}' needs a Message of at most 1024 characters for the authorization dialog.");
+            var program = item.GetMetadata("MacProgram");
+            if (!string.IsNullOrEmpty(program))
+            {
+                if (!IsProgramPath(program)) Error("RUNICPA104", $"Privileged action '{right.Id}' has MacProgram '{program}'; use the program's path inside the bundle, such as Contents/MacOS/helper, or a normalized absolute path.");
+                right.Program = program;
+            }
+            if (rights.Any(r => r.Id == right.Id)) continue;
+            rights.Add(right);
+        }
+        if (Log.HasLoggedErrors) return false;
+
+        Directory.CreateDirectory(Path.GetDirectoryName(PlistFile));
+        Directory.CreateDirectory(Path.GetDirectoryName(SourceFile));
+        WriteIfChanged(PlistFile, Plist());
+        WriteIfChanged(SourceFile, Source(rights));
+        return true;
+    }
+
+    private string Plist()
+    {
+        var settings = new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = true, IndentChars = "  ", NewLineChars = "\n", NewLineHandling = NewLineHandling.Replace };
+        using (var text = new Utf8StringWriter())
+        {
+            using (var xml = XmlWriter.Create(text, settings))
+            {
+                xml.WriteStartDocument();
+                xml.WriteDocType("plist", "-//Apple//DTD PLIST 1.0//EN", "http://www.apple.com/DTDs/PropertyList-1.0.dtd", null);
+                xml.WriteComment(" Generated by Runic.Platform.MacOS from RunicPrivilegedAction items. ");
+                xml.WriteStartElement("plist");
+                xml.WriteAttributeString("version", "1.0");
+                xml.WriteStartElement("dict");
+                Entry(xml, "Label", Label);
+                // Relative to the bundle: SMAppService registers only daemons inside the application's signed bundle.
+                Entry(xml, "BundleProgram", DaemonProgram);
+                xml.WriteElementString("key", "MachServices");
+                xml.WriteStartElement("dict");
+                xml.WriteElementString("key", Label);
+                xml.WriteStartElement("true");
+                xml.WriteEndElement();
+                xml.WriteEndElement();
+                xml.WriteElementString("key", "AssociatedBundleIdentifiers");
+                xml.WriteStartElement("array");
+                xml.WriteElementString("string", BundleIdentifier);
+                xml.WriteEndElement();
+                // A launch constraint (macOS 14): launchd starts only the daemon signed by this team with this identifier.
+                xml.WriteElementString("key", "SpawnConstraint");
+                xml.WriteStartElement("dict");
+                Entry(xml, "team-identifier", TeamIdentifier);
+                Entry(xml, "signing-identifier", DaemonIdentifier);
+                xml.WriteEndElement();
+                xml.WriteEndElement();
+                xml.WriteEndElement();
+                xml.WriteEndDocument();
+            }
+            return text.ToString() + "\n";
+        }
+    }
+
+    private static void Entry(XmlWriter xml, string key, string value)
+    {
+        xml.WriteElementString("key", key);
+        xml.WriteElementString("string", value);
+    }
+
+    private string Source(List<Right> rights)
+    {
+        var s = new StringBuilder();
+        s.Append("// <auto-generated>Generated by Runic.Platform.MacOS from RunicPrivilegedAction items.</auto-generated>\n");
+        s.Append("#nullable enable\n");
+        if (!string.IsNullOrEmpty(Namespace)) s.Append("namespace ").Append(Namespace).Append(";\n");
+        s.Append("\ninternal static partial class ").Append(ClassName).Append("\n{\n");
+        s.Append("    /// <summary>The macOS launch daemon <c>").Append(Escape(Label)).Append("</c> and the authorization right of every action.</summary>\n");
+        s.Append("    [global::System.CodeDom.Compiler.GeneratedCode(\"Runic.Platform.MacOS\", \"1\")]\n");
+        s.Append("    public static global::Runic.Platform.MacOS.MacPrivilegedDaemonDefinition MacOSDaemon { get; } = new(\n");
+        s.Append("        ").Append(Literal(Label)).Append(", ").Append(Literal(TeamIdentifier)).Append(", ")
+         .Append(Literal(BundleIdentifier)).Append(", ").Append(Literal(DaemonIdentifier)).Append(",\n");
+        s.Append("        new global::Runic.Platform.MacOS.MacPrivilegedRight[]\n        {\n");
+        foreach (var right in rights)
+        {
+            s.Append("            new(").Append(Literal(right.Id)).Append(", ").Append(Literal(right.Message)).Append(")");
+            if (right.Program != null) s.Append(" { Program = ").Append(Literal(right.Program)).Append(" }");
+            s.Append(",\n");
+        }
+        s.Append("        });\n}\n");
+        return s.ToString();
+    }
+
+    private static bool IsIdentifier(string value)
+    {
+        if (value.Length == 0 || value.Length > 255) return false;
+        var segments = value.Split('.');
+        return segments.Length >= 2 && segments.All(s => s.Length > 0 && s.All(c => (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-'));
+    }
+
+    private static bool IsTeamIdentifier(string value) => value.Length == 10 && value.All(c => (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'));
+
+    // A relative path inside the bundle, or an absolute path, without empty, '.' or '..' segments.
+    private static bool IsProgramPath(string value) =>
+        value.Length > 0 && value.Length <= 1024 && value.IndexOf('\0') < 0
+        && (value[0] == '/' ? value.Substring(1) : value).Split('/').All(s => s.Length > 0 && s != "." && s != "..");
+
+    private static string Literal(string value)
+    {
+        var s = new StringBuilder("\"");
+        foreach (var c in value)
+        {
+            if (c == '"' || c == '\\') s.Append('\\').Append(c);
+            else if (c < ' ' || c == 0x7F || c == (char)0x2028 || c == (char)0x2029 || char.IsSurrogate(c)) s.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+            else s.Append(c);
+        }
+        return s.Append('"').ToString();
+    }
+
+    private static string Escape(string value) => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+    private static void WriteIfChanged(string path, string content)
+    {
+        if (File.Exists(path) && File.ReadAllText(path) == content) return;
+        File.WriteAllText(path, content, new UTF8Encoding(false));
+    }
+
+    private void Error(string code, string message) =>
+        Log.LogError(null, code, null, string.IsNullOrEmpty(HelpLinkBase) ? null : HelpLinkBase + code.ToLowerInvariant(), ProjectFile, 0, 0, 0, 0, message);
+
+    private sealed class Utf8StringWriter : StringWriter
+    {
+        public override Encoding Encoding => new UTF8Encoding(false);
+    }
+}
+]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="RunicGenerateMacPrivilegedDaemon"
+          DependsOnTargets="RunicValidatePrivilegedActions"
+          BeforeTargets="AssignTargetPaths;CoreCompile"
+          Condition="'@(RunicPrivilegedAction)' != '' and '$(RunicMacPrivilegedDaemonLabel)' != ''">
+    <!-- Defaults are set here, when the target runs, so they see the final project properties. -->
+    <PropertyGroup>
+      <RunicMacBundleIdentifier Condition="'$(RunicMacBundleIdentifier)' == ''">$(ApplicationId)</RunicMacBundleIdentifier>
+      <RunicMacPrivilegedDaemonIdentifier Condition="'$(RunicMacPrivilegedDaemonIdentifier)' == ''">$(RunicMacPrivilegedDaemonLabel)</RunicMacPrivilegedDaemonIdentifier>
+      <RunicMacLaunchDaemonOutputPath Condition="'$(RunicMacLaunchDaemonOutputPath)' == ''">Library/LaunchDaemons/</RunicMacLaunchDaemonOutputPath>
+      <RunicMacLaunchDaemonPlist Condition="'$(RunicMacLaunchDaemonPlist)' == ''">true</RunicMacLaunchDaemonPlist>
+      <_RunicMacPrivilegedDirectory>$(IntermediateOutputPath)runic-privileged-macos/</_RunicMacPrivilegedDirectory>
+    </PropertyGroup>
+    <RunicWriteMacPrivilegedDaemon Actions="@(RunicPrivilegedAction)"
+                                   Label="$(RunicMacPrivilegedDaemonLabel)"
+                                   BundleIdentifier="$(RunicMacBundleIdentifier)"
+                                   TeamIdentifier="$(RunicMacTeamIdentifier)"
+                                   DaemonIdentifier="$(RunicMacPrivilegedDaemonIdentifier)"
+                                   DaemonProgram="$(RunicMacPrivilegedDaemonProgram)"
+                                   PlistFile="$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
+                                   SourceFile="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs"
+                                   Namespace="$(RunicPrivilegedActionsNamespace)"
+                                   ClassName="$(RunicPrivilegedActionsClassName)"
+                                   ProjectFile="$(MSBuildProjectFullPath)"
+                                   HelpLinkBase="$(RunicDiagnosticsHelpLinkBase)" />
+    <ItemGroup>
+      <Compile Remove="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs" />
+      <Compile Include="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs" />
+      <FileWrites Include="$(_RunicMacPrivilegedDirectory)PrivilegedActions.MacOS.g.cs;$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
+      <None Remove="$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist" />
+      <None Include="$(_RunicMacPrivilegedDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
+            Condition="'$(RunicMacLaunchDaemonPlist)' == 'true'"
+            Link="$(RunicMacLaunchDaemonOutputPath)$(RunicMacPrivilegedDaemonLabel).plist"
+            CopyToOutputDirectory="PreserveNewest"
+            CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+</Project>
