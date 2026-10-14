@@ -54,9 +54,13 @@ The browser host script defines `__runicBridge`:
 
 A route unbound by `RebindableBridgeTransport` answers the envelope
 `{"ok":false,"state":null,"error":{"kind":"disconnected",...}}`. Runic Desktop
-answers a call of a capability it does not bind, including a route released
-just before, with an empty reply. No Views route replies with an empty string, so
-a client reports both on every route as `disconnected`.
+answers a late call of a capability it released shortly before (it remembers the
+last 256) with the same envelope. A client reports it on every route, including
+`Can`, `Mount` and `Start` routes, as `disconnected`. Runic Desktop answers
+other calls it cannot serve with an empty reply: a capability that was never
+admitted, an undecodable call and a handler that threw. No Views route replies
+with an empty string, so a client reports an empty reply as an invalid response
+(`failed`).
 
 ## Routes
 

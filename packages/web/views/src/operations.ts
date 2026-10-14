@@ -346,14 +346,13 @@ export const bridgeOperations: BridgeOperations = {
         throw new BridgeOperationUncertainError(scope.contract, requestId, "The operation admission could not be recovered.", { cause });
       return operations.handle(member, requestId, decode, decodeFailure, stream, recovered.kind === "running" ? undefined : recovered);
     }
-    if (reply === "") throw releasedRouteError(startRoute);
     let admission: {
       readonly kind?: string; readonly reason?: string; readonly terminal?: unknown; readonly detail?: unknown;
       readonly error?: { readonly kind?: unknown } | null;
     };
     try { admission = JSON.parse(reply) as typeof admission; }
     catch (cause) { throw new BridgeError("failed", "The operation service returned invalid JSON.", { cause, route: startRoute }); }
-    // A released View answers `{kind: "disconnected"}`, or CS-WebUI's disconnected envelope once its route is unbound.
+    // A released View answers `{kind: "disconnected"}`, or the host's disconnected envelope once its route is unbound.
     if (admission.kind === "disconnected") throw new BridgeError("disconnected", admission.reason ?? "This View was released.", { route: startRoute });
     if (admission.error?.kind === "disconnected") throw releasedRouteError(startRoute);
     if (admission.kind === "accepted" || admission.kind === "duplicate") {

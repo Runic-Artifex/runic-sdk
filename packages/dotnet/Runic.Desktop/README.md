@@ -207,8 +207,9 @@ a `capability-not-admitted` error to `DiagnosticSink` that names the capability.
 A page can call a capability just after its owner released it, for example a
 page removed from a navigation region unmounts after the snapshot that removed
 it. A name released shortly before (the host remembers the last 256) is treated
-as such a late call: nothing is invoked, the reply is the same, and no
-diagnostic is reported.
+as such a late call: nothing is invoked, no diagnostic is reported, and the reply
+is `{"ok":false,"state":null,"error":{"kind":"disconnected","message":"This view is no longer connected."}}`,
+the envelope CS-WebUI sends for an unbound route.
 
 ## Security notes
 

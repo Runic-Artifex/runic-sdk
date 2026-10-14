@@ -35,8 +35,9 @@ internal sealed class PageRemovalTests
         var popped = await fixture.ViewModel.Main.BackAsync();
         Require(popped is NavigationResult<GuardedPage>.Committed, $"Back did not commit: {popped}");
         Require(await PageRouteAsync(browser, cancellation) == home, "The snapshot after Back did not present the first page.");
+        // The late call is answered with the disconnected envelope, which a generated client reports as disconnected (#246).
         var late = await browser.CallAsync($"{detail}Unmount", cancellation, "session:detail");
-        Require(late == "", $"The late unmount of the retired page was answered '{late}'.");
+        Require(late == ReleasedReply, $"The late unmount of the retired page was answered '{late}'.");
         Require(fixture.Diagnostics.IsEmpty, $"Popping a page reported diagnostics: {Describe(fixture)}");
 
         // A late call re-admits nothing: the retired page's routes stay released, and the page that remains is served.
@@ -45,8 +46,10 @@ internal sealed class PageRemovalTests
         await MountAsync(browser, home, "session:home-again", cancellation);
         Require(fixture.Diagnostics.IsEmpty, $"A late call reported diagnostics: {Describe(fixture)}");
 
-        // A capability that was never admitted is still reported, and names the element.
-        _ = await browser.CallAsync("contentNeverAdmittedMount", cancellation, "session:x");
+        // A capability that was never admitted is still reported, names the element, and replies empty: the client
+        // reports that reply as an invalid response, not as a released View.
+        var unadmittedReply = await browser.CallAsync("contentNeverAdmittedMount", cancellation, "session:x");
+        Require(unadmittedReply == "", $"A capability that was never admitted was answered '{unadmittedReply}'.");
         var reported = fixture.Diagnostics.ToArray();
         Require(reported.Length == 1, $"Expected one diagnostic for an unadmitted capability, found: {Describe(fixture)}");
         var diagnostic = reported[0];
@@ -54,6 +57,9 @@ internal sealed class PageRemovalTests
             && diagnostic.Message.Contains("'contentNeverAdmittedMount'", StringComparison.Ordinal),
             $"A capability that was never admitted was not reported with its name: {diagnostic}");
     }
+
+    private const string ReleasedReply =
+        "{\"ok\":false,\"state\":null,\"error\":{\"kind\":\"disconnected\",\"message\":\"This view is no longer connected.\"}}";
 
     // The route of the page the shell's snapshot presents.
     private static async Task<string> PageRouteAsync(DesktopWireClient browser, CancellationToken cancellationToken)

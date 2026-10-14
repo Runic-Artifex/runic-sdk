@@ -126,7 +126,6 @@ function checkProtocol(reply: Envelope, entry: SharedEntry, route: string): void
 // Parses a reply and accepts its state. Returns the envelope and the accepted
 // state, which is undefined when the reply carries none.
 function parse(json: string, entry: SharedEntry, route: string): { readonly reply: Envelope; readonly state: unknown } {
-  if (json === "") throw releasedRouteError(route);
   let reply: Envelope;
   try { reply = JSON.parse(json) as Envelope; }
   catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route }); }
@@ -456,12 +455,11 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
       catch (cause) { throw callFailed(bridge, "The command availability query could not complete.", name, cause); }
       if (reply === "true") return true;
       if (reply === "false") return false;
-      if (reply === "" || isDisconnectedEnvelope(reply)) throw releasedRouteError(name);
+      if (isDisconnectedEnvelope(reply)) throw releasedRouteError(name);
       throw new BridgeError("failed", "The command availability query returned an invalid response.", { route: name });
     }),
     writeField: (name, payload, decode) => observed(name, async () => {
       const json = await call(name, [payload]);
-      if (json === "") throw releasedRouteError(name);
       let reply: Envelope & { readonly receipt: unknown };
       try { reply = bridgeWire.object(JSON.parse(json), value => value) as unknown as typeof reply; }
       catch (cause) { throw new BridgeError("failed", "The Bridge returned an invalid response.", { cause, route: name }); }
@@ -500,7 +498,7 @@ async function connectRoute<TState>(options: ViewConnectOptions<TState>): Promis
   };
 }
 
-// The reply of a route that CS-WebUI no longer binds, on a route whose replies are not envelopes.
+// The reply of a route the host no longer binds, on a route whose replies are not envelopes.
 function isDisconnectedEnvelope(json: string): boolean {
   try {
     const reply = JSON.parse(json) as Partial<Envelope> | null;

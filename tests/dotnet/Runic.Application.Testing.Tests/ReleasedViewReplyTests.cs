@@ -38,7 +38,6 @@ public sealed class ReleasedViewReplyTests
         Require(fixture.Page.Value == 7, "The setter did not run.");
     }
 
-    // A call that failed after it released its page keeps its error kind and is also `released`.
     [Test]
     public void ARejectedCallOnAReleasedPageKeepsItsKind()
     {
@@ -46,6 +45,31 @@ public sealed class ReleasedViewReplyTests
         var reply = Read(fixture.Transport.Call($"{fixture.Route}SetValue", new(Int64Value: -1)));
         Require(!reply.Ok && reply.ErrorKind == "rejected" && !reply.HasState && reply.Released,
             $"A rejected call on a released page replied {reply.Json}.");
+    }
+
+    // A checked write that released its page was processed, but has neither state nor receipt.
+    [Test]
+    public void ACheckedWriteThatReplacesItsPageRepliesReleased()
+    {
+        using var fixture = new Fixture();
+        const string write = """{"requestId":"leave","expectedVersion":0,"expectedValue":0,"value":3}""";
+        var reply = Read(fixture.Transport.Call($"{fixture.Route}WriteCount", new(StringValue: write)));
+        Require(fixture.Page.Ran && fixture.Page.Count == 3, "The checked write did not run.");
+        Require(!reply.Ok && reply.ErrorKind == "disconnected" && !reply.HasState && reply.Released
+            && !reply.Json.Contains("\"receipt\"", StringComparison.Ordinal),
+            $"A checked write that released its own page replied {reply.Json}.");
+    }
+
+    // A snapshot read has nothing to report once its bridge is released while it is captured.
+    [Test]
+    public void ASnapshotReadOfAReleasedPageIsDisconnected()
+    {
+        using var fixture = new Fixture();
+        fixture.Page.LeaveOnSnapshot = true;
+        var reply = Read(fixture.Transport.Call($"{fixture.Route}Snapshot"));
+        Require(fixture.Page.Ran, "The snapshot writer did not release the page.");
+        Require(!reply.Ok && reply.ErrorKind == "disconnected" && !reply.HasState && !reply.Released,
+            $"A snapshot read of a released page replied {reply.Json}.");
     }
 
     private static void RequireReleased(Reply reply, Fixture fixture)
@@ -60,14 +84,16 @@ public sealed class ReleasedViewReplyTests
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
+        var error = root.GetProperty("error");
         return new(json,
             root.GetProperty("ok").GetBoolean(),
             root.GetProperty("state").ValueKind == JsonValueKind.Object,
             root.TryGetProperty("released", out var released) && released.ValueKind == JsonValueKind.True,
-            root.GetProperty("error").ValueKind == JsonValueKind.Object ? root.GetProperty("error").GetProperty("kind").GetString() : null);
+            error.ValueKind == JsonValueKind.Object ? error.GetProperty("kind").GetString() : null,
+            error.ValueKind == JsonValueKind.Object ? error.GetProperty("message").GetString() : null);
     }
 
-    private sealed record Reply(string Json, bool Ok, bool HasState, bool Released, string? ErrorKind);
+    private sealed record Reply(string Json, bool Ok, bool HasState, bool Released, string? ErrorKind, string? Message);
 
     private static void Require(bool condition, string message)
     {
@@ -113,7 +139,9 @@ public sealed class ReleasedViewReplyTests
     private sealed class Page(Action leave) : INotifyPropertyChanged
     {
         private int _value;
+        private int _count;
         public bool Ran { get; private set; }
+        public bool LeaveOnSnapshot { get; set; }
         public int Value
         {
             get => _value;
@@ -122,6 +150,28 @@ public sealed class ReleasedViewReplyTests
                 Leave();
                 ArgumentOutOfRangeException.ThrowIfNegative(value);
                 _value = value;
+            }
+        }
+        public int Count
+        {
+            get => _count;
+            set
+            {
+                _count = value;
+                Leave();
+            }
+        }
+        // Read by the snapshot writer.
+        public int Snapshot
+        {
+            get
+            {
+                if (LeaveOnSnapshot)
+                {
+                    LeaveOnSnapshot = false;
+                    Leave();
+                }
+                return _value;
             }
         }
         public ICommand LeaveCommand => new Command(Leave);
@@ -141,14 +191,17 @@ public sealed class ReleasedViewReplyTests
     }
 
     private sealed class PageBridge(IBridgeTransport transport, Page model, string route, WindowContentSession content)
-        : ViewModelBridge<Page>(transport, model, route, static (writer, vm, revision) =>
+        : ViewModelBridge<Page>(transport, model, route, static (writer, vm, revision, writeFields) =>
         {
             writer.WriteStartObject();
             writer.WriteNumber("revision", revision);
-            writer.WriteNumber("value", vm.Value);
+            writer.WriteNumber("value", vm.Snapshot);
+            writer.WriteNumber("count", vm.Count);
+            writeFields(writer);
             writer.WriteEndObject();
         },
         [new("Value", vm => vm.Value, (vm, arguments) => vm.Value = (int)arguments.GetInt64())],
+        [new("Count", "count", CheckedFieldValueKind.Int32, vm => vm.Count, (vm, value) => vm.Count = (int)value!)],
         [
             new("Leave", vm => vm.LeaveCommand),
             new("LeaveAsync", vm => vm.LeaveCommand, ExecuteAsync: async (vm, _, _) =>
