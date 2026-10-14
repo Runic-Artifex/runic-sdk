@@ -16,7 +16,13 @@ internal static partial class MacDesktopNative
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial byte Bool(nint target, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial byte BoolArg(nint target, nint selector, nint value);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial double Double(nint target, nint selector);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial nint ArgDouble(nint target, nint selector, double value);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial nint ArgSize(nint target, nint selector, Size value);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static partial byte BoolError(nint target, nint selector, out nint error);
+    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] internal static unsafe partial nint Bytes(nint target, nint selector, byte* bytes, nuint length);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend", StringMarshalling = StringMarshalling.Utf8)] private static partial nint Utf8(nint target, nint selector, string value);
+    // CGSize and NSSize.
+    [StructLayout(LayoutKind.Sequential)] internal readonly record struct Size(double Width, double Height);
     internal static string Text(nint value) => value == 0 ? "" : Marshal.PtrToStringUTF8(Send(value, Sel("UTF8String"))) ?? "";
     // The domain and code identify an NSError. Its localized description can name files, so it is omitted.
     internal static PlatformDiagnostic ErrorDiagnostic(nint error) => new(Text(Send(error, Sel("domain"))), Send(error, Sel("code")));

@@ -31,6 +31,11 @@ try
     {
         await RunWindowsUiAutomationSmokeAsync();
     }
+    else if (args.Contains("--zoom", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
+    {
+        // Must run before the first await, as --event-loop: the AppKit loop owns the main thread.
+        MacOsZoomSmoke.Run(CreateHostOptions());
+    }
     else if (args.Contains("--event-loop", StringComparer.Ordinal))
     {
         // Must run before the first await: on macOS the entry point picks the main-thread AppKit loop.

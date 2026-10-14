@@ -17,3 +17,64 @@ application choice and reveal, are described in the
 [desktop services guide](https://docs.runic-artifex.eu/guides/desktop-services/). It includes
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.
+
+## Status icon
+
+`PlatformServices.CreateStatusIcon()` in `Runic.Application.Views.Desktop`, and
+`AddRunicPlatformServices()`, create an `NSStatusItem` in the menu bar from
+`NSStatusBar.systemStatusBar`. It is created, changed and released on the main
+thread once the Desktop event loop runs, with or without an open window, and
+needs no permission. Its button shows the icon, the title as its accessibility
+label, and the title and tooltip as its help text.
+
+- **Images.** The RGBA images become one `NSImage`, 18 points high, with a
+  representation per image, so AppKit picks the one for the display's scale.
+  When every image is one shade of gray, such as a black or white glyph, the
+  image is a template, which the menu bar tints for light and dark mode and
+  for a highlighted item. Colour images are shown as they are. macOS has no
+  icon theme: an icon with only a `ThemeName` shows the title as text.
+- **Attention.** `NeedsAttention` shows the attention icon, when the state has
+  one; macOS has no other attention state. `Passive` shows the item as
+  `Active` does.
+- **Clicks.** A click raises `Primary`, a middle click `Secondary`. A right
+  click or a Control-click opens the menu, built from the state at that moment;
+  with an empty menu it does nothing. The menu is assigned only while it is open,
+  because an item with a menu never sends its button's action. Checkable items
+  show a check mark and are not toggled by the provider.
+
+A windowless application without a bundle runs as an accessory application: no
+Dock icon and no menu bar of its own until it opens a window, which makes it a
+regular application. A bundled application that should never have a Dock icon
+sets `LSUIElement` to `true` in its `Info.plist`; it then stays an accessory
+application while it shows windows too:
+
+```xml
+<key>LSUIElement</key>
+<true/>
+```
+
+## Login startup
+
+`PlatformServices.CreateLoginStartup()` registers the application bundle as a
+login item with `SMAppService.mainAppService` (macOS 13 and later), which
+System Settings lists under General, Login Items. `IsEnabledAsync` is true only
+while the item is enabled. A login item that waits for the user's approval, or
+that the user turned off there, stays off: `EnableAsync` reports
+`PermissionDenied` with a diagnostic that points to System Settings. macOS
+starts the bundle itself, so the request's arguments are not passed; an
+application that starts differently at login decides that from its own settings.
+A process outside an application bundle, such as `dotnet run`, and macOS 12
+report `BackendUnavailable`. Registration needs a signed bundle; an unsigned
+one reports the `SMAppService` error as a diagnostic.
+
+## Window presentation
+
+`PlatformServices.PresentAsync(owner)` activates the application and orders a
+Desktop window front as the key window on its main thread, also a hidden or
+minimized one. macOS needs no activation token, so the context is ignored.
+
+The `NativeAppKit` category of `tests/dotnet/Runic.Platform.Runtime.Tests` runs
+these on the macOS CI runner, under JIT and NativeAOT, without a user: a real
+status item without a window, its images, menu and actions, the unbundled
+login item, and presenting a hidden window. Opening the menu by hand, light and
+dark menu bars, and a signed bundle's login item are manual checks.

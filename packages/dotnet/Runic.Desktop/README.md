@@ -245,18 +245,20 @@ a `main` landmark and headings.
 
 ## Keyboard and zoom in embedded windows
 
-Embedded windows on Linux behave like a browser window for focus and zoom. Runic
-Desktop checks this on the GTK 3 host and the GTK 4 provider with real key presses
-on X11 and Wayland. On Windows and macOS the engine's own behaviour applies, which
-was not checked on those systems:
+Embedded windows on Linux and macOS behave like a browser window for zoom, and on
+Linux also for focus. Runic Desktop checks this on the GTK 3 host and the GTK 4
+provider with real key presses on X11 and Wayland, and on macOS with keyboard
+events posted to the AppKit event queue. On Windows the engine's own behaviour
+applies, and macOS focus is WebKit's own; neither was checked on those systems.
+macOS uses Command where Linux and Windows use Ctrl, as browsers do:
 
-| | WebKitGTK (GTK 3 and GTK 4), checked | WebView2 (Windows), expected | WKWebView (macOS), expected |
+| | WebKitGTK (GTK 3 and GTK 4), checked | WebView2 (Windows), expected | WKWebView (macOS) |
 | --- | --- | --- | --- |
-| Tab after the last control | Focuses the first control | Focuses the first control: Runic Desktop leaves WebView2's focus handling at its default | Focuses the first control: WebKit focuses the page from its start |
-| Shift+Tab before the first control | Focuses the last control | Focuses the last control | Focuses the last control |
-| Ctrl and + or =, Ctrl and − | Zoom in or out in steps from 30 % to 300 % | WebView2's browser zoom, left enabled | Not available |
-| Ctrl and 0 | Resets the zoom to 100 % | WebView2's browser zoom | Not available |
-| Ctrl and the scroll wheel | Zooms in or out | WebView2's browser zoom | Not available |
+| Tab after the last control | Focuses the first control | Focuses the first control: Runic Desktop leaves WebView2's focus handling at its default | Expected: focuses the first control, as WebKit focuses the page from its start |
+| Shift+Tab before the first control | Focuses the last control | Focuses the last control | Expected: focuses the last control |
+| Ctrl and + or =, Ctrl and − (Command on macOS) | Zoom in or out in steps from 30 % to 300 % | WebView2's browser zoom, left enabled | Checked: zoom in or out in the same steps, from the View menu |
+| Ctrl and 0 (Command on macOS) | Resets the zoom to 100 % | WebView2's browser zoom | Checked: resets the zoom and a pinch magnification |
+| Ctrl and the scroll wheel | Zooms in or out | WebView2's browser zoom | Not on macOS, as in Safari; expected: a trackpad pinch magnifies |
 
 WebKitGTK cannot move focus from the end of a page to its start by itself: it gives
 focus to the GTK window, which has nothing else to focus, and the page is left with no
@@ -299,10 +301,18 @@ There is no option to turn zoom off or to set the initial zoom: a page that must
 zoom cancels these events, which works with WebView2 too. GNOME's large text setting
 applies as well.
 
-WKWebView offers no zoom keys and Runic Desktop does not add them yet
-([#259](https://github.com/Runic-Artifex/runic-sdk/issues/259)); use the system's
-zoom or larger text settings. On macOS, Tab reaches buttons and links only with
-Keyboard Navigation turned on in the system settings, as in Safari.
+WKWebView offers page zoom but no zoom keys: Safari zooms from its View menu. When
+the application has no main menu of its own, the macOS host adds one, with the
+application menu (Hide) and a View menu with Zoom In (Command and + or =), Zoom
+Out (Command and −) and Actual Size (Command and 0), in the Linux steps. The web
+view has keyboard focus when the window opens, so WKWebView hands each Command key
+to the page first, and the menu acts only on a key whose `keydown` the page did not
+cancel with `preventDefault()`, also while a text field has focus. An application
+that installs its own main menu before the first window opens keeps it, without
+these items. A trackpad pinch magnifies the page, as in Safari, and Actual Size
+undoes it too. Control and these keys do nothing on macOS. On macOS, Tab reaches
+buttons and links only with Keyboard Navigation turned on in the system settings,
+as in Safari.
 
 ## Security notes
 
