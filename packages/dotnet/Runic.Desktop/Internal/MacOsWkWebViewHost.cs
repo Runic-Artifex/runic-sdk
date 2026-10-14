@@ -369,32 +369,49 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
     }
 
-    // The application's main menu, when it has none: an application menu and a View menu with the zoom items. An
-    // application that installs its own main menu keeps it, without zoom keys. Main thread only.
+    // Adds the zoom items to the View menu of the application's main menu, once. Without a main menu the host
+    // creates one with an application menu; AppKit can also start an application with a main menu of its own.
+    // A View menu that already has an item for Command and = keeps its items. Main thread only.
     private static void InstallZoomMenu(nint application)
     {
-        if (s_zoomTarget != 0 || ZoomTargetClass == 0 || Api.SendNint(application, "mainMenu") != 0)
+        if (s_zoomTarget != 0 || ZoomTargetClass == 0)
         {
             return;
         }
         s_zoomTarget = Api.SendNint(Api.SendNint(ZoomTargetClass, "alloc"), "init");
-        var mainMenu = Api.NewMenu("");
-        // The first item's menu is the application menu, which AppKit titles with the application's name.
-        var name = Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName");
-        var applicationMenu = Api.NewMenu("");
-        Api.AddMenuItem(applicationMenu, "Hide " + Api.Text(name), "hide:", "h", MacOsPageZoom.CommandModifier, 0, false);
-        Api.AddSubmenu(mainMenu, "", applicationMenu);
-        var view = Api.NewMenu("View");
+        var mainMenu = Api.SendNint(application, "mainMenu");
+        if (mainMenu == 0)
+        {
+            mainMenu = Api.NewMenu("");
+            // The first item's menu is the application menu, which AppKit titles with the application's name.
+            var name = Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName");
+            var applicationMenu = Api.NewMenu("");
+            Api.AddMenuItem(applicationMenu, "Hide " + Api.Text(name), "hide:", "h", MacOsPageZoom.CommandModifier, 0, false);
+            Api.AddSubmenu(mainMenu, "", applicationMenu);
+            Api.SendVoid(applicationMenu, "release");
+            Api.SendVoidNint(application, "setMainMenu:", mainMenu);
+            Api.SendVoid(mainMenu, "release");
+        }
+        var view = Api.Submenu(mainMenu, "View");
+        if (view == 0)
+        {
+            view = Api.NewMenu("View");
+            Api.AddSubmenu(mainMenu, "View", view);
+            Api.SendVoid(view, "release");
+        }
+        else if (Api.HasKeyEquivalent(view, "="))
+        {
+            return;
+        }
+        else if (Api.SendNint(view, "numberOfItems") > 0)
+        {
+            Api.SendVoidNint(view, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+        }
         foreach (var item in MacOsPageZoom.MenuItems)
         {
             Api.AddMenuItem(view, item.Title, MacOsPageZoom.Selector(item.Command), item.KeyEquivalent, MacOsPageZoom.CommandModifier,
                 s_zoomTarget, item.Hidden);
         }
-        Api.AddSubmenu(mainMenu, "View", view);
-        Api.SendVoidNint(application, "setMainMenu:", mainMenu);
-        Api.SendVoid(view, "release");
-        Api.SendVoid(applicationMenu, "release");
-        Api.SendVoid(mainMenu, "release");
     }
 
     private void HandleClosed()
@@ -619,6 +636,33 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             {
                 SendVoid(text, "release");
             }
+        }
+
+        // The submenu of the item with this title, or 0.
+        internal nint Submenu(nint menu, string title)
+        {
+            var text = CreateString(title);
+            try
+            {
+                var item = SendNintNint(menu, "itemWithTitle:", text);
+                return item == 0 ? 0 : SendNint(item, "submenu");
+            }
+            finally
+            {
+                SendVoid(text, "release");
+            }
+        }
+
+        internal bool HasKeyEquivalent(nint menu, string keyEquivalent)
+        {
+            for (nint index = 0, count = SendNint(menu, "numberOfItems"); index < count; index++)
+            {
+                if (Text(SendNint(SendNintNint(menu, "itemAtIndex:", index), "keyEquivalent")) == keyEquivalent)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         internal void AddSubmenu(nint menu, string title, nint submenu)

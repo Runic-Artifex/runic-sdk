@@ -116,10 +116,10 @@ internal sealed class MacAppKitNativeTests
         Require(!await WindowAsync(owner, static handle => Bool(handle, Sel("isVisible")) != 0), "The hidden window is visible.");
         Require(await ApplicationAsync(static application => Send(application, Sel("activationPolicy"))) == 0,
             "An unbundled process with a window should run as a regular application.");
-        Require(await ApplicationAsync(static application =>
-            Arg(Send(application, Sel("mainMenu")), Sel("itemWithTitle:"), String("View")) is var view and not 0
-            && Arg(Send(view, Sel("submenu")), Sel("itemWithTitle:"), String("Zoom In")) != 0 ? 1 : 0) == 1,
-            "The window host installs a View menu with the zoom items.");
+        var menu = await MenuAsync();
+        Require(menu.Contains("View(", StringComparison.Ordinal) && menu.Contains("Zoom In", StringComparison.Ordinal)
+            && menu.Contains("Actual Size", StringComparison.Ordinal), $"The window host adds a View menu with the zoom items: {menu}.");
+        Pass($"the main menu has the zoom items: {menu}");
         await MacWindowPresenter.PresentAsync(owner, cancellationToken);
         await WaitAsync(() => WindowAsync(owner, static handle => Bool(handle, Sel("isVisible")) != 0), "the presented window is visible");
         var key = await WindowAsync(owner, static handle => Bool(handle, Sel("isKeyWindow")) != 0);
@@ -159,6 +159,32 @@ internal sealed class MacAppKitNativeTests
             value = read(Send(Class("NSApplication"), Sel("sharedApplication")));
         });
         return value;
+    }
+
+    // The main menu's titles, with each submenu's titles in parentheses.
+    private static async Task<string> MenuAsync()
+    {
+        string text = "";
+        await MacOsMainQueue.InvokeAsync(() =>
+        {
+            using var pool = new Pool();
+            text = Describe(Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("mainMenu")), 0);
+        });
+        return text;
+
+        static string Describe(nint menu, int depth)
+        {
+            if (menu == 0) return "(none)";
+            var titles = new List<string>();
+            for (nint i = 0, count = Send(menu, Sel("numberOfItems")); i < count; i++)
+            {
+                var item = Arg(menu, Sel("itemAtIndex:"), i);
+                var title = Text(Send(item, Sel("title")));
+                if (Send(item, Sel("submenu")) is var submenu and not 0 && depth < 1) title += "(" + Describe(submenu, depth + 1) + ")";
+                titles.Add(title);
+            }
+            return string.Join(";", titles);
+        }
     }
 
     private static async Task<bool> WindowAsync(INativePickerOwner owner, Func<nint, bool> read)

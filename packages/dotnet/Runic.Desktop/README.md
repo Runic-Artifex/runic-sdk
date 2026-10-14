@@ -302,14 +302,15 @@ zoom cancels these events, which works with WebView2 too. GNOME's large text set
 applies as well.
 
 WKWebView offers page zoom but no zoom keys: Safari zooms from its View menu. When
-the application has no main menu of its own, the macOS host adds one, with the
-application menu (Hide) and a View menu with Zoom In (Command and + or =), Zoom
-Out (Command and −) and Actual Size (Command and 0), in the Linux steps. The web
+the first window opens, the macOS host adds Zoom In (Command and + or =), Zoom Out
+(Command and −) and Actual Size (Command and 0), in the Linux steps, to the View
+menu of the application's main menu, creating the View menu, and a main menu with
+an application menu (Hide) when there is none. The web
 view has keyboard focus when the window opens, so WKWebView hands each Command key
 to the page first, and the menu acts only on a key whose `keydown` the page did not
-cancel with `preventDefault()`, also while a text field has focus. An application
-that installs its own main menu before the first window opens keeps it, without
-these items. A trackpad pinch magnifies the page, as in Safari, and Actual Size
+cancel with `preventDefault()`, also while a text field has focus. A View menu
+that already has an item for Command and = keeps its own items, and a main menu
+the application sets later replaces these. A trackpad pinch magnifies the page, as in Safari, and Actual Size
 undoes it too. Control and these keys do nothing on macOS. On macOS, Tab reaches
 buttons and links only with Keyboard Navigation turned on in the system settings,
 as in Safari.
