@@ -1,1 +1,68 @@
 #nullable enable
+Runic.Platform.DesktopPrivilegedActions
+Runic.Platform.IDesktopPrivilegedActions
+Runic.Platform.IDesktopPrivilegedActions.RunAsync(Runic.Platform.PrivilegedActionRequest! request, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PrivilegedActionCompletion!>!>
+Runic.Platform.PrivilegedActionCompletion
+Runic.Platform.PrivilegedActionCompletion.<Clone>$() -> Runic.Platform.PrivilegedActionCompletion!
+Runic.Platform.PrivilegedActionCompletion.Deconstruct(out int ExitCode) -> void
+Runic.Platform.PrivilegedActionCompletion.Equals(Runic.Platform.PrivilegedActionCompletion? other) -> bool
+Runic.Platform.PrivilegedActionCompletion.ExitCode.get -> int
+Runic.Platform.PrivilegedActionCompletion.ExitCode.init -> void
+Runic.Platform.PrivilegedActionCompletion.PrivilegedActionCompletion(int ExitCode) -> void
+Runic.Platform.PrivilegedActionCompletion.Succeeded.get -> bool
+Runic.Platform.PrivilegedActionDeclaration
+Runic.Platform.PrivilegedActionDeclaration.AcceptsArguments(System.Collections.Generic.IReadOnlyList<string!>! arguments) -> bool
+Runic.Platform.PrivilegedActionDeclaration.ArgumentPattern.get -> string?
+Runic.Platform.PrivilegedActionDeclaration.ArgumentPattern.init -> void
+Runic.Platform.PrivilegedActionDeclaration.CreateArgumentVector(System.Collections.Generic.IReadOnlyList<string!>! arguments) -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.PrivilegedActionDeclaration.Id.get -> string!
+Runic.Platform.PrivilegedActionDeclaration.MaximumArguments.get -> int
+Runic.Platform.PrivilegedActionDeclaration.MaximumArguments.init -> void
+Runic.Platform.PrivilegedActionDeclaration.PrivilegedActionDeclaration(string! id, string! program) -> void
+Runic.Platform.PrivilegedActionDeclaration.Program.get -> string!
+Runic.Platform.PrivilegedActionDeclaration.Verb.get -> string?
+Runic.Platform.PrivilegedActionDeclaration.Verb.init -> void
+Runic.Platform.PrivilegedActionOutput
+Runic.Platform.PrivilegedActionOutput.Channel.get -> Runic.Platform.PrivilegedOutputChannel
+Runic.Platform.PrivilegedActionOutput.Channel.init -> void
+Runic.Platform.PrivilegedActionOutput.Deconstruct(out Runic.Platform.PrivilegedOutputChannel Channel, out string! Text) -> void
+Runic.Platform.PrivilegedActionOutput.Equals(Runic.Platform.PrivilegedActionOutput other) -> bool
+Runic.Platform.PrivilegedActionOutput.PrivilegedActionOutput() -> void
+Runic.Platform.PrivilegedActionOutput.PrivilegedActionOutput(Runic.Platform.PrivilegedOutputChannel Channel, string! Text) -> void
+Runic.Platform.PrivilegedActionOutput.Text.get -> string!
+Runic.Platform.PrivilegedActionOutput.Text.init -> void
+Runic.Platform.PrivilegedActionRequest
+Runic.Platform.PrivilegedActionRequest.<Clone>$() -> Runic.Platform.PrivilegedActionRequest!
+Runic.Platform.PrivilegedActionRequest.Action.get -> Runic.Platform.PrivilegedActionDeclaration!
+Runic.Platform.PrivilegedActionRequest.Action.init -> void
+Runic.Platform.PrivilegedActionRequest.Arguments.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.PrivilegedActionRequest.Arguments.init -> void
+Runic.Platform.PrivilegedActionRequest.Deconstruct(out Runic.Platform.PrivilegedActionDeclaration! Action, out System.Collections.Immutable.ImmutableArray<string!> Arguments) -> void
+Runic.Platform.PrivilegedActionRequest.Equals(Runic.Platform.PrivilegedActionRequest? other) -> bool
+Runic.Platform.PrivilegedActionRequest.Output.get -> System.Action<Runic.Platform.PrivilegedActionOutput>?
+Runic.Platform.PrivilegedActionRequest.Output.init -> void
+Runic.Platform.PrivilegedActionRequest.PrivilegedActionRequest(Runic.Platform.PrivilegedActionDeclaration! Action, System.Collections.Immutable.ImmutableArray<string!> Arguments) -> void
+Runic.Platform.PrivilegedOutputChannel
+Runic.Platform.PrivilegedOutputChannel.StandardError = 1 -> Runic.Platform.PrivilegedOutputChannel
+Runic.Platform.PrivilegedOutputChannel.StandardOutput = 0 -> Runic.Platform.PrivilegedOutputChannel
+const Runic.Platform.PrivilegedActionDeclaration.ArgumentLengthLimit = 4096 -> int
+const Runic.Platform.PrivilegedActionDeclaration.ArgumentLimit = 64 -> int
+const Runic.Platform.PrivilegedActionDeclaration.PatternOptions = System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.NonBacktracking -> System.Text.RegularExpressions.RegexOptions
+override Runic.Platform.PrivilegedActionCompletion.Equals(object? obj) -> bool
+override Runic.Platform.PrivilegedActionCompletion.GetHashCode() -> int
+override Runic.Platform.PrivilegedActionCompletion.ToString() -> string!
+override Runic.Platform.PrivilegedActionDeclaration.ToString() -> string!
+override Runic.Platform.PrivilegedActionOutput.GetHashCode() -> int
+override Runic.Platform.PrivilegedActionRequest.Equals(object? obj) -> bool
+override Runic.Platform.PrivilegedActionRequest.GetHashCode() -> int
+override Runic.Platform.PrivilegedActionRequest.ToString() -> string!
+static Runic.Platform.DesktopPrivilegedActions.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopPrivilegedActions!
+static Runic.Platform.PrivilegedActionCompletion.operator !=(Runic.Platform.PrivilegedActionCompletion? left, Runic.Platform.PrivilegedActionCompletion? right) -> bool
+static Runic.Platform.PrivilegedActionCompletion.operator ==(Runic.Platform.PrivilegedActionCompletion? left, Runic.Platform.PrivilegedActionCompletion? right) -> bool
+static Runic.Platform.PrivilegedActionDeclaration.IsValidId(string! id) -> bool
+static Runic.Platform.PrivilegedActionOutput.operator !=(Runic.Platform.PrivilegedActionOutput left, Runic.Platform.PrivilegedActionOutput right) -> bool
+static Runic.Platform.PrivilegedActionOutput.operator ==(Runic.Platform.PrivilegedActionOutput left, Runic.Platform.PrivilegedActionOutput right) -> bool
+static Runic.Platform.PrivilegedActionRequest.operator !=(Runic.Platform.PrivilegedActionRequest? left, Runic.Platform.PrivilegedActionRequest? right) -> bool
+static Runic.Platform.PrivilegedActionRequest.operator ==(Runic.Platform.PrivilegedActionRequest? left, Runic.Platform.PrivilegedActionRequest? right) -> bool
+~override Runic.Platform.PrivilegedActionOutput.Equals(object obj) -> bool
+~override Runic.Platform.PrivilegedActionOutput.ToString() -> string

@@ -542,6 +542,12 @@ jobs:
           # The run without a filter keeps the portable cases covered under NativeAOT.
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
+      - name: Verify privileged actions under NativeAOT
+        if: runner.os == 'Linux'
+        # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
+        run: |
+          dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
+          artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll

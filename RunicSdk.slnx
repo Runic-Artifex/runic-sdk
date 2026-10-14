@@ -25,6 +25,7 @@
     <Project Path="packages/dotnet/Runic.Desktop/Runic.Desktop.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" />
     <Project Path="packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" />
+    <Project Path="packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" />
     <Project Path="packages/dotnet/Runic.Desktop.Gtk4/Runic.Desktop.Gtk4.csproj" />
     <Project Path="packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
     <Project Path="packages/dotnet/Runic.Navigation/Runic.Navigation.csproj" />
@@ -50,6 +51,7 @@
     <Project Path="tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Tests/Runic.Platform.Linux.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.Linux.Portal.Tests/Runic.Platform.Linux.Portal.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Platform.Linux.Polkit.Tests/Runic.Platform.Linux.Polkit.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Platform.MacOS.Tests/Runic.Platform.MacOS.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Assets.Desktop.Tests/Runic.Assets.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Assets.Tests/Runic.Assets.Tests.csproj" />
@@ -76,6 +78,7 @@
     <Project Path="tests/native/Runic.Desktop.Gtk4.Smoke/Runic.Desktop.Gtk4.Smoke.csproj" />
     <Project Path="tests/native/Runic.Lifetime.Smoke/Runic.Lifetime.Smoke.csproj" />
     <Project Path="tests/native/Runic.StatusIcon.Smoke/Runic.StatusIcon.Smoke.csproj" />
+    <Project Path="tests/native/Runic.Privileged.Smoke/Runic.Privileged.Smoke.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/Runic.Administration.Verify/Runic.Administration.Verify.csproj" />

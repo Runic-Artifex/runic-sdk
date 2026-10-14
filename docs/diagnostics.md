@@ -13,6 +13,7 @@ Each entry starts with what the ID means. **Fix** says what to change.
 - [`dotnet runic` (`RAPPCLI`, `RAPPDEV`, `RAPPSUP`, `RTKSIZE`, `RCLI`)](#dotnet-runic)
 - [Asset packer (`RAS`)](#asset-packer)
 - [Runic.Create (`RCREATE`)](#runiccreate)
+- [Privileged actions (`RUNICPA`)](#privileged-actions)
 
 ## Bridge code generator
 
@@ -665,3 +666,126 @@ failed. Its output is printed before the fault.
 different values.
 
 **Fix:** pass the destination once, with `--output`.
+
+## Privileged actions
+
+The `Runic.Platform.Linux.Polkit` build targets read `RunicPrivilegedAction`
+items and report these errors before they write the Polkit policy and the
+`PrivilegedActions` class. Nothing is written while any of them remains. See
+the [package guide](../packages/dotnet/Runic.Platform.Linux.Polkit/README.md).
+
+### RUNICPA001
+
+`RunicPrivilegedActionsClassName` is not a C# identifier, or
+`RunicPrivilegedActionsNamespace` is not a C# namespace.
+
+**Fix:** set a valid name, or remove the property to use `PrivilegedActions`
+in the project's root namespace.
+
+### RUNICPA002
+
+Two items have the same action ID, or two actions generate the same property
+name.
+
+**Fix:** give each action its own ID; set `Name` on one of two actions whose
+last ID segments are the same.
+
+### RUNICPA003
+
+Two actions cannot be told apart by their first argument: they have the same
+`Verb`, even for different programs, or one of them has none. pkexec authorizes
+an action by the program's real path and the verb, but the privileged program
+sees only the verb, and one executable can be installed under several paths
+(a wrapper script and its target). With a shared verb, pkexec could authorize
+one action while the program acts on another.
+
+**Fix:** give every action its own `Verb`. Use an action without a `Verb` only
+when it is the only action.
+
+### RUNICPA004
+
+The action ID is not a lowercase reverse-DNS name with at least two segments,
+such as `org.example.app.activate`.
+
+**Fix:** use lowercase ASCII letters, digits and hyphens, separated by dots.
+
+### RUNICPA005
+
+`Program` is missing or is not an absolute, normalized path. pkexec matches
+the policy against the program's real path.
+
+**Fix:** set `Program` to the path the program is installed at, without
+symbolic links, `.` or `..`, for example `$(MyInstallPrefix)/libexec/app/helper`.
+
+### RUNICPA006
+
+`Description` or `Message` is missing. The authentication dialog shows them.
+
+**Fix:** describe the action and say why authentication is required.
+
+### RUNICPA007
+
+`Verb` is longer than 4096 characters or contains a NUL character.
+
+**Fix:** use a short word such as `activate`.
+
+### RUNICPA008
+
+`ArgumentPattern` is not a valid regular expression on its own, or it needs
+backtracking. It is compiled with `RegexOptions.NonBacktracking`, as at run
+time, so backreferences and lookarounds are rejected here.
+
+**Fix:** correct the pattern. It is matched against the whole argument. List
+the allowed characters: `\d` and `\w` match every script's digits and letters,
+a negated class such as `[^/]` matches a line break, an inline `(?i)` makes
+`[a-z]` match the Kelvin sign (U+212A), and `(?x)` turns `#` into a comment.
+The pattern must be valid both alone and anchored as `^(?:pattern)\z`.
+
+### RUNICPA009
+
+`MaximumArguments` is not a number from 0 to 64.
+
+**Fix:** set the number of arguments the action accepts after its verb.
+
+### RUNICPA010
+
+`AllowGui` is neither `true` nor `false`.
+
+**Fix:** set `true` only when the program opens windows as root; pkexec then
+keeps `DISPLAY` and `XAUTHORITY`.
+
+### RUNICPA011
+
+The property name generated for the action is not a C# identifier, or is `All`
+or the class name.
+
+**Fix:** set `Name` on the item.
+
+### RUNICPA012
+
+`AllowAny`, `AllowInactive` or `AllowActive` is not a Polkit authorization:
+`no`, `yes`, `auth_self`, `auth_self_keep`, `auth_admin` or `auth_admin_keep`.
+
+**Fix:** use one of them, or remove the metadata to require an administrator's
+password each time (`auth_admin`).
+
+### RUNICPA013
+
+`Program`, `Description`, `Message`, `Verb` or `IconName` contains a line
+break, another control character, a character XML cannot carry (such as
+U+FFFE) or `]]>`. polkitd keeps only the last piece of text its XML parser
+reports, and the parser splits text at line breaks.
+
+**Fix:** write the text on one line, with characters XML allows.
+
+### RUNICPA014
+
+A warning: `AllowAny`, `AllowInactive` or `AllowActive` is `yes`, `auth_self`
+or `auth_self_keep`. `yes` lets every matching subject run the program as root
+without authenticating. `auth_self` accepts the user's own password, which any
+process running as that user can effectively supply, so it does not stand
+between the user's processes and root.
+
+**Fix:** use `auth_admin` or `auth_admin_keep`. To let specific users or groups
+run the action without a password, add a site rule in `/etc/polkit-1/rules.d`
+on the machines that need it.
