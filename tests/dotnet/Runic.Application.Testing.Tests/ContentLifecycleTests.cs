@@ -96,6 +96,73 @@ public sealed class ContentLifecycleTests
         Require(views.Attached == 1, "An unmounted browser presentation was recreated.");
     }
 
+    // Issue #245. A navigator forgets a page off-turn while the browser unmounts it. The
+    // unmount's release turn waits for the page's View attachment, so retiring the page
+    // must not hold that attachment while its nested bridges wait for a model turn.
+    // The interleaving is fixed by holding the model thread until both flows are queued:
+    // the unmount captures the page's View attachment and queues its release first, then
+    // Forget reaches the page bridge's teardown, which queues a turn behind it.
+    [Test]
+    public async Task ForgettingNestedContentOffTurnWhileTheBrowserUnmountsItDoesNotDeadlock()
+    {
+        var root = new Item();
+        var page = new Item();
+        var middle = new Item();
+        var leaf = new Item();
+        var views = new ViewCounter();
+        var context = new CountingThreadContext();
+        using var transport = new InMemoryViewTransport();
+        var session = new WindowContentSession(transport, rootModel: root, modelContext: context);
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var deadlocked = false;
+        try
+        {
+            var pageRoute = $"content{PresentNested(session, root, page, views).Id}";
+            var middleRoute = $"content{PresentNested(session, page, middle, views).Id}";
+            var leafRoute = $"content{PresentNested(session, middle, leaf, views).Id}";
+            foreach (var route in new[] { pageRoute, middleRoute, leafRoute })
+                Require(transport.Call($"{route}Mount", Browser("browser:view")) == "ok", $"{route} did not mount.");
+            Require(views.Attached == 3, $"Mounting created {views.Attached} Views instead of 3.");
+
+            Require(context.TryPost(() => { started.Set(); release.Wait(); }), "The model thread did not accept a turn.");
+            Require(started.Wait(TimeSpan.FromSeconds(5)), "The model thread did not start the blocking turn.");
+            var queued = context.Invocations;
+            var unmount = Task.Run(() => transport.Call($"{pageRoute}Unmount", Browser("browser:view")));
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 1, TimeSpan.FromSeconds(5)),
+                "The browser unmount did not queue its release turn.");
+            var forget = Task.Run(() => session.Forget(page));
+            Require(SpinWait.SpinUntil(() => context.Invocations == queued + 2, TimeSpan.FromSeconds(5)),
+                "Forget did not reach the page bridge's teardown turn.");
+            release.Set();
+
+            try { await Task.WhenAll(unmount, forget).WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch (TimeoutException)
+            {
+                deadlocked = true;
+                throw new InvalidOperationException(
+                    "Forget and the browser unmount deadlocked on the page's View attachment.");
+            }
+            Require(unmount.Result == "ok", $"The browser unmount answered {unmount.Result}.");
+            Require(views.Detached == 3, $"Retiring the page released {views.Detached} Views instead of 3, once each.");
+            Require(!transport.Routes.Contains($"{pageRoute}Mount"),
+                "The unmounted page kept its mount endpoint after it was forgotten.");
+            Require(new[] { pageRoute, middleRoute, leafRoute }.All(route => !transport.Routes.Contains($"{route}Snapshot")),
+                "Forgetting the page left a nested bridge attached.");
+        }
+        finally
+        {
+            // A failed check before the release must not leave the model thread blocked.
+            release.Set();
+            // A deadlocked session cannot be disposed; its threads stay blocked.
+            if (!deadlocked)
+            {
+                session.Dispose();
+                await context.DisposeAsync();
+            }
+        }
+    }
+
     [Test]
     public void CollectionChurnReleasesItemState()
     {
@@ -140,6 +207,14 @@ public sealed class ContentLifecycleTests
         session.Present(root, "Main", "item", model, (_, current, route) =>
             session.AttachPresentation<CountedView, Item>(current, route,
                 (transport, presented, presentedRoute) => new CheckedBridge(transport, presented, presentedRoute, session),
+                () => new CountedView(views)));
+
+    // Presents content whose bridge, like a generated one, releases its own content
+    // slots after its base disposal.
+    private static PageReference PresentNested(WindowContentSession session, Item owner, Item model, ViewCounter views) =>
+        session.Present(owner, "Main", "item", model, (_, current, route) =>
+            session.AttachPresentation<CountedView, Item>(current, route,
+                (transport, presented, presentedRoute) => new SlotOwnerBridge(transport, presented, presentedRoute, session),
                 () => new CountedView(views)));
 
     private static ViewTestArguments Browser(string token) =>
@@ -194,10 +269,86 @@ public sealed class ContentLifecycleTests
         [new("Value", "value", CheckedFieldValueKind.Int32, vm => vm.Value, (vm, value) => vm.Value = (int)value!)],
         [], contractFingerprint: "content-lifecycle", content: content);
 
+    private sealed class SlotOwnerBridge : ViewModelBridge<Item>
+    {
+        private readonly Item _owner;
+        private readonly WindowContentSession _content;
+
+        public SlotOwnerBridge(IBridgeTransport transport, Item model, string route, WindowContentSession content)
+            : base(transport, model, route, static (writer, vm, revision, writeFields) =>
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("revision", revision);
+                writer.WriteNumber("value", vm.Value);
+                writeFields(writer);
+                writer.WriteEndObject();
+            }, [], [], [], contractFingerprint: "content-lifecycle-slots", content: content)
+        {
+            _owner = model;
+            _content = content;
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            _content.ClearOwner(_owner);
+        }
+    }
+
     private sealed class ViewCounter
     {
-        public int Attached { get; set; }
-        public int Detached { get; set; }
+        private int _attached;
+        private int _detached;
+        public int Attached => Volatile.Read(ref _attached);
+        public int Detached => Volatile.Read(ref _detached);
+        public void Attach() => Interlocked.Increment(ref _attached);
+        public void Detach() => Interlocked.Increment(ref _detached);
+    }
+
+    // An application context with one dedicated thread, such as a UI dispatcher, whose
+    // InvokeAsync always queues. Counts the turns requested through InvokeAsync.
+    private sealed class CountingThreadContext : IRunicModelContext
+    {
+        private readonly System.Collections.Concurrent.BlockingCollection<Action> _queue = new();
+        private readonly Thread _thread;
+        private int _invocations;
+
+        public CountingThreadContext()
+        {
+            _thread = new Thread(() =>
+            {
+                foreach (var work in _queue.GetConsumingEnumerable()) work();
+            }) { IsBackground = true, Name = "Model thread" };
+            _thread.Start();
+        }
+
+        public int Invocations => Volatile.Read(ref _invocations);
+        public bool IsExecuting => Thread.CurrentThread == _thread;
+        public event Action<Exception>? UnhandledTurnException { add { } remove { } }
+
+        public bool TryPost(Action turn) => _queue.TryAdd(turn);
+
+        public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default) =>
+            new(InvokeAsync(() => { turn(); return true; }, cancellationToken).AsTask());
+
+        public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
+        {
+            var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ObjectDisposedException.ThrowIf(_queue.IsAddingCompleted, this);
+            _queue.Add(() =>
+            {
+                try { completion.SetResult(turn()); }
+                catch (Exception error) { completion.SetException(error); }
+            }, CancellationToken.None);
+            Interlocked.Increment(ref _invocations);
+            return new(completion.Task);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            _queue.CompleteAdding();
+            return ValueTask.CompletedTask;
+        }
     }
 
     // Implements IRunicView directly so the bridge generator does not treat
@@ -205,7 +356,7 @@ public sealed class ContentLifecycleTests
     private sealed class CountedView(ViewCounter counter) : IRunicView, IRunicViewLifetime
     {
         public object? DataContext { get; set; }
-        public void OnAttached() => counter.Attached++;
-        public void OnDetached() => counter.Detached++;
+        public void OnAttached() => counter.Attach();
+        public void OnDetached() => counter.Detach();
     }
 }
