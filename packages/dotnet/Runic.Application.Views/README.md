@@ -76,7 +76,9 @@ namespace MyApp;
 
 public sealed partial class CounterViewModel : ObservableObject
 {
-    [ObservableProperty] private int count;
+    // A private setter keeps Count read-only to the page; Increment changes it.
+    [ObservableProperty]
+    public partial int Count { get; private set; }
 
     [RelayCommand]
     private void Increment() => Count++;
@@ -452,7 +454,7 @@ public sealed partial class EditorViewModel : ReactiveObject
         });
     }
 
-    [Reactive] public partial string StatusText { get; set; } = "";
+    [Reactive] public partial string StatusText { get; private set; } = "";
 
     public ReactiveCommand<RxVoid, RxVoid> QuitCommand { get; }
 }
@@ -463,7 +465,8 @@ With CommunityToolkit.Mvvm:
 ```csharp
 public sealed partial class EditorViewModel(IRunicWindowContext window) : ObservableObject
 {
-    [ObservableProperty] private string _statusText = "";
+    [ObservableProperty]
+    public partial string StatusText { get; private set; } = "";
 
     [RelayCommand]
     private async Task QuitAsync()
@@ -622,8 +625,12 @@ public sealed partial class EditorViewModel : ObservableObject
 }
 ```
 
-A field such as `[ObservableProperty] private bool isDirty;` generates a
-property with a public setter, so the web frontend could set it too. With
+The examples in this README use partial properties. `[ObservableProperty]`
+on a field, such as `[ObservableProperty] private bool isDirty;`, is still
+supported, but the property it generates always has a public setter, so the
+web frontend could set it too. A field suits a form field, such as the First
+Window example's `step`. For status, use a partial property with a private
+setter, or write the property out with `SetProperty` and a private setter. With
 ReactiveUI, give the property a private setter, either written out with
 `RaiseAndSetIfChanged` or generated with `[Reactive]`:
 
@@ -682,12 +689,8 @@ public DocumentPane ActivePane => ...;
 export type DocumentPane = "Editor" | "Preview";
 ```
 
-- Numbers follow JavaScript's precision: `int`, `double` and smaller numeric
-  types are `number`, but `long`, `ulong` and `BigInteger` are `bigint`,
-  because a `number` is exact only up to 2^53, and `decimal` is a `string`.
-  The wire carries 64-bit and big integers as strings; the generated client
-  converts them, and the member's TSDoc says so. Use `BigInt(value)` and
-  `Number(value)` to convert at the edges, or model a small count as `int`.
+- Every C# type has one TypeScript form; [Wire types](#wire-types) lists them.
+  Numbers follow JavaScript's precision, so `long` is a `bigint`.
 - An enum is a union of its wire names (the C# names, or `[RunicAlias]`), so
   a `switch` over it can be exhaustive.
 - A DTO is an interface with its wire member names. A `[RunicUnion]` is a
@@ -740,6 +743,52 @@ The generated C# bridge calls public runtime types such as `ViewModelBridge<T>`,
 `PropertyDescriptor<T>`, `CommandDescriptor<T>`, `BridgeWire`, `BridgeJson` and
 `ReactiveCommandExecution`. They are marked `[EditorBrowsable(Never)]`, so they
 stay out of completion lists; they are not application API.
+
+### Wire types
+
+State, DTO members, command arguments and results use these TypeScript types in
+the generated client. The client checks every value it receives against them,
+so a malformed reply never reaches application state.
+
+| C# | TypeScript | On the wire |
+| --- | --- | --- |
+| `bool` | `boolean` | |
+| `int`, `uint`, `short`, `ushort`, `byte`, `sbyte` | `number` | A number; the client rejects one outside the C# type's range. |
+| `double`, `float` | `number` | A finite number. |
+| `long`, `ulong`, `BigInteger` | `bigint` | A decimal string, such as `"9007199254740993"`. |
+| `decimal` | `string` | Invariant decimal text, such as `"12.50"`, so no digit is lost. |
+| `string` | `string` | |
+| `Guid` | `string` | `"d3b07384-d9a0-4c9b-8f1e-2a6c0e5f7b11"`, in lower case. |
+| `DateTimeOffset` | `string` | ISO 8601 with its offset: `"2026-10-03T12:30:00.0000000+02:00"`. The browser's `new Date().toISOString()` is accepted. |
+| `DateTime` | `string` | ISO 8601 round-trip text: `Z` for UTC, an offset for local time, none for an unspecified kind. A value ending in `Z` reads back as UTC. |
+| `DateOnly` | `string` | `"2026-10-03"` |
+| `TimeOnly` | `string` | `"08:15:00.0000000"`; `"08:15:00"` is accepted. |
+| `TimeSpan` | `string` | .NET's invariant `c` format, `[-][d.]hh:mm:ss[.fffffff]`, such as `"1.02:03:04"`. |
+| An enum | A union of its wire names, such as `"Editor" \| "Preview"` | The C# name, or its `[RunicAlias]`. A `[Flags]` enum needs a `[RunicBridgeCodec]`. |
+| `T?`, for a value or a reference type | `T \| null` | `null`. The member is always present: it is never optional and never `undefined`. |
+| `T` with nullable reference types enabled | `T` | Never `null`. Without annotations (`#nullable disable`), a reference type is `T` too. |
+| `T[]`, `List<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`, `IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `ImmutableArray<T>`, `ImmutableList<T>`, `ObservableCollection<T>`, `ReadOnlyObservableCollection<T>`, `ReadOnlyCollection<T>` | `readonly T[]` | An array. `string?[]` is `readonly (string \| null)[]`. Multi-dimensional arrays and other collections fail the build. |
+| `Dictionary<string, T>`, `IDictionary<string, T>`, `IReadOnlyDictionary<string, T>` | `Readonly<Record<string, T>>` | An object. Other key types fail the build. |
+| A record, class or struct (DTO) | An `interface` with `readonly` members | A member's name starts with a lower-case letter (`MeasuredAt` is `measuredAt`), unless `[RunicAlias]` or `[JsonPropertyName]` names it. |
+| A `[RunicUnion]` | A union discriminated by `$case` | |
+| A type with `[RunicBridgeCodec]` | The codec's TypeScript type | Whatever the codec writes. |
+
+Other framework types, such as `object`, `char`, `Uri` and tuples, fail the
+build with a `RUNICBRIDGE` diagnostic that names the member.
+
+A `number` is exact only up to 2^53 (`Number.MAX_SAFE_INTEGER`). A `long` can
+be larger, and an id or a version above that would silently change if it were
+a `number`, so `long`, `ulong` and `BigInteger` are `bigint`. The generated
+TSDoc of such a member says so. A `bigint` does not mix with `number` in
+arithmetic or `Math`, and `JSON.stringify` rejects it, so a formatter written
+for numbers needs `Number(value)` first; `BigInt(value)` converts back.
+For a value the UI formats, such as a byte count or a duration in
+milliseconds, prefer `double` in C#: it is a `number` in TypeScript and exact
+for every whole number up to 2^53, which is 8 PiB as a byte count. Keep `long`
+for ids and counters that must stay exact. Use `int` for a small count.
+
+A frontend whose own types use optional members (`version?: string`) maps the
+`T | null` members at its edge, for example with `value ?? undefined`.
 
 ## Generator diagnostics
 
@@ -920,6 +969,127 @@ of a WPF application, sees that project's host, which is empty when it
 references no host package; such a frontend cannot depend on the application's
 host.
 
+## Adding a Window to an existing web app
+
+A Window's frontend can reuse the components, styles and translations of a web
+app in the same repository, without copying them. The frontend stays a package
+of its own; Vite, TypeScript, Tailwind and the .NET build each need to be told
+about the files outside it. This layout puts a Svelte and Tailwind app in `ui/`
+and the Runic project next to it:
+
+```text
+my-app/
+├── ui/                  the existing web app
+│   ├── lib/             components, formatters and t() ($lib)
+│   ├── locales/         message tables
+│   └── app.css          the Tailwind theme
+└── runic/
+    ├── MyApp.Runic.csproj
+    └── Frontend/        the Window's frontend package
+        ├── package.json
+        ├── tsconfig.json
+        ├── vite.config.ts
+        └── src/app.css
+```
+
+`resolve.alias` points the app's import paths at its files. An alias can also
+replace a module that the page does not want, such as a global store that
+owns the app's HTTP session, with a small stand-in; list it before the
+general alias. `resolve.dedupe` resolves the shared files' bare imports from
+this package. Without it, a file in `ui/lib` resolves `svelte` from `ui/`,
+which gives the page a second Svelte runtime, or fails when `ui/` has no
+`node_modules`. List every package that both the shared files and the page
+import, and add those packages to this frontend's `package.json`:
+
+```ts
+// runic/Frontend/vite.config.ts
+import { resolve } from "node:path";
+import tailwindcss from "@tailwindcss/vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { runic } from "@runic-artifex/vite-plugin-runic";
+import { defineConfig } from "vite";
+
+const ui = resolve(import.meta.dirname, "../../ui");
+
+export default defineConfig({
+  base: "./",
+  plugins: [tailwindcss(), svelte(), runic()],
+  resolve: {
+    alias: [
+      // The app's global store is not used here; its readers get a stand-in.
+      { find: /^\$lib\/app\.svelte$/, replacement: resolve(import.meta.dirname, "src/app-shim.svelte.ts") },
+      { find: /^\$lib/, replacement: resolve(ui, "lib") },
+    ],
+    dedupe: ["svelte", "clsx", "tailwind-merge", "tailwind-variants", "@lucide/svelte"],
+  },
+  build: {
+    rolldownOptions: { input: ["index.html"] },
+    outDir: "dist",
+    emptyOutDir: true,
+    target: "es2022",
+  },
+});
+```
+
+TypeScript needs the same paths, in the same order:
+
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "$lib/app.svelte": ["./src/app-shim.svelte.ts"],
+      "$lib": ["../../ui/lib"],
+      "$lib/*": ["../../ui/lib/*"]
+    }
+  }
+}
+```
+
+Tailwind generates only the classes it finds in the files it scans, and it
+does not scan outside this package, so the classes that only the shared
+components use would be missing. Import the app's theme and name the shared
+files with `@source`:
+
+```css
+/* runic/Frontend/src/app.css */
+@import "../../../ui/app.css";
+@source "../../../ui/lib";
+```
+
+The .NET build rebuilds the frontend when a file under its frontend directory
+changes. Add the shared files as `RunicApplicationFrontendInput` items, so a
+change there rebuilds the page too, and name any environment variable that the
+shared code or the Vite configuration reads as a
+`RunicApplicationFrontendBuildEnvironment` item; see
+[Build properties](#build-properties):
+
+```xml
+<ItemGroup>
+  <RunicApplicationFrontendInput Include="../ui/lib/**/*;../ui/app.css;../ui/locales/**/*" />
+  <RunicApplicationFrontendBuildEnvironment Include="VITE_DEFAULT_LOCALE" />
+</ItemGroup>
+```
+
+- **Translations.** The page can import the app's `t()` and its message
+  tables through the alias, and take the locale from `navigator.language`,
+  which usually follows the system language (`LANG` on Linux). Include the
+  message tables in `RunicApplicationFrontendInput`, so an edited translation
+  rebuilds the page.
+- **Hosts.** The page loads `runic-views.js`, so it needs no host-specific
+  script or Vite configuration; see [The host of a page](#the-host-of-a-page).
+- **Type checking.** `svelte-check` or `tsc` in the Runic frontend also checks
+  the shared files it imports, without the app's own dependencies and type
+  declarations, and can report errors in them that the app's own check does
+  not. Check the shared files in the app that owns them.
+- **Lock files.** The frontend has its own `package.json` and lock file unless
+  it joins the app's package manager workspace. In a workspace, set
+  `RunicApplicationFrontendInstallEnabled` to `false`, because the workspace
+  install owns `node_modules`.
+- **Lists.** Tailwind removes list markers from every list, and Runic Desktop's
+  WebKitGTK then no longer reports such a list as a list to a screen reader;
+  see [Runic.Desktop accessibility](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop#accessibility).
+
 ## Typed commands and checked writes
 
 CommunityToolkit `IRelayCommand<T>` and `IAsyncRelayCommand<T>` use the same
@@ -949,6 +1119,124 @@ Each field retains at most 64 receipts within a default 256 KiB encoded-value
 and receipt-metadata budget. Evicted or oversized receipts leave bounded
 request-ID tombstones; reconcile authoritative state before issuing a new ID.
 The write may have succeeded even when its receipt could not be retained.
+
+## Operation results and parameterised queries
+
+What a call gives the page back depends on the command:
+
+| Generated member | Resolves to |
+| --- | --- |
+| `estimate(choice)` | The ViewModel's state after the command finished (`Promise<CleanupState>`), or a `BridgeOutcome` of that state and a [declared failure](#declared-failures). |
+| `canEstimate(choice)` | Whether the command can run with that argument (`Promise<boolean>`). Generated for a command with a parameter, instead of a `canEstimate` state property. |
+| `startEstimate(choice)` | A `BridgeOperation<TResult>` handle for status, Cancel and `outcome()`. |
+
+Only a ReactiveUI command has a typed result route. A public
+`ReactiveCommand<TInput, TResult>` generates `BridgeOperation<TResult>`, and
+`outcome()` resolves to `{ ok: true, value }`; see
+[Generated ReactiveUI contracts](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views.ReactiveUI#generated-reactiveui-contracts).
+A CommunityToolkit command has none. Its operation is a `BridgeOperation<void>`,
+and a `[RelayCommand]` method that returns `Task<T>` does not deliver its `T`.
+With CommunityToolkit.Mvvm, a command hands its result back through ViewModel
+state.
+
+Publish such a result in a read-only property, together with the input it
+answers. The page can then tell whether the result still matches its current
+choice. A second property tells where the work is, so the page can show
+progress, cancellation and failure. This is a simplified version of a cleanup
+estimate that measures in .NET what keeping the newest restore points would
+free:
+
+```csharp
+/// <summary>What to measure.</summary>
+public sealed record CleanupChoice(int Retention);
+
+/// <summary>What a cleanup keeping the newest <c>Retention</c> restore points frees.</summary>
+public sealed record CleanupEstimate(int Retention, double Bytes, DateTimeOffset MeasuredAt);
+
+public enum EstimatePhase { Idle, Measuring, Measured, Cancelled, Failed }
+
+public sealed partial class CleanupViewModel(ICleanupEstimator estimator) : ObservableObject
+{
+    /// <summary>The last measurement, with the choice it answers.</summary>
+    [ObservableProperty]
+    public partial CleanupEstimate? Estimate { get; private set; }
+
+    [ObservableProperty]
+    public partial EstimatePhase Phase { get; private set; }
+
+    [ObservableProperty]
+    public partial string? Error { get; private set; }
+
+    /// <summary>Measures what a cleanup keeping <paramref name="choice"/> frees.</summary>
+    [RelayCommand(IncludeCancelCommand = true)]
+    private async Task EstimateAsync(CleanupChoice choice, CancellationToken token)
+    {
+        Phase = EstimatePhase.Measuring;
+        Error = null;
+        try
+        {
+            var bytes = await estimator.FreedBytesAsync(choice.Retention, token);
+            // The result is state, published with the input it answers.
+            Estimate = new CleanupEstimate(choice.Retention, bytes, DateTimeOffset.Now);
+            Phase = EstimatePhase.Measured;
+        }
+        catch (OperationCanceledException)
+        {
+            Phase = EstimatePhase.Cancelled;
+            throw;
+        }
+        catch (Exception e)
+        {
+            Phase = EstimatePhase.Failed;
+            Error = e.Message;
+            throw;
+        }
+    }
+}
+```
+
+The page starts each measurement with `startEstimate`, through
+`createLatestOperationController` from `@runic-artifex/views`, so a newer choice
+cancels the measurement it supersedes. It shows an estimate only when the
+estimate answers the current choice:
+
+```ts
+import { createLatestOperationController } from "@runic-artifex/views";
+import { connectCleanup } from "./generated/cleanup.js";
+
+const cleanup = await connectCleanup();
+const measuring = createLatestOperationController();
+let retention = 3;
+
+function choose(keep: number) {
+  retention = keep;
+  return measuring.run({ start: () => cleanup.startEstimate({ retention: keep }) });
+}
+
+cleanup.subscribe(state => {
+  // An estimate answers the choice it was measured for, so ignore an older one.
+  const estimate = state.estimate?.retention === retention ? state.estimate : undefined;
+  if (state.phase === "Measuring") render("Measuring…");
+  else if (state.phase === "Failed") render(`Measuring failed: ${state.error}`);
+  else if (estimate) render(`Frees about ${formatBytes(estimate.bytes)}.`);
+});
+```
+
+A question that takes parameters works the same way. There is no query route
+that returns a computed value: run a command with the parameters, and read the
+answer from the state it publishes. `await cleanup.estimate({ retention: 5 })`
+resolves with the state after the command, so `(await cleanup.estimate(...)).estimate`
+is the answer for a caller that awaits it. Only availability is a query:
+`canEstimate(choice)` asks the command's `CanExecute` with that argument, and
+nothing pushes a change of its answer. An answer that the page can compute
+from state it already has, such as how many restore points a retention
+removes, needs no round trip. For progress, Cancel and stale-selection
+handling, see the
+[operations guide](https://docs.runic-artifex.eu/guides/application/guides/operations-and-cancellation/)
+and [`@runic-artifex/views`](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#operation-feedback-and-latest-selection).
+
+`Bytes` is a `double` because a `long` would be a `bigint` in TypeScript; see
+[Wire types](#wire-types).
 
 ## Batch synchronous model updates
 
