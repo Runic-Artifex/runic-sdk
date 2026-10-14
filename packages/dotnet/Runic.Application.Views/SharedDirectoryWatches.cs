@@ -41,11 +41,15 @@ internal static class SharedDirectoryWatches
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            FileSystemWatcher? stopped = null;
             lock (Gate)
             {
                 entry.Sinks = [.. entry.Sinks.Where(item => !ReferenceEquals(item, sink))];
-                if (entry.Sinks.Length == 0) entry.Stop();
+                if (entry.Sinks.Length == 0) stopped = entry.Stop();
             }
+            // Outside the gate: disposing can wait for the platform's event thread, which may be delivering an
+            // event to a sink that waits for the gate.
+            stopped?.Dispose();
         }
     }
 
@@ -81,12 +85,13 @@ internal static class SharedDirectoryWatches
             _watcher = watcher;
         }
 
-        // Called under Gate.
-        public void Stop()
+        // Called under Gate. Returns the watcher for the caller to dispose after leaving the gate.
+        public FileSystemWatcher? Stop()
         {
             if (Entries.TryGetValue(key, out var current) && ReferenceEquals(current, this)) Entries.Remove(key);
-            _watcher?.Dispose();
+            var watcher = _watcher;
             _watcher = null;
+            return watcher;
         }
 
         private void OnChanged(object sender, FileSystemEventArgs e)
@@ -108,12 +113,15 @@ internal static class SharedDirectoryWatches
             var exception = e.GetException();
             var stopped = exception is not InternalBufferOverflowException;
             IDirectoryWatchSink[] sinks;
+            FileSystemWatcher? failed = null;
             lock (Gate)
             {
                 sinks = Sinks;
                 // Any other failure can leave the watcher stopped; drop it so the next lease starts a new one.
-                if (stopped) Stop();
+                if (stopped) failed = Stop();
             }
+            // Not on this thread: on macOS this is the FSEvents thread that disposal waits for.
+            if (failed is not null) ThreadPool.QueueUserWorkItem(static watcher => watcher.Dispose(), failed, preferLocal: false);
             foreach (var sink in sinks) sink.OnFailure(directory, exception, stopped);
         }
     }

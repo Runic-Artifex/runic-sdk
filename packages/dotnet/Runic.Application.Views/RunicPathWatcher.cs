@@ -106,7 +106,9 @@ public sealed class RunicPathWatcher : IDisposable
     private void Begin()
     {
         List<RunicPathWatchError> errors = [];
-        lock (_gate) Arm(errors);
+        List<IDisposable> released = [];
+        lock (_gate) Arm(errors, released);
+        Release(released);
         Report(errors);
         _options.Observer?.Started(this);
         // Registered last: a context that already closed disposes the watcher at once.
@@ -117,13 +119,15 @@ public sealed class RunicPathWatcher : IDisposable
     /// <summary>Stops watching. Changes that were not reported yet are dropped.</summary>
     public void Dispose()
     {
+        List<IDisposable> released;
         lock (_gate)
         {
             if (_disposed) return;
             _disposed = true;
-            foreach (var subscription in _subscriptions.Values) subscription.Lease.Dispose();
+            released = [.. _subscriptions.Values.Select(subscription => subscription.Lease)];
             _subscriptions.Clear();
         }
+        Release(released);
         _debounce.Dispose();
         _poll.Dispose();
         _closed.Unregister();
@@ -170,6 +174,7 @@ public sealed class RunicPathWatcher : IDisposable
     private void OnFailure(string directory, Exception exception, bool stopped)
     {
         List<RunicPathWatchError> errors = [];
+        List<IDisposable> released = [];
         lock (_gate)
         {
             if (_disposed) return;
@@ -183,7 +188,7 @@ public sealed class RunicPathWatcher : IDisposable
             {
                 foreach (var (key, subscription) in _subscriptions.Where(item => WatchPaths.Comparer.Equals(item.Value.Directory, directory)).ToArray())
                 {
-                    subscription.Lease.Dispose();
+                    released.Add(subscription.Lease);
                     _subscriptions.Remove(key);
                     _failedWatches[key] = RunicPathWatchErrorKind.Failed;
                     AddOnce(errors, $"failed|{key}", new(RunicPathWatchErrorKind.Failed, directory, exception));
@@ -193,6 +198,7 @@ public sealed class RunicPathWatcher : IDisposable
                 errors.Add(new(RunicPathWatchErrorKind.Overflow, directory, exception));
             ScheduleDebounce();
         }
+        Release(released);
         Report(errors);
     }
 
@@ -220,6 +226,7 @@ public sealed class RunicPathWatcher : IDisposable
     private void Evaluate()
     {
         List<RunicPathWatchError> errors = [];
+        List<IDisposable> released = [];
         RunicPathChange? change = null;
         lock (_evaluating)
         {
@@ -247,16 +254,18 @@ public sealed class RunicPathWatcher : IDisposable
                         changed.Add(dirty[i].Target);
                     dirty[i].Probe = probes[i];
                 }
-                Arm(errors);
+                Arm(errors, released);
                 if (changed.Count > 0) change = new(changed);
             }
         }
+        Release(released);
         Report(errors);
         if (change is not null) Deliver(change);
     }
 
-    // Starts and stops directory watches to match the targets' current probes. Called under the gate.
-    private void Arm(List<RunicPathWatchError> errors)
+    // Starts and stops directory watches to match the targets' current probes. Called under the gate; the caller
+    // releases the leases of stopped watches after leaving it.
+    private void Arm(List<RunicPathWatchError> errors, List<IDisposable> released)
     {
         var wanted = new Dictionary<string, (string Directory, bool Recursive)>(WatchPaths.Comparer);
         foreach (var state in _states)
@@ -276,7 +285,7 @@ public sealed class RunicPathWatcher : IDisposable
 
         foreach (var key in _subscriptions.Keys.Where(key => !wanted.ContainsKey(key)).ToArray())
         {
-            _subscriptions[key].Lease.Dispose();
+            released.Add(_subscriptions[key].Lease);
             _subscriptions.Remove(key);
         }
         foreach (var (key, (directory, recursive)) in wanted)
@@ -311,6 +320,12 @@ public sealed class RunicPathWatcher : IDisposable
             _pollPeriod = period;
             _poll.Change(period, period);
         }
+    }
+
+    // Outside the gate: disposing a FileSystemWatcher can wait for its event thread, which may be waiting for the gate.
+    private static void Release(List<IDisposable> released)
+    {
+        foreach (var lease in released) lease.Dispose();
     }
 
     private void AddOnce(List<RunicPathWatchError> errors, string key, RunicPathWatchError error)
