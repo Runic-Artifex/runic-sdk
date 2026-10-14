@@ -245,33 +245,53 @@ a `main` landmark and headings.
 
 ## Keyboard and zoom in embedded windows
 
-Embedded windows behave like a browser window for focus and zoom:
+Embedded windows on Linux behave like a browser window for focus and zoom. Runic
+Desktop checks this on the GTK 3 host and the GTK 4 provider with real key presses
+on X11 and Wayland. On Windows and macOS the engine's own behaviour applies, which
+was not checked on those systems:
 
-| | WebKitGTK (GTK 3 and GTK 4) | WebView2 (Windows) | WKWebView (macOS) |
+| | WebKitGTK (GTK 3 and GTK 4), checked | WebView2 (Windows), expected | WKWebView (macOS), expected |
 | --- | --- | --- | --- |
-| Tab after the last control | Focuses the first control | Focuses the first control (WebView2) | Focuses the first control (WebKit) |
+| Tab after the last control | Focuses the first control | Focuses the first control: Runic Desktop leaves WebView2's focus handling at its default | Focuses the first control: WebKit focuses the page from its start |
 | Shift+Tab before the first control | Focuses the last control | Focuses the last control | Focuses the last control |
-| Ctrl and + or =, Ctrl and − | Zoom in or out in steps from 30 % to 300 % | Browser zoom (WebView2) | Not available |
-| Ctrl and 0 | Resets the zoom to 100 % | Browser zoom | Not available |
-| Ctrl and the scroll wheel | Zooms in or out | Browser zoom | Not available |
+| Ctrl and + or =, Ctrl and − | Zoom in or out in steps from 30 % to 300 % | WebView2's browser zoom, left enabled | Not available |
+| Ctrl and 0 | Resets the zoom to 100 % | WebView2's browser zoom | Not available |
+| Ctrl and the scroll wheel | Zooms in or out | WebView2's browser zoom | Not available |
 
 WebKitGTK cannot move focus from the end of a page to its start by itself: it gives
 focus to the GTK window, which has nothing else to focus, and the page is left with no
 focused element. Screen readers then say nothing. Runic Desktop keeps focus in the
-view and focuses the first control after Tab (or the last after Shift+Tab). It uses
-the sequential focus order of the top document: positive `tabindex` values first,
-then document order, including open shadow roots. A focused frame inside the page
-wraps as WebKit decides.
+view and focuses the first control after Tab (or the last after Shift+Tab), as a
+browser would:
+
+- It follows the sequential focus order of the top document: positive `tabindex`
+  values first, then document order. Open shadow roots and their slots are ordered
+  in place of their host, with their own positive `tabindex` values first. Disabled,
+  hidden and `inert` controls are skipped, a radio group is entered at its checked
+  button, and only the controls of an open modal `dialog` take part. Closed shadow
+  roots are not seen. When WebKit's own order differs, the wrap can pick a different
+  first or last control than the next Tab would.
+- A page that moves focus elsewhere when its first or last control gets it, as a focus
+  trap does, keeps that. A page without any control keeps the focus of its document.
+- Frames are a known limit. When the last control is inside an `iframe`, Tab after it
+  leaves the page with no focused element once, as before, and the next Tab starts
+  at the first control again. A frame's controls are also never the target of a wrap.
+- The page sees its window lose and regain focus (`blur` and `focus` on `window`)
+  each time focus wraps: WebKit clears the focus before Runic Desktop can move it.
 
 On Linux the zoom steps are 30, 50, 67, 80, 90, 100, 110, 120, 133, 150, 170, 200,
-240 and 300 %. The page receives every key and wheel event first:
+240 and 300 %. Keyboard layouts on which the 0 key types another character without
+Shift, such as French AZERTY or Czech, reset the zoom with Ctrl and that key, as
+browsers do. The page receives every key and wheel event first, and only events from
+the user act:
 
 - A page that handles Ctrl and +, − or 0 itself calls `preventDefault()` on its
   `keydown` event; the window then does not zoom. A key the page leaves alone zooms,
   also while a text field has focus.
 - A page that handles Ctrl and the wheel itself calls `preventDefault()` on its
   `wheel` event, from a listener registered with `{ passive: false }`; the window
-  then neither zooms nor scrolls.
+  then neither zooms nor scrolls. A wheel the page leaves alone zooms without
+  scrolling.
 - A page that cancels Tab, such as a dialog that keeps focus inside itself, keeps
   focus where it put it.
 
@@ -279,11 +299,10 @@ There is no option to turn zoom off or to set the initial zoom: a page that must
 zoom cancels these events, which works with WebView2 too. GNOME's large text setting
 applies as well.
 
-On Windows and macOS the behaviour is the engine's own: Runic Desktop leaves
-WebView2's browser keys and zoom control at their defaults. WKWebView offers no zoom
-keys and Runic Desktop does not add them yet; use the system's zoom or larger text
-settings. On macOS, Tab reaches buttons and links only with Keyboard Navigation
-turned on in the system settings, as in Safari.
+WKWebView offers no zoom keys and Runic Desktop does not add them yet
+([#259](https://github.com/Runic-Artifex/runic-sdk/issues/259)); use the system's
+zoom or larger text settings. On macOS, Tab reaches buttons and links only with
+Keyboard Navigation turned on in the system settings, as in Safari.
 
 ## Security notes
 
