@@ -103,8 +103,7 @@ internal static class SourceLocator
         {
             if (Reader(type.Assembly) is not { } reader) return [];
             var documents = new HashSet<DocumentHandle>();
-            foreach (var method in type.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
-                         | BindingFlags.Public | BindingFlags.NonPublic).OfType<MethodBase>())
+            foreach (var method in DeclaredMethods(type))
             {
                 var handle = MetadataTokens.MethodDefinitionHandle(method.MetadataToken);
                 if (handle.IsNil) continue;
@@ -131,6 +130,16 @@ internal static class SourceLocator
         }
     }
 
+    // Methods and constructors only. GetMembers also loads the nested types,
+    // such as the state machine of an iterator over WPF objects, which may
+    // need an assembly the generator cannot load.
+    private static IEnumerable<MethodBase> DeclaredMethods(Type type)
+    {
+        const BindingFlags Declared = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+            | BindingFlags.Public | BindingFlags.NonPublic;
+        return type.GetConstructors(Declared).Concat<MethodBase>(type.GetMethods(Declared));
+    }
+
     // PortableCustomDebugInfoKinds.TypeDefinitionDocuments: the documents of a
     // type whose members have no sequence points.
     private static readonly Guid TypeDefinitionDocuments = new("932E74BC-DBA9-4478-8D46-0F32A7BAB3D3");
@@ -142,8 +151,7 @@ internal static class SourceLocator
         {
             PropertyInfo property => new[] { property.GetMethod, property.SetMethod }.OfType<MethodBase>(),
             MethodBase method => [method],
-            Type type => type.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
-                    | BindingFlags.Public | BindingFlags.NonPublic).OfType<MethodBase>(),
+            Type type => DeclaredMethods(type),
             _ => [],
         };
         // For a type, the earliest line of any member is the closest location

@@ -21,6 +21,7 @@ try
         var optional = false;
         string? compositionType = null;
         var pathMap = "";
+        var frameworks = new List<string>();
         var values = new List<string> { args[0] };
         for (var i = 1; i < args.Length; i++)
         {
@@ -37,6 +38,11 @@ try
                     pathMap = args[++i];
                     SourceLocator.SetPathMap(pathMap);
                     break;
+                // A shared framework the application's build references, such as
+                // Microsoft.AspNetCore.App (see BridgeLoading.UseSharedFrameworks).
+                case "--framework" when i + 1 < args.Length:
+                    frameworks.Add(args[++i]);
+                    break;
                 // MVVM library options, such as --reactiveui-flavor.
                 case var option when i + 1 < args.Length && MvvmCodegenConventions.ForOption(option) is { } convention:
                     convention.ApplyOption(option, args[++i]);
@@ -46,9 +52,10 @@ try
         }
         var positional = values.ToArray();
         if (positional.Length != 4)
-            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>] [--path-map <map>]");
+            throw new ArgumentException("Usage: BridgeCodegen --generate <model.dll> <C# output dir> <TypeScript output dir> [--aot] [--optional] [--di-composition <namespace.type>] [--path-map <map>] [--framework <shared framework>]...");
 
         string[] cacheArguments = [$"aot={aot}", $"composition={compositionType}", $"path-map={pathMap}",
+            $"frameworks={string.Join(";", frameworks.Order(StringComparer.OrdinalIgnoreCase))}",
             .. MvvmCodegenConventions.All.SelectMany(convention => convention.CacheArguments)];
         if (BridgeGenerationCache.TryHit(positional[1], positional[2], positional[3], cacheArguments, out var cachedWarnings))
         {
@@ -56,9 +63,10 @@ try
             Console.WriteLine("Bridge generation is up to date.");
             return;
         }
+        BridgeLoading.UseSharedFrameworks(frameworks, positional[1]);
         var assembly = Assembly.LoadFrom(Path.GetFullPath(positional[1]));
         var viewTypes = new Dictionary<Type, List<Type>>();
-        foreach (var type in InspectableTypes(assembly))
+        foreach (var type in BridgeLoading.InspectableTypes(assembly))
         {
             try
             {
@@ -83,6 +91,11 @@ try
         }
         if (Diagnostics.HasErrors) return;
         var models = viewTypes.Keys.Select(type => (Model: type, Name: PublicName(type))).ToArray();
+        // Without Views, optional generation removes the generated output. Not
+        // when types were skipped for a missing assembly: they may be the Views.
+        if (models.Length == 0 && optional && BridgeLoading.SkippedFor.Count > 0)
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.AssemblyLoad,
+                $"{assembly.GetName().Name}: no Runic Window/View classes were found, but types were skipped because {string.Join(", ", BridgeLoading.SkippedFor)} could not be loaded, so the generated output is kept. Make the assembly available in the build output.");
         if (models.Length == 0 && optional)
         {
             // Bridge generation was on by default, not requested: an assembly
@@ -124,6 +137,22 @@ try
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                     $"{existing.FullName} has the name of the Bridge generated for {entry.Model.FullName}. Rename the type, or the ViewModel.",
                     existing);
+        // A ViewModel member whose type needs an assembly the generator cannot
+        // load (a WPF type) is reported at that member. The contract of each
+        // ViewModel covers the application's other ViewModels too, so stop
+        // before it would fail for all of them.
+        foreach (var entry in models)
+        {
+            try
+            {
+                BridgeLoading.CheckSurface(entry.Model);
+            }
+            catch (Exception error) when (Diagnostics.IsReportable(error))
+            {
+                Diagnostics.Report(error, entry.Model);
+            }
+        }
+        if (Diagnostics.HasErrors) return;
         if (aot)
         {
             var unsupported = models.Select(entry => (entry.Model, Reason: MvvmCodegenConventions.UnsupportedAotReason(entry.Model)))
@@ -233,35 +262,15 @@ static void AppendNamespace(StringBuilder source, string? ns)
     if (ns is not null) source.AppendLine($"namespace {ns};");
 }
 
-// A WPF or Windows Forms project also declares its Application, windows and
-// controls, which derive from Windows Desktop framework types this process
-// cannot load. Runic Views and ViewModels must not depend on them, so inspect
-// the types that load. Any other load failure stays RUNICBRIDGE005.
-static IEnumerable<Type> InspectableTypes(Assembly assembly)
-{
-    try
-    {
-        return assembly.GetTypes();
-    }
-    catch (ReflectionTypeLoadException error) when (error.LoaderExceptions.All(IsWindowsDesktopLoadFailure))
-    {
-        var missing = error.LoaderExceptions.OfType<FileNotFoundException>()
-            .Select(inner => new AssemblyName(inner.FileName!).Name).Distinct(StringComparer.Ordinal);
-        Console.WriteLine($"{assembly.GetName().Name}: skipped {error.Types.Count(type => type is null)} types that depend on {string.Join(", ", missing)}. Runic Views and ViewModels cannot depend on Windows Desktop framework types.");
-        return error.Types.OfType<Type>();
-    }
-}
-
-static bool IsWindowsDesktopLoadFailure(Exception? error)
-{
-    if (error is not FileNotFoundException { FileName: { } fileName }) return false;
-    var name = new AssemblyName(fileName).Name ?? "";
-    return name is "WindowsBase" or "System.Xaml" or "ReachFramework" or "Accessibility" or "WindowsFormsIntegration"
-        or "System.Printing" or "DirectWriteForwarder"
-        || name.StartsWith("Presentation", StringComparison.Ordinal)
-        || name.StartsWith("UIAutomation", StringComparison.Ordinal)
-        || name.StartsWith("System.Windows.", StringComparison.Ordinal);
-}
+// The ViewModel's bridged properties: public, declared, not [RunicIgnore] and
+// not indexers. [RunicIgnore] is checked first, by name: the signature of an
+// ignored property, which GetIndexParameters resolves, may need an assembly
+// the generator cannot load, such as a WPF ImageSource.
+static PropertyInfo[] BridgedProperties(Type model) =>
+    model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
+        .Where(property => !BridgeDtoContract.IsRunicIgnored(property) && property.GetIndexParameters().Length == 0)
+        .OrderBy(property => property.MetadataToken)
+        .ToArray();
 
 static Type? ViewModelFor(Type view)
 {
@@ -523,12 +532,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.ViewModel,
             $"{model.FullName}: a Bridge ViewModel must be a public, top-level class.", model);
 
-    var declared = model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
-        .Where(property => property.GetIndexParameters().Length == 0
-            && !property.CustomAttributes.Any(attribute =>
-                attribute.AttributeType.FullName == "Runic.Application.Views.RunicIgnoreAttribute"))
-        .OrderBy(property => property.MetadataToken)
-        .ToArray();
+    var declared = BridgedProperties(model);
     var contractFingerprint = BridgeContractShape.Compute(model);
     var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
@@ -683,10 +687,14 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // bridged, so a declaration on an inherited member never reaches a client.
     var failureOwners = commands.Select(command => (MemberInfo)command)
         .Concat(commandSources.Values.OfType<MethodInfo>()).ToHashSet();
+    // Properties and methods only, and RunicFailure by name: GetMembers would
+    // load nested types (an iterator's state machine over WPF objects), and
+    // GetCustomAttribute resolves every attribute type on the member.
+    const BindingFlags AllDeclared = BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
+        | BindingFlags.Public | BindingFlags.NonPublic;
     for (var owner = model; owner is not null && owner != typeof(object); owner = owner.BaseType)
-        foreach (var member in owner.GetMembers(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static
-            | BindingFlags.Public | BindingFlags.NonPublic).Where(member => member is PropertyInfo or MethodInfo).OrderBy(member => member.MetadataToken))
-            if (member.GetCustomAttribute<RunicFailureAttribute>(false) is not null && !failureOwners.Contains(member)
+        foreach (var member in owner.GetProperties(AllDeclared).Concat<MemberInfo>(owner.GetMethods(AllDeclared)).OrderBy(member => member.MetadataToken))
+            if (BridgeAttributeNames.Has(member, "Runic.Application.Views.RunicFailureAttribute") && !failureOwners.Contains(member)
                 && !OverriddenByCommand(member))
                 throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Failure,
                     $"{model.Name}.{member.Name}: RunicFailure applies only to a Bridge command property or its CommunityToolkit [RelayCommand] method"
@@ -1534,6 +1542,8 @@ static class BridgeDiagnosticCodes
     internal const string Failure = "RUNICBRIDGE012";
     /// <summary>Warning: a ViewModel that a content slot or navigation region admits has no View.</summary>
     internal const string MissingView = "RUNICBRIDGE013";
+    /// <summary>Warning: types were skipped because an assembly other than a Windows Desktop one could not be loaded.</summary>
+    internal const string SkippedTypes = "RUNICBRIDGE020";
     // RUNICBRIDGE014 (missing frontend), RUNICBRIDGE015 (generation off with a
     // declared View) and RUNICBRIDGE016 (failed frontend command) are reported
     // by Runic.Application.Views.targets.

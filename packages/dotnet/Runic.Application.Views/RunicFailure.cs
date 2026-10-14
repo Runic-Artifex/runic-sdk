@@ -147,8 +147,10 @@ internal static class BridgeCommandSources
         var name = command.Name[..^"Command".Length];
         return (command.DeclaringType ?? model).GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance
                 | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-            .Select(method => (Method: method, Convention: method.CustomAttributes
-                .Select(attribute => BridgeMvvmConventions.CommandSource(attribute.AttributeType))
+            // By attribute name: any method of the ViewModel may carry an
+            // attribute whose type the code generator cannot load.
+            .Select(method => (Method: method, Convention: BridgeAttributeNames.Of(method)
+                .Select(attribute => BridgeMvvmConventions.CommandSource(attribute.Name))
                 .FirstOrDefault(convention => convention is not null)))
             .Where(source => source.Convention is not null)
             .OrderBy(source => source.Method.MetadataToken)

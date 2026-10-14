@@ -1,0 +1,340 @@
+using System.ComponentModel;
+using System.Reflection;
+using System.Reflection.Metadata;
+using System.Runtime.Loader;
+using Runic.Application.Views;
+
+/// <summary>
+/// Loading the application assembly in the generator, which runs on
+/// Microsoft.NETCore.App only. The application may also use other shared
+/// frameworks: every Runic Desktop application uses Microsoft.AspNetCore.App,
+/// which Runic.Desktop references, and a WPF application uses
+/// Microsoft.WindowsDesktop.App.
+/// </summary>
+static class BridgeLoading
+{
+    /// <summary>
+    /// Resolves the application's assemblies from the shared frameworks that
+    /// its build references (<c>--framework</c>), such as
+    /// Microsoft.Extensions.Hosting.Abstractions from Microsoft.AspNetCore.App
+    /// for a <c>BackgroundService</c>. The installed version that matches the
+    /// generator's runtime is used. Microsoft.WindowsDesktop.App is never
+    /// resolved, even on Windows: a Windows application is also built on Linux
+    /// and macOS, where that framework does not exist, and must generate the
+    /// same Bridge there. Its types are skipped instead (see <see cref="InspectableTypes"/>).
+    /// </summary>
+    internal static void UseSharedFrameworks(IEnumerable<string> frameworks, string applicationAssembly)
+    {
+        var shared = SharedRoot;
+        var directories = frameworks.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(name => name != "Microsoft.NETCore.App" && !name.StartsWith("Microsoft.WindowsDesktop.App", StringComparison.OrdinalIgnoreCase))
+            .Select(name => FrameworkDirectory(Path.Combine(shared, name)))
+            .OfType<string>().ToArray();
+        if (directories.Length == 0) return;
+        var applicationDirectory = Path.GetDirectoryName(Path.GetFullPath(applicationAssembly))!;
+        AssemblyLoadContext.Default.Resolving += (context, name) =>
+        {
+            if (name.Name is not { Length: > 0 } simpleName) return null;
+            // The application's own copy, for example a newer package version
+            // than the framework's, wins. Load it here: a framework assembly
+            // that needs it is not in the application folder, so the folder
+            // probing of Assembly.LoadFrom would not find it.
+            var local = Path.Combine(applicationDirectory, simpleName + ".dll");
+            if (File.Exists(local)) return context.LoadFromAssemblyPath(local);
+            foreach (var directory in directories)
+            {
+                var path = Path.Combine(directory, simpleName + ".dll");
+                if (File.Exists(path) && (name.Version is null || AssemblyName.GetAssemblyName(path).Version >= name.Version))
+                    return context.LoadFromAssemblyPath(path);
+            }
+            return null;
+        };
+    }
+
+    // dotnet/shared, beside this runtime's Microsoft.NETCore.App directory.
+    private static string SharedRoot =>
+        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "..", ".."));
+
+    // The names of the assemblies of every installed shared framework, of any
+    // version. None of them can declare a Runic View base class.
+    private static readonly Lazy<HashSet<string>> SharedFrameworkAssemblies = new(() =>
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            foreach (var framework in Directory.EnumerateDirectories(SharedRoot))
+                foreach (var version in Directory.EnumerateDirectories(framework))
+                    foreach (var file in Directory.EnumerateFiles(version, "*.dll"))
+                        names.Add(Path.GetFileNameWithoutExtension(file));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+        }
+        return names;
+    });
+
+    /// <summary>
+    /// The assemblies, other than Windows Desktop ones, whose absence made the
+    /// generator skip types (reported as RUNICBRIDGE020).
+    /// </summary>
+    internal static IReadOnlyList<string> SkippedFor { get; private set; } = [];
+
+    // The installed version of a shared framework for this runtime: the same
+    // major and minor version as the runtime, highest patch first, else the
+    // newest older one. A newer major version may need a newer runtime.
+    private static string? FrameworkDirectory(string root)
+    {
+        if (!Directory.Exists(root)) return null;
+        var runtime = Environment.Version;
+        return Directory.GetDirectories(root)
+            .Select(directory => (Directory: directory, Version: Version.TryParse(Path.GetFileName(directory).Split('-', '+')[0], out var version) ? version : null))
+            .Where(candidate => candidate.Version is { } version && version.Major <= runtime.Major)
+            .OrderByDescending(candidate => candidate.Version!.Major == runtime.Major && candidate.Version.Minor == runtime.Minor)
+            .ThenByDescending(candidate => candidate.Version)
+            .Select(candidate => candidate.Directory).FirstOrDefault();
+    }
+
+    /// <summary>
+    /// The application's types that load. A WPF or Windows Forms project also
+    /// declares its Application, windows and controls, which derive from
+    /// Windows Desktop framework types this process cannot load; other types
+    /// may need a framework or assembly that is missing too. Runic Views and
+    /// ViewModels must not depend on them, so the types that load are
+    /// inspected. A Runic View that does not load (because of its ViewModel, or
+    /// its own base) is reported, naming the missing assemblies, and so is a
+    /// type whose base class is in a missing assembly that may declare a View
+    /// base. Types skipped for an assembly that is not a Windows Desktop one
+    /// are reported as warning RUNICBRIDGE020: the build may lack a dependency.
+    /// </summary>
+    internal static IEnumerable<Type> InspectableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException error) when (error.LoaderExceptions.All(inner => MissingAssembly(inner) is not null))
+        {
+            var loaded = error.Types.OfType<Type>().ToArray();
+            var missing = error.LoaderExceptions.Select(MissingAssembly).OfType<string>().Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal).ToArray();
+            var (views, possibleViews) = UnloadedViews(assembly, loaded);
+            var because = $"because {(missing.Length == 1 ? "the assembly" : "the assemblies")} {string.Join(", ", missing)} could not be loaded";
+            if (views.Length > 0)
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.AssemblyLoad,
+                    $"{assembly.GetName().Name}: the Runic {(views.Length == 1 ? "View" : "Views")} {string.Join(", ", views)} could not be loaded {because}.{WindowsDesktopHint(missing)}");
+            if (possibleViews.Length > 0)
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.AssemblyLoad,
+                    $"{assembly.GetName().Name}: {string.Join(", ", possibleViews)} could not be loaded {because}, and {(possibleViews.Length == 1 ? "its base class is" : "their base classes are")} in an assembly that could not be loaded, so the generator cannot tell whether {(possibleViews.Length == 1 ? "it is a Runic View" : "they are Runic Views")}. Make the assembly available in the build output.");
+            var skipped = error.Types.Count(type => type is null);
+            var others = missing.Where(name => !IsWindowsDesktopAssembly(name)).ToArray();
+            SkippedFor = others;
+            if (others.Length == 0)
+                Console.WriteLine($"{assembly.GetName().Name}: skipped {skipped} types that depend on {string.Join(", ", missing)}. Runic Views and ViewModels cannot depend on Windows Desktop framework types.");
+            else
+                Diagnostics.Warn(BridgeDiagnosticCodes.SkippedTypes,
+                    $"{assembly.GetName().Name}: skipped {skipped} types that depend on {string.Join(", ", missing)}, which the Bridge generator could not load. None of them is a Runic View, but a missing {string.Join(", ", others)} may also be missing at run time. Reference the shared framework that contains it, or make it available in the build output.",
+                    null);
+            return loaded;
+        }
+    }
+
+    /// <summary>The simple name of the assembly whose absence <paramref name="error"/> reports, or null.</summary>
+    internal static string? MissingAssembly(Exception? error) =>
+        error is FileNotFoundException { FileName: { Length: > 0 } fileName } ? new AssemblyName(fileName).Name : null;
+
+    internal static bool IsWindowsDesktopAssembly(string? name) =>
+        name is "WindowsBase" or "System.Xaml" or "ReachFramework" or "Accessibility" or "WindowsFormsIntegration"
+            or "System.Printing" or "DirectWriteForwarder"
+        || name is not null && (name.StartsWith("Presentation", StringComparison.Ordinal)
+            || name.StartsWith("UIAutomation", StringComparison.Ordinal)
+            || name.StartsWith("System.Windows.", StringComparison.Ordinal));
+
+    internal static string WindowsDesktopHint(IEnumerable<string?> assemblies) => assemblies.Any(IsWindowsDesktopAssembly)
+        ? " Runic Views and ViewModels cannot depend on Windows Desktop (WPF or Windows Forms) types."
+        : "";
+
+    // The full names of the types that did not load and are Runic Views, found
+    // in metadata: a View derives from RunicView<TViewModel> (or RunicWindow),
+    // directly, through a base class in the same assembly, or through a base
+    // class in another assembly that loads.
+    private static (string[] Views, string[] PossibleViews) UnloadedViews(Assembly assembly, IReadOnlyCollection<Type> loaded)
+    {
+        if (BridgeAttributeNames.Reader(assembly.ManifestModule) is not { } reader) return ([], []);
+        var loadedNames = loaded.Select(type => type.FullName).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var views = new List<string>();
+        var possibleViews = new List<string>();
+        foreach (var handle in reader.TypeDefinitions)
+        {
+            var name = BridgeAttributeNames.TypeName(reader, handle);
+            if (name is null || name == "<Module>" || loadedNames.Contains(name)) continue;
+            switch (IsView(reader, handle, 0))
+            {
+                case true: views.Add(name); break;
+                case null: possibleViews.Add(name); break;
+            }
+        }
+        return ([.. views.Order(StringComparer.Ordinal)], [.. possibleViews.Order(StringComparer.Ordinal)]);
+    }
+
+    // True for a View, false for another type, null when its base class is in
+    // an assembly that cannot be loaded and may declare a View base.
+    private static bool? IsView(MetadataReader reader, EntityHandle type, int depth)
+    {
+        if (type.IsNil || depth > 32) return false;
+        switch (type.Kind)
+        {
+            case HandleKind.TypeDefinition:
+                return IsView(reader, reader.GetTypeDefinition((TypeDefinitionHandle)type).BaseType, depth + 1);
+            case HandleKind.TypeSpecification:
+                // A generic instantiation: GENERICINST (CLASS|VALUETYPE) TypeDefOrRef ...
+                var signature = reader.GetBlobReader(reader.GetTypeSpecification((TypeSpecificationHandle)type).Signature);
+                if (signature.ReadSignatureTypeCode() != SignatureTypeCode.GenericTypeInstance) return false;
+                signature.ReadSignatureTypeCode();
+                return IsView(reader, signature.ReadTypeHandle(), depth + 1);
+            case HandleKind.TypeReference:
+                var name = BridgeAttributeNames.TypeName(reader, type);
+                if (name is "Runic.Application.Views.RunicView`1" or "Runic.Application.Views.RunicWindow`1") return true;
+                return ExternalBaseIsView(reader, (TypeReferenceHandle)type, name);
+            default:
+                return false;
+        }
+    }
+
+    // A base class in another assembly, such as an application's shared View
+    // base in a library. If it cannot be loaded, it may be one, unless its
+    // assembly is a Windows Desktop or other shared framework assembly, which
+    // cannot reference Runic (WPF's Window, ASP.NET Core's BackgroundService).
+    private static bool? ExternalBaseIsView(MetadataReader reader, TypeReferenceHandle handle, string? name)
+    {
+        var reference = reader.GetTypeReference(handle);
+        if (name is null || reference.ResolutionScope.Kind != HandleKind.AssemblyReference) return false;
+        var assemblyName = reader.GetAssemblyReference((AssemblyReferenceHandle)reference.ResolutionScope).GetAssemblyName();
+        try
+        {
+            for (var current = Assembly.Load(assemblyName).GetType(name, throwOnError: false)?.BaseType; current is not null; current = current.BaseType)
+                if (current.IsGenericType && current.GetGenericTypeDefinition().FullName == "Runic.Application.Views.RunicView`1")
+                    return true;
+            return false;
+        }
+        catch (Exception error) when (error is FileNotFoundException or FileLoadException or BadImageFormatException or TypeLoadException)
+        {
+            return IsWindowsDesktopAssembly(assemblyName.Name) || SharedFrameworkAssemblies.Value.Contains(assemblyName.Name ?? "")
+                ? false : null;
+        }
+    }
+
+    /// <summary>
+    /// Checks that the bridged surface of <paramref name="model"/> loads: its
+    /// public properties that are not <c>[RunicIgnore]</c>, their generic
+    /// arguments and the members of the DTOs they reach. A member whose type
+    /// needs an assembly the generator cannot load is reported at that member,
+    /// before the contract of the application's ViewModels is computed (which
+    /// would otherwise fail for every ViewModel).
+    /// </summary>
+    internal static void CheckSurface(Type model)
+    {
+        var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
+        var visited = new HashSet<Type>();
+        foreach (var property in model.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
+            .Where(property => !BridgeDtoContract.IsRunicIgnored(property)).OrderBy(property => property.MetadataToken))
+        {
+            CheckProperty(property, $"{model.Name}.{property.Name}", visited, honorJsonIgnore);
+            // A command's [RunicFailure] value crosses the Bridge too.
+            IReadOnlyList<(string DeclaredOn, Type Failure)> failures;
+            try
+            {
+                failures = BridgeCommandSources.FailureDeclarations(model, property);
+            }
+            catch (Exception error) when (IsLoadFailure(error))
+            {
+                throw Unloadable($"{model.Name}.{property.Name}.failure", property, error);
+            }
+            foreach (var (_, failure) in failures)
+                CheckType(failure, $"{model.Name}.{property.Name}.failure", property, visited, honorJsonIgnore);
+        }
+    }
+
+    private static bool IsLoadFailure(Exception error) =>
+        MissingAssembly(error) is not null || error is FileLoadException or TypeLoadException;
+
+    private static void CheckProperty(PropertyInfo property, string path, HashSet<Type> visited, bool honorJsonIgnore)
+    {
+        Type type;
+        try
+        {
+            if (property.GetIndexParameters().Length != 0) return;
+            type = property.PropertyType;
+        }
+        catch (Exception error) when (IsLoadFailure(error))
+        {
+            throw Unloadable(path, property, error);
+        }
+        // A member codec encodes the value itself; its members do not cross.
+        if (BridgeAttributeNames.Has(property, CodecAttribute)) return;
+        CheckType(type, path, property, visited, honorJsonIgnore);
+    }
+
+    private static void CheckType(Type type, string path, PropertyInfo origin, HashSet<Type> visited, bool honorJsonIgnore)
+    {
+        if (!visited.Add(type)) return;
+        try
+        {
+            if (type.HasElementType)
+            {
+                CheckType(type.GetElementType()!, path, origin, visited, honorJsonIgnore);
+                return;
+            }
+            if (type.IsGenericType)
+                foreach (var argument in type.GenericTypeArguments)
+                    CheckType(argument, path, origin, visited, honorJsonIgnore);
+            if (type.IsPrimitive || type.IsEnum || type.IsGenericParameter
+                || type.Namespace is { } ns && (ns == "System" || ns.StartsWith("System.", StringComparison.Ordinal)
+                    || BridgeMvvmConventions.IsFrameworkNamespace(ns)))
+                return;
+            // As BridgeTypeGraph: a custom codec's members do not cross, a
+            // union's cases do.
+            if (HasCodec(type)) return;
+            if (BridgeAttributeNames.Has(type, "Runic.Application.Views.RunicUnionAttribute")
+                && type.GetCustomAttribute<RunicUnionAttribute>(inherit: false) is { } union)
+            {
+                foreach (var @case in union.Cases)
+                    CheckType(@case, path, origin, visited, honorJsonIgnore);
+                return;
+            }
+            // ViewModels (content, checked as models of their own Views) and
+            // other abstract types are not DTOs whose members cross.
+            if (type.IsInterface || type.IsAbstract || typeof(INotifyPropertyChanged).IsAssignableFrom(type))
+                return;
+        }
+        catch (Exception error) when (IsLoadFailure(error))
+        {
+            throw Unloadable(path, origin, error);
+        }
+        for (var current = type; current is not null && current != typeof(object) && !BridgeContractShape.IsFrameworkBase(current); current = current.BaseType)
+            foreach (var member in current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
+                .Where(member => member.GetMethod is not null && !BridgeDtoContract.IsIgnored(member, honorJsonIgnore)))
+                CheckProperty(member, $"{path}.{member.Name}", visited, honorJsonIgnore);
+    }
+
+    private const string CodecAttribute = "Runic.Application.Views.RunicBridgeCodecAttribute";
+
+    // [RunicBridgeCodec] is inherited by derived types.
+    private static bool HasCodec(Type type)
+    {
+        for (var current = type; current is not null && current != typeof(object); current = current.BaseType)
+            if (BridgeAttributeNames.Has(current, CodecAttribute)) return true;
+        return false;
+    }
+
+    private static BridgeDiagnosticException Unloadable(string path, MemberInfo member, Exception error)
+    {
+        var assembly = MissingAssembly(error);
+        if (assembly is null && error is FileLoadException { FileName: { Length: > 0 } fileName })
+            assembly = new AssemblyName(fileName).Name;
+        var reason = assembly is not null
+            ? $"its type needs the assembly {assembly}, which the Bridge generator could not load"
+            : $"its type could not be loaded ({error.Message})";
+        return new BridgeDiagnosticException(BridgeDiagnosticCodes.AssemblyLoad,
+            $"{path}: {reason}.{WindowsDesktopHint([assembly])} Mark the property [RunicIgnore], or expose a Bridge value instead.", member);
+    }
+}

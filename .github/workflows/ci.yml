@@ -339,7 +339,7 @@ jobs:
     needs: [plan, packages]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'wpf') }}
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -360,6 +360,15 @@ jobs:
         run: |
           bun run --cwd packages/web/views --bun build
           dotnet run --project examples/wpf-hybrid-editor/WindowsSmoke/HybridNotes.WindowsSmoke.csproj -c Release
+      # #269 and #270 were reported on Windows: generate beside WPF stand-ins and
+      # ASP.NET Core types, and from the packed packages, there too.
+      - name: Test Bridge generation beside WPF and ASP.NET Core types
+        shell: bash
+        run: |
+          dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release -- --treenode-filter "/*/*/CodegenDiagnosticsTests/*Framework*"
+          dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release --no-build -- --treenode-filter "/*/*/BridgeAttributeNamesTests/*"
+      - name: Verify WPF Bridge generation, single-project and split, from the packed packages
+        run: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs
       - name: Verify the packed WPF consumer pulls in only Runic.Navigation
         run: bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs
       # W240-007: the reference app and its scenario tests, built from the packed packages only.

@@ -68,10 +68,18 @@ the module uses `_WireState` or imports `ViewClient as _ViewClient` instead.
 
 ### RUNICBRIDGE005
 
-The model assembly or one of its dependencies could not be loaded.
+The model assembly or one of its dependencies could not be loaded, a Runic View
+could not be loaded, or a ViewModel member that the Bridge exposes has a type
+from an assembly the generator cannot load. The generator runs on
+Microsoft.NETCore.App and loads the shared frameworks that the build references,
+such as Microsoft.AspNetCore.App, but never Microsoft.WindowsDesktop.App: types
+that need WPF or Windows Forms are skipped unless they are Views, and a bridged
+member with such a type is reported at that member.
 
-**Fix:** check the bootstrap output and that every Runic package has the same
-version. `dotnet runic doctor` reports packages from different releases.
+**Fix:** mark a WPF- or Windows Forms-typed ViewModel member `[RunicIgnore]`, or
+expose a Bridge value instead. Otherwise check the bootstrap output and that
+every Runic package has the same version. `dotnet runic doctor` reports packages
+from different releases.
 
 ### RUNICBRIDGE006
 
@@ -240,6 +248,20 @@ time and report nothing; libraries and test projects report nothing either.
 **Fix:** set `RunicApplicationHost` to `desktop` or `cswebui` in the project or
 on the command line, for example `dotnet run -p:RunicApplicationHost=desktop`,
 to the host that the application runs on.
+
+### RUNICBRIDGE020
+
+A warning. The generator skipped types of the application assembly because an
+assembly they need could not be loaded, and that assembly is not a Windows
+Desktop (WPF or Windows Forms) one, whose types are skipped without a warning.
+None of the skipped types is a Runic View, but the assembly may also be missing
+when the application runs. The generator loads the assemblies of the shared
+frameworks that the build references, such as Microsoft.AspNetCore.App. With
+optional generation and no Views, it reports `RUNICBRIDGE005` instead and keeps
+the generated output.
+
+**Fix:** reference the shared framework or package that contains the assembly,
+or make the assembly available in the build output.
 
 ## dotnet runic
 

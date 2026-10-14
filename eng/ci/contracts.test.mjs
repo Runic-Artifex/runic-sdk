@@ -268,10 +268,19 @@ test('remote actions are pinned to a commit with their release tag', () => {
 test('the WPF lane runs the STA tests and the packed consumer on Windows', () => {
   const job = workflow.jobs.wpf;
   assert.equal(job['runs-on'], 'windows-2025');
-  assert.equal(job['timeout-minutes'], 20);
+  assert.equal(job['timeout-minutes'], 30);
   const runs = job.steps.map(step => step.run).filter(Boolean);
   const tests = runs.indexOf('dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release');
   const consumer = runs.indexOf('bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs');
   assert.ok(tests >= 0 && consumer > tests, runs.join('\n'));
   assert.ok(job.steps.some(step => step.uses?.startsWith('actions/download-artifact@') && step.with?.path === 'artifacts/packages'));
+});
+
+// #269 and #270 were reported on Windows: the generator's framework tests and the
+// packed WPF Bridge consumer run there as well as on Linux.
+test('the WPF lane runs the Bridge generator framework checks on Windows', () => {
+  const runs = workflow.jobs.wpf.steps.map(step => step.run).filter(Boolean);
+  assert.ok(runs.some(run => run.includes('--treenode-filter "/*/*/CodegenDiagnosticsTests/*Framework*"')), runs.join('\n'));
+  assert.ok(runs.some(run => run.includes('--treenode-filter "/*/*/BridgeAttributeNamesTests/*"')), runs.join('\n'));
+  assert.ok(runs.includes('bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs'), runs.join('\n'));
 });

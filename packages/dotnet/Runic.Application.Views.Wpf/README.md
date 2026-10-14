@@ -102,7 +102,11 @@ keep the frontend in `Frontend/`: the build writes the client to
 `Frontend/src/generated`, builds the frontend and copies `Frontend/dist` to
 `www/`. WPF's temporary `*_wpftmp` markup-compile project reuses the generated
 code instead of generating again. Views and ViewModels cannot depend on WPF
-types; the generator skips such types. When the Views live in a WPF-free model
+types; the generator skips such types. A ViewModel may still have WPF-typed
+members and methods that the Bridge does not expose, such as a `[RunicIgnore]`
+`ImageSource`; one that the Bridge would expose is reported as
+[RUNICBRIDGE005](https://github.com/Runic-Artifex/runic-sdk/blob/main/docs/diagnostics.md#runicbridge005)
+at that member. When the Views live in a WPF-free model
 project that references `Runic.Application.Views`, that project generates and builds
 the frontend, and the WPF application copies its `dist` to `www/`. The
 application can then set `RunicApplicationFrontendGenerationEnabled` to `false`. If

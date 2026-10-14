@@ -45,7 +45,7 @@ public static class BridgeContractShape
     private static void AppendModel(List<string> parts, Type model, IReadOnlyList<Type> models, NullabilityInfoContext nullability)
     {
         var honorJsonIgnore = BridgeDtoContract.HonorsJsonIgnore(model.Assembly);
-        var properties = PublicModelProperties(model).Where(property => property.GetCustomAttribute<RunicIgnoreAttribute>(true) is null).ToArray();
+        var properties = PublicModelProperties(model).ToArray();
         foreach (var property in properties)
         {
             var interaction = BridgeMvvmConventions.Interaction(property.PropertyType);
@@ -167,7 +167,7 @@ public static class BridgeContractShape
         stack.Add(type);
         parts.Add($"dto:{path}:{TypeName(type)}");
         var names = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var property in PublicDtoProperties(type).Where(property => !BridgeDtoContract.IsIgnored(property, honorJsonIgnore)))
+        foreach (var property in PublicDtoProperties(type, honorJsonIgnore))
         {
             var wire = WireName(property);
             parts.Add($"dto-member:{path}:{property.DeclaringType?.FullName}:{property.Name}:wire:{wire}:set:{property.SetMethod?.IsPublic == true}:collision:{!names.Add(wire)}");
@@ -193,12 +193,15 @@ public static class BridgeContractShape
         var candidate = type.GetInterfaces().Append(type).FirstOrDefault(entry => entry.IsGenericType && entry.GetGenericTypeDefinition() is var generic && (generic == typeof(IReadOnlyDictionary<,>) || generic == typeof(IDictionary<,>)) && entry.GenericTypeArguments[0] == typeof(string));
         value = candidate?.GenericTypeArguments[1]; return value is not null;
     }
-    private static IEnumerable<PropertyInfo> PublicModelProperties(Type type) => type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public).Where(property => property.GetIndexParameters().Length == 0);
-    private static IEnumerable<PropertyInfo> PublicDtoProperties(Type type)
+    // Excluded properties are filtered first, by attribute name: resolving the
+    // signature (GetIndexParameters) of an excluded WPF-typed property would
+    // fail in the code generator, which has no Windows Desktop framework.
+    private static IEnumerable<PropertyInfo> PublicModelProperties(Type type) => type.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public).Where(property => !BridgeDtoContract.IsRunicIgnored(property) && property.GetIndexParameters().Length == 0);
+    private static IEnumerable<PropertyInfo> PublicDtoProperties(Type type, bool honorJsonIgnore)
     {
         var hierarchy = new Stack<Type>();
         for (var current = type; current is not null && current != typeof(object) && !IsFrameworkBase(current); current = current.BaseType) hierarchy.Push(current);
-        return hierarchy.SelectMany(current => current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)).Where(property => property.GetIndexParameters().Length == 0 && property.GetMethod is not null);
+        return hierarchy.SelectMany(current => current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)).Where(property => property.GetMethod is not null && !BridgeDtoContract.IsIgnored(property, honorJsonIgnore) && property.GetIndexParameters().Length == 0);
     }
     // The generator also uses it for DTO hierarchies and to recognise a framework slot type.
     internal static bool IsFrameworkBase(Type type) => BridgeMvvmConventions.IsFrameworkBase(type) || type.Namespace?.StartsWith("System.", StringComparison.Ordinal) == true;

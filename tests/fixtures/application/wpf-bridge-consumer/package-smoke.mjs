@@ -1,7 +1,10 @@
 // Proves that WPF applications generate their Runic bridge from the packed packages
 // alone, with no RunicApplicationFrontendGenerationEnabled, on every platform (EnableWindowsTargeting):
 //  1. Single: one UseWPF project that references only Runic.Application.Views.Wpf, declares a
-//     RunicView and calls AddRunicViews(). Its local XAML type makes WPF compile a
+//     RunicView and calls AddRunicViews(). It also has WPF's ThemeInfo and XmlnsDefinition
+//     assembly attributes, a [RunicIgnore] ImageSource and an iterator over WPF objects in
+//     its ViewModel (#269), and a BackgroundService from Microsoft.AspNetCore.App (#270),
+//     none of which the generator can load without its framework. Its local XAML type makes WPF compile a
 //     temporary *_wpftmp assembly, which must not generate again. The client lands in
 //     Frontend/src/generated and the built frontend in www/. Its XAML names RunicViewHost
 //     through https://runic-artifex.eu/xaml/views, Frontend/node_modules and Frontend/dist
@@ -67,6 +70,12 @@ try {
 
   // 1. Single project: generation is on through the adapter, without duplicate members.
   const single = build("Single/WpfSingle.csproj");
+  // The BackgroundService loads from Microsoft.AspNetCore.App, which the build passes
+  // to the generator with --framework; without it the type is skipped (RUNICBRIDGE020).
+  assert.equal(count(single, /RUNICBRIDGE020|Microsoft\.Extensions\.Hosting\.Abstractions/), 0,
+    "The generator did not load the BackgroundService from Microsoft.AspNetCore.App.");
+  assert.ok(count(single, /WpfSingle: skipped \d+ types that depend on PresentationCore, PresentationFramework\./) > 0,
+    "The generator did not skip the WPF types.");
   assert.equal(summary(single, "Warning"), 0, "The single project reported warnings.");
   exists("Single/Frontend/src/generated/editor.ts");
   exists("Single/obj/Release/net10.0-windows/runic-bridge/RunicBridgeComposition.g.cs");
