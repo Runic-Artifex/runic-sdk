@@ -27,6 +27,7 @@ in
       systemd.tmpfiles.rules = [
         "d /var/lib/runic-privileged 0755 root root -"
         "d /etc/polkit-1/actions 0755 root root -"
+        "d /run/runic-privileged-smoke 0755 root root -"
       ];
     };
     testScript = ''
@@ -39,7 +40,8 @@ in
 
       def run(*arguments, prefix=""):
           command = " ".join(shlex.quote(a) for a in [program, "run", *arguments])
-          output = machine.succeed(f"cd /tmp && runuser -u alice -- env RUNIC_CALLER_SECRET=1 {prefix}{command} 2>&1")
+          # A SHELL that /etc/shells does not list, as in a development shell, made pkexec exit with 127.
+          output = machine.succeed(f"cd /tmp && runuser -u alice -- env RUNIC_CALLER_SECRET=1 SHELL=/nix/store/00000000000000000000000000000000-bash/bin/bash {prefix}{command} 2>&1")
           print(output)
           return output
 
@@ -57,7 +59,7 @@ in
       with subtest("An allowed action runs as root with only its argument vector"):
           output = run("allowed", "report", "3", "two words", "; touch /tmp/injected", "$(id)", "`id`", "a'b\"c")
           assert result(output) == "result: completed 3", output
-          assert "out: helper dev.runic.privileged-smoke.allowed caller=1000 cwd=/root" in output, output
+          assert "out: helper dev.runic.privileged-smoke.allowed caller=1000 cwd=/\n" in output + "\n", output
           for argument in ["two words", "; touch /tmp/injected", "$(id)", "`id`", "a'b\"c"]:
               assert f"out: arg <{argument}>" in output, argument
           assert "err: helper stderr line" in output, output
@@ -107,6 +109,71 @@ in
           machine.succeed("rm -r /run/systemd/system/polkit.service.d && systemctl daemon-reload"
                           " && systemctl reset-failed polkit.service && systemctl start polkit.service")
           assert result(run("allowed", "report", "0")) == "result: completed 0"
+
+      smoke_log = "/run/runic-privileged-smoke/log"
+
+      def logged(line):
+          machine.wait_until_succeeds(f"grep -qF -- '{line}' {smoke_log}", timeout=30)
+
+      def start_caller(*arguments):
+          # setpriv executes the caller directly, so its process ID is the caller's.
+          command = " ".join(shlex.quote(a) for a in [program, "run", *arguments])
+          machine.succeed(f"rm -f {smoke_log}")
+          return machine.succeed(f"setpriv --reuid=alice --regid=users --init-groups {command} >/dev/null 2>&1 & echo $!").strip()
+
+      with subtest("The helper resets the working directory, umask, ignored signals and limits the caller chose"):
+          state = machine.succeed(
+              # nohup ignores SIGHUP; an ignored signal survives exec.
+              "runuser -u alice -- sh -c \"umask 000; ulimit -S -n 256; cd /tmp;"
+              f" exec nohup /run/wrappers/bin/pkexec --keep-cwd {program} allowed state\" 2>&1")
+          print(state)
+          before_line = next(l for l in state.splitlines() if l.startswith("state before "))
+          after_line = next(l for l in state.splitlines() if l.startswith("state after "))
+          field = lambda line, key: line.split(f" {key}=")[1].split()[0]
+          assert field(before_line, "cwd") == "/tmp" and field(before_line, "umask") == "0000", f"--keep-cwd and the caller's umask reach the program: {before_line}"
+          assert field(after_line, "cwd") == "/" and field(after_line, "umask") == "0022", after_line
+          assert "state created mode=644" in state, state
+          before, after = int(field(before_line, "sigign"), 16), int(field(after_line, "sigign"), 16)
+          assert before & 1 and not after & 1, f"SIGHUP was ignored ({before:x}) and is default again ({after:x})"
+          assert after & ~(1 << 12) == 0, f"only SIGPIPE, which .NET ignores itself, stays ignored: {after:x}"
+          assert int(field(after_line, "sigblk"), 16) == 0, after_line
+          assert "state limit Max core file size: 0 0" in state, state
+          nofile = int(state.split("state limit Max open files: ")[1].split()[0])
+          assert nofile >= 1024, f"the caller's soft limit of 256 open files was raised: {nofile}"
+
+      with subtest("When the caller dies, a helper that watches its input stops"):
+          caller = start_caller("allowed", "wait")
+          logged("waiting")
+          machine.succeed(f"kill -KILL {caller}")
+          logged("stopped by caller")
+          machine.wait_until_fails("pgrep -u root -f '[R]unic.Privileged.Smoke allowed wait'", timeout=30)
+
+      with subtest("When the caller dies, a helper that ignores its input runs on, and a child writing to the closed output fails"):
+          caller = start_caller("allowed", "ignore")
+          logged("ignoring input")
+          machine.succeed(f"kill -KILL {caller}")
+          logged("finished")
+          ignore = machine.succeed(f"cat {smoke_log}")
+          print(ignore)
+          # .NET's console drops writes to a closed pipe silently, so the helper itself goes on.
+          assert "still running 6" in ignore and "standard output is closed" not in ignore, ignore
+          # The child inherits an ignored SIGPIPE from the .NET helper, so its write fails with EPIPE instead.
+          assert "child exited with 1" in ignore, "a child writing to the closed output fails"
+
+      with subtest("Without pam_systemd the root helper stays in the caller's cgroup, which the caller can kill"):
+          machine.succeed("loginctl enable-linger alice")
+          machine.wait_for_unit("user@1000.service")
+          machine.succeed(f"rm -f {smoke_log}")
+          machine.succeed("runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"
+                          f" systemd-run --user --unit=privileged-cgroup {program} run allowed ignore")
+          logged("ignoring input")
+          helper = machine.succeed(f"grep -o 'pid [0-9]*' {smoke_log}").split()[1]
+          cgroup = machine.succeed(f"cut -d: -f3 /proc/{helper}/cgroup").strip()
+          print(f"helper {helper} (uid {machine.succeed(f'stat -c %u /proc/{helper}').strip()}) is in {cgroup}")
+          assert "/user@1000.service/" in cgroup, cgroup
+          machine.succeed(f"runuser -u alice -- sh -c 'echo 1 > /sys/fs/cgroup{cgroup}/cgroup.kill'")
+          machine.wait_until_fails(f"test -e /proc/{helper}", timeout=30)
+          machine.fail(f"grep -q finished {smoke_log}")
 
       print(machine.succeed("journalctl -t pkexec --no-pager"))
     '';

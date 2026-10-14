@@ -75,17 +75,31 @@ public sealed class PrivilegedActionDeclaration
     /// argument within the length limit. It is evaluated with <see cref="RegexOptions.NonBacktracking"/>, so
     /// backreferences and lookarounds are not available.
     /// </summary>
+    /// <remarks>
+    /// .NET character classes are Unicode-wide: <c>\d</c> and <c>\w</c> match digits and letters of every script.
+    /// A negated class such as <c>[^/]</c> also matches a line break. Spell out the allowed characters, for example
+    /// <c>[A-Za-z0-9._+-]</c>.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The pattern is invalid on its own, for example with an unbalanced group.</exception>
+    /// <exception cref="NotSupportedException">The pattern needs backtracking (backreferences or lookarounds).</exception>
     public string? ArgumentPattern
     {
         get => _argumentPattern;
         init
         {
-            _argumentRegex = value is null
-                ? null
-                : new Regex($"^(?:{value})\\z", RegexOptions.NonBacktracking | RegexOptions.CultureInvariant);
+            if (value is not null)
+            {
+                // Compiled alone first, so that "a)|(b" cannot close the anchoring group and match a part.
+                _ = new Regex(value, PatternOptions);
+                _argumentRegex = new Regex($"^(?:{value})\\z", PatternOptions);
+            }
+            else _argumentRegex = null;
             _argumentPattern = value;
         }
     }
+
+    /// <summary>The options <see cref="ArgumentPattern"/> is compiled with, at build time and at run time.</summary>
+    public const RegexOptions PatternOptions = RegexOptions.NonBacktracking | RegexOptions.CultureInvariant;
 
     /// <summary>
     /// Whether <paramref name="arguments"/>, the arguments after the verb, are within this declaration: at most

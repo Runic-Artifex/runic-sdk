@@ -692,11 +692,15 @@ last ID segments are the same.
 
 ### RUNICPA003
 
-Two actions run the same program and pkexec cannot tell them apart: they have
-the same `Verb`, or one of them has none. pkexec picks the first action whose
-program matches and whose verb, when set, matches the first argument.
+Two actions cannot be told apart by their first argument: they have the same
+`Verb`, even for different programs, or one of them has none. pkexec authorizes
+an action by the program's real path and the verb, but the privileged program
+sees only the verb, and one executable can be installed under several paths
+(a wrapper script and its target). With a shared verb, pkexec could authorize
+one action while the program acts on another.
 
-**Fix:** give every action of a shared program a distinct `Verb`.
+**Fix:** give every action its own `Verb`. Use an action without a `Verb` only
+when it is the only action.
 
 ### RUNICPA004
 
@@ -727,11 +731,13 @@ symbolic links, `.` or `..`, for example `$(MyInstallPrefix)/libexec/app/helper`
 
 ### RUNICPA008
 
-`ArgumentPattern` is not a valid regular expression.
+`ArgumentPattern` is not a valid regular expression on its own, or it needs
+backtracking. It is compiled with `RegexOptions.NonBacktracking`, as at run
+time, so backreferences and lookarounds are rejected here.
 
-**Fix:** correct the pattern. At run time it is matched against the whole
-argument with `RegexOptions.NonBacktracking`, which has no backreferences or
-lookarounds.
+**Fix:** correct the pattern. It is matched against the whole argument. List
+the allowed characters: `\d` and `\w` match every script's digits and letters,
+and a negated class such as `[^/]` matches a line break.
 
 ### RUNICPA009
 
@@ -764,7 +770,20 @@ password each time (`auth_admin`).
 ### RUNICPA013
 
 `Program`, `Description`, `Message`, `Verb` or `IconName` contains a line
-break, another control character or `]]>`. polkitd keeps only the last piece
-of text its XML parser reports, and the parser splits text at line breaks.
+break, another control character, a character XML cannot carry (such as
+U+FFFE) or `]]>`. polkitd keeps only the last piece of text its XML parser
+reports, and the parser splits text at line breaks.
 
-**Fix:** write the text on one line.
+**Fix:** write the text on one line, with characters XML allows.
+
+### RUNICPA014
+
+A warning: `AllowAny`, `AllowInactive` or `AllowActive` is `yes`, `auth_self`
+or `auth_self_keep`. `yes` lets every matching subject run the program as root
+without authenticating. `auth_self` accepts the user's own password, which any
+process running as that user can effectively supply, so it does not stand
+between the user's processes and root.
+
+**Fix:** use `auth_admin` or `auth_admin_keep`. To let specific users or groups
+run the action without a password, add a site rule in `/etc/polkit-1/rules.d`
+on the machines that need it.

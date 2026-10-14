@@ -20,11 +20,32 @@ internal interface IPolkitHost
     /// <summary>Whether only root can replace the program between this check and pkexec running it.</summary>
     ProgramCheck CheckProgram(string program);
 
+    /// <summary>A pidfd for the process, or an invalid handle where the kernel has none.</summary>
+    ProcessHandle OpenProcess(int pid);
+
     /// <summary>
     /// Stops pkexec if it still runs as the calling user, which it does until authorization succeeded and it
-    /// became root. False once the program runs as root, or after the process exited.
+    /// became root. False once the program runs as root, after the process exited, and always when the caller
+    /// itself runs as root, because then pkexec and the program cannot be told apart.
     /// </summary>
-    bool TryStopBeforeStart(Process process);
+    bool TryStopBeforeStart(Process process, ProcessHandle pidfd);
+}
+
+/// <summary>A pidfd, closed on disposal; invalid (-1) when the kernel or libc has no pidfd_open.</summary>
+internal sealed partial class ProcessHandle(int descriptor) : IDisposable
+{
+    public static ProcessHandle None => new(-1);
+    public int Descriptor { get; private set; } = descriptor;
+    public bool IsValid => Descriptor >= 0;
+
+    public void Dispose()
+    {
+        if (Descriptor >= 0) _ = Close(Descriptor);
+        Descriptor = -1;
+    }
+
+    [LibraryImport("libc", EntryPoint = "close")]
+    private static partial int Close(int descriptor);
 }
 
 internal sealed partial class LinuxPolkitHost : IPolkitHost
@@ -37,8 +58,10 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
     private const int AtSymlinkNoFollow = 0x100;
     private const uint StatxType = 0x1, StatxMode = 0x2, StatxUid = 0x8;
     private const int ModeTypeMask = 0xF000, ModeRegular = 0x8000, ModeDirectory = 0x4000, ModeSymlink = 0xA000;
-    private const int SetUserId = 0x800, Sticky = 0x200, GroupOrOtherWrite = 0x12, AnyExecute = 0x49;
-    private const int ENOENT = 2, ENOTDIR = 20, EPERM = 1, SIGKILL = 9;
+    private const int SetUserId = 0x800, Sticky = 0x200, GroupOrOtherWrite = 0x12, OtherWrite = 0x2, AnyExecute = 0x49;
+    private const int ENOENT = 2, ENOTDIR = 20, ENOSYS = 38, SIGKILL = 9;
+    // The same numbers on every Linux architecture: syscalls added after 4.20 share one table.
+    private const int SysPidfdSendSignal = 424, SysPidfdOpen = 434;
 
     public string? FindPkexec(string? configured)
     {
@@ -54,9 +77,10 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
 
     public ProgramCheck CheckProgram(string program)
     {
-        // Every directory from / down must be root's and closed to other writers, or sticky so that others cannot
-        // rename or remove root's entries in it (as /nix/store is). No component may be a symbolic link: pkexec
-        // matches the policy against the program's real path.
+        // A deployment check in the unprivileged application, not part of the security boundary: it refuses to
+        // start a program that someone other than root could have replaced. Every directory from / down must be
+        // root's and closed to other writers (a sticky directory may be group-writable). No component may be a
+        // symbolic link: pkexec matches the policy against the program's real path.
         var path = "/";
         var segments = program[1..].Split('/');
         for (var i = 0; ; i++)
@@ -73,23 +97,41 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
                 return (status.Mode & GroupOrOtherWrite) == 0 && (status.Mode & AnyExecute) != 0 ? ProgramCheck.Trusted : ProgramCheck.Replaceable;
             }
             if (type != ModeDirectory) return ProgramCheck.Missing;
-            if ((status.Mode & GroupOrOtherWrite) != 0 && (status.Mode & Sticky) == 0) return ProgramCheck.Replaceable;
+            // A sticky directory may be writable by its group, as /nix/store (root:nixbld 1775) is, but not by
+            // others: /tmp (1777) lets any user create the next path component before the program is installed.
+            if ((status.Mode & OtherWrite) != 0 || ((status.Mode & GroupOrOtherWrite) != 0 && (status.Mode & Sticky) == 0))
+                return ProgramCheck.Replaceable;
             path = path == "/" ? "/" + segments[i] : path + "/" + segments[i];
         }
     }
 
-    public bool TryStopBeforeStart(Process process)
+    public ProcessHandle OpenProcess(int pid)
     {
+        try
+        {
+            var descriptor = Syscall(SysPidfdOpen, pid, 0, 0, 0);
+            return descriptor >= 0 ? new ProcessHandle((int)descriptor) : ProcessHandle.None;
+        }
+        catch (EntryPointNotFoundException) { return ProcessHandle.None; }
+    }
+
+    public bool TryStopBeforeStart(Process process, ProcessHandle pidfd)
+    {
+        // A caller running as root (sudo) can signal the program too, so a successful kill would not prove that
+        // nothing started; it waits for the program like an ordinary caller does after authorization.
+        if (GetRealUserId() == 0) return false;
         try
         {
             if (process.HasExited) return false;
         }
         catch (InvalidOperationException) { return false; }
         // Signalling a process needs a matching real user; pkexec keeps the caller's until it switches to root.
-        if (Kill(process.Id, SIGKILL) == 0) return true;
-        var errno = Marshal.GetLastPInvokeError();
-        Debug.Assert(errno is EPERM or 3, "kill fails with EPERM for root's program or ESRCH after exit");
-        return false;
+        if (pidfd.IsValid)
+        {
+            if (Syscall(SysPidfdSendSignal, pidfd.Descriptor, SIGKILL, 0, 0) == 0) return true;
+            if (Marshal.GetLastPInvokeError() != ENOSYS) return false; // EPERM: root's program; ESRCH: exited
+        }
+        return Kill(process.Id, SIGKILL) == 0;
     }
 
     private static Status? Stat(string path, bool follow) => Stat(path, follow, out _);
@@ -114,4 +156,10 @@ internal sealed partial class LinuxPolkitHost : IPolkitHost
 
     [LibraryImport("libc", EntryPoint = "kill", SetLastError = true)]
     private static partial int Kill(int pid, int signal);
+
+    [LibraryImport("libc", EntryPoint = "syscall", SetLastError = true)]
+    private static partial nint Syscall(nint number, nint first, nint second, nint third, nint fourth);
+
+    [LibraryImport("libc", EntryPoint = "getuid")]
+    private static partial uint GetRealUserId();
 }

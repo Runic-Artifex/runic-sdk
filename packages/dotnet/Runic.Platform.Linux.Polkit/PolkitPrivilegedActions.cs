@@ -45,7 +45,7 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
 
     /// <summary>Creates the provider for <paramref name="actions"/>, usually the generated <c>PrivilegedActions.All</c>.</summary>
     /// <remarks>Off Linux, the result reports every request unavailable with <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</remarks>
-    /// <exception cref="ArgumentException">Two actions share an ID, or the same program and verb.</exception>
+    /// <exception cref="ArgumentException">Two actions share an ID or a verb, or an action without a verb is not the only one.</exception>
     public static IDesktopPrivilegedActions Create(IEnumerable<PrivilegedActionDeclaration> actions, PolkitOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(actions);
@@ -80,14 +80,16 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        SanitizeEnvironment(start.Environment);
         if (!_options.AllowTerminalAuthentication) start.ArgumentList.Add("--disable-internal-agent");
         start.ArgumentList.Add(action.Program);
         foreach (var argument in argv) start.ArgumentList.Add(argument);
 
-        var run = await PkexecRun.StartAsync(start).ConfigureAwait(false);
+        var run = await PkexecRun.StartAsync(start, _host).ConfigureAwait(false);
         if (run is null)
             return new PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
         using var process = run.Process;
+        using var pidfd = run.Pidfd;
 
         var output = new OutputSink(request.Output);
         var stdout = LineReader.PumpAsync(process.StandardOutput.BaseStream, line => output.Deliver(new(PrivilegedOutputChannel.StandardOutput, line)));
@@ -102,7 +104,7 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
         using (cancellationToken.Register(() =>
         {
             if (run.Exited.IsCompleted) return;
-            if (_host.TryStopBeforeStart(process))
+            if (_host.TryStopBeforeStart(process, run.Pidfd))
             {
                 Volatile.Write(ref stoppedBeforeStart, true);
                 return;
@@ -128,6 +130,21 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
         }
     }
 
+    // pkexec clears the environment itself, but it first checks SHELL against /etc/shells and exits with 127 when
+    // it is not listed, as a store path from a development shell is not. Only what pkexec passes on, minus SHELL.
+    private static readonly string[] PassedVariables =
+        ["LANG", "LANGUAGE", "LINGUAS", "LC_ALL", "LC_COLLATE", "LC_CTYPE", "LC_MESSAGES", "LC_MONETARY", "LC_NUMERIC", "LC_TIME", "TERM", "COLORTERM", "DISPLAY", "XAUTHORITY"];
+
+    internal const string PkexecPath = "/usr/sbin:/usr/bin:/sbin:/bin";
+
+    private static void SanitizeEnvironment(IDictionary<string, string?> environment)
+    {
+        var kept = PassedVariables.Where(environment.ContainsKey).Select(name => (name, environment[name])).ToList();
+        environment.Clear();
+        foreach (var (name, value) in kept) environment[name] = value;
+        environment["PATH"] = PkexecPath;
+    }
+
     private static PlatformDiagnostic ProgramDiagnostic(ProgramCheck check) => check switch
     {
         ProgramCheck.Missing => new("Runic.PrivilegedAction", 1, "The declared program does not exist."),
@@ -142,32 +159,35 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
     {
         ArgumentNullException.ThrowIfNull(actions);
         var byId = new Dictionary<string, PrivilegedActionDeclaration>(StringComparer.Ordinal);
-        var byProgram = new Dictionary<string, List<string?>>(StringComparer.Ordinal);
         foreach (var action in actions)
         {
             ArgumentNullException.ThrowIfNull(action, nameof(actions));
+            // pkexec selects the action by the program's real path and argv[1], but the privileged program sees only
+            // argv[1], and one executable may be installed under several paths. So a verb names exactly one action,
+            // and an action without a verb must be the only one (RUNICPA003 at build time).
+            if (byId.Values.FirstOrDefault(a => a.Verb == action.Verb || a.Verb is null || action.Verb is null) is { } clash)
+                throw new ArgumentException($"Actions '{clash.Id}' and '{action.Id}' cannot be told apart by their first argument; give each its own verb.", nameof(actions));
             if (!byId.TryAdd(action.Id, action)) throw new ArgumentException($"Action '{action.Id}' is declared twice.", nameof(actions));
-            // pkexec picks the first action whose program matches and whose verb, when set, matches argv[1].
-            var verbs = byProgram.TryGetValue(action.Program, out var existing) ? existing : byProgram[action.Program] = [];
-            if (verbs.Contains(action.Verb) || (verbs.Count > 0 && (action.Verb is null || verbs.Contains(null))))
-                throw new ArgumentException($"Action '{action.Id}' runs the same program as another action; give each a distinct verb.", nameof(actions));
-            verbs.Add(action.Verb);
         }
         return byId.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     /// <summary>pkexec, started from a thread that lives until it exits.</summary>
     /// <remarks>
-    /// pkexec sets <c>PR_SET_PDEATHSIG</c>, so the program receives SIGTERM when the thread that forked it ends. A
-    /// thread-pool thread can retire while a long action runs; this dedicated thread waits for the exit instead.
+    /// pkexec sets <c>PR_SET_PDEATHSIG</c> to SIGTERM, which Linux sends when the thread that forked it ends; a
+    /// thread-pool thread can retire while the user reads the authentication dialog. The kernel clears the
+    /// parent-death signal when pkexec changes its credentials to root's, so it guards only the authorization; once
+    /// the program runs, the application's death reaches it only as the end of its standard input.
     /// </remarks>
     private sealed class PkexecRun
     {
-        private PkexecRun(Process process, Task<int> exited) { Process = process; Exited = exited; }
+        private PkexecRun(Process process, ProcessHandle pidfd, Task<int> exited) { Process = process; Pidfd = pidfd; Exited = exited; }
         public Process Process { get; }
+        /// <summary>A pidfd opened right after the start, so a later signal cannot reach a reused process ID.</summary>
+        public ProcessHandle Pidfd { get; }
         public Task<int> Exited { get; }
 
-        public static Task<PkexecRun?> StartAsync(ProcessStartInfo start)
+        public static Task<PkexecRun?> StartAsync(ProcessStartInfo start, IPolkitHost host)
         {
             var started = new TaskCompletionSource<PkexecRun?>(TaskCreationOptions.RunContinuationsAsynchronously);
             var thread = new Thread(() =>
@@ -187,7 +207,7 @@ public sealed class PolkitPrivilegedActions : IDesktopPrivilegedActions
                     return;
                 }
                 var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-                started.SetResult(new PkexecRun(process, exited.Task));
+                started.SetResult(new PkexecRun(process, host.OpenProcess(process.Id), exited.Task));
                 try
                 {
                     process.WaitForExit();

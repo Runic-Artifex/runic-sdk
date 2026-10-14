@@ -11,7 +11,11 @@ internal sealed class PkexecTests
     // The messages and exit codes of polkit 127's pkexec (src/programs/pkexec.c).
     private const string FakePkexec = """
         #!/bin/sh
-        dir=$(dirname "$0")
+        # The provider passes a fixed PATH that may not have the test's tools; the fixture saved the test's own.
+        dir=${0%/*}
+        env > "$dir/environment"
+        read -r PATH < "$dir/path"
+        export PATH
         printf '%s\n' "$@" > "$dir/argv"
         [ "$1" = --disable-internal-agent ] && shift
         case "$(cat "$dir/decision")" in
@@ -60,6 +64,11 @@ internal sealed class PkexecTests
         Check(lines.Any(l => l is { Channel: PrivilegedOutputChannel.StandardError, Text: "from stderr" }), "stderr");
         Check(!File.Exists(Path.Combine(fixture.Directory, "injected")) && !File.Exists("injected"), "no shell ran the arguments");
         Check(fixture.Argv.SequenceEqual(["--disable-internal-agent", fixture.ReportAction.Program, "report", .. arguments]), $"argv: {string.Join(" | ", fixture.Argv)}");
+        var environment = fixture.Environment;
+        Check(environment.GetValueOrDefault("PATH") == PolkitPrivilegedActions.PkexecPath, $"pkexec gets a fixed PATH: {environment.GetValueOrDefault("PATH")}");
+        Check(!environment.ContainsKey("SHELL") && !environment.ContainsKey("HOME") && !environment.ContainsKey("NUGET_PACKAGES"),
+            $"pkexec gets no SHELL (it would reject one missing from /etc/shells) and nothing else of the caller's: {string.Join(",", environment.Keys)}");
+        Check(fixture.Host.OpenedProcess, "a pidfd was opened for pkexec");
     }
 
     [Test, DisplayName("pkexec: terminal authentication is opt-in")]
@@ -225,9 +234,16 @@ internal sealed class PkexecTests
         public ProgramCheck Check { get; set; } = ProgramCheck.Trusted;
         // pkexec has switched to root: the caller can no longer signal it.
         public bool RunsAsRoot { get; set; }
+        public bool OpenedProcess { get; private set; }
         public string? FindPkexec(string? configured) => pkexec;
         public ProgramCheck CheckProgram(string program) => Check;
-        public bool TryStopBeforeStart(Process process) => !RunsAsRoot && LinuxPolkitHost.Instance.TryStopBeforeStart(process);
+        public ProcessHandle OpenProcess(int pid)
+        {
+            var handle = LinuxPolkitHost.Instance.OpenProcess(pid);
+            OpenedProcess |= handle.IsValid;
+            return handle;
+        }
+        public bool TryStopBeforeStart(Process process, ProcessHandle pidfd) => !RunsAsRoot && LinuxPolkitHost.Instance.TryStopBeforeStart(process, pidfd);
     }
 
     private sealed class Fixture : IDisposable
@@ -238,8 +254,9 @@ internal sealed class PkexecTests
             System.IO.Directory.CreateDirectory(Directory);
             Pkexec = Script("pkexec", FakePkexec);
             File.WriteAllText(Path.Combine(Directory, "decision"), decision + "\n");
+            File.WriteAllText(Path.Combine(Directory, "path"), System.Environment.GetEnvironmentVariable("PATH") + "\n");
             ReportAction = new PrivilegedActionDeclaration("org.example.app.report", Script("report", Report)) { Verb = "report", MaximumArguments = 8 };
-            WaitAction = new PrivilegedActionDeclaration("org.example.app.wait", Script("wait", Wait));
+            WaitAction = new PrivilegedActionDeclaration("org.example.app.wait", Script("wait", Wait)) { Verb = "wait" };
             Host = new FakeHost(Pkexec);
             Actions = new PolkitPrivilegedActions([ReportAction, WaitAction], options ?? new PolkitOptions(), Host);
         }
@@ -251,6 +268,8 @@ internal sealed class PkexecTests
         public FakeHost Host { get; }
         public PolkitPrivilegedActions Actions { get; }
         public string[] Argv => File.ReadAllText(Path.Combine(Directory, "argv")).Split('\n')[..^1];
+        public Dictionary<string, string> Environment => File.ReadAllLines(Path.Combine(Directory, "environment"))
+            .Select(line => line.Split('=', 2)).Where(p => p.Length == 2).ToDictionary(p => p[0], p => p[1]);
 
         private string Script(string name, string content)
         {

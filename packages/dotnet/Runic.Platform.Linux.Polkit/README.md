@@ -24,19 +24,24 @@ Declare each action once, as an item in the application's project:
                          Message="Authentication is required to activate the system configuration."
                          IconName="system-software-update"
                          MaximumArguments="2"
-                         ArgumentPattern="switch|boot|/nix/store/[a-z0-9]{32}-nixos-system-[^/]+" />
+                         ArgumentPattern="switch|boot|/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+-]+" />
 </ItemGroup>
 ```
+
+Declare the actions in one project. When the privileged program is a separate
+project, give both projects the same items, for example from one imported
+`.props` file, and set `RunicPolkitPolicy` to `false` in all but one of them, so
+exactly one policy file declares each action ID.
 
 | Metadata | Meaning |
 | --- | --- |
 | Item identity | The action ID: lowercase reverse-DNS, at least two segments. It is the Polkit action ID and stays the same on every platform. |
 | `Program` | The absolute path the privileged program is installed at, without symbolic links (pkexec matches the policy against the real path). Required. |
-| `Verb` | The first argument, which selects this action when several actions run the same program (the policy's `org.freedesktop.policykit.exec.argv1`, polkit 0.107 and later). |
+| `Verb` | The first argument, which selects the action (the policy's `org.freedesktop.policykit.exec.argv1`, polkit 0.107 and later). Every action needs its own verb, also across programs: pkexec matches the program's path and the verb, but the privileged program sees only the verb, and one executable may be installed under several paths. An action without a verb is allowed only on its own (`RUNICPA003`). |
 | `Description`, `Message`, `IconName` | What the authentication dialog shows. One line each. |
 | `MaximumArguments` | Arguments accepted after the verb, 0 to 64. Default 0. |
-| `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, evaluated without backtracking. |
-| `AllowAny`, `AllowInactive`, `AllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. |
+| `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, compiled with `RegexOptions.NonBacktracking`, so backreferences and lookarounds are build errors. `\d` and `\w` match every script's digits and letters, and a negated class such as `[^/]` matches a line break: list the allowed characters instead. |
+| `AllowAny`, `AllowInactive`, `AllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. `yes`, `auth_self` and `auth_self_keep` are warnings (`RUNICPA014`): grant passwordless access to specific users in a site rule in `/etc/polkit-1/rules.d` instead. |
 | `AllowGui` | `true` keeps `DISPLAY` and `XAUTHORITY` for a program that opens windows as root. Default off. |
 | `Name` | The generated property name, when the last ID segment does not make a good one. |
 
@@ -109,7 +114,21 @@ program exits.
 Cancellation while pkexec waits for authorization stops it, closes the dialog
 and throws `OperationCanceledException`. Once the program runs as root, the
 application can no longer signal it: cancellation closes the program's standard
-input and the result reports how the program ended.
+input and the result reports how the program ended. An application that itself
+runs as root (under `sudo`) cannot tell pkexec from the program, so it never
+kills: it always closes the input and waits. pkexec is signalled through a pidfd
+where the kernel has one (Linux 5.3), so a reused process ID is never hit.
+
+pkexec exits with 126 and 127 when authorization was dismissed or refused, and
+otherwise with the program's code. A program that exits with 126 or 127, or
+prints pkexec's messages, is reported as dismissed, denied or unavailable
+although it ran. For an action that is not idempotent, check the system's state
+before concluding that nothing happened.
+
+pkexec gets a minimal environment: the locale, `TERM`, `DISPLAY` and
+`XAUTHORITY`, and `PATH=/usr/sbin:/usr/bin:/sbin:/bin`. In particular it gets no
+`SHELL`, because pkexec refuses a `SHELL` that `/etc/shells` does not list, such
+as the store path a `nix develop` shell sets.
 
 By default pkexec gets `--disable-internal-agent`, so an application without a
 graphical authentication agent reports unavailable rather than prompting on a
@@ -125,22 +144,42 @@ far as the policy allows. The program must check them again; the application's
 check only catches mistakes early.
 
 ```csharp
-if (PolkitHelper.GetCallerUserId() is not { } caller
-    || PolkitHelper.Match(PrivilegedActions.All, args, out var arguments) is not { } action)
+// Match first resets the process state and fails closed when this is not root for a pkexec caller.
+if (PolkitHelper.Match(PrivilegedActions.All, args, out var arguments) is not { } action)
     return 2;
-var stop = PolkitHelper.WatchStandardInput(); // cancelled when the application cancels
-// Check positions and meaning yourself: that the path is a NixOS system, that the generation exists.
+var caller = PolkitHelper.GetCallerUserId();
+var stop = PolkitHelper.WatchStandardInput(); // cancelled when the application cancels or dies
+// Then check positions and meaning yourself: resolve each path with realpath(3), check the resolved
+// path (a NixOS system with bin/switch-to-configuration) and use only the resolved path from then on.
 ```
 
 - `ArgumentPattern` applies to every argument; positional rules, such as "first
-  a mode, then a store path", and checks against the system (does the path
-  exist, is it a NixOS system) belong in the program.
-- pkexec clears the environment and starts the program in root's home
-  directory. `PATH` is a fixed list (root's system profile on NixOS). Call
-  tools by absolute path and read nothing from the caller's environment;
-  `PKEXEC_UID` names the caller.
-- Exit codes 126 and 127 are reserved: pkexec uses them for dismissed and
-  refused authorization.
-- When the application dies, pkexec's `PR_SET_PDEATHSIG` sends the program
-  SIGTERM. Long steps that must finish, such as `switch-to-configuration`, run
-  in their own unit (`systemd-run`), as nixos-rebuild does.
+  a mode, then a store path", and checks against the system belong in the
+  program. Resolve paths (`realpath`), check the resolved path again and use
+  only it. A store-path pattern is not a trust boundary: any user can create
+  `/nix/store/<hash>-nixos-system-x` by building it, so an action that
+  activates a system must stay `auth_admin`.
+- `PolkitHelper.Initialize`, which `Match` calls, resets what pkexec takes over
+  from the caller: the working directory becomes `/` (pkexec `--keep-cwd` keeps
+  the caller's), the umask `022`, signals the caller ignored are default again
+  (except `SIGPIPE`, which .NET ignores itself), the signal mask is emptied,
+  core dumps are off, the file size limit is lifted and at least 1024 open files
+  are allowed. It refuses when the process does not run as root or pkexec ran
+  with `--user`. Call it first in `Main` if the program does not use `Match`.
+- pkexec clears the environment; `PATH` is a fixed list (root's system profile
+  on NixOS). Call tools by absolute path and read nothing from the caller's
+  environment; `PKEXEC_UID` names the caller.
+- Do not exit with 126 or 127: pkexec uses them for dismissed and refused
+  authorization.
+- When the application dies, nothing signals the program: the kernel clears
+  pkexec's parent-death signal when pkexec becomes root. Standard input reaches
+  its end, so a program using `WatchStandardInput` stops, and one that ignores
+  its input runs on. Its own writes to standard output go nowhere (.NET's
+  console drops them), and the tools it starts get write errors or SIGPIPE. Run
+  steps that must finish, such as `switch-to-configuration`, with redirected
+  output or in their own systemd unit (`systemd-run`), as nixos-rebuild does.
+- Install the whole application root-owned and unwritable by others: the
+  program, its directory, its runtime and any wrapper script's targets. The
+  provider's check of the program path only catches deployment mistakes. Prefer
+  a NativeAOT build for the privileged program, which loads no runtime or
+  assemblies from elsewhere.

@@ -18,7 +18,7 @@ internal sealed class PolicyGenerationTests
                                    ArgumentPattern="switch|boot|/nix/store/[a-z0-9]{32}-nixos-system-[^/\\]+" />
             <RunicPrivilegedAction Include="org.example.app.collect-garbage" Program="/nix/store/abc-app/libexec/helper" Verb="gc"
                                    Description="Collect garbage" Message="Authentication is required to collect garbage." AllowGui="true" />
-            <RunicPrivilegedAction Include="org.example.tool" Program="/usr/libexec/tool" Name="Tool"
+            <RunicPrivilegedAction Include="org.example.tool" Program="/usr/libexec/tool" Verb="run" Name="Tool"
                                    Description="Run the tool" Message="Authentication is required to run the tool." AllowAny="no" />
             """);
         var (exit, output) = await project.BuildAsync();
@@ -47,7 +47,8 @@ internal sealed class PolicyGenerationTests
         Check(Annotation(activate, "org.freedesktop.policykit.exec.argv1") == "activate", "argv1");
         Check(Annotation(activate, "org.freedesktop.policykit.exec.allow_gui") is null, "no allow_gui unless asked: pkexec reads any value as true");
         Check(Annotation(actions[1], "org.freedesktop.policykit.exec.allow_gui") == "true", "allow_gui");
-        Check(Annotation(actions[2], "org.freedesktop.policykit.exec.argv1") is null && Text(actions[2], "defaults/allow_any") == "no", "no verb, explicit default");
+        Check(Annotation(actions[2], "org.freedesktop.policykit.exec.argv1") == "run" && Text(actions[2], "defaults/allow_any") == "no", "another program, explicit default");
+        Check(!output.Contains("RUNICPA014", StringComparison.Ordinal), "no warnings for auth_admin, auth_admin_keep and no");
         Check(actions[2].SelectSingleNode("icon_name") is null, "no icon");
 
         var source = File.ReadAllText(project.Source);
@@ -66,6 +67,24 @@ internal sealed class PolicyGenerationTests
         Check(exit == 0 && File.GetLastWriteTimeUtc(project.Policy) == written, "an unchanged policy is not rewritten");
     }
 
+    [Test, DisplayName("policy: a sole action without a verb, and warnings for defaults that skip the administrator")]
+    public async Task VerblessActionAndWeakDefaultsAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.tool" Program="/usr/libexec/tool" Description="Run the tool"
+                                   Message="Authentication is required to run the tool." AllowActive="yes" AllowInactive="auth_self_keep" />
+            """);
+        var (exit, output) = await project.BuildAsync();
+        Check(exit == 0, output);
+        Check(output.Split('\n').Count(l => l.Contains("warning RUNICPA014", StringComparison.Ordinal)) == 2, $"two warnings: {output}");
+        Check(output.Contains("site rule", StringComparison.Ordinal), "yes points to site rules");
+        var policy = new XmlDocument();
+        using (var reader = XmlReader.Create(project.Policy, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null }))
+            policy.Load(reader);
+        var action = (XmlElement)policy.SelectSingleNode("/policyconfig/action")!;
+        Check(Annotation(action, "org.freedesktop.policykit.exec.argv1") is null, "no argv1 for an action without a verb");
+    }
+
     [Test, DisplayName("policy: invalid declarations are build errors and write nothing")]
     public async Task RejectsInvalidDeclarationsAsync()
     {
@@ -82,12 +101,17 @@ internal sealed class PolicyGenerationTests
             <RunicPrivilegedAction Include="org.example.count" Program="/opt/h" Description="d" Message="m" MaximumArguments="99" />
             <RunicPrivilegedAction Include="org.example.pattern" Program="/opt/i" Description="d" Message="m" ArgumentPattern="(" />
             <RunicPrivilegedAction Include="org.example.all" Program="/opt/j" Description="d" Message="m" />
+            <RunicPrivilegedAction Include="org.example.xml" Program="/opt/k" Verb="xml" Description="d" Message="$(BadText)" />
+            <RunicPrivilegedAction Include="org.example.lookaround" Program="/opt/l" Verb="look" Description="d" Message="m" ArgumentPattern="(?=a)a" />
             """);
-        var (exit, output) = await project.BuildAsync();
+        var (exit, output) = await project.BuildAsync("-p:BadText=not\uFFFEXML");
         Check(exit != 0, output);
         foreach (var code in new[] { "RUNICPA002", "RUNICPA003", "RUNICPA004", "RUNICPA005", "RUNICPA006", "RUNICPA008", "RUNICPA009", "RUNICPA011", "RUNICPA012", "RUNICPA013" })
             Check(output.Contains(code, StringComparison.Ordinal), $"{code} in {output}");
         Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "nothing written");
+        Check(output.Contains("'org.example.xml' has a line break", StringComparison.Ordinal), "a character XML cannot carry is RUNICPA013, not a task exception");
+        Check(output.Contains("'org.example.lookaround' has an ArgumentPattern that needs backtracking", StringComparison.Ordinal), "lookarounds fail at build time");
+        Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
     }
 
     private static string? Text(XmlNode node, string path) => node.SelectSingleNode(path)?.InnerText;
@@ -121,7 +145,7 @@ internal sealed class PolicyGenerationTests
         public string Policy => Path.Combine(_directory, "obj", "runic-privileged", "org.example.app.policy");
         public string Source => Path.Combine(_directory, "obj", "runic-privileged", "PrivilegedActions.g.cs");
 
-        public async Task<(int ExitCode, string Output)> BuildAsync()
+        public async Task<(int ExitCode, string Output)> BuildAsync(params string[] extra)
         {
             var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host ? host : "dotnet")
             {
@@ -130,7 +154,8 @@ internal sealed class PolicyGenerationTests
                 UseShellExecute = false,
                 WorkingDirectory = _directory,
             };
-            foreach (var argument in new[] { "msbuild", "fixture.proj", "-t:RunicGeneratePrivilegedActions", "-nologo", "-nodeReuse:false", "-v:m" })
+            string[] arguments = ["msbuild", "fixture.proj", "-t:RunicGeneratePrivilegedActions", "-nologo", "-nodeReuse:false", "-v:m", .. extra];
+            foreach (var argument in arguments)
                 start.ArgumentList.Add(argument);
             start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
             using var process = Process.Start(start)!;

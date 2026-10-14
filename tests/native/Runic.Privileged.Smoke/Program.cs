@@ -8,7 +8,9 @@
 //   Runic.Privileged.Smoke VERB COMMAND [ARGUMENT...]                                  helper, through pkexec
 //
 // Helper commands: "report EXIT ARGUMENT..." prints its identity and arguments and exits with EXIT; "wait" waits
-// until the caller closes standard input.
+// until the caller closes standard input; "state" prints the process state after PolkitHelper reset it; "ignore"
+// ignores standard input for a few seconds and then starts a child that writes to the inherited output. "wait" and
+// "ignore" also log to /run/runic-privileged-smoke/log, which outlives a caller the test kills.
 using System.Collections.Immutable;
 using Runic.Platform;
 using Runic.Platform.Linux.Polkit;
@@ -19,6 +21,8 @@ return Helper(args);
 
 static int Helper(string[] args)
 {
+    var statusBefore = File.Exists("/proc/self/status") ? File.ReadAllLines("/proc/self/status") : [];
+    var cwdBefore = Environment.CurrentDirectory;
     if (PolkitHelper.GetCallerUserId() is not { } caller)
     {
         Console.Error.WriteLine("helper: not started through pkexec as root");
@@ -41,14 +45,58 @@ static int Helper(string[] args)
             return exit;
         case "wait":
             var stop = PolkitHelper.WatchStandardInput();
+            Log("waiting");
             Console.WriteLine("helper waiting");
             stop.WaitHandle.WaitOne();
-            Console.WriteLine("helper stopped by caller");
+            Log("stopped by caller");
+            TryWrite("helper stopped by caller");
             return 5;
+        case "state":
+            string Status(string[] lines, string key) => lines.FirstOrDefault(l => l.StartsWith(key + ":", StringComparison.Ordinal))?[(key.Length + 1)..].Trim() ?? "?";
+            var status = File.ReadAllLines("/proc/self/status");
+            Console.WriteLine($"state before cwd={cwdBefore} umask={Status(statusBefore, "Umask")} sigign={Status(statusBefore, "SigIgn")} sigblk={Status(statusBefore, "SigBlk")}");
+            Console.WriteLine($"state after cwd={Environment.CurrentDirectory} umask={Status(status, "Umask")} sigign={Status(status, "SigIgn")} sigblk={Status(status, "SigBlk")}");
+            var created = "/run/runic-privileged-smoke/created";
+            File.Delete(created);
+            File.WriteAllText(created, "x");
+            if (OperatingSystem.IsLinux()) Console.WriteLine($"state created mode={Convert.ToString((int)File.GetUnixFileMode(created), 8)}");
+            var limits = File.ReadAllLines("/proc/self/limits");
+            foreach (var name in new[] { "Max core file size", "Max file size", "Max open files" })
+                Console.WriteLine($"state limit {name}: {string.Join(' ', (limits.FirstOrDefault(l => l.StartsWith(name, StringComparison.Ordinal)) ?? "?")[name.Length..].Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2))}");
+            Console.WriteLine($"state cgroup={File.ReadAllText("/proc/self/cgroup").Trim()}");
+            return 0;
+        case "ignore":
+            Log($"ignoring input, pid {Environment.ProcessId}");
+            for (var tick = 1; tick <= 6; tick++)
+            {
+                Thread.Sleep(500);
+                Log($"still running {tick}{(TryWrite($"helper tick {tick}") ? "" : ", standard output is closed")}");
+            }
+            // A child inherits standard output; .NET ignores SIGPIPE, but the child gets the default disposition.
+            using (var child = System.Diagnostics.Process.Start("/bin/sh", ["-c", "echo from child"]))
+            {
+                child.WaitForExit();
+                Log($"child exited with {child.ExitCode}");
+            }
+            Log("finished");
+            return 0;
         default:
             Console.Error.WriteLine("helper: unknown command");
             return 2;
     }
+}
+
+static void Log(string line) => File.AppendAllText("/run/runic-privileged-smoke/log", line + "\n");
+
+static bool TryWrite(string line)
+{
+    try
+    {
+        Console.WriteLine(line);
+        Console.Out.Flush();
+        return true;
+    }
+    catch (IOException) { return false; }
 }
 
 static async Task<int> RunCaller(string[] args)

@@ -4,8 +4,9 @@ namespace Runic.Platform.Linux.Polkit;
 /// <remarks>
 /// pkexec exits with the program's exit code once the program runs. Before that it exits with 126 when the user
 /// dismissed the authentication dialog, and with 127 when authorization was refused or could not be obtained, or
-/// pkexec failed; its English, untranslated diagnostic on standard error tells these apart. Privileged programs
-/// should therefore not exit with 126 or 127 themselves.
+/// pkexec failed; its English, untranslated diagnostic on standard error tells these apart. A program that exits
+/// with 126 or 127, or prints pkexec's text, is reported as one of these although it ran, so an application must not
+/// conclude that nothing ran for an action that is not idempotent without checking the system's state.
 /// </remarks>
 internal static class PkexecOutcome
 {

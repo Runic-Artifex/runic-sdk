@@ -14,6 +14,7 @@ override Runic.Platform.Linux.Polkit.PolkitOptions.Equals(object? obj) -> bool
 override Runic.Platform.Linux.Polkit.PolkitOptions.GetHashCode() -> int
 override Runic.Platform.Linux.Polkit.PolkitOptions.ToString() -> string!
 static Runic.Platform.Linux.Polkit.PolkitHelper.GetCallerUserId() -> int?
+static Runic.Platform.Linux.Polkit.PolkitHelper.Initialize() -> bool
 static Runic.Platform.Linux.Polkit.PolkitHelper.Match(System.Collections.Generic.IEnumerable<Runic.Platform.PrivilegedActionDeclaration!>! actions, System.Collections.Generic.IReadOnlyList<string!>! arguments, out System.Collections.Immutable.ImmutableArray<string!> actionArguments) -> Runic.Platform.PrivilegedActionDeclaration?
 static Runic.Platform.Linux.Polkit.PolkitHelper.WatchStandardInput() -> System.Threading.CancellationToken
 static Runic.Platform.Linux.Polkit.PolkitOptions.operator !=(Runic.Platform.Linux.Polkit.PolkitOptions? left, Runic.Platform.Linux.Polkit.PolkitOptions? right) -> bool

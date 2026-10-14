@@ -51,6 +51,10 @@ internal sealed class DeclarationTests
         Throws<ArgumentOutOfRangeException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 65 }, "count limit");
         Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { Verb = "" }, "empty verb");
         Throws<NotSupportedException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = @"(a)\1" }, "backreferences need backtracking");
+        Throws<NotSupportedException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "(?=a)a" }, "lookarounds need backtracking");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "a)|(b" }, "a pattern that would escape the anchors");
+        var newline = new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 1, ArgumentPattern = "[^/]+" };
+        Check(newline.AcceptsArguments(["a\nb"]), "a negated class matches a line break, as the documentation warns");
     }
 
     [Test, DisplayName("declaration: the unavailable provider checks arguments and reports its reason")]
@@ -68,20 +72,25 @@ internal sealed class DeclarationTests
     public void HelperMatch()
     {
         var activate = new PrivilegedActionDeclaration("org.example.app.activate", "/opt/app/helper") { Verb = "activate", MaximumArguments = 1, ArgumentPattern = "switch|boot" };
-        var collect = new PrivilegedActionDeclaration("org.example.app.collect", "/opt/app/helper") { Verb = "collect" };
-        var other = new PrivilegedActionDeclaration("org.example.other", "/opt/other/helper") { Verb = "activate", MaximumArguments = 1 };
-        PrivilegedActionDeclaration[] all = [other, activate, collect];
-        Check(PolkitHelper.MatchCore(all, ["activate", "boot"], "/opt/app/helper", out var rest) == activate && rest.SequenceEqual(["boot"]), "activate");
-        Check(PolkitHelper.MatchCore(all, ["collect"], "/opt/app/helper", out rest) == collect && rest.IsEmpty, "collect");
-        Check(PolkitHelper.MatchCore(all, ["activate", "reboot"], "/opt/app/helper", out _) is null, "argument outside the pattern");
-        Check(PolkitHelper.MatchCore(all, ["collect", "extra"], "/opt/app/helper", out _) is null, "too many arguments");
-        Check(PolkitHelper.MatchCore(all, ["unknown"], "/opt/app/helper", out _) is null, "unknown verb");
-        Check(PolkitHelper.MatchCore(all, [], "/opt/app/helper", out _) is null, "no verb");
-        Check(PolkitHelper.MatchCore(all, ["activate", "boot"], "/tmp/copy/helper", out _) is null, "two programs declare the verb and neither is this one");
-        Check(PolkitHelper.MatchCore(all, ["activate", "x"], "/opt/other/helper", out rest) == other && rest.SequenceEqual(["x"]), "this executable settles the tie");
-        Check(PolkitHelper.MatchCore([activate, collect], ["collect"], "/nix/store/abc-app/lib/app/helper", out _) == collect,
-            "a wrapper script may start the program, so the process path need not be the declared program");
+        var collect = new PrivilegedActionDeclaration("org.example.app.collect", "/opt/app/wrapper") { Verb = "collect" };
+        var bare = new PrivilegedActionDeclaration("org.example.tool", "/opt/tool/helper") { MaximumArguments = 1 };
+        PrivilegedActionDeclaration[] all = [activate, collect];
+        Check(PolkitHelper.MatchCore(all, ["activate", "boot"], out var rest) == activate && rest.SequenceEqual(["boot"]), "activate");
+        Check(PolkitHelper.MatchCore(all, ["collect"], out rest) == collect && rest.IsEmpty, "the verb alone decides, whichever path pkexec ran");
+        Check(PolkitHelper.MatchCore(all, ["activate", "reboot"], out _) is null, "argument outside the pattern");
+        Check(PolkitHelper.MatchCore(all, ["collect", "extra"], out _) is null, "too many arguments");
+        Check(PolkitHelper.MatchCore(all, ["unknown"], out _) is null, "unknown verb");
+        Check(PolkitHelper.MatchCore(all, [], out _) is null, "no verb");
+        Check(PolkitHelper.MatchCore([bare], ["x"], out rest) == bare && rest.SequenceEqual(["x"]), "an action without a verb on its own");
+        Check(PolkitHelper.MatchCore([activate, bare], ["activate", "boot"], out _) is null, "an action without a verb beside others fails closed");
+        var twin = new PrivilegedActionDeclaration("org.example.other", "/opt/other/helper") { Verb = "activate", MaximumArguments = 1 };
+        Check(PolkitHelper.MatchCore([activate, twin], ["activate", "boot"], out _) is null, "a verb declared twice fails closed");
         Check(PolkitHelper.GetCallerUserId() is null || Environment.GetEnvironmentVariable("PKEXEC_UID") is not null, "not started by pkexec");
+        if (!OperatingSystem.IsWindows() && Environment.UserName != "root")
+        {
+            Check(!PolkitHelper.Initialize(), "not root: the helper refuses to act");
+            Check(PolkitHelper.Match(all, ["collect"], out _) is null, "and Match fails closed");
+        }
     }
 
     [Test, DisplayName("provider: actions must be distinguishable by pkexec")]
@@ -93,6 +102,9 @@ internal sealed class DeclarationTests
         _ = PolkitPrivilegedActions.Create([a, b]);
         Throws<ArgumentException>(() => PolkitPrivilegedActions.Create([a, a]), "duplicate ID");
         Throws<ArgumentException>(() => PolkitPrivilegedActions.Create([a, new PrivilegedActionDeclaration("org.example.app.c", "/opt/app/helper") { Verb = "a" }]), "same program and verb");
+        Throws<ArgumentException>(() => PolkitPrivilegedActions.Create([a, new PrivilegedActionDeclaration("org.example.app.d", "/opt/app/wrapper") { Verb = "a" }]),
+            "the same verb for another program: the helper cannot tell which path pkexec matched");
+        Throws<ArgumentException>(() => PolkitPrivilegedActions.Create([a, new PrivilegedActionDeclaration("org.example.app.e", "/opt/other") ]), "a verbless action beside another program's");
         Throws<ArgumentException>(() => PolkitPrivilegedActions.Create([a, bare]), "an action without a verb shadows the others");
         Throws<ArgumentException>(() => PolkitPrivilegedActions.Create([a], new PolkitOptions { PkexecPath = "pkexec" }), "relative pkexec");
     }

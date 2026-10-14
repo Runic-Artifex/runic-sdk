@@ -24,6 +24,8 @@ internal sealed class HostTests
         Check(host.CheckProgram("/nonexistent/runic/helper") == ProgramCheck.Missing, "missing");
         Check(host.CheckProgram(shell + "/child") == ProgramCheck.Missing, "a file used as a directory");
         Check(host.CheckProgram("/proc/self") is ProgramCheck.NotRealPath, "a symbolic link");
+        // /tmp is root's and sticky but writable by everyone, so another user could have created the path.
+        Check(host.CheckProgram("/tmp/runic-polkit-absent/helper") == ProgramCheck.Replaceable, "a world-writable sticky directory is not trusted");
 
         var directory = Path.Combine(Path.GetTempPath(), "runic-polkit-host-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(directory);
@@ -41,10 +43,16 @@ internal sealed class HostTests
     public async Task StopBeforeStartAsync()
     {
         if (!OperatingSystem.IsLinux()) return;
-        using var process = Process.Start(new ProcessStartInfo("sleep", "30") { UseShellExecute = false })!;
-        Check(LinuxPolkitHost.Instance.TryStopBeforeStart(process), "the caller's own process can be stopped");
-        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
-        Check(!LinuxPolkitHost.Instance.TryStopBeforeStart(process), "an exited process is not stopped again");
+        if (Environment.UserName == "root") return; // a root caller never kills: pkexec and the program look alike
+        foreach (var withPidfd in new[] { true, false })
+        {
+            using var process = Process.Start(new ProcessStartInfo("sleep", "30") { UseShellExecute = false })!;
+            using var pidfd = withPidfd ? LinuxPolkitHost.Instance.OpenProcess(process.Id) : ProcessHandle.None;
+            Check(!withPidfd || pidfd.IsValid, "pidfd_open is available");
+            Check(LinuxPolkitHost.Instance.TryStopBeforeStart(process, pidfd), $"the caller's own process can be stopped (pidfd {withPidfd})");
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            Check(!LinuxPolkitHost.Instance.TryStopBeforeStart(process, pidfd), "an exited process is not stopped again");
+        }
     }
 
     private static string RealPath(string path)

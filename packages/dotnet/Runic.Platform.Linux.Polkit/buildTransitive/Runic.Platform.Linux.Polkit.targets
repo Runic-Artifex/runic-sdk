@@ -8,7 +8,7 @@
                              Description="Activate a configuration"
                              Message="Authentication is required to activate the configuration."
                              MaximumArguments="1"
-                             ArgumentPattern="/nix/store/[a-z0-9]{32}-[^/]+" />
+                             ArgumentPattern="/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+" />
 
     Each build writes a C# class with one PrivilegedActionDeclaration per item and the Polkit policy, which is
     copied to the output and publish directories at $(RunicPolkitPolicyOutputPath)$(RunicPolkitPolicyName).policy.
@@ -75,10 +75,12 @@ public sealed class RunicWritePrivilegedActions : Task
             if (action is null) continue;
             if (actions.Any(a => a.Id == action.Id)) Error("RUNICPA002", $"Privileged action '{action.Id}' is declared twice.");
             if (actions.Any(a => a.Name == action.Name)) Error("RUNICPA002", $"Privileged actions '{action.Id}' and '{actions.First(a => a.Name == action.Name).Id}' both generate the property '{action.Name}'; set Name on one of them.");
-            // pkexec selects the first action whose program matches and whose verb, when set, matches argv[1].
-            var sameProgram = actions.Where(a => a.Program == action.Program).ToList();
-            if (sameProgram.Any(a => a.Verb == action.Verb || a.Verb == null || action.Verb == null))
-                Error("RUNICPA003", $"Privileged action '{action.Id}' runs the same program as '{sameProgram[0].Id}'; give each action a distinct Verb.");
+            // pkexec selects the action by the program's real path and argv[1], but the privileged program sees only
+            // argv[1]: one executable can be installed under several paths (wrapper scripts). So a verb names one
+            // action across all programs, and an action without a verb must be the only one.
+            var clash = actions.FirstOrDefault(a => a.Verb == action.Verb || a.Verb == null || action.Verb == null);
+            if (clash != null)
+                Error("RUNICPA003", $"Privileged actions '{clash.Id}' and '{action.Id}' cannot be told apart by their first argument; give every action its own Verb, and use an action without a Verb only on its own.");
             actions.Add(action);
         }
         if (Log.HasLoggedErrors) return false;
@@ -109,8 +111,8 @@ public sealed class RunicWritePrivilegedActions : Task
         foreach (var name in new[] { "Program", "Description", "Message", "Verb", "IconName" })
         {
             var value = Get(name);
-            if (value != null && (value.Any(char.IsControl) || value.Contains(CDataEnd)))
-                Error("RUNICPA013", $"Privileged action '{action.Id}' has a line break, another control character or '{CDataEnd}' in {name}; the policy cannot carry it.");
+            if (value != null && (value.Any(char.IsControl) || value.Contains(CDataEnd) || !IsXmlText(value)))
+                Error("RUNICPA013", $"Privileged action '{action.Id}' has a line break, another control character, a character XML cannot carry or '{CDataEnd}' in {name}; the policy cannot carry it.");
         }
         action.Verb = Get("Verb");
         if (action.Verb != null && (action.Verb.Length > 4096 || action.Verb.IndexOf('\0') >= 0))
@@ -119,8 +121,16 @@ public sealed class RunicWritePrivilegedActions : Task
         action.ArgumentPattern = Get("ArgumentPattern");
         if (action.ArgumentPattern != null)
         {
-            try { _ = new Regex(action.ArgumentPattern, RegexOptions.CultureInvariant); }
+            // The options of PrivilegedActionDeclaration.PatternOptions: NonBacktracking (1024) rejects
+            // backreferences and lookarounds here rather than when the application starts. MSBuild on .NET
+            // Framework has no NonBacktracking; there the pattern is checked without it.
+            try
+            {
+                try { _ = new Regex(action.ArgumentPattern, (RegexOptions)1024 | RegexOptions.CultureInvariant); }
+                catch (ArgumentOutOfRangeException) { _ = new Regex(action.ArgumentPattern, RegexOptions.CultureInvariant); }
+            }
             catch (ArgumentException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an invalid ArgumentPattern: {e.Message}"); }
+            catch (NotSupportedException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an ArgumentPattern that needs backtracking: {e.Message}"); }
         }
         var maximum = Get("MaximumArguments") ?? "0";
         if (!int.TryParse(maximum, NumberStyles.None, CultureInfo.InvariantCulture, out action.MaximumArguments) || action.MaximumArguments > 64)
@@ -142,7 +152,21 @@ public sealed class RunicWritePrivilegedActions : Task
         if (string.IsNullOrEmpty(value)) return "auth_admin";
         if (Array.IndexOf(Authorizations, value) < 0)
             Error("RUNICPA012", $"Privileged action '{id}' has {name} '{value}'; use one of {string.Join(", ", Authorizations)}.");
+        else if (value == "yes")
+            Warning("RUNICPA014", $"Privileged action '{id}' has {name} 'yes', which lets every such subject run the program as root without authenticating. Grant that to specific users or groups in a site rule in /etc/polkit-1/rules.d instead.");
+        else if (value.StartsWith("auth_self", StringComparison.Ordinal))
+            Warning("RUNICPA014", $"Privileged action '{id}' has {name} '{value}', which accepts the user's own password, so any process running as that user can authorize the action. Use auth_admin or auth_admin_keep.");
         return value;
+    }
+
+    private static bool IsXmlText(string value)
+    {
+        try
+        {
+            XmlConvert.VerifyXmlChars(value);
+            return true;
+        }
+        catch (XmlException) { return false; }
     }
 
     private static string Policy(List<Action> actions)
@@ -280,6 +304,9 @@ public sealed class RunicWritePrivilegedActions : Task
         if (File.Exists(path) && File.ReadAllText(path) == content) return;
         File.WriteAllText(path, content, new UTF8Encoding(false));
     }
+
+    private void Warning(string code, string message) =>
+        Log.LogWarning(null, code, null, string.IsNullOrEmpty(HelpLinkBase) ? null : HelpLinkBase + code.ToLowerInvariant(), ProjectFile, 0, 0, 0, 0, message);
 
     private void Error(string code, string message) =>
         Log.LogError(null, code, null, string.IsNullOrEmpty(HelpLinkBase) ? null : HelpLinkBase + code.ToLowerInvariant(), ProjectFile, 0, 0, 0, 0, message);

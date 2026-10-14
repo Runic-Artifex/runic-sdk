@@ -67,9 +67,21 @@ pattern every further argument must match completely. The Windows and macOS
 providers will read the same items: the ID is platform-neutral, and their
 artifacts (a manifest, a launchd plist) come from the same declaration.
 
-Two actions of one program need distinct verbs, because pkexec picks the first
-action whose path matches and whose `exec.argv1`, when set, matches argv\[1\]
-(`RUNICPA003`, and `ArgumentException` in `Create`).
+Every action has its own verb, across all programs, and an action without a
+verb is allowed only on its own (`RUNICPA003`, and `ArgumentException` in
+`Create`). pkexec picks the first action whose path matches the program's real
+path and whose `exec.argv1`, when set, matches argv\[1\]. The privileged program
+sees only argv\[1\]: one executable can be installed under several paths (a
+wrapper script and the binary it starts), so it cannot tell which path pkexec
+matched. If two programs shared a verb, or one had a verbless action, `pkexec
+<path A> <verb>` could be authorized by A's weaker action while the helper acted
+on B's. With globally unique verbs, the verb alone identifies the action that
+pkexec authorized, and `PolkitHelper.Match` uses nothing else.
+
+Declare the actions in one project. When the privileged program is a separate
+project, both import the same items and only one writes the policy
+(`RunicPolkitPolicy=false` in the other), so no action ID appears in two policy
+files.
 
 ### Contract
 
@@ -105,6 +117,17 @@ pkexec exits with the program's code once the program runs. Before that:
 
 Because 126 and 127 are pkexec's, a privileged program must not use them. The
 markers are matched at the start of a line in the first 4 KiB of standard error.
+A program that exits with 126 or 127, or prints these lines, is mislabelled as
+dismissed, denied or unavailable although it ran, so for an action that is not
+idempotent the application must not conclude that nothing happened without
+checking the system's state.
+
+pkexec is started with a minimal environment: the locale variables, `TERM`,
+`DISPLAY`, `XAUTHORITY` and `PATH=/usr/sbin:/usr/bin:/sbin:/bin`. pkexec clears
+the environment itself, but first validates `SHELL` against `/etc/shells` and
+exits with 127 for a value it does not list, such as the store path a
+`nix develop` shell sets; the provider passes no `SHELL` at all, which pkexec
+accepts.
 `--disable-internal-agent` is passed by default so that "no agent" is
 deterministic instead of depending on whether the application has a controlling
 terminal; `PolkitOptions.AllowTerminalAuthentication` drops it for command-line
@@ -124,18 +147,35 @@ Cancellation depends on who owns the process. pkexec keeps the caller's real
 user ID until authorization succeeded, so the caller can still kill it: the
 provider sends SIGKILL, polkitd withdraws the request from the agent, and
 `RunAsync` throws `OperationCanceledException`. Once pkexec switched to root and
-executed the program, `kill` fails with `EPERM`; the provider then closes the
+executed the program, the signal fails with `EPERM`; the provider then closes the
 program's standard input, which `PolkitHelper.WatchStandardInput` turns into a
 cancellation token, waits for the exit and returns the actual completion.
 nix-manager behaves the same way today ("cancellation waits for the privileged
-step to finish").
+step to finish"). An application that itself runs as root (`sudo`) could signal
+the program too, so a successful kill would not prove that nothing started; it
+never kills and always takes the second path. The signal goes through a pidfd
+opened right after pkexec started (`pidfd_open`, `pidfd_send_signal`, Linux 5.3),
+so a process ID reused after pkexec exited is never hit; without pidfds the
+provider falls back to `kill` after checking that the process has not exited.
 
-pkexec sets `PR_SET_PDEATHSIG` to SIGTERM before it executes the program, and
-Linux sends that signal when the *thread* that forked the process exits. .NET
-forks on the calling thread, so a pkexec started from a thread-pool thread
-could lose its program when the pool retires that thread during a long
-`nixos-rebuild`. The provider starts pkexec from a dedicated thread that lives
-until the process exits.
+pkexec sets `PR_SET_PDEATHSIG` to SIGTERM, and Linux sends that signal when the
+*thread* that forked the process exits. .NET forks on the calling thread, so a
+pkexec started from a thread-pool thread could be killed while the user reads
+the dialog. The provider starts pkexec from a dedicated thread that lives until
+the process exits. The kernel clears the parent-death signal when pkexec changes
+its credentials to root's, so it only guards the authorization.
+
+### When the application dies
+
+Nothing signals the running program when the application dies. Its standard
+input reaches its end, so a program using `WatchStandardInput` stops, and one
+that ignores its input runs on. Nothing reads its output any more: .NET's
+console drops writes to a closed pipe silently, and tools the program starts
+get `EPIPE` write errors (or SIGPIPE where they keep its default disposition).
+The VM test kills the caller during both kinds of program and sees exactly
+this. A step that must finish, such as `switch-to-configuration`, redirects the
+output of the tools it runs or runs them in their own systemd unit, as
+nixos-rebuild does.
 
 ## Threat model and security review
 
@@ -170,27 +210,66 @@ security boundary.
 pkexec clears the environment and keeps only `SHELL`, `LANG`, `LC_*`, `TERM`,
 `LOGNAME`, `USER`, `HOME`, `PKEXEC_UID`, `SUDO_UID`/`SUDO_GID` and a fixed `PATH`
 (`DISPLAY` and `XAUTHORITY` only with `allow_gui`). On NixOS, pkexec's PAM
-session adds root's system environment, including its `PATH`; the VM test shows the caller's `RUNIC_CALLER_SECRET`
-does not reach the program. The program starts in root's home directory. The
-privileged program therefore must call tools by absolute path (or set its own
-`PATH`), and never read configuration from the caller's environment or working
-directory. `LD_PRELOAD` and similar variables are ignored for the setuid pkexec
-and cleared before the program runs. The provider finds pkexec in fixed
-locations, never through `PATH`, and only uses a setuid-root binary.
+session adds root's system environment, including its `PATH`; the VM test shows
+the caller's `RUNIC_CALLER_SECRET` does not reach the program. The privileged
+program therefore must call tools by absolute path (or set its own `PATH`), and
+never read configuration from the caller's environment. `LD_PRELOAD` and
+similar variables are ignored for the setuid pkexec and cleared before the
+program runs. The provider finds pkexec in fixed locations, never through
+`PATH`, and only uses a setuid-root binary.
+
+### Process state the caller controls
+
+pkexec does not reset everything the caller sets up. The program starts in root's
+home directory unless the caller passes `--keep-cwd` (polkit 121 and later), and
+inherits the caller's umask, ignored signals, signal mask and resource limits.
+`PolkitHelper.Initialize`, which `Match` calls before anything else, changes to
+`/`, sets the umask to `022`, restores ignored signals to their default
+disposition (except `SIGPIPE`, which .NET ignores itself; handlers do not
+survive `exec`, so any other handler is the runtime's), empties the calling
+thread's signal mask, sets `RLIMIT_CORE` to 0, lifts `RLIMIT_FSIZE` and raises
+`RLIMIT_NOFILE` to at least 1024. It refuses, and `Match` returns null, when the
+effective user is not root or `PKEXEC_UID` is missing, as when pkexec ran with
+`--user`. The VM test runs the helper with `umask 000`, `--keep-cwd` in `/tmp`,
+an ignored SIGHUP and a soft limit of 256 files, and sees `/`, `022`, a file
+created with mode 644, SIGHUP back to default, no core dumps and 1024 files.
+The signal mask is per thread: threads the runtime started before `Initialize`
+keep the inherited mask, so the program should call it first and start child
+processes from that thread or threads created after it.
+
+### The root process's cgroup
+
+NixOS's `polkit-1` PAM service has no `pam_systemd`, so pkexec opens no new
+session and the program stays in the caller's cgroup. When the caller runs in
+the user's systemd instance, that cgroup is delegated to the user, who can
+freeze or kill the root process through `cgroup.kill` or `cgroup.freeze`. The
+VM test verifies it: the helper started from `systemd-run --user` runs as root
+in `user@1000.service/app.slice/…`, and the user's write to `cgroup.kill` ends
+it. The user could already stop the action by killing the application, so this
+adds no privilege, but a privileged step must not assume it runs to the end;
+steps that must finish run in their own system unit.
 
 ### TOCTOU on the program path
 
-pkexec resolves the program's real path and matches it against the policy.
+pkexec resolves the program's real path and matches it against the policy, so
+the protection against swapping the program is its location: a path that only
+root can change. The installation must make the whole application root-owned
+and unwritable by others: the program, its directory, its runtime (for a
+framework-dependent build, `DOTNET_ROOT` and every assembly it loads) and the
+targets of any wrapper script. A NativeAOT build is recommended for the
+privileged program, because it loads no runtime or assemblies from elsewhere.
+
 Before starting pkexec the provider checks every path component with
 `statx(AT_SYMLINK_NOFOLLOW)`: no symbolic links (pkexec would match a different
-path), every directory owned by root and not writable by group or others unless
-it is sticky (as `/nix/store`, root:nixbld 1775, is), and the program owned by
-root, executable and not group- or other-writable. A failure returns
-`Failed(InvalidData)` and pkexec never runs; the VM test makes the program
-world-writable and sees this. The check is not a snapshot that can go stale:
-it establishes that no one but root can replace the program or rename anything
-above it, so nothing can change between the check and pkexec's `execve` except
-by root, who is trusted. Programs in the user's home or in `/tmp` are rejected.
+path), every directory owned by root and not writable by others, and not
+writable by its group either unless it is sticky (as `/nix/store`, root:nixbld
+1775, is), and the program owned by root, executable and not group- or
+other-writable. A failure returns `Failed(InvalidData)` and pkexec never runs;
+the VM test makes the program world-writable and sees this. Programs in the
+user's home or in `/tmp` (1777) are rejected. This is a deployment check in the
+unprivileged, untrusted application, not part of the security boundary: an
+attacker who controls the application can skip it and call pkexec directly. It
+catches packaging mistakes before the user is asked for a password.
 
 ### Policy defaults
 
@@ -201,7 +280,12 @@ or its session, depending on the polkit version), so a second run, or
 another action that is also `_keep`, does not prompt. That suits multi-step
 operations where a second prompt protects nothing, and nix-manager uses it for
 the active session today. It is opt-in per action (`AllowActive="auth_admin_keep"`).
-`yes` belongs in site rules (`/etc/polkit-1/rules.d`), not in a shipped policy.
+`yes` belongs in site rules (`/etc/polkit-1/rules.d`), not in a shipped policy,
+and `auth_self` and `auth_self_keep` accept the user's own password, which any
+process running as that user can effectively supply; the build warns about all
+three (`RUNICPA014`). An action that activates a system stays `auth_admin`:
+its store-path pattern is not a trust boundary, because any user can create
+`/nix/store/<hash>-nixos-system-x` by building it.
 `allow_gui` is off unless asked for, because it passes the X11 display to a root
 process.
 
@@ -211,8 +295,18 @@ polkitd keeps only the last piece of character data that expat reports for an
 element, and expat splits text at entity references and line breaks. The first
 VM run showed a message with `&lt;` and `&amp;` cut down to its last fragment.
 The generator therefore writes text that needs escaping as one CDATA section and
-rejects line breaks and other control characters (`RUNICPA013`); the VM test
-checks the full message reaches the agent.
+rejects line breaks, other control characters and characters XML cannot carry
+(`RUNICPA013`); the VM test checks the full message reaches the agent.
+
+### Argument patterns
+
+A pattern is compiled on its own before it is anchored as `^(?:pattern)\z`, so
+`a)|(b` cannot close the anchoring group and match a part of an argument. The
+build and the runtime use the same options (`NonBacktracking`,
+`CultureInvariant`), so backreferences and lookarounds are build errors. .NET's
+`\d` and `\w` are Unicode-wide and a negated class such as `[^/]` matches a line
+break, so patterns list the allowed characters. The privileged program resolves
+paths (`realpath`), checks the resolved path again and uses only it.
 
 ### Residual risks
 
@@ -224,26 +318,37 @@ checks the full message reaches the agent.
   authorization for the same action while it lasts.
 - A program that keeps output open after it exits (a daemon it started) is
   read for five seconds, then its pipes close.
-- When the application dies, the program receives SIGTERM from pkexec's
-  parent-death signal. Steps that must not be interrupted run in their own
-  systemd unit, as nix-manager's `switch-to-configuration` does.
+- When the application dies, the program is not signalled; see "When the
+  application dies". The caller can also kill it through its cgroup.
+- A program that exits with 126 or 127 is reported as an authorization outcome.
 
 ## Windows design (follow-up)
 
 - `ShellExecuteExW` with `lpVerb = "runas"`, `SEE_MASK_NOCLOSEPROCESS |
   SEE_MASK_NOASYNC`, the declared program and a command line built with the
   Windows argument quoting rules (`CommandLineToArgvW` inverse), never `cmd`.
-- Outcomes: `ERROR_CANCELLED` (1223) when the user declines the prompt is
-  `UserDismissed`; a policy that denies elevation requests for standard users
-  is `PermissionDenied` (to verify which error it reports); UAC disabled, where
-  `runas` starts the program without elevation, is detected by the helper
-  (token elevation) and reported as `Unavailable`.
+- **The helper must be NativeAOT.** A process elevated with `runas` takes its
+  environment from the user's profile, including `HKCU\Environment`, which the
+  user (and every process running as the user) can write. For a .NET runtime
+  helper, `DOTNET_STARTUP_HOOKS`, `DOTNET_ROOT`, `DOTNET_ADDITIONAL_DEPS` and
+  `CORECLR_PROFILER*` would load attacker code into the elevated process. A
+  NativeAOT helper loads no runtime, startup hooks or profilers; it must still
+  ignore every other inherited variable and use absolute paths.
+- Outcomes: `ERROR_CANCELLED` (1223) comes back both when the user declines the
+  prompt and when a standard user cannot supply administrator credentials, so
+  denied and dismissed cannot be told apart and are reported as
+  `UserDismissed`; UAC disabled, where `runas` starts the program without
+  elevation, is detected by the helper (token elevation) and reported as
+  `Unavailable`.
 - `ShellExecuteEx` cannot redirect the elevated process's standard handles.
-  Output and cancellation go over a named pipe the caller creates with a DACL
-  for the caller and the Administrators group; its name is an argument, and
-  the caller checks the client's process image against the declared program.
-  Closing the pipe is the cancellation request, as closing standard input is
-  on Linux.
+  Output and cancellation go over a named pipe. The caller creates it with a
+  random name, `FILE_FLAG_FIRST_PIPE_INSTANCE` (so no other process can have
+  created or squatted the name first) and a DACL for the caller and the
+  Administrators group; its name is an argument. The helper opens it with
+  `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION`, so the pipe's server cannot
+  impersonate the elevated client, and the caller checks the client's process
+  image against the declared program. Closing the pipe is the cancellation
+  request, as closing standard input is on Linux.
 - The program must be in a directory only administrators can change (Program
   Files), checked with its security descriptor before the prompt; the helper
   has a `requireAdministrator` manifest and should be Authenticode-signed.
@@ -259,11 +364,23 @@ checks the full message reaches the agent.
   `SMAppService.daemon(plistName:)`. `.requiresApproval` and `.notFound` are
   `Unavailable` until the user approves it in System Settings.
 - Each run: the app calls `AuthorizationCopyRights` for a right named after the
-  action ID (defined in the authorization database by the daemon with the
-  declared message, or `system.privilege.admin` with a custom prompt), sends the
-  `AuthorizationExternalForm` and the argument vector over `NSXPCConnection`
-  with the `.privileged` option, and the daemon checks the right again without
-  interaction and checks the client's code-signing requirement.
+  action ID, sends the `AuthorizationExternalForm` and the argument vector over
+  `NSXPCConnection` with the `.privileged` option, and the daemon checks the
+  right again without interaction and checks the client's code-signing
+  requirement.
+- The daemon defines each right in the authorization database with the
+  declared message, as an admin rule that is **not shared and has no timeout**
+  (`shared = false`, `timeout = 0`). The built-in `authenticate-admin` rule is
+  shared and lasts 300 seconds, so one authorization would also cover other
+  rights and later runs.
+- Who verifies what: `SMAppService` registers only a daemon inside the app's
+  signed bundle, and launchd starts the `BundleProgram` at its bundle path;
+  the plist sets launch constraints (macOS 14) so launchd runs it only with the
+  app's Team ID signature. The daemon checks the client's code signature on
+  every XPC connection, and before it spawns the declared program it checks
+  that program's code signature against the same designated requirement, since
+  it runs it as root. The bundle is signed with the hardened runtime and
+  notarized.
 - Outcomes: `errAuthorizationCanceled` (-60006) is `UserDismissed`,
   `errAuthorizationDenied` (-60005) is `PermissionDenied`.
 - The daemon runs the declared program with `posix_spawn` and streams output
@@ -290,17 +407,24 @@ checks the full message reaches the agent.
 
 ## Verification — 2026-10-14
 
-- `tests/dotnet/Runic.Platform.Linux.Polkit.Tests`: 31 cases, three runs in a
-  row. A fake pkexec plays the authority and prints polkit 127's messages; the
-  cases cover every outcome, terminal authentication, argument vectors with shell
-  metacharacters, untrusted programs, requests outside the declarations,
-  cancellation before and after the program starts, callback failures, long
-  lines and invalid UTF-8, the real filesystem checks, and policy generation and
-  its errors through MSBuild.
-- `nixos/privileged-operations` on polkit 127 with the NativeAOT smoke: an
-  allowed action runs as root with its exact argument vector and without the
-  caller's environment; a rule that refuses is denied; no agent is unavailable;
-  an agent that dismisses is dismissed; cancelling while an agent holds the
-  request kills pkexec and polkitd withdraws the request; cancelling a running
-  action closes its input and returns its exit code; a world-writable program is
-  never started; polkitd failing to start is unavailable.
+- `tests/dotnet/Runic.Platform.Linux.Polkit.Tests`: 32 cases, three runs in a
+  row, also under NativeAOT in the Linux native CI job. A fake pkexec plays the
+  authority and prints polkit 127's messages; the cases cover every outcome, the
+  environment pkexec receives, terminal authentication, argument vectors with
+  shell metacharacters, untrusted programs (including `/tmp`), requests outside
+  the declarations, globally unique verbs, patterns that would escape their
+  anchors, cancellation before and after the program starts (with and without a
+  pidfd), callback failures, long lines and invalid UTF-8, and policy generation
+  with its errors and warnings through MSBuild.
+- `nixos/privileged-operations` on polkit 127 with the NativeAOT smoke, 12
+  subtests, twice in a row: an allowed action runs as root with its exact
+  argument vector and without the caller's environment, also when the caller's
+  `SHELL` is a store path; a rule that refuses is denied; no agent is
+  unavailable; an agent that dismisses is dismissed; cancelling while an agent
+  holds the request kills pkexec and polkitd withdraws the request; cancelling a
+  running action closes its input and returns its exit code; a world-writable
+  program is never started; polkitd failing to start is unavailable; the helper
+  normalises the working directory, umask, ignored signals and limits the caller
+  chose; killing the caller stops a helper that watches its input, while one
+  that ignores it runs on and its child's write to the closed output fails; and
+  the root helper in the caller's user cgroup is killed through `cgroup.kill`.

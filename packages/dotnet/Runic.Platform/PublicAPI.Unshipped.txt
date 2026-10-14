@@ -47,6 +47,7 @@ Runic.Platform.PrivilegedOutputChannel.StandardError = 1 -> Runic.Platform.Privi
 Runic.Platform.PrivilegedOutputChannel.StandardOutput = 0 -> Runic.Platform.PrivilegedOutputChannel
 const Runic.Platform.PrivilegedActionDeclaration.ArgumentLengthLimit = 4096 -> int
 const Runic.Platform.PrivilegedActionDeclaration.ArgumentLimit = 64 -> int
+const Runic.Platform.PrivilegedActionDeclaration.PatternOptions = System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.NonBacktracking -> System.Text.RegularExpressions.RegexOptions
 override Runic.Platform.PrivilegedActionCompletion.Equals(object? obj) -> bool
 override Runic.Platform.PrivilegedActionCompletion.GetHashCode() -> int
 override Runic.Platform.PrivilegedActionCompletion.ToString() -> string!
