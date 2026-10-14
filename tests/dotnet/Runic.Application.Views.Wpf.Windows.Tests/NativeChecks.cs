@@ -136,7 +136,21 @@ internal sealed class NativeChecks
             await UntilAsync(() => !failing.IsLoaded);
             await failing.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
             Program.Check(failing.Child is null && fallback.Parent is null, "Unloading did not remove the fallback.");
-            Console.WriteLine("RunicViewHost open/reload/swap/unload/fallback checks passed.");
+
+            // A per-window scope disposed before the host unloads: the unload must still release, without
+            // reading the disposed provider (#250).
+            var scope = services.CreateAsyncScope();
+            RunicViewHost.SetServices(window, scope.ServiceProvider);
+            var scoped = Host(fallback);
+            window.Content = scoped;
+            Program.Check(await SettledAsync(scoped) == RunicViewHostState.Open, $"The scoped host did not open: {scoped.State} {scoped.Error}");
+            await scope.DisposeAsync();
+            window.Content = null;
+            await UntilAsync(() => !scoped.IsLoaded);
+            await scoped.WaitForPresentationAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            Program.Check(scoped.State == RunicViewHostState.Closed && scoped.Child is null && attachments.All(item => item.Disposed),
+                "Unloading after its services were disposed did not release the host.");
+            Console.WriteLine("RunicViewHost open/reload/swap/unload/fallback/disposed-services checks passed.");
         }
         finally { window.Close(); }
 

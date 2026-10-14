@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using Runic.Application.Views.Desktop;
 
 namespace Runic.Application.Views.Wpf;
 
@@ -30,10 +31,8 @@ internal static partial class WpfViewsLog
 
     internal static string ErrorType(Exception error) => error.GetType().FullName ?? error.GetType().Name;
 
-    // The logger of a host: the application's ILoggerFactory when its services have one.
-    internal static ILogger For(IServiceProvider? services) => For(services?.GetService(typeof(ILoggerFactory)) as ILoggerFactory);
-
-    internal static ILogger For(ILoggerFactory? factory) => factory?.CreateLogger(Category) ?? TraceFallbackLogger.Instance;
+    // The logger of a host: the application's ILoggerFactory, lent so that a disposed one falls back to Trace.
+    internal static ILogger For(LentLoggerFactory? factory) => factory?.CreateLogger(Category) ?? TraceFallbackLogger.Instance;
 }
 
 // Without an ILoggerFactory, Warning and above go to System.Diagnostics.Trace, so they stay visible to a

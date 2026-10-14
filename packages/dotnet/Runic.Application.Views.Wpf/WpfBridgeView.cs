@@ -227,7 +227,8 @@ public static class WpfBridgeViewExtensions
         IDisposable? connections = null;
         try
         {
-            var loggerFactory = services.GetService<ILoggerFactory>();
+            // Lent, so a release after the application disposed its services logs to Trace instead of throwing.
+            var loggerFactory = LentLoggerFactory.From(services);
             surface = await desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
             content = new WindowContentSession(transport, new WindowContentSessionOptions

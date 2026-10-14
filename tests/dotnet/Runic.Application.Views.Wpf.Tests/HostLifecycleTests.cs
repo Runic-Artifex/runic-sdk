@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
+using Runic.Application.Views.Desktop;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
 using TUnit.Core;
@@ -150,6 +151,68 @@ internal sealed class HostLifecycleTests
         Program.Check(logger.Entries.SequenceEqual([(1113, "ViewHostCleanupFailed", typeof(System.IO.IOException)),
                 (1111, "ViewHostFallbackFailed", typeof(InvalidOperationException))]),
             $"The host logged {string.Join(", ", logger.Entries)}.");
+    }
+
+    // An application may dispose the services, or the scope, it set before the host unloads. Resolving the logger
+    // must not throw, and a release that logs through a disposed factory still runs, and logs to Trace (#250).
+    [Test, NotInParallel("WpfSuite", Order = 14)]
+    public async Task DisposedServicesDoNotBreakARelease()
+    {
+        var root = new ServiceCollection().BuildServiceProvider();
+        var scope = root.CreateScope();
+        scope.Dispose();
+        Program.Check(LentLoggerFactory.From(scope.ServiceProvider) is null, "A disposed provider lent a logger factory.");
+        await root.DisposeAsync();
+
+        var factory = new DisposableLoggerFactory();
+        var lifecycle = new PresentationLifecycle { Logger = WpfViewsLog.For(LentLoggerFactory.From(factory)) };
+        var released = false;
+        var wanted = true;
+        await lifecycle.RequestAsync(() => wanted, (owner, _) =>
+        {
+            owner.Own(() => released = true);
+            owner.Own(() => throw new System.IO.IOException("Release failed."));
+            return Task.CompletedTask;
+        });
+        factory.Dispose();
+        using var trace = new TraceCapture();
+        System.Diagnostics.Trace.Listeners.Add(trace);
+        try
+        {
+            wanted = false;
+            var release = lifecycle.RequestAsync(() => wanted, (_, _) => Task.CompletedTask);
+            await release.WaitAsync(TimeSpan.FromSeconds(5));
+            Program.Check(release.IsCompletedSuccessfully && released && lifecycle.State == RunicViewHostState.Closed,
+                "A release after the logger factory was disposed did not complete.");
+            Program.Check(trace.Text.Contains("RunicViewHost presentation cleanup failed", StringComparison.Ordinal),
+                $"The cleanup failure did not fall back to Trace: {trace.Text}");
+        }
+        finally { System.Diagnostics.Trace.Listeners.Remove(trace); }
+    }
+
+    // A logger factory whose loggers throw ObjectDisposedException once it is disposed, as a disposed provider's do.
+    private sealed class DisposableLoggerFactory : ILoggerFactory
+    {
+        private bool _disposed;
+        public void AddProvider(ILoggerProvider provider) { }
+        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void Dispose() => _disposed = true;
+
+        private sealed class Logger(DisposableLoggerFactory owner) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter) => ObjectDisposedException.ThrowIf(owner._disposed, owner);
+        }
+    }
+
+    private sealed class TraceCapture : System.Diagnostics.TraceListener
+    {
+        private readonly System.Text.StringBuilder _text = new();
+        internal string Text { get { lock (_text) return _text.ToString(); } }
+        public override void Write(string? message) { lock (_text) _text.Append(message); }
+        public override void WriteLine(string? message) { lock (_text) _text.AppendLine(message); }
     }
 
     private sealed class RecordingLogger : ILogger

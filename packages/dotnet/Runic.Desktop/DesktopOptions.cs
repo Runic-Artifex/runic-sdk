@@ -120,8 +120,8 @@ public sealed record DesktopHostOptions
 
     /// <summary>
     /// Gets an optional logger factory for host and window messages, such as a shutdown request or a failed close
-    /// confirmation. <c>RunicDesktopHost.Run</c> sets it to the application's registered <c>ILoggerFactory</c> when
-    /// it is not set. When omitted, they are written to <see cref="System.Diagnostics.Trace"/>.
+    /// confirmation. <c>RunicDesktopHost.Run</c> lends it the application's registered <c>ILoggerFactory</c> when
+    /// it is not set, until <c>Run</c> returns; a later message goes to Trace. When omitted, they are written to <see cref="System.Diagnostics.Trace"/>.
     /// </summary>
     public ILoggerFactory? LoggerFactory { get; init; }
 }

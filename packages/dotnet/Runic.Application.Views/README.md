@@ -1068,8 +1068,10 @@ Registering logging is all an application needs: with `services.AddLogging(...)`
 for example `AddLogging(logging => logging.AddSerilog(...))`, or the Generic
 Host, Runic logs every runtime message through that `ILoggerFactory`, with the
 categories and event IDs below. `RunicDesktopHost.Run` also passes it to the Desktop host when
-`DesktopHostOptions.LoggerFactory` is not set, and `RunicViewHost` takes it from
-its `Services`. Without a registered factory, Runic falls back to
+`DesktopHostOptions.LoggerFactory` is not set, until `Run` returns, and
+`RunicViewHost` takes it from its `Services` when it opens. A host message
+after that, such as a browser profile that a minute later still cannot be
+deleted, or one from a factory that was disposed meanwhile, goes to `Trace`. Without a registered factory, Runic falls back to
 `System.Diagnostics.Trace`.
 
 `OpenWindowAsync` passes the scope's
