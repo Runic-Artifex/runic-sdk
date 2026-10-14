@@ -264,6 +264,20 @@ the generated output.
 **Fix:** reference the shared framework or package that contains the assembly,
 or make the assembly available in the build output.
 
+### RUNICBRIDGE021
+
+The `Runic.Application.Views` build targets report this error. The project sets
+`RunicApplicationFrontendNodeModulesDirectory` to a `node_modules` that
+something else installed, such as the Nix builder, so the build links the
+frontend's `node_modules` to it instead of installing. The directory does not
+exist, the frontend already has a `node_modules` that is not a symbolic link,
+or the link could not be created. An installed `node_modules` is never
+replaced.
+
+**Fix:** install the dependencies in that directory, remove the frontend's own
+`node_modules`, or unset the property to install with the frontend's package
+manager.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except

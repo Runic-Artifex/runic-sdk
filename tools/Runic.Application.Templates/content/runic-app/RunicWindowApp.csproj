@@ -7,6 +7,14 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
+<!--#if (nix) -->
+    <!-- dotnet restore writes packages.lock.json, and dotnet restore -p:PublishAot=true writes
+         packages.aot.lock.json, whose graph adds the NativeAOT compiler. flake.nix restores from them in locked
+         mode for linux-x64, so both lock files list that runtime's packages too. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+    <NuGetLockFilePath Condition="'$(PublishAot)' == 'true'">packages.aot.lock.json</NuGetLockFilePath>
+<!--#endif -->
 <!--#if (tests) -->
     <!-- The test project has its own sources and build output. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);RunicWindowApp.Tests/**</DefaultItemExcludes>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, test } from "node:test";
@@ -160,6 +160,40 @@ test("an install that creates no node_modules for declared packages fails with R
   const reported = errors(result.output);
   assert.equal(reported.length, 1, result.output);
   assert.match(reported[0], /error RUNICBRIDGE016: 'node install\.mjs' did not create .*node_modules/);
+});
+
+test("RunicApplicationFrontendNodeModulesDirectory links prepared dependencies instead of installing", () => {
+  const app = fixture("prepared-modules", { name: "app", private: true, devDependencies: { vite: "8.3.2" } });
+  const prepared = join(app.project, "prepared", "node_modules");
+  const other = join(app.project, "other", "node_modules");
+  mkdirSync(prepared, { recursive: true });
+  mkdirSync(other, { recursive: true });
+  const modules = join(app.frontend, "node_modules");
+
+  let result = build(app, { properties: [`RunicApplicationFrontendNodeModulesDirectory=${prepared}`] });
+  assert.equal(result.status, 0, result.output);
+  assert.deepEqual(result.commands, ["build"], "The prepared dependencies are not installed again.");
+  assert.ok(lstatSync(modules).isSymbolicLink());
+  assert.equal(readlinkSync(modules), prepared);
+
+  // Another directory replaces the link, not the directory it pointed to.
+  result = build(app, { properties: [`RunicApplicationFrontendNodeModulesDirectory=${other}`] });
+  assert.equal(result.status, 0, result.output);
+  assert.equal(readlinkSync(modules), other);
+  assert.ok(existsSync(prepared));
+
+  result = build(app, { properties: [`RunicApplicationFrontendNodeModulesDirectory=${join(app.project, "missing")}`] });
+  assert.notEqual(result.status, 0);
+  assert.match(errors(result.output).join("\n"), /error RUNICBRIDGE021: RunicApplicationFrontendNodeModulesDirectory is .*missing, which is not a directory/);
+
+  // An installed node_modules is never replaced.
+  rmSync(modules);
+  mkdirSync(join(modules, "vite"), { recursive: true });
+  result = build(app, { properties: [`RunicApplicationFrontendNodeModulesDirectory=${prepared}`] });
+  assert.notEqual(result.status, 0);
+  assert.match(errors(result.output).join("\n"), /error RUNICBRIDGE021: .*node_modules exists and is not a symbolic link/);
+  assert.ok(existsSync(join(modules, "vite")));
+  assert.deepEqual(result.commands, []);
 });
 
 test("failed frontend commands report one coded error instead of MSB3073", () => {

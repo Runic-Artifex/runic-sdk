@@ -231,6 +231,44 @@ ship those two together, without debug symbols. Users need no Node.js or package
 manager, only the platform WebView or a browser described above. The
 [Ship a Desktop application](https://github.com/Runic-Artifex/runic-site/blob/main/docs/guides/desktop/shipping.md)
 guide covers publish modes, signing and packaging per platform.
+<!--#if (nix) -->
+
+## Build it with Nix
+
+`flake.nix` builds the application with the Runic SDK's
+`buildRunicApplication`, in the Nix sandbox and without network access. NuGet
+packages come from `packages.lock.json`, which `dotnet restore` writes because
+the project sets `RestorePackagesWithLockFile`, and for the NativeAOT package
+from `packages.aot.lock.json`, which `dotnet restore -p:PublishAot=true`
+writes. Both include `linux-x64` (`RuntimeIdentifiers`), and the build
+restores in locked mode: after changing a package reference, restore both
+again, or the build fails with `NU1004`. The frontend's packages come from its
+lock file. Commit the lock files, and add the files to Git before the first
+build, because a flake sees only the files Git tracks:
+
+```sh
+dotnet restore
+dotnet restore -p:PublishAot=true
+git init && git add -A
+nix build                # or nix build .#native-aot
+result/bin/RunicWindowApp
+```
+
+<!--#if (packageManager != "npm") -->
+The frontend's packages are one fixed-output download. Its hash in
+`flake.nix` is `lib.fakeHash` until the first `nix build`, which fails and
+reports the real hash: replace `lib.fakeHash` with it, and update it whenever
+the lock file changes.
+
+<!--#endif -->
+The package installs the program in `bin`, the desktop entry in
+`share/applications`, and GTK and WebKitGTK as run-time libraries. `nix develop`
+opens a shell with the .NET SDK, Node, the package manager and those libraries.
+The SDK's
+[Nix packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/nix/README.md)
+covers icons, privileged actions, NativeAOT, and the NixOS and Home Manager
+modules.
+<!--#endif -->
 
 ## Project settings
 

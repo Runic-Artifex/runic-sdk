@@ -125,10 +125,12 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
         return new Existing(ours, !hidden && !disabled);
     }
 
-    // This executable; a framework-dependent application runs as `dotnet App.dll`.
+    // This executable; a framework-dependent application runs as `dotnet App.dll`. A package's wrapper that names
+    // itself (PackagedExecutable) starts instead of the program behind it.
     private static List<string> Command(IEnumerable<string> arguments)
     {
-        string process = Environment.ProcessPath ?? throw new NativeBackendUnavailableException();
+        string process = PackagedExecutable.Resolve(PackagedExecutable.Wrapper, Environment.ProcessPath)
+            ?? throw new NativeBackendUnavailableException();
         var command = new List<string> { process };
         if (Path.GetFileNameWithoutExtension(process) == "dotnet" && Environment.GetCommandLineArgs() is [{ } assembly, ..]
             && assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))

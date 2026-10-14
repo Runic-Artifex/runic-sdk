@@ -1,0 +1,80 @@
+{
+  description = "RunicWindowApp, a Runic application";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    runic-sdk = {
+      url = "github:Runic-Artifex/runic-sdk/v__RUNIC_NUGET_VERSION__";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs =
+    {
+      self,
+      nixpkgs,
+      runic-sdk,
+    }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      inherit (pkgs) lib;
+      # Builds in the Nix sandbox without network access: NuGet packages come from the committed lock files and
+      # the frontend's dependencies from its lock file.
+      application =
+        { nativeAot }:
+        runic-sdk.lib.buildRunicApplication pkgs {
+          pname = "RunicWindowApp";
+          version = "0.1.0";
+          src = lib.fileset.toSource {
+            root = ./.;
+            fileset = lib.fileset.difference ./. (
+              lib.fileset.unions [
+                # Local tools are for development; the build needs none of them.
+                (lib.fileset.maybeMissing ./.config)
+#if (tests)
+                ./RunicWindowApp.Tests
+#endif
+                ./flake.nix
+                (lib.fileset.maybeMissing ./flake.lock)
+              ]
+            );
+          };
+          projectFile = "RunicWindowApp.csproj";
+          # dotnet restore and dotnet restore -p:PublishAot=true write them; see RunicWindowApp.csproj.
+          nugetLockFiles = [ (if nativeAot then ./packages.aot.lock.json else ./packages.lock.json) ];
+          frontend = {
+            packageManager = "__PACKAGE_MANAGER_NAME__";
+#if (packageManager == "npm")
+            # Each package is fetched from package-lock.json; set a hash to fetch them as one download instead.
+            hash = null;
+#else
+            # Build once, then replace this with the hash that Nix reports. Update it with the lock file.
+            hash = lib.fakeHash;
+#endif
+          };
+          host = "__RUNIC_HOST__";
+          inherit nativeAot;
+          executables = [ "RunicWindowApp" ];
+          desktopItems = [
+            (pkgs.makeDesktopItem {
+              name = "RunicWindowApp";
+              desktopName = "RunicWindowApp";
+              exec = "RunicWindowApp";
+              categories = [ "Utility" ];
+            })
+          ];
+          meta.mainProgram = "RunicWindowApp";
+        };
+    in
+    {
+      packages.${system} = {
+        default = application { nativeAot = false; };
+        native-aot = application { nativeAot = true; };
+      };
+      devShells.${system}.default = runic-sdk.lib.mkDevShell pkgs {
+        hosts = [ "__RUNIC_HOST__" ];
+        packageManagers = [ "__PACKAGE_MANAGER_NAME__" ];
+      };
+    };
+}

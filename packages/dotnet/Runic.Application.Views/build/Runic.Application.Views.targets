@@ -634,7 +634,7 @@
        needs no node_modules. Set RunicApplicationFrontendInstallEnabled=false when a
        workspace install owns it. -->
   <Target Name="RunicViewsCollectFrontendInstallInputs" BeforeTargets="RunicViewsInstallFrontend"
-          Condition="'$(RunicApplicationFrontendInstallEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+          Condition="'$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <PropertyGroup>
       <_RunicBridgeFrontendHasDependencies>false</_RunicBridgeFrontendHasDependencies>
       <_RunicBridgeFrontendHasDependencies Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($([System.IO.File]::ReadAllText('$(RunicApplicationFrontendDirectory)/package.json')), '&quot;(dependencies|devDependencies|optionalDependencies)&quot;\s*:\s*\{\s*&quot;'))">true</_RunicBridgeFrontendHasDependencies>
@@ -653,9 +653,81 @@
     <_RunicBridgeFrontendLockFile Include="package-lock.json;npm-shrinkwrap.json;pnpm-lock.yaml;bun.lock;bun.lockb" />
   </ItemGroup>
 
+  <!-- RunicApplicationFrontendNodeModulesDirectory names a node_modules that
+       something else installed, such as a Nix derivation built offline from the
+       lock file. The install does not run, and the frontend's node_modules
+       becomes a symbolic link (a junction on Windows) to that directory. An
+       earlier link is replaced; a node_modules that is not a link is
+       RUNICBRIDGE021 rather than replaced. -->
+  <UsingTask TaskName="RunicBridgeLinkNodeModules" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Link ParameterType="System.String" Required="true" />
+      <Target ParameterType="System.String" Required="true" />
+      <ProjectFile ParameterType="System.String" />
+      <HelpLink ParameterType="System.String" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.Diagnostics" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Runtime.InteropServices" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        // Compiled for netstandard2.0, as MSBuild on .NET Framework does: there is no symbolic link API.
+        string target = Path.GetFullPath(Target).TrimEnd('/', '\\');
+        string link = Path.GetFullPath(Link).TrimEnd('/', '\\');
+        if (!Directory.Exists(target))
+        {
+          Log.LogError(null, "RUNICBRIDGE021", HelpLink, ProjectFile, 0, 0, 0, 0,
+            "RunicApplicationFrontendNodeModulesDirectory is " + target + ", which is not a directory. Install the frontend dependencies there, or unset the property to install them with the frontend's package manager.");
+          return false;
+        }
+        if (Directory.Exists(link) || File.Exists(link))
+        {
+          if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) == 0)
+          {
+            Log.LogError(null, "RUNICBRIDGE021", HelpLink, ProjectFile, 0, 0, 0, 0,
+              link + " exists and is not a symbolic link, so it cannot point to RunicApplicationFrontendNodeModulesDirectory (" + target + "). Remove it, or unset the property to use it.");
+            return false;
+          }
+          // Remove the link only, never the directory it points to.
+          if (Directory.Exists(link)) Directory.Delete(link, false); else File.Delete(link);
+        }
+        bool windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        var start = new ProcessStartInfo(windows ? "cmd.exe" : "ln")
+        {
+          Arguments = windows ? "/c mklink /J \"" + link + "\" \"" + target + "\"" : "-s \"" + target + "\" \"" + link + "\"",
+          UseShellExecute = false,
+          RedirectStandardError = true,
+          RedirectStandardOutput = true,
+        };
+        using (var process = Process.Start(start))
+        {
+          process.StandardOutput.ReadToEnd();
+          string error = process.StandardError.ReadToEnd();
+          process.WaitForExit();
+          if (process.ExitCode != 0)
+          {
+            Log.LogError(null, "RUNICBRIDGE021", HelpLink, ProjectFile, 0, 0, 0, 0,
+              "Could not link " + link + " to " + target + ": " + error.Trim());
+            return false;
+          }
+        }
+        Log.LogMessage(MessageImportance.Normal, "Linked " + link + " to " + target + ".");
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="RunicViewsLinkFrontendNodeModules" BeforeTargets="RunicViewsBuildFrontend"
+          Condition="'$(RunicApplicationFrontendNodeModulesDirectory)' != '' and '$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+    <RunicBridgeLinkNodeModules Link="$(RunicApplicationFrontendDirectory)/node_modules"
+                                Target="$(RunicApplicationFrontendNodeModulesDirectory)"
+                                ProjectFile="$(MSBuildProjectFullPath)"
+                                HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge021" />
+  </Target>
+
   <Target Name="RunicViewsInstallFrontend" BeforeTargets="RunicViewsBuildFrontend"
           Inputs="@(_RunicBridgeFrontendInstallInput)" Outputs="$(_RunicBridgeFrontendInstallStamp)"
-          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(RunicApplicationFrontendInstallEnabled)' != 'false' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
+          Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false' and '$(RunicApplicationFrontendInstallEnabled)' != 'false' and '$(RunicApplicationFrontendNodeModulesDirectory)' == '' and Exists('$(RunicApplicationFrontendDirectory)/package.json')">
     <Message Importance="high"
              Text="Installing frontend dependencies in $(RunicApplicationFrontendDirectory) with $(RunicApplicationFrontendPackageManager). Set RunicApplicationFrontendInstallEnabled=false to install them yourself." />
     <Exec Command="$(RunicApplicationFrontendInstallCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
