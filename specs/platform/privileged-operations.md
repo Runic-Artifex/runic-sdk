@@ -395,9 +395,11 @@ pkexec's 126 and 127, every exit code of a helper that ran is its own.
 | `ERROR_ACCESS_DENIED` or `ERROR_ACCESS_DISABLED_BY_POLICY`: software restriction, AppLocker or a policy refused the elevation | `Failed(PermissionDenied)` |
 | `ERROR_INVALID_IMAGE_HASH`: the policy requires signed elevation and the helper is not signed | `Failed(InvalidData)` |
 | The Application Information service is disabled or missing | `Unavailable(BackendUnavailable)` |
-| The helper reports that it is not elevated: UAC is off and `runas` started it with the caller's token | `Unavailable(BackendUnavailable)` |
-| The helper reports a JIT runtime, or rejects the verb or arguments (its declarations differ) | `Failed(InvalidData)` |
-| The helper is missing or fails the location check | `Failed(InvalidData)`; no prompt |
+| The helper reports that it is not elevated: UAC is off and the user is a standard user, so `runas` started it with the caller's token. With UAC off an administrator's token is already full, and the helper runs. | `Unavailable(BackendUnavailable)` |
+| The helper reports a JIT runtime or a changeable location of its own, or rejects the verb or arguments (its declarations differ) | `Failed(InvalidData)` |
+| The helper is missing, fails the location check, or is a JIT build | `Failed(InvalidData)`; no prompt |
+| `ERROR_ACCESS_DENIED` also when the user cannot read the helper | `Failed(PermissionDenied)` |
+| A cancelled helper outlives `TerminateAfterCancellation` and cannot be terminated | `Failed(PermissionDenied)`; it may still run |
 | The helper exits without a greeting, or another launch error | `Failed(IoError)` |
 | The helper ran | `Success` with its exit code |
 
@@ -445,11 +447,36 @@ includes `HKCU\Environment`, which every process of the user can write. A JIT
 helper would load `DOTNET_STARTUP_HOOKS`, a runtime from `DOTNET_ROOT`, extra
 dependencies from `DOTNET_ADDITIONAL_DEPS` or a profiler from
 `CORECLR_PROFILER*` into the elevated process before `Main`. The helper must
-therefore be NativeAOT: the build refuses to publish a helper without
-`PublishAot`, or to build it for a runtime identifier (`RUNICEL002`), and
-`Match` reports a JIT runtime instead of acting. The NativeAOT runtime still
-reads its own `DOTNET_` garbage-collector settings before `Main`; they change
-performance, not code.
+therefore be NativeAOT, and three layers check it:
+
+- the build refuses to publish a helper without `PublishAot`, or to build it
+  for a runtime identifier (`RUNICEL002`). A portable `dotnet build` stays
+  allowed for development;
+- before the prompt, the application refuses a helper with `<name>.dll`,
+  `<name>.runtimeconfig.json` or `<name>.deps.json` beside it, or whose image
+  carries the bundle marker every .NET apphost and single-file host has (the
+  SHA-256 of ".net core bundle" the SDK searches for when it bundles). That
+  catches every `dotnet build` output and any JIT publish before its runtime
+  can start elevated;
+- `Match` reports a JIT runtime instead of acting, which is too late to stop
+  startup hooks but catches a JIT helper launched some other way.
+
+The NativeAOT runtime also reads settings from the environment before `Main`
+(`RhConfig::Environment`). On Windows these can load code or write files: a
+standalone GC (`DOTNET_GCPath`, `DOTNET_GCName`, loaded with `LoadLibrary`)
+when the image was linked with `IlcStandaloneGCSupport`, and EventPipe with
+the diagnostic server (`DOTNET_DiagnosticPorts` connects to an IPC peer that
+can set environment variables and start sessions; `DOTNET_EventPipeOutputPath`
+writes a file) when linked with `EventSourceSupport`. `RunicElevatedHelper`
+forces both off, overriding the project, and sets
+`System.Globalization.UseNls`, so ICU, which
+`DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU` could load from another directory,
+is never used. What remains (`gcServer`, `gcConservative`, the stress log and
+the GC heap settings) changes performance only; crash dumps
+(`DOTNET_DbgEnableMiniDump`, createdump) exist only in the Unix runtime. The
+helper is linked with `/DEPENDENTLOADFLAG:0x800`, so static imports that are
+not KnownDLLs (`version`, `bcrypt`, `iphlpapi`, ...) load from System32, not
+from the helper's directory, before `Initialize` runs.
 
 `ElevatedHelper.Initialize` then:
 
@@ -458,12 +485,13 @@ performance, not code.
   is never loaded;
 - sets the working directory to System32 (the caller chose `lpDirectory`);
 - removes every variable and sets `SystemRoot`, `windir`, `SystemDrive`,
-  `ComSpec`, `Path`, `PATHEXT`, `OS`, `NUMBER_OF_PROCESSORS`,
+  `Path` (System32, the Windows directory and Wbem), `PATHEXT`, `OS`, `NUMBER_OF_PROCESSORS`,
   `PROCESSOR_ARCHITECTURE` and the Program Files and ProgramData variables
   from the system (`GetSystemWindowsDirectoryW`, `GetSystemDirectoryW` and the
   known folders, after `SystemDrive`, because ProgramData expands it). The
   user could otherwise point `ComSpec`, `Path` or `SystemRoot` at their own
-  programs;
+  programs. `ComSpec` stays unset and PowerShell is not on `Path`, so the
+  helper names every tool by absolute path;
 - points `TEMP` and `TMP` at a new directory under `%SystemRoot%\Temp` that
   only Administrators and SYSTEM can open, created with a random name that must
   not exist, and removed at exit. The user's `TEMP` is theirs to change, so a
@@ -472,6 +500,16 @@ performance, not code.
 The helper must call tools by absolute path with `UseShellExecute = false`:
 `ShellExecute`, file associations and COM activation consult
 `HKCU\Software\Classes`, which the user controls.
+
+The tools themselves read per-user configuration, which then runs as the
+administrator: `cmd.exe` runs `AutoRun` from
+`HKCU\Software\Microsoft\Command Processor` unless started with `/D`, and so
+does a `.bat` or `.cmd` that `CreateProcess` starts through `cmd`; PowerShell
+loads the user's profiles and modules and honors the CurrentUser execution
+policy. The guide tells helpers to avoid shells, and otherwise to use
+`cmd.exe /D /C` and `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy
+Bypass -File` with an installed script. The helper cannot enforce this for the
+tools it starts.
 
 ### The pipe
 
@@ -527,14 +565,19 @@ reads the owner and DACL of the helper and of every directory above it
 - no other SID to hold delete-child, delete, `WRITE_DAC` or `WRITE_OWNER` on a
   directory above (creating a new subdirectory, which Authenticated Users may
   do in `C:\`, replaces nothing);
-- no symbolic link, junction or mount point in the path, a fixed local drive,
-  and no network, device or drive-relative path. Inherit-only entries,
+- no symbolic link, junction or mount point in the path, a fixed local drive
+  that is not a SUBST drive (drive letters belong to a logon session, which the
+  elevated helper does not share), and no network, device or drive-relative
+  path; and a NativeAOT image (above). Inherit-only entries,
   `CREATOR OWNER` and `OWNER RIGHTS` are ignored; an unknown entry type fails
   closed.
 
 As on Linux, this is a deployment check in the unprivileged application, not
 the boundary: it catches a per-user installation under `%LocalAppData%`
-before the user is asked to approve it. The helper has a `requireAdministrator`
+before the user is asked to approve it. The helper repeats the check on its
+own image in `Match` and refuses when it fails, for a helper started some
+other way; by then its process has started, so this refuses to act rather
+than preventing the load. The helper has a `requireAdministrator`
 manifest, so it asks for elevation however it is started, and should be
 Authenticode-signed so the prompt names the publisher; Windows enforces
 signatures only with the "Only elevate executables that are signed and
@@ -547,10 +590,20 @@ validated" policy.
 - A process of the user that starts the helper itself, or serves the pipe as
   the parent it chose, receives the output of a run the user approved for it;
   it cannot change the verb or arguments the prompt showed.
-- The NativeAOT runtime reads its `DOTNET_` garbage-collector settings from the
-  user-writable environment.
+- The NativeAOT runtime reads performance settings (`gcServer`, heap limits,
+  the stress log) from the user-writable environment; with the standalone GC
+  and EventPipe pinned off, none loads code or writes files. A helper built
+  without `RunicElevatedHelper` gets none of these pins.
+- Tools the helper starts read the user's configuration (`cmd` `AutoRun`,
+  PowerShell profiles, modules and execution policy) unless started with the
+  options above.
+- A JIT helper launched by someone other than the provider runs its startup
+  hooks before `Match` can refuse.
 - A running helper that ignores cancellation runs on unless
-  `TerminateAfterCancellation` is set, and when the application dies.
+  `TerminateAfterCancellation` is set, and when the application dies. The
+  handle UAC returns to a non-elevated application may lack
+  `PROCESS_TERMINATE`; termination then fails, and the run reports
+  `Failed(PermissionDenied)` instead of waiting.
 - The location check runs before the prompt; between the check and the start,
   only an administrator can change a location that passed it.
 - The private `TEMP` directory survives a helper that is terminated or crashes.
@@ -655,5 +708,14 @@ validated" policy.
   Not verified by CI: a prompt that a person answers (consent, credentials,
   No), the not-elevated report from a real `runas` with UAC off (the runner is
   elevated; it is covered with the fake host), over-the-shoulder elevation,
-  terminating through the handle that UAC returns to a non-elevated caller,
-  and an Authenticode-signed helper.
+  and an Authenticode-signed helper. Every real `runas` case starts from an
+  elevated runner, so the Application Information service never brokers the
+  elevation: the environment it builds for the helper, the parent it assigns
+  and the access rights of the handle it returns to a non-elevated caller
+  (whether `TerminateAfterCancellation` can terminate) are not exercised. A
+  non-elevated caller on the runner would need a filtered token whose linked
+  elevated token AppInfo accepts without a prompt, which CI cannot set up
+  reliably; a restricted token has no linked token and would wait for a
+  credential prompt nobody answers.
+  The security review follow-up adds a JIT build installed under Program
+  Files, which the application refuses before the prompt.

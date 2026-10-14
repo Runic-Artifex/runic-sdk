@@ -36,6 +36,7 @@ public static class ElevatedHelper
     // Stand-in tests run the helper protocol without elevation and under JIT.
     internal static bool RequireElevation = true;
     internal static bool RequireNativeAot = true;
+    internal static bool RequireTrustedLocation = true;
 
     /// <summary>
     /// Resets the process state the elevation takes from the user. Call it first in <c>Main</c>;
@@ -46,15 +47,18 @@ public static class ElevatedHelper
     /// <item>DLLs load only from the helper's directory and System32 (<c>SetDefaultDllDirectories</c>), never from the
     /// working directory or <c>PATH</c>.</item>
     /// <item>The working directory becomes System32.</item>
-    /// <item>The environment is replaced: <c>SystemRoot</c>, <c>windir</c>, <c>SystemDrive</c>, <c>ComSpec</c>,
-    /// <c>Path</c>, <c>PATHEXT</c>, <c>OS</c>, <c>NUMBER_OF_PROCESSORS</c>, <c>PROCESSOR_ARCHITECTURE</c> and the
+    /// <item>The environment is replaced: <c>SystemRoot</c>, <c>windir</c>, <c>SystemDrive</c>,
+    /// <c>Path</c> (System32, the Windows directory and Wbem only), <c>PATHEXT</c>, <c>OS</c>, <c>NUMBER_OF_PROCESSORS</c>, <c>PROCESSOR_ARCHITECTURE</c> and the
     /// Program Files and ProgramData variables, from the system rather than the user; every other variable is
-    /// removed.</item>
+    /// removed, including <c>ComSpec</c>: start tools by absolute path.</item>
     /// <item><c>TEMP</c> and <c>TMP</c> point to a new directory under the Windows directory that only
     /// administrators and SYSTEM can open, removed when the process exits.</item>
     /// </list>
-    /// The NativeAOT runtime reads its own <c>DOTNET_</c> garbage collector settings before <c>Main</c>; they can
-    /// change performance but load no code.
+    /// The NativeAOT runtime reads its own settings from the environment before <c>Main</c>. A helper built with
+    /// <c>RunicElevatedHelper</c> has no standalone GC (<c>DOTNET_GCPath</c>, <c>DOTNET_GCName</c>), no EventPipe or
+    /// diagnostic server (<c>DOTNET_DiagnosticPorts</c>, <c>DOTNET_EventPipeOutputPath</c>) and no ICU
+    /// (<c>DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU</c>), so what is left (server GC, conservative stack scanning, the
+    /// stress log and heap settings) changes performance but loads no code and writes no files.
     /// </remarks>
     /// <returns>False off Windows or when any step fails; do not act then.</returns>
     public static bool Initialize()
@@ -80,7 +84,8 @@ public static class ElevatedHelper
     /// Before it reports anything, the helper checks that the pipe's server is the process that started it (its
     /// parent, which UAC sets to the requesting process) in the same session. It reports
     /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> to the application when it is not elevated (UAC is
-    /// off), and refuses on a JIT runtime. The application cannot be authenticated beyond that: any process of the
+    /// off), and refuses on a JIT runtime or when its own image, or a directory above it, can be changed by
+    /// non-administrators. The application cannot be authenticated beyond that: any process of the
     /// user can start the helper and serve the pipe, but the UAC prompt names the helper and its arguments, and the
     /// helper accepts only declared actions.
     /// </para>
@@ -108,6 +113,7 @@ public static class ElevatedHelper
         ImmutableArray<string> rest = default;
         var status = RequireNativeAot && RuntimeFeature.IsDynamicCodeSupported ? HelperStatus.NotNativeAot
             : RequireElevation && IsElevated() != true ? HelperStatus.NotElevated
+            : RequireTrustedLocation && !IsTrustedLocation() ? HelperStatus.UntrustedLocation
             : (action = MatchCore(actions, argumentVector, out rest)) is null ? HelperStatus.Rejected
             : HelperStatus.Accepted;
         if (!session.Start(status, GoTimeout))
@@ -178,6 +184,12 @@ public static class ElevatedHelper
     [SupportedOSPlatform("windows")]
     private static bool? IsElevated() => ElevationNative.IsElevated();
 
+    // The application checked the helper before the prompt; a helper started some other way checks itself.
+    [SupportedOSPlatform("windows")]
+    private static bool IsTrustedLocation() =>
+        Environment.ProcessPath is { } path && HelperLocation.IsValidProgram(path)
+        && WindowsElevationHost.Instance.CheckProgram(Path.GetFullPath(path)) == ProgramCheck.Trusted;
+
     [SupportedOSPlatform("windows")]
     private static unsafe class HelperProcess
     {
@@ -202,8 +214,9 @@ public static class ElevatedHelper
             Environment.SetEnvironmentVariable("SystemRoot", windows);
             Environment.SetEnvironmentVariable("windir", windows);
             Environment.SetEnvironmentVariable("SystemDrive", windows[..2]);
-            Environment.SetEnvironmentVariable("ComSpec", Path.Combine(system, "cmd.exe"));
-            Environment.SetEnvironmentVariable("Path", string.Join(';', system, windows, Path.Combine(system, "Wbem"), Path.Combine(system, @"WindowsPowerShell\v1.0\")));
+            // No ComSpec and no PowerShell: shells read per-user configuration (cmd's AutoRun, PowerShell profiles and
+            // modules), so the helper starts the tools it needs by absolute path, deliberately.
+            Environment.SetEnvironmentVariable("Path", string.Join(';', system, windows, Path.Combine(system, "Wbem")));
             Environment.SetEnvironmentVariable("PATHEXT", ".COM;.EXE;.BAT;.CMD");
             Environment.SetEnvironmentVariable("OS", "Windows_NT");
             Environment.SetEnvironmentVariable("NUMBER_OF_PROCESSORS", Environment.ProcessorCount.ToString(System.Globalization.CultureInfo.InvariantCulture));

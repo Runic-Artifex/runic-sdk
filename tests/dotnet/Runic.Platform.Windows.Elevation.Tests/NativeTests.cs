@@ -153,6 +153,18 @@ internal sealed partial class NativeTests
         Check(WindowsElevationHost.Instance.CheckProgram(Path.Combine(HelperDirectory(), "Runic.Elevation.Smoke.exe")) == ProgramCheck.Trusted, "the installed helper is trusted");
     }
 
+    [Test, Explicit, Category("RealElevation"), DisplayName("runas: a JIT build of the helper under Program Files is refused before the prompt")]
+    public async Task RealJitHelperAsync()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var directory = TestContext.Parameters.TryGetValue("jit-helper-directory", out var values) && values.LastOrDefault() is { Length: > 0 } value
+            ? value
+            : throw new InvalidOperationException("Pass --test-parameter jit-helper-directory=<an installed JIT build of the smoke helper>.");
+        var result = await Real(new WindowsElevationOptions { ApplicationDirectory = directory }).RunAsync(new(PrivilegedActions.Flood, ["1"]));
+        Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 4 }), $"JIT helper: {result}");
+        Check(HelperImage.Check(Path.Combine(HelperDirectory(), "Runic.Elevation.Smoke.exe")) == ProgramCheck.Trusted, "the NativeAOT helper passes");
+    }
+
     [Test, Explicit, Category("RealElevation"), DisplayName("runas: the installed helper's manifest requires administrator")]
     public void RealManifest()
     {

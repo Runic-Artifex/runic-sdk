@@ -47,11 +47,16 @@ internal sealed class GenerationTests
     [Test, DisplayName("helper: NativeAOT for deployable builds, a requireAdministrator manifest and a console executable")]
     public async Task ChecksHelperAsync()
     {
-        using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Library</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier>"))
+        using (var project = new FixtureProject("", "<RunicElevatedHelper>true</RunicElevatedHelper><OutputType>Library</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><IlcStandaloneGCSupport>true</IlcStandaloneGCSupport><EventSourceSupport>true</EventSourceSupport>"))
         {
             var (exit, output) = await project.BuildAsync("-t:RunicCheckElevatedHelper");
             Check(exit != 0 && output.Contains("RUNICEL002", StringComparison.Ordinal) && output.Contains("RUNICEL004", StringComparison.Ordinal)
                 && !output.Contains("RUNICEL003", StringComparison.Ordinal), $"the package's manifest, no NativeAOT for a RID, a library: {output}");
+            var pinned = await project.EvaluateAsync("IlcStandaloneGCSupport", "EventSourceSupport");
+            Check(pinned.Contains("\"IlcStandaloneGCSupport\": \"false\"", StringComparison.Ordinal) && pinned.Contains("\"EventSourceSupport\": \"false\"", StringComparison.Ordinal),
+                $"the standalone GC and EventPipe are off: {pinned}");
+            var items = await project.EvaluateItemsAsync("RuntimeHostConfigurationOption", "LinkerArg");
+            Check(items.Contains("System.Globalization.UseNls", StringComparison.Ordinal) && items.Contains("/DEPENDENTLOADFLAG:0x800", StringComparison.Ordinal), $"NLS and the load flag: {items}");
             var manifest = await project.EvaluateAsync("ApplicationManifest");
             Check(manifest.EndsWith("Runic.Platform.Windows.Elevation.manifest", StringComparison.Ordinal), manifest);
             Check(File.ReadAllText(manifest).Contains("level=\"requireAdministrator\"", StringComparison.Ordinal), "the package's manifest requires administrator");
@@ -101,11 +106,18 @@ internal sealed class GenerationTests
 
         public string Directory { get; }
 
-        public async Task<string> EvaluateAsync(string property)
+        public async Task<string> EvaluateAsync(params string[] properties)
         {
-            var (exit, output) = await RunAsync(["msbuild", "fixture.proj", "-nologo", $"-getProperty:{property}"]);
+            var (exit, output) = await RunAsync(["msbuild", "fixture.proj", "-nologo", .. properties.Select(p => $"-getProperty:{p}")]);
             Check(exit == 0, output);
             return output.Trim();
+        }
+
+        public async Task<string> EvaluateItemsAsync(params string[] items)
+        {
+            var (exit, output) = await RunAsync(["msbuild", "fixture.proj", "-nologo", .. items.Select(i => $"-getItem:{i}")]);
+            Check(exit == 0, output);
+            return output;
         }
 
         public Task<(int ExitCode, string Output)> BuildAsync(params string[] extra) =>

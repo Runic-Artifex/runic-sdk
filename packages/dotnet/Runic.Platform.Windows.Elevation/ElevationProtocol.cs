@@ -15,6 +15,8 @@ internal enum HelperStatus : byte
     Rejected = 2,
     /// <summary>The helper runs on a JIT runtime, which reads startup hooks and profilers from the environment.</summary>
     NotNativeAot = 3,
+    /// <summary>The helper's own image or a directory above it can be changed by non-administrators.</summary>
+    UntrustedLocation = 4,
 }
 
 /// <summary>

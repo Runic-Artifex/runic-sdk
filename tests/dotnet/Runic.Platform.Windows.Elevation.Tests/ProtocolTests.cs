@@ -138,6 +138,40 @@ internal sealed partial class ProtocolTests
             "an unknown entry fails closed");
     }
 
+    [Test, DisplayName("image: a JIT build (runtime files beside it, or the apphost's bundle marker) is not a NativeAOT helper")]
+    public void HelperImages()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "runic-elevation-image-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var helper = Path.Combine(directory, "helper.exe");
+            // Complemented, so this executable does not carry the marker itself (its NativeAOT build is checked below).
+            byte[] marker = [0x74, 0xed, 0xfd, 0x46, 0x95, 0x9e, 0xdf, 0xc7, 0x8d, 0x84, 0x6c, 0xfd, 0xeb, 0x28, 0x5f, 0xcd, 0xec, 0x0a, 0x46, 0x19, 0x10, 0x51, 0xcc, 0xe7, 0x11, 0xc4, 0xd2, 0x31, 0xdb, 0x4c, 0x95, 0x51];
+            for (var i = 0; i < marker.Length; i++) marker[i] = (byte)~marker[i];
+            File.WriteAllBytes(helper, new byte[200_000]);
+            Check(HelperImage.Check(helper) == ProgramCheck.Trusted, "a plain image");
+            // Across the boundary of two 64 KiB reads.
+            var image = new byte[200_000];
+            marker.CopyTo(image, 64 * 1024 - 10);
+            File.WriteAllBytes(helper, image);
+            Check(HelperImage.Check(helper) == ProgramCheck.NotNativeAot, "the bundle marker across reads");
+            File.WriteAllBytes(helper, new byte[1000]);
+            foreach (var extension in new[] { ".dll", ".runtimeconfig.json", ".deps.json" })
+            {
+                File.WriteAllText(Path.Combine(directory, "helper" + extension), "");
+                Check(HelperImage.Check(helper) == ProgramCheck.NotNativeAot, extension);
+                File.Delete(Path.Combine(directory, "helper" + extension));
+            }
+            // This executable: the apphost under JIT, a NativeAOT image when published so.
+            var self = Path.Combine(AppContext.BaseDirectory, "Runic.Platform.Windows.Elevation.Tests" + (OperatingSystem.IsWindows() ? ".exe" : ""));
+            if (File.Exists(self))
+                Check(HelperImage.Check(self) == (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported ? ProgramCheck.NotNativeAot : ProgramCheck.Trusted),
+                    $"this executable, JIT={System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported}");
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     [Test, DisplayName("outcomes: declined, refused by policy, unsigned, no prompt service, and the helper's reports")]
     public void Outcomes()
     {
@@ -151,6 +185,8 @@ internal sealed partial class ProtocolTests
         Check(ElevationOutcome.FromStatus(HelperStatus.NotElevated) is PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable), "UAC off");
         Check(ElevationOutcome.FromStatus(HelperStatus.Rejected) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 5 }), "rejected");
         Check(ElevationOutcome.FromStatus(HelperStatus.NotNativeAot) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 4 }), "JIT helper");
+        Check(ElevationOutcome.FromStatus(HelperStatus.UntrustedLocation) is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, { Code: 3 }), "helper in a user-writable place");
+        Check(ElevationOutcome.ProgramDiagnostic(ProgramCheck.NotNativeAot).Code == 4, "a JIT image found before the prompt");
     }
 
     [Test, DisplayName("match: the verb selects the action, the rest must be within it")]

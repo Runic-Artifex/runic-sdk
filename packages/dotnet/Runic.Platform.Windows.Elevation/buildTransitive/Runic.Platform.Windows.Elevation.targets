@@ -15,9 +15,28 @@
     <RunicPrivilegedActionsDependsOn>$(RunicPrivilegedActionsDependsOn);RunicGenerateWindowsElevation</RunicPrivilegedActionsDependsOn>
   </PropertyGroup>
 
+  <!--
+    A helper's environment comes from the user's profile, and the NativeAOT runtime reads it before Main. These are
+    pinned off, whatever the project says, because they would act on it before ElevatedHelper.Initialize can:
+    - IlcStandaloneGCSupport: the runtime would load the DLL named by DOTNET_GCPath or DOTNET_GCName.
+    - EventSourceSupport: EventPipe and the diagnostic server would connect to DOTNET_DiagnosticPorts (an IPC peer
+      that can set environment variables and start sessions) and write DOTNET_EventPipeOutputPath.
+    - System.Globalization.UseNls: ICU, which DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU could load from another
+      directory, is never used.
+    The remaining NativeAOT knobs (gcServer, gcConservative, the stress log and the GC heap settings) change
+    performance only; on Windows the runtime has no crash-dump settings (createdump is Unix-only).
+  -->
   <PropertyGroup Condition="'$(RunicElevatedHelper)' == 'true'">
     <ApplicationManifest Condition="'$(ApplicationManifest)' == ''">$(MSBuildThisFileDirectory)Runic.Platform.Windows.Elevation.manifest</ApplicationManifest>
+    <IlcStandaloneGCSupport>false</IlcStandaloneGCSupport>
+    <EventSourceSupport>false</EventSourceSupport>
   </PropertyGroup>
+  <ItemGroup Condition="'$(RunicElevatedHelper)' == 'true'">
+    <RuntimeHostConfigurationOption Include="System.Globalization.UseNls" Value="true" Trim="true" />
+    <!-- Statically imported DLLs that are not KnownDLLs (version, bcrypt, iphlpapi...) load from System32 only, not
+         from the helper's directory, before Initialize restricts the search (LOAD_LIBRARY_SEARCH_SYSTEM32). -->
+    <LinkerArg Include="/DEPENDENTLOADFLAG:0x800" Condition="$(RuntimeIdentifier.StartsWith('win'))" />
+  </ItemGroup>
 
   <UsingTask TaskName="RunicWriteWindowsElevation" TaskFactory="RoslynCodeTaskFactory"
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">

@@ -8,6 +8,8 @@ internal enum ProgramCheck
     NotRealPath,
     /// <summary>Someone other than SYSTEM, Administrators or TrustedInstaller can change a component.</summary>
     Replaceable,
+    /// <summary>The helper is a .NET apphost or single-file bundle, or runtime files lie beside it: a JIT build.</summary>
+    NotNativeAot,
 }
 
 /// <summary>Where a path component sits relative to the helper, which decides which rights matter.</summary>
@@ -76,6 +78,65 @@ internal static class ProgramTrust
             }
         }
         return ProgramCheck.Trusted;
+    }
+}
+
+/// <summary>Recognizes a JIT build of the helper before it is started, when its runtime would already run.</summary>
+/// <remarks>
+/// A framework-dependent or self-contained build has <c>&lt;name&gt;.dll</c>, <c>&lt;name&gt;.runtimeconfig.json</c>
+/// or <c>&lt;name&gt;.deps.json</c> beside it, and its executable is the .NET apphost or single-file host, which
+/// carries the bundle marker the SDK searches for when it bundles. A NativeAOT image has neither.
+/// </remarks>
+internal static class HelperImage
+{
+    // dotnet/runtime src/native/corehost/apphost/bundle_marker.c: SHA-256 of ".net core bundle". Stored
+    // complemented and decoded on each use, not in a static initializer that the NativeAOT compiler could evaluate
+    // ahead of time: a helper that links this check must not carry the marker itself.
+    private static readonly byte[] ComplementedSignature =
+    [
+        0x74, 0xed, 0xfd, 0x46, 0x95, 0x9e, 0xdf, 0xc7, 0x8d, 0x84, 0x6c, 0xfd, 0xeb, 0x28, 0x5f, 0xcd,
+        0xec, 0x0a, 0x46, 0x19, 0x10, 0x51, 0xcc, 0xe7, 0x11, 0xc4, 0xd2, 0x31, 0xdb, 0x4c, 0x95, 0x51,
+    ];
+
+    private static byte[] Decode(byte[] complemented)
+    {
+        var bytes = new byte[complemented.Length];
+        for (var i = 0; i < bytes.Length; i++) bytes[i] = (byte)~complemented[i];
+        return bytes;
+    }
+
+    public static ProgramCheck Check(string path)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(path) ?? "";
+            var name = Path.GetFileNameWithoutExtension(path);
+            foreach (var extension in new[] { ".dll", ".runtimeconfig.json", ".deps.json" })
+                if (File.Exists(Path.Combine(directory, name + extension))) return ProgramCheck.NotNativeAot;
+            return HasBundleMarker(path) ? ProgramCheck.NotNativeAot : ProgramCheck.Trusted;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return ProgramCheck.Replaceable;
+        }
+    }
+
+    private static bool HasBundleMarker(string path)
+    {
+        var signature = Decode(ComplementedSignature);
+        using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
+        var buffer = new byte[64 * 1024];
+        var kept = 0;
+        while (true)
+        {
+            var read = file.Read(buffer, kept, buffer.Length - kept);
+            if (read == 0) return false;
+            var length = kept + read;
+            if (buffer.AsSpan(0, length).IndexOf(signature.AsSpan()) >= 0) return true;
+            // Keep the end, so a marker across two reads is found.
+            kept = Math.Min(length, signature.Length - 1);
+            buffer.AsSpan(length - kept, kept).CopyTo(buffer);
+        }
     }
 }
 
@@ -159,7 +220,7 @@ internal static class ElevationOutcome
     {
         ErrorCancelled => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.UserDismissed,
             new("Win32", error, "The elevation prompt was declined or dismissed.")),
-        // Software restriction or AppLocker policy, or elevation refused by policy.
+        // Software restriction or AppLocker policy, elevation refused by policy, or a helper the user cannot read.
         ErrorAccessDenied or ErrorAccessDisabledByPolicy => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.PermissionDenied, new("Win32", error)),
         // "Only elevate executables that are signed and validated" refuses an unsigned helper.
         ErrorInvalidImageHash => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData,
@@ -177,9 +238,15 @@ internal static class ElevationOutcome
         HelperStatus.Rejected => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData,
             new(Domain, 5, "The helper does not accept the action or its arguments; its declarations differ from the application's.")),
         HelperStatus.NotNativeAot => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData,
-            new(Domain, 4, "The helper is not a NativeAOT build, so its environment could load code into the elevated process.")),
+            new(Domain, 4, "The helper is not a NativeAOT build; its runtime started with the user's environment before it refused.")),
+        HelperStatus.UntrustedLocation => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData, ProgramDiagnostic(ProgramCheck.Replaceable)),
         _ => throw new ArgumentOutOfRangeException(nameof(status)),
     };
+
+    /// <summary>A cancelled action outlived TerminateAfterCancellation and its handle does not allow termination.</summary>
+    public static PlatformResult<PrivilegedActionCompletion> NotTerminated() =>
+        new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.PermissionDenied,
+            new(Domain, 8, "The cancelled helper did not stop and could not be terminated; it may still be running."));
 
     public static PlatformResult<PrivilegedActionCompletion> ProtocolFailure(string message) =>
         new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(Domain, 7, message));
@@ -187,7 +254,8 @@ internal static class ElevationOutcome
     public static PlatformDiagnostic ProgramDiagnostic(ProgramCheck check) => check switch
     {
         ProgramCheck.Missing => new(Domain, 1, "The declared helper does not exist."),
-        ProgramCheck.NotRealPath => new(Domain, 2, "The declared helper's path contains a symbolic link, junction or mount point."),
+        ProgramCheck.NotRealPath => new(Domain, 2, "The declared helper's path contains a symbolic link, junction, mount point or substituted drive."),
+        ProgramCheck.NotNativeAot => new(Domain, 4, "The helper is not a NativeAOT build, so its runtime would load code from the user's environment when it starts."),
         _ => new(Domain, 3, "The declared helper, or a directory above it, is not owned by administrators or can be changed by other users."),
     };
 }

@@ -140,6 +140,27 @@ internal sealed class SessionTests
         Check(host.Process!.TerminatedWith == WindowsPrivilegedActions.TerminatedExitCode, "terminated through the handle");
     }
 
+    [Test, DisplayName("session: a cancelled action that cannot be terminated is reported instead of waited for")]
+    public async Task NotTerminatedAsync()
+    {
+        var host = new FakeHost
+        {
+            TerminateFails = true,
+            Action = (channel, process) =>
+            {
+                channel.Write(ElevationProtocol.StandardOutput, "ignoring\n"u8);
+                process.Exited.Wait(TimeSpan.FromSeconds(30));
+                return 6;
+            },
+        };
+        using var cancellation = new CancellationTokenSource();
+        var options = PrivilegedActions.WindowsElevation with { TerminateAfterCancellation = TimeSpan.FromMilliseconds(200) };
+        var result = await Provider(host, options).RunAsync(new(PrivilegedActions.Ignore, []) { Output = line => { if (line.Text == "ignoring") cancellation.Cancel(); } }, cancellation.Token)
+            .AsTask().WaitAsync(TimeSpan.FromSeconds(20));
+        Check(result is PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.PermissionDenied, { Code: 8 }), $"result {result}");
+        host.Process!.Exit(6);
+    }
+
     [Test, DisplayName("session: a slow callback holds the helper's writes, and every line arrives in order")]
     public async Task BackpressureAsync()
     {
@@ -218,6 +239,7 @@ internal sealed class FakeHost : IElevationHost
     public TaskCompletionSource? LaunchGate { get; init; }
     public HelperStatus Status { get; init; } = HelperStatus.Accepted;
     public bool ConnectHelper { get; init; } = true;
+    public bool TerminateFails { get; init; }
     public Func<HelperChannel, FakeProcess, int>? Action { get; init; }
     public Action? BeforeHello { get; set; }
 
@@ -246,7 +268,7 @@ internal sealed class FakeHost : IElevationHost
         Launched.TrySetResult();
         if (LaunchGate is { } gate) await gate.Task.ConfigureAwait(false);
         if (LaunchError != 0) return new(null, LaunchError);
-        var process = Process = new FakeProcess();
+        var process = Process = new FakeProcess { TerminateFails = TerminateFails };
         var pipe = Pipe!;
         _ = Task.Run(() => RunHelper(pipe, process));
         return new(process, 0);
@@ -335,12 +357,13 @@ internal sealed class FakeProcess : IHelperProcess
     public Task<int> Exited => _exited.Task;
     public int? TerminatedWith { get; private set; }
     public Action? OnTerminate { get; set; }
+    public bool TerminateFails { get; init; }
 
     public void Exit(int code) => _exited.TrySetResult(code);
 
     public bool TryTerminate(int exitCode)
     {
-        if (_exited.Task.IsCompleted) return false;
+        if (_exited.Task.IsCompleted || TerminateFails) return false;
         TerminatedWith = exitCode;
         OnTerminate?.Invoke();
         return _exited.TrySetResult(exitCode);

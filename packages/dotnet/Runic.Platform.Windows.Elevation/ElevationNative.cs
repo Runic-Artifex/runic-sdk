@@ -123,6 +123,9 @@ internal static unsafe partial class ElevationNative
     [LibraryImport("kernel32.dll", EntryPoint = "GetDriveTypeW", StringMarshalling = StringMarshalling.Utf16)]
     public static partial uint GetDriveType(string root);
 
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryDosDeviceW", StringMarshalling = StringMarshalling.Utf16, SetLastError = true)]
+    public static partial uint QueryDosDevice(string device, char* target, uint size);
+
     [LibraryImport("kernel32.dll", EntryPoint = "GetSystemWindowsDirectoryW", SetLastError = true)]
     public static partial uint GetSystemWindowsDirectory(char* buffer, uint size);
 

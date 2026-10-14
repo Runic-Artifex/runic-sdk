@@ -16,10 +16,11 @@ internal sealed class WindowsElevationHost : IElevationHost
 
     public ProgramCheck CheckProgram(string path)
     {
-        // path is drive-absolute and normalized (HelperLocation). Mapped network drives and SUBST drives do not count
-        // as local: who can change them is decided elsewhere.
+        // path is drive-absolute and normalized (HelperLocation). A network drive is refused: who can change it is
+        // decided elsewhere. A SUBST drive reports its target's drive type, and drive letters belong to a logon
+        // session, which an elevated process does not share with the caller, so it is refused as well.
         var root = path[..3];
-        if (GetDriveType(root) != DriveFixed) return ProgramCheck.Replaceable;
+        if (GetDriveType(root) != DriveFixed || IsSubstitutedDrive(path[..2])) return ProgramCheck.Replaceable;
         var segments = path[3..].Split('\\');
         var components = new List<PathComponent>(segments.Length + 1);
         var current = root;
@@ -36,7 +37,16 @@ internal sealed class WindowsElevationHost : IElevationHost
             if (Read(current, role) is not { } component) return ProgramCheck.Replaceable;
             components.Add(component);
         }
-        return ProgramTrust.Evaluate(components);
+        var trust = ProgramTrust.Evaluate(components);
+        return trust == ProgramCheck.Trusted ? HelperImage.Check(path) : trust;
+    }
+
+    // A SUBST drive's device is "\??\<target>"; a volume's is "\Device\...".
+    private static unsafe bool IsSubstitutedDrive(string drive)
+    {
+        var buffer = stackalloc char[1024];
+        var length = QueryDosDevice(drive, buffer, 1024);
+        return length == 0 || new string(buffer).StartsWith(@"\??\", StringComparison.Ordinal);
     }
 
     private static unsafe PathComponent? Read(string path, ComponentRole role)

@@ -19,6 +19,8 @@ internal static class Program
         {
             ElevatedHelper.RequireElevation = mode is "elevated" or "nativeaot";
             ElevatedHelper.RequireNativeAot = mode is "nativeaot";
+            // The stand-in runs from the build output, which the user can change.
+            ElevatedHelper.RequireTrustedLocation = false;
             if (ElevatedHelper.Match(PrivilegedActions.All, helperArguments, out var arguments) is not { } action) return 2;
             return SmokeActions.Run(action, arguments);
         }

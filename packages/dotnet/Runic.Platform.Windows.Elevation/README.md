@@ -42,15 +42,19 @@ var result = await actions.RunAsync(
 | --- | --- |
 | The helper ran (any exit code) | `Success(PrivilegedActionCompletion(ExitCode))` |
 | The user answered No, or a standard user closed the credential prompt (`ERROR_CANCELLED`, 1223) | `Failed(UserDismissed)` |
-| A policy refused the elevation (`ERROR_ACCESS_DENIED`, `ERROR_ACCESS_DISABLED_BY_POLICY`) | `Failed(PermissionDenied)` |
-| UAC is off, so `runas` started the helper without elevation; or the Application Information service is disabled | `Unavailable(BackendUnavailable)` |
-| The helper is missing, can be changed by non-administrators, is unsigned where Windows requires signed elevation, is a JIT build, or does not accept the action | `Failed(InvalidData)`; nothing runs |
+| A policy refused the elevation, or the user cannot read the helper (`ERROR_ACCESS_DENIED`, `ERROR_ACCESS_DISABLED_BY_POLICY`) | `Failed(PermissionDenied)` |
+| A cancelled action outlived `TerminateAfterCancellation` and could not be terminated | `Failed(PermissionDenied)`; the helper may still run |
+| UAC is off and the user is not an administrator, so `runas` started the helper without elevation; or the Application Information service is disabled | `Unavailable(BackendUnavailable)` |
+| The helper is missing, can be changed by non-administrators, is a JIT build (runtime files beside it, or a .NET apphost), or is unsigned where Windows requires signed elevation | `Failed(InvalidData)`; no prompt is shown and nothing starts |
+| The started helper refuses: it runs on a JIT runtime the check above missed, finds its own location changeable, or does not accept the action | `Failed(InvalidData)`; the action does not run, but a JIT helper's runtime has already started with the user's environment |
 | The helper exited before it reported, or another launch failure | `Failed(IoError)` |
 | Cancelled before the action started | `OperationCanceledException` |
 
 UAC returns the same error when the user declines the consent prompt and when a
 standard user cannot supply an administrator's password, so Windows has no
-distinct denied outcome for a prompt: both are `UserDismissed`.
+distinct denied outcome for a prompt: both are `UserDismissed`. With UAC off,
+an administrator's token is already full: `runas` starts the helper elevated
+without a prompt and the action runs.
 
 Unlike pkexec, the helper reports its own state over the pipe, so no exit code
 is reserved: every exit code of a helper that ran is its own.
@@ -60,7 +64,7 @@ is reserved: every exit code of a helper that ran is its own.
 | `ApplicationDirectory` | Where relative helper paths start. Default: `AppContext.BaseDirectory`. |
 | `Programs` | Each action's `WindowsProgram`; the generated `WindowsElevation` fills it. |
 | `OwnerWindow` | The window (`HWND`) that owns the UAC prompt, so the prompt comes to the front. |
-| `TerminateAfterCancellation` | How long a cancelled action may run before its process is terminated (exit code `WindowsPrivilegedActions.TerminatedExitCode`, 1223). Default: never. |
+| `TerminateAfterCancellation` | How long a cancelled action may run before its process is terminated (exit code `WindowsPrivilegedActions.TerminatedExitCode`, 1223). Default: never. The process handle UAC returns to a non-elevated application may not allow termination; the run then ends with `Failed(PermissionDenied)` while the helper may still run. |
 
 ### Output and cancellation
 
@@ -95,7 +99,8 @@ directory only administrators can change, such as
 descriptors of the helper and every directory above it: owned by SYSTEM,
 Administrators or TrustedInstaller, no one else may write the helper or add
 files to its directory, or delete, rename or re-permission a directory above
-it, and no component may be a symbolic link, junction or network drive.
+it, and no component may be a symbolic link, junction, network drive or
+substituted (SUBST) drive. A JIT build of the helper is refused here too.
 
 ```xml
 <PropertyGroup>
@@ -116,14 +121,24 @@ var cancellation = ElevatedHelper.WatchCancellation();
 ```
 
 `RunicElevatedHelper` embeds a manifest with `requireAdministrator`, so the
-helper asks for elevation however it is started, and requires:
+helper asks for elevation however it is started. Because the NativeAOT runtime
+reads its settings from the user's environment before `Main`, it also turns
+off the standalone GC (`DOTNET_GCPath` would load a DLL), EventSource and
+EventPipe (`DOTNET_DiagnosticPorts` would connect the helper to a diagnostic
+peer, `DOTNET_EventPipeOutputPath` would write a file) and ICU
+(`System.Globalization.UseNls`, so `DOTNET_SYSTEM_GLOBALIZATION_APPLOCALICU`
+loads nothing), overriding the project, and links the helper so its static
+imports load from System32 only (`/DEPENDENTLOADFLAG:0x800`). It requires:
 
 - **NativeAOT** (`RUNICEL002` for every publish and every build for a runtime
   identifier). An elevated process takes its environment from the user's
   profile (`HKCU\Environment`), which any process of the user can write. A JIT
   runtime reads `DOTNET_STARTUP_HOOKS`, `DOTNET_ROOT`, `DOTNET_ADDITIONAL_DEPS`
   and `CORECLR_PROFILER` from it and would load the user's code into the
-  elevated process. `ElevatedHelper.Match` also refuses on a JIT runtime.
+  elevated process. A plain `dotnet build` is allowed for development, but its
+  output (an apphost with the runtime files beside it) is refused by the
+  application before the prompt, and `ElevatedHelper.Match` refuses on a JIT
+  runtime.
 - a manifest that requests `requireAdministrator` (`RUNICEL003`) if the project
   brings its own;
 - a console executable (`RUNICEL004`), so the tools it starts inherit its
@@ -134,14 +149,15 @@ helper asks for elevation however it is started, and requires:
 1. resets the process (`ElevatedHelper.Initialize`): DLLs load only from the
    helper's directory and System32, the working directory becomes System32,
    the environment is replaced with values from the system (`SystemRoot`,
-   `Path`, `ComSpec`, the Program Files variables and a few more; everything
+   `Path`, the Program Files variables and a few more, but no `ComSpec`; everything
    from the user's profile is removed), and `TEMP` points to a new directory
    only administrators and SYSTEM can open, removed at exit;
 2. connects to the application's pipe for identification only
    (`SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION`), so the application
    cannot act as the elevated helper;
 3. checks that the pipe's server is the process that started the helper (UAC
-   makes the requesting process the parent) in the same session;
+   makes the requesting process the parent) in the same session, and that only
+   administrators can change its own image and the directories above it;
 4. reports that it is not elevated (UAC off), not NativeAOT, rejects arguments
    outside its declarations, or accepts the action, and waits for the start
    signal before it returns the action;
@@ -152,6 +168,17 @@ the security boundary: it checks the arguments again with the same
 declarations, and adds its own checks. Call other programs by absolute path,
 with `UseShellExecute = false`; never through `ShellExecute`, file
 associations or COM registrations, which the user's registry can redirect.
+The helper's `Path` holds only System32, the Windows directory and Wbem, and
+`ComSpec` is unset, so a tool is always named deliberately.
+
+Tools still read the user's own configuration, which runs as the
+administrator: `cmd.exe` runs the `AutoRun` command from
+`HKCU\Software\Microsoft\Command Processor` unless started with `/D`, and so
+does a `.bat` or `.cmd` file started directly; PowerShell loads the user's
+profiles and modules and honors the CurrentUser execution policy. Avoid shells.
+When one is unavoidable, start `%SystemRoot%\System32\cmd.exe /D /C ...`, or
+`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ...`
+with a script installed beside the helper, never a batch file directly.
 `ElevatedHelper.GetCallerImagePath()` names the application that started the
 helper, but any process of the user could have started it.
 

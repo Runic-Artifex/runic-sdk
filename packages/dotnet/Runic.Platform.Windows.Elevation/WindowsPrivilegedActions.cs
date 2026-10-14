@@ -28,7 +28,9 @@ public sealed record WindowsElevationOptions
 
     /// <summary>
     /// How long a running action may take to stop after cancellation before its process is terminated. Null, the
-    /// default, never terminates it: as on Linux, the result reports how the action actually ended.
+    /// default, never terminates it: as on Linux, the result reports how the action actually ended. When the process
+    /// cannot be terminated (the handle UAC gives a non-elevated application may not allow it), the result is
+    /// <see cref="PlatformFailureCode.PermissionDenied"/> and the helper may still run.
     /// </summary>
     public TimeSpan? TerminateAfterCancellation { get; init; }
 }
@@ -256,17 +258,28 @@ internal sealed class ElevationRun(IElevationHost host, IElevationPipe pipe, Win
         var output = new OutputSink(callback);
         var reader = Task.Run(() => ReadOutputAsync(stream, output, buffer), CancellationToken.None);
         using var terminate = new CancellationTokenSource();
+        // Completes when TerminateAfterCancellation elapsed and the helper could not be terminated: the handle UAC
+        // returns to a non-elevated caller may lack PROCESS_TERMINATE.
+        var notTerminated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using (cancellationToken.Register(() =>
         {
             try { Send(stream, ElevationProtocol.Cancel); }
             catch (Exception e) when (e is IOException or ObjectDisposedException) { }
             if (options.TerminateAfterCancellation is { } wait)
-                _ = Task.Delay(wait, terminate.Token).ContinueWith(t =>
+                _ = Task.Delay(wait, terminate.Token).ContinueWith(async t =>
                 {
-                    if (t.IsCompletedSuccessfully) process.TryTerminate(WindowsPrivilegedActions.TerminatedExitCode);
+                    if (!t.IsCompletedSuccessfully || process.TryTerminate(WindowsPrivilegedActions.TerminatedExitCode)) return;
+                    // It may have exited just now; otherwise it runs on.
+                    try { await process.Exited.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+                    catch (TimeoutException) { notTerminated.TrySetResult(); }
                 }, TaskScheduler.Default);
         }))
         {
+            if (await Task.WhenAny(process.Exited, notTerminated.Task).ConfigureAwait(false) != process.Exited)
+            {
+                output.Close();
+                return ElevationOutcome.NotTerminated();
+            }
             var exitCode = await process.Exited.ConfigureAwait(false);
             await terminate.CancelAsync().ConfigureAwait(false);
             try { await reader.WaitAsync(OutputDrainTimeout, CancellationToken.None).ConfigureAwait(false); }
