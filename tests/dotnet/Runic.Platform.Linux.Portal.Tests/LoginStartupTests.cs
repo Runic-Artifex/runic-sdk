@@ -47,6 +47,37 @@ internal sealed class LoginStartupTests
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
     }
 
+    [Test, NotInParallel("RUNIC_APPLICATION_EXECUTABLE"), DisplayName("login startup: the entry starts the wrapper that RUNIC_APPLICATION_EXECUTABLE names")]
+    public async Task WrapperEntryAsync()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "runic-autostart-" + Guid.NewGuid().ToString("N")[..8]);
+        string wrapper = Path.Combine(directory, "bin", "my app");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(wrapper)!);
+            File.WriteAllText(wrapper, "");
+            var startup = new LinuxLoginStartup(new PortalApplication("org.example.Wrapped"), directory, sandboxed: false);
+            string path = Path.Combine(directory, "org.example.Wrapped.desktop");
+
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE", wrapper);
+            Check(await startup.EnableAsync(new LoginStartupRequest(["--tray"])) is PlatformResult<PlatformUnit>.Success, "enable");
+            string entry = File.ReadAllText(path);
+            Check(entry.Contains($"Exec=\"{wrapper}\" --tray\n", StringComparison.Ordinal), $"the wrapper starts: {entry}");
+
+            // A relative or missing path is not a wrapper of this process.
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE", Path.Combine(directory, "missing"));
+            Check(await startup.EnableAsync(new LoginStartupRequest([])) is PlatformResult<PlatformUnit>.Success, "enable again");
+            entry = File.ReadAllText(path);
+            Check(!entry.Contains(directory + "/missing", StringComparison.Ordinal) && entry.Contains(Environment.ProcessPath!, StringComparison.Ordinal),
+                $"the process starts instead: {entry}");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE", null);
+            if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [Test, Explicit, Category("DBus"), DisplayName("login startup: the Background portal in a sandbox, granted and refused")]
     public async Task BackgroundPortalAsync()
     {

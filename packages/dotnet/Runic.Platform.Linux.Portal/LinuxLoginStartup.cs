@@ -125,10 +125,15 @@ internal sealed class LinuxLoginStartup(PortalApplication application, string? a
         return new Existing(ours, !hidden && !disabled);
     }
 
-    // This executable; a framework-dependent application runs as `dotnet App.dll`.
+    // This executable; a framework-dependent application runs as `dotnet App.dll`. A package that starts the program
+    // through a wrapper (the Nix builder's sets the libraries' paths) names the wrapper in RUNIC_APPLICATION_EXECUTABLE,
+    // so login starts the wrapper rather than the program behind it.
     private static List<string> Command(IEnumerable<string> arguments)
     {
-        string process = Environment.ProcessPath ?? throw new NativeBackendUnavailableException();
+        string process = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE") is { Length: > 0 } wrapper
+            && Path.IsPathFullyQualified(wrapper) && File.Exists(wrapper)
+            ? wrapper
+            : Environment.ProcessPath ?? throw new NativeBackendUnavailableException();
         var command = new List<string> { process };
         if (Path.GetFileNameWithoutExtension(process) == "dotnet" && Environment.GetCommandLineArgs() is [{ } assembly, ..]
             && assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
