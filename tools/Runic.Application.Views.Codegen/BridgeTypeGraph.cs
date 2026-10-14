@@ -864,9 +864,12 @@ internal sealed class BridgeTypeGraph
                 hierarchy.Push(current);
             var names = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
             foreach (var current in hierarchy)
-            foreach (var property in current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public).Where(property => property.GetIndexParameters().Length == 0))
+            // Excluded properties first: their signature may need an assembly
+            // the generator cannot load.
+            foreach (var property in current.GetProperties(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => property.GetMethod is not null && !BridgeDtoContract.IsIgnored(property, honorJsonIgnore)
+                    && property.GetIndexParameters().Length == 0))
             {
-                if (property.GetMethod is null || BridgeDtoContract.IsIgnored(property, honorJsonIgnore)) continue;
                 var wire = WireName(property);
                 if (names.TryGetValue(wire, out var other))
                     throw new BridgeTypeGraphException(path + "." + wire, $"Wire name collides between {other.DeclaringType?.Name}.{other.Name} and {property.DeclaringType?.Name}.{property.Name}; use RunicAlias or RunicIgnore.");

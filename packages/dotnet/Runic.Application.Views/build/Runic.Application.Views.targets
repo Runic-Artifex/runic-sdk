@@ -453,11 +453,22 @@
       <_RunicBridgeSkipped>false</_RunicBridgeSkipped>
       <_RunicBridgeReactiveUiFlavorArgument Condition="'$(RunicApplicationFrontendReactiveUiFlavor)' != ''">--reactiveui-flavor &quot;$(RunicApplicationFrontendReactiveUiFlavor)&quot;</_RunicBridgeReactiveUiFlavorArgument>
     </PropertyGroup>
+    <!-- The shared frameworks the application uses, directly or through a
+         package (Runic.Desktop references Microsoft.AspNetCore.App). The
+         generator runs on Microsoft.NETCore.App and loads the application's
+         assemblies from these frameworks; it never loads
+         Microsoft.WindowsDesktop.App, whose types it skips on every OS. -->
+    <ItemGroup>
+      <_RunicBridgeSharedFramework Include="@(FrameworkReference->Distinct())" Exclude="Microsoft.NETCore.App" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicBridgeFrameworkArgument>@(_RunicBridgeSharedFramework->'--framework &quot;%(Identity)&quot;', ' ')</_RunicBridgeFrameworkArgument>
+    </PropertyGroup>
     <Delete Files="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" />
     <!-- The generator reports its diagnostics in canonical form. They are
          logged once with their codes (see RunicBridgeReportCommandResult);
          a failure that reported none is RUNICBRIDGE001. -->
-    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgePathMapArgument)"
+    <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeCodegenExitCode" />
       <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeCodegenOutputLine" />

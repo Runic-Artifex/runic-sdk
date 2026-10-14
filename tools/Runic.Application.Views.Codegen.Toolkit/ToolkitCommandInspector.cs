@@ -127,8 +127,10 @@ public static class ToolkitCommandInspector
             return false;
 
         return owner.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
-            .Any(method => method.GetCustomAttribute<RelayCommandAttribute>(false) is { IncludeCancelCommand: true }
-                && CommandName(method.Name) == name
+            // The name first: GetCustomAttribute resolves every attribute type
+            // on the method, and only the command's own method is relevant.
+            .Any(method => CommandName(method.Name) == name
+                && method.GetCustomAttribute<RelayCommandAttribute>(false) is { IncludeCancelCommand: true }
                 && typeof(Task).IsAssignableFrom(method.ReturnType)
                 && method.GetParameters() is var parameters
                 && parameters.Length == (contract.HasInput ? 2 : 1)

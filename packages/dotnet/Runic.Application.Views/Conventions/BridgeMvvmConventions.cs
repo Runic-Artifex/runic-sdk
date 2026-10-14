@@ -64,9 +64,9 @@ internal static class BridgeMvvmConventions
     internal static bool IsAsyncCommand(Type type) =>
         type.GetInterfaces().Append(type).Any(candidate => candidate.FullName is { } name && AsyncCommandTypes.Contains(name));
 
-    /// <summary>The convention whose command-source attribute is <paramref name="attribute"/>, or null.</summary>
-    internal static BridgeMvvmConvention? CommandSource(Type attribute) =>
-        All.FirstOrDefault(convention => convention.CommandSourceAttribute == attribute.FullName);
+    /// <summary>The convention whose command-source attribute has the full name <paramref name="attributeFullName"/>, or null.</summary>
+    internal static BridgeMvvmConvention? CommandSource(string attributeFullName) =>
+        All.FirstOrDefault(convention => convention.CommandSourceAttribute == attributeFullName);
 
     private static Type? GenericContract(Type type, HashSet<string> names) => type.GetInterfaces().Append(type)
         .FirstOrDefault(candidate => candidate.IsGenericType && candidate.GetGenericTypeDefinition().FullName is { } name && names.Contains(name));
