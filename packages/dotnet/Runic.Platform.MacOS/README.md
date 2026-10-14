@@ -81,12 +81,14 @@ login item's status reports that as an `IoError`.
 
 `PlatformServices.PresentAsync(owner)` orders a Desktop window front as the key
 window on its main thread, also a hidden or minimized one, and asks to activate
-the application (`activate` on macOS 14 and later). macOS 14 activates only when
-the active application yields: a second launch that runs AppKit on its main
-thread, as one from Finder or the Dock does, yields to the running instance before
-it forwards its arguments. When macOS keeps another application active, the
-result is `PermissionDenied` and the window is in front of the application's other
-windows. macOS needs no activation token, so the context is ignored.
+the application. On macOS 14 and later it first asks cooperatively
+(`activate`), which succeeds when the active application yields: a second launch
+that runs AppKit on its main thread, as one from Finder or the Dock does, yields
+to the running instance before it forwards its arguments. When that is refused,
+it repeats the request with `activateIgnoringOtherApps:`, which macOS 26 still
+honours, as the user asked for the window by launching again. When macOS keeps
+another application active, the result is `PermissionDenied` and the window is
+in front of the application's other windows. macOS needs no activation token, so the context is ignored.
 
 The `NativeAppKit` category of `tests/dotnet/Runic.Platform.Runtime.Tests` runs
 these on the macOS CI runner, under JIT and NativeAOT, without a user: a real

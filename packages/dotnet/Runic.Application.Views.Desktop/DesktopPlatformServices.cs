@@ -270,9 +270,10 @@ public static class PlatformServices
     /// the foreground when the desktop allows it, as it does for the running instance after
     /// <see cref="Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> forwards a launch; when
     /// Windows refuses, the taskbar button flashes and the result is <see cref="PlatformFailureCode.PermissionDenied"/>.
-    /// macOS orders the window front, also a hidden or minimized one, and asks to activate the application, which
-    /// macOS 14 and later grants only when the active application yields, as a forwarding launch does; otherwise the
-    /// result is <see cref="PlatformFailureCode.PermissionDenied"/>. It needs no context. A window without native dispatch, such as an installed browser, reports
+    /// macOS orders the window front, also a hidden or minimized one, and activates the application, cooperatively on
+    /// macOS 14 and later, where a forwarding launch yields to it, and otherwise as the user's request; when macOS
+    /// keeps another application active, the result is <see cref="PlatformFailureCode.PermissionDenied"/>. It needs no
+    /// context. A window without native dispatch, such as an installed browser, reports
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
     /// <see cref="PlatformUnavailableReason.OwnerClosed"/>.
     /// </remarks>
