@@ -1137,11 +1137,25 @@ internal sealed class ToolTests
         Equal(DoctorStatus.Pass, Check(Inspect(both, new FakeDoctorRuntime(authority.Toolchain) { Platform = new("osx", "arm64", false, "15.0") }),
             "desktop-runtime").Status);
 
-        // With --rid, the target checks follow the primary host and desktop-runtime does not inspect this machine.
-        DoctorReport rid = InspectTarget(both, "linux-x64", new FakeDoctorRuntime(authority.Toolchain));
-        False(rid.Checks.Any(static check => check.Name == "desktop-runtime"), "--rid inspected this machine's Desktop runtime.");
-        Contains(Check(rid, "views-hosts").Message, "which --rid does not check");
-        Contains(Check(rid, "views-hosts").Message, "The --rid checks follow CS-WebUI.");
+        // With --rid, the target checks follow the primary host. On a machine with the target's operating system,
+        // desktop-runtime still probes Runic Desktop, so a missing WebKitGTK is not hidden behind --rid.
+        DoctorReport rid = InspectTarget(both, "linux-x64", new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] });
+        Equal(DoctorStatus.Warning, Check(rid, "desktop-runtime").Status);
+        Equal(DoctorStatus.Pass, Check(rid, "views-hosts").Status);
+        Contains(Check(rid, "views-hosts").Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, checked by desktop-runtime");
+        Contains(Check(rid, "views-hosts").Message, "CS-WebUI, checked by browser and the target checks");
+        Contains(Check(rid, "views-hosts").Message, "The target checks follow CS-WebUI.");
+        // From another operating system nothing checks Runic Desktop, so views-hosts warns instead of passing.
+        DoctorReport remote = InspectTarget(both, "linux-x64", new FakeDoctorRuntime(authority.Toolchain) { Platform = windows, Executables = ["chromium"] });
+        False(remote.Checks.Any(static check => check.Name == "desktop-runtime"), "A Windows machine probed Linux libraries.");
+        DoctorCheck uncovered = Check(remote, "views-hosts");
+        Equal(DoctorStatus.Warning, uncovered.Status);
+        Contains(uncovered.Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, which --rid linux-x64 cannot check from this Windows machine");
+        Contains(uncovered.Remediation ?? string.Empty, "'dotnet runic doctor --rid linux-x64' on a Linux machine");
+        // The GTK 4 profile's libraries are probed the same way.
+        DoctorReport gtk4Rid = InspectTarget(both with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] },
+            "linux-x64", new FakeDoctorRuntime(authority.Toolchain));
+        Contains(Check(gtk4Rid, "gtk4-profile").Message, "libwebkitgtk-6.0.so.4");
     }
 
     [Test, DisplayName("doctor checks the WPF host and reports a project without a host")]
@@ -1163,7 +1177,59 @@ internal sealed class ToolTests
 
         DoctorCheck none = Check(Inspect(wpf with { Hosts = [] }, new FakeDoctorRuntime(authority.Toolchain)), "views-hosts");
         Equal(DoctorStatus.Warning, none.Status);
+        Contains(none.Message, "references no Runic Views host");
         Contains(none.Remediation ?? string.Empty, "Runic.Application.Views.Wpf");
+        // An adapter that arrives through another package or project sets RunicApplicationHostAdapter.
+        DoctorCheck indirect = Check(Inspect(wpf with { Hosts = [], ReferencesHostAdapter = true }, new FakeDoctorRuntime(authority.Toolchain)), "views-hosts");
+        Equal(DoctorStatus.Warning, indirect.Status);
+        Contains(indirect.Message, "A Runic Views host is referenced indirectly");
+        DoesNotContain(indirect.Message, "references no Runic Views host");
+
+        // A WPF-only project's --rid checks follow WPF, which runs on Runic Desktop's Windows layer.
+        DoctorProjectConfiguration primary = wpf with { Host = RunicViewsHost.Wpf };
+        DoctorReport windowsTarget = InspectTarget(primary, "win-x64", new FakeDoctorRuntime(authority.Toolchain));
+        Equal(DoctorStatus.Pass, Check(windowsTarget, "target-rid").Status);
+        DoesNotContain(Check(windowsTarget, "target-rid").Message, "assumed");
+        Contains(Check(windowsTarget, "target-presentation").Message, "The WPF host on win-x64 needs the Microsoft Edge WebView2 Runtime");
+        Contains(Check(windowsTarget, "views-hosts").Message, "WPF, checked by the target checks");
+        Equal(DoctorStatus.Warning, Check(InspectTarget(primary, "win-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Platform = windows }), "target-presentation").Status);
+        DoctorCheck linuxTarget = Check(InspectTarget(primary, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid");
+        Equal(DoctorStatus.Failure, linuxTarget.Status);
+        Contains(linuxTarget.Message, "The WPF host runs only on Windows");
+        // Next to Runic Desktop, WPF is not the primary host; wpf-runtime reports a target it cannot run on.
+        DoctorReport desktopAndWpf = InspectTarget(primary with { Host = RunicViewsHost.Desktop, Hosts = [RunicViewsHost.Desktop, RunicViewsHost.Wpf] },
+            "linux-x64", new FakeDoctorRuntime(authority.Toolchain));
+        Contains(Check(desktopAndWpf, "wpf-runtime").Message, "cannot run on linux-x64");
+        Equal(DoctorStatus.Pass, Check(desktopAndWpf, "views-hosts").Status);
+
+        using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Views.Wpf"}]}}""");
+        Equal(RunicViewsHost.Wpf, DoctorProjectConfiguration.DetectHost(evaluation.RootElement));
+    }
+
+    [Test, DisplayName("doctor host warnings change only the --fail-on warn result")]
+    public void DoctorHostWarningsKeepDefaultExit()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration both = CreateDoctorProject(workspace, "Runic.Application.Views.CsWebUi", out var authority)
+            with { Hosts = [RunicViewsHost.CsWebUi, RunicViewsHost.Desktop] };
+        var path = new Runic.CommandLine.CommandPath(["doctor"]);
+        // A headless CI image without WebKitGTK, and a project whose host doctor cannot identify.
+        foreach (DoctorProjectConfiguration project in new[] { both, both with { Host = RunicViewsHost.Unknown, Hosts = [] } })
+        {
+            DoctorReport report = DoctorChecks.InspectAsync(project, "dotnet",
+                new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] }, CancellationToken.None).GetAwaiter().GetResult();
+            True(report.IsHealthy, "Host warnings must not fail the default --fail-on fail: " +
+                string.Join("; ", report.Checks.Where(check => check.Status == DoctorStatus.Failure).Select(check => check.Name)));
+            True(report.Checks.Any(check => check.Status == DoctorStatus.Warning && check.Name is "desktop-runtime" or "views-hosts"),
+                "The host warning is reported.");
+            var run = new DoctorRun(project, report);
+            foreach (Runic.CommandLine.CommandOutputMode mode in new[] { Runic.CommandLine.CommandOutputMode.Human, Runic.CommandLine.CommandOutputMode.Json })
+            {
+                True(DoctorOutcome.Create(run, mode, DoctorFailOn.Fail, path, "report", "report").IsSuccess, $"--fail-on fail ({mode}) succeeds.");
+                False(DoctorOutcome.Create(run, mode, DoctorFailOn.Warn, path, "report", "report").IsSuccess, $"--fail-on warn ({mode}) fails.");
+            }
+        }
     }
 
     [Test, DisplayName("development servers are inferred from the frontend")]

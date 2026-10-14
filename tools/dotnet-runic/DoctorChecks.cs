@@ -177,13 +177,12 @@ internal static class DoctorChecks
         CheckCompatibilitySet(checks, project);
         CheckFrontendDevelopment(checks, project);
         CheckBrowser(checks, project, runtime);
-        await CheckGtk4ProfileAsync(checks, project, runtime, checkNativeLibraries: target is null, cancellationToken).ConfigureAwait(false);
-        // With --rid, target-presentation reports the runtime the target needs instead.
-        if (target is null)
-        {
-            await CheckDesktopRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
-            CheckWpfRuntime(checks, project, runtime);
-        }
+        bool probeDesktop = project.Hosts.Contains(RunicViewsHost.Desktop) && ProbesHost(project, RunicViewsHost.Desktop, runtime, target);
+        await CheckGtk4ProfileAsync(checks, project, runtime, checkNativeLibraries: target is null || probeDesktop, cancellationToken).ConfigureAwait(false);
+        // With --rid, target-presentation reports what the primary host needs on the target. Another host's runtime is
+        // probed on this machine when the target has this machine's operating system.
+        if (probeDesktop) await CheckDesktopRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
+        if (ChecksWpfRuntime(project, runtime, target)) CheckWpfRuntime(checks, runtime, target);
         // With --rid the target machine is unknown; this check inspects the machine that runs doctor.
         if (target is null) CheckPlatformServices(checks, project, runtime);
         if (target is not null)
@@ -244,55 +243,93 @@ internal static class DoctorChecks
     {
         const string id = "views-hosts";
         IReadOnlyList<RunicViewsHost> hosts = project.Hosts;
+        string references = $"{DoctorProjectConfiguration.CsWebUiPackage}, {DoctorProjectConfiguration.DesktopPackage} or {DoctorProjectConfiguration.WpfPackage}";
         if (hosts.Count == 0)
         {
-            checks.Add(Warn(id, "The project references no Runic Views host, so doctor checked no host's requirements.",
-                $"Reference {DoctorProjectConfiguration.CsWebUiPackage}, {DoctorProjectConfiguration.DesktopPackage} or {DoctorProjectConfiguration.WpfPackage}."));
+            checks.Add(project.ReferencesHostAdapter
+                ? Warn(id, "A Runic Views host is referenced indirectly (RunicApplicationHostAdapter is true), so doctor cannot tell which host's requirements to check.",
+                    $"Reference the host package ({references}) directly in the application project so doctor checks it.")
+                : Warn(id, "The project references no Runic Views host, so doctor checked no host's requirements.",
+                    $"Reference {references}."));
             return;
         }
-        string found = string.Join("; ", hosts.Select(host => HostCheckIds(project, host, target) is { } ids
-            ? $"{DescribeHost(project, host, runtime)}, checked by {ids}"
-            : $"{DescribeHost(project, host, runtime)}, which --rid does not check"));
-        string rid = target is not null && hosts.Count > 1 && project.Host != RunicViewsHost.Unknown
-            ? $" The --rid checks follow {DescribeHost(project, project.Host, runtime)}."
-            : string.Empty;
-        checks.Add(Pass(id, $"Found {hosts.Count} Runic Views host{(hosts.Count == 1 ? string.Empty : "s")}: {found}.{rid}"));
+        List<string> uncovered = [];
+        string found = string.Join("; ", hosts.Select(host =>
+        {
+            string name = DescribeHost(project, host, runtime, target);
+            if (HostCheckIds(project, host, runtime, target) is not { } ids)
+            {
+                uncovered.Add(name);
+                return $"{name}, which --rid {target?.Value} cannot check from this {DescribeOs(runtime.Platform.Os)} machine";
+            }
+            return $"{name}, checked by {ids}";
+        }));
+        string summary = $"Found {hosts.Count} Runic Views host{(hosts.Count == 1 ? string.Empty : "s")}: {found}.";
+        if (target is not null && hosts.Count > 1) summary += $" The target checks follow {DescribeHost(project, project.Host, runtime, target)}.";
+        checks.Add(uncovered.Count == 0
+            ? Pass(id, summary)
+            : Warn(id, summary,
+                $"Run 'dotnet runic doctor --rid {target!.Value}' on a {DescribeOs(target.Family)} machine to check {string.Join(" and ", uncovered)} too."));
     }
 
-    internal static string DescribeHost(DoctorProjectConfiguration project, RunicViewsHost host, IDoctorRuntime runtime) =>
+    internal static string DescribeHost(DoctorProjectConfiguration project, RunicViewsHost host, IDoctorRuntime runtime,
+        DoctorTargetRid? target = null) =>
         host switch
         {
             RunicViewsHost.CsWebUi => "CS-WebUI",
             RunicViewsHost.Desktop when project.UsesGtk4 => "Runic Desktop with the GTK 4 profile",
-            RunicViewsHost.Desktop when runtime.Platform.Os == "linux" => "Runic Desktop with GTK 3 and WebKitGTK 4.1",
+            RunicViewsHost.Desktop when (target?.Family ?? runtime.Platform.Os) == "linux" => "Runic Desktop with GTK 3 and WebKitGTK 4.1",
             RunicViewsHost.Desktop => "Runic Desktop",
             RunicViewsHost.Wpf => "WPF",
             _ => "an unknown host",
         };
 
-    // Mirrors InspectAsync: which checks report on each host's requirements.
-    private static string? HostCheckIds(DoctorProjectConfiguration project, RunicViewsHost host, DoctorTargetRid? target)
+    /// <summary>
+    /// Whether this machine's runtime probe (desktop-runtime, wpf-runtime, or gtk4-profile's libraries) runs for
+    /// <paramref name="host"/>. Without --rid it always does. With --rid, the target checks cover the primary host,
+    /// and the probe covers another host when the target has this machine's operating system.
+    /// </summary>
+    private static bool ProbesHost(DoctorProjectConfiguration project, RunicViewsHost host, IDoctorRuntime runtime, DoctorTargetRid? target) =>
+        target is null || (host != project.Host && runtime.Platform.Os == target.Family);
+
+    // wpf-runtime also reports a non-Windows target, which WPF cannot run on, from any machine.
+    private static bool ChecksWpfRuntime(DoctorProjectConfiguration project, IDoctorRuntime runtime, DoctorTargetRid? target) =>
+        project.Hosts.Contains(RunicViewsHost.Wpf)
+        && (ProbesHost(project, RunicViewsHost.Wpf, runtime, target)
+            || (target is not null && project.Host != RunicViewsHost.Wpf && target.Family != "win"));
+
+    // Mirrors InspectAsync: the checks that report on each host's native requirements, or null when none does.
+    private static string? HostCheckIds(DoctorProjectConfiguration project, RunicViewsHost host, IDoctorRuntime runtime, DoctorTargetRid? target)
     {
         List<string> ids = [];
-        bool platformServices = target is null && (host == RunicViewsHost.Desktop
-            || (host == RunicViewsHost.CsWebUi && !project.Hosts.Contains(RunicViewsHost.Desktop)));
+        bool primary = target is not null && host == project.Host;
+        bool probes = !primary && ProbesHost(project, host, runtime, target);
         switch (host)
         {
             case RunicViewsHost.CsWebUi:
                 ids.Add("browser");
+                if (target is null && !project.Hosts.Contains(RunicViewsHost.Desktop)) ids.Add("platform-services");
                 break;
             case RunicViewsHost.Desktop:
-                if (project.UsesGtk4) ids.Add("gtk4-profile");
-                else if (target is null) ids.Add("desktop-runtime");
+                if (probes) ids.Add(project.UsesGtk4 ? "gtk4-profile" : "desktop-runtime");
+                if (target is null) ids.Add("platform-services");
                 break;
-            case RunicViewsHost.Wpf when target is null:
-                ids.Add("wpf-runtime");
+            case RunicViewsHost.Wpf:
+                if (!primary && ChecksWpfRuntime(project, runtime, target)) ids.Add("wpf-runtime");
                 break;
         }
-        if (platformServices) ids.Add("platform-services");
-        if (target is not null && host == project.Host) ids.Add("the target checks");
+        if (primary) ids.Add("the target checks");
         return ids.Count == 0 ? null : string.Join(" and ", ids);
     }
+
+    private static string DescribeOs(string os) =>
+        os switch
+        {
+            "win" => "Windows",
+            "linux" => "Linux",
+            "osx" => "macOS",
+            _ => os,
+        };
 
     /// <summary>
     /// Checks the default Runic Desktop backend's embedded window on this machine: GTK 3 with WebKitGTK 4.1 on Linux,
@@ -338,11 +375,16 @@ internal static class DoctorChecks
         }
     }
 
-    /// <summary>Checks that this machine can run the WPF host: Windows with the WebView2 Runtime.</summary>
-    private static void CheckWpfRuntime(List<DoctorCheck> checks, DoctorProjectConfiguration project, IDoctorRuntime runtime)
+    /// <summary>Checks that this machine can run the WPF host: Windows with the WebView2 Runtime. With a non-Windows --rid it reports that the target cannot run WPF.</summary>
+    private static void CheckWpfRuntime(List<DoctorCheck> checks, IDoctorRuntime runtime, DoctorTargetRid? target)
     {
         const string id = "wpf-runtime";
-        if (!project.Hosts.Contains(RunicViewsHost.Wpf)) return;
+        if (target is not null && target.Family != "win")
+        {
+            checks.Add(Warn(id, $"The WPF host runs only on Windows, so it cannot run on {target.Value}.",
+                "Publish the WPF application for a Windows runtime identifier such as win-x64."));
+            return;
+        }
         if (runtime.Platform.Os != "win")
         {
             checks.Add(Warn(id, "The WPF host runs only on Windows, so this machine cannot run it.",

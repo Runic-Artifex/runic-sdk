@@ -14,7 +14,7 @@ internal enum RunicViewsHost
     Unknown,
     CsWebUi,
     Desktop,
-    /// <summary>Runic.Application.Views.Wpf, a WPF child WebView2 presentation; never <see cref="DoctorProjectConfiguration.Host"/>.</summary>
+    /// <summary>Runic.Application.Views.Wpf, a WPF child WebView2 presentation; the primary host only when it is the only one.</summary>
     Wpf,
 }
 
@@ -60,6 +60,12 @@ internal sealed record DoctorProjectConfiguration(
     /// <summary>False when StripSymbols is explicitly false; Native AOT then needs no objcopy.</summary>
     internal bool StripSymbols { get; init; } = true;
 
+    /// <summary>
+    /// RunicApplicationHostAdapter, which every adapter's build props set: true when a restored project gets a host
+    /// adapter, also through another package or project.
+    /// </summary>
+    internal bool ReferencesHostAdapter { get; init; }
+
     /// <summary>True when the project references the optional GTK 4 Desktop provider.</summary>
     internal bool UsesGtk4 { get; init; }
 
@@ -86,6 +92,8 @@ internal sealed record DoctorProjectConfiguration(
         CancellationToken cancellationToken,
         IReadOnlyList<string>? publishProperties = null)
     {
+        // A multi-targeted project stops in DevProjectConfiguration (RAPPDEV1005), so this evaluation has one
+        // TargetFramework, and references conditioned on it are present.
         DevProjectConfiguration development = await DevProjectConfiguration.EvaluateAsync(
             dotnetHost, project, configuration, cancellationToken).ConfigureAwait(false);
         string properties = await ReadProjectPropertiesAsync(
@@ -96,6 +104,7 @@ internal sealed record DoctorProjectConfiguration(
         string Value(string name) => values.TryGetProperty(name, out var value)
             ? value.GetString() ?? string.Empty
             : string.Empty;
+        IReadOnlyList<string> references = ReferenceIdentities(document.RootElement);
         return new(
             development.ProjectPath,
             development.ProjectDirectory,
@@ -109,39 +118,41 @@ internal sealed record DoctorProjectConfiguration(
             development.ViteDevServerEntry,
             development.ViteConfigurationPath,
             development.ViteDevServerEnabled,
-            DetectHost(document.RootElement))
+            DetectHost(references))
         {
-            Hosts = DetectHosts(document.RootElement),
+            Hosts = DetectHosts(references),
+            ReferencesHostAdapter = IsTrue(Value("RunicApplicationHostAdapter")),
             RuntimeIdentifiers = Value("RuntimeIdentifiers"),
             PublishAot = IsTrue(Value("PublishAot")),
             SelfContained = IsTrue(Value("SelfContained")),
             StripSymbols = !Value("StripSymbols").Equals("false", StringComparison.OrdinalIgnoreCase),
-            UsesGtk4 = References(document.RootElement, DesktopGtk4Package),
-            DirectReferences = ReferenceIdentities(document.RootElement),
+            UsesGtk4 = references.Contains(DesktopGtk4Package, StringComparer.OrdinalIgnoreCase),
+            DirectReferences = references,
         };
     }
 
     private static bool IsTrue(string value) => value.Equals("true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Finds the Views host from the evaluated package and project references,
-    /// so an unrestored project still gets host-specific checks. CS-WebUI wins
-    /// when a project references both hosts because it may open a browser.
+    /// Finds the primary Views host from the evaluated package and project references, so an unrestored project
+    /// still gets host-specific checks, and the --rid checks follow it. CS-WebUI wins when a project references
+    /// both hosts because it may open a browser; WPF is primary only when it is the only host.
     /// </summary>
-    internal static RunicViewsHost DetectHost(JsonElement evaluation)
-    {
-        bool csWebUi = References(evaluation, CsWebUiPackage);
-        bool desktop = References(evaluation, DesktopPackage);
-        return csWebUi ? RunicViewsHost.CsWebUi : desktop ? RunicViewsHost.Desktop : RunicViewsHost.Unknown;
-    }
+    internal static RunicViewsHost DetectHost(JsonElement evaluation) => DetectHost(ReferenceIdentities(evaluation));
+
+    internal static RunicViewsHost DetectHost(IReadOnlyCollection<string> references) =>
+        DetectHosts(references) is [var primary, ..] ? primary : RunicViewsHost.Unknown;
 
     /// <summary>Every Views host the evaluation references, in the order of <see cref="Hosts"/>.</summary>
-    internal static IReadOnlyList<RunicViewsHost> DetectHosts(JsonElement evaluation)
+    internal static IReadOnlyList<RunicViewsHost> DetectHosts(JsonElement evaluation) => DetectHosts(ReferenceIdentities(evaluation));
+
+    internal static IReadOnlyList<RunicViewsHost> DetectHosts(IReadOnlyCollection<string> references)
     {
+        bool Has(string name) => references.Contains(name, StringComparer.OrdinalIgnoreCase);
         List<RunicViewsHost> hosts = [];
-        if (References(evaluation, CsWebUiPackage)) hosts.Add(RunicViewsHost.CsWebUi);
-        if (References(evaluation, DesktopPackage)) hosts.Add(RunicViewsHost.Desktop);
-        if (References(evaluation, WpfPackage)) hosts.Add(RunicViewsHost.Wpf);
+        if (Has(CsWebUiPackage)) hosts.Add(RunicViewsHost.CsWebUi);
+        if (Has(DesktopPackage)) hosts.Add(RunicViewsHost.Desktop);
+        if (Has(WpfPackage)) hosts.Add(RunicViewsHost.Wpf);
         return hosts;
     }
 
@@ -184,7 +195,7 @@ internal sealed record DoctorProjectConfiguration(
         List<string> arguments =
         [
             "msbuild", project, "-nologo", $"-property:Configuration={configuration}",
-            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols",
+            "-getProperty:TargetFramework,TargetFrameworks,RuntimeIdentifier,RuntimeIdentifiers,NETCoreSdkRuntimeIdentifier,PublishAot,SelfContained,StripSymbols,RunicApplicationHostAdapter",
             "-getItem:PackageReference,ProjectReference",
         ];
         arguments.AddRange(publishProperties.Select(static property => $"-property:{property}"));
