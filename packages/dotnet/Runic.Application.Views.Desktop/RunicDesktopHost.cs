@@ -32,7 +32,9 @@ namespace Runic.Application.Views.Desktop;
 /// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then
 /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. The surface admits one browser, a guarded Window
 /// opens unguarded (event 1053) and platform services report <c>OwnerUnavailable</c>. This switch takes precedence
-/// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>.
+/// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>. <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/>
+/// makes the same decision: it skips the presentation checks of <see cref="DesktopHost.Validate"/>, such as
+/// <c>graphical-session-missing</c>, because no presentation opens.
 /// When the <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c> environment variable is <c>1</c>, every window opened through
 /// this host is closed as soon as it has opened (and, with <see cref="DesktopHostOptions.WaitForConnection"/>, its
 /// bridge has connected). Before closing, a warning is written to standard error (and logged as event 2002 when an
@@ -121,8 +123,10 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         finally { lent?.Return(); }
     }
 
+    // Validation makes the serve-only decision of OpenAsync: a serve-only window has no presentation, so the
+    // presentation, window-option and permission checks of DesktopHost.Validate do not apply, as on CS-WebUI (#238).
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options) =>
-        [.. Desktop.Validate(WindowOptionsFor(options)).Diagnostics.Select(ToWindowDiagnostic)];
+        ServeOnlyRequested ? [] : [.. Desktop.Validate(WindowOptionsFor(options)).Diagnostics.Select(ToWindowDiagnostic)];
 
     async ValueTask<IBridgeWindow> IRunicWindowHost.OpenAsync<TViewModel>(RunicWindowOpening<TViewModel> opening,
         CancellationToken cancellationToken)
