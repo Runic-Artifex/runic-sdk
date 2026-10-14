@@ -8,7 +8,8 @@ namespace Runic.Platform.Runtime;
 
 /// <summary>
 /// One running instance per application and user: a later launch hands its arguments to the running instance and
-/// exits. Works the same on Linux, Windows and macOS, without native interop.
+/// exits. Works the same on Linux, Windows and macOS. On Windows the launching process also lets the running instance
+/// take the foreground (<c>AllowSetForegroundWindow</c>), so it can bring its window forward.
 /// </summary>
 /// <remarks>
 /// The running instance holds an exclusive lock file, which the operating system releases when the process ends,
@@ -112,6 +113,8 @@ public static class ApplicationInstance
         try
         {
             await socket.ConnectAsync(new UnixDomainSocketEndPoint(socketPath), deadline).ConfigureAwait(false);
+            // Before the launch arrives, so the instance may raise its window when it handles it.
+            ForegroundRights.GrantPeer(socket);
             await using var stream = new NetworkStream(socket, ownsSocket: false);
             await stream.WriteAsync(Encode(launch), deadline).ConfigureAwait(false);
             using var replyTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

@@ -38,6 +38,10 @@ types are internal and never appear in the public API (`PublicAPI.*.txt` unchang
 | Inhibition | `PowerSetRequest` | `PInvoke.PowerSetRequest(SafeHandle, POWER_REQUEST_TYPE)` | `PowerRequestSystemRequired` / `PowerRequestDisplayRequired` replace `1` / `0`. |
 | WinRT support | `RoInitialize`, `RoUninitialize`, `RoGetActivationFactory`, `RoActivateInstance` (combase) | Same names from `api-ms-win-core-winrt-l1-1-0.dll`; `RO_INIT_TYPE.RO_INIT_MULTITHREADED` | **Decision: migrate.** These are flat C exports with blittable signatures. The API set forwards to `combase.dll` on every supported Windows. `S_FALSE` still succeeds and `RPC_E_CHANGED_MODE` still throws. |
 | WinRT support | `WindowsCreateString`, `WindowsDeleteString`, `WindowsGetStringRawBuffer` (combase) | Same names from `api-ms-win-core-winrt-string-l1-1-0.dll` with `HSTRING` | **Decision: migrate.** `HString` still owns exactly one handle. The generated `WindowsDeleteStringSafeHandle` overloads are not used, because the handle is passed by value through fixed WinRT ABI slots. |
+| Status icon | (new) window class, hidden window and message loop | `RegisterClassEx`, `CreateWindowEx`, `DefWindowProc`, `GetMessage`, `TranslateMessage`, `DispatchMessage`, `PostMessage`, `PostQuitMessage`, `DestroyWindow`, `RegisterWindowMessage`, `ChangeWindowMessageFilterEx`, `GetModuleHandle` | Raw overloads. The window procedure is an `[UnmanagedCallersOnly]` static method assigned to `WNDCLASSEXW.lpfnWndProc`, so no delegate is marshalled. |
+| Status icon | (new) menu | `CreatePopupMenu`, `AppendMenu`, `TrackPopupMenuEx`, `DestroyMenu`, `EndMenu`, `SetForegroundWindow`, `GetSystemMetrics` | Raw `HMENU` overloads; `DestroyMenu` on the top menu releases its submenus. |
+| Status icon | (new) icons | `CreateDIBSection`, `CreateBitmap`, `CreateIconIndirect`, `DeleteObject`, `DestroyIcon`, `LoadImage` | Raw overloads. The generated `DeleteObjectSafeHandle`/`DestroyIconSafeHandle` overloads are not used: the bitmaps are deleted right after `CreateIconIndirect`, and the icon lives until the shell shows its successor. A shared system icon (`LR_SHARED`) is never destroyed. |
+| Presentation | (new) | `GetAncestor`, `IsIconic`, `ShowWindow`, `SetForegroundWindow`, `GetForegroundWindow`, `FlashWindowEx`, `IsWindow` | Raw overloads, called on the window's thread through `INativePickerOwner.InvokeAsync`. |
 
 ## Retained handwritten interop
 
@@ -46,13 +50,21 @@ types are internal and never appear in the public API (`PublicAPI.*.txt` unchang
 | Notifications, settings | Raw vtable slot calls (`Slot`, `Query`, `Get`, `Call`, `Release` and `delegate* unmanaged[Stdcall]` calls on `XmlDocument`, `ToastNotification`, `ToastNotifier`, `ToastNotificationHistory`, `UISettings`) | These are Windows Runtime projection interfaces, not Win32 metadata, so CsWin32 cannot generate them. Projecting them needs CsWinRT, which W120-020 explicitly excludes. Adopting CsWinRT needs its own decision backed by NativeAOT, activation and callback-lifetime evidence. |
 | Notifications | `ToastActivationHandler` (static unmanaged vtable, four `[UnmanagedCallersOnly]` methods, parameterized IID `82fc5297-…`) | It implements the WinRT parameterized delegate `TypedEventHandler<ToastNotification,IInspectable>`. That delegate is absent from Win32 metadata, so there is no generated interface or IID. The static vtable keeps the callback NativeAOT-safe and contains application exceptions. |
 | Settings | `Color` struct (`Windows.UI.Color`) | This is a WinRT projection type that is absent from Win32 metadata. |
+| Status icon | `Shell_NotifyIconW` (`LibraryImport`) and `NOTIFYICONDATAW` (`WindowsShellInterop`) | The Win32 metadata declares `NOTIFYICONDATAW` per CPU architecture, because 32-bit packing differs, and CsWin32 refuses to generate it or `Shell_NotifyIcon` for this AnyCPU assembly (PInvoke005). The struct is declared with the natural x64/ARM64 layout (976 bytes, checked by a portable test) and passed by pointer, so the import needs no marshalling. |
 | Launcher | `Marshal.FreeCoTaskMem` for the PIDL | This is a BCL call, not a declaration. It is the documented `CoTaskMemFree` release, so no extra generated import is needed. |
 
 ## Outside the package
 
 `tests/dotnet/Runic.Platform.Windows.Tests` keeps two handwritten test-only imports,
 `CreateWindowExW` and `DestroyWindow`. They create the HWND that owns the native
-clipboard. The test project does not reference CsWin32, and these imports do not ship.
+clipboard. `StatusIconTests` adds `FindWindowW`, `GetMenuItemCount`, `GetMenuState` and
+`GetSubMenu` to find the open context menu and inspect the native menu. The test project does
+not reference CsWin32, and these imports do not ship.
+
+`Runic.Platform.Runtime` declares one Windows import of its own, `AllowSetForegroundWindow`
+(user32, `LibraryImport`), in `ForegroundRights`. A launch forwarded by
+`ApplicationInstance.ClaimAsync` calls it for the running instance, whose process ID it
+reads from the Unix domain socket with `SIO_AF_UNIX_GETPEERPID` through `Socket.IOControl`.
 
 ## Verification
 
@@ -64,7 +76,8 @@ clipboard. The test project does not reference CsWin32, and these imports do not
   clipboard (`--treenode-filter "/*/*/*/*[Category=Native]"`), system-sleep
   inhibition (`--treenode-filter "/*/*/*/*[Category=NativeInhibition]"
   --test-parameter system-only=true`) and settings reads
-  (`--treenode-filter "/*/*/*/*[Category=NativeSettings]"`) with JIT and the
+  (`--treenode-filter "/*/*/*/*[Category=NativeSettings]"`), the status icon
+  (`NativeStatusIcon`) and window presentation (`NativePresentation`) with JIT and the
   NativeAOT publish (`-p:IlcTreatWarningsAsErrors=true`).
 - Interactive: owned file launch (`Open`, `ChooseApplication`, `Reveal`), clipboard
   transfer, settings reads and notification activation on an interactive Windows

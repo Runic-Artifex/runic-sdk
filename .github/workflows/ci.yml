@@ -583,6 +583,17 @@ jobs:
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeSettings]"
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeSettings]"
+      # A real notification-area icon on the runner's desktop session, driven through its window's messages, and a
+      # minimized window brought forward or flashed.
+      - name: Verify the Windows status icon and window presentation with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]"
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]"
+          dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePresentation]"
+          ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativePresentation]"
       - name: Verify NativeAOT GTK clipboard
         if: runner.os == 'Linux'
         timeout-minutes: 3

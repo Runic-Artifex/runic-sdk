@@ -27,3 +27,38 @@ application choice and reveal, are described in the
 [desktop services guide](https://docs.runic-artifex.eu/guides/desktop-services/). It includes
 composition, native API choices, installation/activation requirements, retained
 file access and the per-platform verification status.
+
+## Status icon and window presentation
+
+`PlatformServices.CreateStatusIcon()` and `AddRunicPlatformServices()` in
+`Runic.Application.Views.Desktop` select this package's notification-area icon
+on Windows. It is a `Shell_NotifyIconW` icon with `NOTIFYICON_VERSION_4`, owned
+by a hidden window on its own thread. A click or Space/Enter (`NIN_SELECT`,
+`NIN_KEYSELECT`) raises `Primary`, a middle click `Secondary`, and the context
+menu opens with `TrackPopupMenuEx` after the window takes the foreground, as the
+shell requires. Menu commands keep their IDs across `ShowAsync` calls, and a
+choice resolves against the menu that was shown. Activations arrive one at a
+time, in order, on a worker thread.
+
+The icon is drawn from the state's RGBA images with `CreateIconIndirect`, using
+the smallest image at least as large as the small-icon size. Theme names are
+ignored; an icon without images shows the application's icon. Windows has no
+attention state, so `NeedsAttention` shows the attention icon, and `Passive`
+looks like `Active`. The tooltip is the title and the tooltip text on the next
+line, cut to `szTip`'s 127 characters. The window is a hidden top-level window
+rather than a message-only one, because message-only windows do not receive the
+`TaskbarCreated` broadcast: after Explorer restarts, the icon is added again.
+Without a taskbar, `ShowAsync` returns unavailable and the icon appears when
+one starts.
+
+`PlatformServices.PresentAsync(owner)` restores a minimized Desktop window and
+calls `SetForegroundWindow` on the window's thread. Windows grants the
+foreground only to the process the user just started, so
+`ApplicationInstance.ClaimAsync` calls `AllowSetForegroundWindow` for the
+running instance before it forwards a launch. When Windows still refuses, the
+taskbar button flashes (`FlashWindowEx`) and the result is
+`Failed(PermissionDenied)` with a `SetForegroundWindow` diagnostic.
+
+CI's `Native / win-x64` job runs the `NativeStatusIcon` and
+`NativePresentation` categories of `Runic.Platform.Windows.Tests` with JIT and
+NativeAOT on the runner's desktop session.

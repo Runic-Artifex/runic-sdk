@@ -143,6 +143,33 @@ internal sealed class ApplicationInstanceTests
         Check(!System.IO.Directory.Exists(directory), "nothing is created");
     }
 
+    // The launching process grants the running instance the foreground through the socket's peer process ID.
+    [Test, DisplayName("INSTANCE: on Windows a forwarding process finds the running instance's process")]
+    public async Task FindsTheRunningInstanceProcessAsync()
+    {
+        string directory = Directory();
+        System.IO.Directory.CreateDirectory(directory);
+        string path = Path.Combine(directory, "peer.sock");
+        try
+        {
+            using var listener = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+            listener.Bind(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
+            listener.Listen(1);
+            using var client = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+            await client.ConnectAsync(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
+            using var accepted = await listener.AcceptAsync();
+            int? peer = ForegroundRights.PeerProcessId(client);
+            if (OperatingSystem.IsWindows())
+            {
+                Check(peer == Environment.ProcessId, $"the peer is this process, not {peer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"}");
+                // Granting needs no window and must not throw.
+                ForegroundRights.GrantPeer(client);
+            }
+            else Check(peer is null, "other systems do not ask");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
     [Test, DisplayName("INSTANCE: IDs, launches and directories others can enter are refused")]
     public async Task ValidationAsync()
     {

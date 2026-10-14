@@ -37,3 +37,15 @@ notifications for the installed test identity in `RUNIC_TEST_APP_ID` (see
 `tests/native/windows-notifications/Configure-TestIdentity.ps1`). Windows itself
 starts the executable with `--notification-activation <uri> <receipt>` when the
 relaunch toast is activated; that is not a test-platform command line.
+
+`--treenode-filter "/*/*/*/*[Category=NativeStatusIcon]"` adds a real notification-area
+icon on the signed-in desktop, swaps in the attention icon, posts the shell's
+`NIN_SELECT`, `NIN_KEYSELECT` and middle-click callbacks to the icon's window, opens the
+context menu and chooses its first entry with the keyboard, removes the icon as a
+restarting Explorer does and checks that `TaskbarCreated` adds it again, then hides
+and disposes it. Without a taskbar (`Shell_TrayWnd`) it accepts an unavailable
+`ShowAsync` and skips the `TaskbarCreated` step. CI runs it with JIT and NativeAOT.
+
+`--treenode-filter "/*/*/*/*[Category=NativePresentation]"` minimizes a real window and
+presents it: the window must be restored, and either take the foreground or flash
+its taskbar button with a `PermissionDenied` result. CI runs it with JIT and NativeAOT.

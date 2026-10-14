@@ -30,5 +30,10 @@ On Linux the icon is a StatusNotifierItem, shown by Plasma, Waybar's tray, or
 GNOME with the AppIndicator extension. Without a status area, `ShowAsync`
 reports unavailable and the icon appears once one starts. Login startup writes
 an XDG autostart entry, or asks the Background portal inside Flatpak or Snap.
-On Windows login startup uses the user's Run key; Windows and macOS have no
-status icon provider yet, and macOS has no login startup yet.
+On Windows the icon is a notification-area icon (`Shell_NotifyIcon`). The
+sample's state names only a theme icon, which Windows ignores, so the icon is
+the application's own; supply RGBA images in `DesktopIcon.Images` for your own.
+Login startup uses the user's Run key. A second launch lets the running instance
+take the foreground before it forwards; if Windows still refuses, the
+counter's taskbar button flashes. macOS has no status icon provider and no
+login startup yet.
