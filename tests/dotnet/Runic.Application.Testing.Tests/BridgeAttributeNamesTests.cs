@@ -139,9 +139,9 @@ internal sealed class BridgeAttributeNamesTests
         Require(emitted.Success, $"{name} did not compile.\n{string.Join('\n', emitted.Diagnostics)}");
     }
 
-    private static bool Throws(Action action)
+    private static bool Throws(Func<object> read)
     {
-        try { action(); return false; }
+        try { return read() is null; }
         catch (FileNotFoundException) { return true; }
     }
 
