@@ -308,8 +308,11 @@ no native owner: platform services report `OwnerUnavailable`, and a Window
 with `GuardClose` opens unguarded (event 1053). `ValidateWindow` makes the same
 decision: in serve-only mode it skips the presentation checks, such as
 `webkitgtk-runtime-missing`, `graphical-session-missing` and
-`presentation-unavailable`, so an application that validates at startup also
-starts headless.
+`presentation-unavailable`, which describe what this machine lacks to present a
+window, so an application that validates at startup also starts headless. It
+still reports configuration errors, such as `window-option-invalid`,
+`browser-unsupported` or `gtk4-provider-missing`, which fail every launch that
+presents a window.
 
 The serve-only protocol, the same on both hosts:
 

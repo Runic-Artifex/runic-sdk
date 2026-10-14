@@ -70,14 +70,15 @@ internal sealed class ServeOnlyChecks
         }
     }
 
-    // #238: ValidateWindow makes the serve-only decision of opening. A presentation that cannot open is an error
-    // without serve-only, and no finding with it, where the same Window opens and serves its page. On Linux the
+    // #238: ValidateWindow makes the serve-only decision of opening. A presentation this machine cannot open is an
+    // error without serve-only, and no finding with it, where the same Window opens and serves its page; an invalid
+    // configuration is an error either way. On Linux the
     // environment is the real one of a headless run: GTK 3 selected and no DISPLAY or WAYLAND_DISPLAY. Elsewhere,
     // and in addition on Linux, an embedded-window provider that reports itself unavailable stands in for it.
     // Serve-only mode reads standard input once per process (RunicDesktopHost.ReadServeOnlyInput), so this case runs
     // after ServeOnlySwitchServesWithoutAWindowUntilAnInputLine, which needs that reader for its own input line.
     [Test, NotInParallel(Order = 2)]
-    public async Task ValidateWindowSkipsPresentationChecksInServeOnlyMode()
+    public async Task ValidateWindowSkipsEnvironmentChecksInServeOnlyMode()
     {
         string?[] saved = [.. s_validationVariables.Select(Environment.GetEnvironmentVariable)];
         var console = Console.Out;
@@ -142,6 +143,35 @@ internal sealed class ServeOnlyChecks
                 using var page = await client.GetAsync(bridgeWindow.Surface.Url);
                 Check(page.IsSuccessStatusCode, $"With {name}, the serve-only surface did not serve its page: {page.StatusCode}.");
             }
+
+            // The configuration is still checked in serve-only mode: it fails on every launch that presents a window.
+            List<(string Name, DesktopHostOptions Options, DesktopWindowOptions Window, string Code)> configurations =
+            [
+                ("an undefined browser", new DesktopHostOptions { WindowHostFactory = new UnavailableFactory(), WaitForConnection = false },
+                    new DesktopWindowOptions { Browser = (BrowserKind)999 }, "window-option-invalid"),
+                ("a browser Runic Desktop cannot launch", new DesktopHostOptions { WindowHostFactory = new UnavailableFactory(), WaitForConnection = false },
+                    new DesktopWindowOptions { Browser = BrowserKind.Safari, PresentationPolicy = DesktopPresentationPolicy.RequestedOnly },
+                    "browser-unsupported"),
+            ];
+            if (OperatingSystem.IsLinux())
+                configurations.Add(("GTK 4 without its provider", new DesktopHostOptions
+                {
+                    Linux = new LinuxDesktopOptions { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 },
+                    WaitForConnection = false,
+                }, new DesktopWindowOptions { Browser = BrowserKind.Embedded, PresentationPolicy = DesktopPresentationPolicy.RequestedOnly },
+                    "gtk4-provider-missing"));
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
+            foreach (var (name, options, windowOptions, code) in configurations)
+            {
+                await using var desktop = await DesktopHost.StartAsync(options);
+                var served = new RunicDesktopHost(provider, desktop) { WindowOptions = windowOptions }.ValidateWindow<ProbeWindow>();
+                Check(!served.IsValid && served.Errors.Any(error => error.Code == code),
+                    $"With {name} in serve-only mode, ValidateWindow did not report {code}: " +
+                    $"{string.Join(", ", served.Diagnostics.Select(diagnostic => $"{diagnostic.Severity} {diagnostic.Code}"))}.");
+                Check(served.Diagnostics.All(diagnostic => diagnostic.Code is not ("graphical-session-missing" or UnavailableFactory.Code)),
+                    $"With {name} in serve-only mode, ValidateWindow reported the environment: " +
+                    $"{string.Join(", ", served.Diagnostics.Select(diagnostic => diagnostic.Code))}.");
+            }
         }
         finally
         {
@@ -156,14 +186,14 @@ internal sealed class ServeOnlyChecks
     private static readonly string[] s_validationVariables =
         ["RUNIC_APPLICATION_SERVE_ONLY", "RUNIC_APPLICATION_CLOSE_AFTER_OPEN", "DISPLAY", "WAYLAND_DISPLAY"];
 
-    // An embedded-window provider whose platform runtime is missing.
+    // An embedded-window provider without a display, reported as Runic.Desktop.Gtk4 reports it.
     private sealed class UnavailableFactory : IDesktopWindowHostFactory
     {
-        internal const string Code = "test-window-host-missing";
+        internal const string Code = "gtk4-display-unavailable";
         public bool IsSupported => false;
         public IDesktopWindowHost Create() => throw new InvalidOperationException("Serve-only mode created a window host.");
         public IReadOnlyList<DesktopDiagnostic> GetAvailabilityDiagnostics() =>
-            [new(DesktopErrorCategory.Unavailable, Code, "The test window host is unavailable.", Retryable: false)];
+            [new(DesktopErrorCategory.Unavailable, Code, "The test window host has no display.", Retryable: false)];
     }
 
     private static void Check(bool condition, string message)
