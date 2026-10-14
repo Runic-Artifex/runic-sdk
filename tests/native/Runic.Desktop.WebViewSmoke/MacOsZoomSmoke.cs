@@ -43,7 +43,7 @@ internal static partial class MacOsZoomSmoke
         if (!state.Key) throw new InvalidOperationException($"The window did not become the key window: {state}.");
         if (!state.WebViewFocused) throw new InvalidOperationException($"The web view is not the first responder: {state}.");
         if (!state.Magnifies) throw new InvalidOperationException("The web view does not allow pinch magnification.");
-        await ProbeAsync(surface, window);
+        await PrintMenuAsync(window);
 
         await ExpectZoomAsync(window, "Command+=", KeyEqual, Command, 1.1);
         await ExpectZoomAsync(window, "Command+Shift+= (+)", KeyEqual, Command | Shift, 1.2);
@@ -100,15 +100,9 @@ internal static partial class MacOsZoomSmoke
         throw new TimeoutException($"Expected zoom {expected:0.##} after {keys}; {state}.");
     }
 
-    private enum Route { Post, Send, PostToPid, Menu }
-
-    private static Route s_route = Route.Post;
-
-    // Delivers the key press and release: posted to the application's queue, which the Desktop event loop sends, sent
-    // at once, posted through the window server to this process, or only matched against the main menu.
-    private static ValueTask SendAsync(DesktopWindow window, ushort key, ulong flags) => SendAsync(window, key, flags, s_route);
-
-    private static ValueTask SendAsync(DesktopWindow window, ushort key, ulong flags, Route route) => window.DispatchNativeAsync(_ =>
+    // Posts the key press and release to the application's queue, which the Desktop event loop sends, as the
+    // window server delivers a key press.
+    private static ValueTask SendAsync(DesktopWindow window, ushort key, ulong flags) => window.DispatchNativeAsync(_ =>
     {
         var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
         try
@@ -118,57 +112,20 @@ internal static partial class MacOsZoomSmoke
             {
                 var keyEvent = CreateKeyboardEvent(0, key, down: press == 0);
                 SetFlags(keyEvent, flags);
-                var nsEvent = Arg(Class("NSEvent"), Sel("eventWithCGEvent:"), keyEvent);
-                switch (route)
-                {
-                    case Route.Post: Args(application, Sel("postEvent:atStart:"), nsEvent, 0); break;
-                    case Route.Send: Arg(application, Sel("sendEvent:"), nsEvent); break;
-                    case Route.PostToPid: PostToPid(Environment.ProcessId, keyEvent); break;
-                    case Route.Menu when press == 0: Arg(Send(application, Sel("mainMenu")), Sel("performKeyEquivalent:"), nsEvent); break;
-                }
+                Args(application, Sel("postEvent:atStart:"), Arg(Class("NSEvent"), Sel("eventWithCGEvent:"), keyEvent), 0);
                 CFRelease(keyEvent);
             }
         }
         finally { Send(pool, Sel("drain")); }
     });
 
-    // Prints the main menu, the synthetic event and what each delivery route does, then keeps the first route that
-    // zooms like a key press: through the window, so the page sees the key first.
-    private static async Task ProbeAsync(DesktopSurface surface, DesktopWindow window)
+    // Prints the main menu, for a failure to explain.
+    private static ValueTask PrintMenuAsync(DesktopWindow window) => window.DispatchNativeAsync(_ =>
     {
-        await window.DispatchNativeAsync(_ =>
-        {
-            var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
-            try
-            {
-                Console.WriteLine($"ZOOM PROBE menu {DescribeMenu(Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("mainMenu")), 0)}");
-                var keyEvent = CreateKeyboardEvent(0, KeyEqual, true);
-                SetFlags(keyEvent, Command);
-                var nsEvent = Arg(Class("NSEvent"), Sel("eventWithCGEvent:"), keyEvent);
-                Console.WriteLine($"ZOOM PROBE event type={Send(nsEvent, Sel("type"))} characters='{Text(Send(nsEvent, Sel("characters")))}' " +
-                    $"ignoring='{Text(Send(nsEvent, Sel("charactersIgnoringModifiers")))}' flags=0x{Send(nsEvent, Sel("modifierFlags")):x} " +
-                    $"window={Send(nsEvent, Sel("windowNumber"))} keyCode={Send(nsEvent, Sel("keyCode"))}");
-                CFRelease(keyEvent);
-            }
-            finally { Send(pool, Sel("drain")); }
-        });
-        Route? chosen = null;
-        foreach (var route in new[] { Route.Post, Route.Send, Route.PostToPid, Route.Menu })
-        {
-            var before = await surface.ExecuteJavaScriptAsync("return String(window.commandKeys);", StepTimeout);
-            await SendAsync(window, KeyEqual, Command, route);
-            await Task.Delay(TimeSpan.FromSeconds(1.5));
-            var state = await ReadNativeAsync(window);
-            var after = await surface.ExecuteJavaScriptAsync("return String(window.commandKeys);", StepTimeout);
-            Console.WriteLine($"ZOOM PROBE route={route} page keys {before}->{after} {state}");
-            if (route != Route.Menu && chosen is null && Math.Abs(state.Zoom - 1.1) < 0.005) chosen = route;
-            await window.DispatchNativeAsync(handle => SetDouble(WebView(handle), Sel("setPageZoom:"), 1.0));
-        }
-        await surface.ExecuteJavaScriptAsync("window.commandKeys = 0; return true;", StepTimeout);
-        if (chosen is not { } found) throw new InvalidOperationException("No delivery route of a Command key zoomed the page; see ZOOM PROBE.");
-        s_route = found;
-        Console.WriteLine($"ZOOM PROBE using route {found}");
-    }
+        var pool = Send(Send(Class("NSAutoreleasePool"), Sel("alloc")), Sel("init"));
+        try { Console.WriteLine($"ZOOM MENU {DescribeMenu(Send(Send(Class("NSApplication"), Sel("sharedApplication")), Sel("mainMenu")), 0)}"); }
+        finally { Send(pool, Sel("drain")); }
+    });
 
     private static string DescribeMenu(nint menu, int depth)
     {
@@ -188,8 +145,6 @@ internal static partial class MacOsZoomSmoke
     }
 
     private static string Text(nint value) => value == 0 ? "" : Marshal.PtrToStringUTF8(Send(value, Sel("UTF8String"))) ?? "";
-
-    private static nint WebView(nint window) => Arg(Send(Send(window, Sel("contentView")), Sel("subviews")), Sel("objectAtIndex:"), 0);
 
     private readonly record struct NativeState(double Zoom, bool Key, bool Active, bool WebViewFocused, bool Magnifies)
     {
@@ -221,9 +176,7 @@ internal static partial class MacOsZoomSmoke
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial nint Args(nint target, nint selector, nint first, nint second);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial byte Bool(nint target, nint selector);
     [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial double Double(nint target, nint selector);
-    [LibraryImport(ObjC, EntryPoint = "objc_msgSend")] private static partial void SetDouble(nint target, nint selector, double value);
     [LibraryImport(ObjC, EntryPoint = "sel_getName")] private static partial nint SelName(nint selector);
-    [LibraryImport(CoreGraphics, EntryPoint = "CGEventPostToPid")] private static partial void PostToPid(int pid, nint keyEvent);
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventCreateKeyboardEvent")] private static partial nint CreateKeyboardEvent(nint source, ushort key, [MarshalAs(UnmanagedType.U1)] bool down);
     [LibraryImport(CoreGraphics, EntryPoint = "CGEventSetFlags")] private static partial void SetFlags(nint keyEvent, ulong flags);
     [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRelease")] private static partial void CFRelease(nint value);
