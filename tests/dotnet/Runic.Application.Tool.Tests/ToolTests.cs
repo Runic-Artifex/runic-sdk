@@ -679,6 +679,20 @@ internal sealed class ToolTests
         Equal(RunicViewsHost.CsWebUi, Detect("""{"Items":{"ProjectReference":[{"Identity":"..\\..\\packages\\Runic.Application.Views.CsWebUi\\Runic.Application.Views.CsWebUi.csproj"}]}}"""));
         Equal(RunicViewsHost.Desktop, Detect("""{"Items":{"ProjectReference":[{"Identity":"../Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj"}]}}"""));
         Equal(RunicViewsHost.Unknown, Detect("""{"Properties":{}}"""));
+
+        static RunicViewsHost[] DetectAll(string json)
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            return [.. DoctorProjectConfiguration.DetectHosts(document.RootElement)];
+        }
+
+        SequenceEqual([RunicViewsHost.CsWebUi, RunicViewsHost.Desktop], DetectAll("""
+            {"Items":{"PackageReference":[{"Identity":"Runic.Application.Views.Desktop"},{"Identity":"Runic.Application.Views.CsWebUi"}]}}
+            """));
+        SequenceEqual([RunicViewsHost.Desktop, RunicViewsHost.Wpf], DetectAll("""
+            {"Items":{"ProjectReference":[{"Identity":"../Runic.Application.Views.Wpf/Runic.Application.Views.Wpf.csproj"}],"PackageReference":[{"Identity":"Runic.Application.Views.Desktop"}]}}
+            """));
+        Equal(0, DetectAll("""{"Properties":{}}""").Length);
     }
 
     [Test, DisplayName("doctor JSON payload lists every check")]
@@ -686,7 +700,10 @@ internal sealed class ToolTests
     {
         var project = new DoctorProjectConfiguration(
             "/work/App.csproj", "/work", "net10.0", true, "/work/Frontend", "/work/obj/project.assets.json",
-            "linux-x64", "/src/main.ts", "/work/Frontend/vite.config.ts", true, RunicViewsHost.Desktop);
+            "linux-x64", "/src/main.ts", "/work/Frontend/vite.config.ts", true, RunicViewsHost.CsWebUi)
+        {
+            Hosts = [RunicViewsHost.CsWebUi, RunicViewsHost.Desktop],
+        };
         var report = new DoctorReport(
         [
             new DoctorCheck(DoctorStatus.Pass, "views-window", "The project uses the Runic Views Window model."),
@@ -699,9 +716,11 @@ internal sealed class ToolTests
         string json = JsonSerializer.Serialize(result, new DoctorCommandJsonContext(new JsonSerializerOptions()).DoctorCommandResult);
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
-        SequenceEqual(["project", "host", "target", "healthy", "summary", "checks"],
+        // hosts was added after the first release of the payload, so it follows the original properties.
+        SequenceEqual(["project", "host", "target", "healthy", "summary", "checks", "hosts"],
             root.EnumerateObject().Select(property => property.Name).ToArray());
-        Equal("desktop", root.GetProperty("host").GetString());
+        Equal("cswebui", root.GetProperty("host").GetString());
+        SequenceEqual(["cswebui", "desktop"], root.GetProperty("hosts").EnumerateArray().Select(host => host.GetString()!).ToArray());
         Equal(JsonValueKind.Null, root.GetProperty("target").ValueKind);
         False(root.GetProperty("healthy").GetBoolean(), "A failing check makes the payload unhealthy.");
         Equal(1, root.GetProperty("summary").GetProperty("failed").GetInt32());
@@ -823,6 +842,8 @@ internal sealed class ToolTests
         DoctorCommandResult payload = response.Payload!;
         False(payload.Healthy, "A missing lock file makes the project unhealthy.");
         Equal("desktop", payload.Host);
+        SequenceEqual(["desktop"], payload.Hosts);
+        True(payload.Checks.Any(check => check.Id == "desktop-runtime"), "The Desktop host gets its native runtime check.");
         Equal("fail", payload.Checks.Single(check => check.Id == "lock-file").Status);
         Equal("pass", payload.Checks.Single(check => check.Id == "browser").Status);
         True(response.Diagnostics.Any(diagnostic => diagnostic.MessageKey == "doctor.lock-file.failed"),
@@ -1066,6 +1087,149 @@ internal sealed class ToolTests
             project, "dotnet", new FakeDoctorRuntime(authority.Toolchain), CancellationToken.None)
             .GetAwaiter().GetResult();
         Equal(DoctorStatus.Pass, report.Checks.Single(check => check.Name == "compatibility-set").Status);
+    }
+
+    [Test, DisplayName("doctor checks every Views host the project references")]
+    public void DoctorChecksEveryReferencedHost()
+    {
+        using var workspace = new TestWorkspace();
+        // CS-WebUI is the primary host, as DetectHost selects it when a project references both.
+        DoctorProjectConfiguration both = CreateDoctorProject(workspace, "Runic.Application.Views.CsWebUi", out var authority)
+            with { Hosts = [RunicViewsHost.CsWebUi, RunicViewsHost.Desktop] };
+        DoctorReport Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
+            DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult();
+
+        // A Linux shell without WebKitGTK, but with a Chromium-family browser for CS-WebUI.
+        DoctorReport missing = Inspect(both, new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] });
+        DoctorCheck hosts = Check(missing, "views-hosts");
+        Equal(DoctorStatus.Pass, hosts.Status);
+        Contains(hosts.Message, "Found 2 Runic Views hosts");
+        Contains(hosts.Message, "CS-WebUI, checked by browser");
+        Contains(hosts.Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, checked by desktop-runtime and platform-services");
+        Equal(DoctorStatus.Pass, Check(missing, "browser").Status);
+        DoctorCheck desktop = Check(missing, "desktop-runtime");
+        Equal(DoctorStatus.Warning, desktop.Status);
+        Contains(desktop.Message, "libgtk-3.so.0 and libwebkit2gtk-4.1.so.0");
+        Contains(desktop.Remediation ?? string.Empty, "libwebkit2gtk-4.1-0");
+        True(missing.Warnings > 0, "A referenced host with missing native libraries must not leave a clean pass.");
+        // Runic Desktop's portal check runs as well, not CS-WebUI's OwnerUnavailable note.
+        Contains(Check(missing, "platform-services").Message, "xdg-desktop-portal");
+
+        DoctorCheck partial = Check(Inspect(both, new FakeDoctorRuntime(authority.Toolchain) { Libraries = ["libgtk-3.so.0"] }), "desktop-runtime");
+        Equal(DoctorStatus.Warning, partial.Status);
+        Contains(partial.Message, "missing libwebkit2gtk-4.1.so.0.");
+        Equal(DoctorStatus.Pass, Check(Inspect(both, new FakeDoctorRuntime(authority.Toolchain)
+        {
+            Libraries = ["libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"],
+        }), "desktop-runtime").Status);
+
+        // The GTK 4 profile's libraries are gtk4-profile's; desktop-runtime would repeat them.
+        DoctorReport gtk4 = Inspect(both with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] },
+            new FakeDoctorRuntime(authority.Toolchain));
+        False(gtk4.Checks.Any(static check => check.Name == "desktop-runtime"), "desktop-runtime repeated the GTK 4 profile's check.");
+        Contains(Check(gtk4, "views-hosts").Message, "Runic Desktop with the GTK 4 profile, checked by gtk4-profile");
+        Equal(DoctorStatus.Warning, Check(gtk4, "gtk4-profile").Status);
+
+        var windows = new DoctorHostPlatform("win", "x64", false, "10.0.26100");
+        Equal(DoctorStatus.Warning, Check(Inspect(both, new FakeDoctorRuntime(authority.Toolchain) { Platform = windows }), "desktop-runtime").Status);
+        Contains(Check(Inspect(both, new FakeDoctorRuntime(authority.Toolchain) { Platform = windows, WebView2Version = "130.0.2849.80" }),
+            "desktop-runtime").Message, "WebView2 Runtime 130.0.2849.80");
+        Equal(DoctorStatus.Pass, Check(Inspect(both, new FakeDoctorRuntime(authority.Toolchain) { Platform = new("osx", "arm64", false, "15.0") }),
+            "desktop-runtime").Status);
+
+        // With --rid, the target checks follow the primary host. On a machine with the target's operating system,
+        // desktop-runtime still probes Runic Desktop, so a missing WebKitGTK is not hidden behind --rid.
+        DoctorReport rid = InspectTarget(both, "linux-x64", new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] });
+        Equal(DoctorStatus.Warning, Check(rid, "desktop-runtime").Status);
+        Equal(DoctorStatus.Pass, Check(rid, "views-hosts").Status);
+        Contains(Check(rid, "views-hosts").Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, checked by desktop-runtime");
+        Contains(Check(rid, "views-hosts").Message, "CS-WebUI, checked by browser and the target checks");
+        Contains(Check(rid, "views-hosts").Message, "The target checks follow CS-WebUI.");
+        // From another operating system nothing checks Runic Desktop, so views-hosts warns instead of passing.
+        DoctorReport remote = InspectTarget(both, "linux-x64", new FakeDoctorRuntime(authority.Toolchain) { Platform = windows, Executables = ["chromium"] });
+        False(remote.Checks.Any(static check => check.Name == "desktop-runtime"), "A Windows machine probed Linux libraries.");
+        DoctorCheck uncovered = Check(remote, "views-hosts");
+        Equal(DoctorStatus.Warning, uncovered.Status);
+        Contains(uncovered.Message, "Runic Desktop with GTK 3 and WebKitGTK 4.1, which --rid linux-x64 cannot check from this Windows machine");
+        Contains(uncovered.Remediation ?? string.Empty, "'dotnet runic doctor --rid linux-x64' on a Linux machine");
+        // The GTK 4 profile's libraries are probed the same way.
+        DoctorReport gtk4Rid = InspectTarget(both with { UsesGtk4 = true, DirectReferences = ["Runic.Application.Views.Desktop", "Runic.Desktop.Gtk4"] },
+            "linux-x64", new FakeDoctorRuntime(authority.Toolchain));
+        Contains(Check(gtk4Rid, "gtk4-profile").Message, "libwebkitgtk-6.0.so.4");
+    }
+
+    [Test, DisplayName("doctor checks the WPF host and reports a project without a host")]
+    public void DoctorChecksWpfHostAndMissingHost()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration wpf = CreateDoctorProject(workspace, null, out var authority) with { Hosts = [RunicViewsHost.Wpf] };
+        DoctorReport Inspect(DoctorProjectConfiguration project, FakeDoctorRuntime runtime) =>
+            DoctorChecks.InspectAsync(project, "dotnet", runtime, CancellationToken.None).GetAwaiter().GetResult();
+        var windows = new DoctorHostPlatform("win", "x64", false, "10.0.26100");
+
+        DoctorReport linux = Inspect(wpf, new FakeDoctorRuntime(authority.Toolchain));
+        Equal(DoctorStatus.Warning, Check(linux, "wpf-runtime").Status);
+        Contains(Check(linux, "views-hosts").Message, "WPF, checked by wpf-runtime");
+        Contains(Check(linux, "browser").Message, "Not required");
+        Equal(DoctorStatus.Warning, Check(Inspect(wpf, new FakeDoctorRuntime(authority.Toolchain) { Platform = windows }), "wpf-runtime").Status);
+        Equal(DoctorStatus.Pass, Check(Inspect(wpf, new FakeDoctorRuntime(authority.Toolchain) { Platform = windows, WebView2Version = "130.0.2849.80" }),
+            "wpf-runtime").Status);
+
+        DoctorCheck none = Check(Inspect(wpf with { Hosts = [] }, new FakeDoctorRuntime(authority.Toolchain)), "views-hosts");
+        Equal(DoctorStatus.Warning, none.Status);
+        Contains(none.Message, "references no Runic Views host");
+        Contains(none.Remediation ?? string.Empty, "Runic.Application.Views.Wpf");
+        // An adapter that arrives through another package or project sets RunicApplicationHostAdapter.
+        DoctorCheck indirect = Check(Inspect(wpf with { Hosts = [], ReferencesHostAdapter = true }, new FakeDoctorRuntime(authority.Toolchain)), "views-hosts");
+        Equal(DoctorStatus.Warning, indirect.Status);
+        Contains(indirect.Message, "A Runic Views host is referenced indirectly");
+        DoesNotContain(indirect.Message, "references no Runic Views host");
+
+        // A WPF-only project's --rid checks follow WPF, which runs on Runic Desktop's Windows layer.
+        DoctorProjectConfiguration primary = wpf with { Host = RunicViewsHost.Wpf };
+        DoctorReport windowsTarget = InspectTarget(primary, "win-x64", new FakeDoctorRuntime(authority.Toolchain));
+        Equal(DoctorStatus.Pass, Check(windowsTarget, "target-rid").Status);
+        DoesNotContain(Check(windowsTarget, "target-rid").Message, "assumed");
+        Contains(Check(windowsTarget, "target-presentation").Message, "The WPF host on win-x64 needs the Microsoft Edge WebView2 Runtime");
+        Contains(Check(windowsTarget, "views-hosts").Message, "WPF, checked by the target checks");
+        Equal(DoctorStatus.Warning, Check(InspectTarget(primary, "win-x64",
+            new FakeDoctorRuntime(authority.Toolchain) { Platform = windows }), "target-presentation").Status);
+        DoctorCheck linuxTarget = Check(InspectTarget(primary, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid");
+        Equal(DoctorStatus.Failure, linuxTarget.Status);
+        Contains(linuxTarget.Message, "The WPF host runs only on Windows");
+        // Next to Runic Desktop, WPF is not the primary host; wpf-runtime reports a target it cannot run on.
+        DoctorReport desktopAndWpf = InspectTarget(primary with { Host = RunicViewsHost.Desktop, Hosts = [RunicViewsHost.Desktop, RunicViewsHost.Wpf] },
+            "linux-x64", new FakeDoctorRuntime(authority.Toolchain));
+        Contains(Check(desktopAndWpf, "wpf-runtime").Message, "cannot run on linux-x64");
+        Equal(DoctorStatus.Pass, Check(desktopAndWpf, "views-hosts").Status);
+
+        using JsonDocument evaluation = JsonDocument.Parse("""{"Items":{"PackageReference":[{"Identity":"Runic.Application.Views.Wpf"}]}}""");
+        Equal(RunicViewsHost.Wpf, DoctorProjectConfiguration.DetectHost(evaluation.RootElement));
+    }
+
+    [Test, DisplayName("doctor host warnings change only the --fail-on warn result")]
+    public void DoctorHostWarningsKeepDefaultExit()
+    {
+        using var workspace = new TestWorkspace();
+        DoctorProjectConfiguration both = CreateDoctorProject(workspace, "Runic.Application.Views.CsWebUi", out var authority)
+            with { Hosts = [RunicViewsHost.CsWebUi, RunicViewsHost.Desktop] };
+        var path = new Runic.CommandLine.CommandPath(["doctor"]);
+        // A headless CI image without WebKitGTK, and a project whose host doctor cannot identify.
+        foreach (DoctorProjectConfiguration project in new[] { both, both with { Host = RunicViewsHost.Unknown, Hosts = [] } })
+        {
+            DoctorReport report = DoctorChecks.InspectAsync(project, "dotnet",
+                new FakeDoctorRuntime(authority.Toolchain) { Executables = ["chromium"] }, CancellationToken.None).GetAwaiter().GetResult();
+            True(report.IsHealthy, "Host warnings must not fail the default --fail-on fail: " +
+                string.Join("; ", report.Checks.Where(check => check.Status == DoctorStatus.Failure).Select(check => check.Name)));
+            True(report.Checks.Any(check => check.Status == DoctorStatus.Warning && check.Name is "desktop-runtime" or "views-hosts"),
+                "The host warning is reported.");
+            var run = new DoctorRun(project, report);
+            foreach (Runic.CommandLine.CommandOutputMode mode in new[] { Runic.CommandLine.CommandOutputMode.Human, Runic.CommandLine.CommandOutputMode.Json })
+            {
+                True(DoctorOutcome.Create(run, mode, DoctorFailOn.Fail, path, "report", "report").IsSuccess, $"--fail-on fail ({mode}) succeeds.");
+                False(DoctorOutcome.Create(run, mode, DoctorFailOn.Warn, path, "report", "report").IsSuccess, $"--fail-on warn ({mode}) fails.");
+            }
+        }
     }
 
     [Test, DisplayName("development servers are inferred from the frontend")]

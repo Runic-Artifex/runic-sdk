@@ -62,6 +62,41 @@ tells you to run `dotnet runic dev` or `dotnet restore`. The browser check
 follows the referenced host: a Runic Desktop project needs no browser, and a
 missing browser is only a warning for a CS-WebUI project because CS-WebUI falls
 back to the platform WebView. Only browser smoke checks require Chromium.
+
+Doctor checks every Views host adapter the project references, not only one.
+It reads the project's direct package and project references, with the
+project's `TargetFramework`; like `dev`, it does not support a multi-targeted
+project (`RAPPDEV1005`). The `views-hosts` check names each host it found and
+the checks that cover it. It warns when the project references none, and says
+that a host is referenced indirectly when only the `RunicApplicationHostAdapter`
+property, which every adapter's build props set once the project is restored,
+shows an adapter. A project that references both
+`Runic.Application.Views.CsWebUi` and `Runic.Application.Views.Desktop` gets the
+CS-WebUI browser check and the Runic Desktop checks. `desktop-runtime` checks
+that this machine can open Runic Desktop's embedded window: `libgtk-3.so.0` and
+`libwebkit2gtk-4.1.so.0` on Linux, the same libraries Runic Desktop probes, the
+WebView2 Runtime on Windows, and WKWebView on macOS. It warns when they are
+missing, because `RunicDesktopHost.Run` then falls back to an installed browser.
+A project on the GTK 4 profile gets `gtk4-profile` instead. A project that
+references `Runic.Application.Views.Wpf` gets `wpf-runtime`, which warns on a
+machine other than Windows or without the WebView2 Runtime.
+
+With `--rid`, the target checks follow the project's primary host: CS-WebUI when
+the project references it, then Runic Desktop, then WPF. `target-presentation`
+reports what that host needs. For the other hosts, doctor still runs
+`desktop-runtime`, `gtk4-profile`'s library check and `wpf-runtime` on this
+machine when the target has this machine's operating system, and `wpf-runtime`
+reports a target other than Windows from any machine. When no check can cover a
+host, for example Runic Desktop with `--rid linux-x64` on Windows,
+`views-hosts` warns and names the machine to run doctor on.
+
+These host checks warn; they never fail. `--fail-on fail`, the default, keeps
+the exit code and JSON envelope success of earlier releases. With `--fail-on warn`, a
+machine without a referenced host's runtime, such as a headless CI image without
+WebKitGTK, or a project without a Runic Views host, now fails. To keep the
+earlier result there, use `--fail-on fail`, or install the runtime the warning
+names.
+
 A project that references `Runic.Desktop.Gtk4` also gets a `gtk4-profile` check.
 It warns once and lists every missing piece: `Runic.Platform.Linux.Gtk4`, which
 creates the portal parent window and the GTK 4 clipboard;
@@ -80,7 +115,8 @@ libraries, and warns about `Runic.Platform.Linux` only when the project
 references it directly.
 
 A project on `Runic.Application.Views.Desktop` or `Runic.Application.Views.CsWebUi` also
-gets a `platform-services` check. It names the provider that
+gets a `platform-services` check. With both hosts it checks Runic Desktop's
+providers. It names the provider that
 `AddRunicPlatformServices()` selects on this machine. On Linux, it warns when
 there is no D-Bus session bus or no installed `xdg-desktop-portal` (the
 `org.freedesktop.portal.Desktop` D-Bus service in `XDG_DATA_HOME` or
@@ -150,7 +186,7 @@ The payload type is `runic.application.tool.doctor/1`:
   "required": ["project", "host", "target", "healthy", "summary", "checks"],
   "properties": {
     "project": { "type": "string", "description": "Absolute path of the inspected project file." },
-    "host": { "enum": ["cswebui", "desktop", "unknown"], "description": "The referenced Runic Views host." },
+    "host": { "enum": ["cswebui", "desktop", "wpf", "unknown"], "description": "The primary Runic Views host, which the --rid checks follow: cswebui, then desktop, then wpf. wpf was added in 0.7.0-preview.9 for a project whose only host is WPF." },
     "target": { "type": ["string", "null"], "description": "The --rid runtime identifier; null without --rid." },
     "healthy": { "type": "boolean", "description": "False when any check has status fail." },
     "summary": {
@@ -176,7 +212,8 @@ The payload type is `runic.application.tool.doctor/1`:
           "remediation": { "type": ["string", "null"], "description": "How to fix a warn or fail check; null when nothing is needed." }
         }
       }
-    }
+    },
+    "hosts": { "type": "array", "items": { "enum": ["cswebui", "desktop", "wpf"] }, "description": "Every referenced Views host adapter, each checked by doctor; empty when there is none. Added in 0.7.0-preview.9." }
   }
 }
 ```
@@ -191,7 +228,8 @@ redacts the message key, which always names the check. `payload.checks` is the
 complete list.
 Check identifiers are `dotnet-sdk`, `views-window`, `javascript-runtime`,
 `package-manager`, `lock-file`, `compatibility-set`, `frontend-dev-server`,
-`vite-config`, `vite-entry` and `browser`. With `--rid`, the payload also lists
+`vite-config`, `vite-entry`, `browser`, `views-hosts`, `desktop-runtime`,
+`wpf-runtime`, `gtk4-profile` and `platform-services`. With `--rid`, the payload also lists
 `target-rid`, `target-runtime-identifiers`, `target-publish` and
 `target-presentation`.
 

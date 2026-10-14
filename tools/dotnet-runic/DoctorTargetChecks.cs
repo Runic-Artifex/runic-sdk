@@ -61,8 +61,6 @@ internal static class DoctorTargetChecks
     // Host and RID support comes from eng/support.json through the embedded compatibility set.
     private static SupportMatrix Support => CompatibilitySetAuthority.Current.Support;
 
-    private const string Gtk3Library = "libgtk-3.so.0";
-    private const string WebKit41Library = "libwebkit2gtk-4.1.so.0";
     internal static readonly Version MinimumGtk4 =
         Version.TryParse(Support.Requirement("gtk4")?.Minimum, out Version? minimum) ? minimum : new(4, 12);
 
@@ -110,14 +108,21 @@ internal static class DoctorTargetChecks
                 checks.Add(Fail(id, support.Reason, support.Remediation ?? SupportedRidsRemediation(project.Host)));
                 return false;
             default:
-                checks.Add(Fail(id, $"Runic Views Window hosts do not support {target.Value}.", SupportedRidsRemediation(project.Host)));
+                checks.Add(Fail(id, project.Host == RunicViewsHost.Wpf
+                    ? $"The WPF host runs only on Windows, so it does not support {target.Value}."
+                    : $"Runic Views Window hosts do not support {target.Value}.", SupportedRidsRemediation(project.Host)));
                 return false;
         }
     }
 
-    // The support entries of the project's host; a project without a known host may use any host.
+    // The support entries of the project's host; a project without a known host may use any host. The WPF host runs
+    // on Runic Desktop's Windows layer, so it has the Desktop host's Windows entries.
     private static IEnumerable<SupportTarget> HostTargets(RunicViewsHost host)
     {
+        if (host == RunicViewsHost.Wpf)
+        {
+            return HostTargets(RunicViewsHost.Desktop).Where(static entry => entry.Rid.StartsWith("win-", StringComparison.Ordinal));
+        }
         string? id = host switch
         {
             RunicViewsHost.Desktop => "desktop",
@@ -164,7 +169,7 @@ internal static class DoctorTargetChecks
             string version = TargetFrameworkMajor(project.TargetFramework) is { Length: > 0 } major ? $" {major}" : string.Empty;
             checks.Add(Pass(id, project.SelfContained
                 ? $"The project publishes a self-contained {target.Value} application without Native AOT; target machines need no .NET installation."
-                : project.Host == RunicViewsHost.Desktop
+                : project.Host is RunicViewsHost.Desktop or RunicViewsHost.Wpf
                     ? $"The project publishes framework-dependent for {target.Value}; target machines need the .NET{version} and ASP.NET Core{version} runtimes."
                     : $"The project publishes framework-dependent for {target.Value}; target machines need the .NET{version} runtime."));
             return;
@@ -278,6 +283,18 @@ internal static class DoctorTargetChecks
                         "Install Chrome, Edge or Chromium on target machines, or the platform WebView. " + probe.Remediation));
                 return;
             }
+            case RunicViewsHost.Wpf:
+            {
+                string requirement = $"The WPF host on {target.Value} needs {webView}.";
+                if (!sameOs)
+                {
+                    checks.Add(Pass(id, $"{requirement} A {DescribeOs(runtime.Platform.Os)} machine cannot inspect a {DescribeOs(target.Family)} target."));
+                    return;
+                }
+                WebViewProbe probe = await ProbeWebViewAsync(project, target, runtime, cancellationToken).ConfigureAwait(false);
+                checks.Add(new DoctorCheck(probe.Status, id, $"{requirement} {probe.Message}", probe.Remediation));
+                return;
+            }
             default:
                 checks.Add(Warn(id, "The project references no Runic Views host, so the target's presentation requirements are unknown.",
                     $"Reference {DoctorProjectConfiguration.DesktopPackage} or {DoctorProjectConfiguration.CsWebUiPackage}."));
@@ -301,8 +318,8 @@ internal static class DoctorTargetChecks
             case "osx":
                 return new(DoctorStatus.Pass, $"WKWebView is part of macOS; this machine runs macOS {runtime.Platform.OsVersion}.");
             default:
-                string[] gtk = project.UsesGtk4 ? [Gtk4NativeLibraries.Gtk] : [Gtk3Library];
-                string[] webkit = project.UsesGtk4 ? Gtk4NativeLibraries.WebKit : [WebKit41Library];
+                string[] gtk = project.UsesGtk4 ? [Gtk4NativeLibraries.Gtk] : [Gtk3NativeLibraries.Gtk];
+                string[] webkit = project.UsesGtk4 ? Gtk4NativeLibraries.WebKit : [Gtk3NativeLibraries.WebKit];
                 var missing = new List<string>();
                 foreach (string[] names in new[] { gtk, webkit })
                 {
@@ -319,7 +336,7 @@ internal static class DoctorTargetChecks
                         project.UsesGtk4
                             ? Capitalize(DoctorGtk4Packages.Remediation(DoctorGtk4Packages.FromOsRelease(runtime.OsReleasePaths), MinimumGtk4,
                                 gtk4: missing.Contains(gtk[0]), webKit6: missing.Contains(webkit[0]))) + " on this machine and on target machines."
-                            : "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0) on this machine and on target machines.");
+                            : $"Install GTK 3 and WebKitGTK 4.1 (for example {Gtk3NativeLibraries.ExamplePackages}) on this machine and on target machines.");
                 }
                 if (project.UsesGtk4)
                 {
