@@ -72,8 +72,8 @@ public static class DesktopPlatform
     /// <summary>Inspects both Linux runtime candidates without choosing or loading either toolkit.</summary>
     public static IReadOnlyList<LinuxEmbeddedBackendAvailability> GetLinuxEmbeddedBackends() =>
     [
-        Inspect(LinuxEmbeddedBackend.Gtk3WebKit41, "libgtk-3.so.0", "libwebkit2gtk-4.1.so.0"),
-        Inspect(LinuxEmbeddedBackend.Gtk4WebKit6, "libgtk-4.so.1", "libwebkitgtk-6.0.so.4"),
+        Inspect(LinuxEmbeddedBackend.Gtk3WebKit41, Gtk3NativeLibraries.Gtk, Gtk3NativeLibraries.WebKit),
+        Inspect(LinuxEmbeddedBackend.Gtk4WebKit6, Gtk4NativeLibraries.Gtk, Gtk4NativeLibraries.WebKit[0]),
     ];
 
     private static LinuxEmbeddedBackendAvailability Inspect(LinuxEmbeddedBackend backend, string gtk, string webkit)
@@ -83,7 +83,7 @@ public static class DesktopPlatform
             backend == LinuxEmbeddedBackend.Gtk3WebKit41 ? "webkitgtk-runtime-missing" : "webkitgtk6-runtime-missing",
             $"The runtime libraries for {backend} were not discovered.",
             backend == LinuxEmbeddedBackend.Gtk3WebKit41
-                ? $"Install {gtk} and {webkit} (for example libgtk-3-0 and libwebkit2gtk-4.1-0) in the native loader search path."
+                ? $"Install {gtk} and {webkit} (for example {Gtk3NativeLibraries.ExamplePackages}) in the native loader search path."
                 : $"Install GTK 4.12 or newer and WebKitGTK 6.0 ({gtk} and {webkit}, for example libgtk-4-1 and libwebkitgtk-6.0-4), and reference the Runic.Desktop.Gtk4 provider."));
     }
 
@@ -108,7 +108,7 @@ public static class DesktopPlatform
         if (linux.EmbeddedBackend is not { } backend || !Enum.IsDefined(backend)) return diagnostics;
         if (backend == LinuxEmbeddedBackend.Gtk3WebKit41 && !LinuxWebKitGtkHost.IsSupported)
             diagnostics.Add(Missing("webkitgtk-runtime-missing", "GTK 3 and WebKitGTK 4.1 are unavailable.",
-                "Install GTK 3 and WebKitGTK 4.1 (for example libgtk-3-0 and libwebkit2gtk-4.1-0), or select an installed browser. dotnet runic doctor --rid <rid> checks a deployment target."));
+                $"Install GTK 3 and WebKitGTK 4.1 (for example {Gtk3NativeLibraries.ExamplePackages}), or select an installed browser. dotnet runic doctor checks this machine, and doctor --rid <rid> a deployment target."));
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DISPLAY")) &&
             string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
         {
