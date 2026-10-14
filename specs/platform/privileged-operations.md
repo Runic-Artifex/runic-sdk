@@ -884,3 +884,28 @@ Cancellation matches Linux as far as macOS allows:
   credential prompt nobody answers.
   The security review follow-up adds a JIT build installed under Program
   Files, which the application refuses before the prompt.
+- macOS (W300-026), `tests/dotnet/Runic.Platform.MacOS.Tests` on the macos-26
+  arm64 runner. The portable cases (generation through MSBuild, outcomes, the
+  rule, program checks, the daemon's request checks, the provider's flow) also
+  run in the managed job and under NativeAOT. `NativePrivileged`, under JIT and
+  NativeAOT, with the daemon on an anonymous XPC listener in the test process:
+  argument vectors with shell metacharacters arrive verbatim; the program sees
+  only the daemon's environment and `/`; 1 MiB of output stays in the program
+  while the application's callback blocks; cancelling a running program ends its
+  input and returns its exit code, and cancelling during the daemon's check runs
+  nothing; a program outside the system volume runs only with a matching
+  signature, checked on disk and in the suspended process, while an unsigned
+  script and a missing program are refused; a daemon that fails `DaemonRequirement` gets `prepare` and nothing
+  else, and an application that fails `ApplicationRequirement` is refused before
+  any message; and `AuthorizationCopyRights` without interaction returns
+  -60007. `NativePrivilegedRoot`, with the NativeAOT executable installed as a
+  root daemon in the system domain and a temporary administrator whose password
+  replaces the dialog: `id -u` prints 0 through the privileged Mach service; the
+  program gets the fixed environment, umask 022 and `/`; the rights are the
+  daemon's rule; a wrong password is -60005; an authorization without the right
+  and a finished run's external form are refused by the daemon; and a right with
+  timeout 0 fails the non-interactive check two seconds after it was obtained
+  (-60007), while timeout 30 passes. Not verified, because CI cannot sign,
+  notarize or approve: registration through `SMAppService` and the user's
+  approval, the `SpawnConstraint`, the dialog's text, and the outcomes of
+  cancelling (-60006) and refusing the real dialog.
