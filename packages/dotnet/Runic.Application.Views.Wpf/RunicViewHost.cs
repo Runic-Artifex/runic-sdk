@@ -1,10 +1,9 @@
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Markup;
-using Microsoft.Extensions.Logging;
+using Runic.Application.Views.Desktop;
 using Runic.Desktop;
 using Runic.Navigation;
 
@@ -201,6 +200,11 @@ public class RunicViewHost : Decorator
     private async Task OpenAsync(PresentationLifecycle lifecycle, CancellationToken cancellationToken)
     {
         var model = Model!;
+        // Only an open reads Services, which an application may dispose before the host unloads. This open, its
+        // fallback and the releases until the next open log through the factory lent from it; once that is
+        // disposed, they go to Trace.
+        var loggerFactory = LentLoggerFactory.From(Services);
+        lifecycle.Logger = WpfViewsLog.For(loggerFactory);
         var services = Services ?? throw new InvalidOperationException(
             "RunicViewHost has no Services. Set RunicViewHost.Services, on the host or its window, to the provider with AddRunicViews().");
         var surfaceOptions = SurfaceOptions ?? new DesktopSurfaceOptions
@@ -230,7 +234,7 @@ public class RunicViewHost : Decorator
         var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
         {
             WindowHostFactory = factory,
-            LoggerFactory = services.GetService(typeof(ILoggerFactory)) as ILoggerFactory,
+            LoggerFactory = loggerFactory,
         }, cancellationToken);
         lifecycle.Own(desktop.DisposeAsync);
         var view = await services.CreateWpfViewForModelAsync(desktop, surfaceOptions, model, ModelContext, cancellationToken);
@@ -245,7 +249,7 @@ public class RunicViewHost : Decorator
 
     private void ShowFallback(PresentationLifecycle lifecycle, Exception error)
     {
-        Trace.TraceWarning($"RunicViewHost could not open the web presentation; showing the fallback. {error}");
+        WpfViewsLog.FallbackShown(lifecycle.Logger, error, WpfViewsLog.ErrorType(error));
         if (!IsLoaded) return;
         var presenter = _fallback = new ContentPresenter { Content = Fallback };
         Child = presenter;

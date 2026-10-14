@@ -42,6 +42,14 @@ internal static partial class DesktopLog
         Message = "Closing Desktop windows for shutdown failed with {ErrorType}.")]
     internal static partial void ShutdownFailed(ILogger logger, Exception exception, string errorType);
 
+    [LoggerMessage(EventId = 3008, EventName = "BrowserProfileNotDeleted", Level = LogLevel.Warning,
+        Message = "A generated browser profile could not be deleted; it remains in the temporary folder.")]
+    internal static partial void BrowserProfileNotDeleted(ILogger logger);
+
+    [LoggerMessage(EventId = 3009, EventName = "DesktopDiagnosticSinkFailed", Level = LogLevel.Warning,
+        Message = "The diagnostic sink failed for {Code} with {ErrorType}.")]
+    internal static partial void DiagnosticSinkFailed(ILogger logger, Exception exception, string code, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

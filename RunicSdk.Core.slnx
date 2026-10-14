@@ -61,6 +61,7 @@
     <Project Path="tests/dotnet/Runic.Desktop.Tests/Runic.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Tool.Tests/Runic.Application.Tool.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Create.Tests/Runic.Create.Tests.csproj" />
+    <Project Path="tests/dotnet/Runic.Application.Logging.Tests/Runic.Application.Logging.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Views.Desktop.Tests/Runic.Application.Views.Desktop.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Views.Wpf.Tests/Runic.Application.Views.Wpf.Tests.csproj" />
     <Project Path="tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests/Runic.Application.Views.Wpf.Windows.Tests.csproj" />

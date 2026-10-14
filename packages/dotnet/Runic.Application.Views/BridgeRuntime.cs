@@ -202,6 +202,8 @@ public static class BridgeProtocol
 internal interface IHotReloadableBridge
 {
     Type ContractModelType { get; }
+    // The window session logger, or the Trace fallback without one.
+    Microsoft.Extensions.Logging.ILogger Logger { get; }
     string? ContractMismatch();
     void RefreshAfterHotReload();
 }
@@ -1444,6 +1446,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     }
 
     Type IHotReloadableBridge.ContractModelType => typeof(T);
+
+    Microsoft.Extensions.Logging.ILogger IHotReloadableBridge.Logger => _logger;
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("Trimming", "IL2087",
         Justification = "Hot Reload is unavailable in trimmed applications; MetadataUpdater.IsSupported guards the reflection.")]

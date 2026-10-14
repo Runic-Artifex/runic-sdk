@@ -304,6 +304,20 @@ internal static partial class ViewsLog
     [LoggerMessage(EventId = 1053, EventName = "WindowCloseGuardUnavailable", Level = LogLevel.Warning,
         Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]
     internal static partial void WindowCloseGuardUnavailable(ILogger logger, string window, string presentation);
+
+    // Hot Reload applied an edit that changed a generated Bridge contract. The message is the IDE line that
+    // RunicBridgeHotReload also writes to standard error.
+    [LoggerMessage(EventId = 1100, EventName = "HotReloadRestartRequired", Level = LogLevel.Error,
+        Message = "RUNIC_IDE_CONTRACT_RESTART_REQUIRED|{Mismatch}")]
+    internal static partial void HotReloadRestartRequired(ILogger logger, string mismatch);
+
+    [LoggerMessage(EventId = 1101, EventName = "HotReloadRestartNotificationFailed", Level = LogLevel.Warning,
+        Message = "A RunicBridgeHotReload.RestartRequired handler failed with {ErrorType}.")]
+    internal static partial void HotReloadRestartNotificationFailed(ILogger logger, Exception exception, string errorType);
+
+    [LoggerMessage(EventId = 1102, EventName = "HotReloadRefreshFailed", Level = LogLevel.Warning,
+        Message = "Refreshing {Model} after a Hot Reload update failed with {ErrorType}.")]
+    internal static partial void HotReloadRefreshFailed(ILogger logger, Exception exception, string model, string errorType);
 }
 
 // Without an ILoggerFactory the runtime keeps its earlier System.Diagnostics.Trace

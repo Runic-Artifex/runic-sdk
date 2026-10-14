@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../../eng/build/application.props" />
+  <PropertyGroup>
+    <RunicImportDesktopTargets>true</RunicImportDesktopTargets>
+    <!-- A TUnit test application on Microsoft.Testing.Platform: run it with dotnet run or the built executable. -->
+    <OutputType>Exe</OutputType>
+    <OutputType Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">Library</OutputType>
+    <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- Program.cs is hand-written: the case starts this executable as the application it checks. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <!-- The application's Bridges and AddRunicViews() are generated as in an application; the page is www/index.html. -->
+    <RunicApplicationFrontendCompositionType>Runic.Application.Logging.Tests.RunicBridgeComposition</RunicApplicationFrontendCompositionType>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendBuildCommand>dotnet --version</RunicApplicationFrontendBuildCommand>
+    <RunicApplicationFrontendDirectory>$(MSBuildProjectDirectory)/obj/bridge-frontend</RunicApplicationFrontendDirectory>
+    <RunicApplicationFrontendGeneratedDirectory>$(RunicApplicationFrontendDirectory)/generated</RunicApplicationFrontendGeneratedDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit.Core" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <!-- The application logs the way a production application does: Microsoft.Extensions.Logging with Serilog. -->
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views.Desktop/Runic.Application.Views.Desktop.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="www/index.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
+    <Compile Remove="Program.cs" />
+    <Compile Remove="*Tests.cs" />
+  </ItemGroup>
+  <Import Project="../../../packages/dotnet/Runic.Application.Views/build/Runic.Application.Views.targets" />
+  <Import Project="../../../packages/dotnet/Runic.Application.Views.Desktop/build/Runic.Application.Views.Desktop.targets" />
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

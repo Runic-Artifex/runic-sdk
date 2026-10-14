@@ -99,6 +99,9 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// see <see cref="DesktopEventLoop.Run(DesktopHostOptions, Func{DesktopHost, Task{int}})"/>. Ctrl+C and SIGTERM close
     /// the open windows, so <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns, and cancel
     /// <see cref="DesktopHost.ShutdownRequested"/>. Dispose <paramref name="services"/> after this method returns.
+    /// When <see cref="DesktopHostOptions.LoggerFactory"/> is not set, the host logs through the
+    /// <c>ILoggerFactory</c> registered in <paramref name="services"/>, if any, until this method returns; a host
+    /// message after that, such as a browser profile that still cannot be deleted, goes to <c>Trace</c>.
     /// </remarks>
     /// <param name="services">The application's service provider.</param>
     /// <param name="options">The Desktop host options, for example <c>new DesktopHostOptions().WithGtk4()</c>.</param>
@@ -109,7 +112,13 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(application);
-        return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop)));
+        // The Desktop host logs shutdown, close confirmation, configuration and browser-launch messages through
+        // the application's logging, as the Views in its windows do; it writes them to Trace only without one.
+        // The factory is lent for the run: later messages go to Trace, since the caller then disposes services.
+        var lent = options.LoggerFactory is null ? LentLoggerFactory.From(services.GetService<ILoggerFactory>()) : null;
+        if (lent is not null) options = options with { LoggerFactory = lent };
+        try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop))); }
+        finally { lent?.Return(); }
     }
 
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options) =>
