@@ -975,3 +975,17 @@ Cancellation matches Linux as far as macOS allows:
   notarize or approve: registration through `SMAppService` and the user's
   approval, the `SpawnConstraint`, the dialog's text, and the outcomes of
   cancelling (-60006) and refusing the real dialog.
+- macOS after the security review, on the same runner. A program built in the
+  test and signed ad hoc with the identifier runs only with the hardened
+  runtime (code 10 without it). The same program is refused with a
+  `.runtimeconfig.json` beside it (8), without `MacProgramIdentifier` (9) and
+  with another identifier (3). The JIT build runs in the dotnet host, whose
+  status (`0x22010005`) has `get-task-allow`, and the daemon refuses it as a
+  client; the NativeAOT executable re-signed with `--options=runtime`
+  (`0x22010001`) passes, and serves every other case. A right pre-defined
+  through `security authorizationdb write` with `shared`, `timeout 300`,
+  `tries 1` and `extract-password` is removed and defined again by the daemon,
+  keeping only authd's metadata (`version`, `created`, `modified`,
+  `identifier`, `requirement`). The portable cases cover the strict right
+  comparison, ACLs, the hardened-client flags, the run limits and
+  `RUNICPA105`–`RUNICPA107`.
