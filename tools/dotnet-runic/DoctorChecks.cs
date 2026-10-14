@@ -171,12 +171,19 @@ internal static class DoctorChecks
         var checks = new List<DoctorCheck>();
         await CheckDotNetAsync(checks, project, dotnetHost, runtime, cancellationToken).ConfigureAwait(false);
         CheckViewsWindow(checks, project);
+        CheckViewsHosts(checks, project, runtime, target);
         _ = await CheckJavaScriptRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         await CheckPackageManagerAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
         CheckCompatibilitySet(checks, project);
         CheckFrontendDevelopment(checks, project);
         CheckBrowser(checks, project, runtime);
         await CheckGtk4ProfileAsync(checks, project, runtime, checkNativeLibraries: target is null, cancellationToken).ConfigureAwait(false);
+        // With --rid, target-presentation reports the runtime the target needs instead.
+        if (target is null)
+        {
+            await CheckDesktopRuntimeAsync(checks, project, runtime, cancellationToken).ConfigureAwait(false);
+            CheckWpfRuntime(checks, project, runtime);
+        }
         // With --rid the target machine is unknown; this check inspects the machine that runs doctor.
         if (target is null) CheckPlatformServices(checks, project, runtime);
         if (target is not null)
@@ -226,6 +233,126 @@ internal static class DoctorChecks
             return;
         }
         checks.Add(Pass("views-window", "The project uses the Runic Views Window model."));
+    }
+
+    /// <summary>
+    /// Names every Views host adapter the project references and the checks that cover each one, so a project with
+    /// two hosts sees both checked rather than only the one <see cref="DoctorProjectConfiguration.Host"/> selects.
+    /// </summary>
+    private static void CheckViewsHosts(List<DoctorCheck> checks, DoctorProjectConfiguration project,
+        IDoctorRuntime runtime, DoctorTargetRid? target)
+    {
+        const string id = "views-hosts";
+        IReadOnlyList<RunicViewsHost> hosts = project.Hosts;
+        if (hosts.Count == 0)
+        {
+            checks.Add(Warn(id, "The project references no Runic Views host, so doctor checked no host's requirements.",
+                $"Reference {DoctorProjectConfiguration.CsWebUiPackage}, {DoctorProjectConfiguration.DesktopPackage} or {DoctorProjectConfiguration.WpfPackage}."));
+            return;
+        }
+        string found = string.Join("; ", hosts.Select(host => HostCheckIds(project, host, target) is { } ids
+            ? $"{DescribeHost(project, host, runtime)}, checked by {ids}"
+            : $"{DescribeHost(project, host, runtime)}, which --rid does not check"));
+        string rid = target is not null && hosts.Count > 1 && project.Host != RunicViewsHost.Unknown
+            ? $" The --rid checks follow {DescribeHost(project, project.Host, runtime)}."
+            : string.Empty;
+        checks.Add(Pass(id, $"Found {hosts.Count} Runic Views host{(hosts.Count == 1 ? string.Empty : "s")}: {found}.{rid}"));
+    }
+
+    internal static string DescribeHost(DoctorProjectConfiguration project, RunicViewsHost host, IDoctorRuntime runtime) =>
+        host switch
+        {
+            RunicViewsHost.CsWebUi => "CS-WebUI",
+            RunicViewsHost.Desktop when project.UsesGtk4 => "Runic Desktop with the GTK 4 profile",
+            RunicViewsHost.Desktop when runtime.Platform.Os == "linux" => "Runic Desktop with GTK 3 and WebKitGTK 4.1",
+            RunicViewsHost.Desktop => "Runic Desktop",
+            RunicViewsHost.Wpf => "WPF",
+            _ => "an unknown host",
+        };
+
+    // Mirrors InspectAsync: which checks report on each host's requirements.
+    private static string? HostCheckIds(DoctorProjectConfiguration project, RunicViewsHost host, DoctorTargetRid? target)
+    {
+        List<string> ids = [];
+        bool platformServices = target is null && (host == RunicViewsHost.Desktop
+            || (host == RunicViewsHost.CsWebUi && !project.Hosts.Contains(RunicViewsHost.Desktop)));
+        switch (host)
+        {
+            case RunicViewsHost.CsWebUi:
+                ids.Add("browser");
+                break;
+            case RunicViewsHost.Desktop:
+                if (project.UsesGtk4) ids.Add("gtk4-profile");
+                else if (target is null) ids.Add("desktop-runtime");
+                break;
+            case RunicViewsHost.Wpf when target is null:
+                ids.Add("wpf-runtime");
+                break;
+        }
+        if (platformServices) ids.Add("platform-services");
+        if (target is not null && host == project.Host) ids.Add("the target checks");
+        return ids.Count == 0 ? null : string.Join(" and ", ids);
+    }
+
+    /// <summary>
+    /// Checks the default Runic Desktop backend's embedded window on this machine: GTK 3 with WebKitGTK 4.1 on Linux,
+    /// the WebView2 Runtime on Windows and WKWebView on macOS. The GTK 4 profile is checked by gtk4-profile.
+    /// </summary>
+    /// <remarks>
+    /// The sonames come from Runic.Desktop's Gtk3NativeLibraries, which LinuxWebKitGtkHost and
+    /// DesktopPlatform.GetLinuxEmbeddedBackends use, and the probe mirrors LinuxDesktopRuntime.IsLibraryAvailable.
+    /// </remarks>
+    private static async Task CheckDesktopRuntimeAsync(List<DoctorCheck> checks, DoctorProjectConfiguration project,
+        IDoctorRuntime runtime, CancellationToken cancellationToken)
+    {
+        const string id = "desktop-runtime";
+        const string fallback = "With the default EmbeddedThenBrowser presentation policy, RunicDesktopHost.Run then opens the app in an installed browser instead.";
+        if (!project.Hosts.Contains(RunicViewsHost.Desktop) || project.UsesGtk4) return;
+        switch (runtime.Platform.Os)
+        {
+            case "linux":
+                var missing = new List<string>();
+                foreach (string library in new[] { Gtk3NativeLibraries.Gtk, Gtk3NativeLibraries.WebKit })
+                {
+                    if (!await runtime.IsNativeLibraryAvailableAsync(library, cancellationToken).ConfigureAwait(false)) missing.Add(library);
+                }
+                checks.Add(missing.Count == 0
+                    ? Pass(id, "Runic Desktop's embedded window has GTK 3 and WebKitGTK 4.1 on this machine.")
+                    : Warn(id, $"Runic Desktop's embedded window needs GTK 3 and WebKitGTK 4.1, and this machine is missing {string.Join(" and ", missing)}. {fallback}",
+                        $"Install GTK 3 and WebKitGTK 4.1 (for example {Gtk3NativeLibraries.ExamplePackages}) in the native loader search path, " +
+                        $"or reference {DoctorProjectConfiguration.DesktopGtk4Package} for the GTK 4 profile."));
+                return;
+            case "win":
+                checks.Add(runtime.GetWebView2RuntimeVersion() is { } version
+                    ? Pass(id, $"Runic Desktop's embedded window has WebView2 Runtime {version} on this machine.")
+                    : Warn(id, $"Runic Desktop's embedded window needs the Microsoft Edge WebView2 Runtime, which this machine lacks. {fallback}",
+                        "Install the evergreen WebView2 Runtime (Windows 11 includes it)."));
+                return;
+            case "osx":
+                checks.Add(Pass(id, "Runic Desktop's embedded window uses WKWebView, which macOS includes."));
+                return;
+            default:
+                checks.Add(Warn(id, $"Runic Desktop has no embedded window on a {runtime.Platform.Os} machine.",
+                    "Run the application on Windows, Linux or macOS, or provide an IDesktopWindowHostFactory."));
+                return;
+        }
+    }
+
+    /// <summary>Checks that this machine can run the WPF host: Windows with the WebView2 Runtime.</summary>
+    private static void CheckWpfRuntime(List<DoctorCheck> checks, DoctorProjectConfiguration project, IDoctorRuntime runtime)
+    {
+        const string id = "wpf-runtime";
+        if (!project.Hosts.Contains(RunicViewsHost.Wpf)) return;
+        if (runtime.Platform.Os != "win")
+        {
+            checks.Add(Warn(id, "The WPF host runs only on Windows, so this machine cannot run it.",
+                "Run the WPF application on Windows with the Microsoft Edge WebView2 Runtime."));
+            return;
+        }
+        checks.Add(runtime.GetWebView2RuntimeVersion() is { } version
+            ? Pass(id, $"The WPF host's RunicWebView has WebView2 Runtime {version} on this machine.")
+            : Warn(id, "The WPF host's RunicWebView needs the Microsoft Edge WebView2 Runtime, which this machine lacks, so it cannot show the page.",
+                "Install the evergreen WebView2 Runtime (Windows 11 includes it)."));
     }
 
     private static async Task<string?> CheckJavaScriptRuntimeAsync(List<DoctorCheck> checks,
@@ -488,13 +615,14 @@ internal static class DoctorChecks
     private static void CheckPlatformServices(List<DoctorCheck> checks, DoctorProjectConfiguration project, IDoctorRuntime runtime)
     {
         const string id = "platform-services";
-        if (project.Host == RunicViewsHost.CsWebUi)
+        // With both hosts, Runic Desktop owns the native services, so its portal check runs.
+        if (!project.Hosts.Contains(RunicViewsHost.Desktop))
         {
+            if (!project.Hosts.Contains(RunicViewsHost.CsWebUi)) return;
             checks.Add(Pass(id, "CS-WebUI windows have no native owner: AddRunicPlatformServices() registers file dialogs, " +
                 "the clipboard and file launching that report OwnerUnavailable. Native services need the Runic Desktop host."));
             return;
         }
-        if (project.Host != RunicViewsHost.Desktop) return;
         switch (runtime.Platform.Os)
         {
             case "win":
@@ -582,9 +710,12 @@ internal static class DoctorChecks
     private static void CheckBrowser(List<DoctorCheck> checks, DoctorProjectConfiguration project,
         IDoctorRuntime runtime)
     {
-        if (project.Host == RunicViewsHost.Desktop)
+        // A CS-WebUI reference keeps the browser check when the project also references another host.
+        if (project.Hosts.Count != 0 && !project.Hosts.Contains(RunicViewsHost.CsWebUi))
         {
-            checks.Add(Pass("browser", "Not required: Runic Desktop renders the app in its own native window."));
+            checks.Add(Pass("browser", project.Hosts.Contains(RunicViewsHost.Desktop)
+                ? "Not required: Runic Desktop renders the app in its own native window."
+                : "Not required: the WPF host renders the app in its own WebView2 control."));
             return;
         }
         string? configured = runtime.GetEnvironmentVariable("RUNIC_BROWSER_PATH");

@@ -23,6 +23,13 @@ internal sealed record DoctorCommandResult(
     internal const string FailedCheckDiagnosticCode = "RCLI8101";
     internal const string WarningCheckDiagnosticCode = "RCLI8102";
 
+    /// <summary>
+    /// Every referenced Views host, each checked by doctor. Added after the first release of the payload, so it
+    /// follows <c>checks</c>; <c>host</c> keeps naming the one host the --rid checks follow.
+    /// </summary>
+    [JsonPropertyName("hosts")]
+    public IReadOnlyList<string> Hosts { get; init; } = [];
+
     [JsonIgnore]
     internal string HumanOutput { get; init; } = string.Empty;
 
@@ -45,6 +52,7 @@ internal sealed record DoctorCommandResult(
             [.. report.Checks.Select(static check => new DoctorCheckResult(
                 check.Name, StatusName(check.Status), check.Message, check.Remediation))])
         {
+            Hosts = [.. project.Hosts.Select(HostName)],
             HumanOutput = humanOutput,
         };
     }
@@ -97,6 +105,7 @@ internal sealed record DoctorCommandResult(
         {
             RunicViewsHost.CsWebUi => "cswebui",
             RunicViewsHost.Desktop => "desktop",
+            RunicViewsHost.Wpf => "wpf",
             _ => "unknown",
         };
 }

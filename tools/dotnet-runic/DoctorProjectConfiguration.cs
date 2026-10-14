@@ -14,6 +14,8 @@ internal enum RunicViewsHost
     Unknown,
     CsWebUi,
     Desktop,
+    /// <summary>Runic.Application.Views.Wpf, a WPF child WebView2 presentation; never <see cref="DoctorProjectConfiguration.Host"/>.</summary>
+    Wpf,
 }
 
 internal sealed record DoctorProjectConfiguration(
@@ -32,6 +34,19 @@ internal sealed record DoctorProjectConfiguration(
     internal const string CsWebUiPackage = "Runic.Application.Views.CsWebUi";
     internal const string DesktopPackage = "Runic.Application.Views.Desktop";
     internal const string DesktopGtk4Package = "Runic.Desktop.Gtk4";
+    internal const string WpfPackage = "Runic.Application.Views.Wpf";
+
+    private readonly IReadOnlyList<RunicViewsHost>? _hosts;
+
+    /// <summary>
+    /// Every Views host adapter the project references, in the order CS-WebUI, Runic Desktop, WPF. Doctor checks each
+    /// one. Defaults to <see cref="Host"/> alone.
+    /// </summary>
+    internal IReadOnlyList<RunicViewsHost> Hosts
+    {
+        get => _hosts ?? (Host == RunicViewsHost.Unknown ? [] : [Host]);
+        init => _hosts = value;
+    }
 
     /// <summary>The semicolon-separated RuntimeIdentifiers property.</summary>
     internal string RuntimeIdentifiers { get; init; } = string.Empty;
@@ -96,6 +111,7 @@ internal sealed record DoctorProjectConfiguration(
             development.ViteDevServerEnabled,
             DetectHost(document.RootElement))
         {
+            Hosts = DetectHosts(document.RootElement),
             RuntimeIdentifiers = Value("RuntimeIdentifiers"),
             PublishAot = IsTrue(Value("PublishAot")),
             SelfContained = IsTrue(Value("SelfContained")),
@@ -117,6 +133,16 @@ internal sealed record DoctorProjectConfiguration(
         bool csWebUi = References(evaluation, CsWebUiPackage);
         bool desktop = References(evaluation, DesktopPackage);
         return csWebUi ? RunicViewsHost.CsWebUi : desktop ? RunicViewsHost.Desktop : RunicViewsHost.Unknown;
+    }
+
+    /// <summary>Every Views host the evaluation references, in the order of <see cref="Hosts"/>.</summary>
+    internal static IReadOnlyList<RunicViewsHost> DetectHosts(JsonElement evaluation)
+    {
+        List<RunicViewsHost> hosts = [];
+        if (References(evaluation, CsWebUiPackage)) hosts.Add(RunicViewsHost.CsWebUi);
+        if (References(evaluation, DesktopPackage)) hosts.Add(RunicViewsHost.Desktop);
+        if (References(evaluation, WpfPackage)) hosts.Add(RunicViewsHost.Wpf);
+        return hosts;
     }
 
     /// <summary>Whether the evaluation has a package or project reference to <paramref name="name"/>.</summary>
