@@ -548,11 +548,6 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
-      # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms.
-      - name: Exercise page zoom keys in the macOS window
-        if: runner.os == 'macOS'
-        timeout-minutes: 5
-        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
       - name: Verify Windows administration native inspection
         if: runner.os == 'Windows'
         timeout-minutes: 5
@@ -642,6 +637,11 @@ jobs:
         run: |
           dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
           ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
+      # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms.
+      - name: Exercise page zoom keys in the macOS window
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
       - name: Prepare signed macOS sandbox fixture for manual permission evidence
         if: runner.os == 'macOS'
         shell: bash
