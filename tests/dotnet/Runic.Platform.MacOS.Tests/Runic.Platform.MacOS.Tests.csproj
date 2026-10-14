@@ -10,6 +10,13 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <TUnitImplicitUsings>false</TUnitImplicitUsings>
+    <!-- Program.cs also runs the executable as the privileged daemon that the NativePrivilegedRoot case installs. -->
+    <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
+    <!-- The launch daemon generated from the items below; PrivilegedGenerationTests reads it and MacOSDaemon. -->
+    <RunicMacPrivilegedDaemonLabel>eu.runic.tests.privileged</RunicMacPrivilegedDaemonLabel>
+    <RunicMacBundleIdentifier>eu.runic.tests</RunicMacBundleIdentifier>
+    <RunicMacTeamIdentifier>ABCDE12345</RunicMacTeamIdentifier>
+    <RunicMacPrivilegedDaemonProgram>Contents/MacOS/runic-tests-privileged</RunicMacPrivilegedDaemonProgram>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TUnit.Core" />
@@ -17,6 +24,17 @@
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.MacOS/Runic.Platform.MacOS.csproj" />
+    <!-- The generation tests also build small projects against the shipped targets. -->
+    <None Include="../../../packages/dotnet/Runic.Platform/buildTransitive/*;../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/*" Link="privileged-targets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <RunicPrivilegedAction Include="eu.runic.tests.activate" Program="/usr/libexec/runic-tests/helper" Verb="activate"
+                           Description="Activate" Message="Runic tests want to activate &lt;the &quot;system&quot;&gt; &amp; restart." />
+    <RunicPrivilegedAction Include="eu.runic.tests.bundled" Program="/usr/libexec/runic-tests/helper" Verb="bundled"
+                           Description="Bundled" Message="Runic tests want to run a bundled helper." MacProgram="Contents/MacOS/helper" MacProgramIdentifier="eu.runic.tests.helper" />
+    <RunicPrivilegedAction Include="eu.runic.tests.absolute" Program="/usr/libexec/runic-tests/helper" Verb="absolute"
+                           Description="Absolute" Message="Runic tests want to run an installed helper." MacProgram="/Library/Application Support/Runic Tests/helper" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
+  <!-- A package consumer gets these targets from the packages' buildTransitive folders. -->
+  <Import Project="../../../packages/dotnet/Runic.Platform/buildTransitive/Runic.Platform.targets" />
+  <Import Project="../../../packages/dotnet/Runic.Platform.MacOS/buildTransitive/Runic.Platform.MacOS.targets" />
 </Project>

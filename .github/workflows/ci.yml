@@ -674,6 +674,22 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=Native]"
+      # Privileged actions: the XPC protocol, both code-signing checks, posix_spawn and Authorization Services with the
+      # daemon served in the test process; then the NativeAOT executable as a root launch daemon in the system domain,
+      # with real rights and a temporary administrator (the runner's passwordless sudo). SMAppService registration
+      # needs a signed bundle and the user's approval, which CI cannot give.
+      - name: Verify macOS privileged actions with JIT and NativeAOT
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        shell: bash
+        # The daemon requires its clients to run with the hardened runtime; the linker's ad hoc signature has none.
+        run: |
+          codesign --force --sign - --options=runtime artifacts/clipboard-aot/Runic.Platform.MacOS.Tests
+          status=0
+          dotnet tests/dotnet/Runic.Platform.MacOS.Tests/bin/Release/net10.0/Runic.Platform.MacOS.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed || status=1
+          ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed || status=1
+          ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivilegedRoot]" --output detailed || status=1
+          exit $status
       - name: Publish and run platform runtime conformance with NativeAOT
         timeout-minutes: 10
         shell: bash

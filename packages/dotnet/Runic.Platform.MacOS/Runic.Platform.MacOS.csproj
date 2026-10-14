@@ -4,15 +4,18 @@
     <TargetFramework>$(RunicApplicationDefaultTargetFramework)</TargetFramework>
     <RunicApplicationShippingProject>true</RunicApplicationShippingProject>
     <PackageId>Runic.Platform.MacOS</PackageId>
-    <Description>AppKit owned file dialogs, scoped file access and text clipboard for Runic.</Description>
+    <Description>AppKit owned file dialogs, scoped file access, text clipboard, desktop services and privileged actions for Runic on macOS.</Description>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- The privileged-action targets report RUNICPA diagnostics with links to docs/diagnostics.md at the release tag. -->
+    <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform.Runtime/Runic.Platform.Runtime.csproj" />
     <None Include="README.md" Pack="true" PackagePath="/" />
+    <None Include="buildTransitive/Runic.Platform.MacOS.targets" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

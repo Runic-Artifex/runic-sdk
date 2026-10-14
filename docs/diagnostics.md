@@ -809,6 +809,74 @@ between the user's processes and root.
 run the action without a password, add a site rule in `/etc/polkit-1/rules.d`
 on the machines that need it.
 
+### RUNICPA101
+
+A `Runic.Platform.MacOS` daemon setting is missing or invalid: once
+`RunicMacPrivilegedDaemonLabel` is set, the label, `RunicMacBundleIdentifier`
+and `RunicMacPrivilegedDaemonIdentifier` must be reverse-DNS names,
+`RunicMacTeamIdentifier` the ten-character Team ID (the daemon's launch
+constraint names it), and `RunicMacPrivilegedDaemonProgram` the daemon
+executable's path in the bundle, starting with `Contents/`. These macOS checks
+(`RUNICPA101` to `RUNICPA107`) run after the shared ones; nothing is written
+while any of them remains. See the
+[macOS package guide](../packages/dotnet/Runic.Platform.MacOS/README.md#privileged-actions).
+
+**Fix:** set the properties, or remove `RunicMacPrivilegedDaemonLabel` from a
+project that does not build the macOS daemon.
+
+### RUNICPA102
+
+An action ID starts with a namespace macOS uses for its own authorization
+rights or rules (`system.`, `config.`, `com.apple.`, `authenticate`, `admin`,
+`allow` or `default`). The daemon defines a right named after each action ID,
+and must not redefine one of the system's.
+
+**Fix:** use the application's own reverse-DNS prefix.
+
+### RUNICPA103
+
+An action's `Message`, the text of the macOS authorization dialog, is longer
+than 1024 characters or contains a NUL character.
+
+**Fix:** shorten the message.
+
+### RUNICPA104
+
+`MacProgram` is not a path inside the bundle (such as `Contents/MacOS/helper`)
+or a normalized absolute path: it is empty or has empty, `.` or `..` segments.
+
+**Fix:** give the program's path inside the bundle, or its absolute path.
+
+### RUNICPA105
+
+`MacProgramIdentifier` is not a reverse-DNS code-signing identifier, or an
+action runs a program from the bundle (a relative `MacProgram`) without one. A
+program whose path someone other than root can change runs only when its
+signature names this identifier.
+
+**Fix:** set `MacProgramIdentifier` to the identifier the program is signed
+with (`codesign --identifier`).
+
+### RUNICPA106
+
+The macOS privileged daemon (`RunicMacPrivilegedDaemon`) is published, or built
+for a runtime identifier, without `PublishAot`. Code signing covers only the
+executable; a JIT runtime also loads assemblies, `*.deps.json` and
+`*.runtimeconfig.json` files that nothing checks, and the daemon runs as root.
+
+**Fix:** set `PublishAot` to `true` in the daemon's project.
+
+### RUNICPA107
+
+An application with a macOS privileged daemon is published, or built for a
+macOS runtime identifier, without `PublishAot` (outside
+`RunicMacPrivilegedDevelopmentSigning`). The daemon trusts the application's signature, but a JIT runtime
+reads startup hooks (`DOTNET_STARTUP_HOOKS`) and debugger and profiler settings
+from whoever starts it, so code the application does not contain could run
+under its signature.
+
+**Fix:** publish the application with `PublishAot` set to `true`.
+
 ## Privileged actions on Windows
 
 The `Runic.Platform.Windows.Elevation` build targets report these errors for
