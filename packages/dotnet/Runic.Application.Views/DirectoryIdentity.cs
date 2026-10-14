@@ -9,7 +9,7 @@ internal static partial class DirectoryIdentity
 {
     private static volatile bool _unsupported;
 
-    // The device and inode on Unix, the volume serial number and file index on Windows; null when unknown.
+    // The device, inode and birth time on Unix, the volume serial number and file index on Windows; null when unknown.
     public static string? Read(string directory)
     {
         if (_unsupported) return null;
@@ -40,7 +40,10 @@ internal static partial class DirectoryIdentity
         var device = OperatingSystem.IsMacOS()
             ? BinaryPrimitives.ReadUInt32LittleEndian(span) : BinaryPrimitives.ReadUInt64LittleEndian(span);
         var inode = BinaryPrimitives.ReadUInt64LittleEndian(span[8..]);
-        return $"{device}:{inode}";
+        // ext4 hands a freed inode to the next directory created, so a replacement can keep device and inode. The birth
+        // time (statx on Linux) tells them apart; where a file system lacks one, .NET falls back to the change time,
+        // which at worst restarts the watch after an entry changes.
+        return $"{device}:{inode}:{Directory.GetCreationTimeUtc(directory).Ticks}";
     }
 
     private static unsafe string? ReadWindows(string directory)

@@ -222,7 +222,7 @@ internal sealed class PathWatcherTests
         var identity = DirectoryIdentity.Read(directory);
         var format = OperatingSystem.IsMacOS() ? new[] { "-f", "%d:%i" } : ["-c", "%d:%i"];
         var expected = Output(root.Root, "stat", [.. format, directory]).Trim();
-        Require(identity == expected, $"DirectoryIdentity read {identity}, stat {expected}.");
+        Require(identity?.StartsWith(expected + ":", StringComparison.Ordinal) == true, $"DirectoryIdentity read {identity}, stat {expected}.");
         Directory.Delete(directory);
         Directory.CreateDirectory(directory);
         Require(DirectoryIdentity.Read(directory) != identity, "A recreated directory kept its identity.");
