@@ -308,7 +308,8 @@ internal sealed partial class MacStatusIcon : IDesktopStatusIcon
             using var pool = new Pool();
             if (_item == 0) return;
             var button = Send(_item, Sel("button"));
-            var image = Send(button, Sel("image"));
+            // The image the button draws: NSNoImage hides an image the button keeps after setImage: with nil.
+            var image = Send(button, Sel("imagePosition")) == NoImage ? 0 : Send(button, Sel("image"));
             snapshot = new Snapshot(true, image != 0, image != 0 && Bool(image, Sel("isTemplate")) != 0,
                 image == 0 ? 0 : (int)Send(Send(image, Sel("representations")), Sel("count")),
                 Text(Send(button, Sel("title"))), Text(Send(button, Sel("toolTip"))), Text(Send(button, Sel("accessibilityLabel"))));
