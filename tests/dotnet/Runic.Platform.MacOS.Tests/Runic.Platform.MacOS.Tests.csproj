@@ -29,7 +29,7 @@
     <RunicPrivilegedAction Include="eu.runic.tests.activate" Program="/usr/libexec/runic-tests/helper" Verb="activate"
                            Description="Activate" Message="Runic tests want to activate &lt;the &quot;system&quot;&gt; &amp; restart." />
     <RunicPrivilegedAction Include="eu.runic.tests.bundled" Program="/usr/libexec/runic-tests/helper" Verb="bundled"
-                           Description="Bundled" Message="Runic tests want to run a bundled helper." MacProgram="Contents/MacOS/helper" />
+                           Description="Bundled" Message="Runic tests want to run a bundled helper." MacProgram="Contents/MacOS/helper" MacProgramIdentifier="eu.runic.tests.helper" />
     <RunicPrivilegedAction Include="eu.runic.tests.absolute" Program="/usr/libexec/runic-tests/helper" Verb="absolute"
                            Description="Absolute" Message="Runic tests want to run an installed helper." MacProgram="/Library/Application Support/Runic Tests/helper" />
   </ItemGroup>

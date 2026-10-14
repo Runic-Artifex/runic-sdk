@@ -21,9 +21,16 @@ internal sealed class PrivilegedModelTests
     {
         var definition = Definition(Shell);
         Check(definition.PlistName == "eu.runic.tests.privileged.plist", definition.PlistName);
-        Check(definition.ApplicationRequirement == "anchor apple generic and identifier \"eu.runic.tests\" and certificate leaf[subject.OU] = \"ABCDE12345\"", definition.ApplicationRequirement);
-        Check(definition.DaemonRequirement == "anchor apple generic and identifier \"eu.runic.tests.privileged\" and certificate leaf[subject.OU] = \"ABCDE12345\"", definition.DaemonRequirement);
-        Check(definition.ProgramRequirement == "anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\"", definition.ProgramRequirement);
+        const string Distribution = " and (certificate leaf[field.1.2.840.113635.100.6.1.13] exists or certificate leaf[field.1.2.840.113635.100.6.1.9] exists)";
+        Check(definition.ApplicationRequirement == "anchor apple generic and identifier \"eu.runic.tests\" and certificate leaf[subject.OU] = \"ABCDE12345\"" + Distribution, definition.ApplicationRequirement);
+        Check(definition.DaemonRequirement == "anchor apple generic and identifier \"eu.runic.tests.privileged\" and certificate leaf[subject.OU] = \"ABCDE12345\"" + Distribution, definition.DaemonRequirement);
+        Check(definition.ProgramRequirement == "anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\"" + Distribution, definition.ProgramRequirement);
+        Check(!definition.DevelopmentSigning, "distribution signing by default");
+        var development = new MacPrivilegedDaemonDefinition("eu.runic.tests.privileged", "ABCDE12345", "eu.runic.tests", "eu.runic.tests.privileged", []) { DevelopmentSigning = true };
+        Check(development.ApplicationRequirement == "anchor apple generic and identifier \"eu.runic.tests\" and certificate leaf[subject.OU] = \"ABCDE12345\"", "development signing drops the marker");
+        var withIdentifier = new MacPrivilegedRight(Shell.Id, "m") { ProgramIdentifier = "eu.runic.tests.helper" };
+        Check(definition.RequirementFor(withIdentifier) == $"({definition.ProgramRequirement}) and identifier \"eu.runic.tests.helper\"", "a program's requirement names its identifier");
+        Check(definition.RequirementFor(definition.Rights[0]) is null, "no identifier, no requirement");
         Check(ReferenceEquals(definition.FindRight(Shell.Id), definition.Rights[0]) && definition.FindRight("eu.runic.tests.none") is null, "FindRight");
     }
 
@@ -43,6 +50,7 @@ internal sealed class PrivilegedModelTests
             Throws<ArgumentException>(() => _ = new MacPrivilegedRight("eu.runic.tests.a", "m") { Program = program }, $"program '{program}'");
         Check(new MacPrivilegedRight("eu.runic.tests.a", "m") { Program = "Contents/MacOS/helper" }.Program == "Contents/MacOS/helper", "bundle program");
         Check(new MacPrivilegedRight("eu.runic.tests.a", "m") { Program = "/usr/local/libexec/helper" }.Program == "/usr/local/libexec/helper", "absolute program");
+        Throws<ArgumentException>(() => _ = new MacPrivilegedRight("eu.runic.tests.a", "m") { ProgramIdentifier = "helper\"" }, "program identifier");
         Throws<ArgumentException>(() => _ = new MacPrivilegedDaemonDefinition("eu.label", "ABCDE12345", "eu.app", "eu.daemon", rights) { ApplicationRequirement = "" }, "empty requirement");
     }
 
@@ -55,6 +63,7 @@ internal sealed class PrivilegedModelTests
         Check(daemon.Rights.Select(r => r.ActionId).SequenceEqual(["eu.runic.tests.activate", "eu.runic.tests.bundled", "eu.runic.tests.absolute"]), "rights in order");
         Check(daemon.Rights[0].Message == "Runic tests want to activate <the \"system\"> & restart." && daemon.Rights[0].Program is null, "escaped message");
         Check(daemon.Rights[1].Program == "Contents/MacOS/helper" && daemon.Rights[2].Program == "/Library/Application Support/Runic Tests/helper", "MacProgram");
+        Check(daemon.Rights[1].ProgramIdentifier == "eu.runic.tests.helper" && daemon.Rights[2].ProgramIdentifier is null && !daemon.DevelopmentSigning, "MacProgramIdentifier");
         Check(PrivilegedActions.All.Select(a => a.Id).SequenceEqual(daemon.Rights.Select(r => r.ActionId)), "the shared declarations and the macOS rights come from the same items");
     }
 
@@ -86,8 +95,11 @@ internal sealed class PrivilegedModelTests
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Interrupted))) == "Failed:IoError", "broken connection");
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Failed, 2))) == "Failed:IoError", "spawn failure");
         Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Invalid))) == "Failed:IoError", "unknown reply");
+        Check(Describe(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Busy))) == "Failed:ResourceBusy", "too many runs");
+        foreach (var code in new[] { 8L, 9L, 10L })
+            Check(MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Untrusted, code)) is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData } failed && failed.Diagnostic!.Code == code, $"program code {code}");
         Throws<ArgumentException>(() => MacPrivilegedOutcome.FromReply(new(MacReplyStatus.Cancelled)), "cancelled has no result");
-        foreach (var status in new[] { MacReplyStatus.Ready, MacReplyStatus.Ran, MacReplyStatus.Denied, MacReplyStatus.Untrusted, MacReplyStatus.Rejected, MacReplyStatus.Cancelled, MacReplyStatus.Failed })
+        foreach (var status in new[] { MacReplyStatus.Ready, MacReplyStatus.Ran, MacReplyStatus.Denied, MacReplyStatus.Untrusted, MacReplyStatus.Rejected, MacReplyStatus.Cancelled, MacReplyStatus.Failed, MacReplyStatus.Busy })
             Check(MacReply.Parse(MacReply.Name(status)) == status, $"wire name of {status}");
         Check(MacReply.Parse("other") is null && MacReply.Parse(null) is null, "unknown wire names");
     }
@@ -112,6 +124,8 @@ internal sealed class PrivilegedModelTests
         Check(!(bool)rule["shared"], "not shared: the credential stays in this authorization");
         Check((long)rule["timeout"] == 30, "30 seconds: authd rejects any credential older than the timeout when the daemon checks again");
         Check((bool)rule["authenticate-user"] && !(bool)rule["allow-root"] && !(bool)rule["session-owner"], "always authenticate");
+        Check((long)rule["tries"] == 10000, "authd's default number of tries, which it reports on every rule");
+        Check(MacAuthorizationRule.MetadataKeys.SequenceEqual(["version", "created", "modified", "identifier", "requirement"]), "only authd's own metadata is tolerated");
         Check(((string)rule["comment"]).Contains("eu.runic.tests.shell", StringComparison.Ordinal), "comment names the action");
     }
 
@@ -137,17 +151,44 @@ internal sealed class PrivilegedModelTests
             ["/sticky/tool"] = new(File | 0x1ED, 0, 0),
         };
         MacProcess.FileStatus? Lstat(string path) => tree.TryGetValue(path, out var status) ? status : null;
-        Check(MacProgramTrust.Check("/usr/bin/tool", Lstat) == MacProgramCheck.RootOwned, "root-owned");
-        Check(MacProgramTrust.Check("/sticky/tool", Lstat) == MacProgramCheck.RootOwned, "a sticky group-writable directory");
-        Check(MacProgramTrust.Check("/usr/bin/writable", Lstat) == MacProgramCheck.NeedsSignature, "a world-writable program");
-        Check(MacProgramTrust.Check("/usr/bin/user", Lstat) == MacProgramCheck.NeedsSignature, "owned by a user");
-        Check(MacProgramTrust.Check("/usr/bin/link", Lstat) == MacProgramCheck.NeedsSignature, "a symbolic link");
-        Check(MacProgramTrust.Check("/Applications/Example.app/helper", Lstat) == MacProgramCheck.NeedsSignature, "admin-writable /Applications");
-        Check(MacProgramTrust.Check("/var/tool", Lstat) == MacProgramCheck.Missing, "nothing behind the link");
-        Check(MacProgramTrust.Check("/usr/bin/missing", Lstat) == MacProgramCheck.Missing, "missing");
-        Check(MacProgramTrust.Check("/usr/bin/data", Lstat) == MacProgramCheck.Missing, "not executable");
-        Check(MacProgramTrust.Check("/usr/bin/tool/x", Lstat) == MacProgramCheck.Missing, "a file as a directory");
-        Check(MacProgramTrust.Check("relative", Lstat) == MacProgramCheck.Missing, "relative");
+        var acls = new HashSet<string>();
+        MacProgramCheck Trust(string path) => MacProgramTrust.Check(path, Lstat, acls.Contains);
+        Check(Trust("/usr/bin/tool") == MacProgramCheck.RootOwned, "root-owned");
+        Check(Trust("/sticky/tool") == MacProgramCheck.RootOwned, "a sticky group-writable directory");
+        Check(Trust("/usr/bin/writable") == MacProgramCheck.NeedsSignature, "a world-writable program");
+        Check(Trust("/usr/bin/user") == MacProgramCheck.NeedsSignature, "owned by a user");
+        Check(Trust("/usr/bin/link") == MacProgramCheck.NeedsSignature, "a symbolic link");
+        Check(Trust("/Applications/Example.app/helper") == MacProgramCheck.NeedsSignature, "admin-writable /Applications");
+        Check(Trust("/var/tool") == MacProgramCheck.Missing, "nothing behind the link");
+        Check(Trust("/usr/bin/missing") == MacProgramCheck.Missing, "missing");
+        Check(Trust("/usr/bin/data") == MacProgramCheck.Missing, "not executable");
+        Check(Trust("/usr/bin/tool/x") == MacProgramCheck.Missing, "a file as a directory");
+        Check(Trust("relative") == MacProgramCheck.Missing, "relative");
+        acls.Add("/usr/bin");
+        Check(Trust("/usr/bin/tool") == MacProgramCheck.NeedsSignature, "an ACL that lets another user change the directory");
+        acls.Clear();
+        acls.Add("/usr/bin/tool");
+        Check(Trust("/usr/bin/tool") == MacProgramCheck.NeedsSignature, "an ACL that lets another user change the program");
+    }
+
+    [Test, DisplayName("program: a .NET application host beside its assemblies is not NativeAOT")]
+    public void ManagedPrograms()
+    {
+        var files = new HashSet<string> { "/opt/a/tool.runtimeconfig.json", "/opt/b/tool.deps.json", "/opt/c/tool.dll", "/opt/d/other.dll" };
+        foreach (var directory in new[] { "a", "b", "c" })
+            Check(MacManagedProgram.IsManaged($"/opt/{directory}/tool", files.Contains), directory);
+        Check(!MacManagedProgram.IsManaged("/opt/d/tool", files.Contains), "another program's assembly");
+    }
+
+    [Test, DisplayName("client: the hardened runtime is required; a debugged process and get-task-allow are refused")]
+    public void HardenedClients()
+    {
+        const long Runtime = 0x10000, GetTaskAllow = 0x4, Debugged = 0x10000000, Valid = 0x1;
+        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime, false), "hardened");
+        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid, false), "not hardened");
+        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | Debugged, true), "debugged");
+        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | GetTaskAllow, false), "get-task-allow");
+        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | GetTaskAllow, true), "get-task-allow with development signing");
     }
 
     [Test, DisplayName("output: lines, CRLF, long lines split between UTF-8 sequences, and a last unterminated line")]
@@ -196,6 +237,13 @@ internal sealed class PrivilegedModelTests
         authority.EnsureStatus = -60008;
         Check(server.Execute(Request(Shell.Id, ["true"]), 501, session) == new MacReply(MacReplyStatus.Failed, -60008), "a right that cannot be defined");
         Check(server.Prepare() == new MacReply(MacReplyStatus.Failed, -60008), "prepare reports it too");
+
+        for (var i = 0; i < MacPrivilegedDaemonServer.RunsPerClient; i++) Check(server.TryBeginRun(10), $"run {i} of a client");
+        Check(!server.TryBeginRun(10), "a client's limit");
+        for (var client = 11; client < 11 + MacPrivilegedDaemonServer.RunsInTotal - MacPrivilegedDaemonServer.RunsPerClient; client++) Check(server.TryBeginRun(client), $"client {client}");
+        Check(!server.TryBeginRun(99), "the total limit");
+        server.EndRun(10);
+        Check(server.TryBeginRun(99), "a finished run frees a place");
 
         Throws<ArgumentException>(() => _ = new MacPrivilegedDaemonServer([Shell, Id], Definition(Shell), authority, null), "an action without a right");
         Throws<ArgumentException>(() => _ = new MacPrivilegedDaemonServer([Shell], Definition(Shell, Id), authority, null), "a right without an action");

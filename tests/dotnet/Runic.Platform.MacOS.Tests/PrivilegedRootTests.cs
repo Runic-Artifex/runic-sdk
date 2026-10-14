@@ -54,6 +54,9 @@ internal sealed class PrivilegedRootTests
         try
         {
             CreateAdministrator(password);
+            // A right someone defined first, with keys the daemon's rule does not have; anyone may add a missing right.
+            _ = Sudo("security", "authorizationdb", "remove", RootId.Id);
+            Check(DefineRight(RootId.Id, 30, weaken: true) == 0, "anyone may add a missing right");
             Install();
             var host = new CredentialHost(definition, User, password);
             var provider = new MacPrivilegedProvider(Actions, definition, host);
@@ -82,7 +85,15 @@ internal sealed class PrivilegedRootTests
                 try { Check(MacSystemAuthority.Matches(stored, right), $"{right.ActionId} is the daemon's rule"); }
                 finally { MacSecurity.Release(stored); }
             }
-            Console.WriteLine("PASS rights defined by the daemon: class user, group admin, shared false, timeout 30, the action's prompt");
+            var replaced = MacSecurity.CopyRight(RootId.Id);
+            try
+            {
+                var keys = MacSecurity.Keys(replaced);
+                Console.WriteLine("stored keys of the replaced right: " + string.Join(", ", keys));
+                Check(!keys.Contains("extract-password") && MacSecurity.ToNumber(MacSecurity.Get(replaced, "tries")) == 10000, "the pre-defined right's extra keys are gone");
+            }
+            finally { MacSecurity.Release(replaced); }
+            Console.WriteLine("PASS rights defined by the daemon: class user, group admin, shared false, timeout 30, the action's prompt; a pre-defined weaker right was replaced");
 
             host.Mode = CredentialMode.WrongPassword;
             result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
@@ -182,12 +193,17 @@ internal sealed class PrivilegedRootTests
         File.Delete(plist);
     }
 
-    private static unsafe int DefineRight(string name, long timeout)
+    private static unsafe int DefineRight(string name, long timeout, bool weaken = false)
     {
         var status = MacSecurity.AuthorizationCreate(null, null, 0, out var authorization);
         if (status != 0) return status;
         var definition = MacSystemAuthority.CreateDefinition(name);
         MacSecurity.Set(definition, "timeout", MacSecurity.CreateNumber(timeout));
+        if (weaken)
+        {
+            MacSecurity.Set(definition, "extract-password", MacSecurity.Retain(MacSecurity.True));
+            MacSecurity.Set(definition, "tries", MacSecurity.CreateNumber(1));
+        }
         var description = MacSecurity.CreateString("Runic tests check the credential timeout.");
         try { return MacSecurity.AuthorizationRightSet(authorization, name, definition, description, 0, 0); }
         finally

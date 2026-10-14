@@ -21,7 +21,8 @@ internal sealed class PrivilegedGenerationTests
         <RunicPrivilegedAction Include="org.example.app.activate" Program="/usr/libexec/example/helper" Verb="activate"
                                Description="Activate" Message="Authentication is required to activate &lt;the system&gt; &amp; reboot." />
         <RunicPrivilegedAction Include="org.example.app.bundled" Program="/usr/libexec/example/helper" Verb="bundled"
-                               Description="Bundled" Message="Run the bundled helper." MacProgram="Contents/MacOS/helper" />
+                               Description="Bundled" Message="Run the bundled helper." MacProgram="Contents/MacOS/helper"
+                               MacProgramIdentifier="org.example.app.helper" />
         """;
 
     [Test, DisplayName("generation: the launchd property list with Mach service, bundle program and launch constraint")]
@@ -52,7 +53,8 @@ internal sealed class PrivilegedGenerationTests
         Check(source.Contains("MacOSDaemon { get; } = new(", StringComparison.Ordinal), "MacOSDaemon");
         Check(source.Contains("\"org.example.app.privileged\", \"ABCDE12345\", \"org.example.app\", \"org.example.app.privileged\"", StringComparison.Ordinal), source);
         Check(source.Contains("new(\"org.example.app.activate\", \"Authentication is required to activate <the system> & reboot.\"),", StringComparison.Ordinal), "message");
-        Check(source.Contains("{ Program = \"Contents/MacOS/helper\" }", StringComparison.Ordinal), "MacProgram");
+        Check(source.Contains("{ Program = \"Contents/MacOS/helper\", ProgramIdentifier = \"org.example.app.helper\" }", StringComparison.Ordinal), "MacProgram and MacProgramIdentifier");
+        Check(source.Contains("        });\n}", StringComparison.Ordinal) && !source.Contains("DevelopmentSigning", StringComparison.Ordinal), "distribution signing by default");
         Check(File.Exists(project.SharedSource), "Runic.Platform wrote the declarations after the macOS target");
 
         var written = File.GetLastWriteTimeUtc(project.Plist);
@@ -77,6 +79,7 @@ internal sealed class PrivilegedGenerationTests
         using var project = new FixtureProject("""
             <RunicPrivilegedAction Include="system.example.run" Program="/opt/a" Verb="a" Description="d" Message="m" />
             <RunicPrivilegedAction Include="org.example.app.up" Program="/opt/b" Verb="b" Description="d" Message="m" MacProgram="Contents/../helper" />
+            <RunicPrivilegedAction Include="org.example.app.unnamed" Program="/opt/c" Verb="c" Description="d" Message="m" MacProgram="Contents/MacOS/helper" />
             """, """
             <RunicMacPrivilegedDaemonLabel>org.example.app.privileged</RunicMacPrivilegedDaemonLabel>
             <RunicMacBundleIdentifier>org.example.app</RunicMacBundleIdentifier>
@@ -85,11 +88,34 @@ internal sealed class PrivilegedGenerationTests
             """);
         var (exit, output) = await project.BuildAsync();
         Check(exit != 0, output);
-        foreach (var code in new[] { "RUNICPA101", "RUNICPA102", "RUNICPA104" })
+        foreach (var code in new[] { "RUNICPA101", "RUNICPA102", "RUNICPA104", "RUNICPA105" })
             Check(output.Contains(code, StringComparison.Ordinal), $"{code} in {output}");
         Check(output.Contains("RunicMacTeamIdentifier 'abc'", StringComparison.Ordinal) && output.Contains("RunicMacPrivilegedDaemonProgram", StringComparison.Ordinal), output);
         Check(!File.Exists(project.Plist) && !File.Exists(project.MacSource) && !File.Exists(project.SharedSource), "nothing written");
         Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
+    }
+
+    [Test, DisplayName("generation: development signing is explicit, and the daemon and a published application must be NativeAOT")]
+    public async Task DevelopmentSigningAndNativeAotAsync()
+    {
+        using (var project = new FixtureProject(Items, Properties + "<RunicMacPrivilegedDevelopmentSigning>true</RunicMacPrivilegedDevelopmentSigning>"))
+        {
+            var (exit, output) = await project.BuildAsync();
+            Check(exit == 0 && File.ReadAllText(project.MacSource).Contains("}) { DevelopmentSigning = true };", StringComparison.Ordinal), output);
+        }
+        using (var project = new FixtureProject(Items, Properties))
+        {
+            var (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedDaemon", "-p:RunicMacPrivilegedDaemon=true", "-p:RuntimeIdentifier=osx-arm64");
+            Check(exit != 0 && output.Contains("RUNICPA106", StringComparison.Ordinal), "a JIT daemon for a runtime: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedDaemon", "-p:RunicMacPrivilegedDaemon=true", "-p:RuntimeIdentifier=osx-arm64", "-p:PublishAot=true");
+            Check(exit == 0, "a NativeAOT daemon: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedDaemon", "-p:RunicMacPrivilegedDaemon=true");
+            Check(exit == 0, "a portable development build: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedPublish", "-p:RuntimeIdentifier=osx-arm64");
+            Check(exit != 0 && output.Contains("RUNICPA107", StringComparison.Ordinal), "a JIT application published for macOS: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedPublish", "-p:RuntimeIdentifier=linux-x64");
+            Check(exit == 0, "another platform: " + output);
+        }
     }
 
     [Test, DisplayName("generation: invalid shared declarations stop the macOS target")]
@@ -143,7 +169,7 @@ internal sealed class PrivilegedGenerationTests
         public string MacSource => Path.Combine(_directory, "obj", "runic-privileged-macos", "PrivilegedActions.MacOS.g.cs");
         public string SharedSource => Path.Combine(_directory, "obj", "runic-privileged", "PrivilegedActions.g.cs");
 
-        public async Task<(int ExitCode, string Output)> BuildAsync()
+        public async Task<(int ExitCode, string Output)> BuildAsync(params string[] extra)
         {
             var start = new ProcessStartInfo(Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host ? host : "dotnet")
             {
@@ -152,8 +178,9 @@ internal sealed class PrivilegedGenerationTests
                 UseShellExecute = false,
                 WorkingDirectory = _directory,
             };
-            foreach (var argument in new[] { "msbuild", "fixture.proj", "-t:RunicGeneratePrivilegedActions", "-nologo", "-nodeReuse:false", "-v:m" })
-                start.ArgumentList.Add(argument);
+            string[] arguments = ["msbuild", "fixture.proj", .. extra.Any(e => e.StartsWith("-t:", StringComparison.Ordinal)) ? Array.Empty<string>() : ["-t:RunicGeneratePrivilegedActions"],
+                "-nologo", "-nodeReuse:false", "-v:m", .. extra];
+            foreach (var argument in arguments) start.ArgumentList.Add(argument);
             start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
             using var process = Process.Start(start)!;
             var stdout = process.StandardOutput.ReadToEndAsync();

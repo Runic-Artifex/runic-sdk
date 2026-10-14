@@ -634,8 +634,9 @@ describes the API, the build properties and the packaging.
   action's right (its `Message`, and `MacProgram` when set).
 - **Application.** `MacPrivilegedActions` registers the daemon with
   `SMAppService.daemon(plistName:)` and runs actions.
-- **Daemon.** The daemon executable's `Main` calls `MacPrivilegedDaemon.Run`,
-  the counterpart of `PolkitHelper`.
+- **Daemon.** The daemon executable, a NativeAOT project with
+  `RunicMacPrivilegedDaemon` set, calls `MacPrivilegedDaemon.Run` from its
+  `Main`; it is the counterpart of `PolkitHelper`.
 
 ### A run
 
@@ -684,10 +685,17 @@ sequences, and decoded by the application as on Linux.
 
 The daemon defines each right with `AuthorizationRightSet` as `class user`,
 `group admin`, `shared false`, `timeout 30`, `authenticate-user true`,
-`allow-root false` and `session-owner false`, with the action's message as the
-prompt. Not shared: authd stores the credential in this authorization only,
-never in the session, so it satisfies no other right and no other process, and
-the application creates a new authorization for every run.
+`allow-root false`, `session-owner false` and `tries 10000` (authd's default,
+which it reports on every rule), with the action's message as the prompt. Not
+shared: authd stores the credential in the `AuthorizationRef` that obtained it,
+never in the session, so other processes and other authorizations cannot use
+it. Within that authorization the administrator's credential could satisfy
+another administrator right for 30 seconds, so the application creates a new
+`AuthorizationRef` for every run and asks it for this one right only. After a
+successful check the daemon frees its copy with
+`kAuthorizationFlagDestroyRights`, which removes the credential from the
+authorization in authd: the external form authorizes one run, even if it was
+copied, and the application destroys the rights again when the run ends.
 
 **Timeout 0 breaks the daemon's check.** authd's engine compares a
 credential's age with the rule's timeout whenever it evaluates a right
@@ -708,8 +716,15 @@ run ends.
 allows any process to add a right that does not exist yet, so a local process
 could define the action's right first with a weaker rule. The daemon compares
 the stored definition with its own at start, at every `prepare` and before
-every check, and replaces it when it differs, which root may (`config.modify.`
-requires an administrator or root). After that, only administrators can change
+every check: every key of its rule with its value, a `default-prompt` with
+exactly the message, and otherwise only authd's metadata (`version`, `created`,
+`modified`, `identifier`, `requirement`, which authd does not evaluate). Any
+other key (`mechanisms`, `extract-password`, `entitled`, another `tries`, a
+localized prompt, `default-button`) could change how the right is evaluated or
+shown, so the daemon removes the right and defines it again, which root may
+(`config.remove.` and `config.modify.` require an administrator or root). The
+root test pre-defines a right with `extract-password` and one try and sees it
+replaced. After that, only administrators can change
 it. Action IDs in namespaces macOS uses for its own rights (`system.`,
 `config.`, `com.apple.`, and the rule names) are build errors (`RUNICPA102`)
 and rejected by `MacPrivilegedRight`, so the daemon never redefines a system
@@ -727,13 +742,38 @@ service, and untrusted input that reaches the application.
   `SpawnConstraint` lets launchd run it only when it is signed by the Team ID
   with the daemon's identifier, so a replaced daemon binary does not run as
   root. Launch constraints need macOS 14, which the provider requires (the
-  SDK's baseline is 15). `Run` also refuses to serve unless it is root, its
-  parent is launchd and its own code satisfies `DaemonRequirement`.
+  SDK's baseline is 15). `Run` also refuses to serve unless it is NativeAOT,
+  root, its parent is launchd and its own code satisfies `DaemonRequirement`.
+- **Only signed code runs as root.** Code signing covers a Mach-O executable,
+  not what a JIT .NET runtime loads beside it: assemblies, `*.deps.json` and
+  `*.runtimeconfig.json` (startup hooks, probing paths), and possibly a shared
+  framework. So the daemon must be NativeAOT: the build fails a publish, or a
+  build for a runtime identifier, of a `RunicMacPrivilegedDaemon` project
+  without `PublishAot` (`RUNICPA106`), and `Run` refuses when
+  `RuntimeFeature.IsDynamicCodeSupported`. A program that needs a signature
+  (below) is refused when a `.runtimeconfig.json`, `.deps.json` or `.dll` of
+  its name lies beside it; programs must be NativeAOT or not .NET. A
+  framework-dependent .NET program in a path only root can change is accepted,
+  as on Linux: everything it loads is root's, and it gets none of the caller's
+  `DOTNET_` variables.
 - **Who talks to the daemon.** Only code that satisfies
-  `ApplicationRequirement`: libxpc checks the peer's audit token for every
-  message, and the daemon checks every run message's sender again. A peer that
-  fails is cancelled. The application must use the hardened runtime, so no
-  other process can inject code into it and borrow its signature.
+  `ApplicationRequirement`: the Team ID, the application's identifier and a
+  Developer ID Application or Mac App Store certificate (`certificate
+  leaf[field.1.2.840.113635.100.6.1.13] exists` or `...6.1.9 exists`), so a
+  development certificate of the same team does not pass; the
+  `RunicMacPrivilegedDevelopmentSigning` mode drops the marker and must not
+  ship. libxpc checks the peer's audit token for every message, and the daemon
+  checks every run message's sender again, including its kernel status: the
+  hardened runtime (`CS_RUNTIME`) is required, and a process being debugged
+  (`CS_DEBUGGED`) or with `get-task-allow` (outside development mode) is refused.
+  A peer that fails is cancelled. This narrows, but does not rule out, code
+  running inside a correctly signed client: the hardened runtime blocks
+  `DYLD_` injection, unsigned libraries and attaching to the process, but a JIT
+  .NET client reads `DOTNET_STARTUP_HOOKS` and its debugger and profiler
+  settings from whoever starts it, and code signing does not cover its
+  assemblies. A client published for macOS must therefore be NativeAOT
+  (`RUNICPA107`). A vulnerability in the application itself, or an older signed
+  version of it, remains a way in.
 - **What the application can ask for.** Declared actions with arguments within
   their declarations, each run behind an administrator's password. A
   compromised application can ask for any declared action, but not run anything
@@ -742,16 +782,32 @@ service, and untrusted input that reaches the application.
 - **Which program runs.** A program whose every path component is a real
   directory owned by root and not writable by others (nor its group, unless
   sticky), and which is a root-owned executable writable only by root, runs
-  directly, as on Linux. Any other program, including one in the bundle and any
-  path through a symbolic link, must satisfy `ProgramRequirement` (by default
-  the Team ID): `SecStaticCodeCheckValidity` with strict validation before the
-  start, then `SecCodeCheckValidity` of the started, still suspended process
+  directly, as on Linux; an extended ACL that lets anyone but root write, add,
+  delete, change permissions or take ownership on any component counts as not
+  root's (`acl_get_link_np`). Any other program, including one in the bundle and
+  any path through a symbolic link, must satisfy `ProgramRequirement` (by
+  default the Team ID and the distribution marker) and `identifier` with the
+  item's `MacProgramIdentifier` (`RUNICPA105` for a bundle program without one;
+  without it such a program is refused at run time):
+  `SecStaticCodeCheckValidity` with strict validation before the start, then
+  `SecCodeCheckValidity` of the started, still suspended process
   (`POSIX_SPAWN_START_SUSPENDED`, found by its process ID, which cannot be
   reused while the daemon has not reaped it), so a file swapped after the first
-  check is caught before it runs. A failure kills the process and is
-  `InvalidData`. Libraries the program loads later are its own concern: sign it
-  with the hardened runtime, whose library validation accepts only the team's
-  libraries.
+  check is caught before it runs. The suspended process must also run with the
+  hardened runtime or library validation (`CS_RUNTIME` or `CS_REQUIRE_LV` in its
+  kernel status), so the libraries it loads later must be Apple's or the team's.
+  A failure kills the process and is `InvalidData`.
+- **Programs in the bundle.** The daemon does not require the bundle to be
+  root's: an application dragged to `/Applications` belongs to the user, and
+  requiring a root-owned bundle would rule out bundle programs for most
+  installations. What runs is proven by its signature instead: the identifier,
+  the Team ID, the distribution certificate and the hardened runtime of the code
+  the kernel loaded. macOS 13 and later also protect a signed application bundle
+  from changes by other applications (App Management in Privacy & Security),
+  unless the user allows them. The residual risk is a downgrade: someone who can
+  write the bundle can put back an older signed version of the program, with
+  any vulnerability it had. Keep programs that run as root small, and install
+  them in a root-owned location (an installer package) where that matters.
 - **Process state.** launchd starts the daemon with a clean state, and the
   caller chooses none of it. The program gets `/` as working directory, umask
   022, default dispositions for every signal, an empty signal mask, no inherited
@@ -762,9 +818,16 @@ service, and untrusted input that reaches the application.
   authd. libxpc checks the daemon's requirement on what the daemon sends back,
   so the application sends the form only after `prepare` came back from a peer
   that satisfied `DaemonRequirement` (a service that fails it receives
-  `prepare` and nothing else). The daemon accepts it only from the application, it grants only the
-  action's right for 30 seconds, and the application destroys it when the run
+  `prepare` and nothing else). The daemon accepts it only from the application,
+  checks only the action's right, and destroys the rights after the check, so
+  the form authorizes one run; the application destroys them too when the run
   ends. The root test replays a finished run's form and is denied.
+- **Denial of service.** A connection that sends no valid message within 10
+  seconds is closed. A client process runs at most 2 actions at a time and all
+  clients together 8; more are `ResourceBusy`. Output is read with `poll`, so
+  after the program exited and the five-second drain ended, the readers stop and
+  close their pipes even when a process the program started still holds them
+  open.
 
 Compared with Linux, authorization outcomes no longer share the program's exit
 code (pkexec's 126 and 127), and no other user can start the program as root
@@ -801,7 +864,10 @@ Cancellation matches Linux as far as macOS allows:
 - A compromised application can run any declared action with its declared
   arguments, each time with an administrator's password.
 - A program in the bundle relies on the hardened runtime's library validation
-  for the libraries it loads after the check.
+  for the libraries it loads after the check, and someone who can write the
+  bundle can put back an older signed version of it.
+- Code running inside a correctly signed application, through a vulnerability
+  of the application, passes the daemon's client checks.
 
 ## Follow-ups
 

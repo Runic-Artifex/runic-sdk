@@ -104,41 +104,70 @@ internal sealed class PrivilegedNativeTests
         }
     }
 
-    [Test, Explicit, Category("NativePrivileged"), DisplayName("native: a program that users can change runs only with the required signature")]
+    [Test, Explicit, Category("NativePrivileged"), DisplayName("native: a program that users can change runs only signed with its identifier and the hardened runtime")]
     public async Task ProgramSignatureAsync()
     {
         if (!OperatingSystem.IsMacOS()) return;
         var directory = Directory.CreateTempSubdirectory("runic-privileged-");
         try
         {
-            // An Apple-signed copy outside the system volume: its path is the user's, so its signature decides.
-            var echo = Path.Combine(directory.FullName, "echo");
-            File.Copy("/bin/echo", echo);
+            // Programs in the user's temporary directory: their path is the user's, so their signature decides.
+            var source = Path.Combine(directory.FullName, "echo.c");
+            File.WriteAllText(source, "#include <stdio.h>\nint main(int c, char **v) { for (int i = 1; i < c; i++) puts(v[i]); return 0; }\n");
+            string Build(string name, bool hardened)
+            {
+                var path = Path.Combine(directory.FullName, name);
+                Tool("/usr/bin/cc", "-o", path, source);
+                string[] options = hardened ? ["--options=runtime"] : [];
+                Tool("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", "eu.runic.tests.echo", .. options, path]);
+                return path;
+            }
+            var hardened = Build("hardened", true);
+            var plain = Build("plain", false);
+            var managed = Build("managed", true);
+            File.WriteAllText(managed + ".runtimeconfig.json", "{}");
             var script = Path.Combine(directory.FullName, "script");
             File.WriteAllText(script, "#!/bin/sh\necho unsigned\n");
             File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            var signed = new PrivilegedActionDeclaration("eu.runic.tests.copy", echo) { MaximumArguments = 1 };
-            var unsigned = new PrivilegedActionDeclaration("eu.runic.tests.script", script);
-            var missing = new PrivilegedActionDeclaration("eu.runic.tests.missing", Path.Combine(directory.FullName, "missing"));
+            PrivilegedActionDeclaration Declare(string id, string program) => new($"eu.runic.tests.{id}", program) { MaximumArguments = 1 };
+            var signed = Declare("signed", hardened);
+            var notHardened = Declare("not-hardened", plain);
+            var dotnet = Declare("managed", managed);
+            var unnamed = Declare("unnamed", hardened);
+            var renamed = Declare("renamed", hardened);
+            var unsigned = Declare("script", script);
+            var missing = Declare("missing", Path.Combine(directory.FullName, "missing"));
+            var identifiers = new Dictionary<string, string>
+            {
+                [signed.Id] = "eu.runic.tests.echo", [notHardened.Id] = "eu.runic.tests.echo", [dotnet.Id] = "eu.runic.tests.echo",
+                [renamed.Id] = "eu.runic.tests.other", [unsigned.Id] = "eu.runic.tests.echo", [missing.Id] = "eu.runic.tests.echo",
+            };
 
-            using (var daemon = new InProcessDaemon([signed, unsigned, missing], programRequirement: "anchor apple"))
+            // The ad hoc signatures have no certificate; the requirement here is only the identifier the daemon adds.
+            using var daemon = new InProcessDaemon([signed, notHardened, dotnet, unnamed, renamed, unsigned, missing], programRequirement: "always", identifiers: identifiers);
+            var lines = new List<PrivilegedActionOutput>();
+            var result = await daemon.Provider.RunAsync(new(signed, ["signed"]) { Output = lines.Add });
+            Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 } && lines.Single().Text == "signed",
+                $"checked on disk and in the suspended process: {Describe(result)} {Dump(lines)}");
+            foreach (var (action, code) in new[] { (notHardened, 10L), (dotnet, 8L), (unnamed, 9L), (renamed, 3L), (unsigned, 3L), (missing, 1L) })
             {
-                var lines = new List<PrivilegedActionOutput>();
-                var result = await daemon.Provider.RunAsync(new(signed, ["signed"]) { Output = lines.Add });
-                Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 } && lines.Single().Text == "signed",
-                    $"checked on disk and in the suspended process: {Describe(result)} {Dump(lines)}");
-                result = await daemon.Provider.RunAsync(new(unsigned, []));
-                Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 3 }, "unsigned: " + Describe(result));
-                result = await daemon.Provider.RunAsync(new(missing, []));
-                Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 1 }, "missing: " + Describe(result));
-            }
-            using (var daemon = new InProcessDaemon([signed], programRequirement: "identifier \"eu.runic.tests.nothing\" and anchor apple generic"))
-            {
-                var result = await daemon.Provider.RunAsync(new(signed, ["x"]));
-                Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 3 }, "another signature: " + Describe(result));
+                result = await daemon.Provider.RunAsync(new(action, []));
+                Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData } failed && failed.Diagnostic!.Code == code,
+                    $"{action.Id}: {Describe(result)} {(result as PlatformResult<PrivilegedActionCompletion>.Failed)?.Diagnostic}");
             }
         }
         finally { directory.Delete(recursive: true); }
+    }
+
+    private static void Tool(string file, params string[] arguments)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in arguments) start.ArgumentList.Add(argument);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        Check(process.ExitCode == 0, $"{file} {string.Join(' ', arguments)}: {output.Result}{error}");
     }
 
     [Test, Explicit, Category("NativePrivileged"), DisplayName("native: both sides check the other's code signature; the daemon checks its own declarations")]
@@ -217,10 +246,51 @@ internal sealed class PrivilegedNativeTests
             MacSecurity.Set(definition, "default-prompt", prompts);
             Check(MacSystemAuthority.Matches(definition, right), "the daemon's own definition matches");
             Check(!MacSystemAuthority.Matches(definition, new MacPrivilegedRight(right.ActionId, "Another message.")), "another message");
+            MacSecurity.Set(definition, "created", MacSecurity.CreateNumber(1));
+            MacSecurity.Set(definition, "identifier", MacSecurity.CreateString("eu.runic.tests"));
+            Check(MacSystemAuthority.Matches(definition, right), "authd's metadata is tolerated");
             MacSecurity.Set(definition, "timeout", MacSecurity.CreateNumber(0));
             Check(!MacSystemAuthority.Matches(definition, right), "another timeout");
         }
         finally { MacSecurity.Release(definition); }
+
+        // Any key the rule does not have can change how the right is evaluated or shown: the daemon replaces it.
+        foreach (var (key, value) in new (string, Func<nint>)[]
+        {
+            ("mechanisms", () => MacSecurity.CreateString("builtin:authenticate")),
+            ("extract-password", () => MacSecurity.Retain(MacSecurity.True)),
+            ("entitled", () => MacSecurity.Retain(MacSecurity.True)),
+            ("default-button", () => MacSecurity.CreateDictionary()),
+        })
+        {
+            var extended = MatchingDefinition(right);
+            try
+            {
+                MacSecurity.Set(extended, key, value());
+                Check(!MacSystemAuthority.Matches(extended, right), $"an extra '{key}'");
+            }
+            finally { MacSecurity.Release(extended); }
+        }
+        var localized = MatchingDefinition(right);
+        try
+        {
+            var prompts = MacSecurity.CreateDictionary();
+            MacSecurity.Set(prompts, "", MacSecurity.CreateString(right.Message));
+            MacSecurity.Set(prompts, "de", MacSecurity.CreateString("Ein anderer Text."));
+            MacSecurity.Set(localized, "default-prompt", prompts);
+            Check(!MacSystemAuthority.Matches(localized, right), "a localized prompt");
+        }
+        finally { MacSecurity.Release(localized); }
+    }
+
+    private static nint MatchingDefinition(MacPrivilegedRight right)
+    {
+        var definition = MacSystemAuthority.CreateDefinition(right.ActionId);
+        var prompts = MacSecurity.CreateDictionary();
+        MacSecurity.Set(prompts, "", MacSecurity.CreateString(right.Message));
+        MacSecurity.Set(definition, "default-prompt", prompts);
+        Check(MacSystemAuthority.Matches(definition, right), "the daemon's own definition matches");
+        return definition;
     }
 
     /// <summary>The daemon's server on an anonymous listener in this process, and a provider that reaches it through its endpoint.</summary>
@@ -229,12 +299,12 @@ internal sealed class PrivilegedNativeTests
         private readonly nint _queue, _listener, _endpoint;
 
         public InProcessDaemon(PrivilegedActionDeclaration[] actions, string? programRequirement = null, string? daemonRequirement = null,
-            string? applicationRequirement = null, PrivilegedActionDeclaration[]? clientActions = null)
+            string? applicationRequirement = null, PrivilegedActionDeclaration[]? clientActions = null, IReadOnlyDictionary<string, string>? identifiers = null)
         {
             var self = MacSecurity.CopySelfDesignatedRequirement() ?? throw new InvalidOperationException("The test process has no designated requirement.");
             MacPrivilegedDaemonDefinition Define(PrivilegedActionDeclaration[] declared) => new(
                 "eu.runic.tests.privileged", "ABCDE12345", "eu.runic.tests", "eu.runic.tests.privileged",
-                declared.Select(a => new MacPrivilegedRight(a.Id, $"Runic tests want to run {a.Id}.")))
+                declared.Select(a => new MacPrivilegedRight(a.Id, $"Runic tests want to run {a.Id}.") { ProgramIdentifier = identifiers?.GetValueOrDefault(a.Id) }))
             {
                 ApplicationRequirement = applicationRequirement ?? self,
                 DaemonRequirement = self,

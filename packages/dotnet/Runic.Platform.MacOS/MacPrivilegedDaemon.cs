@@ -33,8 +33,8 @@ public static class MacPrivilegedDaemon
 {
     /// <summary>
     /// Serves the actions until launchd stops the daemon. Returns only when the daemon cannot start: not macOS 14,
-    /// not root, not started by launchd, not signed as <see cref="MacPrivilegedDaemonDefinition.DaemonRequirement"/>,
-    /// or the rights cannot be defined.
+    /// not NativeAOT, not root, not started by launchd, not signed as
+    /// <see cref="MacPrivilegedDaemonDefinition.DaemonRequirement"/>, or the rights cannot be defined.
     /// </summary>
     /// <param name="actions">The declared actions, usually the generated <c>PrivilegedActions.All</c>.</param>
     /// <param name="daemon">The definition, usually the generated <c>PrivilegedActions.MacOSDaemon</c>.</param>
@@ -47,6 +47,9 @@ public static class MacPrivilegedDaemon
     {
         var server = new MacPrivilegedDaemonServer(actions, daemon, authority, BundleRoot());
         if (!OperatingSystem.IsMacOSVersionAtLeast(14)) return 2;
+        // A JIT runtime loads assemblies, deps.json and runtimeconfig.json files (startup hooks, probing paths) that
+        // code signing does not cover, so only a NativeAOT daemon proves what runs as root.
+        if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported) return 8;
         // launchd (process 1) starts the daemon as root with a clean environment; refuse anything else.
         if (MacProcess.GetEffectiveUserId() != 0 || MacProcess.GetParentProcessId() != 1) return 3;
         _ = MacProcess.Umask(0x12); // 022, inherited by every program
@@ -98,12 +101,17 @@ internal sealed unsafe class MacSystemAuthority : IMacDaemonAuthority
             }
             finally { MacSecurity.Release(existing); }
         }
-        // Anyone may add a right that does not exist yet, so a definition that differs is replaced: root may modify any.
+        // Anyone may add a right that does not exist yet, so a definition that differs is removed and defined again
+        // (root may remove and modify any right), which also drops keys and prompts the daemon's rule does not have.
         var status = MacSecurity.AuthorizationCreate(null, null, 0, out var authorization);
         if (status != 0) return status;
         var definition = CreateDefinition(right.ActionId);
         var description = MacSecurity.CreateString(right.Message);
-        try { return MacSecurity.AuthorizationRightSet(authorization, right.ActionId, definition, description, 0, 0); }
+        try
+        {
+            if (existing != 0) _ = MacSecurity.AuthorizationRightRemove(authorization, right.ActionId);
+            return MacSecurity.AuthorizationRightSet(authorization, right.ActionId, definition, description, 0, 0);
+        }
         finally
         {
             MacSecurity.Release(description);
@@ -130,7 +138,9 @@ internal sealed unsafe class MacSystemAuthority : IMacDaemonAuthority
         finally
         {
             Marshal.FreeCoTaskMem(text);
-            _ = MacSecurity.AuthorizationFree(authorization, 0);
+            // Destroying the rights removes the credential from the authorization in authd, so the external form
+            // authorizes one run only, even if it was copied.
+            _ = MacSecurity.AuthorizationFree(authorization, MacSecurity.FlagDestroyRights);
         }
     }
 
@@ -154,11 +164,17 @@ internal sealed unsafe class MacSystemAuthority : IMacDaemonAuthority
     // Set releases its value, so a CFBoolean constant is retained once for it.
     private static nint Retained(nint value) => MacSecurity.Retain(value);
 
-    /// <summary>Whether a right's stored definition is the rule this daemon defines, with this message.</summary>
+    /// <summary>
+    /// Whether a right's stored definition is exactly the rule this daemon defines, with this message: every key of
+    /// the rule with its value, a <c>default-prompt</c> with only the message, and otherwise only authd's metadata.
+    /// Any other key, such as <c>mechanisms</c>, <c>extract-password</c>, <c>entitled</c>, a localized prompt or
+    /// <c>default-button</c>, could change how the right is evaluated or shown, so the daemon replaces the right.
+    /// </summary>
     internal static bool Matches(nint existing, MacPrivilegedRight right)
     {
         if (!MacSecurity.IsDictionary(existing)) return false;
-        foreach (var (key, value) in MacAuthorizationRule.Definition(right.ActionId))
+        var definition = MacAuthorizationRule.Definition(right.ActionId);
+        foreach (var (key, value) in definition)
         {
             var stored = MacSecurity.Get(existing, key);
             var same = value switch
@@ -170,8 +186,10 @@ internal sealed unsafe class MacSystemAuthority : IMacDaemonAuthority
             };
             if (!same) return false;
         }
+        foreach (var key in MacSecurity.Keys(existing))
+            if (key is null || (key != "default-prompt" && !definition.Any(p => p.Key == key) && !MacAuthorizationRule.MetadataKeys.Contains(key))) return false;
         var prompts = MacSecurity.Get(existing, "default-prompt");
-        return MacSecurity.IsDictionary(prompts) && MacSecurity.ToText(MacSecurity.Get(prompts, "")) == right.Message;
+        return MacSecurity.IsDictionary(prompts) && MacSecurity.Keys(prompts) is [""] && MacSecurity.ToText(MacSecurity.Get(prompts, "")) == right.Message;
     }
 }
 
@@ -181,6 +199,12 @@ internal sealed record MacRunRequest(string ActionId, ImmutableArray<string> Arg
 internal sealed class MacPrivilegedDaemonServer
 {
     private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>A connection that sends no valid message within this time is closed.</summary>
+    internal static readonly TimeSpan FirstMessageTimeout = TimeSpan.FromSeconds(10);
+    /// <summary>Runs at the same time from one client process, and from all clients together.</summary>
+    internal const int RunsPerClient = 2, RunsInTotal = 8;
+    private readonly Dictionary<int, int> _runsByClient = [];
+    private int _runs;
     private readonly FrozenDictionary<string, PrivilegedActionDeclaration> _actions;
     private readonly IMacDaemonAuthority _authority;
     private readonly string? _bundleRoot;
@@ -237,6 +261,29 @@ internal sealed class MacPrivilegedDaemonServer
         try { MacXpc.SetEventHandler(peer, handler); }
         finally { MacDesktopBlock.Release(handler); }
         MacXpc.Resume(peer);
+        _ = Task.Delay(FirstMessageTimeout).ContinueWith(_ => session.CloseIfSilent(), TaskScheduler.Default);
+    }
+
+    /// <summary>Counts a run of <paramref name="client"/>; false when it or all clients run as many as allowed.</summary>
+    internal bool TryBeginRun(int client)
+    {
+        lock (_runsByClient)
+        {
+            var current = _runsByClient.GetValueOrDefault(client);
+            if (current >= RunsPerClient || _runs >= RunsInTotal) return false;
+            _runsByClient[client] = current + 1;
+            _runs++;
+            return true;
+        }
+    }
+
+    internal void EndRun(int client)
+    {
+        lock (_runsByClient)
+        {
+            _runs--;
+            if (--_runsByClient[client] == 0) _runsByClient.Remove(client);
+        }
     }
 
     internal MacReply Prepare()
@@ -275,19 +322,26 @@ internal sealed class MacPrivilegedDaemonServer
         else if (right.Program[0] == '/') program = right.Program;
         else if (_bundleRoot is null) return new(MacReplyStatus.Untrusted, 1);
         else program = _bundleRoot + "/" + right.Program;
-        var check = MacProgramTrust.Check(program, path => MacProcess.Lstat(path, out _));
+        var check = MacProgramTrust.Check(program, path => MacProcess.Lstat(path, out _), MacProcess.AclAllowsChange);
         if (check == MacProgramCheck.Missing) return new(MacReplyStatus.Untrusted, 1);
-        if (check == MacProgramCheck.NeedsSignature && MacSecurity.CheckFile(program, Definition.ProgramRequirement) != 0) return new(MacReplyStatus.Untrusted, 3);
+        var requirement = Definition.RequirementFor(right);
+        if (check == MacProgramCheck.NeedsSignature)
+        {
+            // Code signing covers the executable, not a .NET runtime's assemblies and configuration beside it.
+            if (MacManagedProgram.IsManaged(program, File.Exists)) return new(MacReplyStatus.Untrusted, 8);
+            if (requirement is null) return new(MacReplyStatus.Untrusted, 9);
+            if (MacSecurity.CheckFile(program, requirement) != 0) return new(MacReplyStatus.Untrusted, 3);
+        }
 
         var environment = ProgramEnvironment(callerUserId, request.Environment);
         if (MacSpawnedProgram.Start(program, argv, environment, out var error) is not { } spawned) return new(MacReplyStatus.Failed, error);
         using (spawned)
         {
             // The file was checked before the start; the code the kernel loaded is checked before it runs.
-            if (check == MacProgramCheck.NeedsSignature && MacSecurity.CheckProcess(spawned.Pid, Definition.ProgramRequirement) != 0)
+            if (check == MacProgramCheck.NeedsSignature && MacSecurity.CheckProcess(spawned.Pid, requirement!) is var loaded and not 0)
             {
                 spawned.Kill();
-                return new(MacReplyStatus.Untrusted, 3);
+                return new(MacReplyStatus.Untrusted, loaded == MacSecurity.NotHardened ? 10 : 3);
             }
             if (!session.Started(spawned))
             {
@@ -323,7 +377,8 @@ internal sealed class MacDaemonSession(MacPrivilegedDaemonServer server, nint pe
     private readonly Lock _lock = new();
     // Serializes output across both streams; held while the daemon waits for the application's acknowledgement.
     private readonly Lock _delivery = new();
-    private bool _running, _cancelled, _disconnected, _released;
+    private bool _running, _cancelled, _disconnected, _released, _heard;
+    private int _client = -1;
     private MacSpawnedProgram? _program;
 
     internal bool IsCancelled
@@ -339,6 +394,7 @@ internal sealed class MacDaemonSession(MacPrivilegedDaemonServer server, nint pe
             return;
         }
         if (!MacXpc.IsDictionary(message) || MacXpc.GetInt64(message, V) != ProtocolVersion) return;
+        lock (_lock) _heard = true;
         switch (MacXpc.GetString(message, Op))
         {
             case Prepare:
@@ -364,8 +420,9 @@ internal sealed class MacDaemonSession(MacPrivilegedDaemonServer server, nint pe
             }
             _running = true;
         }
-        // The audit token of this very message, in addition to the connection's requirement.
-        if (server.CheckSender && !MacSecurity.SenderSatisfies(message, server.Definition.ApplicationRequirement))
+        // The audit token of this very message, in addition to the connection's requirement, and the client's runtime
+        // status: hardened, not debugged, and without get-task-allow unless the definition accepts development signing.
+        if (server.CheckSender && !MacSecurity.SenderSatisfies(message, server.Definition.ApplicationRequirement, server.Definition.DevelopmentSigning))
         {
             Reply(message, new(MacReplyStatus.Rejected));
             MacXpc.Cancel(peer);
@@ -378,6 +435,14 @@ internal sealed class MacDaemonSession(MacPrivilegedDaemonServer server, nint pe
             Finish();
             return;
         }
+        var client = MacXpc.GetProcessId(peer);
+        if (!server.TryBeginRun(client))
+        {
+            Reply(message, new(MacReplyStatus.Busy));
+            Finish();
+            return;
+        }
+        lock (_lock) _client = client;
         var callerUserId = MacXpc.GetEffectiveUserId(peer);
         var reply = MacXpc.CreateReply(message);
         var thread = new Thread(() =>
@@ -477,11 +542,27 @@ internal sealed class MacDaemonSession(MacPrivilegedDaemonServer server, nint pe
         if (release) MacXpc.Release(peer);
     }
 
+    /// <summary>Closes a connection that sent no valid message in time.</summary>
+    internal void CloseIfSilent()
+    {
+        lock (_lock)
+        {
+            if (_heard || _released) return;
+            // Cancelled while the reference is held; the invalidation event then releases it.
+            MacXpc.Cancel(peer);
+        }
+    }
+
     private void Finish()
     {
         bool release;
         lock (_lock)
         {
+            if (_client >= 0)
+            {
+                server.EndRun(_client);
+                _client = -1;
+            }
             _running = false;
             release = _disconnected && !_released;
             _released |= release;
@@ -512,12 +593,12 @@ internal sealed unsafe class MacSpawnedProgram : IDisposable
     private readonly SafeFileHandle _input;
     private bool _exited;
 
-    private MacSpawnedProgram(int pid, SafeFileHandle input, SafeFileHandle output, SafeFileHandle error)
+    private MacSpawnedProgram(int pid, SafeFileHandle input, int output, int error)
     {
         Pid = pid;
         _input = input;
-        Output = new FileStream(output, FileAccess.Read, 1);
-        Error = new FileStream(error, FileAccess.Read, 1);
+        Output = new MacPipeStream(output);
+        Error = new MacPipeStream(error);
     }
 
     internal int Pid { get; }
@@ -537,7 +618,7 @@ internal sealed unsafe class MacSpawnedProgram : IDisposable
             return null;
         }
         // The application's ends are closed on exec; the program's ends are inherited only through the dup2 actions.
-        foreach (var descriptor in new[] { input[1], output[0], errorPipe[0] }) _ = MacProcess.Fcntl(descriptor, 2 /* F_SETFD */, 1 /* FD_CLOEXEC */);
+        foreach (var descriptor in new[] { input[1], output[0], errorPipe[0] }) _ = MacProcess.Ioctl(descriptor, MacProcess.SetCloseOnExec);
 
         nint actions, attributes;
         _ = MacProcess.FileActionsInit(&actions);
@@ -574,7 +655,7 @@ internal sealed unsafe class MacSpawnedProgram : IDisposable
                 _ = MacProcess.Close(errorPipe[0]);
                 return null;
             }
-            return new MacSpawnedProgram(pid, new SafeFileHandle(input[1], true), new SafeFileHandle(output[0], true), new SafeFileHandle(errorPipe[0], true));
+            return new MacSpawnedProgram(pid, new SafeFileHandle(input[1], true), output[0], errorPipe[0]);
         }
         finally
         {
@@ -702,4 +783,79 @@ internal static class MacLineReader
         var needed = lead >= 0xF0 ? 3 : lead >= 0xE0 ? 2 : lead >= 0xC0 ? 1 : 0;
         return needed > continuation ? i : bytes.Length;
     }
+}
+
+/// <summary>
+/// The read end of a pipe, read with <c>poll</c> so that a stop request ends a blocked read within a fraction of a
+/// second. The descriptor is closed by whichever comes last of the reader and the disposal, so no read ever uses a
+/// closed (and possibly reused) descriptor.
+/// </summary>
+internal sealed unsafe class MacPipeStream(int descriptor) : Stream
+{
+    private const int PollMilliseconds = 200;
+    private readonly Lock _lock = new();
+    private volatile bool _stopped;
+    private bool _reading, _closed;
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        lock (_lock)
+        {
+            if (_stopped || _closed) return 0;
+            _reading = true;
+        }
+        try
+        {
+            while (!_stopped)
+            {
+                var poll = new MacProcess.PollDescriptor { Descriptor = descriptor, Events = MacProcess.PollIn };
+                var ready = MacProcess.Poll(&poll, 1, PollMilliseconds);
+                if (ready < 0 && Marshal.GetLastPInvokeError() == MacProcess.Interrupted) continue;
+                if (ready < 0) return 0;
+                if (ready == 0) continue;
+                fixed (byte* bytes = &buffer[offset])
+                {
+                    var read = MacProcess.Read(descriptor, bytes, (nuint)count);
+                    if (read < 0 && Marshal.GetLastPInvokeError() == MacProcess.Interrupted) continue;
+                    return read < 0 ? 0 : (int)read;
+                }
+            }
+            return 0;
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                _reading = false;
+                if (_stopped) CloseDescriptor();
+            }
+        }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        lock (_lock)
+        {
+            _stopped = true;
+            if (!_reading) CloseDescriptor();
+        }
+        base.Dispose(disposing);
+    }
+
+    private void CloseDescriptor()
+    {
+        if (_closed) return;
+        _closed = true;
+        _ = MacProcess.Close(descriptor);
+    }
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

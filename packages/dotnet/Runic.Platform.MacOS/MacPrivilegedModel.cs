@@ -51,8 +51,13 @@ internal enum MacReplyStatus
     Ran,
     /// <summary>The daemon's check of the authorization failed.</summary>
     Denied,
-    /// <summary>The program is missing or neither root-owned nor signed as required (code 1 missing, 3 untrusted).</summary>
+    /// <summary>
+    /// The program is missing (code 1), not signed as required (3), a .NET program that is not NativeAOT (8), without
+    /// a <c>MacProgramIdentifier</c> (9), or without the hardened runtime or library validation (10).
+    /// </summary>
     Untrusted,
+    /// <summary>The client, or all clients together, already run as many actions as the daemon allows.</summary>
+    Busy,
     /// <summary>The daemon does not declare the action or the arguments, or the client is not the application.</summary>
     Rejected,
     Cancelled,
@@ -79,6 +84,7 @@ internal readonly record struct MacReply(MacReplyStatus Status, long Code = 0)
         "rejected" => MacReplyStatus.Rejected,
         "cancelled" => MacReplyStatus.Cancelled,
         "failed" => MacReplyStatus.Failed,
+        "busy" => MacReplyStatus.Busy,
         _ => null,
     };
 
@@ -91,6 +97,7 @@ internal readonly record struct MacReply(MacReplyStatus Status, long Code = 0)
         MacReplyStatus.Rejected => "rejected",
         MacReplyStatus.Cancelled => "cancelled",
         MacReplyStatus.Failed => "failed",
+        MacReplyStatus.Busy => "busy",
         _ => throw new ArgumentOutOfRangeException(nameof(status)),
     };
 }
@@ -125,6 +132,8 @@ internal static class MacPrivilegedOutcome
         MacReplyStatus.UntrustedDaemon => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.InvalidData,
             new(DaemonDomain, 5, "The XPC service does not satisfy the privileged daemon's code requirement.")),
         MacReplyStatus.Unreachable => new PlatformResult<PrivilegedActionCompletion>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+        MacReplyStatus.Busy => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.ResourceBusy,
+            new(DaemonDomain, 11, "The privileged daemon runs as many actions as it allows; try again when one finished.")),
         MacReplyStatus.Interrupted => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError,
             new(DaemonDomain, 6, "The connection to the privileged daemon broke; the program may have run.")),
         MacReplyStatus.Failed => new PlatformResult<PrivilegedActionCompletion>.Failed(PlatformFailureCode.IoError, new(DaemonDomain, reply.Code)),
@@ -135,8 +144,19 @@ internal static class MacPrivilegedOutcome
     internal static PlatformDiagnostic ProgramDiagnostic(long code) => code switch
     {
         1 => new(DaemonDomain, 1, "The declared program does not exist."),
+        8 => new(DaemonDomain, 8, "The declared program is a .NET application that is not NativeAOT; its assemblies and configuration are not code-signed."),
+        9 => new(DaemonDomain, 9, "The declared program needs a signature, but its action has no MacProgramIdentifier."),
+        10 => new(DaemonDomain, 10, "The declared program does not run with the hardened runtime or library validation."),
         _ => new(DaemonDomain, 3, "The declared program can be changed by users other than root and is not signed with the required code signature."),
     };
+
+    /// <summary>
+    /// Whether a client's kernel code-signing status allows it: the hardened runtime, not being debugged, and no
+    /// <c>get-task-allow</c>, which lets other processes of the user take control of it, unless that is allowed.
+    /// </summary>
+    internal static bool IsHardenedClient(long status, bool allowGetTaskAllow) =>
+        (status & MacSecurity.StatusRuntime) != 0 && (status & MacSecurity.StatusDebugged) == 0
+        && (allowGetTaskAllow || (status & MacSecurity.StatusGetTaskAllow) == 0);
 
     // SMAppServiceStatus.
     internal static MacPrivilegedDaemonStatus FromServiceStatus(long status) => status switch
@@ -184,8 +204,12 @@ internal static class MacAuthorizationRule
         new("authenticate-user", true),
         new("allow-root", false),
         new("session-owner", false),
+        new("tries", 10000L), // authd's default; it reports the value on every rule
         new("comment", Comment(actionId)),
     ];
+
+    /// <summary>Keys authd adds to a stored right that do not change how it is evaluated.</summary>
+    internal static readonly ImmutableArray<string> MetadataKeys = ["version", "created", "modified", "identifier", "requirement"];
 }
 
 internal enum MacProgramCheck
@@ -204,12 +228,13 @@ internal static class MacProgramTrust
 
     /// <summary>
     /// Checks <paramref name="path"/> without following symbolic links: every directory owned by root and not writable
-    /// by others (nor by its group unless sticky), and the program a root-owned executable file writable only by root.
+    /// by others (nor by its group unless sticky), the program a root-owned executable file writable only by root, and
+    /// no extended ACL on any of them that lets anyone but root change them.
     /// </summary>
-    internal static MacProgramCheck Check(string path, Func<string, MacProcess.FileStatus?> lstat)
+    internal static MacProgramCheck Check(string path, Func<string, MacProcess.FileStatus?> lstat, Func<string, bool> aclAllowsChange)
     {
         if (path.Length < 2 || path[0] != '/') return MacProgramCheck.Missing;
-        var rootOwned = RootDirectory(lstat("/"));
+        var rootOwned = RootDirectory(lstat("/")) && !aclAllowsChange("/");
         var segments = path[1..].Split('/');
         var current = "";
         for (var i = 0; i < segments.Length; i++)
@@ -222,18 +247,30 @@ internal static class MacProgramTrust
                 // A symbolic link in the middle, such as /var or /tmp: the path is not real, so only a signature proves the program.
                 if (type == Link) rootOwned = false;
                 else if (type != Directory) return MacProgramCheck.Missing;
-                else rootOwned &= RootDirectory(status);
+                else rootOwned &= RootDirectory(status) && !aclAllowsChange(current);
             }
             else
             {
                 if (type == Link) return MacProgramCheck.NeedsSignature;
                 if (type != Regular || (status.Mode & AnyExecute) == 0) return MacProgramCheck.Missing;
-                rootOwned &= status.Owner == 0 && (status.Mode & (GroupWrite | OtherWrite)) == 0;
+                rootOwned &= status.Owner == 0 && (status.Mode & (GroupWrite | OtherWrite)) == 0 && !aclAllowsChange(current);
             }
         }
         return rootOwned ? MacProgramCheck.RootOwned : MacProgramCheck.NeedsSignature;
 
         static bool RootDirectory(MacProcess.FileStatus? status) => status is { } s && (s.Mode & TypeMask) == Directory && s.Owner == 0
             && (s.Mode & OtherWrite) == 0 && ((s.Mode & GroupWrite) == 0 || (s.Mode & Sticky) != 0);
+    }
+}
+
+/// <summary>A .NET program that is not NativeAOT loads assemblies and configuration that code signing does not cover.</summary>
+internal static class MacManagedProgram
+{
+    /// <summary>Whether <paramref name="program"/> has the files of a .NET application host beside it.</summary>
+    internal static bool IsManaged(string program, Func<string, bool> exists)
+    {
+        var directory = program[..program.LastIndexOf('/')];
+        var name = program[(program.LastIndexOf('/') + 1)..];
+        return exists($"{directory}/{name}.runtimeconfig.json") || exists($"{directory}/{name}.deps.json") || exists($"{directory}/{name}.dll");
     }
 }

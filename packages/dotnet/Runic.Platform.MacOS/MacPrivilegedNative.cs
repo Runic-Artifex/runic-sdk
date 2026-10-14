@@ -150,6 +150,13 @@ internal static unsafe partial class MacSecurity
     [LibraryImport(Security, EntryPoint = "SecCodeCreateWithXPCMessage")] internal static partial int CodeCreateWithXpcMessage(nint message, uint flags, out nint code);
     [LibraryImport(Security, EntryPoint = "SecCodeCopyDesignatedRequirement")] internal static partial int CodeCopyDesignatedRequirement(nint code, uint flags, out nint requirement);
     [LibraryImport(Security, EntryPoint = "SecRequirementCopyString")] internal static partial int RequirementCopyString(nint requirement, uint flags, out nint text);
+    [LibraryImport(Security, EntryPoint = "SecCodeCopySigningInformation")] internal static partial int CodeCopySigningInformation(nint code, uint flags, out nint information);
+
+    // SecCSFlags for SecCodeCopySigningInformation, and the code-signing status flags (cs_blobs.h).
+    internal const uint SigningInformation = 1 << 1, DynamicInformation = 1 << 3;
+    internal const long StatusGetTaskAllow = 0x4, StatusRequireLibraryValidation = 0x2000, StatusRuntime = 0x10000, StatusDebugged = 0x10000000;
+    /// <summary>Not an OSStatus: the code is valid but runs without the hardened runtime or library validation.</summary>
+    internal const int NotHardened = 1;
 
     [LibraryImport(CoreFoundation, EntryPoint = "CFRelease")] internal static partial void Release(nint value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFRetain")] internal static partial nint Retain(nint value);
@@ -160,6 +167,8 @@ internal static unsafe partial class MacSecurity
     [LibraryImport(CoreFoundation, EntryPoint = "CFDictionaryCreateMutable")] private static partial nint CreateMutableDictionary(nint allocator, nint capacity, nint keyCallbacks, nint valueCallbacks);
     [LibraryImport(CoreFoundation, EntryPoint = "CFDictionarySetValue")] internal static partial void DictionarySet(nint dictionary, nint key, nint value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFDictionaryGetValue")] internal static partial nint DictionaryGet(nint dictionary, nint key);
+    [LibraryImport(CoreFoundation, EntryPoint = "CFDictionaryGetCount")] private static partial nint DictionaryCount(nint dictionary);
+    [LibraryImport(CoreFoundation, EntryPoint = "CFDictionaryGetKeysAndValues")] private static partial void DictionaryKeysAndValues(nint dictionary, nint* keys, nint* values);
     [LibraryImport(CoreFoundation, EntryPoint = "CFNumberCreate")] private static partial nint NumberCreate(nint allocator, nint type, long* value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFNumberGetValue")] private static partial byte NumberGetValue(nint number, nint type, long* value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFGetTypeID")] private static partial nuint GetTypeId(nint value);
@@ -177,6 +186,40 @@ internal static unsafe partial class MacSecurity
     internal static nint True => Constant(CoreFoundationLibrary, "kCFBooleanTrue");
     internal static nint False => Constant(CoreFoundationLibrary, "kCFBooleanFalse");
     internal static nint GuestAttributePid => Constant(SecurityLibrary, "kSecGuestAttributePid");
+    internal static nint CodeInfoStatus => Constant(SecurityLibrary, "kSecCodeInfoStatus");
+    internal static nint CodeInfoIdentifier => Constant(SecurityLibrary, "kSecCodeInfoIdentifier");
+
+    /// <summary>The keys of a dictionary as text; a key that is not a string is returned as null.</summary>
+    internal static List<string?> Keys(nint dictionary)
+    {
+        var count = (int)DictionaryCount(dictionary);
+        var keys = new nint[count];
+        var result = new List<string?>(count);
+        fixed (nint* pointer = keys) DictionaryKeysAndValues(dictionary, pointer, null);
+        foreach (var key in keys) result.Add(ToText(key));
+        return result;
+    }
+
+    /// <summary>The kernel's code-signing status flags of running code; null when they cannot be read.</summary>
+    internal static long? DynamicStatus(nint code)
+    {
+        if (CodeCopySigningInformation(code, DynamicInformation, out var information) != 0) return null;
+        try { return ToNumber(DictionaryGet(information, CodeInfoStatus)); }
+        finally { Release(information); }
+    }
+
+    /// <summary>This process's code-signing identifier, or null.</summary>
+    internal static string? SelfIdentifier()
+    {
+        if (CodeCopySelf(0, out var code) != 0) return null;
+        try
+        {
+            if (CodeCopySigningInformation(code, SigningInformation, out var information) != 0) return null;
+            try { return ToText(DictionaryGet(information, CodeInfoIdentifier)); }
+            finally { Release(information); }
+        }
+        finally { Release(code); }
+    }
 
     internal static bool IsAvailable => OperatingSystem.IsMacOS() && NativeLibrary.TryLoad(Security, out _);
 
@@ -271,15 +314,22 @@ internal static unsafe partial class MacSecurity
         finally { Release(requirement); }
     }
 
-    /// <summary>Whether the sender of an XPC message, identified by the message's audit token, satisfies the requirement.</summary>
-    internal static bool SenderSatisfies(nint message, string requirementText)
+    /// <summary>
+    /// Whether the sender of an XPC message, identified by the message's audit token, satisfies the requirement and
+    /// runs with the hardened runtime, not being debugged, and without <c>get-task-allow</c> unless it is allowed.
+    /// </summary>
+    internal static bool SenderSatisfies(nint message, string requirementText, bool allowGetTaskAllow)
     {
         var requirement = CreateRequirement(requirementText);
         if (requirement == 0) return false;
         try
         {
             if (CodeCreateWithXpcMessage(message, 0, out var code) != 0) return false;
-            try { return CodeCheckValidity(code, 0, requirement) == 0; }
+            try
+            {
+                if (CodeCheckValidity(code, 0, requirement) != 0 || DynamicStatus(code) is not { } status) return false;
+                return MacPrivilegedOutcome.IsHardenedClient(status, allowGetTaskAllow);
+            }
             finally { Release(code); }
         }
         finally { Release(requirement); }
@@ -305,7 +355,10 @@ internal static unsafe partial class MacSecurity
         }
     }
 
-    /// <summary>The OSStatus of checking the running process <paramref name="pid"/>, a child that has not been reaped.</summary>
+    /// <summary>
+    /// The OSStatus of checking the running process <paramref name="pid"/>, a child that has not been reaped, or
+    /// <see cref="NotHardened"/> when it is valid but runs without the hardened runtime or library validation.
+    /// </summary>
     internal static int CheckProcess(int pid, string requirementText)
     {
         var requirement = CreateRequirement(requirementText);
@@ -318,7 +371,13 @@ internal static unsafe partial class MacSecurity
             Release(number);
             var status = CodeCopyGuest(0, attributes, 0, out var code);
             if (status != 0) return status;
-            try { return CodeCheckValidity(code, 0, requirement); }
+            try
+            {
+                status = CodeCheckValidity(code, 0, requirement);
+                if (status != 0) return status;
+                // Without the hardened runtime or library validation, the program could load unsigned libraries.
+                return DynamicStatus(code) is { } flags && (flags & (StatusRuntime | StatusRequireLibraryValidation)) != 0 ? 0 : NotHardened;
+            }
             finally { Release(code); }
         }
         finally
@@ -353,7 +412,54 @@ internal static unsafe partial class MacProcess
     [LibraryImport(System, EntryPoint = "posix_spawnattr_setsigdefault")] internal static partial int AttributesSetSignalDefault(nint* attributes, uint* signals);
     [LibraryImport(System, EntryPoint = "pipe", SetLastError = true)] internal static partial int Pipe(int* descriptors);
     [LibraryImport(System, EntryPoint = "close")] internal static partial int Close(int descriptor);
-    [LibraryImport(System, EntryPoint = "fcntl")] internal static partial int Fcntl(int descriptor, int command, int argument);
+    // ioctl is variadic too, but FIOCLEX takes no third argument, so the fixed two-argument binding is exact.
+    [LibraryImport(System, EntryPoint = "ioctl")] internal static partial int Ioctl(int descriptor, nuint request);
+    internal const nuint SetCloseOnExec = 0x20006601; // FIOCLEX, _IO('f', 1)
+    [LibraryImport(System, EntryPoint = "poll", SetLastError = true)] internal static partial int Poll(PollDescriptor* descriptors, uint count, int timeout);
+    [LibraryImport(System, EntryPoint = "read", SetLastError = true)] internal static partial nint Read(int descriptor, byte* buffer, nuint count);
+    [StructLayout(LayoutKind.Sequential)] internal struct PollDescriptor { internal int Descriptor; internal short Events, Returned; }
+    internal const short PollIn = 0x1;
+    [LibraryImport(System, EntryPoint = "acl_get_link_np", StringMarshalling = StringMarshalling.Utf8, SetLastError = true)] private static partial nint AclGetLink(string path, int type);
+    [LibraryImport(System, EntryPoint = "acl_get_entry")] private static partial int AclGetEntry(nint acl, int entryId, out nint entry);
+    [LibraryImport(System, EntryPoint = "acl_get_tag_type")] private static partial int AclGetTagType(nint entry, out int tag);
+    [LibraryImport(System, EntryPoint = "acl_get_qualifier")] private static partial nint AclGetQualifier(nint entry);
+    [LibraryImport(System, EntryPoint = "acl_get_permset")] private static partial int AclGetPermset(nint entry, out nint permset);
+    [LibraryImport(System, EntryPoint = "acl_get_perm_np")] private static partial int AclGetPerm(nint permset, int perm);
+    [LibraryImport(System, EntryPoint = "acl_free")] private static partial int AclFree(nint value);
+    [LibraryImport(System, EntryPoint = "mbr_uuid_to_id")] private static partial int MembershipUuidToId(nint uuid, out uint id, out int type);
+    private const int AclTypeExtended = 0x100, AclFirstEntry = 0, AclNextEntry = -1, AclExtendedAllow = 1, IdTypeUid = 0;
+    // ACL_WRITE_DATA (ACL_ADD_FILE), ACL_DELETE, ACL_APPEND_DATA (ACL_ADD_SUBDIRECTORY), ACL_DELETE_CHILD,
+    // ACL_WRITE_SECURITY and ACL_CHANGE_OWNER.
+    private static readonly int[] ChangingPermissions = [1 << 2, 1 << 4, 1 << 5, 1 << 6, 1 << 12, 1 << 13];
+
+    /// <summary>
+    /// Whether an extended ACL on <paramref name="path"/> (not following a final symbolic link) allows anyone but root
+    /// to write, add, delete, change its permissions or take ownership. An ACL that cannot be read counts as allowing it.
+    /// </summary>
+    internal static bool AclAllowsChange(string path)
+    {
+        var acl = AclGetLink(path, AclTypeExtended);
+        if (acl == 0) return Marshal.GetLastPInvokeError() is not (2 /* ENOENT: no ACL */ or 0);
+        try
+        {
+            for (var id = AclFirstEntry; AclGetEntry(acl, id, out var entry) == 0; id = AclNextEntry)
+            {
+                if (AclGetTagType(entry, out var tag) != 0) return true;
+                if (tag != AclExtendedAllow) continue;
+                if (AclGetPermset(entry, out var permset) != 0) return true;
+                if (!ChangingPermissions.Any(permission => AclGetPerm(permset, permission) == 1)) continue;
+                var qualifier = AclGetQualifier(entry);
+                if (qualifier == 0) return true;
+                try
+                {
+                    if (MembershipUuidToId(qualifier, out var owner, out var type) != 0 || type != IdTypeUid || owner != 0) return true;
+                }
+                finally { _ = AclFree(qualifier); }
+            }
+            return false;
+        }
+        finally { _ = AclFree(acl); }
+    }
     [LibraryImport(System, EntryPoint = "waitpid", SetLastError = true)] internal static partial int WaitPid(int pid, int* status, int options);
     [LibraryImport(System, EntryPoint = "kill")] internal static partial int Kill(int pid, int signal);
     [LibraryImport(System, EntryPoint = "geteuid")] internal static partial uint GetEffectiveUserId();

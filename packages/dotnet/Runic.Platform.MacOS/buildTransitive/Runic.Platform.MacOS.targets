@@ -14,6 +14,14 @@
     $(RunicMacLaunchDaemonOutputPath)<label>.plist for the bundle's Contents/Library/LaunchDaemons, and a part of the
     PrivilegedActions class with MacOSDaemon, the daemon's definition. An item's optional MacProgram metadata is where
     the daemon finds the program: a path inside the bundle, such as Contents/MacOS/helper, or an absolute path.
+    MacProgramIdentifier is the program's code-signing identifier, required for a program inside the bundle: a
+    program whose path someone other than root can change runs only when it is signed with it.
+
+    The daemon project sets RunicMacPrivilegedDaemon to true and must be NativeAOT (RUNICPA106), and an application
+    published for macOS must be NativeAOT too (RUNICPA107): a JIT runtime loads assemblies and configuration that
+    code signing does not cover, and reads startup hooks and diagnostics settings from whoever starts it.
+    RunicMacPrivilegedDevelopmentSigning=true accepts development-signed code (see MacPrivilegedDaemonDefinition.
+    DevelopmentSigning); never ship it.
 
     Runic.Platform's RunicValidatePrivilegedActions checks the platform-neutral part of the items first; this target
     reports RUNICPA101 to RUNICPA104, and Runic.Platform writes the declarations only after it succeeded.
@@ -32,6 +40,7 @@
       <TeamIdentifier ParameterType="System.String" />
       <DaemonIdentifier ParameterType="System.String" />
       <DaemonProgram ParameterType="System.String" />
+      <DevelopmentSigning ParameterType="System.Boolean" />
       <PlistFile ParameterType="System.String" Required="true" />
       <SourceFile ParameterType="System.String" Required="true" />
       <Namespace ParameterType="System.String" />
@@ -62,6 +71,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
     public string TeamIdentifier { get; set; } = "";
     public string DaemonIdentifier { get; set; } = "";
     public string DaemonProgram { get; set; } = "";
+    public bool DevelopmentSigning { get; set; }
     [Required] public string PlistFile { get; set; } = "";
     [Required] public string SourceFile { get; set; } = "";
     public string Namespace { get; set; } = "";
@@ -71,7 +81,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
 
     private sealed class Right
     {
-        public string Id = "", Message = "", Program;
+        public string Id = "", Message = "", Program, ProgramIdentifier;
     }
 
     public override bool Execute()
@@ -98,6 +108,14 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
                 if (!IsProgramPath(program)) Error("RUNICPA104", $"Privileged action '{right.Id}' has MacProgram '{program}'; use the program's path inside the bundle, such as Contents/MacOS/helper, or a normalized absolute path.");
                 right.Program = program;
             }
+            var identifier = item.GetMetadata("MacProgramIdentifier");
+            if (!string.IsNullOrEmpty(identifier))
+            {
+                if (!IsIdentifier(identifier)) Error("RUNICPA105", $"Privileged action '{right.Id}' has MacProgramIdentifier '{identifier}'; use the program's code-signing identifier, a reverse-DNS name.");
+                right.ProgramIdentifier = identifier;
+            }
+            else if (!string.IsNullOrEmpty(program) && program[0] != '/')
+                Error("RUNICPA105", $"Privileged action '{right.Id}' runs '{program}' from the bundle, which users can change, so it needs MacProgramIdentifier, the code-signing identifier the daemon requires of it.");
             if (rights.Any(r => r.Id == right.Id)) continue;
             rights.Add(right);
         }
@@ -172,10 +190,13 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
         foreach (var right in rights)
         {
             s.Append("            new(").Append(Literal(right.Id)).Append(", ").Append(Literal(right.Message)).Append(")");
-            if (right.Program != null) s.Append(" { Program = ").Append(Literal(right.Program)).Append(" }");
+            var properties = new List<string>();
+            if (right.Program != null) properties.Add("Program = " + Literal(right.Program));
+            if (right.ProgramIdentifier != null) properties.Add("ProgramIdentifier = " + Literal(right.ProgramIdentifier));
+            if (properties.Count > 0) s.Append(" { ").Append(string.Join(", ", properties)).Append(" }");
             s.Append(",\n");
         }
-        s.Append("        });\n}\n");
+        s.Append(DevelopmentSigning ? "        }) { DevelopmentSigning = true };\n}\n" : "        });\n}\n");
         return s.ToString();
     }
 
@@ -243,6 +264,7 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
                                    TeamIdentifier="$(RunicMacTeamIdentifier)"
                                    DaemonIdentifier="$(RunicMacPrivilegedDaemonIdentifier)"
                                    DaemonProgram="$(RunicMacPrivilegedDaemonProgram)"
+                                   DevelopmentSigning="$([MSBuild]::ValueOrDefault('$(RunicMacPrivilegedDevelopmentSigning)', 'false'))"
                                    PlistFile="$(_RunicPrivilegedMacDirectory)$(RunicMacPrivilegedDaemonLabel).plist"
                                    SourceFile="$(_RunicPrivilegedMacDirectory)PrivilegedActions.MacOS.g.cs"
                                    Namespace="$(RunicPrivilegedActionsNamespace)"
@@ -260,5 +282,25 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
             CopyToOutputDirectory="PreserveNewest"
             CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
+  </Target>
+
+  <!--
+    What runs as root, or talks to it, must be NativeAOT: code signing covers the Mach-O executable, but a JIT runtime
+    also loads assemblies, deps.json and runtimeconfig.json files (startup hooks, probing paths) beside it, and reads
+    DOTNET_STARTUP_HOOKS and the diagnostics settings (debugger and profiler) from the environment of whoever starts
+    it. MacPrivilegedDaemon.Run also refuses to serve on a JIT runtime.
+  -->
+  <Target Name="RunicCheckMacPrivilegedDaemon" BeforeTargets="CoreCompile"
+          Condition="'$(RunicMacPrivilegedDaemon)' == 'true' and '$(PublishAot)' != 'true' and ('$(RuntimeIdentifier)' != '' or '$(_IsPublishing)' == 'true')">
+    <Error Code="RUNICPA106" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa106"
+           Text="The macOS privileged daemon (RunicMacPrivilegedDaemon) must set PublishAot to true: a JIT runtime loads assemblies and configuration that code signing does not cover." />
+  </Target>
+
+  <Target Name="RunicCheckMacPrivilegedPublish" BeforeTargets="PrepareForPublish"
+          Condition="'$(RunicMacPrivilegedDaemonLabel)' != '' and '@(RunicPrivilegedAction)' != '' and '$(PublishAot)' != 'true' and $(RuntimeIdentifier.StartsWith('osx'))">
+    <Error Condition="'$(RunicMacPrivilegedDaemon)' == 'true'" Code="RUNICPA106" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa106"
+           Text="The macOS privileged daemon (RunicMacPrivilegedDaemon) must be published with PublishAot set to true: a JIT runtime loads assemblies and configuration that code signing does not cover." />
+    <Error Condition="'$(RunicMacPrivilegedDaemon)' != 'true'" Code="RUNICPA107" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa107"
+           Text="An application that runs macOS privileged actions must be published with PublishAot set to true: a JIT runtime reads startup hooks and debugger or profiler settings from whoever starts it, so code with the application's signature could run code it does not contain." />
   </Target>
 </Project>

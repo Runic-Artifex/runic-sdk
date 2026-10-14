@@ -682,10 +682,14 @@ jobs:
         if: runner.os == 'macOS'
         timeout-minutes: 10
         shell: bash
+        # The daemon requires its clients to run with the hardened runtime; the linker's ad hoc signature has none.
         run: |
-          dotnet tests/dotnet/Runic.Platform.MacOS.Tests/bin/Release/net10.0/Runic.Platform.MacOS.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed
-          ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed
-          ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivilegedRoot]" --output detailed
+          codesign --force --sign - --options=runtime artifacts/clipboard-aot/Runic.Platform.MacOS.Tests
+          status=0
+          dotnet tests/dotnet/Runic.Platform.MacOS.Tests/bin/Release/net10.0/Runic.Platform.MacOS.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed || status=1
+          ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivileged]" --output detailed || status=1
+          ./artifacts/clipboard-aot/Runic.Platform.MacOS.Tests --treenode-filter "/*/*/*/*[Category=NativePrivilegedRoot]" --output detailed || status=1
+          exit $status
       - name: Publish and run platform runtime conformance with NativeAOT
         timeout-minutes: 10
         shell: bash

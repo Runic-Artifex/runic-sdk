@@ -14,9 +14,9 @@ namespace Runic.Platform.MacOS;
 /// </remarks>
 public sealed class MacPrivilegedDaemonDefinition
 {
-    private readonly string _applicationRequirement;
-    private readonly string _daemonRequirement;
-    private readonly string _programRequirement;
+    private readonly string? _applicationRequirement;
+    private readonly string? _daemonRequirement;
+    private readonly string? _programRequirement;
 
     /// <summary>Defines the daemon.</summary>
     /// <param name="label">The launchd label, which is also the XPC Mach service name and the property list's name.</param>
@@ -48,9 +48,6 @@ public sealed class MacPrivilegedDaemonDefinition
         ApplicationIdentifier = applicationIdentifier;
         DaemonIdentifier = daemonIdentifier;
         Rights = all;
-        _applicationRequirement = MacPrivilegedNames.Requirement(teamIdentifier, applicationIdentifier);
-        _daemonRequirement = MacPrivilegedNames.Requirement(teamIdentifier, daemonIdentifier);
-        _programRequirement = MacPrivilegedNames.Requirement(teamIdentifier, null);
     }
 
     /// <summary>The launchd label and XPC Mach service name.</summary>
@@ -72,20 +69,46 @@ public sealed class MacPrivilegedDaemonDefinition
     public ImmutableArray<MacPrivilegedRight> Rights { get; }
 
     /// <summary>
-    /// The code requirement the daemon checks on every XPC client: by default an Apple-issued certificate for
-    /// <see cref="TeamIdentifier"/> and the identifier <see cref="ApplicationIdentifier"/>.
+    /// Accepts code signed for development: the default requirements then omit the distribution marker, and the
+    /// daemon accepts a client with the <c>get-task-allow</c> entitlement, which lets other processes of the user
+    /// control it. False by default; the generated definition sets it only for <c>RunicMacPrivilegedDevelopmentSigning</c>.
     /// </summary>
-    public string ApplicationRequirement { get => _applicationRequirement; init => _applicationRequirement = CheckRequirement(value); }
-
-    /// <summary>The code requirement the application checks on the daemon; by default the Team ID and <see cref="DaemonIdentifier"/>.</summary>
-    public string DaemonRequirement { get => _daemonRequirement; init => _daemonRequirement = CheckRequirement(value); }
+    public bool DevelopmentSigning { get; init; }
 
     /// <summary>
-    /// The code requirement a declared program must satisfy when its path can be changed by someone other than root:
-    /// by default an Apple-issued certificate for <see cref="TeamIdentifier"/>. Programs whose every path component
-    /// only root can change, such as those in <c>/usr/bin</c>, need no signature.
+    /// The code requirement the daemon checks on every XPC client: by default an Apple-issued certificate for
+    /// <see cref="TeamIdentifier"/>, the identifier <see cref="ApplicationIdentifier"/>, and a Developer ID
+    /// Application or Mac App Store certificate unless <see cref="DevelopmentSigning"/> is set.
     /// </summary>
-    public string ProgramRequirement { get => _programRequirement; init => _programRequirement = CheckRequirement(value); }
+    public string ApplicationRequirement
+    {
+        get => _applicationRequirement ?? MacPrivilegedNames.Requirement(TeamIdentifier, ApplicationIdentifier, !DevelopmentSigning);
+        init => _applicationRequirement = CheckRequirement(value);
+    }
+
+    /// <summary>The code requirement the application checks on the daemon; by default as <see cref="ApplicationRequirement"/>, with <see cref="DaemonIdentifier"/>.</summary>
+    public string DaemonRequirement
+    {
+        get => _daemonRequirement ?? MacPrivilegedNames.Requirement(TeamIdentifier, DaemonIdentifier, !DevelopmentSigning);
+        init => _daemonRequirement = CheckRequirement(value);
+    }
+
+    /// <summary>
+    /// The code requirement a declared program must satisfy when its path can be changed by someone other than root,
+    /// together with <c>identifier</c> and the right's <see cref="MacPrivilegedRight.ProgramIdentifier"/>: by default
+    /// an Apple-issued certificate for <see cref="TeamIdentifier"/>, with the distribution marker unless
+    /// <see cref="DevelopmentSigning"/> is set. Programs whose every path component only root can change, such as
+    /// those in <c>/usr/bin</c>, need no signature.
+    /// </summary>
+    public string ProgramRequirement
+    {
+        get => _programRequirement ?? MacPrivilegedNames.Requirement(TeamIdentifier, null, !DevelopmentSigning);
+        init => _programRequirement = CheckRequirement(value);
+    }
+
+    /// <summary>The full requirement of <paramref name="right"/>'s program; null when it has no <see cref="MacPrivilegedRight.ProgramIdentifier"/>.</summary>
+    internal string? RequirementFor(MacPrivilegedRight right) =>
+        right.ProgramIdentifier is { } identifier ? $"({ProgramRequirement}) and identifier \"{identifier}\"" : null;
 
     /// <summary>The right of <paramref name="actionId"/>, or null.</summary>
     public MacPrivilegedRight? FindRight(string actionId)
@@ -112,6 +135,7 @@ public sealed class MacPrivilegedDaemonDefinition
 public sealed record MacPrivilegedRight
 {
     private readonly string? _program;
+    private readonly string? _programIdentifier;
 
     /// <summary>Defines the right.</summary>
     /// <param name="actionId">The action ID, which is also the right's name.</param>
@@ -148,6 +172,22 @@ public sealed record MacPrivilegedRight
             if (value is not null && !MacPrivilegedNames.IsProgramPath(value))
                 throw new ArgumentException("A program is a path inside the bundle or an absolute path, without '.' or '..' segments.", nameof(value));
             _program = value;
+        }
+    }
+
+    /// <summary>
+    /// The program's code-signing identifier, from the item's <c>MacProgramIdentifier</c> metadata. A program whose
+    /// path someone other than root can change runs only when it is signed with this identifier.
+    /// </summary>
+    /// <exception cref="ArgumentException">The identifier is not a reverse-DNS name.</exception>
+    public string? ProgramIdentifier
+    {
+        get => _programIdentifier;
+        init
+        {
+            if (value is not null && !MacPrivilegedNames.IsIdentifier(value))
+                throw new ArgumentException("A program identifier is a reverse-DNS name.", nameof(value));
+            _programIdentifier = value;
         }
     }
 }
@@ -209,8 +249,12 @@ internal static class MacPrivilegedNames
         return true;
     }
 
+    // Developer ID Application, and Mac App Store application certificates.
+    internal const string DistributionMarker =
+        "(certificate leaf[field.1.2.840.113635.100.6.1.13] exists or certificate leaf[field.1.2.840.113635.100.6.1.9] exists)";
+
     // Identifiers and Team IDs are checked above, so they need no quoting beyond the quotes.
-    internal static string Requirement(string team, string? identifier) => identifier is null
-        ? $"anchor apple generic and certificate leaf[subject.OU] = \"{team}\""
-        : $"anchor apple generic and identifier \"{identifier}\" and certificate leaf[subject.OU] = \"{team}\"";
+    internal static string Requirement(string team, string? identifier, bool distribution) =>
+        "anchor apple generic" + (identifier is null ? "" : $" and identifier \"{identifier}\"")
+        + $" and certificate leaf[subject.OU] = \"{team}\"" + (distribution ? " and " + DistributionMarker : "");
 }
