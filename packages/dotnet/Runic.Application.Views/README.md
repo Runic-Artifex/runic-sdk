@@ -1064,6 +1064,14 @@ show the old View or nothing. The next capture converges.
 
 ## Logging and telemetry
 
+Registering logging is all an application needs: with `services.AddLogging(...)`,
+for example `AddLogging(logging => logging.AddSerilog(...))`, or the Generic
+Host, Runic logs every runtime message through that `ILoggerFactory`, with the
+categories and event IDs below. `RunicDesktopHost.Run` also passes it to the Desktop host when
+`DesktopHostOptions.LoggerFactory` is not set, and `RunicViewHost` takes it from
+its `Services`. Without a registered factory, Runic falls back to
+`System.Diagnostics.Trace`.
+
 `OpenWindowAsync` passes the scope's
 `ILoggerFactory` to the Window's `WindowContentSession` when one is registered,
 for example with `services.AddLogging(...)`. A session constructed directly
@@ -1106,6 +1114,14 @@ output accordingly. The message properties are listed per event.
 | 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
 | 1090 | `ReactiveSchedulerKept` | Information | A Runic Desktop, CS-WebUI or test-host window opens while ReactiveUI's main-thread scheduler is one set before `AddRunicReactiveModelContext()`, so Runic's was not installed. Once per scheduler type; a UI dispatcher's scheduler, such as WPF's, is not logged. | `Scheduler` |
 | 1091 | `ReactiveSchedulerReplaced` | Warning | Such a window opens after another scheduler replaced the installed one, for example a later `RxAppBuilder` `BuildApp()` with `WithPlatformServices()`. Call `WithRunicModelContext()` on that builder. Once per scheduler type; a UI dispatcher's scheduler is not logged. | `Scheduler` |
+| 1100 | `HotReloadRestartRequired` | Error | A Hot Reload edit changed a generated Bridge contract; restart the application. The `RUNIC_IDE_CONTRACT_RESTART_REQUIRED` line also goes to standard error. | `Mismatch` |
+| 1101 | `HotReloadRestartNotificationFailed` | Warning | A `RunicBridgeHotReload.RestartRequired` handler throws. | `ErrorType` |
+| 1102 | `HotReloadRefreshFailed` | Warning | Refreshing a Bridge after a Hot Reload update throws. | `Model`, `ErrorType` |
+| 1110 | `ViewHostFallbackShown` | Warning | A WPF `RunicViewHost` cannot open its web presentation and shows its `Fallback`. | `ErrorType` |
+| 1111 | `ViewHostFallbackFailed` | Error | Showing that fallback throws. | `ErrorType` |
+| 1112 | `ViewHostPresentationChangeFailed` | Error | A `RunicViewHost` presentation change throws outside its open. | `ErrorType` |
+| 1113 | `ViewHostCleanupFailed` | Error | Releasing a `RunicViewHost` presentation throws. | `ErrorType` |
+| 1114 | `ChildViewCleanupFailed` | Error | A `WpfBridgeView` fails to release after its presentation closed. | `ErrorType` |
 | 2000 | `DesktopSnapshotDeliveryFailed` | Error | Runic Desktop cannot run a state delivery script. | `Route`, `ErrorType` |
 | 2002 | `DesktopWindowCloseAfterOpen` | Warning | `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` closed a Desktop window right after it opened. | `Variable` |
 | 2003 | `DesktopPortalDiagnostic` | Warning or Debug | On Linux, xdg-desktop-portal reports a diagnostic for the notifications `AddRunicPlatformServices()` registers: Warning for a rejected identity, an unavailable portal or a denied request, Debug for an accepted request or registration. | `Code`, `DiagnosticMessage`, `Remediation` |
@@ -1115,22 +1131,29 @@ output accordingly. The message properties are listed per event.
 | 3003 | `DesktopConfigurationLimited` | Warning | `DesktopHost.Validate` finds an option the presentation ignores or narrows, or a browser fallback opens without a permission grant. | `Code`, `Option`, `DiagnosticMessage`, `Remediation` |
 | 3004 | `BrowserLaunchStalled` | Warning | A browser was still running but had requested nothing after `ConnectionTimeout`, so Runic Desktop relaunched it (`DesktopHostOptions.BrowserLaunchAttempts`). | `Attempt` (the attempt that stalled), `Attempts`, `TimeoutSeconds` |
 | 3005 | `BridgeHandshakeExpired` | Warning | A Bridge WebSocket sent no token check, so Runic Desktop closed it and the page reconnects: after 10 seconds, or after 2 seconds when a newer WebSocket needs the only connection. | `ConnectionId`, `SilentSeconds`, `Reason` |
+| 3006 | `DesktopShutdownRequested` | Information | Ctrl+C, SIGTERM or SIGHUP asks `DesktopEventLoop.Run` to close the Desktop windows. | `Reason` |
+| 3007 | `DesktopShutdownFailed` | Error | Closing the Desktop windows for that shutdown throws. | `ErrorType` |
+| 3008 | `BrowserProfileNotDeleted` | Warning | A generated browser profile still cannot be deleted a minute after its browser closed; it stays in the temporary folder. | |
+| 3009 | `DesktopDiagnosticSinkFailed` | Warning | `DesktopHostOptions.DiagnosticSink` throws for a diagnostic. | `Code`, `ErrorType` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
 as `content12`). A declared failure is an expected outcome, so it is logged at
 Debug, still with its exception; `FailureType` is the failure value's type.
 
-Events 1000-1012, 1020, 1021 and 1050-1052 use the category `Runic.Application.Views`
-(`RunicViewsTelemetry.LogCategory`). Event 1033 here is a window session's
+Events 1000-1012, 1020, 1021, 1050-1053 and 1100-1102 use the category `Runic.Application.Views`
+(`RunicViewsTelemetry.LogCategory`); the Hot Reload events 1100-1102 use the
+logger of the window session that owns the Bridge. Events 1110-1114 use
+`Runic.Application.Views.Wpf` and the factory of the host's `Services`. Event 1033 here is a window session's
 own model context failing to shut down, and uses the session's logger.
 Events 1013 and 1014 use the logger passed to `new AcceptedWorkScope(logger)`,
 or `Trace` without one.
 Navigation (1060-1075) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
-section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`. Events 3000-3005
-use `Runic.Desktop` and need `DesktopHostOptions.LoggerFactory`.
+section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`. Events 3000-3009
+use `Runic.Desktop` and `DesktopHostOptions.LoggerFactory`, which `RunicDesktopHost.Run`
+and `RunicViewHost` fill from the application's services.
 
 Events 1040-1043, 1090 and 1091 come from `Runic.Application.Views.ReactiveUI` (and its `.Reactive`
 flavor) and also use `Runic.Application.Views`. Events 1040 and 1041 need the
