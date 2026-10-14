@@ -238,12 +238,17 @@ guide covers publish modes, signing and packaging per platform.
 `flake.nix` builds the application with the Runic SDK's
 `buildRunicApplication`, in the Nix sandbox and without network access. NuGet
 packages come from `packages.lock.json`, which `dotnet restore` writes because
-the project sets `RestorePackagesWithLockFile`; the frontend's packages come
-from its lock file. Commit both, and add the files to Git before the first
+the project sets `RestorePackagesWithLockFile`, and for the NativeAOT package
+from `packages.aot.lock.json`, which `dotnet restore -p:PublishAot=true`
+writes. Both include `linux-x64` (`RuntimeIdentifiers`), and the build
+restores in locked mode: after changing a package reference, restore both
+again, or the build fails with `NU1004`. The frontend's packages come from its
+lock file. Commit the lock files, and add the files to Git before the first
 build, because a flake sees only the files Git tracks:
 
 ```sh
 dotnet restore
+dotnet restore -p:PublishAot=true
 git init && git add -A
 nix build                # or nix build .#native-aot
 result/bin/RunicWindowApp

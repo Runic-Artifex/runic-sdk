@@ -1,7 +1,8 @@
 # buildRunicApplication: a Runic application built with nixpkgs' buildDotnetModule, without network access in
-# the sandbox. See docs/nix-packaging.md for the arguments and an example flake.
+# the sandbox. See nix/README.md for the arguments and an example flake.
 {
   lib,
+  stdenvNoCC,
   callPackage,
   buildDotnetModule,
   dotnetCorePackages,
@@ -11,7 +12,6 @@
   writableTmpDirAsHomeHook,
   clang,
   zlib,
-  patchelf,
   libxml2,
   nodejs_24,
   pnpm,
@@ -27,6 +27,10 @@
   # references or builds. nugetDeps (a deps.json, or a list of NuGet package derivations) adds to them.
   nugetLockFiles ? [ ],
   nugetDeps ? null,
+  # Restore in locked mode (RestoreLockedMode), so a lock file that no longer matches the project fails the
+  # build instead of being resolved again. The lock files must then have a section for the runtime identifier
+  # (<RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>), which is checked at evaluation.
+  nugetLockedMode ? nugetLockFiles != [ ],
   # The frontend that the Runic MSBuild targets build:
   #   directory       relative to src; default: Frontend beside the project
   #   packageManager  npm, pnpm or bun: the dependencies are installed with it, and the build runs with it
@@ -34,6 +38,9 @@
   #                   from package-lock.json instead (that reads the lock file at evaluation, so src must be a
   #                   local path such as the flake's own source)
   #   nodeModules     a prepared node_modules derivation instead (null: the frontend has no dependencies)
+  #   pnpmFetcherVersion  fetchPnpmDeps' fetcherVersion; default 4
+  # Only the frontend directory's package.json, lock file, .npmrc and pnpm-workspace.yaml are fetched from, so a
+  # workspace whose members have their own package.json needs nodeModules.
   frontend ? null,
   # desktop, desktop-gtk4, cswebui or null: the libraries the host loads at run time.
   host ? "desktop",
@@ -55,6 +62,7 @@
   nativeBuildInputs ? [ ],
   buildInputs ? [ ],
   dotnetFlags ? [ ],
+  dotnetRestoreFlags ? [ ],
   makeWrapperArgs ? [ ],
   passthru ? { },
   meta ? { },
@@ -63,10 +71,21 @@
 let
   inherit (dotnetCorePackages) fetchNupkg;
   hostRuntime = callPackage ./hosts.nix { } host;
-  nugetLockDeps = callPackage ./nuget-lock-deps.nix { inherit fetchNupkg; } {
-    lockFiles = nugetLockFiles;
+  nugetLock = callPackage ./nuget-lock-deps.nix { inherit fetchNupkg; } {
+    lockFiles = checkedLockFiles;
     inherit dotnet-sdk;
   };
+  runtimeId = args.runtimeId or (dotnetCorePackages.systemToDotnetRid stdenvNoCC.hostPlatform.system);
+  # Locked mode compares the lock with the restore for this runtime identifier, whose section a lock written
+  # without RuntimeIdentifiers lacks.
+  lockWithoutRuntime = lib.findFirst (
+    file: !(lib.any (key: lib.hasSuffix "/${runtimeId}" key) (lib.attrNames ((lib.importJSON file).dependencies or { })))
+  ) null (lib.toList nugetLockFiles);
+  checkedLockFiles =
+    assert lib.assertMsg (!nugetLockedMode || lockWithoutRuntime == null) ''
+      buildRunicApplication: ${toString lockWithoutRuntime} has no ${runtimeId} section, so a locked restore for ${runtimeId} fails.
+      Set <RuntimeIdentifiers>${runtimeId}</RuntimeIdentifiers> in the project and run dotnet restore again, or set nugetLockedMode = false.'';
+    nugetLockFiles;
   extraNugetDeps =
     if nugetDeps == null then
       [ ]
@@ -101,6 +120,7 @@ let
               inherit pname version packageManager;
               src = if packageManager == "npm" && frontend.hash or null == null then "${src}/${directory}" else lockSource;
               hash = frontend.hash or null;
+              pnpmFetcherVersion = frontend.pnpmFetcherVersion or 4;
             };
       in
       {
@@ -114,12 +134,11 @@ let
           .${packageManager};
       };
 
-  executableNames = if args ? executables then lib.toList args.executables else [ ];
-  libraryPath = lib.makeLibraryPath hostRuntime.libraries;
 in
 buildDotnetModule (
   removeAttrs args [
     "nugetLockFiles"
+    "nugetLockedMode"
     "frontend"
     "host"
     "withMedia"
@@ -140,7 +159,27 @@ buildDotnetModule (
       selfContainedBuild
       desktopItems
       ;
-    nugetDeps = nugetLockDeps ++ extraNugetDeps;
+    nugetDeps = nugetLock.packages ++ extraNugetDeps;
+
+    # nixpkgs installs NuGet packages into the fallback folder with an empty contentHash, which a locked restore
+    # rejects (NU1403). Restore each locked package from the global packages folder instead, linked to the same
+    # files, with the hash its lock records: the download was checked against it, and a package that the .NET
+    # SDK provides is the same version.
+    postConfigureNuGet = lib.optionalString (nugetLockFiles != [ ]) ''
+      while read -r id packageVersion contentHash; do
+        source="''${NUGET_FALLBACK_PACKAGES%/}/$id/$packageVersion"
+        [[ -d $source ]] || continue
+        target="''${NUGET_PACKAGES%/}/$id/$packageVersion"
+        mkdir -p "$target"
+        for file in "$source"/* "$source"/.[!.]*; do
+          if [[ -e $file && ''${file##*/} != .nupkg.metadata ]]; then ln -s "$file" "$target/"; fi
+        done
+        printf '{"version":2,"contentHash":"%s","source":null}\n' "$contentHash" > "$target/.nupkg.metadata"
+      done <<'RUNIC_LOCKED_PACKAGES'
+    ${lib.concatStringsSep "\n" nugetLock.lockedPackages}
+    RUNIC_LOCKED_PACKAGES
+      ${args.postConfigureNuGet or ""}
+    '';
 
     nativeBuildInputs =
       nativeBuildInputs
@@ -153,16 +192,16 @@ buildDotnetModule (
       ]
       ++ lib.optional (hostRuntime.wrapHook != null) hostRuntime.wrapHook
       ++ lib.optionals (frontend' != null) frontend'.tool
-      ++ lib.optionals nativeAot [
-        clang
-        patchelf
-      ];
+      ++ lib.optional nativeAot clang;
     buildInputs =
       buildInputs
       ++ hostRuntime.buildInputs
       ++ lib.optionals withMedia hostRuntime.gstreamer
       ++ lib.optional nativeAot zlib;
     runtimeDeps = runtimeDeps ++ hostRuntime.libraries;
+
+    # NU1004 names the changed references; the lock is updated with dotnet restore outside the sandbox.
+    dotnetRestoreFlags = dotnetRestoreFlags ++ lib.optional nugetLockedMode "-p:RestoreLockedMode=true";
 
     dotnetFlags =
       dotnetFlags
@@ -216,8 +255,18 @@ buildDotnetModule (
   // {
     postInstall = ''
       # The wrappers are binaries: a privileged action may name one as its program, and pkexec then runs no shell.
+      # A binary wrapper cannot --run a command (useDotnetFromEnv does), so that one is a shell script instead.
       # Login startup registers the wrapper ($2), not the unwrapped program behind it.
-      makeWrapper() { makeBinaryWrapper "$@" --set RUNIC_APPLICATION_EXECUTABLE "$2"; }
+      makeWrapper() {
+        local argument
+        for argument in "$@"; do
+          if [[ $argument == --run ]]; then
+            makeShellWrapper "$@" --set RUNIC_APPLICATION_EXECUTABLE "$2"
+            return
+          fi
+        done
+        makeBinaryWrapper "$@" --set RUNIC_APPLICATION_EXECUTABLE "$2"
+      }
 
       appDir=''${dotnetInstallPath-$out/lib/$pname}
       rm -f "$appDir"/*.dbg
@@ -241,16 +290,6 @@ buildDotnetModule (
     '';
 
     postFixup = ''
-      appDir=''${dotnetInstallPath-$out/lib/$pname}
-      ${lib.optionalString (nativeAot && hostRuntime.libraries != [ ]) ''
-        # NativeAOT loads GTK and WebKitGTK with dlopen from the executable, so its RUNPATH finds them even
-        # where the wrapper's LD_LIBRARY_PATH is gone (pkexec clears it).
-        for program in "$appDir"/*; do
-          if [[ -f $program && -x $program && ! -L $program ]] && isELF "$program"; then
-            patchelf --add-rpath ${libraryPath} "$program"
-          fi
-        done
-      ''}
       # pkexec runs a privileged action's program as root, from the policy's exec.path: it must be a program of
       # this package, a regular file at its real path.
       for policy in $out/share/polkit-1/actions/*.policy; do

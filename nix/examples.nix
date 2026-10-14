@@ -85,6 +85,8 @@ let
         projectFile = "examples/status-icon/StatusIconSample.csproj";
         nugetLockFiles = sdkLockFiles ++ [ ../examples/status-icon/packages.lock.json ];
         nugetDeps = windowsTargetingPack;
+        # The SDK's lock files are restored without a runtime identifier; CI restores them in locked mode.
+        nugetLockedMode = false;
         # Package validation would download each project's last published package.
         dotnetFlags = [ "-p:EnablePackageValidation=false" ];
         frontend = {
@@ -116,6 +118,7 @@ let
     projectFile = "tests/native/Runic.Privileged.Smoke/Runic.Privileged.Smoke.csproj";
     nugetLockFiles = sdkLockFiles ++ [ ../tests/native/Runic.Privileged.Smoke/packages.lock.json ];
     nugetDeps = windowsTargetingPack;
+    nugetLockedMode = false;
     dotnetFlags = [ "-p:EnablePackageValidation=false" ];
     host = null;
     nativeAot = true;

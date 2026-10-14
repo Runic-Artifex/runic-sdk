@@ -74,7 +74,8 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `projectFile` | required | The application's project, relative to `src`. |
 | `nugetLockFiles` | `[ ]` | `packages.lock.json` files whose packages restore the project: its own, and those of projects it references. |
 | `nugetDeps` | `null` | More NuGet packages: a `deps.json`, a package derivation or a list of them, as `buildDotnetModule` takes. |
-| `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, or `nodeModules`. See below. |
+| `nugetLockedMode` | `true` with lock files | Restore with `RestoreLockedMode`, so a lock file that no longer matches the project fails the build. |
+| `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, `pnpmFetcherVersion` (default 4), or `nodeModules`. See below. |
 | `host` | `"desktop"` | `desktop` (GTK 3, WebKitGTK 4.1), `desktop-gtk4` (GTK 4, WebKitGTK 6.0), `cswebui`, or `null`: which libraries the host loads at run time. |
 | `withMedia` | `false` | GStreamer plugins for audio and video in WebKitGTK. |
 | `nativeAot` | `false` | Publish with NativeAOT. Self-contained either way when set. |
@@ -100,9 +101,32 @@ removes the signature and checks that hash, and restore accepts the unsigned
 package. Packages that the .NET SDK in nixpkgs provides, such as
 `Microsoft.NET.ILLink.Tasks` and the NativeAOT compiler, are not downloaded.
 
-A lock file lists the packages of one restore. Restoring for a runtime
-(`dotnet restore -r linux-x64`) or with `PublishAot` adds runtime packages that
-come from the .NET SDK, so the lock without them is enough.
+`buildDotnetModule` restores for the system's runtime identifier
+(`linux-x64`), so each lock file needs that runtime's section: set
+`<RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>` in the project. Its
+packages, including those a package's `runtime.json` adds for the runtime, are
+then locked and fetched too. The build restores in locked mode: a lock file
+without the section fails at evaluation with a message naming it, and one that
+no longer matches the project's references fails the restore with `NU1004`;
+restore again and commit the lock. `nugetLockedMode = false` restores without
+that check, re-resolving whatever the lock lacks from the fetched packages. nixpkgs installs NuGet packages without a
+content hash, which a locked restore rejects, so the build links each locked
+package into the restore's packages folder with the hash its lock records.
+
+A NativeAOT restore adds the compiler packages (`Microsoft.DotNet.ILCompiler`,
+and `runtime.linux-x64.Microsoft.DotNet.ILCompiler` in the runtime's section),
+so its graph differs from the JIT one. Keep a second lock file for it, as the
+template does:
+
+```xml
+<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+<RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+<NuGetLockFilePath Condition="'$(PublishAot)' == 'true'">packages.aot.lock.json</NuGetLockFilePath>
+```
+
+and write it with `dotnet restore -p:PublishAot=true`. The compiler packages
+come from the .NET SDK, so they are not downloaded. When several lock files
+record different hashes for the same package and version, evaluation fails.
 
 Packages from another feed, or a project without lock files, use nixpkgs'
 `deps.json`: set `nugetDeps = ./deps.json`, and generate it with
@@ -134,8 +158,11 @@ not to install again before the script. pnpm refuses packages younger than its
 `minimumReleaseAge` (a day) when it fetches; set it in `pnpm-workspace.yaml` if
 a just-released version must be used.
 
-`frontend.nodeModules` replaces the fetch with any derivation that has
-`node_modules` at its root, and `null` builds a frontend without dependencies.
+Only the frontend directory's `package.json`, lock file, `.npmrc` and
+`pnpm-workspace.yaml` are fetched from. A workspace whose members have their own
+`package.json` needs `frontend.nodeModules`, which replaces the fetch with any
+derivation that has `node_modules` at its root; `null` builds a frontend
+without dependencies.
 
 ### Run time
 
@@ -143,8 +170,11 @@ GTK, WebKitGTK and GLib are loaded with `dlopen`, so they are run-time
 dependencies, never bundled. The program in `bin` is a binary wrapper (from
 `makeBinaryWrapper`, so no shell runs) that sets `LD_LIBRARY_PATH` to them,
 `XDG_DATA_DIRS` to their GSettings schemas, `GIO_EXTRA_MODULES` to
-glib-networking, and, for JIT builds, `DOTNET_ROOT`. A NativeAOT program also
-gets the libraries in its `RUNPATH`, so it finds them without the wrapper.
+glib-networking, and, for JIT builds, `DOTNET_ROOT`. Run the application
+through the wrapper: the program behind it in `lib/<pname>` finds no GTK or
+WebKitGTK, and Runic Desktop then reports `webkitgtk-runtime-missing` and opens
+a browser instead. A wrapper that needs `--run` (`useDotnetFromEnv`) is a shell
+script instead, which is not fit to be a privileged action's program.
 
 A `cswebui` application gets none of them: CS-WebUI initialises GTK whenever it
 can load it, even when it serves without a display, and opens an installed
@@ -152,7 +182,9 @@ browser instead.
 
 The wrapper also sets `RUNIC_APPLICATION_EXECUTABLE` to itself. Login startup
 (`IDesktopLoginStartup`) then writes the wrapper into the autostart entry rather
-than the program behind it. That path names one version of the package; on
+than the program behind it. The application reads the variable when it starts
+and removes it from its environment, and trusts it only for a wrapper in the
+same package (`<prefix>/bin/<name>`, with the program below `<prefix>`). That path names one version of the package; on
 NixOS or Home Manager, the modules' user service starts whatever version is
 installed.
 
@@ -248,6 +280,7 @@ in a shell without them. Other `mkShell` arguments pass through.
   the package's program, and that pkexec runs the action through the wrapper.
 - `tests/templates/Test-NixTemplate.sh <published-version> npm pnpm bun aot`
   creates `--nix` projects from this checkout's template against a published
-  Runic version and builds their flakes with this checkout's builder. With
+  Runic version and builds their flakes with this checkout's builder. For npm
+  it also checks that a lock without `linux-x64` and a stale lock fail. With
   `RUNIC_NIX_TEMPLATE_WINDOW=1` each application opens its window under Xvfb
   and must load GTK and WebKitGTK from the store.

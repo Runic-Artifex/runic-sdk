@@ -5,7 +5,8 @@
 # removes the signature (nupkg-unsigned.py) and is checked against that hash, so no generated deps.json is
 # needed. Project entries are skipped; a package that appears in several lock files, or under several target
 # frameworks and runtime identifiers, is fetched once, and one that the .NET SDK's own packages provide (such as
-# Microsoft.NET.ILLink.Tasks) is not fetched.
+# Microsoft.NET.ILLink.Tasks) is not fetched. Returns the packages and, for a locked restore, each locked
+# package's contentHash.
 {
   lib,
   fetchurl,
@@ -32,9 +33,19 @@ let
     )
   ) (lib.toList lockFiles);
   packages = lib.filter (entry: entry.type or "" != "Project" && entry ? contentHash && entry ? resolved) entries;
-  byKey = removeAttrs (lib.listToAttrs (
-    map (entry: lib.nameValuePair (key entry.name entry.resolved) entry) packages
-  )) (lib.attrNames provided);
+  # One entry per package and version. Lock files that record different hashes for it disagree about the package's
+  # contents, which no download can satisfy.
+  grouped = lib.groupBy (entry: key entry.name entry.resolved) packages;
+  locked = lib.mapAttrs (
+    name: group:
+    let
+      hashes = lib.unique (map (entry: entry.contentHash) group);
+    in
+    assert lib.assertMsg (lib.length hashes == 1)
+      "buildRunicApplication: the lock files record different contentHash values for NuGet package ${name}: ${lib.concatStringsSep ", " hashes}. Restore them again from the same source.";
+    lib.head group
+  ) grouped;
+  byKey = removeAttrs locked (lib.attrNames provided);
   fetch =
     entry:
     let
@@ -58,4 +69,12 @@ let
     }).overrideAttrs
       { inherit src; };
 in
-map fetch (lib.attrValues byKey)
+{
+  # For nugetDeps.
+  packages = map fetch (lib.attrValues byKey);
+  # "<id> <version> <contentHash>" per locked package, lowercased as in the packages folder, for restoring in
+  # locked mode (see build-runic-application.nix).
+  lockedPackages = lib.mapAttrsToList (
+    name: entry: "${lib.replaceStrings [ "/" ] [ " " ] name} ${entry.contentHash}"
+  ) locked;
+}

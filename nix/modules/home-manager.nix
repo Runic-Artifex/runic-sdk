@@ -15,7 +15,7 @@
   ...
 }:
 let
-  execArguments = import ./exec-arguments.nix lib;
+  quoting = import ./systemd-quoting.nix lib;
   enabled = lib.filterAttrs (_: application: application.enable) config.programs.runic.applications;
   services = lib.filterAttrs (_: application: application.userService.enable) enabled;
 in
@@ -46,8 +46,8 @@ in
         After = [ "graphical-session.target" ];
       };
       Service = {
-        ExecStart = execArguments ([ application.executable ] ++ application.userService.arguments);
-        Environment = lib.mapAttrsToList (key: value: "${key}=${value}") application.userService.environment;
+        ExecStart = quoting.execArguments ([ application.executable ] ++ application.userService.arguments);
+        Environment = lib.mapAttrsToList quoting.environment application.userService.environment;
         Restart = "on-failure";
         RestartSec = 5;
       };

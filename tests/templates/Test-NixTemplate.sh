@@ -113,6 +113,27 @@ EOF
   fi
 }
 
+# The build restores in locked mode: a lock without the runtime's section fails at evaluation, and one that no
+# longer matches the project fails the restore with NU1004.
+locked() {
+  local project="$1" log="$work/locked.log"
+  local -a flake=(--override-input runic-sdk "git+file://$sdk?shallow=1" --override-input nixpkgs "$nixpkgs" --no-write-lock-file)
+  jq 'del(.dependencies["net10.0/linux-x64"])' "$project/packages.lock.json" > "$work/lock.json"
+  cp "$work/lock.json" "$project/packages.lock.json"
+  if nix eval "$project#default.drvPath" "${flake[@]}" > "$log" 2>&1 || ! grep -q 'has no linux-x64 section' "$log"; then
+    cat "$log" >&2
+    return 1
+  fi
+  git -C "$project" checkout -q -- packages.lock.json
+  sed -i 's|</ItemGroup>|  <PackageReference Include="Humanizer.Core" Version="2.14.1" />\n  </ItemGroup>|' "$project/NixApp.csproj"
+  if nix build "$project#default" "${flake[@]}" --no-link > "$log" 2>&1 || ! grep -q 'NU1004' "$log"; then
+    tail -n 30 "$log" >&2
+    return 1
+  fi
+  git -C "$project" checkout -q -- NixApp.csproj
+  echo "  locked mode: a lock without linux-x64 and a stale lock fail"
+}
+
 for case in "${cases[@]}"; do
   manager="$case"
   [[ "$case" == aot ]] && manager=npm
@@ -129,6 +150,12 @@ for case in "${cases[@]}"; do
     fi
     # What the project's README asks for before the first nix build: the NuGet lock, and the files in Git.
     dotnet restore "$project/NixApp.csproj" > /dev/null
+    dotnet restore "$project/NixApp.csproj" -p:PublishAot=true > /dev/null
+    for lock in packages.lock.json packages.aot.lock.json; do
+      jq -e '.dependencies["net10.0/linux-x64"]' "$project/$lock" > /dev/null
+    done
+    # The NativeAOT graph adds the runtime-specific compiler package, in the linux-x64 section only.
+    jq -e '.dependencies["net10.0/linux-x64"]["runtime.linux-x64.Microsoft.DotNet.ILCompiler"]' "$project/packages.aot.lock.json" > /dev/null
     git -C "$project" init -q
     git -C "$project" add -A
   fi
@@ -140,4 +167,5 @@ for case in "${cases[@]}"; do
   serve "$project/result-$output/bin/NixApp"
   if [[ "${RUNIC_NIX_TEMPLATE_WINDOW:-}" == 1 ]]; then window "$project/result-$output/bin/NixApp"; fi
   echo "  $case: built and served"
+  if [[ "$case" == npm ]]; then locked "$project"; fi
 done

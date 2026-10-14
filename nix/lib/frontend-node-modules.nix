@@ -97,7 +97,9 @@ else if packageManager == "pnpm" then
 else if packageManager == "bun" then
   let
     fetched = stdenvNoCC.mkDerivation {
-      pname = "${name}-bun-install";
+      # The output path depends only on its name and hash: name the Bun version, so another Bun installs again
+      # rather than reusing what an earlier one installed.
+      pname = "${name}-bun-${bun.version}-install";
       inherit version src;
       nativeBuildInputs = [
         bun

@@ -6,7 +6,10 @@
 # The overlay (overlays.default) adds pkgs.buildRunicApplication for callPackage-style package files.
 {
   buildRunicApplication = pkgs: pkgs.callPackage ./build-runic-application.nix { };
-  nugetDepsFromLockFiles = pkgs: pkgs.callPackage ./nuget-lock-deps.nix { inherit (pkgs.dotnetCorePackages) fetchNupkg; };
+  nugetDepsFromLockFiles =
+    pkgs: lockFiles:
+    (pkgs.callPackage ./nuget-lock-deps.nix { inherit (pkgs.dotnetCorePackages) fetchNupkg; } { inherit lockFiles; })
+    .packages;
   frontendNodeModules = pkgs: pkgs.callPackage ./frontend-node-modules.nix { nodejs = pkgs.nodejs_24; };
   mkDevShell = pkgs: pkgs.callPackage ./dev-shell.nix { };
 }

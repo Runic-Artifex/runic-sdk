@@ -24,7 +24,10 @@ let
                 "$HOME"
                 "a\"b\\c"
               ];
-              environment.MY_APP_MODE = "background";
+              environment = {
+                MY_APP_MODE = "background";
+                MY_APP_TITLE = "50% \"done\"";
+              };
             };
           };
           other = {
@@ -41,6 +44,11 @@ in
 assert lib.assertMsg (home.config.home.packages == [ package ]) "only enabled applications are installed";
 assert lib.assertMsg (lib.attrNames home.config.systemd.user.services == [ "my-app" ]) "one user service";
 assert lib.assertMsg (service.Service.ExecStart == expected) "ExecStart is ${service.Service.ExecStart}";
-assert lib.assertMsg (service.Service.Environment == [ "MY_APP_MODE=background" ]) "environment";
+assert lib.assertMsg (
+  service.Service.Environment == [
+    ''"MY_APP_MODE=background"''
+    ''"MY_APP_TITLE=50%% \"done\""''
+  ]
+) "Environment is ${toString service.Service.Environment}";
 assert lib.assertMsg (service.Install.WantedBy == [ "graphical-session.target" ]) "started with the graphical session";
 pkgs.writeText "runic-home-manager-module" (builtins.toJSON service)

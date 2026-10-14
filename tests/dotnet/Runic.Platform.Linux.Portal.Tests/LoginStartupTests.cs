@@ -47,36 +47,80 @@ internal sealed class LoginStartupTests
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
     }
 
-    [Test, NotInParallel("RUNIC_APPLICATION_EXECUTABLE"), DisplayName("login startup: the entry starts the wrapper that RUNIC_APPLICATION_EXECUTABLE names")]
+    [Test, NotInParallel("RUNIC_APPLICATION_EXECUTABLE"), DisplayName("login startup: the entry starts the package's wrapper that RUNIC_APPLICATION_EXECUTABLE names")]
     public async Task WrapperEntryAsync()
     {
         string directory = Path.Combine(Path.GetTempPath(), "runic-autostart-" + Guid.NewGuid().ToString("N")[..8]);
-        string wrapper = Path.Combine(directory, "bin", "my app");
+        // The wrapper belongs to the process's package: <prefix>/bin/<name>, with the test program below <prefix>.
+        string prefix = Path.GetDirectoryName(Environment.ProcessPath!)!;
+        string bin = Path.Combine(prefix, "bin");
+        bool created = !Directory.Exists(bin);
+        string wrapper = Path.Combine(bin, "runic wrapper " + Guid.NewGuid().ToString("N")[..8]);
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(wrapper)!);
+            Directory.CreateDirectory(bin);
             File.WriteAllText(wrapper, "");
             var startup = new LinuxLoginStartup(new PortalApplication("org.example.Wrapped"), directory, sandboxed: false);
             string path = Path.Combine(directory, "org.example.Wrapped.desktop");
 
-            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE", wrapper);
+            PackagedExecutable.Wrapper = wrapper;
             Check(await startup.EnableAsync(new LoginStartupRequest(["--tray"])) is PlatformResult<PlatformUnit>.Success, "enable");
             string entry = File.ReadAllText(path);
             Check(entry.Contains($"Exec=\"{wrapper}\" --tray\n", StringComparison.Ordinal), $"the wrapper starts: {entry}");
-
-            // A relative or missing path is not a wrapper of this process.
-            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE", Path.Combine(directory, "missing"));
-            Check(await startup.EnableAsync(new LoginStartupRequest([])) is PlatformResult<PlatformUnit>.Success, "enable again");
-            entry = File.ReadAllText(path);
-            Check(!entry.Contains(directory + "/missing", StringComparison.Ordinal) && entry.Contains(Environment.ProcessPath!, StringComparison.Ordinal),
-                $"the process starts instead: {entry}");
         }
         finally
         {
-            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_EXECUTABLE", null);
+            PackagedExecutable.Wrapper = null;
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+            File.Delete(wrapper);
+            if (created && Directory.Exists(bin)) Directory.Delete(bin);
         }
     }
+
+    [Test, DisplayName("login startup: only a wrapper of the process's own package is trusted")]
+    public void WrapperOfThisPackage()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "runic-package-" + Guid.NewGuid().ToString("N")[..8]);
+        string package = Path.Combine(root, "store", "abc-my-app");
+        string other = Path.Combine(root, "store", "def-other");
+        string process = Path.Combine(package, "lib", "my-app", "MyApp");
+        try
+        {
+            foreach (string bin in new[] { Path.Combine(package, "bin"), Path.Combine(other, "bin"), Path.Combine(package, "libexec") })
+            {
+                Directory.CreateDirectory(bin);
+                File.WriteAllText(Path.Combine(bin, "MyApp"), "");
+            }
+            string wrapper = Path.Combine(package, "bin", "MyApp");
+            Equal(wrapper, PackagedExecutable.Resolve(wrapper, process), "the package's own wrapper");
+            Equal(process, PackagedExecutable.Resolve(Path.Combine(other, "bin", "MyApp"), process), "another package's wrapper, inherited");
+            Equal(process, PackagedExecutable.Resolve(Path.Combine(package, "libexec", "MyApp"), process), "not in a bin directory");
+            Equal(process, PackagedExecutable.Resolve(Path.Combine(package, "bin", "Missing"), process), "a missing wrapper");
+            Equal(process, PackagedExecutable.Resolve("bin/MyApp", process), "a relative path");
+            Equal(process, PackagedExecutable.Resolve(null, process), "no wrapper");
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Test, NotInParallel("RUNIC_APPLICATION_EXECUTABLE"), DisplayName("login startup: the wrapper's variable is read once and removed for child processes")]
+    public void WrapperVariableIsRemoved()
+    {
+        try
+        {
+            Environment.SetEnvironmentVariable(PackagedExecutable.Variable, "/nix/store/abc-my-app/bin/MyApp");
+            PackagedExecutable.Capture();
+            Equal("/nix/store/abc-my-app/bin/MyApp", PackagedExecutable.Wrapper, "captured");
+            Equal(null, Environment.GetEnvironmentVariable(PackagedExecutable.Variable), "removed from the environment");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(PackagedExecutable.Variable, null);
+            PackagedExecutable.Wrapper = null;
+        }
+    }
+
+    private static void Equal(string? expected, string? actual, string message) =>
+        Check(string.Equals(expected, actual, StringComparison.Ordinal), $"{message}: expected '{expected}', found '{actual}'");
 
     [Test, Explicit, Category("DBus"), DisplayName("login startup: the Background portal in a sandbox, granted and refused")]
     public async Task BackgroundPortalAsync()

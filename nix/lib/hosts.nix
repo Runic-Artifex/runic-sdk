@@ -1,5 +1,5 @@
 # What each Runic host loads at run time on Linux. The libraries are loaded with dlopen, so they are
-# runtime dependencies on LD_LIBRARY_PATH (and the NativeAOT executable's RUNPATH), never bundled.
+# runtime dependencies on the wrapper's LD_LIBRARY_PATH, never bundled.
 #
 #   desktop       Runic Desktop on GTK 3 and WebKitGTK 4.1
 #   desktop-gtk4  Runic Desktop on GTK 4 and WebKitGTK 6.0

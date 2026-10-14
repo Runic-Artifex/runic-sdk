@@ -19,8 +19,8 @@
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
       inherit (pkgs) lib;
-      # Builds in the Nix sandbox without network access: NuGet packages come from packages.lock.json, which
-      # dotnet restore writes (commit it), and the frontend's dependencies from its lock file.
+      # Builds in the Nix sandbox without network access: NuGet packages come from the committed lock files and
+      # the frontend's dependencies from its lock file.
       application =
         { nativeAot }:
         runic-sdk.lib.buildRunicApplication pkgs {
@@ -41,7 +41,8 @@
             );
           };
           projectFile = "RunicWindowApp.csproj";
-          nugetLockFiles = [ ./packages.lock.json ];
+          # dotnet restore and dotnet restore -p:PublishAot=true write them; see RunicWindowApp.csproj.
+          nugetLockFiles = [ (if nativeAot then ./packages.aot.lock.json else ./packages.lock.json) ];
           frontend = {
             packageManager = "__PACKAGE_MANAGER_NAME__";
 #if (packageManager == "npm")
