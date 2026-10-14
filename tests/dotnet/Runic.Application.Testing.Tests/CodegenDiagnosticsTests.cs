@@ -315,6 +315,13 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed class ToJsonViewModel : FixtureModel { public IAsyncRelayCommand ToJSONCommand { get; } = new AsyncRelayCommand(() => System.Threading.Tasks.Task.CompletedTask); }
                 public sealed partial class ToJsonWindow : RunicWindow<ToJsonViewModel>;
                 """, "error RUNICBRIDGE004:", "the generated client member 'toJSON'").ConfigureAwait(false);
+            // The bridge is generated as CounterBridge beside CounterViewModel (#258).
+            await RejectAt("BridgeTypeName", """
+                public sealed class CounterBridge { }
+                public sealed class CounterViewModel : FixtureModel { public int Count { get; } }
+                public sealed partial class CounterWindow : RunicWindow<CounterViewModel>;
+                """, "RUNICBRIDGE004", "public sealed class CounterBridge",
+                "Fixture.CounterBridge has the name of the Bridge generated for Fixture.CounterViewModel.").ConfigureAwait(false);
             await Reject("AvailabilityRoute", """
                 public sealed class AvailabilityViewModel : FixtureModel
                 {
@@ -416,9 +423,9 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class PlainWindow : RunicWindow<PlainViewModel>;
                 """, "--di-composition", "Fixture.Composition").ConfigureAwait(false);
             var registration = File.ReadAllText(Path.Combine(composition, "RunicBridgeComposition.g.cs"));
-            Require(!registration.Contains("Func<IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
-                && registration.Contains("Func<IBridgeTransport, WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
-                && registration.Contains("Func<IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),
+            Require(!registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
+                && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Runic.Application.Views.WindowContentSession, global::Fixture.AskViewModel, global::System.IDisposable>", StringComparison.Ordinal)
+                && registration.Contains("Func<global::Runic.Application.Views.IBridgeTransport, global::Fixture.PlainViewModel, global::System.IDisposable>", StringComparison.Ordinal),
                 $"DI composition registered a transport-only factory for an interaction ViewModel.\n{registration}");
 
             // A ViewModel that a region, content property or content collection

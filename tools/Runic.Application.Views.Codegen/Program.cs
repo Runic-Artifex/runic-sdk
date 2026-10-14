@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Input;
 using Runic.Application.Views;
+using static TypeScriptModuleBindings;
 
 try
 {
@@ -113,6 +114,16 @@ try
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
                 $"Bridge presentation kinds must be unique across ViewModels and View contracts: '{group.Key}' is used by {string.Join(" and ", group.Select(kind => kind.Member.Name))}.",
                 group.Last().Member);
+        // The bridge is generated as {Name}Bridge beside its ViewModel, so a
+        // declared type of that name would be defined twice (CS0101).
+        foreach (var entry in models)
+            if (entry.Model.Assembly.GetType($"{(entry.Model.Namespace is null ? "" : entry.Model.Namespace + ".")}{entry.Name}Bridge") is { } existing
+                && !(existing.BaseType is { IsGenericType: true } bridgeBase
+                    && bridgeBase.GetGenericTypeDefinition().FullName == "Runic.Application.Views.ViewModelBridge`1"
+                    && bridgeBase.GenericTypeArguments[0] == entry.Model))
+                throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
+                    $"{existing.FullName} has the name of the Bridge generated for {entry.Model.FullName}. Rename the type, or the ViewModel.",
+                    existing);
         if (aot)
         {
             var unsupported = models.Select(entry => (entry.Model, Reason: MvvmCodegenConventions.UnsupportedAotReason(entry.Model)))
@@ -390,7 +401,7 @@ static void GenerateCompositionRegistration(string path, string compositionType,
     cs.AppendLine($"namespace {string.Join('.', parts[..^1])};");
     cs.AppendLine($"public static class {parts[^1]}");
     cs.AppendLine("{");
-    cs.AppendLine("    public static IServiceCollection AddRunicBridges(this IServiceCollection services)");
+    cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicBridges(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
     cs.AppendLine("    {");
     cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(services);");
     foreach (var (model, name) in models)
@@ -402,10 +413,10 @@ static void GenerateCompositionRegistration(string path, string compositionType,
         // transport-only factory when it can actually construct the bridge.
         if (!contentRequired.Contains(model))
         {
-            cs.AppendLine($"        services.AddScoped<global::System.Func<IBridgeTransport, {modelType}, global::System.IDisposable>>(");
+            cs.AppendLine($"        services.AddScoped<global::System.Func<global::Runic.Application.Views.IBridgeTransport, {modelType}, global::System.IDisposable>>(");
             cs.AppendLine($"            _ => (transport, vm) => new {bridgeType}(transport, vm));");
         }
-        cs.AppendLine($"        services.AddScoped<global::System.Func<IBridgeTransport, WindowContentSession, {modelType}, global::System.IDisposable>>(");
+        cs.AppendLine($"        services.AddScoped<global::System.Func<global::Runic.Application.Views.IBridgeTransport, global::Runic.Application.Views.WindowContentSession, {modelType}, global::System.IDisposable>>(");
         cs.AppendLine($"            _ => (transport, content, vm) => new {bridgeType}(transport, vm, content: content));");
     }
     cs.AppendLine("        return services;");
@@ -415,12 +426,12 @@ static void GenerateCompositionRegistration(string path, string compositionType,
     // registrations stay explicit and trimming/AOT safe. ViewModels remain
     // application registrations because their lifetime is an application choice.
     cs.AppendLine("    /// <summary>Registers the generated Bridges, every non-Window View as transient, and the default service-provider View locator.</summary>");
-    cs.AppendLine("    public static IServiceCollection AddRunicViews(this IServiceCollection services)");
+    cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicViews(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services)");
     cs.AppendLine("    {");
     cs.AppendLine("        AddRunicBridges(services);");
     foreach (var view in views)
         cs.AppendLine($"        services.TryAddTransient<global::{view.FullName}>();");
-    cs.AppendLine("        services.TryAddScoped<IRunicViewLocator, ServiceProviderViewLocator>();");
+    cs.AppendLine("        services.TryAddScoped<global::Runic.Application.Views.IRunicViewLocator, global::Runic.Application.Views.ServiceProviderViewLocator>();");
     cs.AppendLine("        return services;");
     cs.AppendLine("    }");
     cs.AppendLine("}");
@@ -452,8 +463,8 @@ static void GenerateCompositionStub(string path, string compositionType, string?
     cs.AppendLine($"namespace {string.Join('.', parts[..^1])};");
     cs.AppendLine($"public static class {parts[^1]}");
     cs.AppendLine("{");
-    cs.AppendLine("    public static IServiceCollection AddRunicBridges(this IServiceCollection services) => services;");
-    cs.AppendLine("    public static IServiceCollection AddRunicViews(this IServiceCollection services) => services;");
+    cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicBridges(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services) => services;");
+    cs.AppendLine("    public static global::Microsoft.Extensions.DependencyInjection.IServiceCollection AddRunicViews(this global::Microsoft.Extensions.DependencyInjection.IServiceCollection services) => services;");
     cs.AppendLine("}");
     WriteIfChanged(path, cs.ToString());
 }
@@ -724,16 +735,16 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     cs.AppendLine("#nullable enable");
     cs.AppendLine("using Runic.Application.Views;");
     AppendNamespace(cs, model.Namespace);
-    cs.AppendLine($"internal sealed class {shortName}Bridge : ViewModelBridge<{fullType}>");
+    cs.AppendLine($"internal sealed class {shortName}Bridge : global::Runic.Application.Views.ViewModelBridge<{fullType}>");
     cs.AppendLine("{");
     if (interactions.Length > 0)
         cs.AppendLine("    private readonly global::System.IDisposable? _rootInteractionMount;");
     if (hasContent)
     {
-        cs.AppendLine("    private readonly WindowContentSession _content;");
+        cs.AppendLine("    private readonly global::Runic.Application.Views.WindowContentSession _content;");
         cs.AppendLine($"    private readonly {fullType} _owner;");
     }
-    cs.AppendLine($"    internal {shortName}Bridge(IBridgeTransport transport, {fullType} vm, string? routePrefix = null, WindowContentSession? content = null) : base(");
+    cs.AppendLine($"    internal {shortName}Bridge(global::Runic.Application.Views.IBridgeTransport transport, {fullType} vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(");
     cs.AppendLine($"        transport, vm, routePrefix ?? \"{prefix}\",");
     cs.AppendLine(needsCheckedWriter
         ? "        CreateWriter(content),"
@@ -758,10 +769,10 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         if (regionSlots.Contains(property))
         {
             // The runtime observes the region and binds the window session.
-            cs.AppendLine($"            new PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
+            cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
             continue;
         }
-        cs.AppendLine($"            new PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}),");
+        cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}),");
     }
     cs.AppendLine("        ],");
     if (needsCheckedWriter)
@@ -770,7 +781,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         foreach (var property in checkedProperties)
         {
             var type = valueProperties[property].RootCSharpType();
-            cs.AppendLine($"            new CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, ReadValue: element => {property.Name}ValueCodec.Read(element), WriteValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
+            cs.AppendLine($"            new global::Runic.Application.Views.CheckedPropertyDescriptor<{fullType}>(\"{property.Name}\", \"{WireName(property)}\", global::Runic.Application.Views.CheckedFieldValueKind.Json, vm => vm.{property.Name}, (vm, value) => vm.{property.Name} = ({type})value!, ReadValue: element => {property.Name}ValueCodec.Read(element), WriteValue: (writer, value) => {property.Name}ValueCodec.Write(writer, ({type})value!)),");
         }
         cs.AppendLine("        ],");
     }
@@ -830,8 +841,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (hasContent || needsCheckedWriter)
     {
         cs.AppendLine(needsCheckedWriter
-            ? $"    private static global::Runic.Application.Views.BridgeSnapshotWriter<{fullType}> CreateWriter(WindowContentSession? content)"
-            : $"    private static global::System.Action<global::System.Text.Json.Utf8JsonWriter, {fullType}, long> CreateWriter(WindowContentSession? content)");
+            ? $"    private static global::Runic.Application.Views.BridgeSnapshotWriter<{fullType}> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)"
+            : $"    private static global::System.Action<global::System.Text.Json.Utf8JsonWriter, {fullType}, long> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)");
         cs.AppendLine("    {");
         if (hasContent) cs.AppendLine("        global::System.ArgumentNullException.ThrowIfNull(content);");
         cs.AppendLine(needsCheckedWriter
@@ -842,7 +853,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         cs.AppendLine("    }");
         cs.AppendLine();
     }
-    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(hasContent ? ", WindowContentSession content" : "")}{(needsCheckedWriter ? ", global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata" : "")})");
+    cs.AppendLine($"    private static void WriteSnapshot(global::System.Text.Json.Utf8JsonWriter writer, {fullType} vm, long revision{(hasContent ? ", global::Runic.Application.Views.WindowContentSession content" : "")}{(needsCheckedWriter ? ", global::System.Action<global::System.Text.Json.Utf8JsonWriter> writeFieldMetadata" : "")})");
     cs.AppendLine("    {");
     cs.AppendLine("        writer.WriteStartObject();");
     cs.AppendLine("        writer.WriteNumber(\"revision\", revision);");
@@ -1003,7 +1014,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     var clientName = $"{shortName}Client";
     ts.AppendLine($"export interface {shortName}State {{");
-    if (hasValidation) ts.AppendLine("  readonly validation: BridgeValidationState;");
+    if (hasValidation) ts.AppendLine($"  readonly validation: {Ref("BridgeValidationState")};");
     foreach (var property in properties)
     {
         var propertyType = contentProperties.TryGetValue(property, out var pages)
@@ -1047,7 +1058,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var modelDocumentation = XmlDocumentation.Summary(model);
     XmlDocumentation.Append(ts, "", $"A connected {shortName} ViewModel. Dispose it when its presentation ends."
         + (modelDocumentation is null ? "" : "\n\n" + modelDocumentation));
-    ts.AppendLine($"export interface {clientName} extends ViewClient<{shortName}State> {{");
+    ts.AppendLine($"export interface {clientName} extends {Ref("ViewClient")}<{shortName}State> {{");
     if (interactions.Length > 0) ts.AppendLine($"  readonly interactions: {shortName}Interactions;");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
@@ -1057,17 +1068,17 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     foreach (var property in checkedProperties)
     {
         XmlDocumentation.Append(ts, "  ", XmlDocumentation.Summary(property));
-        ts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: FieldWriteOptions<{TsPropertyType(property)}>): Promise<FieldWriteReceipt<{TsPropertyType(property)}>>;");
+        ts.AppendLine($"  write{property.Name}(value: {TsPropertyType(property)}, options: {Ref("FieldWriteOptions")}<{TsPropertyType(property)}>): Promise<{Ref("FieldWriteReceipt")}<{TsPropertyType(property)}>>;");
     }
     if (needsCheckedWriter)
-        ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): FieldBaseline<{shortName}CheckedFields[K]>;");
+        ts.AppendLine($"  fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K): {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>;");
     foreach (var command in commands)
     {
         var plan = commandPlans[command];
         var input = plan.HasArgument ? $"{plan.ParameterName}: {CommandInputType(plan)}" : "";
         XmlDocumentation.Append(ts, "  ", CommandDocumentation(command, commandSources[command], plan.Command));
         var reply = plan.FailureGraph is { } declaredFailure
-            ? $"BridgeOutcome<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
+            ? $"{Ref("BridgeOutcome")}<{shortName}State, {declaredFailure.TypeScriptType()}>" : $"{shortName}State";
         ts.AppendLine($"  {LowerFirst(command.Name[..^"Command".Length])}({input}): Promise<{reply}>;");
         if (plan.HasArgument) ts.AppendLine($"  can{command.Name[..^"Command".Length]}({input}): Promise<boolean>;");
     }
@@ -1083,6 +1094,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     ts.AppendLine("}");
     ts.AppendLine();
+    var connectAt = Ref($"connect{shortName}At");
     var ownContracts = viewTypes is not null && viewTypes.TryGetValue(model, out var ownViews)
         ? ownViews.Select(ContractFor).ToArray() : [null];
     foreach (var contract in ownContracts)
@@ -1090,12 +1102,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
         var ownKind = PageKind(shortName, contract);
         var functionName = char.ToUpperInvariant(ownKind[0]) + ownKind[1..];
         var referenceType = $"{functionName}PageReference";
-        var cacheName = $"page{functionName}References";
+        var cacheName = Ref($"page{functionName}References");
         ts.AppendLine($"export interface {referenceType} {{");
         ts.AppendLine($"  readonly kind: \"{ownKind}\";");
         ts.AppendLine($"  connect(): Promise<{clientName}>;");
         ts.AppendLine("}");
-        ts.AppendLine($"const {cacheName} = viewReferences<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => connect{shortName}At(`content${{id}}`, true) }}));");
+        ts.AppendLine($"const {cacheName} = {Ref("viewReferences")}<{referenceType}>(id => ({{ kind: \"{ownKind}\", connect: () => {connectAt}(`content${{id}}`, true) }}));");
         ts.AppendLine($"export function page{functionName}(id: string): {referenceType} {{ return {cacheName}(id); }}");
         ts.AppendLine();
     }
@@ -1111,7 +1123,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             .ToList();
         if (hasValidation) names.Add("\"validation\"");
         if (names.Count == 0) names.Add("never");
-        ts.AppendLine($"type WireState = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
+        ts.AppendLine($"type {Ref("WireState")} = Omit<{shortName}State, {string.Join(" | ", names)}> & {{");
         ts.AppendLine("  readonly revision: number;");
         if (hasValidation) ts.AppendLine("  readonly validation: unknown;");
         foreach (var property in valueProperties.Keys)
@@ -1137,13 +1149,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             ts.AppendLine("  };");
         }
         ts.AppendLine("};");
-        ts.AppendLine($"function hydrate(wire: WireState): {shortName}State {{");
+        ts.AppendLine($"function {Ref("hydrate")}(wire: {Ref("WireState")}): {shortName}State {{");
         ts.AppendLine(needsCheckedWriter
             ? "  const { revision: _revision, __runicFields: _runicFields, ...state } = wire;"
             : "  const { revision: _revision, ...state } = wire;");
         ts.AppendLine("  return {");
         ts.AppendLine("    ...state,");
-        if (hasValidation) ts.AppendLine("    validation: decodeBridgeValidation(wire.validation),");
+        if (hasValidation) ts.AppendLine($"    validation: {Ref("decodeBridgeValidation")}(wire.validation),");
         foreach (var (property, graph) in valueProperties)
         {
             var field = WireName(property);
@@ -1154,7 +1166,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var field = WireName(property);
             var expression = string.Join(" : ", pages.Select(page =>
                 $"{TsAccess("wire", field)}.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}({TsAccess("wire", field)}.id)"));
-            expression += $" : (() => {{ throw new BridgeError(\"failed\", \"Unknown {field} kind.\"); }})()";
+            expression += $" : (() => {{ throw new {Ref("BridgeError")}(\"failed\", \"Unknown {field} kind.\"); }})()";
             if (IsNullableContent(property))
                 expression = $"{TsAccess("wire", field)} === null ? null : {expression}";
             ts.AppendLine($"    {TsLiteralKey(field)}: {expression},");
@@ -1164,7 +1176,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var field = WireName(property);
             var expression = string.Join(" : ", pages.Select(page =>
                 $"item.kind === \"{PageKind(page.Name, ContractFor(property))}\" ? page{char.ToUpperInvariant(PageKind(page.Name, ContractFor(property))[0])}{PageKind(page.Name, ContractFor(property))[1..]}(item.id)"));
-            expression += $" : (() => {{ throw new BridgeError(\"failed\", \"Unknown {field} kind.\"); }})()";
+            expression += $" : (() => {{ throw new {Ref("BridgeError")}(\"failed\", \"Unknown {field} kind.\"); }})()";
             var hydrated = $"{TsAccess("wire", field)}.map(item => {expression})";
             if (nullability.Create(property).ReadState == NullabilityState.Nullable)
                 hydrated = $"{TsAccess("wire", field)} === null ? null : {hydrated}";
@@ -1175,34 +1187,34 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     }
     else
     {
-        ts.AppendLine($"type WireState = {shortName}State & {{ readonly revision: number }};");
-        ts.AppendLine($"function hydrate(wire: WireState): {shortName}State {{ const {{ revision: _revision, ...state }} = wire; return state; }}");
+        ts.AppendLine($"type {Ref("WireState")} = {shortName}State & {{ readonly revision: number }};");
+        ts.AppendLine($"function {Ref("hydrate")}(wire: {Ref("WireState")}): {shortName}State {{ const {{ revision: _revision, ...state }} = wire; return state; }}");
     }
-    ts.AppendLine($"const bridgeContract = \"{model.FullName}:{contractFingerprint}\";");
+    ts.AppendLine($"const {Ref("bridgeContract")} = \"{model.FullName}:{contractFingerprint}\";");
     InteractionCodeEmitter.AppendTypeScriptDefinitions(ts, interactions);
     if (needsCheckedWriter)
-        ts.AppendLine($"const checkedFieldNames = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
+        ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
     ts.AppendLine();
     if (incrementalCollections.Count > 0)
     {
-        ts.AppendLine("const collectionDefinitions = defineCollections({");
+        ts.AppendLine($"const {Ref("collectionDefinitions")} = {Ref("defineCollections")}({{");
         foreach (var (property, key) in incrementalCollections)
         {
             var graph = valueProperties[property];
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
-            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: defineCollection<{graph.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(graph.EmitItemTypeScriptDecoder("wire"))}, item => String({TsAccess("item", keyMember.WireName)})),");
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineCollection")}<{graph.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(graph.EmitItemTypeScriptDecoder("wire"))}, item => String({TsAccess("item", keyMember.WireName)})),");
         }
         ts.AppendLine("});");
     }
-    var connectOptions = "contract: bridgeContract, route, mount, hydrate"
-        + (incrementalCollections.Count > 0 ? ", collections: collectionDefinitions" : "")
-        + (needsCheckedWriter ? ", checkedFields: checkedFieldNames" : "")
-        + (interactions.Length > 0 ? ", interactions: interactionDefinitions" : "")
-        + (operationPlans.Length > 0 ? ", operations: bridgeOperations" : "");
+    var connectOptions = $"contract: {Ref("bridgeContract")}, route, mount, {Shorthand("hydrate")}"
+        + (incrementalCollections.Count > 0 ? $", collections: {Ref("collectionDefinitions")}" : "")
+        + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
+        + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}" : "")
+        + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
     XmlDocumentation.Append(ts, "", $"Connects a {shortName} client. It waits up to `options.timeout` milliseconds (default 5000) for the\nhost Bridge to connect, then rejects with a `timeout` BridgeError.");
-    ts.AppendLine($"export function connect{shortName}(options?: BridgeConnectOptions): Promise<{clientName}> {{ return connect{shortName}At(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}, options); }}");
-    ts.AppendLine($"async function connect{shortName}At(route: string, mount = false, options?: BridgeConnectOptions): Promise<{clientName}> {{");
-    ts.AppendLine($"  const view = await connectView({{ {connectOptions}, timeout: options?.timeout }});");
+    ts.AppendLine($"export function connect{shortName}(options?: {Ref("BridgeConnectOptions")}): Promise<{clientName}> {{ return {connectAt}(\"{prefix}\", {(interactions.Length > 0 ? "true" : "false")}, options); }}");
+    ts.AppendLine($"async function {connectAt}(route: string, mount = false, options?: {Ref("BridgeConnectOptions")}): Promise<{clientName}> {{");
+    ts.AppendLine($"  const view = await {Ref("connectView")}({{ {connectOptions}, timeout: options?.timeout }});");
     OperationTypeScriptEmitter.AppendRuntime(ts, operationPlans);
     ts.AppendLine("  return {");
     ts.AppendLine("    get snapshot() { return view.snapshot; },");
@@ -1211,7 +1223,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (interactions.Length > 0)
         ts.AppendLine($"    interactions: view.interactions as unknown as {shortName}Interactions,");
     if (needsCheckedWriter)
-        ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as FieldBaseline<{shortName}CheckedFields[K]>; }},");
+        ts.AppendLine($"    fieldBaseline<K extends keyof {shortName}CheckedFields>(field: K) {{ return view.fieldBaseline(field) as {Ref("FieldBaseline")}<{shortName}CheckedFields[K]>; }},");
     foreach (var property in properties.Where(property => property.SetMethod?.IsPublic == true))
     {
         ts.AppendLine($"    async set{property.Name}(value) {{");
@@ -1270,20 +1282,20 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     // runtime only generated code calls comes from its /generated entry, and
     // only the protocol parts this ViewModel uses are imported.
     var publicImports = new List<string>();
-    if (body.Contains("new BridgeError(", StringComparison.Ordinal)) publicImports.Add("BridgeError");
-    if (hasValidation) publicImports.Add("type BridgeValidationState");
-    publicImports.Add("type BridgeConnectOptions");
-    publicImports.Add("type ViewClient");
-    if (needsCheckedWriter) publicImports.AddRange(["type FieldBaseline", "type FieldWriteOptions", "type FieldWriteReceipt"]);
-    if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type BridgeOutcome");
-    if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type BridgeOperation");
-    if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type BridgeStreamOperation");
-    if (interactions.Length > 0) publicImports.Add("type BridgeInteractionContext");
-    var runtimeImports = new List<string> { "connectView", "viewReferences" };
-    if (incrementalCollections.Count > 0) runtimeImports.AddRange(["defineCollection", "defineCollections"]);
-    if (interactions.Length > 0) runtimeImports.Add("defineInteractions");
-    if (operationPlans.Length > 0) runtimeImports.Add("bridgeOperations");
-    if (hasValidation) runtimeImports.Add("decodeBridgeValidation");
+    if (body.Contains($"new {Ref("BridgeError")}(", StringComparison.Ordinal)) publicImports.Add(Import("BridgeError"));
+    if (hasValidation) publicImports.Add("type " + Import("BridgeValidationState"));
+    publicImports.Add("type " + Import("BridgeConnectOptions"));
+    publicImports.Add("type " + Import("ViewClient"));
+    if (needsCheckedWriter) publicImports.AddRange(["type " + Import("FieldBaseline"), "type " + Import("FieldWriteOptions"), "type " + Import("FieldWriteReceipt")]);
+    if (commandPlans.Values.Any(plan => plan.FailureGraph is not null)) publicImports.Add("type " + Import("BridgeOutcome"));
+    if (operationPlans.Any(operation => !operation.IsStream)) publicImports.Add("type " + Import("BridgeOperation"));
+    if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
+    if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
+    var runtimeImports = new List<string> { Import("connectView"), Import("viewReferences") };
+    if (incrementalCollections.Count > 0) runtimeImports.AddRange([Import("defineCollection"), Import("defineCollections")]);
+    if (interactions.Length > 0) runtimeImports.Add(Import("defineInteractions"));
+    if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
+    if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));
     ts.Clear();
     ts.AppendLine("// <auto-generated />");
     ts.AppendLine(publicImports.All(name => name.StartsWith("type ", StringComparison.Ordinal))
@@ -1299,13 +1311,13 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     ts.Append(body);
 
     WriteIfChanged(csharpPath, cs.ToString());
-    TypeScriptModules.Add(typescriptPath, ts.ToString());
+    TypeScriptModules.Add(typescriptPath, ts.ToString(), model);
     TypeScriptModules.Add(MockModulePath(typescriptPath), MockTypeScriptEmitter.Emit(new MockTypeScriptPlan(
         shortName, prefix,
         ownContracts.Select(contract => PageKind(shortName, contract)).ToArray(),
         valueProperties.Select(entry => new MockValueField(WireName(entry.Key), entry.Value)).ToArray(),
         contentBindings.Select(entry => new MockContentField(WireName(entry.Key),
-            string.Join(" | ", entry.Value.Select(page => $"MockReference<{JsonSerializer.Serialize(PageKind(page.Name, ContractFor(entry.Key)))}>")),
+            string.Join(" | ", entry.Value.Select(page => $"{Ref("MockReference")}<{JsonSerializer.Serialize(PageKind(page.Name, ContractFor(entry.Key)))}>")),
             contentCollections.ContainsKey(entry.Key),
             IsNullableContent(entry.Key))).ToArray(),
         MockDefaults(),
@@ -1341,7 +1353,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == entry.Value);
             return new MockCollection(WireName(entry.Key), graph.ItemTypeScriptType(), graph.EncodeItemTypeScript("typed"),
                 graph.EmitItemTypeScriptDecoder("wire"), $"String({TsAccess("item", keyMember.WireName)})");
-        }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)));
+        }).ToArray(), $"{model.FullName}:{contractFingerprint}"), Path.GetFileNameWithoutExtension(typescriptPath)), model);
     Console.WriteLine($"Generated {shortName} bridge from compiled {model.Name}: {properties.Length} properties, {commands.Length} commands.");
     return hasContent || interactions.Length > 0;
 
@@ -1644,7 +1656,10 @@ static class TypeScriptModules
 
     private static readonly List<(string Path, string Text)> Pending = [];
 
-    internal static void Add(string path, string text) => Pending.Add((path, text));
+    // Assigns the module's own bindings (TypeScriptModuleBindings) before the
+    // named types, which avoid every name the resolved modules declare.
+    internal static void Add(string path, string text, MemberInfo? owner = null) =>
+        Pending.Add((path, TypeScriptModuleBindings.Resolve(text, path, owner)));
 
     internal static void WriteAll(string directory)
     {

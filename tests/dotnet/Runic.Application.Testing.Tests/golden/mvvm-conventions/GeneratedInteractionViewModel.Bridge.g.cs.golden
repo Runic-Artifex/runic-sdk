@@ -2,15 +2,15 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class GeneratedInteractionBridge : ViewModelBridge<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>
+internal sealed class GeneratedInteractionBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>
 {
     private readonly global::System.IDisposable? _rootInteractionMount;
-    internal GeneratedInteractionBridge(IBridgeTransport transport, global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel vm, string? routePrefix = null, WindowContentSession? content = null) : base(
+    internal GeneratedInteractionBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "generatedInteraction",
         WriteSnapshot,
         [
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Attempt", vm => vm.Attempt, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("AcceptedCount", vm => vm.AcceptedCount, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Attempt", vm => vm.Attempt, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("AcceptedCount", vm => vm.AcceptedCount, null),
         ],
         [
             new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.GeneratedInteractionViewModel>("Ask", vm => (object)vm.AskCommand, ExecuteResultAsync: async (vm, token, argument) => { await global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ExecuteCompletion((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default, token).ConfigureAwait(false); return global::Runic.Application.Views.BridgeOperationResult.None; }, CanExecute: (vm, argument) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.CanExecute((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, global::ReactiveUI.Primitives.RxVoid.Default), Subscribe: (vm, changed) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.Observe((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, changed)) { ObserveFailures = (vm, logger) => global::Runic.Application.Views.ReactiveUI.ReactiveCommandExecution.ObserveFailures((global::ReactiveUI.IReactiveCommand<global::ReactiveUI.Primitives.RxVoid, global::ReactiveUI.Primitives.RxVoid>)vm.AskCommand, logger, "GeneratedInteractionViewModel.AskCommand") },

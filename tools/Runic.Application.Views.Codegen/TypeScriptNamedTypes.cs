@@ -190,6 +190,8 @@ internal static partial class TypeScriptNamedTypes
     {
         var code = Comment().Replace(module, " ");
         foreach (Match match in Declaration().Matches(code)) yield return match.Groups[1].Value;
+        // Top-level bindings include namespace imports such as bridgeWire.
+        foreach (var name in TypeScriptModuleBindings.TopLevelBindings(code)) yield return name;
         foreach (Match match in Import().Matches(code))
             foreach (var part in match.Groups[1].Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {

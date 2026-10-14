@@ -170,6 +170,10 @@ export interface NoteTitleTaken {
   readonly existingTitle: string;
 }
 
+export interface ReservedNamesbridgeWire {
+  readonly insulation: string;
+}
+
 export type ScalarMode = "Plain" | "fancy";
 
 export interface TestsNamingState {

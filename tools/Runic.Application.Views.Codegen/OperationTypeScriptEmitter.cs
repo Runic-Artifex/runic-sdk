@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using static TypeScriptModuleBindings;
 
 // Operation emission is deliberately separate from Program's view/state
 // emission. Typed command inputs, result decoders and stream cursors all use
@@ -31,7 +32,7 @@ internal static class OperationTypeScriptEmitter
         var operations = plans.ToArray();
         foreach (var operation in operations)
         {
-            var handle = operation.IsStream ? "BridgeStreamOperation" : "BridgeOperation";
+            var handle = Ref(operation.IsStream ? "BridgeStreamOperation" : "BridgeOperation");
             ts.AppendLine($"export interface {shortName}{operation.Name}Operation extends {handle}<{operation.TypeArguments}> {{}}");
         }
         if (operations.Length > 0) ts.AppendLine();

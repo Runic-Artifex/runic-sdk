@@ -54,9 +54,17 @@ A `NavigationResult<T>` holds .NET content: return its `Outcome`, a
 
 Two generated names collide: ViewModel names, presentation kinds, state wire
 names, the reserved `revision` and `validation` fields, interactions, routes,
-client members, or generated files (including a hand-written `types.ts`).
+client members, or generated files (including a hand-written `types.ts`). A
+type named like a generated bridge (`CounterBridge` beside `CounterViewModel`)
+collides with it, and so would a generated TypeScript module that declares one
+name twice.
 
-**Fix:** rename one member, or set a wire name with `[RunicAlias]`.
+The generator's own TypeScript bindings, such as the client's wire type,
+runtime imports and page reference caches, never collide with names derived
+from your types: when a ViewModel is named `WireViewModel` or `ViewViewModel`,
+the module uses `_WireState` or imports `ViewClient as _ViewClient` instead.
+
+**Fix:** rename one member or type, or set a wire name with `[RunicAlias]`.
 
 ### RUNICBRIDGE005
 

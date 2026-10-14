@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using static TypeScriptModuleBindings;
 
 /// <summary>
 /// Emits the optional browser-facing half of a ReactiveUI interaction.  Keeping
@@ -178,7 +179,7 @@ internal static class InteractionCodeEmitter
         var all = plans.ToArray();
         if (all.Length == 0) return;
 
-        source.AppendLine($"export type {shortName}InteractionContext = BridgeInteractionContext;");
+        source.AppendLine($"export type {shortName}InteractionContext = {Ref("BridgeInteractionContext")};");
         source.AppendLine($"export interface {shortName}Interactions {{");
         foreach (var plan in all)
         {
@@ -203,7 +204,7 @@ internal static class InteractionCodeEmitter
         var all = plans.ToArray();
         if (all.Length == 0) return;
 
-        source.AppendLine("const interactionDefinitions = defineInteractions({");
+        source.AppendLine($"const {Ref("interactionDefinitions")} = {Ref("defineInteractions")}({{");
         foreach (var plan in all)
         {
             var typedValue = $"(value as {plan.Output.TypeScriptType()})";

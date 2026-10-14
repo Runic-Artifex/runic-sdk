@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using static TypeScriptModuleBindings;
 
 // The typed test double of one generated client: `{name}.mock.ts` exports
 // `mock{Name}(bridge, definition)`. Its state, handler and failure types derive
@@ -70,14 +71,14 @@ internal static class MockTypeScriptEmitter
             body.AppendLine("  /** Run before a setter or checked write applies its value; return more changes or throw to reject it. */");
             body.AppendLine("  readonly setters?: {");
             foreach (var setter in plan.Setters)
-                body.AppendLine($"    readonly {setter.Method}?: MockSetterHandler<{state}, {setter.ValueType}>;");
+                body.AppendLine($"    readonly {setter.Method}?: {Ref("MockSetterHandler")}<{state}, {setter.ValueType}>;");
             body.AppendLine("  };");
         }
         if (plan.Commands.Count > 0)
         {
             body.AppendLine("  readonly commands?: {");
             foreach (var command in plan.Commands)
-                body.AppendLine($"    readonly {command.Method}?: MockCommandHandler<{state}{(command.InputType is null ? "" : $", [input: {command.InputType}]")}>;");
+                body.AppendLine($"    readonly {command.Method}?: {Ref("MockCommandHandler")}<{state}{(command.InputType is null ? "" : $", [input: {command.InputType}]")}>;");
             body.AppendLine("  };");
         }
         var queries = plan.Commands.Where(command => command.InputType is not null).ToArray();
@@ -94,7 +95,7 @@ internal static class MockTypeScriptEmitter
             body.AppendLine("  /** Operation handlers; without one an operation runs its command handler and succeeds. */");
             body.AppendLine("  readonly operations?: {");
             foreach (var operation in plan.Operations)
-                body.AppendLine($"    readonly {operation.Method}?: MockTypedOperationHandler<{state}, {operation.TypeArguments}> | \"manual\";");
+                body.AppendLine($"    readonly {operation.Method}?: {Ref("MockTypedOperationHandler")}<{state}, {operation.TypeArguments}> | \"manual\";");
             body.AppendLine("  };");
         }
         body.AppendLine("}");
@@ -102,12 +103,12 @@ internal static class MockTypeScriptEmitter
 
         var members = new List<string>();
         if (plan.Collections.Count > 0)
-            members.Add($"  readonly collections: {{ {string.Join(" ", plan.Collections.Select(collection => $"readonly {Key(collection.WireName)}: MockTypedCollection<{collection.ItemType}>;"))} }};");
+            members.Add($"  readonly collections: {{ {string.Join(" ", plan.Collections.Select(collection => $"readonly {Key(collection.WireName)}: {Ref("MockTypedCollection")}<{collection.ItemType}>;"))} }};");
         if (plan.Operations.Count > 0)
-            members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly MockTypedOperation<{operation.TypeArguments}>[];"))} }};");
+            members.Add($"  readonly operations: {{ {string.Join(" ", plan.Operations.Select(operation => $"readonly {operation.Method}: readonly {Ref("MockTypedOperation")}<{operation.TypeArguments}>[];"))} }};");
         if (plan.Interactions.Count > 0)
-            members.Add($"  readonly interactions: {{ {string.Join(" ", plan.Interactions.Select(interaction => $"readonly {interaction.Name}: MockTypedInteraction<{interaction.InputType}, {interaction.OutputType}>;"))} }};");
-        var baseType = $"MockTypedView<{state}, {name}Client, {kinds}>";
+            members.Add($"  readonly interactions: {{ {string.Join(" ", plan.Interactions.Select(interaction => $"readonly {interaction.Name}: {Ref("MockTypedInteraction")}<{interaction.InputType}, {interaction.OutputType}>;"))} }};");
+        var baseType = $"{Ref("MockTypedView")}<{state}, {name}Client, {kinds}>";
         if (members.Count == 0) body.AppendLine($"export interface {name}Mock extends {baseType} {{}}");
         else
         {
@@ -117,7 +118,7 @@ internal static class MockTypeScriptEmitter
         }
         body.AppendLine();
 
-        body.AppendLine("const spec: MockTypedViewSpec = {");
+        body.AppendLine($"const {Ref("spec")}: {Ref("MockTypedViewSpec")} = {{");
         body.AppendLine($"  kind: {Quote(plan.Kinds[0])},");
         body.AppendLine($"  route: {Quote(plan.Prefix)},");
         body.AppendLine($"  contract: {Quote(plan.Contract)},");
@@ -173,18 +174,18 @@ internal static class MockTypeScriptEmitter
         body.AppendLine($" * Serves the {name} routes from `bridge` with typed state and handlers, so a test");
         body.AppendLine($" * can connect the generated client without .NET.");
         body.AppendLine($" */");
-        body.AppendLine($"export function mock{name}(bridge: MockBridge, definition: {name}MockDefinition): {name}Mock {{");
-        body.AppendLine($"  return mockTypedView(bridge, spec, definition) as {name}Mock;");
+        body.AppendLine($"export function mock{name}(bridge: {Ref("MockBridge")}, definition: {name}MockDefinition): {name}Mock {{");
+        body.AppendLine($"  return {Ref("mockTypedView")}(bridge, {Ref("spec")}, definition) as {name}Mock;");
         body.AppendLine("}");
 
         var text = body.ToString();
-        var mockImports = new List<string> { "mockTypedView", "type MockBridge", "type MockTypedView", "type MockTypedViewSpec" };
-        if (plan.Setters.Count > 0) mockImports.Add("type MockSetterHandler");
-        if (plan.Commands.Count > 0) mockImports.Add("type MockCommandHandler");
-        if (plan.Operations.Count > 0) mockImports.AddRange(["type MockTypedOperation", "type MockTypedOperationHandler"]);
-        if (plan.Collections.Count > 0) mockImports.Add("type MockTypedCollection");
-        if (plan.Interactions.Count > 0) mockImports.Add("type MockTypedInteraction");
-        if (plan.ContentFields.Count > 0) mockImports.Add("type MockReference");
+        var mockImports = new List<string> { Import("mockTypedView"), "type " + Import("MockBridge"), "type " + Import("MockTypedView"), "type " + Import("MockTypedViewSpec") };
+        if (plan.Setters.Count > 0) mockImports.Add("type " + Import("MockSetterHandler"));
+        if (plan.Commands.Count > 0) mockImports.Add("type " + Import("MockCommandHandler"));
+        if (plan.Operations.Count > 0) mockImports.AddRange(["type " + Import("MockTypedOperation"), "type " + Import("MockTypedOperationHandler")]);
+        if (plan.Collections.Count > 0) mockImports.Add("type " + Import("MockTypedCollection"));
+        if (plan.Interactions.Count > 0) mockImports.Add("type " + Import("MockTypedInteraction"));
+        if (plan.ContentFields.Count > 0) mockImports.Add("type " + Import("MockReference"));
         var module = new StringBuilder();
         module.AppendLine(GeneratedOutput.Header);
         if (text.Contains("bridgeWire.", StringComparison.Ordinal))

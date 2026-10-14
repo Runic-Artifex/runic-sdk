@@ -299,6 +299,55 @@ internal sealed class CodegenShapeTests
         }
     }
 
+    // A generated module's own bindings (runtime imports, the wire type, page
+    // reference caches) must not collide with names derived from user types
+    // (#258). ReservedNamesFixture declares a ViewModel or type for each.
+    [Test]
+    public async Task GeneratedModulesKeepTheirOwnBindingsApartFromUserNamesAsync()
+    {
+        var directory = GeneratedTypeScriptDirectory();
+        var root = Path.GetFullPath(Path.Combine(directory, "..", "..", "..", "..", "..", ".."));
+        string[] modules = ["wire", "view", "bridge", "bridgeValidation", "define", "typedView", "shelf", "shelfReferences"];
+        await GeneratedHarnessProcess.RunAsync("bun", [Path.Combine(root, "node_modules", "typescript", "bin", "tsc"),
+            "--noEmit", "--strict", "--noPropertyAccessFromIndexSignature", "--noImplicitReturns",
+            "--noFallthroughCasesInSwitch", "--target", "ES2022", "--module", "ESNext",
+            "--moduleResolution", "bundler", "--skipLibCheck",
+            .. modules.SelectMany(module => new[] { Path.Combine(directory, module + ".ts"), Path.Combine(directory, module + ".mock.ts") })],
+            root).ConfigureAwait(false);
+
+        string Read(string file) => File.ReadAllText(Path.Combine(directory, file)).ReplaceLineEndings("\n");
+        foreach (var (file, expected) in new[]
+        {
+            ("wire.ts", "export interface WireState {"),
+            ("wire.ts", "type _WireState = Omit<WireState, "),
+            ("wire.ts", "function hydrate(wire: _WireState): WireState {"),
+            ("view.ts", "import type { BridgeConnectOptions, ViewClient as _ViewClient } from \"@runic-artifex/views\";"),
+            ("view.ts", "import { connectView as _connectView, viewReferences } from \"@runic-artifex/views/generated\";"),
+            ("view.ts", "export interface ViewClient extends _ViewClient<ViewState> {"),
+            ("view.ts", "export function connectView(options?: BridgeConnectOptions): Promise<ViewClient> {"),
+            ("view.ts", "  const view = await _connectView({ contract: bridgeContract, "),
+            ("bridge.ts", "export type BridgeInteractionContext = _BridgeInteractionContext;"),
+            ("bridge.ts", "export interface BridgeStreamOperation extends _BridgeStreamOperation<number> {}"),
+            ("bridge.ts", "export interface BridgeSaveOperation extends BridgeOperation<number> {}"),
+            ("bridgeValidation.ts", "  readonly validation: _BridgeValidationState;"),
+            ("define.ts", "const interactionDefinitions = _defineInteractions({"),
+            ("define.ts", "export interface defineInteractions {"),
+            ("typedView.mock.ts", "import { mockTypedView as _mockTypedView, "),
+            ("typedView.mock.ts", "  return _mockTypedView(bridge, spec, definition) as TypedViewMock;"),
+            ("shelf.ts", "import { pageShelfReferences, type ShelfReferencesPageReference } from \"./shelfReferences.js\";"),
+            ("shelf.ts", "const _pageShelfReferences = viewReferences<ShelfPageReference>("),
+            // A module without a colliding user name keeps the plain bindings.
+            ("naming.ts", "type WireState = "),
+            ("naming.ts", "  const view = await connectView({ contract: bridgeContract, "),
+        })
+            Require(Read(file).Contains(expected, StringComparison.Ordinal),
+                $"Generated {file} is missing:\n{expected}\n--- {file} ---\n{Read(file)}");
+        var types = Read("types.ts");
+        Require(!types.Contains("export interface bridgeWire ", StringComparison.Ordinal)
+                && types.Contains("export interface ReservedNamesbridgeWire {", StringComparison.Ordinal),
+            $"The named type bridgeWire was not renamed away from the decoder namespace import:\n{types}");
+    }
+
     private static string GeneratedTypeScriptDirectory()
     {
         for (var directory = new DirectoryInfo(Environment.CurrentDirectory); directory is not null; directory = directory.Parent)
