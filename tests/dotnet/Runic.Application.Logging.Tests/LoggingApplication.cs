@@ -18,6 +18,12 @@ internal static class LoggingApplication
 {
     internal const string Argument = "--run-logging-application";
 
+    // With RUNIC_TEST_CHILD_PROCESS set, the application runs a child process, this executable with
+    // ChildProcessArgument, while its window is open. It ends the child when the window closes, or leaves it running
+    // with the value "leak".
+    internal const string ChildProcessVariable = "RUNIC_TEST_CHILD_PROCESS";
+    internal const string ChildProcessArgument = "--run-child-process";
+
     // The window options the application checks at startup. X without Y is incomplete, so Runic Desktop
     // reports window-option-incomplete (event 3003) on every platform.
     internal static readonly Runic.Desktop.DesktopWindowOptions CheckedOptions = RunicDesktopHost.DefaultWindowOptions with { X = 100 };
@@ -41,8 +47,16 @@ internal static class LoggingApplication
             exitCode = RunicDesktopHost.Run(provider, async host =>
             {
                 host.Desktop.Validate(CheckedOptions);
-                await using var window = await host.OpenWindowAsync<LoggingWindow>();
-                await window.WaitForCloseAsync();
+                // The recommended startup check, which serve-only mode passes without a display or WebKitGTK (#238).
+                host.ValidateWindow<LoggingWindow>().ThrowIfInvalid();
+                using var child = StartChildProcess();
+                await using (var window = await host.OpenWindowAsync<LoggingWindow>())
+                    await window.WaitForCloseAsync();
+                if (child is not null && Environment.GetEnvironmentVariable(ChildProcessVariable) != "leak")
+                {
+                    child.Kill();
+                    await child.WaitForExitAsync();
+                }
                 return 0;
             });
         }
@@ -56,6 +70,27 @@ internal static class LoggingApplication
         foreach (var message in trace.Messages) Console.Out.WriteLine($"TRACE\t{OneLine(message)}");
         Console.Out.Flush();
         return exitCode;
+    }
+
+    private static Process? StartChildProcess()
+    {
+        if (Environment.GetEnvironmentVariable(ChildProcessVariable) is not { Length: > 0 }) return null;
+        var start = SelfStartInfo(ChildProcessArgument);
+        // The child does not hold the application's standard streams.
+        start.RedirectStandardInput = start.RedirectStandardOutput = start.RedirectStandardError = true;
+        start.Environment.Remove(ChildProcessVariable);
+        return Process.Start(start);
+    }
+
+    // Starts this test executable, or dotnet and the test assembly when the suite runs through dotnet exec.
+    internal static ProcessStartInfo SelfStartInfo(string argument)
+    {
+        var path = Environment.ProcessPath ?? throw new InvalidOperationException("The test process has no path.");
+        var start = new ProcessStartInfo(path) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
+        if (string.Equals(Path.GetFileNameWithoutExtension(path), "dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(System.Reflection.Assembly.GetExecutingAssembly().Location);
+        start.ArgumentList.Add(argument);
+        return start;
     }
 
     private static string Describe(LogEvent logEvent)
