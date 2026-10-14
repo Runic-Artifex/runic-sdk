@@ -301,9 +301,62 @@ The host does not instantiate the application's native Window wrapper or run the
 generated TypeScript client or a rendering framework. Test the frontend with the
 generated typed mocks of `@runic-artifex/views/mock`; see its
 [Testing guide](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/web/views#testing).
-To drive the whole application in a browser, start it with
-`RUNIC_APPLICATION_SERVE_ONLY=1` on either host; to run script in the embedded
-Runic Desktop View from an in-process test, use
-`DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync`. See the
+To drive the whole application in a browser, use `RunicServeOnlyApplication`
+(below); to run script in the embedded Runic Desktop View from an in-process
+test, use `DesktopBridgeWindow<TViewModel>.Surface.ExecuteJavaScriptAsync`. See the
 [Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
 section.
+
+## The whole application in a browser
+
+`RunicWindowTestHost` runs the ViewModels without a page. To test the real page
+against the real ViewModels, start the built application in serve-only mode with
+`RunicServeOnlyApplication` and point a browser at its URL. It works with an
+application on Runic Desktop or CS-WebUI and with any browser driver. With
+[Playwright for .NET](https://playwright.dev/dotnet/) and TUnit:
+
+```csharp
+[Test]
+public async Task IncrementsTheCount()
+{
+    // The application, built next to the tests, for example through a ProjectReference.
+    var start = RunicServeOnlyApplication.CreateStartInfo(
+        Path.Combine(AppContext.BaseDirectory, "MyApp.dll"));
+    await using var app = await RunicServeOnlyApplication.StartAsync(start);
+
+    using var playwright = await Playwright.CreateAsync();
+    await using var browser = await playwright.Chromium.LaunchAsync();
+    var page = await browser.NewPageAsync();
+    await page.GotoAsync(app.Url.ToString());
+    await page.GetByRole(AriaRole.Button, new() { Name = "Increment" }).ClickAsync();
+    await Assertions.Expect(page.GetByTestId("count")).ToHaveTextAsync("1");
+
+    var children = app.GetDescendantProcesses();   // while the application runs
+    await browser.CloseAsync();
+    await Assert.That(await app.StopAsync()).IsEqualTo(0);
+    await Assert.That(children.All(child => child.HasExited)).IsTrue();
+}
+```
+
+`StartAsync` sets `RUNIC_APPLICATION_SERVE_ONLY=1`, removes `DISPLAY` and
+`WAYLAND_DISPLAY`, so no window can open, and waits up to 30 seconds (its
+`timeout`) for the first `RUNIC_APPLICATION_URL=` line. It reports an
+application that exits or stays silent with its standard output and standard
+error, which `StandardOutput` and `StandardError` also return. Add arguments
+or environment variables to the `ProcessStartInfo` before starting it;
+`CreateStartInfo` runs a `.dll` with `dotnet`.
+
+`StopAsync` writes a line to standard input, which ends serving on every
+platform, and returns the exit code. When the application has not exited within
+its `timeout` (30 seconds), its process tree is killed and `TimeoutException`
+is thrown; disposing stops it the same way without throwing. To check that the
+application ends the processes it started, such as a long-running tool it
+cancels on shutdown, list them with `GetDescendantProcesses` while it runs and
+check `HasExited` after `StopAsync`. A process whose parent has exited is no
+longer listed as a descendant.
+
+The page connects to the real Bridge, and the serve-only surface admits one
+browser. A test in TypeScript can follow the same protocol, described in the
+[Runic.Application.Views.Desktop automation](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
+section: start the application with `RUNIC_APPLICATION_SERVE_ONLY=1`, read the
+`RUNIC_APPLICATION_URL=` line, and write a line to its standard input to stop it.

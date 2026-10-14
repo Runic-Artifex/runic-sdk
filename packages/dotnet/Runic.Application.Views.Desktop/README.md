@@ -305,7 +305,28 @@ shutdown, or the process ends; then `WaitForCloseAsync` returns. The URL is
 the surface's capability URL, and the surface admits one browser. It takes
 precedence over `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. As on CS-WebUI there is
 no native owner: platform services report `OwnerUnavailable`, and a Window
-with `GuardClose` opens unguarded (event 1053). A headless Chromium, as in the
+with `GuardClose` opens unguarded (event 1053). `ValidateWindow` makes the same
+decision: in serve-only mode it skips the presentation checks, such as
+`webkitgtk-runtime-missing`, `graphical-session-missing` and
+`presentation-unavailable`, so an application that validates at startup also
+starts headless.
+
+The serve-only protocol, the same on both hosts:
+
+- **URL.** Each window writes one `RUNIC_APPLICATION_URL=<url>` line to
+  standard output once its surface serves. The first line is the first
+  window's.
+- **Stop.** Writing a line to standard input ends serving for every window;
+  end of input, such as `</dev/null`, does not. On Runic Desktop on Linux and
+  macOS, SIGTERM or Ctrl+C also requests shutdown. On Windows a test cannot
+  send another process a termination signal, and killing it skips the
+  application's cleanup, so write the line.
+- **Timeouts.** Bound both waits, and kill the process tree when the
+  application does not exit after the line.
+
+`RunicServeOnlyApplication` in
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#the-whole-application-in-a-browser)
+implements it for browser tests. A headless Chromium, as in the
 [First Window on Runic Desktop](https://github.com/Runic-Artifex/runic-sdk/tree/main/examples/first-window-desktop)
 browser smoke, does not exercise the embedded WebView engine.
 

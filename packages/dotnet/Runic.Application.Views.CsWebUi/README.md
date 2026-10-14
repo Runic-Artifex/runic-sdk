@@ -109,7 +109,13 @@ Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to
 standard output, ignoring `UseWebView` and `ShowWindow`, and keeps serving
 until a line is read from standard input or the process ends, so a test
-harness or remote browser can drive the unchanged application. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
+harness or remote browser can drive the unchanged application. Write the line
+on Windows too; the
+[serve-only protocol](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
+is the same as on Runic Desktop, and `RunicServeOnlyApplication` in
+[Runic.Application.Testing](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Testing/README.md#the-whole-application-in-a-browser)
+implements it for browser tests. `ValidateWindow` has no presentation checks on
+CS-WebUI. On Linux with GTK 3 and WebKitGTK 4.1 installed, WebUI initializes
 GTK when it creates a window, also in serve-only mode, and GTK ends the process
 when no display opens. Give a headless run a display, for example with
 `xvfb-run`.
