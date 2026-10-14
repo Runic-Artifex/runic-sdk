@@ -114,18 +114,36 @@ internal sealed class PrivilegedNativeTests
             // Programs in the user's temporary directory: their path is the user's, so their signature decides.
             var source = Path.Combine(directory.FullName, "echo.c");
             File.WriteAllText(source, "#include <stdio.h>\nint main(int c, char **v) { for (int i = 1; i < c; i++) puts(v[i]); return 0; }\n");
-            string Build(string name, bool hardened)
+            // A program that carries the .NET host's bundle marker, as an apphost or a single-file bundle does,
+            // written from its complement so this executable, the root test's daemon, does not carry it.
+            byte[] marker = [.. new byte[] { 0x74, 0xed, 0xfd, 0x46, 0x95, 0x9e, 0xdf, 0xc7, 0x8d, 0x84, 0x6c, 0xfd, 0xeb, 0x28, 0x5f, 0xcd,
+                0xec, 0x0a, 0x46, 0x19, 0x10, 0x51, 0xcc, 0xe7, 0x11, 0xc4, 0xd2, 0x31, 0xdb, 0x4c, 0x95, 0x51 }.Select(b => (byte)~b)];
+            var markedSource = Path.Combine(directory.FullName, "marked.c");
+            File.WriteAllText(markedSource, "#include <stdio.h>\nvolatile const unsigned char marker[] = {" + string.Join(",", marker.Select(b => $"0x{b:x2}"))
+                + "};\nint main(void) { return marker[0] == 0; }\n");
+            string Build(string name, bool hardened, string? entitlement = null, string? from = null)
             {
                 var path = Path.Combine(directory.FullName, name);
-                Tool("/usr/bin/cc", "-o", path, source);
-                string[] options = hardened ? ["--options=runtime"] : [];
-                Tool("/usr/bin/codesign", ["--force", "--sign", "-", "--identifier", "eu.runic.tests.echo", .. options, path]);
+                Tool("/usr/bin/cc", "-o", path, from ?? source);
+                List<string> arguments = ["--force", "--sign", "-", "--identifier", "eu.runic.tests.echo"];
+                if (hardened) arguments.Add("--options=runtime");
+                if (entitlement is not null)
+                {
+                    var plist = path + ".entitlements";
+                    File.WriteAllText(plist, $"<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>{entitlement}</key><true/></dict></plist>");
+                    arguments.AddRange(["--entitlements", plist]);
+                }
+                arguments.Add(path);
+                Tool("/usr/bin/codesign", [.. arguments]);
                 return path;
             }
             var hardened = Build("hardened", true);
             var plain = Build("plain", false);
             var managed = Build("managed", true);
             File.WriteAllText(managed + ".runtimeconfig.json", "{}");
+            var unvalidated = Build("unvalidated", true, "com.apple.security.cs.disable-library-validation");
+            var jit = Build("jit", true, "com.apple.security.cs.allow-jit");
+            var marked = Build("marked", true, from: markedSource);
             var script = Path.Combine(directory.FullName, "script");
             File.WriteAllText(script, "#!/bin/sh\necho unsigned\n");
             File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -134,6 +152,9 @@ internal sealed class PrivilegedNativeTests
             var notHardened = Declare("not-hardened", plain);
             var dotnet = Declare("managed", managed);
             var unnamed = Declare("unnamed", hardened);
+            var libraries = Declare("libraries", unvalidated);
+            var generated = Declare("generated", jit);
+            var bundled = Declare("bundled", marked);
             var renamed = Declare("renamed", hardened);
             var unsigned = Declare("script", script);
             var missing = Declare("missing", Path.Combine(directory.FullName, "missing"));
@@ -141,15 +162,18 @@ internal sealed class PrivilegedNativeTests
             {
                 [signed.Id] = "eu.runic.tests.echo", [notHardened.Id] = "eu.runic.tests.echo", [dotnet.Id] = "eu.runic.tests.echo",
                 [renamed.Id] = "eu.runic.tests.other", [unsigned.Id] = "eu.runic.tests.echo", [missing.Id] = "eu.runic.tests.echo",
+                [libraries.Id] = "eu.runic.tests.echo", [generated.Id] = "eu.runic.tests.echo", [bundled.Id] = "eu.runic.tests.echo",
             };
 
             // The ad hoc signatures have no certificate; the requirement here is only the identifier the daemon adds.
-            using var daemon = new InProcessDaemon([signed, notHardened, dotnet, unnamed, renamed, unsigned, missing], programRequirement: "always", identifiers: identifiers);
+            using var daemon = new InProcessDaemon([signed, notHardened, dotnet, unnamed, renamed, unsigned, missing, libraries, generated, bundled],
+                programRequirement: "always", identifiers: identifiers);
             var lines = new List<PrivilegedActionOutput>();
             var result = await daemon.Provider.RunAsync(new(signed, ["signed"]) { Output = lines.Add });
             Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 } && lines.Single().Text == "signed",
                 $"checked on disk and in the suspended process: {Describe(result)} {Dump(lines)}");
-            foreach (var (action, code) in new[] { (notHardened, 10L), (dotnet, 8L), (unnamed, 9L), (renamed, 3L), (unsigned, 3L), (missing, 1L) })
+            foreach (var (action, code) in new[] { (notHardened, 10L), (dotnet, 8L), (unnamed, 9L), (renamed, 3L), (unsigned, 3L), (missing, 1L),
+                (libraries, 10L), (generated, 10L), (bundled, 8L) })
             {
                 result = await daemon.Provider.RunAsync(new(action, []));
                 Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData } failed && failed.Diagnostic!.Code == code,
@@ -213,7 +237,7 @@ internal sealed class PrivilegedNativeTests
     internal static bool SelfHardened()
     {
         if (MacSecurity.CodeCopySelf(0, out var code) != 0) return false;
-        try { return MacSecurity.DynamicStatus(code) is { } status && MacPrivilegedOutcome.IsHardenedClient(status, false); }
+        try { return MacSecurity.DynamicSigning(code) is { } signing && MacPrivilegedOutcome.IsHardenedClient(signing.Status, signing.Entitlements, false); }
         finally { MacSecurity.Release(code); }
     }
 
@@ -272,14 +296,10 @@ internal sealed class PrivilegedNativeTests
         }
         finally { MacSecurity.Release(admin); }
         var right = new MacPrivilegedRight("eu.runic.tests.rule", "Runic tests want to compare a rule.");
-        var definition = MacSystemAuthority.CreateDefinition(right.ActionId);
+        var definition = MacSystemAuthority.CreateDefinition(right);
         try
         {
-            Check(!MacSystemAuthority.Matches(definition, right), "no prompt yet");
-            var prompts = MacSecurity.CreateDictionary();
-            MacSecurity.Set(prompts, "", MacSecurity.CreateString(right.Message));
-            MacSecurity.Set(definition, "default-prompt", prompts);
-            Check(MacSystemAuthority.Matches(definition, right), "the daemon's own definition matches");
+            Check(MacSystemAuthority.Matches(definition, right), "the daemon's own definition, with its prompt, matches");
             Check(!MacSystemAuthority.Matches(definition, new MacPrivilegedRight(right.ActionId, "Another message.")), "another message");
             MacSecurity.Set(definition, "created", MacSecurity.CreateNumber(1));
             MacSecurity.Set(definition, "identifier", MacSecurity.CreateString("eu.runic.tests"));
@@ -320,10 +340,7 @@ internal sealed class PrivilegedNativeTests
 
     private static nint MatchingDefinition(MacPrivilegedRight right)
     {
-        var definition = MacSystemAuthority.CreateDefinition(right.ActionId);
-        var prompts = MacSecurity.CreateDictionary();
-        MacSecurity.Set(prompts, "", MacSecurity.CreateString(right.Message));
-        MacSecurity.Set(definition, "default-prompt", prompts);
+        var definition = MacSystemAuthority.CreateDefinition(right);
         Check(MacSystemAuthority.Matches(definition, right), "the daemon's own definition matches");
         return definition;
     }

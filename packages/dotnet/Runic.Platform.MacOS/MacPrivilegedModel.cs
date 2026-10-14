@@ -146,7 +146,7 @@ internal static class MacPrivilegedOutcome
         1 => new(DaemonDomain, 1, "The declared program does not exist."),
         8 => new(DaemonDomain, 8, "The declared program is a .NET application that is not NativeAOT; its assemblies and configuration are not code-signed."),
         9 => new(DaemonDomain, 9, "The declared program needs a signature, but its action has no MacProgramIdentifier."),
-        10 => new(DaemonDomain, 10, "The declared program does not run with the hardened runtime or library validation."),
+        10 => new(DaemonDomain, 10, "The declared program does not run with the hardened runtime, or has an entitlement that lets it load unsigned libraries or generate code."),
         _ => new(DaemonDomain, 3, "The declared program can be changed by users other than root and is not signed with the required code signature."),
     };
 
@@ -154,9 +154,34 @@ internal static class MacPrivilegedOutcome
     /// Whether a client's kernel code-signing status allows it: the hardened runtime, not being debugged, and no
     /// <c>get-task-allow</c>, which lets other processes of the user take control of it, unless that is allowed.
     /// </summary>
-    internal static bool IsHardenedClient(long status, bool allowGetTaskAllow) =>
+    internal static bool IsHardenedClient(long status, IReadOnlySet<string> entitlements, bool developmentSigning) =>
         (status & MacSecurity.StatusRuntime) != 0 && (status & MacSecurity.StatusDebugged) == 0
-        && (allowGetTaskAllow || (status & MacSecurity.StatusGetTaskAllow) == 0);
+        && (developmentSigning || ((status & MacSecurity.StatusGetTaskAllow) == 0 && !entitlements.Overlaps(ClientRefusedEntitlements)));
+
+    /// <summary>
+    /// Entitlements that let a hardened process load unsigned libraries, take <c>DYLD_</c> variables from whoever
+    /// starts it, or generate code (a JIT runtime needs one of the last two).
+    /// </summary>
+    internal static readonly ImmutableArray<string> ClientRefusedEntitlements =
+    [
+        "com.apple.security.cs.allow-dyld-environment-variables",
+        "com.apple.security.cs.disable-library-validation",
+        "com.apple.security.cs.allow-jit",
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+    ];
+
+    /// <summary>Entitlements a program that needs a signature must not have: it would load unsigned libraries or generate code.</summary>
+    internal static readonly ImmutableArray<string> ProgramRefusedEntitlements =
+    [
+        "com.apple.security.cs.disable-library-validation",
+        "com.apple.security.cs.allow-jit",
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+        "com.apple.security.cs.allow-dyld-environment-variables",
+    ];
+
+    /// <summary>Whether a program that needs a signature runs with the hardened runtime and without the refused entitlements.</summary>
+    internal static bool IsHardenedProgram(long status, IReadOnlySet<string> entitlements) =>
+        (status & MacSecurity.StatusRuntime) != 0 && !entitlements.Overlaps(ProgramRefusedEntitlements);
 
     // SMAppServiceStatus.
     internal static MacPrivilegedDaemonStatus FromServiceStatus(long status) => status switch
@@ -272,5 +297,58 @@ internal static class MacManagedProgram
         var directory = program[..program.LastIndexOf('/')];
         var name = program[(program.LastIndexOf('/') + 1)..];
         return exists($"{directory}/{name}.runtimeconfig.json") || exists($"{directory}/{name}.deps.json") || exists($"{directory}/{name}.dll");
+    }
+
+    // The 32-byte bundle marker of dotnet/runtime src/native/corehost/apphost/bundle_marker.c, which every apphost and
+    // single-file host carries (the same bytes Runic.Platform.Windows.Elevation looks for), and the name of the
+    // library that hosts the runtime. Stored complemented and
+    // decoded on each use, so the NativeAOT daemon, which scans its own image, never carries them.
+    private static readonly byte[] ComplementedBundleMarker =
+    [
+        0x74, 0xed, 0xfd, 0x46, 0x95, 0x9e, 0xdf, 0xc7, 0x8d, 0x84, 0x6c, 0xfd, 0xeb, 0x28, 0x5f, 0xcd,
+        0xec, 0x0a, 0x46, 0x19, 0x10, 0x51, 0xcc, 0xe7, 0x11, 0xc4, 0xd2, 0x31, 0xdb, 0x4c, 0x95, 0x51,
+    ];
+    private static readonly byte[] ComplementedHostLibrary = [.. "libhostfxr"u8.ToArray().Select(b => (byte)~b)];
+
+    private static byte[] Decode(byte[] complemented) => [.. complemented.Select(b => (byte)~b)];
+
+    /// <summary>
+    /// Whether the file carries the .NET host's bundle marker or names <c>libhostfxr</c>: an apphost, or a
+    /// single-file bundle, whatever its name. A best-effort check of the file; the entitlements of the loaded code
+    /// (a JIT runtime needs <c>allow-jit</c> or <c>allow-unsigned-executable-memory</c>) are what bind.
+    /// </summary>
+    internal static bool HasHostMarker(Stream file, bool hostLibrary = true)
+    {
+        byte[][] markers = hostLibrary ? [Decode(ComplementedBundleMarker), Decode(ComplementedHostLibrary)] : [Decode(ComplementedBundleMarker)];
+        var longest = markers.Max(m => m.Length);
+        var buffer = new byte[64 * 1024];
+        var kept = 0;
+        while (true)
+        {
+            var read = file.Read(buffer, kept, buffer.Length - kept);
+            if (read == 0) return false;
+            var length = kept + read;
+            foreach (var marker in markers)
+                if (buffer.AsSpan(0, length).IndexOf(marker.AsSpan()) >= 0) return true;
+            // Keep the end, so a marker across two reads is found.
+            kept = Math.Min(length, longest - 1);
+            buffer.AsSpan(length - kept, kept).CopyTo(buffer);
+        }
+    }
+
+    /// <summary>
+    /// Whether the program is a .NET host by its sidecar files or by the markers in its file; true when it cannot be
+    /// read. <paramref name="hostLibrary"/> also looks for <c>libhostfxr</c>, which only a host names; the daemon's
+    /// check of its own image uses the bundle marker alone.
+    /// </summary>
+    internal static bool IsDotnetHost(string program, bool hostLibrary = true)
+    {
+        if (IsManaged(program, File.Exists)) return true;
+        try
+        {
+            using var file = new FileStream(program, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
+            return HasHostMarker(file, hostLibrary);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return true; }
     }
 }

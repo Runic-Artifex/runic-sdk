@@ -721,10 +721,26 @@ exactly the message, and otherwise only authd's metadata (`version`, `created`,
 `modified`, `identifier`, `requirement`, which authd does not evaluate). Any
 other key (`mechanisms`, `extract-password`, `entitled`, another `tries`, a
 localized prompt, `default-button`) could change how the right is evaluated or
-shown, so the daemon removes the right and defines it again, which root may
-(`config.remove.` and `config.modify.` require an administrator or root). The
-root test pre-defines a right with `extract-password` and one try and sees it
-replaced. After that, only administrators can change
+shown, so the daemon replaces it in place with `AuthorizationRightSet`, never
+removing it first: a removal would leave a moment without the right, in which
+any process could add it as `class allow` and a racing check would pass
+without a credential. For an existing right authd's `authorization_right_set`
+checks `config.modify.` (`is-root`, so no dialog for the daemon), and
+`rule_sql_commit` updates the rule and deletes and re-inserts its prompts,
+buttons, mechanisms and delegates in one `authdb_transaction`, keeping the
+rule's `created`, `identifier` and `requirement` (`_sql_get_id`; all in Apple's
+`OSX/authd/server.m` and `rule.c`). The definition carries
+`default-prompt = {"": message}` itself and no description key is passed:
+with a description key, the client library adds a prompt for every
+localization of the calling process's main bundle (`CFBundleGetMainBundle`,
+the application bundle for a daemon in `Contents/MacOS`), and the stored right
+would never match, so every run would redefine it. Changes and checks of the
+rights run under one lock in the daemon, so no check sees a right while the
+daemon changes it. The root test runs the daemon from an application bundle
+with `en.lproj` and `de.lproj`, pre-defines a right with `shared`, `timeout
+300`, `tries 1` and `extract-password`, sees it replaced with its `created` and
+creator unchanged (in place), and sees its `modified` time unchanged over three
+further runs. After that, only administrators can change
 it. Action IDs in namespaces macOS uses for its own rights (`system.`,
 `config.`, `com.apple.`, and the rule names) are build errors (`RUNICPA102`)
 and rejected by `MacPrivilegedRight`, so the daemon never redefines a system
@@ -750,29 +766,45 @@ service, and untrusted input that reaches the application.
   framework. So the daemon must be NativeAOT: the build fails a publish, or a
   build for a runtime identifier, of a `RunicMacPrivilegedDaemon` project
   without `PublishAot` (`RUNICPA106`), and `Run` refuses when
-  `RuntimeFeature.IsDynamicCodeSupported`. A program that needs a signature
-  (below) is refused when a `.runtimeconfig.json`, `.deps.json` or `.dll` of
-  its name lies beside it; programs must be NativeAOT or not .NET. A
+  `RuntimeFeature.IsDynamicCodeSupported` (an `AppContext` switch on CoreCLR),
+  when `TRUSTED_PLATFORM_ASSEMBLIES` is set (only a CoreCLR host sets it), or
+  when its own image carries the .NET host's bundle marker. A program that
+  needs a signature (below) must run with the hardened runtime and without
+  `allow-jit` or `allow-unsigned-executable-memory`, which a hardened CoreCLR
+  needs and NativeAOT does not; this check of the loaded code is what binds. In
+  addition, the program is refused when a `.runtimeconfig.json`, `.deps.json` or
+  `.dll` of its name lies beside it, or when its file carries the bundle marker
+  of an apphost or single-file bundle or names `libhostfxr`, however it is
+  named (a best-effort scan of the file before the start). Programs must be
+  NativeAOT or not .NET. A
   framework-dependent .NET program in a path only root can change is accepted,
   as on Linux: everything it loads is root's, and it gets none of the caller's
   `DOTNET_` variables.
 - **Who talks to the daemon.** Only code that satisfies
-  `ApplicationRequirement`: the Team ID, the application's identifier and a
-  Developer ID Application or Mac App Store certificate (`certificate
-  leaf[field.1.2.840.113635.100.6.1.13] exists` or `...6.1.9 exists`), so a
-  development certificate of the same team does not pass; the
+  `ApplicationRequirement`, in Apple's Developer ID form: `anchor apple generic
+  and identifier "<app>" and certificate 1[field.1.2.840.113635.100.6.2.6]
+  exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and
+  certificate leaf[subject.OU] = "<team>"`, so a development certificate of the
+  same team does not pass. There is no Mac App Store alternative: Apple re-signs
+  store apps with its own certificate, whose OU is not the team's, and a
+  sandboxed store app cannot register an `SMAppService` daemon. The
   `RunicMacPrivilegedDevelopmentSigning` mode drops the marker and must not
-  ship. libxpc checks the peer's audit token for every message, and the daemon
-  checks every run message's sender again, including its kernel status: the
-  hardened runtime (`CS_RUNTIME`) is required, and a process being debugged
-  (`CS_DEBUGGED`) or with `get-task-allow` (outside development mode) is refused.
-  A peer that fails is cancelled. This narrows, but does not rule out, code
+  ship; a daemon signed with Developer ID refuses to run with it. libxpc checks
+  the peer's audit token for every message, and the daemon checks the sender of
+  every `prepare` and every run again, including its kernel status and
+  entitlements: the hardened runtime (`CS_RUNTIME`) is required, a process being
+  debugged (`CS_DEBUGGED`) is refused, and outside development mode so are
+  `get-task-allow`, `allow-dyld-environment-variables`,
+  `disable-library-validation`, `allow-jit` and
+  `allow-unsigned-executable-memory`. In development mode a client with
+  `get-task-allow` is accepted, and any process of the same user can take its
+  task port and run code in it. A peer that fails is cancelled. This narrows, but does not rule out, code
   running inside a correctly signed client: the hardened runtime blocks
   `DYLD_` injection, unsigned libraries and attaching to the process, but a JIT
   .NET client reads `DOTNET_STARTUP_HOOKS` and its debugger and profiler
   settings from whoever starts it, and code signing does not cover its
-  assemblies. A client published for macOS must therefore be NativeAOT
-  (`RUNICPA107`). A vulnerability in the application itself, or an older signed
+  assemblies. A client published, or built for a macOS runtime identifier,
+  must therefore be NativeAOT (`RUNICPA107`, outside development mode). A vulnerability in the application itself, or an older signed
   version of it, remains a way in.
 - **What the application can ask for.** Declared actions with arguments within
   their declarations, each run behind an administrator's password. A
@@ -794,8 +826,12 @@ service, and untrusted input that reaches the application.
   (`POSIX_SPAWN_START_SUSPENDED`, found by its process ID, which cannot be
   reused while the daemon has not reaped it), so a file swapped after the first
   check is caught before it runs. The suspended process must also run with the
-  hardened runtime or library validation (`CS_RUNTIME` or `CS_REQUIRE_LV` in its
-  kernel status), so the libraries it loads later must be Apple's or the team's.
+  hardened runtime (`CS_RUNTIME` in its kernel status; library validation alone
+  is not enough) and without `disable-library-validation`, `allow-jit`,
+  `allow-unsigned-executable-memory` or `allow-dyld-environment-variables`,
+  read from the loaded code's own signature (`kSecCSRequirementInformation`,
+  `kSecCodeInfoEntitlementsDict`), so the libraries it loads later must be
+  Apple's or the team's and it generates no code.
   A failure kills the process and is `InvalidData`.
 - **Programs in the bundle.** The daemon does not require the bundle to be
   root's: an application dragged to `/Applications` belongs to the user, and

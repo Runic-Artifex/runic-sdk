@@ -24,10 +24,12 @@ internal sealed class PrivilegedRootTests
     private static readonly PrivilegedActionDeclaration RootShell = new("eu.runic.tests.root-shell", "/bin/sh") { Verb = "-c", MaximumArguments = 2 };
     private static readonly PrivilegedActionDeclaration[] Actions = [RootId, RootEnv, RootShell];
 
-    // The application and the daemon are this executable, so each requires the other to be signed as it is itself.
+    // The application is this executable and the daemon the same executable inside an application bundle whose
+    // identifier is this executable's signing identifier, so each requires the other's identifier. (The bundle's
+    // ad hoc signature has another code directory hash, so the designated requirement would not do.)
     private static MacPrivilegedDaemonDefinition Definition()
     {
-        var self = MacSecurity.CopySelfDesignatedRequirement() ?? throw new InvalidOperationException("The test executable has no designated requirement.");
+        var self = $"identifier \"{MacSecurity.SelfIdentifier() ?? throw new InvalidOperationException("The test executable has no signing identifier.")}\"";
         return new(Label, "ABCDE12345", "eu.runic.tests", Label, Actions.Select(a => new MacPrivilegedRight(a.Id, $"Runic tests want to run {a.Id} as root.")))
         {
             ApplicationRequirement = self,
@@ -48,6 +50,7 @@ internal sealed class PrivilegedRootTests
     {
         if (!OperatingSystem.IsMacOS()) return;
         Check(Sudo("true").ExitCode == 0, "passwordless sudo is required");
+        Check(!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported, "the daemon runs only as NativeAOT: run the published executable");
         var password = Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
         var testRights = new List<string>();
         var definition = Definition();
@@ -69,6 +72,7 @@ internal sealed class PrivilegedRootTests
             var (written, writeOutput) = Sudo("sh", "-c", $"security authorizationdb write {RootId.Id} < '{weak}'");
             File.Delete(weak);
             Check(written == 0, "pre-define a weaker right: " + writeOutput);
+            var (created, creator) = Origin(RootId.Id);
             Install();
             var host = new CredentialHost(definition, User, password);
             var provider = new MacPrivilegedProvider(Actions, definition, host);
@@ -106,7 +110,22 @@ internal sealed class PrivilegedRootTests
                     && MacSecurity.ToBoolean(MacSecurity.Get(replaced, "shared")) == false, "the pre-defined right's extra keys and values are gone");
             }
             finally { MacSecurity.Release(replaced); }
-            Console.WriteLine("PASS rights defined by the daemon: class user, group admin, shared false, timeout 30, the action's prompt; a pre-defined weaker right was replaced");
+            // In place: authd keeps a rule's creation time and creator on an update; a removal and a new rule would not.
+            var (replacedCreated, replacedCreator) = Origin(RootId.Id);
+            Console.WriteLine($"created {created} by {creator}; after the daemon: created {replacedCreated} by {replacedCreator}");
+            Check(replacedCreated == created && replacedCreator == creator, "the pre-defined right was updated in place, never removed");
+            Console.WriteLine("PASS rights defined by the daemon: class user, group admin, shared false, timeout 30, the action's prompt; a pre-defined weaker right was replaced in place");
+
+            // The daemon runs from an application bundle with localizations; its stored rights must match its
+            // definition exactly, so further runs leave them alone.
+            var modified = Modified(RootId.Id);
+            for (var run = 0; run < 3; run++)
+            {
+                result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
+                Check(result is PlatformResult<PrivilegedActionCompletion>.Success { Value.ExitCode: 0 }, $"run {run}: {Describe(result)}");
+            }
+            Check(Modified(RootId.Id) == modified && modified is not null, $"the right is not defined again on every run: {modified} then {Modified(RootId.Id)}");
+            Console.WriteLine("PASS the daemon in a bundle with en.lproj leaves a matching right unchanged across runs");
 
             host.Mode = CredentialMode.WrongPassword;
             result = await provider.RunAsync(new(RootId, [])).AsTask().WaitAsync(TimeSpan.FromMinutes(2));
@@ -151,6 +170,7 @@ internal sealed class PrivilegedRootTests
         {
             _ = Sudo("launchctl", "bootout", "system/" + Label);
             _ = Sudo("rm", "-f", $"/Library/LaunchDaemons/{Label}.plist", Log);
+            if (Directory.Exists(Path.Combine("/private/tmp", Label))) Directory.Delete(Path.Combine("/private/tmp", Label), recursive: true);
             _ = Sudo("dscl", ".", "-delete", "/Users/" + User);
             foreach (var right in definition.Rights.Select(r => r.ActionId).Concat(testRights))
                 _ = Sudo("security", "authorizationdb", "remove", right);
@@ -177,12 +197,62 @@ internal sealed class PrivilegedRootTests
         }
     }
 
+    private static (double? Created, string? Creator) Origin(string name)
+    {
+        var right = MacSecurity.CopyRight(name);
+        Check(right != 0, $"{name} exists");
+        try { return (MacSecurity.ToDouble(MacSecurity.Get(right, "created")), MacSecurity.ToText(MacSecurity.Get(right, "identifier"))); }
+        finally { MacSecurity.Release(right); }
+    }
+
+    private static double? Modified(string name)
+    {
+        var right = MacSecurity.CopyRight(name);
+        try { return right == 0 ? null : MacSecurity.ToDouble(MacSecurity.Get(right, "modified")); }
+        finally { if (right != 0) MacSecurity.Release(right); }
+    }
+
+    /// <summary>
+    /// A real application bundle around a copy of this executable, with an <c>en.lproj</c> and this executable's signing
+    /// identifier as its bundle identifier, signed ad hoc with the hardened runtime.
+    /// </summary>
+    private static string BuildBundle()
+    {
+        var identifier = MacSecurity.SelfIdentifier()!;
+        var name = Path.GetFileName(Environment.ProcessPath!);
+        var bundle = Path.Combine("/private/tmp", Label, "RunicPrivilegedTests.app");
+        if (Directory.Exists(Path.GetDirectoryName(bundle))) Directory.Delete(Path.GetDirectoryName(bundle)!, recursive: true);
+        Directory.CreateDirectory(Path.Combine(bundle, "Contents", "MacOS"));
+        Directory.CreateDirectory(Path.Combine(bundle, "Contents", "Resources", "en.lproj"));
+        Directory.CreateDirectory(Path.Combine(bundle, "Contents", "Resources", "de.lproj"));
+        File.Copy(Environment.ProcessPath!, Path.Combine(bundle, "Contents", "MacOS", name));
+        File.WriteAllText(Path.Combine(bundle, "Contents", "Resources", "en.lproj", "Localizable.strings"), "\"greeting\" = \"Hello\";\n");
+        File.WriteAllText(Path.Combine(bundle, "Contents", "Resources", "de.lproj", "Localizable.strings"), "\"greeting\" = \"Hallo\";\n");
+        File.WriteAllText(Path.Combine(bundle, "Contents", "Info.plist"), $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0"><dict>
+              <key>CFBundleIdentifier</key><string>{identifier}</string>
+              <key>CFBundleExecutable</key><string>{name}</string>
+              <key>CFBundleName</key><string>RunicPrivilegedTests</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>CFBundleDevelopmentRegion</key><string>en</string>
+              <key>CFBundleLocalizations</key><array><string>en</string><string>de</string></array>
+            </dict></plist>
+            """);
+        var start = new ProcessStartInfo("/usr/bin/codesign") { RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in new[] { "--force", "--sign", "-", "--options=runtime", bundle }) start.ArgumentList.Add(argument);
+        using var codesign = Process.Start(start)!;
+        var error = codesign.StandardError.ReadToEnd();
+        codesign.WaitForExit();
+        Check(codesign.ExitCode == 0, "codesign: " + error);
+        return Path.Combine(bundle, "Contents", "MacOS", name);
+    }
+
     private static void Install()
     {
-        // Under JIT the process is the dotnet host, which runs this assembly; under NativeAOT it is the executable.
-        var program = new List<string> { Environment.ProcessPath! };
-        if (Path.GetFileNameWithoutExtension(Environment.ProcessPath) == "dotnet") program.Add(Path.Combine(AppContext.BaseDirectory, "Runic.Platform.MacOS.Tests.dll"));
-        program.Add("--privileged-daemon");
+        // launchd starts the daemon from the bundle, so its main bundle is the application's, with localizations.
+        List<string> program = [BuildBundle(), "--privileged-daemon"];
         var plist = Path.GetTempFileName();
         File.WriteAllText(plist, $"""
             <?xml version="1.0" encoding="UTF-8"?>
@@ -210,13 +280,11 @@ internal sealed class PrivilegedRootTests
     {
         var status = MacSecurity.AuthorizationCreate(null, null, 0, out var authorization);
         if (status != 0) return status;
-        var definition = MacSystemAuthority.CreateDefinition(name);
+        var definition = MacSystemAuthority.CreateDefinition(new MacPrivilegedRight(name, "Runic tests check the credential timeout."));
         MacSecurity.Set(definition, "timeout", MacSecurity.CreateNumber(timeout));
-        var description = MacSecurity.CreateString("Runic tests check the credential timeout.");
-        try { return MacSecurity.AuthorizationRightSet(authorization, name, definition, description, 0, 0); }
+        try { return MacSecurity.AuthorizationRightSet(authorization, name, definition, 0, 0, 0); }
         finally
         {
-            MacSecurity.Release(description);
             MacSecurity.Release(definition);
             _ = MacSecurity.AuthorizationFree(authorization, 0);
         }

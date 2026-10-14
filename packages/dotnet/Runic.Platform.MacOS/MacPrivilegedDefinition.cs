@@ -69,16 +69,18 @@ public sealed class MacPrivilegedDaemonDefinition
     public ImmutableArray<MacPrivilegedRight> Rights { get; }
 
     /// <summary>
-    /// Accepts code signed for development: the default requirements then omit the distribution marker, and the
-    /// daemon accepts a client with the <c>get-task-allow</c> entitlement, which lets other processes of the user
-    /// control it. False by default; the generated definition sets it only for <c>RunicMacPrivilegedDevelopmentSigning</c>.
+    /// Accepts code signed for development: the default requirements then omit the Developer ID marker, and the
+    /// daemon accepts a client with <c>get-task-allow</c> (any process of the same user can then take the client's
+    /// task port and run code in it) and with entitlements that allow a JIT or unsigned libraries. False by default;
+    /// the generated definition sets it only for <c>RunicMacPrivilegedDevelopmentSigning</c>, and a daemon signed
+    /// with Developer ID refuses to run with it.
     /// </summary>
     public bool DevelopmentSigning { get; init; }
 
     /// <summary>
     /// The code requirement the daemon checks on every XPC client: by default an Apple-issued certificate for
     /// <see cref="TeamIdentifier"/>, the identifier <see cref="ApplicationIdentifier"/>, and a Developer ID
-    /// Application or Mac App Store certificate unless <see cref="DevelopmentSigning"/> is set.
+    /// Application certificate unless <see cref="DevelopmentSigning"/> is set.
     /// </summary>
     public string ApplicationRequirement
     {
@@ -249,12 +251,16 @@ internal static class MacPrivilegedNames
         return true;
     }
 
-    // Developer ID Application, and Mac App Store application certificates.
-    internal const string DistributionMarker =
-        "(certificate leaf[field.1.2.840.113635.100.6.1.13] exists or certificate leaf[field.1.2.840.113635.100.6.1.9] exists)";
+    // Apple's Developer ID form: the Developer ID intermediate (1.2.840.113635.100.6.2.6) and a Developer ID
+    // Application leaf (1.2.840.113635.100.6.1.13). No Mac App Store alternative: Apple re-signs store apps with its
+    // own certificate, whose OU is not the team's, so it could never match the Team ID clause, and a sandboxed store
+    // app cannot register an SMAppService daemon anyway.
+    internal const string DeveloperIdMarker =
+        "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists";
 
     // Identifiers and Team IDs are checked above, so they need no quoting beyond the quotes.
     internal static string Requirement(string team, string? identifier, bool distribution) =>
         "anchor apple generic" + (identifier is null ? "" : $" and identifier \"{identifier}\"")
-        + $" and certificate leaf[subject.OU] = \"{team}\"" + (distribution ? " and " + DistributionMarker : "");
+        + (distribution ? " and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" : "")
+        + $" and certificate leaf[subject.OU] = \"{team}\"";
 }

@@ -21,10 +21,13 @@ internal sealed class PrivilegedModelTests
     {
         var definition = Definition(Shell);
         Check(definition.PlistName == "eu.runic.tests.privileged.plist", definition.PlistName);
-        const string Distribution = " and (certificate leaf[field.1.2.840.113635.100.6.1.13] exists or certificate leaf[field.1.2.840.113635.100.6.1.9] exists)";
-        Check(definition.ApplicationRequirement == "anchor apple generic and identifier \"eu.runic.tests\" and certificate leaf[subject.OU] = \"ABCDE12345\"" + Distribution, definition.ApplicationRequirement);
-        Check(definition.DaemonRequirement == "anchor apple generic and identifier \"eu.runic.tests.privileged\" and certificate leaf[subject.OU] = \"ABCDE12345\"" + Distribution, definition.DaemonRequirement);
-        Check(definition.ProgramRequirement == "anchor apple generic and certificate leaf[subject.OU] = \"ABCDE12345\"" + Distribution, definition.ProgramRequirement);
+        // Apple's Developer ID form: the Developer ID intermediate and a Developer ID Application leaf.
+        const string DeveloperId = " and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists";
+        const string Team = " and certificate leaf[subject.OU] = \"ABCDE12345\"";
+        Check(definition.ApplicationRequirement == "anchor apple generic and identifier \"eu.runic.tests\"" + DeveloperId + Team, definition.ApplicationRequirement);
+        Check(definition.DaemonRequirement == "anchor apple generic and identifier \"eu.runic.tests.privileged\"" + DeveloperId + Team, definition.DaemonRequirement);
+        Check(definition.ProgramRequirement == "anchor apple generic" + DeveloperId + Team, definition.ProgramRequirement);
+        Check(!definition.ApplicationRequirement.Contains("6.1.9", StringComparison.Ordinal), "no Mac App Store alternative");
         Check(!definition.DevelopmentSigning, "distribution signing by default");
         var development = new MacPrivilegedDaemonDefinition("eu.runic.tests.privileged", "ABCDE12345", "eu.runic.tests", "eu.runic.tests.privileged", []) { DevelopmentSigning = true };
         Check(development.ApplicationRequirement == "anchor apple generic and identifier \"eu.runic.tests\" and certificate leaf[subject.OU] = \"ABCDE12345\"", "development signing drops the marker");
@@ -184,11 +187,49 @@ internal sealed class PrivilegedModelTests
     public void HardenedClients()
     {
         const long Runtime = 0x10000, GetTaskAllow = 0x4, Debugged = 0x10000000, Valid = 0x1;
-        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime, false), "hardened");
-        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid, false), "not hardened");
-        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | Debugged, true), "debugged");
-        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | GetTaskAllow, false), "get-task-allow");
-        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | GetTaskAllow, true), "get-task-allow with development signing");
+        HashSet<string> none = [];
+        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime, none, false), "hardened");
+        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid, none, false), "not hardened");
+        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | Debugged, none, true), "debugged");
+        Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | GetTaskAllow, none, false), "get-task-allow");
+        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime | GetTaskAllow, none, true), "get-task-allow with development signing");
+        foreach (var entitlement in new[] { "allow-dyld-environment-variables", "disable-library-validation", "allow-jit", "allow-unsigned-executable-memory" })
+        {
+            HashSet<string> one = ["com.apple.security.cs." + entitlement];
+            Check(!MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime, one, false), entitlement);
+            Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime, one, true), entitlement + " with development signing");
+        }
+        Check(MacPrivilegedOutcome.IsHardenedClient(Valid | Runtime, new HashSet<string> { "com.apple.security.app-sandbox" }, false), "other entitlements");
+    }
+
+    [Test, DisplayName("program: the hardened runtime, and no entitlement for unsigned libraries or generated code")]
+    public void HardenedPrograms()
+    {
+        const long Runtime = 0x10000, LibraryValidation = 0x2000;
+        Check(MacPrivilegedOutcome.IsHardenedProgram(Runtime, new HashSet<string>()), "hardened");
+        Check(!MacPrivilegedOutcome.IsHardenedProgram(LibraryValidation, new HashSet<string>()), "library validation alone is not the hardened runtime");
+        foreach (var entitlement in new[] { "disable-library-validation", "allow-jit", "allow-unsigned-executable-memory", "allow-dyld-environment-variables" })
+            Check(!MacPrivilegedOutcome.IsHardenedProgram(Runtime, new HashSet<string> { "com.apple.security.cs." + entitlement }), entitlement);
+    }
+
+    [Test, DisplayName("program: the .NET host's bundle marker and libhostfxr are found anywhere in the file")]
+    public void HostMarkers()
+    {
+        // The bundle marker of dotnet/runtime's bundle_marker.c, from its complement so this assembly does not carry it.
+        byte[] marker = [.. new byte[] { 0x74, 0xed, 0xfd, 0x46, 0x95, 0x9e, 0xdf, 0xc7, 0x8d, 0x84, 0x6c, 0xfd, 0xeb, 0x28, 0x5f, 0xcd,
+            0xec, 0x0a, 0x46, 0x19, 0x10, 0x51, 0xcc, 0xe7, 0x11, 0xc4, 0xd2, 0x31, 0xdb, 0x4c, 0x95, 0x51 }.Select(b => (byte)~b)];
+        foreach (var offset in new[] { 0, 100, 64 * 1024 - 10, 200_000 })
+        {
+            var bytes = new byte[offset + 300_000];
+            marker.CopyTo(bytes, offset);
+            Check(MacManagedProgram.HasHostMarker(new MemoryStream(bytes)), $"marker at {offset}");
+        }
+        var host = new byte[100_000];
+        // Joined at run time: the NativeAOT test executable is also the root test's daemon, which scans its own image.
+        System.Text.Encoding.ASCII.GetBytes(string.Join("", "lib", "host", "fxr", ".dylib")).CopyTo(host, 64 * 1024 - 4);
+        Check(MacManagedProgram.HasHostMarker(new MemoryStream(host)), "libhostfxr across two reads");
+        Check(!MacManagedProgram.HasHostMarker(new MemoryStream(new byte[300_000])), "no marker");
+        Check(!MacManagedProgram.HasHostMarker(new MemoryStream(host), hostLibrary: false), "the daemon's own check looks for the bundle marker only");
     }
 
     [Test, DisplayName("output: lines, CRLF, long lines split between UTF-8 sequences, and a last unterminated line")]

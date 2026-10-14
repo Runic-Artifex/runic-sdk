@@ -20,8 +20,8 @@
     The daemon project sets RunicMacPrivilegedDaemon to true and must be NativeAOT (RUNICPA106), and an application
     published for macOS must be NativeAOT too (RUNICPA107): a JIT runtime loads assemblies and configuration that
     code signing does not cover, and reads startup hooks and diagnostics settings from whoever starts it.
-    RunicMacPrivilegedDevelopmentSigning=true accepts development-signed code (see MacPrivilegedDaemonDefinition.
-    DevelopmentSigning); never ship it.
+    RunicMacPrivilegedDevelopmentSigning=true accepts development-signed code and a JIT application (see
+    MacPrivilegedDaemonDefinition.DevelopmentSigning); never ship it.
 
     Runic.Platform's RunicValidatePrivilegedActions checks the platform-neutral part of the items first; this target
     reports RUNICPA101 to RUNICPA104, and Runic.Platform writes the declarations only after it succeeded.
@@ -296,11 +296,18 @@ public sealed class RunicWriteMacPrivilegedDaemon : Task
            Text="The macOS privileged daemon (RunicMacPrivilegedDaemon) must set PublishAot to true: a JIT runtime loads assemblies and configuration that code signing does not cover." />
   </Target>
 
+  <!-- A build for a macOS runtime identifier makes a deployable application too; development signing allows JIT. -->
+  <Target Name="RunicCheckMacPrivilegedClient" BeforeTargets="CoreCompile"
+          Condition="'$(RunicMacPrivilegedDaemonLabel)' != '' and '@(RunicPrivilegedAction)' != '' and '$(RunicMacPrivilegedDaemon)' != 'true' and '$(RunicMacPrivilegedDevelopmentSigning)' != 'true' and '$(PublishAot)' != 'true' and $(RuntimeIdentifier.StartsWith('osx'))">
+    <Error Code="RUNICPA107" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa107"
+           Text="An application that runs macOS privileged actions must set PublishAot to true when it is built for a macOS runtime identifier: a JIT runtime reads startup hooks and debugger or profiler settings from whoever starts it, so code with the application's signature could run code it does not contain." />
+  </Target>
+
   <Target Name="RunicCheckMacPrivilegedPublish" BeforeTargets="PrepareForPublish"
           Condition="'$(RunicMacPrivilegedDaemonLabel)' != '' and '@(RunicPrivilegedAction)' != '' and '$(PublishAot)' != 'true' and $(RuntimeIdentifier.StartsWith('osx'))">
     <Error Condition="'$(RunicMacPrivilegedDaemon)' == 'true'" Code="RUNICPA106" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa106"
            Text="The macOS privileged daemon (RunicMacPrivilegedDaemon) must be published with PublishAot set to true: a JIT runtime loads assemblies and configuration that code signing does not cover." />
-    <Error Condition="'$(RunicMacPrivilegedDaemon)' != 'true'" Code="RUNICPA107" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa107"
+    <Error Condition="'$(RunicMacPrivilegedDaemon)' != 'true' and '$(RunicMacPrivilegedDevelopmentSigning)' != 'true'" Code="RUNICPA107" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicpa107"
            Text="An application that runs macOS privileged actions must be published with PublishAot set to true: a JIT runtime reads startup hooks and debugger or profiler settings from whoever starts it, so code with the application's signature could run code it does not contain." />
   </Target>
 </Project>

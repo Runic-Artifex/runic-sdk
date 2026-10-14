@@ -868,8 +868,9 @@ executable; a JIT runtime also loads assemblies, `*.deps.json` and
 
 ### RUNICPA107
 
-An application with a macOS privileged daemon is published for macOS without
-`PublishAot`. The daemon trusts the application's signature, but a JIT runtime
+An application with a macOS privileged daemon is published, or built for a
+macOS runtime identifier, without `PublishAot` (outside
+`RunicMacPrivilegedDevelopmentSigning`). The daemon trusts the application's signature, but a JIT runtime
 reads startup hooks (`DOTNET_STARTUP_HOOKS`) and debugger and profiler settings
 from whoever starts it, so code the application does not contain could run
 under its signature.

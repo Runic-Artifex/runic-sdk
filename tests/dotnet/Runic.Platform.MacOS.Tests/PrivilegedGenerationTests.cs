@@ -115,6 +115,12 @@ internal sealed class PrivilegedGenerationTests
             Check(exit != 0 && output.Contains("RUNICPA107", StringComparison.Ordinal), "a JIT application published for macOS: " + output);
             (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedPublish", "-p:RuntimeIdentifier=linux-x64");
             Check(exit == 0, "another platform: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedClient", "-p:RuntimeIdentifier=osx-arm64");
+            Check(exit != 0 && output.Contains("RUNICPA107", StringComparison.Ordinal), "a JIT application built for macOS: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedClient", "-p:RuntimeIdentifier=osx-arm64", "-p:RunicMacPrivilegedDevelopmentSigning=true");
+            Check(exit == 0, "development signing allows a JIT application: " + output);
+            (exit, output) = await project.BuildAsync("-t:RunicCheckMacPrivilegedClient", "-p:RuntimeIdentifier=osx-arm64", "-p:PublishAot=true");
+            Check(exit == 0, "a NativeAOT application: " + output);
         }
     }
 

@@ -153,7 +153,7 @@ internal static unsafe partial class MacSecurity
     [LibraryImport(Security, EntryPoint = "SecCodeCopySigningInformation")] internal static partial int CodeCopySigningInformation(nint code, uint flags, out nint information);
 
     // SecCSFlags for SecCodeCopySigningInformation, and the code-signing status flags (cs_blobs.h).
-    internal const uint SigningInformation = 1 << 1, DynamicInformation = 1 << 3;
+    internal const uint SigningInformation = 1 << 1, RequirementInformation = 1 << 2, DynamicInformation = 1 << 3;
     internal const long StatusGetTaskAllow = 0x4, StatusRequireLibraryValidation = 0x2000, StatusRuntime = 0x10000, StatusDebugged = 0x10000000;
     /// <summary>Not an OSStatus: the code is valid but runs without the hardened runtime or library validation.</summary>
     internal const int NotHardened = 1;
@@ -171,6 +171,7 @@ internal static unsafe partial class MacSecurity
     [LibraryImport(CoreFoundation, EntryPoint = "CFDictionaryGetKeysAndValues")] private static partial void DictionaryKeysAndValues(nint dictionary, nint* keys, nint* values);
     [LibraryImport(CoreFoundation, EntryPoint = "CFNumberCreate")] private static partial nint NumberCreate(nint allocator, nint type, long* value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFNumberGetValue")] private static partial byte NumberGetValue(nint number, nint type, long* value);
+    [LibraryImport(CoreFoundation, EntryPoint = "CFNumberGetValue")] private static partial byte NumberGetDouble(nint number, nint type, double* value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFGetTypeID")] private static partial nuint GetTypeId(nint value);
     [LibraryImport(CoreFoundation, EntryPoint = "CFStringGetTypeID")] private static partial nuint StringTypeId();
     [LibraryImport(CoreFoundation, EntryPoint = "CFNumberGetTypeID")] private static partial nuint NumberTypeId();
@@ -188,6 +189,24 @@ internal static unsafe partial class MacSecurity
     internal static nint GuestAttributePid => Constant(SecurityLibrary, "kSecGuestAttributePid");
     internal static nint CodeInfoStatus => Constant(SecurityLibrary, "kSecCodeInfoStatus");
     internal static nint CodeInfoIdentifier => Constant(SecurityLibrary, "kSecCodeInfoIdentifier");
+    internal static nint CodeInfoEntitlements => Constant(SecurityLibrary, "kSecCodeInfoEntitlementsDict");
+
+    /// <summary>The status flags and the entitlements set to true of running code; null when they cannot be read.</summary>
+    internal static (long Status, HashSet<string> Entitlements)? DynamicSigning(nint code)
+    {
+        if (CodeCopySigningInformation(code, DynamicInformation | RequirementInformation, out var information) != 0) return null;
+        try
+        {
+            if (ToNumber(DictionaryGet(information, CodeInfoStatus)) is not { } status) return null;
+            var entitlements = new HashSet<string>(StringComparer.Ordinal);
+            var dictionary = DictionaryGet(information, CodeInfoEntitlements);
+            if (IsDictionary(dictionary))
+                foreach (var key in Keys(dictionary))
+                    if (key is not null && ToBoolean(Get(dictionary, key)) == true) entitlements.Add(key);
+            return (status, entitlements);
+        }
+        finally { Release(information); }
+    }
 
     /// <summary>The keys of a dictionary as text; a key that is not a string is returned as null.</summary>
     internal static List<string?> Keys(nint dictionary)
@@ -262,6 +281,13 @@ internal static unsafe partial class MacSecurity
             return StringGetCString(value, pointer, size, Utf8Encoding) != 0 ? Marshal.PtrToStringUTF8((nint)pointer) : null;
     }
 
+    internal static double? ToDouble(nint value)
+    {
+        if (value == 0 || GetTypeId(value) != NumberTypeId()) return null;
+        double result;
+        return NumberGetDouble(value, 6 /* kCFNumberFloat64Type */, &result) != 0 ? result : null;
+    }
+
     internal static long? ToNumber(nint value)
     {
         if (value == 0 || GetTypeId(value) != NumberTypeId()) return null;
@@ -318,7 +344,7 @@ internal static unsafe partial class MacSecurity
     /// Whether the sender of an XPC message, identified by the message's audit token, satisfies the requirement and
     /// runs with the hardened runtime, not being debugged, and without <c>get-task-allow</c> unless it is allowed.
     /// </summary>
-    internal static bool SenderSatisfies(nint message, string requirementText, bool allowGetTaskAllow)
+    internal static bool SenderSatisfies(nint message, string requirementText, bool developmentSigning)
     {
         var requirement = CreateRequirement(requirementText);
         if (requirement == 0) return false;
@@ -327,8 +353,8 @@ internal static unsafe partial class MacSecurity
             if (CodeCreateWithXpcMessage(message, 0, out var code) != 0) return false;
             try
             {
-                if (CodeCheckValidity(code, 0, requirement) != 0 || DynamicStatus(code) is not { } status) return false;
-                return MacPrivilegedOutcome.IsHardenedClient(status, allowGetTaskAllow);
+                if (CodeCheckValidity(code, 0, requirement) != 0 || DynamicSigning(code) is not { } signing) return false;
+                return MacPrivilegedOutcome.IsHardenedClient(signing.Status, signing.Entitlements, developmentSigning);
             }
             finally { Release(code); }
         }
@@ -357,7 +383,8 @@ internal static unsafe partial class MacSecurity
 
     /// <summary>
     /// The OSStatus of checking the running process <paramref name="pid"/>, a child that has not been reaped, or
-    /// <see cref="NotHardened"/> when it is valid but runs without the hardened runtime or library validation.
+    /// <see cref="NotHardened"/> when it is valid but runs without the hardened runtime, or with an entitlement that
+    /// lets it load unsigned libraries or generate code.
     /// </summary>
     internal static int CheckProcess(int pid, string requirementText)
     {
@@ -375,8 +402,10 @@ internal static unsafe partial class MacSecurity
             {
                 status = CodeCheckValidity(code, 0, requirement);
                 if (status != 0) return status;
-                // Without the hardened runtime or library validation, the program could load unsigned libraries.
-                return DynamicStatus(code) is { } flags && (flags & (StatusRuntime | StatusRequireLibraryValidation)) != 0 ? 0 : NotHardened;
+                // The loaded code's own status and entitlements: the hardened runtime, and nothing that lets it load
+                // unsigned libraries or run code it was not signed with (a JIT runtime needs allow-jit or
+                // allow-unsigned-executable-memory; NativeAOT needs neither).
+                return DynamicSigning(code) is { } signing && MacPrivilegedOutcome.IsHardenedProgram(signing.Status, signing.Entitlements) ? 0 : NotHardened;
             }
             finally { Release(code); }
         }

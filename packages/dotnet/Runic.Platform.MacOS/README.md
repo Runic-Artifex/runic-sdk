@@ -134,7 +134,7 @@ it these targets do nothing.
 | `RunicMacLaunchDaemonOutputPath` | Where the property list goes in the output and publish directories. Default: `Library/LaunchDaemons/`. |
 | `RunicMacLaunchDaemonPlist` | `false` in a second project that imports the same items, so only one copies the property list. |
 | `RunicMacPrivilegedDaemon` | `true` in the daemon's project, which must be NativeAOT (`RUNICPA106`). |
-| `RunicMacPrivilegedDevelopmentSigning` | `true` accepts development-signed code: the requirements drop the Developer ID or Mac App Store marker, and the daemon accepts a client with `get-task-allow`. For local development only; never ship it. |
+| `RunicMacPrivilegedDevelopmentSigning` | `true` accepts development-signed code: the requirements drop the Developer ID marker, the daemon accepts a client with `get-task-allow` (any process of the same user can then take its task port) or a JIT, and `RUNICPA107` is off. For local development only; a daemon signed with Developer ID refuses to run with it. |
 
 Each build writes `<label>.plist`, the daemon's launchd property list
 (`Label`, `BundleProgram`, `MachServices`, `AssociatedBundleIdentifiers` and a
@@ -168,9 +168,11 @@ startup hooks and debugger and profiler settings from whoever starts it. It defi
 after the action ID, with the item's `Message` as the dialog text: an
 administrator rule that is not shared and whose credential lasts 30 seconds.
 For every XPC connection it requires the client to satisfy
-`ApplicationRequirement`, by default an Apple-issued Developer ID Application or
-Mac App Store certificate for the Team ID and the application's identifier, and
-to run with the hardened runtime, not debugged and without `get-task-allow`. It accepts a declared action with
+`ApplicationRequirement`, by default Apple's Developer ID form for the Team ID
+and the application's identifier, and to run with the hardened runtime, not
+debugged, and without `get-task-allow` or entitlements that allow `DYLD_`
+variables, unsigned libraries or generated code; it checks the sender of every
+`prepare` and every run. It accepts a declared action with
 arguments within its declaration, checks the right without interaction and
 starts the program with `posix_spawn`: the argument vector, `/` as working
 directory, umask 022, default signal dispositions, an empty signal mask, no
@@ -181,9 +183,12 @@ variables. A program whose path only root can change (such as `/usr/bin` or
 any other, including one in the bundle, must satisfy `ProgramRequirement` (by
 default the Team ID and the distribution certificate) with its
 `MacProgramIdentifier`, checked on disk and again in the started process before
-it runs, and must run with the hardened runtime or library validation. Such a
-program must be NativeAOT or not .NET: one with a `.runtimeconfig.json`,
-`.deps.json` or `.dll` of its name beside it is refused. A bundle program is
+it runs, and must run with the hardened runtime and without
+`disable-library-validation`, `allow-jit`, `allow-unsigned-executable-memory`
+or `allow-dyld-environment-variables`. Such a program must be NativeAOT or not
+.NET: one with a `.runtimeconfig.json`, `.deps.json` or `.dll` of its name
+beside it, or whose file carries the .NET host's bundle marker or names
+`libhostfxr`, is refused. A bundle program is
 proven by its signature, not by the bundle's owner; someone who can write the
 bundle could put back an older signed version of it (see the specification).
 The daemon closes connections that send nothing valid within 10 seconds, and

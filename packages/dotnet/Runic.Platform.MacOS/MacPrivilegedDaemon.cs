@@ -49,12 +49,15 @@ public static class MacPrivilegedDaemon
         if (!OperatingSystem.IsMacOSVersionAtLeast(14)) return 2;
         // A JIT runtime loads assemblies, deps.json and runtimeconfig.json files (startup hooks, probing paths) that
         // code signing does not cover, so only a NativeAOT daemon proves what runs as root.
-        if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported) return 8;
+        if (System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported || AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is not null
+            || Environment.ProcessPath is not { } self || MacManagedProgram.IsDotnetHost(self, hostLibrary: false)) return 8;
         // launchd (process 1) starts the daemon as root with a clean environment; refuse anything else.
         if (MacProcess.GetEffectiveUserId() != 0 || MacProcess.GetParentProcessId() != 1) return 3;
         _ = MacProcess.Umask(0x12); // 022, inherited by every program
         Environment.CurrentDirectory = "/";
         if (!MacSecurity.SelfSatisfies(daemon.DaemonRequirement)) return 4;
+        // A development definition must not ship: refuse it in a daemon signed for distribution.
+        if (daemon.DevelopmentSigning && MacSecurity.SelfSatisfies(MacPrivilegedNames.DeveloperIdMarker)) return 9;
         if (server.Prepare().Status != MacReplyStatus.Ready) return 5;
         var queue = MacXpc.CreateQueue(daemon.Label, 0);
         var listener = MacXpc.CreateMachService(daemon.Label, queue, MacXpc.MachServiceListener);
@@ -101,20 +104,18 @@ internal sealed unsafe class MacSystemAuthority : IMacDaemonAuthority
             }
             finally { MacSecurity.Release(existing); }
         }
-        // Anyone may add a right that does not exist yet, so a definition that differs is removed and defined again
-        // (root may remove and modify any right), which also drops keys and prompts the daemon's rule does not have.
+        // Anyone may add a right that does not exist yet, so a definition that differs is replaced in place. For an
+        // existing right, authd's authorization_right_set checks config.modify. (is-root, no dialog) and
+        // rule_sql_commit updates the rule and deletes and re-inserts its prompts, buttons, mechanisms and delegates
+        // in one transaction: there is no moment without a right, as a remove before the set would leave. The
+        // prompt is in the definition and no description key is passed, so AuthorizationRightSet adds no prompts
+        // from the daemon's bundle's localizations, and the stored right matches the definition exactly.
         var status = MacSecurity.AuthorizationCreate(null, null, 0, out var authorization);
         if (status != 0) return status;
-        var definition = CreateDefinition(right.ActionId);
-        var description = MacSecurity.CreateString(right.Message);
-        try
-        {
-            if (existing != 0) _ = MacSecurity.AuthorizationRightRemove(authorization, right.ActionId);
-            return MacSecurity.AuthorizationRightSet(authorization, right.ActionId, definition, description, 0, 0);
-        }
+        var definition = CreateDefinition(right);
+        try { return MacSecurity.AuthorizationRightSet(authorization, right.ActionId, definition, 0, 0, 0); }
         finally
         {
-            MacSecurity.Release(description);
             MacSecurity.Release(definition);
             _ = MacSecurity.AuthorizationFree(authorization, 0);
         }
@@ -144,10 +145,14 @@ internal sealed unsafe class MacSystemAuthority : IMacDaemonAuthority
         }
     }
 
-    internal static nint CreateDefinition(string actionId)
+    /// <summary>The right's definition: the rule's keys and a <c>default-prompt</c> with only the message.</summary>
+    internal static nint CreateDefinition(MacPrivilegedRight right)
     {
         var dictionary = MacSecurity.CreateDictionary();
-        foreach (var (key, value) in MacAuthorizationRule.Definition(actionId))
+        var prompts = MacSecurity.CreateDictionary();
+        MacSecurity.Set(prompts, "", MacSecurity.CreateString(right.Message));
+        MacSecurity.Set(dictionary, "default-prompt", prompts);
+        foreach (var (key, value) in MacAuthorizationRule.Definition(right.ActionId))
         {
             var cfValue = value switch
             {
@@ -204,6 +209,8 @@ internal sealed class MacPrivilegedDaemonServer
     /// <summary>Runs at the same time from one client process, and from all clients together.</summary>
     internal const int RunsPerClient = 2, RunsInTotal = 8;
     private readonly Dictionary<int, int> _runsByClient = [];
+    // EnsureRight and Check run one at a time, so no check sees a right while the daemon changes it.
+    private readonly Lock _rights = new();
     private int _runs;
     private readonly FrozenDictionary<string, PrivilegedActionDeclaration> _actions;
     private readonly IMacDaemonAuthority _authority;
@@ -289,7 +296,8 @@ internal sealed class MacPrivilegedDaemonServer
     internal MacReply Prepare()
     {
         foreach (var right in Definition.Rights)
-            if (_authority.EnsureRight(right) is var status and not 0) return new(MacReplyStatus.Failed, status);
+            lock (_rights)
+                if (_authority.EnsureRight(right) is var status and not 0) return new(MacReplyStatus.Failed, status);
         return new(MacReplyStatus.Ready);
     }
 
@@ -313,8 +321,11 @@ internal sealed class MacPrivilegedDaemonServer
         if (Validate(request, out var action, out var argv) is { Status: not MacReplyStatus.Ready } invalid) return invalid;
         var right = Definition.FindRight(action!.Id)!;
         if (session.IsCancelled) return new(MacReplyStatus.Cancelled);
-        if (_authority.EnsureRight(right) is var defined and not 0) return new(MacReplyStatus.Failed, defined);
-        if (_authority.Check(right.ActionId, request.Authorization) is var authorized and not 0) return new(MacReplyStatus.Denied, authorized);
+        lock (_rights)
+        {
+            if (_authority.EnsureRight(right) is var defined and not 0) return new(MacReplyStatus.Failed, defined);
+            if (_authority.Check(right.ActionId, request.Authorization) is var authorized and not 0) return new(MacReplyStatus.Denied, authorized);
+        }
         if (session.IsCancelled) return new(MacReplyStatus.Cancelled);
 
         string program;
@@ -328,7 +339,7 @@ internal sealed class MacPrivilegedDaemonServer
         if (check == MacProgramCheck.NeedsSignature)
         {
             // Code signing covers the executable, not a .NET runtime's assemblies and configuration beside it.
-            if (MacManagedProgram.IsManaged(program, File.Exists)) return new(MacReplyStatus.Untrusted, 8);
+            if (MacManagedProgram.IsDotnetHost(program)) return new(MacReplyStatus.Untrusted, 8);
             if (requirement is null) return new(MacReplyStatus.Untrusted, 9);
             if (MacSecurity.CheckFile(program, requirement) != 0) return new(MacReplyStatus.Untrusted, 3);
         }
@@ -398,6 +409,13 @@ internal sealed class MacDaemonSession(MacPrivilegedDaemonServer server, nint pe
         switch (MacXpc.GetString(message, Op))
         {
             case Prepare:
+                // The same checks of the sender as for a run: prepare changes the authorization database.
+                if (server.CheckSender && !MacSecurity.SenderSatisfies(message, server.Definition.ApplicationRequirement, server.Definition.DevelopmentSigning))
+                {
+                    Reply(message, new(MacReplyStatus.Rejected));
+                    MacXpc.Cancel(peer);
+                    break;
+                }
                 Reply(message, server.Prepare());
                 break;
             case MacPrivilegedProtocol.Run:
