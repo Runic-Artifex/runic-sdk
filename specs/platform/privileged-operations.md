@@ -18,7 +18,7 @@ describes the API.
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
 | Linux | Implemented: Polkit policy generated from `RunicPrivilegedAction` items, pkexec provider in Runic.Platform.Linux.Polkit, `PolkitHelper` for the privileged side. | Managed tests with a fake pkexec for every outcome and policy generation through MSBuild; `nixos/privileged-operations` against polkit 127 with a NativeAOT smoke. |
-| Windows | Not implemented; follow-up with the design below. Runic.Platform.Administration.Windows has no elevation or process launch, so it gives none of this. | — |
+| Windows | Implemented (W300-025): Runic.Platform.Windows.Elevation starts a NativeAOT helper with `ShellExecuteExW` and `runas`; `ElevatedHelper` for the elevated side; output and cancellation over a named pipe. Runic.Platform.Administration.Windows has no elevation or process launch; a helper can use it for its work. | Managed tests with a fake host and an in-process helper for every outcome and cancellation phase; the Windows native CI job runs a stand-in helper over the real pipe and the installed NativeAOT helper through real `runas`, under JIT and NativeAOT. |
 | macOS | Not implemented; follow-up with the design below. | — |
 
 `PolkitPrivilegedActions.Create` returns `DesktopPrivilegedActions.Unavailable(BackendUnavailable)`
@@ -32,7 +32,7 @@ off Linux, so application code is the same everywhere.
 | Minimum | polkit 0.107 for `exec.argv1` (2012); `--disable-internal-agent` is older. Messages checked against polkit 0.105 to 127. `statx` (glibc 2.28, Linux 4.11). | Windows Vista for UAC; the SDK's Windows 10/11 baseline. | macOS 14 for launch constraints (`SMAppService` and `NSXPCConnection.setCodeSigningRequirement` need 13); the SDK's macOS baseline, from the .NET 10 support policy, is 15. |
 | Permissions | None for the caller. The policy decides who may run the action; installing the policy needs root. | None for the caller; the user approves each run. A standard user needs an administrator's credentials. | The user approves the daemon once in System Settings > General > Login Items; each action asks for authorization. |
 | Packaging | The `.policy` file in `share/polkit-1/actions`; the program at a path only root can change. pkexec must be setuid (NixOS: `security.polkit.enable`, `security.wrappers.pkexec`). | The helper installed under Program Files, Authenticode-signed so the consent prompt names the publisher, with a `requireAdministrator` manifest. No policy file. | A signed, notarized app bundle with hardened runtime; the daemon's plist in `Contents/Library/LaunchDaemons` (`BundleProgram`, `AssociatedBundleIdentifiers`, `MachServices`) and the helper in the bundle. |
-| NativeAOT | Works: `Process`, `LibraryImport` for `statx`, `kill`, `syscall` (pidfd), `getuid`, `geteuid`, `umask`, `sigaction`, `signal`, `sigprocmask`, `getrlimit`, `setrlimit`, `setpriority` and `close`, non-backtracking `Regex`. The smoke publishes without trim or AOT warnings. | Expected to work: CsWin32 or `LibraryImport` for `ShellExecuteExW`, `GetExitCodeProcess`, `CreateNamedPipeW`. | Expected to work with Runic.Platform.MacOS's Objective-C interop, which already builds blocks for XPC handlers; Security.framework is a C API. |
+| NativeAOT | Works: `Process`, `LibraryImport` for `statx`, `kill`, `syscall` (pidfd), `getuid`, `geteuid`, `umask`, `sigaction`, `signal`, `sigprocmask`, `getrlimit`, `setrlimit`, `setpriority` and `close`, non-backtracking `Regex`. The smoke publishes without trim or AOT warnings. | Works, and required for the helper: `LibraryImport` for `ShellExecuteExW`, `CreateNamedPipeW`, `CreateFileW`, the pipe and token queries, `GetNamedSecurityInfoW` and `NtQueryInformationProcess`; both sides publish without trim or AOT warnings. | Expected to work with Runic.Platform.MacOS's Objective-C interop, which already builds blocks for XPC handlers; Security.framework is a C API. |
 
 ### Rejected options
 
@@ -349,41 +349,211 @@ paths (`realpath`), checks the resolved path again and uses only it.
 - The caller still chooses the program's scheduling policy, CPU affinity and
   `RLIMIT_STACK`; `Initialize` resets the nice value but not these.
 
-## Windows design (follow-up)
+## Windows
 
-- `ShellExecuteExW` with `lpVerb = "runas"`, `SEE_MASK_NOCLOSEPROCESS |
-  SEE_MASK_NOASYNC`, the declared program and a command line built with the
-  Windows argument quoting rules (`CommandLineToArgvW` inverse), never `cmd`.
-- **The helper must be NativeAOT.** A process elevated with `runas` takes its
-  environment from the user's profile, including `HKCU\Environment`, which the
-  user (and every process running as the user) can write. For a .NET runtime
-  helper, `DOTNET_STARTUP_HOOKS`, `DOTNET_ROOT`, `DOTNET_ADDITIONAL_DEPS` and
-  `CORECLR_PROFILER*` would load attacker code into the elevated process. A
-  NativeAOT helper loads no runtime, startup hooks or profilers; it must still
-  ignore every other inherited variable and use absolute paths.
-- Outcomes: `ERROR_CANCELLED` (1223) comes back both when the user declines the
-  prompt and when a standard user cannot supply administrator credentials, so
-  denied and dismissed cannot be told apart and are reported as
-  `UserDismissed`; UAC disabled, where `runas` starts the program without
-  elevation, is detected by the helper (token elevation) and reported as
-  `Unavailable`.
-- `ShellExecuteEx` cannot redirect the elevated process's standard handles.
-  Output and cancellation go over a named pipe. The caller creates it with a
-  random name, `FILE_FLAG_FIRST_PIPE_INSTANCE` (so no other process can have
-  created or squatted the name first) and a DACL for the caller and the
-  Administrators group; its name is an argument. The helper opens it with
-  `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION`, so the pipe's server cannot
-  impersonate the elevated client, and the caller checks the client's process
-  image against the declared program. Closing the pipe is the cancellation
-  request, as closing standard input is on Linux.
-- The program must be in a directory only administrators can change (Program
-  Files), checked with its security descriptor before the prompt; the helper
-  has a `requireAdministrator` manifest and should be Authenticode-signed.
-- Runic.Platform.Administration.Windows performs administration with the
-  caller's identity and has no elevation or launch API. An elevated helper can
-  use it for the actual work (services, scheduled tasks, firewall rules); the
-  elevation provider belongs with the other Win32 interop in
-  Runic.Platform.Windows, or in a small package beside it.
+Runic.Platform.Windows.Elevation implements the provider; its
+[guide](../../packages/dotnet/Runic.Platform.Windows.Elevation/README.md)
+describes the API, outcomes and packaging. It is a small package beside
+Runic.Platform.Windows rather than part of it, so a NativeAOT helper references
+nothing but Runic.Platform. Runic.Platform.Administration.Windows performs
+administration with the caller's identity and has no elevation or launch API;
+an elevated helper can use it for its work.
+
+### A run
+
+1. The application resolves the action's helper (`WindowsProgram`, or the file
+   name of `Program` with `.exe`, in the application's directory) and checks
+   its location before the prompt (below).
+2. It creates a named pipe `\\.\pipe\runic-elevation-<128 random bits>` with
+   `FILE_FLAG_FIRST_PIPE_INSTANCE`, one instance, `PIPE_REJECT_REMOTE_CLIENTS`
+   and the DACL `D:P(A;;GA;;;<caller>)(A;;GA;;;SY)(A;;GA;;;BA)`, and starts
+   listening.
+3. It calls `ShellExecuteExW` with `runas`, `SEE_MASK_NOCLOSEPROCESS |
+   SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI`, `SW_HIDE`, System32 as the working
+   directory, the owner window from the options, and the command line
+   `--runic-elevation <pipe> <verb> <arguments>`, quoted with the C runtime's
+   rules (the inverse of `CommandLineToArgvW`), never through `cmd`. The call
+   blocks on a dedicated thread until the prompt is answered.
+4. The helper (`ElevatedHelper.Match`) resets its process, opens the pipe with
+   `SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION`, checks the server, and
+   sends a greeting with its status: accepted, not elevated, rejected or not
+   NativeAOT. An accepted helper waits for the application's start signal.
+5. The application accepts only the client whose process ID is the helper's
+   (from the process handle `ShellExecuteExW` returned) and disconnects any
+   other. After the greeting it sends the start signal; output frames follow
+   until the helper exits, and the exit code comes from the process handle.
+
+Frames are a type byte, a 32-bit length and at most 16 KiB of payload. Because
+the helper reports its state over the pipe, no exit code is reserved: unlike
+pkexec's 126 and 127, every exit code of a helper that ran is its own.
+
+### Outcomes
+
+| Observation | Result |
+| --- | --- |
+| `ShellExecuteExW` fails with `ERROR_CANCELLED` (1223): the user answered No, or a standard user closed the credential prompt | `Failed(UserDismissed)`. The two cannot be told apart, so Windows has no denied outcome for a prompt. |
+| `ERROR_ACCESS_DENIED` or `ERROR_ACCESS_DISABLED_BY_POLICY`: software restriction, AppLocker or a policy refused the elevation | `Failed(PermissionDenied)` |
+| `ERROR_INVALID_IMAGE_HASH`: the policy requires signed elevation and the helper is not signed | `Failed(InvalidData)` |
+| The Application Information service is disabled or missing | `Unavailable(BackendUnavailable)` |
+| The helper reports that it is not elevated: UAC is off and `runas` started it with the caller's token | `Unavailable(BackendUnavailable)` |
+| The helper reports a JIT runtime, or rejects the verb or arguments (its declarations differ) | `Failed(InvalidData)` |
+| The helper is missing or fails the location check | `Failed(InvalidData)`; no prompt |
+| The helper exits without a greeting, or another launch error | `Failed(IoError)` |
+| The helper ran | `Success` with its exit code |
+
+### Output and cancellation
+
+The helper replaces its standard output and error with inheritable anonymous
+pipes, standard input with `NUL`, and forwards both pipes as frames; tools it
+starts without redirecting their output write into the same pipes. Frames are
+written synchronously, and the application reads the next frame only after the
+callback returned, so a slow callback blocks the helper's writes and memory
+stays bounded, as on Linux. At exit the helper flushes, closes its write ends
+and forwards what is left for at most five seconds.
+
+| Phase | Cancellation |
+| --- | --- |
+| UAC prompt open | Nothing can withdraw a UAC prompt. `RunAsync` throws `OperationCanceledException` at once and closes the pipe; a helper approved later finds no pipe and exits without acting, and is terminated through its handle when `ShellExecuteExW` returns. |
+| Greeting received, no start signal sent | The pipe closes and the helper is terminated; `RunAsync` throws. The helper acts only after the start signal, so nothing ran. |
+| Running | The application sends a cancellation, which `ElevatedHelper.WatchCancellation()` reports, waits for the exit and returns the actual completion, as on Linux. `TerminateAfterCancellation` terminates the helper through its handle after that time instead (exit code 1223). |
+
+Linux's pkexec can be killed until authorization succeeds; on Windows the
+prompt cannot be cancelled, so the run gives up waiting instead and relies on
+the helper's start signal. Terminating a running helper is possible on Windows,
+because `ShellExecuteExW` returns a handle to the elevated process, but it is
+opt-in: a terminated step can leave the system half-changed.
+
+When the application dies, the pipe closes: the helper's cancellation token is
+cancelled and later output is dropped. A helper that ignores the token runs on.
+
+## Windows threat model and security review
+
+**Assets.** An administrator's token. **Boundary.** The UAC prompt and the
+helper; the Application Information service and consent.exe are trusted.
+**Adversaries.** Any process running as the user, at medium integrity, and
+untrusted input that reaches the application.
+
+Anyone who can get the user to approve a prompt can start the helper with
+`runas` and any arguments, so, as on Linux, the application's checks are a
+convenience and the helper is the boundary: `ElevatedHelper.Match` applies the
+same declarations, and the helper adds its own checks.
+
+### The environment of an elevated process
+
+An elevated process gets an environment built from the user's profile, which
+includes `HKCU\Environment`, which every process of the user can write. A JIT
+helper would load `DOTNET_STARTUP_HOOKS`, a runtime from `DOTNET_ROOT`, extra
+dependencies from `DOTNET_ADDITIONAL_DEPS` or a profiler from
+`CORECLR_PROFILER*` into the elevated process before `Main`. The helper must
+therefore be NativeAOT: the build refuses to publish a helper without
+`PublishAot`, or to build it for a runtime identifier (`RUNICEL002`), and
+`Match` reports a JIT runtime instead of acting. The NativeAOT runtime still
+reads its own `DOTNET_` garbage-collector settings before `Main`; they change
+performance, not code.
+
+`ElevatedHelper.Initialize` then:
+
+- restricts DLL loading to the helper's directory and System32
+  (`SetDefaultDllDirectories`), so a DLL in the working directory or on `PATH`
+  is never loaded;
+- sets the working directory to System32 (the caller chose `lpDirectory`);
+- removes every variable and sets `SystemRoot`, `windir`, `SystemDrive`,
+  `ComSpec`, `Path`, `PATHEXT`, `OS`, `NUMBER_OF_PROCESSORS`,
+  `PROCESSOR_ARCHITECTURE` and the Program Files and ProgramData variables
+  from the system (`GetSystemWindowsDirectoryW`, `GetSystemDirectoryW` and the
+  known folders, after `SystemDrive`, because ProgramData expands it). The
+  user could otherwise point `ComSpec`, `Path` or `SystemRoot` at their own
+  programs;
+- points `TEMP` and `TMP` at a new directory under `%SystemRoot%\Temp` that
+  only Administrators and SYSTEM can open, created with a random name that must
+  not exist, and removed at exit. The user's `TEMP` is theirs to change, so a
+  tool that writes and then runs or reads a file there could be given another.
+
+The helper must call tools by absolute path with `UseShellExecute = false`:
+`ShellExecute`, file associations and COM activation consult
+`HKCU\Software\Classes`, which the user controls.
+
+### The pipe
+
+- **Squatting.** The name has 128 random bits and the pipe is created with
+  `FILE_FLAG_FIRST_PIPE_INSTANCE`, so creation fails if any process created the
+  name first; the helper refuses any pipe name that is not of this form, so it
+  cannot be pointed at another pipe or device.
+- **Who can connect.** The DACL allows the calling user, SYSTEM and
+  Administrators. Administrators is needed for an over-the-shoulder elevation,
+  where a standard user types an administrator's password and the helper runs
+  as that administrator; only an elevated token holds Administrators for
+  access (a filtered token holds it for deny only), and an elevated process is
+  beyond this boundary anyway. Low-integrity and AppContainer processes cannot
+  open it. Remote clients are rejected.
+- **Who the client is.** Pipe names can be listed, so any process of the user
+  could connect first. With one instance, an impostor would block the helper,
+  so the application compares `GetNamedPipeClientProcessId` with the process ID
+  of the handle `ShellExecuteExW` returned, which cannot be reused while the
+  handle is open, and disconnects anyone else. This is stronger than comparing
+  image paths, which the spec's draft proposed.
+- **Impersonation.** The helper opens the pipe with `SECURITY_SQOS_PRESENT |
+  SECURITY_IDENTIFICATION`: the server can learn the helper's identity but
+  cannot impersonate the elevated token.
+- **Who the server is.** UAC makes the requesting process the parent of the
+  elevated process (as `CreateProcess` does with UAC off). The helper requires
+  `GetNamedPipeServerProcessId` to equal its parent process ID and the server's
+  session to equal its own, so it talks to the process that asked for the
+  prompt. It cannot verify more: any process of the user can start the helper
+  with `runas`, and a process can choose another parent with
+  `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`. `GetCallerImagePath` names the
+  application for logs and the helper's own policy, not as proof.
+
+### Arguments
+
+The command line is built with the C runtime's quoting rules and checked
+against `CommandLineToArgvW` in the tests, with spaces, quotes, trailing
+backslashes, `&|<>^%`, `$(…)` and non-ASCII text; no shell parses it. The UAC
+prompt's details show it, so the user can see the verb and arguments.
+Arguments are bounded by the declaration; a command line over Windows' 32,766
+characters is `InvalidData`.
+
+### Location of the helper
+
+`ShellExecuteExW` starts the file at the path it is given, so the protection
+against a replaced helper is its location. Before the prompt the application
+reads the owner and DACL of the helper and of every directory above it
+(`GetNamedSecurityInfoW`) and requires:
+
+- every owner to be SYSTEM, Administrators or TrustedInstaller;
+- no other SID to hold write, append, delete, `WRITE_DAC`, `WRITE_OWNER` or
+  generic write or full rights on the helper or its directory (adding a file to
+  the directory would plant a DLL next to it);
+- no other SID to hold delete-child, delete, `WRITE_DAC` or `WRITE_OWNER` on a
+  directory above (creating a new subdirectory, which Authenticated Users may
+  do in `C:\`, replaces nothing);
+- no symbolic link, junction or mount point in the path, a fixed local drive,
+  and no network, device or drive-relative path. Inherit-only entries,
+  `CREATOR OWNER` and `OWNER RIGHTS` are ignored; an unknown entry type fails
+  closed.
+
+As on Linux, this is a deployment check in the unprivileged application, not
+the boundary: it catches a per-user installation under `%LocalAppData%`
+before the user is asked to approve it. The helper has a `requireAdministrator`
+manifest, so it asks for elevation however it is started, and should be
+Authenticode-signed so the prompt names the publisher; Windows enforces
+signatures only with the "Only elevate executables that are signed and
+validated" policy.
+
+### Windows residual risks
+
+- The prompt cannot be withdrawn: a cancelled run leaves the prompt on screen,
+  and an approval after cancellation starts a helper that exits without acting.
+- A process of the user that starts the helper itself, or serves the pipe as
+  the parent it chose, receives the output of a run the user approved for it;
+  it cannot change the verb or arguments the prompt showed.
+- The NativeAOT runtime reads its `DOTNET_` garbage-collector settings from the
+  user-writable environment.
+- A running helper that ignores cancellation runs on unless
+  `TerminateAfterCancellation` is set, and when the application dies.
+- The location check runs before the prompt; between the check and the start,
+  only an administrator can change a location that passed it.
+- The private `TEMP` directory survives a helper that is terminated or crashes.
 
 ## macOS design (follow-up)
 
@@ -430,7 +600,10 @@ paths (`realpath`), checks the resolved path again and uses only it.
 - **Align with runic-cli-sdk W300-006**: once `ProcessRunner` with live output
   ships in a released Command Line package, replace the internal line pump and
   use its documented ordering and backpressure.
-- **Windows provider** and **macOS provider**, with the designs above.
+- **macOS provider**, with the design above.
+- **Windows**: an Authenticode-signed helper in an MSI or MSIX package, checked
+  on a machine with UAC prompts (consent and credential), which CI cannot
+  answer; and sign-in-as-another-user (over-the-shoulder) elevation.
 - **nix-manager adoption** (W300-011): one action per privileged operation
   (`activate-output`, `activate-generation`, `rollback`, `gc`) with its own verb
   and message, the existing checks in the helper, and `PolkitHelper.Match` in

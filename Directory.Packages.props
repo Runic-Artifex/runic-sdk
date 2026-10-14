@@ -65,6 +65,7 @@
     <PackageVersion Include="Runic.Platform.Linux.Gtk4" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux.Portal" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Platform.Linux.Polkit" Version="$(RunicSdkVersion)" />
+    <PackageVersion Include="Runic.Platform.Windows.Elevation" Version="$(RunicSdkVersion)" />
     <PackageVersion Include="Runic.Desktop" Version="$(RunicSdkVersion)" />
     <!-- The runic-app template test project pins the same TUnit version. The
          TUnit suites (see CONTRIBUTING.md) keep TUnit.Core and TUnit.Engine on it too. -->

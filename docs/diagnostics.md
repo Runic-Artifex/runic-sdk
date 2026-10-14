@@ -808,3 +808,45 @@ between the user's processes and root.
 **Fix:** use `auth_admin` or `auth_admin_keep`. To let specific users or groups
 run the action without a password, add a site rule in `/etc/polkit-1/rules.d`
 on the machines that need it.
+
+## Privileged actions on Windows
+
+The `Runic.Platform.Windows.Elevation` build targets report these errors for
+the `WindowsProgram` metadata of `RunicPrivilegedAction` items and for a helper
+project (`RunicElevatedHelper`). See the
+[package guide](../packages/dotnet/Runic.Platform.Windows.Elevation/README.md).
+
+### RUNICEL001
+
+`WindowsProgram` is not a path relative to the application's directory or a
+local absolute path: it contains `.` or `..`, is a network (`\\server\share`),
+device (`\\?\`) or drive-relative (`C:helper.exe`) path, ends in a dot or space,
+or contains a character Windows does not allow in a file name.
+
+**Fix:** use a path such as `helpers\example-helper.exe`, or an absolute path
+under `C:\Program Files`.
+
+### RUNICEL002
+
+An elevated helper is published, or built for a runtime identifier, without
+`PublishAot`. An elevated process takes its environment from the user's
+profile, which the user can write, and a JIT runtime loads startup hooks
+(`DOTNET_STARTUP_HOOKS`), another runtime (`DOTNET_ROOT`) or a profiler
+(`CORECLR_PROFILER`) from it.
+
+**Fix:** set `PublishAot` to `true` in the helper's project.
+
+### RUNICEL003
+
+The helper's own `ApplicationManifest` does not request `requireAdministrator`.
+
+**Fix:** remove `ApplicationManifest` to use the package's manifest, or set
+`requestedExecutionLevel level="requireAdministrator"` in yours.
+
+### RUNICEL004
+
+The helper is not a console executable (`OutputType` `Exe`). Tools a GUI
+helper starts would not inherit the output it sends to the application.
+
+**Fix:** set `OutputType` to `Exe`; the provider starts the helper with its
+window hidden.

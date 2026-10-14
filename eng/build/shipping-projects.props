@@ -29,6 +29,7 @@
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj" PackageId="Runic.Platform.Linux.Portal" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj" PackageId="Runic.Platform.Linux.Gtk4" />
     <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj" PackageId="Runic.Platform.Linux.Polkit" />
+    <RunicShippingProject Include="$(MSBuildThisFileDirectory)../../packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj" PackageId="Runic.Platform.Windows.Elevation" />
   </ItemGroup>
   <PropertyGroup>
     <_RunicProjectPath>$([MSBuild]::MakeRelative($([MSBuild]::NormalizeDirectory($(MSBuildThisFileDirectory)../..)), $(MSBuildProjectFullPath)).Replace('\', '/'))</_RunicProjectPath>
@@ -60,5 +61,6 @@
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Portal/Runic.Platform.Linux.Portal.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Gtk4/Runic.Platform.Linux.Gtk4.csproj'">true</RunicIsShippingProject>
     <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj'">true</RunicIsShippingProject>
+    <RunicIsShippingProject Condition="'$(_RunicProjectPath)' == 'packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj'">true</RunicIsShippingProject>
   </PropertyGroup>
 </Project>

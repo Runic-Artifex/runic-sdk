@@ -89,6 +89,14 @@ export const packageLayouts = {
     dependencies: ["Runic.Platform"],
     exactDependencies: ["Runic.Platform"],
   },
+  // The elevation targets generate the WindowsElevation options and check helpers; the manifest is the helpers'
+  // requireAdministrator default (W300-025).
+  "Runic.Platform.Windows.Elevation": {
+    files: ["README.md", "Runic.Platform.Windows.Elevation.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Windows.Elevation.dll", "lib/net10.0/Runic.Platform.Windows.Elevation.xml",
+      "buildTransitive/Runic.Platform.Windows.Elevation.props", "buildTransitive/Runic.Platform.Windows.Elevation.targets", "buildTransitive/Runic.Platform.Windows.Elevation.manifest"],
+    dependencies: ["Runic.Platform"],
+    exactDependencies: ["Runic.Platform"],
+  },
 };
 
 export function verifyPackageLayout(nupkg, name, version, layout = packageLayouts[name]) {
