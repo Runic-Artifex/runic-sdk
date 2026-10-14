@@ -2,20 +2,20 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class DocumentedBridge : ViewModelBridge<global::Runic.Application.Testing.Tests.DocumentedViewModel>
+internal sealed class DocumentedBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.DocumentedViewModel>
 {
-    internal DocumentedBridge(IBridgeTransport transport, global::Runic.Application.Testing.Tests.DocumentedViewModel vm, string? routePrefix = null, WindowContentSession? content = null) : base(
+    internal DocumentedBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.DocumentedViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "documented",
         CreateWriter(content),
         [
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Layout", vm => vm.Layout, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Item", vm => vm.Item, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("IsDirty", vm => vm.IsDirty, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Corner", vm => vm.Corner, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", vm => vm.Note, (vm, e) => vm.Note = e.GetString()),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Layout", vm => vm.Layout, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Item", vm => vm.Item, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("IsDirty", vm => vm.IsDirty, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Corner", vm => vm.Corner, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", vm => vm.Note, (vm, e) => vm.Note = e.GetString()),
         ],
         [
-            new CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", "note", CheckedFieldValueKind.Json, vm => vm.Note, (vm, value) => vm.Note = (global::System.String)value!, ReadValue: element => NoteValueCodec.Read(element), WriteValue: (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("Note", "note", global::Runic.Application.Views.CheckedFieldValueKind.Json, vm => vm.Note, (vm, value) => vm.Note = (global::System.String)value!, ReadValue: element => NoteValueCodec.Read(element), WriteValue: (writer, value) => NoteValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
             new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.DocumentedViewModel>("ChangeLayout", vm => (object)vm.ChangeLayoutCommand, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ChangeLayoutCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ChangeLayoutCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.DocumentedLayout)argument!))),
@@ -199,7 +199,7 @@ private static class ChangeLayoutCommandInputCodec
 
 }
 
-    private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.DocumentedViewModel> CreateWriter(WindowContentSession? content)
+    private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.DocumentedViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
     {
         return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);
     }

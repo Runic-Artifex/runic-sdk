@@ -2,19 +2,19 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class ToolkitTypedBridge : ViewModelBridge<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>
+internal sealed class ToolkitTypedBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>
 {
-    internal ToolkitTypedBridge(IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitTypedViewModel vm, string? routePrefix = null, WindowContentSession? content = null) : base(
+    internal ToolkitTypedBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitTypedViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "toolkitTyped",
         WriteSnapshot,
         [
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Total", vm => vm.Total, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Label", vm => vm.Label, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("OptionalDocumentId", vm => vm.OptionalDocumentId, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncDocumentId", vm => vm.AsyncDocumentId, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncLabel", vm => vm.AsyncLabel, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncOptionalDocumentId", vm => vm.AsyncOptionalDocumentId, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("CancelledCount", vm => vm.CancelledCount, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Total", vm => vm.Total, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Label", vm => vm.Label, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("OptionalDocumentId", vm => vm.OptionalDocumentId, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncDocumentId", vm => vm.AsyncDocumentId, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncLabel", vm => vm.AsyncLabel, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("AsyncOptionalDocumentId", vm => vm.AsyncOptionalDocumentId, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("CancelledCount", vm => vm.CancelledCount, null),
         ],
         [
             new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitTypedViewModel>("Apply", vm => (object)vm.ApplyCommand, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ApplyCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ApplyCommandInputCodec.Write(writer, (global::Runic.Application.Testing.Tests.ToolkitCommandRequest)argument!))),

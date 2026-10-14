@@ -2,16 +2,16 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class FailureToolkitBridge : ViewModelBridge<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>
+internal sealed class FailureToolkitBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>
 {
-    internal FailureToolkitBridge(IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureToolkitViewModel vm, string? routePrefix = null, WindowContentSession? content = null) : base(
+    internal FailureToolkitBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.FailureToolkitViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "failureToolkit",
         CreateWriter(content),
         [
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", vm => vm.Title, (vm, e) => vm.Title = e.GetString()),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", vm => vm.Title, (vm, e) => vm.Title = e.GetString()),
         ],
         [
-            new CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", CheckedFieldValueKind.Json, vm => vm.Title, (vm, value) => vm.Title = (global::System.String)value!, ReadValue: element => TitleValueCodec.Read(element), WriteValue: (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
+            new global::Runic.Application.Views.CheckedPropertyDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Title", "title", global::Runic.Application.Views.CheckedFieldValueKind.Json, vm => vm.Title, (vm, value) => vm.Title = (global::System.String)value!, ReadValue: element => TitleValueCodec.Read(element), WriteValue: (writer, value) => TitleValueCodec.Write(writer, (global::System.String)value!)),
         ],
         [
             new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.FailureToolkitViewModel>("Reserve", vm => (object)vm.ReserveCommand, ReadArgument: e => { using var document = global::System.Text.Json.JsonDocument.Parse(e.GetString()); return ReserveCommandInputCodec.Read(document.RootElement); }, EncodeArgument: argument => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ReserveCommandInputCodec.Write(writer, (global::System.Int32)argument!)), EncodeFailure: failure => failure is global::Runic.Application.Testing.Tests.NoteQuotaExceeded declared ? global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => ReserveCommandFailureCodec.Write(writer, declared)) : null),
@@ -220,7 +220,7 @@ private static class PublishCommandFailureCodec
         public void Dispose() => _command.PropertyChanged -= _handler;
     }
 
-    private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.FailureToolkitViewModel> CreateWriter(WindowContentSession? content)
+    private static global::Runic.Application.Views.BridgeSnapshotWriter<global::Runic.Application.Testing.Tests.FailureToolkitViewModel> CreateWriter(global::Runic.Application.Views.WindowContentSession? content)
     {
         return (writer, current, revision, writeFieldMetadata) => WriteSnapshot(writer, current, revision, writeFieldMetadata);
     }

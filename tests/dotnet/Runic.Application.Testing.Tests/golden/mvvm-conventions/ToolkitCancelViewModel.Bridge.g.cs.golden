@@ -2,14 +2,14 @@
 #nullable enable
 using Runic.Application.Views;
 namespace Runic.Application.Testing.Tests;
-internal sealed class ToolkitCancelBridge : ViewModelBridge<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>
+internal sealed class ToolkitCancelBridge : global::Runic.Application.Views.ViewModelBridge<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>
 {
-    internal ToolkitCancelBridge(IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitCancelViewModel vm, string? routePrefix = null, WindowContentSession? content = null) : base(
+    internal ToolkitCancelBridge(global::Runic.Application.Views.IBridgeTransport transport, global::Runic.Application.Testing.Tests.ToolkitCancelViewModel vm, string? routePrefix = null, global::Runic.Application.Views.WindowContentSession? content = null) : base(
         transport, vm, routePrefix ?? "toolkitCancel",
         WriteSnapshot,
         [
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("CancelledCount", vm => vm.CancelledCount, null),
-            new PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportInput", vm => vm.ExportInput, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("CancelledCount", vm => vm.CancelledCount, null),
+            new global::Runic.Application.Views.PropertyDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("ExportInput", vm => vm.ExportInput, null),
         ],
         [
             new global::Runic.Application.Views.CommandDescriptor<global::Runic.Application.Testing.Tests.ToolkitCancelViewModel>("Save", vm => (object)vm.SaveCommand, async (vm, token, argument) => { token.ThrowIfCancellationRequested(); var command = (global::CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.SaveCommand; using var registration = token.Register(command.Cancel); await command.ExecuteAsync(null).ConfigureAwait(false); }, Subscribe: (vm, changed) => new ToolkitRunningSubscription(vm.SaveCommand, changed)),
