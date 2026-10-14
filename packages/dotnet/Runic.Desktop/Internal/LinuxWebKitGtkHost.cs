@@ -216,6 +216,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.AddDocumentStartScript(_webView, documentStartScript);
         }
+        var contentManager = Api.AddKeyboardScript(_webView);
         if (options.Transparent)
         {
             Api.MakeTransparent(_window, _webView);
@@ -226,9 +227,15 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
 
         Api.Connect(_window, "delete-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnDelete, this);
+        Api.Connect(_window, "focus", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, int>)&OnWindowFocus, this);
         Api.Connect(_window, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroyed, this);
         Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, this);
         Api.Connect(_webView, "permission-request", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnPermissionRequest, this);
+        // WebKit sends each key to the page first. It runs handlers connected after its
+        // own only for keys the page did not handle. The keyboard script reports
+        // Control and the wheel, which WebKit would otherwise scroll with.
+        Api.Connect(_webView, "key-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnUnhandledKeyPress, this, after: true);
+        Api.Connect(contentManager, "script-message-received::" + WebKitGtkKeyboard.ZoomMessageHandler, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnZoomMessage, this);
         if (options.Frameless && options.Resizable)
         {
             Api.EnableResizeEvents(_webView);
@@ -307,6 +314,51 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             return Api.BeginResize(host._window, widget, webEvent) ? 1 : 0;
         }
         return 0;
+    }
+
+    // When Tab leaves the page, WebKit asks the window to move focus on. The view is
+    // the window's only focusable widget, so GTK would clear the window's focus and
+    // give it back, which the page sees as the window losing and regaining focus.
+    // Keep focus on the view; the keyboard script then focuses the other end of the page.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnWindowFocus(nint window, int direction, nint context)
+    {
+        const int TabForward = 0;
+        const int TabBackward = 1;
+        return GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost host
+            && host._webView != 0
+            && direction is TabForward or TabBackward
+            && Api.GtkWindowGetFocus(window) == host._webView ? 1 : 0;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnUnhandledKeyPress(nint webView, nint keyEvent, nint context)
+    {
+        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost
+            || !Api.TryGetKey(keyEvent, out var keyval, out var state))
+        {
+            return 0;
+        }
+        var command = WebKitGtkKeyboard.GetZoomCommand(keyval, state);
+        if (command == PageZoomCommand.None)
+        {
+            return 0;
+        }
+        Api.SetZoomLevel(webView, WebKitGtkKeyboard.Apply(command, Api.GetZoomLevel(webView)));
+        return 1;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnZoomMessage(nint manager, nint message, nint context)
+    {
+        if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { _webView: not 0 } host)
+        {
+            var command = WebKitGtkKeyboard.GetWheelZoomCommand(Api.GetMessageInt32(message));
+            if (command != PageZoomCommand.None)
+            {
+                Api.SetZoomLevel(host._webView, WebKitGtkKeyboard.Apply(command, Api.GetZoomLevel(host._webView)));
+            }
+        }
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -535,6 +587,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GtkWindowIsMaximizedPointer = Required(_gtk, "gtk_window_is_maximized");
                 GtkWindowFullscreenPointer = Required(_gtk, "gtk_window_fullscreen");
                 GtkWidgetGrabFocusPointer = Required(_gtk, "gtk_widget_grab_focus");
+                GtkWindowGetFocusPointer = Required(_gtk, "gtk_window_get_focus");
                 GtkWidgetAddEventsPointer = Required(_gtk, "gtk_widget_add_events");
                 GtkWidgetGetAllocatedWidthPointer = Required(_gtk, "gtk_widget_get_allocated_width");
                 GtkWidgetGetAllocatedHeightPointer = Required(_gtk, "gtk_widget_get_allocated_height");
@@ -567,6 +620,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 WebKitUserScriptUnrefPointer = Required(_webkit, "webkit_user_script_unref");
                 WebKitUserContentManagerAddScriptPointer = Required(_webkit, "webkit_user_content_manager_add_script");
                 WebKitWebViewSetBackgroundColorPointer = Optional(_webkit, "webkit_web_view_set_background_color");
+                WebKitWebViewSetZoomLevelPointer = Required(_webkit, "webkit_web_view_set_zoom_level");
+                WebKitWebViewGetZoomLevelPointer = Required(_webkit, "webkit_web_view_get_zoom_level");
+                WebKitUserScriptNewForWorldPointer = Required(_webkit, "webkit_user_script_new_for_world");
+                WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer = Required(_webkit, "webkit_user_content_manager_register_script_message_handler_in_world");
+                WebKitJavascriptResultGetJsValuePointer = Required(_webkit, "webkit_javascript_result_get_js_value");
+                JscValueToInt32Pointer = Required(_webkit, "jsc_value_to_int32");
+                GdkEventGetKeyvalPointer = Required(_gtk, "gdk_event_get_keyval");
+                GdkEventGetStatePointer = Required(_gtk, "gdk_event_get_state");
                 IsAvailable = true;
             }
             catch (EntryPointNotFoundException)
@@ -602,6 +663,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GtkWindowIsMaximizedPointer { get; }
         private nint GtkWindowFullscreenPointer { get; }
         private nint GtkWidgetGrabFocusPointer { get; }
+        private nint GtkWindowGetFocusPointer { get; }
         private nint GtkWidgetAddEventsPointer { get; }
         private nint GtkWidgetGetAllocatedWidthPointer { get; }
         private nint GtkWidgetGetAllocatedHeightPointer { get; }
@@ -634,6 +696,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint WebKitUserScriptUnrefPointer { get; }
         private nint WebKitUserContentManagerAddScriptPointer { get; }
         private nint WebKitWebViewSetBackgroundColorPointer { get; }
+        private nint WebKitWebViewSetZoomLevelPointer { get; }
+        private nint WebKitWebViewGetZoomLevelPointer { get; }
+        private nint WebKitUserScriptNewForWorldPointer { get; }
+        private nint WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer { get; }
+        private nint WebKitJavascriptResultGetJsValuePointer { get; }
+        private nint JscValueToInt32Pointer { get; }
+        private nint GdkEventGetKeyvalPointer { get; }
+        private nint GdkEventGetStatePointer { get; }
 
         internal bool GtkInitCheck() => ((delegate* unmanaged[Cdecl]<nint, nint, int>)GtkInitCheckPointer)(0, 0) != 0;
         internal void GtkMain() => ((delegate* unmanaged[Cdecl]<void>)GtkMainPointer)();
@@ -671,6 +741,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal bool GtkWindowIsMaximized(nint window) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWindowIsMaximizedPointer)(window) != 0;
         internal void GtkWindowFullscreen(nint window) => ((delegate* unmanaged[Cdecl]<nint, void>)GtkWindowFullscreenPointer)(window);
         internal void GtkWidgetGrabFocus(nint widget) => ((delegate* unmanaged[Cdecl]<nint, int>)GtkWidgetGrabFocusPointer)(widget);
+        internal nint GtkWindowGetFocus(nint window) => ((delegate* unmanaged[Cdecl]<nint, nint>)GtkWindowGetFocusPointer)(window);
 
         internal void GtkWindowSetTitle(nint window, string title)
         {
@@ -688,7 +759,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             ((delegate* unmanaged[Cdecl]<nint, byte*, nint, int>)GtkWindowSetIconFromFilePointer)(window, value.Pointer, 0);
         }
 
-        internal void Connect(nint instance, string signal, nint callback, LinuxWebKitGtkHost host)
+        internal void Connect(nint instance, string signal, nint callback, LinuxWebKitGtkHost host, bool after = false)
         {
             using var value = Utf8String.Create(signal);
             var handle = GCHandle.Alloc(host);
@@ -698,7 +769,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 callback,
                 GCHandle.ToIntPtr(handle),
                 SignalContextDestroyCallback,
-                0);
+                after ? 1 : 0);
             if (handler == 0)
             {
                 handle.Free();
@@ -762,6 +833,65 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             {
                 ((delegate* unmanaged[Cdecl]<nint, void>)WebKitUserScriptUnrefPointer)(script);
             }
+        }
+
+        // Top frame, document start, in its own script world, with the message handler
+        // its wheel zoom posts to. Returns the user content manager.
+        internal nint AddKeyboardScript(nint webView)
+        {
+            var manager = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitWebViewGetUserContentManagerPointer)(webView);
+            if (manager == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK did not provide a user content manager.");
+            }
+
+            using var source = Utf8String.Create(WebKitGtkKeyboard.Script);
+            using var world = Utf8String.Create(WebKitGtkKeyboard.ScriptWorld);
+            using var handler = Utf8String.Create(WebKitGtkKeyboard.ZoomMessageHandler);
+            if (((delegate* unmanaged[Cdecl]<nint, byte*, byte*, int>)WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer)(
+                manager, handler.Pointer, world.Pointer) == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK could not register the zoom message handler.");
+            }
+            var script = ((delegate* unmanaged[Cdecl]<byte*, int, int, byte*, nint, nint, nint>)WebKitUserScriptNewForWorldPointer)(
+                source.Pointer, 1, 0, world.Pointer, 0, 0);
+            if (script == 0)
+            {
+                throw new InvalidOperationException("WebKitGTK could not create the keyboard script.");
+            }
+
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<nint, nint, void>)WebKitUserContentManagerAddScriptPointer)(manager, script);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<nint, void>)WebKitUserScriptUnrefPointer)(script);
+            }
+            return manager;
+        }
+
+        internal int GetMessageInt32(nint javascriptResult)
+        {
+            var value = ((delegate* unmanaged[Cdecl]<nint, nint>)WebKitJavascriptResultGetJsValuePointer)(javascriptResult);
+            return value == 0 ? 0 : ((delegate* unmanaged[Cdecl]<nint, int>)JscValueToInt32Pointer)(value);
+        }
+
+        internal double GetZoomLevel(nint webView) =>
+            ((delegate* unmanaged[Cdecl]<nint, double>)WebKitWebViewGetZoomLevelPointer)(webView);
+
+        internal void SetZoomLevel(nint webView, double level) =>
+            ((delegate* unmanaged[Cdecl]<nint, double, void>)WebKitWebViewSetZoomLevelPointer)(webView, level);
+
+        internal bool TryGetKey(nint keyEvent, out uint keyval, out uint state)
+        {
+            uint value = 0;
+            uint modifiers = 0;
+            var found = ((delegate* unmanaged[Cdecl]<nint, uint*, int>)GdkEventGetKeyvalPointer)(keyEvent, &value) != 0
+                && ((delegate* unmanaged[Cdecl]<nint, uint*, int>)GdkEventGetStatePointer)(keyEvent, &modifiers) != 0;
+            keyval = value;
+            state = modifiers;
+            return found;
         }
 
         internal void DenyPermission(nint request) =>

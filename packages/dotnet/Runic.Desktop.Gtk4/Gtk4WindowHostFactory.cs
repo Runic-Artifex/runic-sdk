@@ -386,6 +386,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private int _cleanupQueued;
     private int _createStarted;
     private NativeObjectFinalizationProbe? _finalization;
+    private Gtk.EventControllerKey? _keys;
+    private UserContentManager? _contentManager;
 
     public event EventHandler? Closed;
 
@@ -552,6 +554,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         Gtk.ApplicationWindow? window = null;
         WebView? webView = null;
         NativeObjectFinalizationProbe? finalization = null;
+        Gtk.EventControllerKey? keys = null;
+        UserContentManager? contentManager = null;
         var registered = false;
         try
         {
@@ -591,6 +595,39 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
                     null);
                 webView.GetUserContentManager().AddScript(script);
             }
+            // When Tab leaves the page, WebKit asks the window to move focus on. GTK 4
+            // would move it into the view's only child, the hidden text view WebKit
+            // uses to translate key bindings, and keys would no longer reach the page.
+            // Without that child, focus wraps back to the view, which must therefore be
+            // focusable itself (WebKit sets only can-focus). The keyboard script then
+            // focuses the other end of the page.
+            for (var child = webView.GetFirstChild(); child is not null; child = child.GetNextSibling())
+            {
+                child.SetCanFocus(false);
+            }
+            webView.SetFocusable(true);
+            contentManager = webView.GetUserContentManager();
+            if (!contentManager.RegisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld))
+            {
+                throw new InvalidOperationException("WebKitGTK could not register the zoom message handler.");
+            }
+            UserContentManager.ScriptMessageReceivedSignal.Connect(contentManager, OnZoomMessage, false, WebKitGtkKeyboard.ZoomMessageHandler);
+            using (var keyboardScript = UserScript.NewForWorld(
+                WebKitGtkKeyboard.Script,
+                UserContentInjectedFrames.TopFrame,
+                UserScriptInjectionTime.Start,
+                WebKitGtkKeyboard.ScriptWorld,
+                null,
+                null))
+            {
+                contentManager.AddScript(keyboardScript);
+            }
+            // WebKit sends each key to the page first and passes on only those the page
+            // did not handle. They reach the window's bubble phase. The keyboard script
+            // reports Control and the wheel, which WebKit would otherwise scroll with.
+            keys = Gtk.EventControllerKey.New();
+            keys.OnKeyPressed += OnUnhandledKeyPressed;
+            window.AddController(keys);
             window.SetChild(webView);
             // Hidden windows still need a native surface for portal ownership
             // and orderly Wayland teardown. Realizing does not map/show them.
@@ -617,6 +654,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             _window = window;
             _webView = webView;
             _finalization = finalization;
+            _keys = keys;
+            _contentManager = contentManager;
             Gtk4Application.Register(this);
             registered = true;
             Volatile.Write(ref _isOpen, 1);
@@ -631,6 +670,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             {
                 webView.OnPermissionRequest -= OnPermissionRequest;
             }
+            DetachZoomHandlers(keys, contentManager);
             if (window is not null)
             {
                 window.OnCloseRequest -= OnCloseRequest;
@@ -641,6 +681,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             window?.Dispose();
             _window = null;
             _webView = null;
+            _keys = null;
+            _contentManager = null;
             Volatile.Write(ref _isOpen, 0);
             var tracked = Interlocked.Exchange(ref _finalization, null) ?? finalization;
             if (tracked is null)
@@ -717,6 +759,40 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         return false;
     }
 
+    private bool OnUnhandledKeyPressed(Gtk.EventControllerKey _, Gtk.EventControllerKey.KeyPressedSignalArgs args)
+    {
+        var command = WebKitGtkKeyboard.GetZoomCommand(args.Keyval, (uint)args.State);
+        if (command == PageZoomCommand.None || _webView is not { } webView)
+        {
+            return false;
+        }
+        webView.SetZoomLevel(WebKitGtkKeyboard.Apply(command, webView.GetZoomLevel()));
+        return true;
+    }
+
+    // Connected for the zoom handler only, as the detail of script-message-received.
+    private void OnZoomMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
+    {
+        var command = WebKitGtkKeyboard.GetWheelZoomCommand(args.Value.ToInt32());
+        if (command != PageZoomCommand.None && _webView is { } webView)
+        {
+            webView.SetZoomLevel(WebKitGtkKeyboard.Apply(command, webView.GetZoomLevel()));
+        }
+    }
+
+    private void DetachZoomHandlers(Gtk.EventControllerKey? keys, UserContentManager? contentManager)
+    {
+        if (keys is not null)
+        {
+            keys.OnKeyPressed -= OnUnhandledKeyPressed;
+        }
+        if (contentManager is not null)
+        {
+            UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnZoomMessage);
+            contentManager.UnregisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld);
+        }
+    }
+
     // An unhandled request is denied by WebKit, so a grant must allow explicitly.
     private bool OnPermissionRequest(WebView webView, WebView.PermissionRequestSignalArgs request)
     {
@@ -780,6 +856,9 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         }
 
         webView.OnPermissionRequest -= OnPermissionRequest;
+        DetachZoomHandlers(_keys, _contentManager);
+        _keys = null;
+        _contentManager = null;
         window.OnCloseRequest -= OnCloseRequest;
         window.OnDestroy -= OnDestroyed;
         webView.TryClose();
