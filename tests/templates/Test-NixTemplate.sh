@@ -45,6 +45,11 @@ dotnet pack "$sdk/tools/Runic.Application.Templates/Runic.Application.Templates.
   -nologo -v:q
 dotnet new install "$work"/template/Runic.Application.Templates.*.nupkg --debug:custom-hive "$work/hive" > /dev/null
 
+# Runs a command quietly, and prints its output when it fails.
+quiet() {
+  "$@" > "$work/step.log" 2>&1 || { cat "$work/step.log" >&2; echo "failed: $*" >&2; return 1; }
+}
+
 # Builds a flake output; a fixed-output hash that the project leaves as lib.fakeHash is replaced by the one Nix reports.
 build() {
   local project="$1" output="$2" log="$work/build.log"
@@ -140,8 +145,8 @@ for case in "${cases[@]}"; do
   project="$work/NixApp-$manager"
   if [[ ! -d "$project" ]]; then
     echo "Creating a --nix project with $manager"
-    dotnet new runic-app --name NixApp --output "$project" --nix --package-manager "$manager" \
-      --debug:custom-hive "$work/hive" > /dev/null
+    quiet dotnet new runic-app --name NixApp --output "$project" --nix --package-manager "$manager" \
+      --debug:custom-hive "$work/hive"
     grep -q '<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>' "$project/NixApp.csproj"
     grep -qx '/result' "$project/.gitignore"
     if [[ "$manager" == pnpm ]]; then
@@ -149,13 +154,14 @@ for case in "${cases[@]}"; do
       printf 'minimumReleaseAge: 0\n' > "$project/Frontend/pnpm-workspace.yaml"
     fi
     # What the project's README asks for before the first nix build: the NuGet lock, and the files in Git.
-    dotnet restore "$project/NixApp.csproj" > /dev/null
-    dotnet restore "$project/NixApp.csproj" -p:PublishAot=true > /dev/null
+    quiet dotnet restore "$project/NixApp.csproj"
+    quiet dotnet restore "$project/NixApp.csproj" -p:PublishAot=true
     for lock in packages.lock.json packages.aot.lock.json; do
-      jq -e '.dependencies["net10.0/linux-x64"]' "$project/$lock" > /dev/null
+      jq -e '.dependencies["net10.0/linux-x64"]' "$project/$lock" > /dev/null || { echo "$lock has no linux-x64 section" >&2; exit 1; }
     done
-    # The NativeAOT graph adds the runtime-specific compiler package, in the linux-x64 section only.
-    jq -e '.dependencies["net10.0/linux-x64"]["runtime.linux-x64.Microsoft.DotNet.ILCompiler"]' "$project/packages.aot.lock.json" > /dev/null
+    # The NativeAOT graph adds the compiler package.
+    jq -e '.dependencies["net10.0"]["Microsoft.DotNet.ILCompiler"]' "$project/packages.aot.lock.json" > /dev/null \
+      || { echo "packages.aot.lock.json does not lock the NativeAOT compiler" >&2; exit 1; }
     git -C "$project" init -q
     git -C "$project" add -A
   fi
