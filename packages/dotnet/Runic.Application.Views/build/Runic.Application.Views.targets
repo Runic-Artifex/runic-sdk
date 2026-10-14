@@ -219,6 +219,45 @@
     </Task>
   </UsingTask>
 
+  <!-- The frontend build state: a hash of the values that change the built
+       frontend without changing a file, so a change rebuilds it. Values are
+       the build's own (the command and RunicApplicationHost); the environment
+       covers NODE_ENV, every VITE_* variable and the variables named by
+       RunicApplicationFrontendBuildEnvironment items. Only the hash is
+       written, so a secret in the environment stays out of obj/. -->
+  <UsingTask TaskName="RunicBridgeFrontendBuildState" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Values ParameterType="System.String[]" />
+      <EnvironmentNames ParameterType="System.String[]" />
+      <State ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.Security.Cryptography" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var names = new HashSet<string>(EnvironmentNames ?? new string[0], StringComparer.Ordinal) { "NODE_ENV" };
+        var entries = new List<string>();
+        foreach (DictionaryEntry variable in Environment.GetEnvironmentVariables())
+        {
+          var name = (string)variable.Key;
+          if (names.Contains(name) || name.StartsWith("VITE_", StringComparison.Ordinal)) entries.Add(name + "=" + variable.Value);
+        }
+        entries.Sort(StringComparer.Ordinal);
+        var text = new StringBuilder();
+        foreach (var value in Values ?? new string[0]) text.Append("value:").Append(value).Append('\n');
+        foreach (var entry in entries) text.Append("env:").Append(entry).Append('\n');
+        using (var sha = SHA256.Create())
+        {
+          State = BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(text.ToString()))).Replace("-", "").ToLowerInvariant();
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
   <!-- The frontend package manager follows package.json "packageManager",
        then the committed lock file, then npm. It selects the default build
        and install commands; set either command explicitly to override it. -->
@@ -243,6 +282,11 @@
 
   <PropertyGroup>
     <_RunicBridgeFrontendStamp>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge-frontend.stamp</_RunicBridgeFrontendStamp>
+    <!-- The hash of the build state, rewritten only when it changes, and the
+         files the last frontend build left in dist/, relative to the frontend
+         directory: a missing one rebuilds. -->
+    <_RunicBridgeFrontendStateFile>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge-frontend.state</_RunicBridgeFrontendStateFile>
+    <_RunicBridgeFrontendOutputsFile>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/runic-bridge-frontend.outputs</_RunicBridgeFrontendOutputsFile>
     <!-- One install serves every configuration and target framework, and
          dotnet clean keeps it. -->
     <_RunicBridgeFrontendInstallStamp>$(MSBuildProjectDirectory)/obj/runic-bridge-frontend-install.stamp</_RunicBridgeFrontendInstallStamp>
@@ -507,16 +551,54 @@
     </ItemGroup>
   </Target>
 
-  <!-- The frontend build runs only when one of its inputs is newer than the
-       stamp: files under the frontend directory (excluding node_modules and
-       build output), the generated TypeScript, and this project file. The
-       generator rewrites TypeScript only when its content changes, so a
-       C#-only edit does not rebuild the frontend. Add inputs outside the
-       frontend directory (for example workspace packages) as
-       RunicApplicationFrontendInput items, or set RunicApplicationFrontendBuildEnabled=false
-       when another tool owns the frontend build. A missing frontend is
-       RUNICBRIDGE014 rather than a failed command. -->
+  <!-- RunicApplicationHost names the host the application runs on. Each host
+       adapter's targets add their name (desktop or cswebui) to
+       _RunicApplicationHostNames and copy their Views client to
+       www/runic-views.js when RunicApplicationHost names them, or when they
+       are the only host referenced, so a page that loads runic-views.js runs
+       on every host from one build. A project that references several hosts
+       chooses one with RunicApplicationHost (RUNICBRIDGE019 otherwise). The
+       frontend build receives the host as RUNIC_APPLICATION_HOST, and a
+       change rebuilds the frontend. -->
+  <Target Name="RunicViewsResolveHost" BeforeTargets="PrepareForBuild;Publish"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <ItemGroup>
+      <_RunicApplicationHostNameEntry Include="$(_RunicApplicationHostNames)" />
+      <_RunicApplicationHostName Include="@(_RunicApplicationHostNameEntry->Distinct())" />
+      <_RunicApplicationHostRequestedName Include="@(_RunicApplicationHostName)" Condition="'%(Identity)' == '$(RunicApplicationHost)'" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_RunicApplicationHostRequested>$(RunicApplicationHost)</_RunicApplicationHostRequested>
+      <RunicApplicationHost Condition="'$(RunicApplicationHost)' == '' and '@(_RunicApplicationHostName->Count())' == '1'">@(_RunicApplicationHostName)</RunicApplicationHost>
+      <_RunicApplicationHostReported Condition="'$(DesignTimeBuild)' != 'true' and '$(OutputType)' != 'Library' and '$(IsTestProject)' != 'true' and '@(_RunicApplicationHostName->Count())' != '0' and '@(_RunicApplicationHostName->Count())' != '1'">true</_RunicApplicationHostReported>
+    </PropertyGroup>
+    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge019"
+             Condition="'$(_RunicApplicationHostReported)' == 'true' and '$(_RunicApplicationHostRequested)' == ''"
+             Text="$(AssemblyName) references more than one Runic host (@(_RunicApplicationHostName, ', ')), so the build copies no www/runic-views.js and a page that loads it gets no Bridge. Set RunicApplicationHost in $(MSBuildProjectFile) or on the command line (-p:RunicApplicationHost=...) to the host the application runs on." />
+    <Warning Code="RUNICBRIDGE019" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge019"
+             Condition="'$(_RunicApplicationHostRequested)' != '' and '@(_RunicApplicationHostRequestedName)' == '' and '@(_RunicApplicationHostName)' != '' and '$(DesignTimeBuild)' != 'true'"
+             Text="RunicApplicationHost is '$(_RunicApplicationHostRequested)', but $(AssemblyName) references no such Runic host, so the build copies no www/runic-views.js. Set it to one of the referenced hosts: @(_RunicApplicationHostName, ', ')." />
+  </Target>
+
+  <!-- The frontend build runs when one of its inputs is newer than the stamp,
+       when a file it left in dist/ is missing, or when its build state
+       changed. Inputs are the files under the frontend directory (excluding
+       node_modules and build output), the generated TypeScript, this project
+       file and the build state: a hash of the build command,
+       RunicApplicationHost, NODE_ENV, every VITE_* environment variable and
+       the variables that RunicApplicationFrontendBuildEnvironment items name.
+       The generator rewrites TypeScript only when its content changes, so a
+       C#-only edit does not rebuild the frontend.
+
+       RunicApplicationFrontendInput is the extension point for inputs outside
+       the frontend directory, such as a monorepo's shared components that the
+       frontend imports through a Vite alias:
+         <RunicApplicationFrontendInput Include="../ui/lib/**/*" />
+       Set RunicApplicationFrontendBuildEnabled=false when another tool owns
+       the frontend build. A missing frontend is RUNICBRIDGE014 rather than a
+       failed command. -->
   <Target Name="RunicViewsCollectFrontendInputs" AfterTargets="RunicViewsGenerateBridge"
+          DependsOnTargets="RunicViewsResolveHost"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendBuildEnabled)' != 'false'">
     <Error Code="RUNICBRIDGE014" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge014"
            Condition="!Exists('$(RunicApplicationFrontendDirectory)') or ('$(RunicApplicationFrontendBuildCommand)' == '$(_RunicBridgeDefaultFrontendBuildCommand)' and !Exists('$(RunicApplicationFrontendDirectory)/package.json'))"
@@ -533,11 +615,30 @@
       <RunicApplicationFrontendInput Include="@(RunicBridgeFrontendInput)" Exclude="@(RunicApplicationFrontendInput)" />
       <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendDirectory)/**/*"
           Exclude="$(RunicApplicationFrontendDirectory)/node_modules/**;$(RunicApplicationFrontendDirectory)/dist/**;$(RunicApplicationFrontendDirectory)/build/**;$(RunicApplicationFrontendDirectory)/bin/**;$(RunicApplicationFrontendDirectory)/obj/**;$(RunicApplicationFrontendDirectory)/.*/**" />
-      <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendGeneratedDirectory)/*.ts;$(MSBuildProjectFullPath)" />
-      <!-- Registered on every build so IncrementalClean keeps the stamp
-           when the frontend target is skipped as up to date. -->
-      <FileWrites Include="$(_RunicBridgeFrontendStamp)" />
+      <RunicApplicationFrontendInput Include="$(RunicApplicationFrontendGeneratedDirectory)/*.ts;$(MSBuildProjectFullPath);$(_RunicBridgeFrontendStateFile)" />
+      <!-- Registered on every build so IncrementalClean keeps them when the
+           frontend target is skipped as up to date. -->
+      <FileWrites Include="$(_RunicBridgeFrontendStamp);$(_RunicBridgeFrontendStateFile);$(_RunicBridgeFrontendOutputsFile)" />
     </ItemGroup>
+    <RunicBridgeFrontendBuildState Values="command=$(RunicApplicationFrontendBuildCommand);host=$(RunicApplicationHost)"
+        EnvironmentNames="@(RunicApplicationFrontendBuildEnvironment)">
+      <Output TaskParameter="State" PropertyName="_RunicBridgeFrontendBuildState" />
+    </RunicBridgeFrontendBuildState>
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeFrontendStateFile)'))" />
+    <WriteLinesToFile File="$(_RunicBridgeFrontendStateFile)" Lines="$(_RunicBridgeFrontendBuildState)"
+        Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <!-- A deleted dist/, or a file the last build left there, rebuilds even
+         though the stamp is newer than every input. So does a stamp without
+         the list, as an earlier version wrote. -->
+    <ReadLinesFromFile File="$(_RunicBridgeFrontendOutputsFile)" Condition="Exists('$(_RunicBridgeFrontendOutputsFile)')">
+      <Output TaskParameter="Lines" ItemName="_RunicBridgeFrontendRecordedOutput" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_RunicBridgeFrontendMissingOutput Include="@(_RunicBridgeFrontendRecordedOutput)"
+          Condition="!Exists('$(RunicApplicationFrontendDirectory)/%(Identity)')" />
+    </ItemGroup>
+    <Delete Files="$(_RunicBridgeFrontendStamp)"
+        Condition="Exists('$(_RunicBridgeFrontendStamp)') and (!Exists('$(_RunicBridgeFrontendOutputsFile)') or '@(_RunicBridgeFrontendMissingOutput)' != '')" />
   </Target>
 
   <!-- A fresh clone or generated project has no node_modules yet, and a pull
@@ -600,6 +701,7 @@
          locations; any other failure, such as a Vite error,
          gets one RUNICBRIDGE016 instead of MSB3073. -->
     <Exec Command="$(RunicApplicationFrontendBuildCommand)" WorkingDirectory="$(RunicApplicationFrontendDirectory)"
+          EnvironmentVariables="RUNIC_APPLICATION_HOST=$(RunicApplicationHost)"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeFrontendBuildExitCode" />
       <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeFrontendBuildOutputLine" />
@@ -614,7 +716,15 @@
         FailureText="The frontend build '$(RunicApplicationFrontendBuildCommand)' in $([System.IO.Path]::GetFullPath('$(RunicApplicationFrontendDirectory)')) exited with code $(_RunicBridgeFrontendBuildExitCode). Its output is above." />
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_RunicBridgeFrontendStamp)'))"
              Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
-    <Touch Files="$(_RunicBridgeFrontendStamp)" AlwaysCreate="true"
+    <ItemGroup Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'">
+      <_RunicBridgeFrontendBuiltFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
+    </ItemGroup>
+    <!-- An empty list still marks the stamp as current; a build that writes
+         no dist/ (another output folder) checks no files. -->
+    <WriteLinesToFile File="$(_RunicBridgeFrontendOutputsFile)" Overwrite="true"
+        Lines="@(_RunicBridgeFrontendBuiltFile->'dist/%(RecursiveDir)%(Filename)%(Extension)')"
+        Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
+    <Touch Files="$(_RunicBridgeFrontendOutputsFile);$(_RunicBridgeFrontendStamp)" AlwaysCreate="true"
            Condition="'$(_RunicBridgeFrontendBuildExitCode)' == '0'" />
   </Target>
 
@@ -648,6 +758,9 @@
   <Target Name="RunicViewsCopyReferencedFrontends" AfterTargets="Build"
           DependsOnTargets="RunicViewsCollectReferencedFrontends"
           Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">
+    <ItemGroup>
+      <_RunicBridgeWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)www/%(RunicFrontendPath)')" />
+    </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgeReferencedFrontendFile)"
           DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(TargetDir)www/%(RunicFrontendPath)')"
           SkipUnchangedFiles="true" />
@@ -656,6 +769,9 @@
   <Target Name="RunicViewsCopyReferencedFrontendsForPublish" AfterTargets="Publish"
           DependsOnTargets="RunicViewsCollectReferencedFrontends"
           Condition="'$(OutputType)' != 'Library' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
+    <ItemGroup>
+      <_RunicBridgePublishedWwwFile Include="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)www/%(RunicFrontendPath)')" />
+    </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgeReferencedFrontendFile)"
           DestinationFiles="@(_RunicBridgeReferencedFrontendFile->'$(PublishDir)www/%(RunicFrontendPath)')"
           SkipUnchangedFiles="true" />
@@ -668,6 +784,7 @@
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false'">
     <ItemGroup>
       <_RunicBridgeFrontendFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
+      <_RunicBridgeWwwFile Include="@(_RunicBridgeFrontendFile->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgeFrontendFile)"
           DestinationFiles="@(_RunicBridgeFrontendFile->'$(TargetDir)www/%(RecursiveDir)%(Filename)%(Extension)')"
@@ -679,9 +796,68 @@
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true'">
     <ItemGroup>
       <_RunicBridgePublishedFrontendFile Include="$(RunicApplicationFrontendDirectory)/dist/**/*" />
+      <_RunicBridgePublishedWwwFile Include="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)www/%(RecursiveDir)%(Filename)%(Extension)')" />
     </ItemGroup>
     <Copy SourceFiles="@(_RunicBridgePublishedFrontendFile)"
           DestinationFiles="@(_RunicBridgePublishedFrontendFile->'$(PublishDir)www/%(RecursiveDir)%(Filename)%(Extension)')"
           SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- www/ mirrors the copied frontends: a file that an earlier copy wrote
+       and that no frontend has any more, such as an asset with an old hash,
+       is deleted. Each copy records the files it wrote in obj/; nothing else
+       in www/ is touched, so the host client scripts, a dev document and
+       files the application adds itself stay. These run after the copies
+       above, which are declared first. The records live in the intermediate
+       directory of the output they describe, so a build for another runtime
+       identifier keeps its own, and only files below the current www/ are
+       deleted. -->
+  <Target Name="RunicViewsWwwManifestDirectory">
+    <PropertyGroup>
+      <_RunicBridgeWwwManifestDirectory Condition="'$(IntermediateOutputPath)' != ''">$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)'))'))</_RunicBridgeWwwManifestDirectory>
+      <_RunicBridgeWwwManifestDirectory Condition="'$(IntermediateOutputPath)' == ''">$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/</_RunicBridgeWwwManifestDirectory>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RunicViewsMirrorFrontend" AfterTargets="Build" DependsOnTargets="RunicViewsWwwManifestDirectory"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true' and '$(RunicApplicationFrontendCopyEnabled)' != 'false' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_RunicBridgeWwwRoot>$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::GetFullPath('$(TargetDir)www'))'))</_RunicBridgeWwwRoot>
+      <_RunicBridgeWwwManifest>$(_RunicBridgeWwwManifestDirectory)runic-frontend-www.files</_RunicBridgeWwwManifest>
+    </PropertyGroup>
+    <ReadLinesFromFile File="$(_RunicBridgeWwwManifest)" Condition="Exists('$(_RunicBridgeWwwManifest)')">
+      <Output TaskParameter="Lines" ItemName="_RunicBridgePreviousWwwFile" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_RunicBridgeCurrentWwwFile Include="@(_RunicBridgeWwwFile->'%(FullPath)')" />
+      <_RunicBridgeOwnedWwwFile Include="@(_RunicBridgePreviousWwwFile->'%(FullPath)')"
+          Condition="$([System.String]::Copy('%(FullPath)').StartsWith('$(_RunicBridgeWwwRoot)'))" />
+      <_RunicBridgeStaleWwwFile Include="@(_RunicBridgeOwnedWwwFile)" Exclude="@(_RunicBridgeCurrentWwwFile)" />
+    </ItemGroup>
+    <Delete Files="@(_RunicBridgeStaleWwwFile)" />
+    <MakeDir Directories="$(_RunicBridgeWwwManifestDirectory)" />
+    <WriteLinesToFile File="$(_RunicBridgeWwwManifest)" Lines="@(_RunicBridgeCurrentWwwFile)"
+        Overwrite="true" WriteOnlyWhenDifferent="true" />
+  </Target>
+
+  <Target Name="RunicViewsMirrorFrontendForPublish" AfterTargets="Publish" DependsOnTargets="RunicViewsWwwManifestDirectory"
+          Condition="'$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <PropertyGroup>
+      <_RunicBridgePublishedWwwRoot>$([MSBuild]::EnsureTrailingSlash('$([System.IO.Path]::GetFullPath('$(PublishDir)www'))'))</_RunicBridgePublishedWwwRoot>
+      <_RunicBridgePublishedWwwManifest>$(_RunicBridgeWwwManifestDirectory)runic-frontend-publish.files</_RunicBridgePublishedWwwManifest>
+    </PropertyGroup>
+    <ReadLinesFromFile File="$(_RunicBridgePublishedWwwManifest)" Condition="Exists('$(_RunicBridgePublishedWwwManifest)')">
+      <Output TaskParameter="Lines" ItemName="_RunicBridgePreviousPublishedWwwFile" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_RunicBridgeCurrentPublishedWwwFile Include="@(_RunicBridgePublishedWwwFile->'%(FullPath)')" />
+      <_RunicBridgeOwnedPublishedWwwFile Include="@(_RunicBridgePreviousPublishedWwwFile->'%(FullPath)')"
+          Condition="$([System.String]::Copy('%(FullPath)').StartsWith('$(_RunicBridgePublishedWwwRoot)'))" />
+      <_RunicBridgeStalePublishedWwwFile Include="@(_RunicBridgeOwnedPublishedWwwFile)" Exclude="@(_RunicBridgeCurrentPublishedWwwFile)" />
+    </ItemGroup>
+    <Delete Files="@(_RunicBridgeStalePublishedWwwFile)" />
+    <MakeDir Directories="$(_RunicBridgeWwwManifestDirectory)" />
+    <WriteLinesToFile File="$(_RunicBridgePublishedWwwManifest)" Lines="@(_RunicBridgeCurrentPublishedWwwFile)"
+        Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 </Project>

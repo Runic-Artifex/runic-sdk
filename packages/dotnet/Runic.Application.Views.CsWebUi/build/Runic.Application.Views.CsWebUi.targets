@@ -1,14 +1,30 @@
 <Project>
+  <!-- CS-WebUI serves a page that loads webui.js and its Views client. The
+       client is copied as runic-cswebui.js and, when RunicApplicationHost is
+       cswebui, as runic-views.js, the host-neutral name a page can load on
+       every host. RunicViewsResolveHost in Runic.Application.Views sets
+       RunicApplicationHost to the only host referenced before the build. -->
+  <PropertyGroup>
+    <_RunicApplicationHostNames>$(_RunicApplicationHostNames);cswebui</_RunicApplicationHostNames>
+  </PropertyGroup>
   <Target Name="RunicViewsCopyCsWebUiClient" AfterTargets="Build"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-cswebui.js"
           DestinationFiles="$(TargetDir)www/runic-cswebui.js"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-cswebui.js"
+          DestinationFiles="$(TargetDir)www/runic-views.js"
+          SkipUnchangedFiles="true"
+          Condition="'$(RunicApplicationHost)' == 'cswebui'" />
   </Target>
   <Target Name="RunicViewsCopyCsWebUiClientForPublish" AfterTargets="Publish"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-cswebui.js"
           DestinationFiles="$(PublishDir)www/runic-cswebui.js"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-cswebui.js"
+          DestinationFiles="$(PublishDir)www/runic-views.js"
+          SkipUnchangedFiles="true"
+          Condition="'$(RunicApplicationHost)' == 'cswebui'" />
   </Target>
 </Project>

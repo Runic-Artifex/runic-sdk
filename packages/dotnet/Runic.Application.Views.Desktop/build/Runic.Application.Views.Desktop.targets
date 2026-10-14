@@ -1,14 +1,30 @@
 <Project>
+  <!-- Runic Desktop serves a page that loads webui.js and its Views client. The
+       client is copied as runic-desktop-views.js and, when RunicApplicationHost is
+       desktop, as runic-views.js, the host-neutral name a page can load on
+       every host. RunicViewsResolveHost in Runic.Application.Views sets
+       RunicApplicationHost to the only host referenced before the build. -->
+  <PropertyGroup>
+    <_RunicApplicationHostNames>$(_RunicApplicationHostNames);desktop</_RunicApplicationHostNames>
+  </PropertyGroup>
   <Target Name="RunicViewsCopyDesktopClient" AfterTargets="Build"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
           DestinationFiles="$(TargetDir)www/runic-desktop-views.js"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
+          DestinationFiles="$(TargetDir)www/runic-views.js"
+          SkipUnchangedFiles="true"
+          Condition="'$(RunicApplicationHost)' == 'desktop'" />
   </Target>
   <Target Name="RunicViewsCopyDesktopClientForPublish" AfterTargets="Publish"
           Condition="'$(RunicApplicationFrontendBootstrap)' != 'true'">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
           DestinationFiles="$(PublishDir)www/runic-desktop-views.js"
           SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../www/runic-desktop-views.js"
+          DestinationFiles="$(PublishDir)www/runic-views.js"
+          SkipUnchangedFiles="true"
+          Condition="'$(RunicApplicationHost)' == 'desktop'" />
   </Target>
 </Project>
