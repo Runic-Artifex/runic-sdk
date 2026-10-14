@@ -1025,3 +1025,11 @@ Cancellation matches Linux as far as macOS allows:
   `identifier`, `requirement`). The portable cases cover the strict right
   comparison, ACLs, the hardened-client flags, the run limits and
   `RUNICPA105`–`RUNICPA107`.
+- macOS after the focused re-review, on the same runner. The root daemon runs
+  from an ad hoc signed application bundle with `en.lproj` and `de.lproj`: a
+  right pre-defined by `security authorizationdb write` is replaced in place
+  (its `created` time and its creator, `com.apple.security`, unchanged), the
+  stored right has exactly the rule's keys and authd's metadata, and its
+  `modified` time does not change over three further runs. Signed test programs
+  with `disable-library-validation` or `allow-jit` are refused (10), as is one
+  that carries the .NET host's bundle marker (8).
