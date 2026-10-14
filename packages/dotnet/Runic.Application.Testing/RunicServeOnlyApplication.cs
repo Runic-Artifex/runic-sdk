@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Text;
 
 namespace Runic.Application.Testing;
@@ -23,6 +25,10 @@ namespace Runic.Application.Testing;
 /// <see cref="Url"/> is the first. <see cref="StopAsync"/> writes a line to standard input, which ends serving on
 /// every platform, Windows included. When the application has not exited within the timeout, its process tree is
 /// killed. Standard output and standard error are captured for failure messages.
+/// When the test process exits without disposing it, the application is killed on a best-effort basis: on Windows
+/// through a job object, which also covers a test process that is killed itself, and elsewhere when
+/// <see cref="AppDomain.ProcessExit"/> runs. A test process killed on Linux or macOS, for example with SIGKILL, can
+/// leave the application running.
 /// </remarks>
 public sealed class RunicServeOnlyApplication : IAsyncDisposable
 {
@@ -30,19 +36,37 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     private static readonly TimeSpan s_defaultTimeout = TimeSpan.FromSeconds(30);
     // Output readers end when every process holding the pipes has exited; a descendant left running holds them.
     private static readonly TimeSpan s_outputDrainTimeout = TimeSpan.FromSeconds(2);
+    // A killed process that does not exit, for example one in uninterruptible sleep, must not hang the test.
+    private static readonly TimeSpan s_killTimeout = TimeSpan.FromSeconds(10);
+
+    // The applications still running, killed when the test process exits without disposing them.
+    private static readonly HashSet<RunicServeOnlyApplication> s_running = [];
 
     private readonly Process _process;
+    private readonly WindowsJob? _job;
     private readonly StringBuilder _output = new();
     private readonly StringBuilder _errors = new();
     private readonly TaskCompletionSource<string?> _url = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task _reading;
     private readonly object _gate = new();
-    private Task<int>? _stopping;
+    private Task? _stopLine;
+    private volatile bool _killed;
 
-    private RunicServeOnlyApplication(Process process)
+    static RunicServeOnlyApplication()
+    {
+        AppDomain.CurrentDomain.ProcessExit += static (_, _) => KillRunning();
+        if (AssemblyLoadContext.GetLoadContext(typeof(RunicServeOnlyApplication).Assembly) is { } context)
+            context.Unloading += static _ => KillRunning();
+    }
+
+    private RunicServeOnlyApplication(Process process, WindowsJob? job)
     {
         _process = process;
+        _job = job;
         _reading = Task.WhenAll(ReadOutputAsync(), ReadErrorsAsync());
+        // A reader may still fail after the process is disposed; nothing awaits it then.
+        _reading.ContinueWith(static reading => _ = reading.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 
     /// <summary>The URL of the first Window's page, from <c>RUNIC_APPLICATION_URL=</c>.</summary>
@@ -82,8 +106,9 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
 
     /// <summary>Starts an application in serve-only mode and waits for its URL.</summary>
     /// <param name="startInfo">
-    /// How to start the application, from <see cref="CreateStartInfo"/> or your own. This method sets
-    /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, removes <c>DISPLAY</c> and <c>WAYLAND_DISPLAY</c>, and redirects the
+    /// How to start the application, from <see cref="CreateStartInfo"/> or your own. Its file name, arguments, working
+    /// directory and environment are used, and it is not changed: the application runs with
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, without <c>DISPLAY</c> and <c>WAYLAND_DISPLAY</c>, and with redirected
     /// standard streams.
     /// </param>
     /// <param name="timeout">How long to wait for the URL; the default is 30 seconds.</param>
@@ -97,18 +122,22 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(startInfo);
         var wait = timeout ?? s_defaultTimeout;
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(wait, TimeSpan.Zero, nameof(timeout));
-        startInfo.UseShellExecute = false;
-        startInfo.RedirectStandardInput = true;
-        startInfo.RedirectStandardOutput = true;
-        startInfo.RedirectStandardError = true;
-        startInfo.StandardOutputEncoding = Encoding.UTF8;
-        startInfo.StandardErrorEncoding = Encoding.UTF8;
-        startInfo.Environment["RUNIC_APPLICATION_SERVE_ONLY"] = "1";
-        startInfo.Environment.Remove("DISPLAY");
-        startInfo.Environment.Remove("WAYLAND_DISPLAY");
-        var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"The application '{startInfo.FileName}' did not start.");
-        var application = new RunicServeOnlyApplication(process);
+        var start = ServeOnlyStartInfo(startInfo);
+        var job = OperatingSystem.IsWindows() ? WindowsJob.TryCreate() : null;
+        Process process;
+        try
+        {
+            process = Process.Start(start)
+                ?? throw new InvalidOperationException($"The application '{start.FileName}' did not start.");
+        }
+        catch
+        {
+            job?.Dispose();
+            throw;
+        }
+        job?.TryAssign(process);
+        var application = new RunicServeOnlyApplication(process, job);
+        lock (s_running) s_running.Add(application);
         try
         {
             string? url;
@@ -128,18 +157,40 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
             application.Url = uri;
             return application;
         }
-        catch (Exception error) when (error is not TimeoutException and not InvalidOperationException)
-        {
-            // Cancelled, for example: nothing is left running.
-            await application.KillAsync().ConfigureAwait(false);
-            process.Dispose();
-            throw;
-        }
         catch
         {
-            process.Dispose();
+            // Cancelled, timed out or failed: nothing is left running.
+            await application.KillAsync().ConfigureAwait(false);
+            application.Release();
             throw;
         }
+    }
+
+    // A copy of the caller's start information with the serve-only contract applied.
+    private static ProcessStartInfo ServeOnlyStartInfo(ProcessStartInfo startInfo)
+    {
+        var start = new ProcessStartInfo(startInfo.FileName)
+        {
+            WorkingDirectory = startInfo.WorkingDirectory,
+            CreateNoWindow = startInfo.CreateNoWindow,
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        if (startInfo.ArgumentList.Count > 0)
+        {
+            foreach (var argument in startInfo.ArgumentList) start.ArgumentList.Add(argument);
+        }
+        else start.Arguments = startInfo.Arguments;
+        start.Environment.Clear();
+        foreach (var (name, value) in startInfo.Environment) start.Environment[name] = value;
+        start.Environment["RUNIC_APPLICATION_SERVE_ONLY"] = "1";
+        start.Environment.Remove("DISPLAY");
+        start.Environment.Remove("WAYLAND_DISPLAY");
+        return start;
     }
 
     /// <summary>
@@ -154,36 +205,79 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
     {
         var parents = ProcessTree.ReadParents();
         var descendants = new List<Process>();
-        var pending = new Queue<int>([_process.Id]);
+        var pending = new Queue<(int Id, DateTime? Started)>([(_process.Id, StartTimeOf(_process))]);
         var seen = new HashSet<int> { _process.Id };
         while (pending.TryDequeue(out var parent))
         {
             foreach (var (child, childParent) in parents)
             {
-                if (childParent != parent || !seen.Add(child)) continue;
-                pending.Enqueue(child);
-                try { descendants.Add(Process.GetProcessById(child)); }
-                catch (ArgumentException) { } // It has exited meanwhile.
+                if (childParent != parent.Id || !seen.Add(child)) continue;
+                Process process;
+                try { process = Process.GetProcessById(child); }
+                catch (ArgumentException) { continue; } // It has exited meanwhile.
+                DateTime? started = null;
+                if (OperatingSystem.IsWindows())
+                {
+                    // Windows keeps a process's parent id after the parent exits and reuses ids, so the recorded
+                    // parent may be an unrelated, newer process with the old id. A child is only accepted when it
+                    // started after its parent, as Process.Kill(entireProcessTree: true) checks.
+                    started = StartTimeOf(process);
+                    if (started is not { } childStarted || parent.Started is not { } parentStarted || childStarted <= parentStarted)
+                    {
+                        process.Dispose();
+                        continue;
+                    }
+                }
+                descendants.Add(process);
+                pending.Enqueue((child, started));
             }
         }
         return descendants;
+    }
+
+    private static DateTime? StartTimeOf(Process process)
+    {
+        try { return process.StartTime; }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            return null; // Exited, or not accessible.
+        }
     }
 
     /// <summary>
     /// Stops serving by writing a line to standard input and waits for the application to exit. When it has not
     /// exited within <paramref name="timeout"/>, its process tree is killed and <see cref="TimeoutException"/> is thrown.
     /// </summary>
+    /// <remarks>
+    /// The line is written once. A further call, for example with a longer timeout after a cancelled one, waits for
+    /// the same exit with its own timeout, and returns the exit code at once when the application has exited. After a
+    /// timeout killed the application, every call throws <see cref="InvalidOperationException"/>.
+    /// </remarks>
     /// <param name="timeout">How long to wait for the exit; the default is 30 seconds.</param>
+    /// <param name="cancellationToken">Cancels this wait; the application keeps stopping, and disposing it ends it.</param>
     /// <returns>The application's exit code.</returns>
     /// <exception cref="TimeoutException">The application did not exit in time and was killed.</exception>
-    public Task<int> StopAsync(TimeSpan? timeout = null)
+    /// <exception cref="InvalidOperationException">The application was killed earlier, after it did not exit in time.</exception>
+    public async Task<int> StopAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default)
     {
         var wait = timeout ?? s_defaultTimeout;
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(wait, TimeSpan.Zero, nameof(timeout));
-        lock (_gate) return _stopping ??= StopCoreAsync(wait);
+        Task stopLine;
+        lock (_gate) stopLine = _stopLine ??= WriteStopLineAsync();
+        await stopLine.ConfigureAwait(false);
+        try { await _process.WaitForExitAsync(cancellationToken).WaitAsync(wait, cancellationToken).ConfigureAwait(false); }
+        catch (TimeoutException)
+        {
+            await KillAsync().ConfigureAwait(false);
+            throw new TimeoutException(Describe($"The application did not exit within {wait} after the stop line; its process tree was killed."));
+        }
+        if (_killed) throw new InvalidOperationException(Describe("The application was killed after it did not exit in time."));
+        await DrainOutputAsync().ConfigureAwait(false);
+        lock (s_running) s_running.Remove(this);
+        return _process.ExitCode;
     }
 
-    private async Task<int> StopCoreAsync(TimeSpan timeout)
+    private async Task WriteStopLineAsync()
     {
         try
         {
@@ -191,36 +285,62 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
             await _process.StandardInput.FlushAsync().ConfigureAwait(false);
         }
         catch (IOException) { } // The application has exited and closed its input.
-        try { await _process.WaitForExitAsync().WaitAsync(timeout).ConfigureAwait(false); }
-        catch (TimeoutException)
-        {
-            await KillAsync().ConfigureAwait(false);
-            throw new TimeoutException(Describe($"The application did not exit within {timeout} after the stop line; its process tree was killed."));
-        }
-        await DrainOutputAsync().ConfigureAwait(false);
-        return _process.ExitCode;
     }
 
-    /// <summary>Stops the application, killing its process tree when it does not exit in time, and releases it.</summary>
+    /// <summary>
+    /// Stops the application like <see cref="StopAsync"/> and releases it. An application that does not exit in time
+    /// is killed with its process tree without an exception; call <see cref="StopAsync"/> to see a shutdown that hangs.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         try { await StopAsync().ConfigureAwait(false); }
-        catch (TimeoutException) { } // Killed; the test reports its own failure.
-        finally { _process.Dispose(); }
+        catch (TimeoutException) { } // Killed.
+        catch (InvalidOperationException) { } // Killed earlier.
+        finally { Release(); }
+    }
+
+    private void Release()
+    {
+        lock (s_running) s_running.Remove(this);
+        // Closing the job kills what is left in it, such as a descendant the application leaves running.
+        _job?.Dispose();
+        _process.Dispose();
     }
 
     private async Task KillAsync()
     {
-        try { _process.Kill(entireProcessTree: true); }
-        catch (InvalidOperationException) { } // It has exited.
-        await _process.WaitForExitAsync().ConfigureAwait(false);
+        _killed = true;
+        TryKillTree(_process);
+        try { await _process.WaitForExitAsync().WaitAsync(s_killTimeout).ConfigureAwait(false); }
+        catch (TimeoutException) { }
         await DrainOutputAsync().ConfigureAwait(false);
+    }
+
+    private static void TryKillTree(Process process)
+    {
+        try { process.Kill(entireProcessTree: true); }
+        catch (Exception error) when (error is InvalidOperationException or AggregateException or Win32Exception or NotSupportedException)
+        {
+            // It has exited, or part of its tree could not be killed; the caller reports the application's output.
+        }
+    }
+
+    private static void KillRunning()
+    {
+        RunicServeOnlyApplication[] running;
+        lock (s_running) running = [.. s_running];
+        foreach (var application in running)
+        {
+            try { if (!application._process.HasExited) TryKillTree(application._process); }
+            catch (InvalidOperationException) { } // Disposed meanwhile.
+        }
     }
 
     private async Task DrainOutputAsync()
     {
         try { await _reading.WaitAsync(s_outputDrainTimeout).ConfigureAwait(false); }
         catch (TimeoutException) { }
+        catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidOperationException) { }
     }
 
     private async Task ReadOutputAsync()
@@ -233,13 +353,18 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
                 if (line.StartsWith(UrlPrefix, StringComparison.Ordinal)) _url.TrySetResult(line[UrlPrefix.Length..].Trim());
             }
         }
+        catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidOperationException) { }
         finally { _url.TrySetResult(null); }
     }
 
     private async Task ReadErrorsAsync()
     {
-        while (await _process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
-            lock (_errors) _errors.AppendLine(line);
+        try
+        {
+            while (await _process.StandardError.ReadLineAsync().ConfigureAwait(false) is { } line)
+                lock (_errors) _errors.AppendLine(line);
+        }
+        catch (Exception error) when (error is IOException or ObjectDisposedException or InvalidOperationException) { }
     }
 
     private string ExitCodeText()
@@ -250,6 +375,94 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
 
     private string Describe(string message) =>
         $"{message}\nStandard output:\n{StandardOutput}\nStandard error:\n{StandardError}";
+
+    // A Windows job object that kills its processes when its last handle closes, including when the test process
+    // ends without disposing the application. Best effort: without it, the application only lacks that guarantee.
+    private sealed class WindowsJob : IDisposable
+    {
+        private nint _handle;
+
+        private WindowsJob(nint handle) => _handle = handle;
+
+        public static WindowsJob? TryCreate()
+        {
+            var handle = CreateJobObjectW(0, null);
+            if (handle == 0) return null;
+            var limits = new ExtendedLimitInformation { BasicLimitInformation = new() { LimitFlags = KillOnJobClose } };
+            if (SetInformationJobObject(handle, ExtendedLimitInformationClass, ref limits, (uint)Marshal.SizeOf<ExtendedLimitInformation>()))
+                return new WindowsJob(handle);
+            CloseHandle(handle);
+            return null;
+        }
+
+        // The application's own children inherit the job; a process started before this call escapes it.
+        public void TryAssign(Process process)
+        {
+            try { _ = AssignProcessToJobObject(_handle, process.Handle); }
+            catch (Exception error) when (error is InvalidOperationException or Win32Exception) { }
+        }
+
+        public void Dispose()
+        {
+            var handle = Interlocked.Exchange(ref _handle, 0);
+            if (handle != 0) CloseHandle(handle);
+        }
+
+        private const uint KillOnJobClose = 0x2000;
+        private const int ExtendedLimitInformationClass = 9;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct BasicLimitInformation
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public nuint MinimumWorkingSetSize;
+            public nuint MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public nuint Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IoCounters
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        // JOBOBJECT_EXTENDED_LIMIT_INFORMATION.
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ExtendedLimitInformation
+        {
+            public BasicLimitInformation BasicLimitInformation;
+            public IoCounters IoInfo;
+            public nuint ProcessMemoryLimit;
+            public nuint JobMemoryLimit;
+            public nuint PeakProcessMemoryUsed;
+            public nuint PeakJobMemoryUsed;
+        }
+
+        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern nint CreateJobObjectW(nint attributes, string? name);
+
+        [DllImport("kernel32", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetInformationJobObject(nint job, int infoClass, ref ExtendedLimitInformation info, uint length);
+
+        [DllImport("kernel32", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AssignProcessToJobObject(nint job, nint process);
+
+        [DllImport("kernel32")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(nint handle);
+    }
 
     // Parent process ids of every running process.
     private static class ProcessTree
@@ -304,7 +517,7 @@ public sealed class RunicServeOnlyApplication : IAsyncDisposable
         {
             var parents = new List<(int, int)>();
             var snapshot = CreateToolhelp32Snapshot(SnapProcess, 0);
-            if (snapshot == InvalidHandle) throw new System.ComponentModel.Win32Exception(Marshal.GetLastPInvokeError());
+            if (snapshot == InvalidHandle) throw new Win32Exception(Marshal.GetLastPInvokeError());
             try
             {
                 var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf<ProcessEntry>() };

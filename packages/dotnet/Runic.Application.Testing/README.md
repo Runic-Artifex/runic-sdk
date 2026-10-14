@@ -344,16 +344,29 @@ public async Task IncrementsTheCount()
 application that exits or stays silent with its standard output and standard
 error, which `StandardOutput` and `StandardError` also return. Add arguments
 or environment variables to the `ProcessStartInfo` before starting it;
-`CreateStartInfo` runs a `.dll` with `dotnet`.
+`CreateStartInfo` runs a `.dll` with `dotnet`. `StartAsync` uses the file name,
+arguments, working directory and environment and leaves the `ProcessStartInfo`
+unchanged, so it can start the application again.
 
 `StopAsync` writes a line to standard input, which ends serving on every
 platform, and returns the exit code. When the application has not exited within
 its `timeout` (30 seconds), its process tree is killed and `TimeoutException`
-is thrown; disposing stops it the same way without throwing. To check that the
-application ends the processes it started, such as a long-running tool it
-cancels on shutdown, list them with `GetDescendantProcesses` while it runs and
-check `HasExited` after `StopAsync`. A process whose parent has exited is no
-longer listed as a descendant.
+is thrown. The line is written once: another `StopAsync`, for example after a
+cancelled one, waits for the same exit with its own timeout, and after a kill
+it throws `InvalidOperationException`. Disposing stops the application the same
+way but kills a hanging one without an exception, so call `StopAsync` when a
+test should fail on a shutdown that hangs. To check that the application ends
+the processes it started, such as a long-running tool it cancels on shutdown,
+list them with `GetDescendantProcesses` while it runs and check `HasExited`
+after `StopAsync`. A process whose parent has exited is no longer listed as a
+descendant.
+
+A test process that exits without disposing the application still ends it on a
+best-effort basis: on Windows the application runs in a job object that ends
+with the test process, even when the test process is killed, and elsewhere the
+application is killed when the test process exits normally. A test process that
+is killed itself on Linux or macOS, for example with SIGKILL or by a crash, can
+leave the application running.
 
 The page connects to the real Bridge, and the serve-only surface admits one
 browser. A test in TypeScript can follow the same protocol, described in the

@@ -17,7 +17,11 @@ internal sealed class ServeOnlyApplicationTests
     {
         var start = StartInfo();
         start.Environment[LoggingApplication.ChildProcessVariable] = "end";
+        var environment = new Dictionary<string, string?>(start.Environment);
         await using var application = await RunicServeOnlyApplication.StartAsync(start, Timeout);
+        Require(!start.RedirectStandardInput && start.Environment.Count == environment.Count &&
+            environment.All(variable => start.Environment.TryGetValue(variable.Key, out var value) && value == variable.Value),
+            "StartAsync changed the caller's start information.", application);
 
         Require(application.Url is { IsLoopback: true, Scheme: "http" or "https" },
             $"The application served an unexpected URL: {application.Url}.", application);
@@ -27,6 +31,7 @@ internal sealed class ServeOnlyApplicationTests
         {
             var exitCode = await application.StopAsync(Timeout);
             Require(exitCode == 0, $"The application exited with {exitCode}.", application);
+            Require(await application.StopAsync(TimeSpan.FromSeconds(1)) == exitCode, "A second StopAsync returned another exit code.", application);
             Require(await AllExitedAsync(descendants),
                 $"Processes outlived the application: {Describe(descendants.Where(process => !process.HasExited))}.", application);
         }
@@ -66,6 +71,22 @@ internal sealed class ServeOnlyApplicationTests
         throw new InvalidOperationException("StartAsync did not report an application that exited without serving.");
     }
 
+    // The kill path: a process that never writes its URL is killed when the wait ends, and nothing is left.
+    [Test]
+    public async Task KillsAnApplicationThatDoesNotServeInTime()
+    {
+        var start = LoggingApplication.SelfStartInfo(LoggingApplication.ChildProcessArgument);
+        try
+        {
+            await using var application = await RunicServeOnlyApplication.StartAsync(start, TimeSpan.FromSeconds(3));
+        }
+        catch (TimeoutException error) when (error.Message.Contains("it was killed", StringComparison.Ordinal))
+        {
+            return;
+        }
+        throw new InvalidOperationException("StartAsync did not time out for an application that never serves.");
+    }
+
     private static ProcessStartInfo StartInfo() => LoggingApplication.SelfStartInfo(LoggingApplication.Argument);
 
     // A real browser loads the page when the development shell provides Chromium, as the repository's other
@@ -83,7 +104,7 @@ internal sealed class ServeOnlyApplicationTests
         try
         {
             using var browser = Process.Start(new ProcessStartInfo(chromium,
-                ["--headless", "--no-sandbox", "--disable-gpu", "--no-first-run", $"--user-data-dir={profile.FullName}",
+                ["--headless", "--no-sandbox", "--disable-gpu", "--no-first-run", "--disable-crash-reporter", "--disable-breakpad", $"--user-data-dir={profile.FullName}",
                     "--dump-dom", application.Url.ToString()])
             {
                 RedirectStandardOutput = true,
@@ -105,7 +126,13 @@ internal sealed class ServeOnlyApplicationTests
             Require(dom.Contains(Page, StringComparison.Ordinal),
                 $"Chromium did not load the page. DOM:\n{dom}\nChromium:\n{await errors}", application);
         }
-        finally { profile.Delete(recursive: true); }
+        finally
+        {
+            // Best effort: a browser process that has not released the profile yet must not fail the case.
+            try { profile.Delete(recursive: true); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
     }
 
     // The application starts its child process before it opens its window, so the child is running by now; the
