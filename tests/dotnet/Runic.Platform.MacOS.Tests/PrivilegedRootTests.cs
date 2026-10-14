@@ -54,9 +54,21 @@ internal sealed class PrivilegedRootTests
         try
         {
             CreateAdministrator(password);
-            // A right someone defined first, with keys the daemon's rule does not have; anyone may add a missing right.
+            // A right someone defined first, with keys the daemon's rule does not have.
             _ = Sudo("security", "authorizationdb", "remove", RootId.Id);
-            Check(DefineRight(RootId.Id, 30, weaken: true) == 0, "anyone may add a missing right");
+            var weak = Path.GetTempFileName();
+            File.WriteAllText(weak, """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                <plist version="1.0"><dict>
+                  <key>class</key><string>user</string><key>group</key><string>admin</string>
+                  <key>shared</key><true/><key>timeout</key><integer>300</integer><key>tries</key><integer>1</integer>
+                  <key>extract-password</key><true/>
+                </dict></plist>
+                """);
+            var (written, writeOutput) = Sudo("sh", "-c", $"security authorizationdb write {RootId.Id} < '{weak}'");
+            File.Delete(weak);
+            Check(written == 0, "pre-define a weaker right: " + writeOutput);
             Install();
             var host = new CredentialHost(definition, User, password);
             var provider = new MacPrivilegedProvider(Actions, definition, host);
@@ -90,7 +102,8 @@ internal sealed class PrivilegedRootTests
             {
                 var keys = MacSecurity.Keys(replaced);
                 Console.WriteLine("stored keys of the replaced right: " + string.Join(", ", keys));
-                Check(!keys.Contains("extract-password") && MacSecurity.ToNumber(MacSecurity.Get(replaced, "tries")) == 10000, "the pre-defined right's extra keys are gone");
+                Check(!keys.Contains("extract-password") && MacSecurity.ToNumber(MacSecurity.Get(replaced, "tries")) == 10000
+                    && MacSecurity.ToBoolean(MacSecurity.Get(replaced, "shared")) == false, "the pre-defined right's extra keys and values are gone");
             }
             finally { MacSecurity.Release(replaced); }
             Console.WriteLine("PASS rights defined by the daemon: class user, group admin, shared false, timeout 30, the action's prompt; a pre-defined weaker right was replaced");
@@ -193,17 +206,12 @@ internal sealed class PrivilegedRootTests
         File.Delete(plist);
     }
 
-    private static unsafe int DefineRight(string name, long timeout, bool weaken = false)
+    private static unsafe int DefineRight(string name, long timeout)
     {
         var status = MacSecurity.AuthorizationCreate(null, null, 0, out var authorization);
         if (status != 0) return status;
         var definition = MacSystemAuthority.CreateDefinition(name);
         MacSecurity.Set(definition, "timeout", MacSecurity.CreateNumber(timeout));
-        if (weaken)
-        {
-            MacSecurity.Set(definition, "extract-password", MacSecurity.Retain(MacSecurity.True));
-            MacSecurity.Set(definition, "tries", MacSecurity.CreateNumber(1));
-        }
         var description = MacSecurity.CreateString("Runic tests check the credential timeout.");
         try { return MacSecurity.AuthorizationRightSet(authorization, name, definition, description, 0, 0); }
         finally

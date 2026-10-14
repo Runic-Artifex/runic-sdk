@@ -205,6 +205,41 @@ internal sealed class PrivilegedNativeTests
         }
     }
 
+    /// <summary>
+    /// Whether this test process runs as the daemon requires of a client: the hardened runtime, not debugged, no
+    /// get-task-allow. CI re-signs the NativeAOT executable with <c>--options=runtime</c>; the dotnet host that runs the
+    /// JIT build is not such a client, and the daemon refuses it.
+    /// </summary>
+    internal static bool SelfHardened()
+    {
+        if (MacSecurity.CodeCopySelf(0, out var code) != 0) return false;
+        try { return MacSecurity.DynamicStatus(code) is { } status && MacPrivilegedOutcome.IsHardenedClient(status, false); }
+        finally { MacSecurity.Release(code); }
+    }
+
+    [Test, Explicit, Category("NativePrivileged"), DisplayName("native: the daemon refuses a client without the hardened runtime")]
+    public async Task HardenedClientAsync()
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        if (MacSecurity.CodeCopySelf(0, out var code) == 0)
+        {
+            Console.WriteLine($"this process's code-signing status: 0x{MacSecurity.DynamicStatus(code):x}");
+            MacSecurity.Release(code);
+        }
+        if (SelfHardened())
+        {
+            Check(!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported, "only the re-signed NativeAOT executable is a hardened client");
+            Console.WriteLine("hardened: the other cases run the daemon's client checks against this process");
+            return;
+        }
+        Check(System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeSupported,
+            "the NativeAOT executable must be signed with the hardened runtime (codesign --force --sign - --options=runtime)");
+        using var daemon = new InProcessDaemon([Shell], checkSender: true);
+        var result = await daemon.Provider.RunAsync(new(Shell, ["true"]));
+        Check(result is PlatformResult<PrivilegedActionCompletion>.Failed { Code: PlatformFailureCode.InvalidData, Diagnostic.Code: 4 } && daemon.Authority.Checks == 0,
+            "a client without the hardened runtime: " + Describe(result));
+    }
+
     [Test, Explicit, Category("NativePrivileged"), DisplayName("native: Authorization Services calls that need no dialog")]
     public unsafe void AuthorizationServices()
     {
@@ -299,7 +334,8 @@ internal sealed class PrivilegedNativeTests
         private readonly nint _queue, _listener, _endpoint;
 
         public InProcessDaemon(PrivilegedActionDeclaration[] actions, string? programRequirement = null, string? daemonRequirement = null,
-            string? applicationRequirement = null, PrivilegedActionDeclaration[]? clientActions = null, IReadOnlyDictionary<string, string>? identifiers = null)
+            string? applicationRequirement = null, PrivilegedActionDeclaration[]? clientActions = null, IReadOnlyDictionary<string, string>? identifiers = null,
+            bool? checkSender = null)
         {
             var self = MacSecurity.CopySelfDesignatedRequirement() ?? throw new InvalidOperationException("The test process has no designated requirement.");
             MacPrivilegedDaemonDefinition Define(PrivilegedActionDeclaration[] declared) => new(
@@ -312,7 +348,9 @@ internal sealed class PrivilegedNativeTests
             };
             _queue = MacXpc.CreateQueue("eu.runic.tests.daemon", 0);
             _listener = MacXpc.CreateConnection(0, _queue);
-            var server = new MacPrivilegedDaemonServer(actions, Define(actions), Authority, null);
+            // The JIT build runs in the dotnet host, which the daemon refuses as a client (HardenedClientAsync), so the
+            // other cases check each run's sender only in the hardened NativeAOT executable.
+            var server = new MacPrivilegedDaemonServer(actions, Define(actions), Authority, null) { CheckSender = checkSender ?? SelfHardened() };
             server.Listen(_listener);
             _endpoint = MacXpc.CreateEndpoint(_listener);
             var client = Define(clientActions ?? actions);
