@@ -1696,7 +1696,7 @@ limit rows follow the platforms' documentation.
 | Link re-pointed by rename | Rename event in the parent directory | Same | Same; events can arrive later and merged, the watcher reads the targets again |
 | File written in place | Write event | Write event | Write event, merged with others |
 | Directory entry added or removed | Create, delete or rename event | Same | Same |
-| Watched directory deleted and recreated | The delete is reported; the watcher reports `Missing`, polls, and watches again when the directory returns | Same | Same |
+| Watched directory deleted and recreated | The delete is reported; the watcher reports `Missing`, polls, and watches again when the directory returns | Same | No event for the watched directory itself: the 30-second backstop read reports the delete, then as on Linux |
 | Network and FUSE file systems | Polls: inotify reports only local changes (NFS, CIFS, sshfs) | Polls network drives and UNC paths | Polls network volumes |
 | Limits | Each `FileSystemWatcher` holds an inotify instance (`fs.inotify.max_user_instances`, 128 by default per user) and each directory a watch (`fs.inotify.max_user_watches`); `GitHead` adds one per directory under `refs/heads`. Exhausted: `WatchLimit` and polling | 64 KiB event buffer; overflow: `Overflow` | Overflow: `Overflow` |
 | Creating symbolic links | Allowed | Needs Developer Mode or elevation; reading them does not | Allowed |

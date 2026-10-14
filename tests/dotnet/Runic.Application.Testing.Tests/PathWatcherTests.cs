@@ -142,6 +142,9 @@ internal sealed class PathWatcherTests
         using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, error => errors.Add(error.Kind), tester.Options);
 
         Directory.Delete(directory, recursive: true);
+        // FSEvents reports nothing when the watched directory itself is deleted; the 30-second backstop read does.
+        await Task.Delay(Settle);
+        tester.Time.Advance(TimeSpan.FromSeconds(30));
         Require((await NextOrDescribeAsync(tester, watcher)).Contains(target), "Deleting the directory was not reported.");
         await Task.Delay(Settle);
         await tester.DrainAsync();
