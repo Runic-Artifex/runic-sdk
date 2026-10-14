@@ -41,6 +41,10 @@ On Linux with Nix, prefix commands with `direnv exec .` to use the SDK's
 locked environment. Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local
 server without opening a browser; the application prints
 `RUNIC_APPLICATION_URL=<url>` and stops when it reads a line from standard input.
+The [serve-only protocol](../../packages/dotnet/Runic.Application.Views.Desktop/README.md#automation)
+describes it in full, and
+[`RunicServeOnlyApplication`](../../packages/dotnet/Runic.Application.Testing/README.md#the-whole-application-in-a-browser)
+runs it from a .NET browser test.
 
 ## Copy it into your own project
 
