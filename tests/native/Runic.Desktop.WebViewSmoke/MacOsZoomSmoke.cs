@@ -95,9 +95,14 @@ internal static partial class MacOsZoomSmoke
     // The Edit menu copies and pastes through the focused WKWebView, and Quit takes the window's close path.
     private static async Task ExerciseEditAndQuitAsync(DesktopSurface surface, DesktopWindow window)
     {
-        await surface.ExecuteJavaScriptAsync("const s = document.getElementById('source'); s.value = 'Runic clipboard'; s.focus(); return true;", StepTimeout);
+        await surface.ExecuteJavaScriptAsync(
+            "const s = document.getElementById('source'); s.value = 'Runic clipboard'; s.focus(); s.setSelectionRange(0, 0); return true;", StepTimeout);
         await SendAsync(window, KeyA, Command);
+        await WaitForPageAsync(surface, "const s = document.getElementById('source'); return `${s.selectionStart}-${s.selectionEnd}`;", "0-15",
+            "the selection after Command and A");
         await SendAsync(window, KeyC, Command);
+        // The copy reaches the pasteboard from the web process; give it time before the paste reads it.
+        await Task.Delay(TimeSpan.FromSeconds(1));
         await surface.ExecuteJavaScriptAsync("document.getElementById('target').focus(); return true;", StepTimeout);
         await SendAsync(window, KeyV, Command);
         await WaitForPageAsync(surface, "return document.getElementById('target').value;", "Runic clipboard", "the pasted text");
