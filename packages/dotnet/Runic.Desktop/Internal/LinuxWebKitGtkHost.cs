@@ -334,12 +334,11 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static int OnUnhandledKeyPress(nint webView, nint keyEvent, nint context)
     {
-        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost
-            || !Api.TryGetKey(keyEvent, out var keyval, out var state))
+        if (GCHandle.FromIntPtr(context).Target is not LinuxWebKitGtkHost)
         {
             return 0;
         }
-        var command = WebKitGtkKeyboard.GetZoomCommand(keyval, state);
+        var command = Api.GetZoomCommand(keyEvent);
         if (command == PageZoomCommand.None)
         {
             return 0;
@@ -626,8 +625,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer = Required(_webkit, "webkit_user_content_manager_register_script_message_handler_in_world");
                 WebKitJavascriptResultGetJsValuePointer = Required(_webkit, "webkit_javascript_result_get_js_value");
                 JscValueToInt32Pointer = Required(_webkit, "jsc_value_to_int32");
-                GdkEventGetKeyvalPointer = Required(_gtk, "gdk_event_get_keyval");
-                GdkEventGetStatePointer = Required(_gtk, "gdk_event_get_state");
+                GdkKeymapGetForDisplayPointer = Required(_gtk, "gdk_keymap_get_for_display");
+                GdkKeymapGetEntriesForKeycodePointer = Required(_gtk, "gdk_keymap_get_entries_for_keycode");
+                GFreePointer = Required(_gtk, "g_free");
                 IsAvailable = true;
             }
             catch (EntryPointNotFoundException)
@@ -702,8 +702,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint WebKitUserContentManagerRegisterScriptMessageHandlerInWorldPointer { get; }
         private nint WebKitJavascriptResultGetJsValuePointer { get; }
         private nint JscValueToInt32Pointer { get; }
-        private nint GdkEventGetKeyvalPointer { get; }
-        private nint GdkEventGetStatePointer { get; }
+        private nint GdkKeymapGetForDisplayPointer { get; }
+        private nint GdkKeymapGetEntriesForKeycodePointer { get; }
+        private nint GFreePointer { get; }
 
         internal bool GtkInitCheck() => ((delegate* unmanaged[Cdecl]<nint, nint, int>)GtkInitCheckPointer)(0, 0) != 0;
         internal void GtkMain() => ((delegate* unmanaged[Cdecl]<void>)GtkMainPointer)();
@@ -883,15 +884,45 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         internal void SetZoomLevel(nint webView, double level) =>
             ((delegate* unmanaged[Cdecl]<nint, double, void>)WebKitWebViewSetZoomLevelPointer)(webView, level);
 
-        internal bool TryGetKey(nint keyEvent, out uint keyval, out uint state)
+        // The produced symbol first; when it is no zoom key, the unshifted and shifted
+        // symbols of the same physical key in the event's layout group.
+        internal PageZoomCommand GetZoomCommand(nint keyEvent)
         {
-            uint value = 0;
-            uint modifiers = 0;
-            var found = ((delegate* unmanaged[Cdecl]<nint, uint*, int>)GdkEventGetKeyvalPointer)(keyEvent, &value) != 0
-                && ((delegate* unmanaged[Cdecl]<nint, uint*, int>)GdkEventGetStatePointer)(keyEvent, &modifiers) != 0;
-            keyval = value;
-            state = modifiers;
-            return found;
+            var key = (GdkEventKey*)keyEvent;
+            var command = WebKitGtkKeyboard.GetZoomCommand(key->Keyval, key->State);
+            if (command != PageZoomCommand.None || !WebKitGtkKeyboard.IsZoomModifier(key->State))
+            {
+                return command;
+            }
+
+            var keymap = ((delegate* unmanaged[Cdecl]<nint, nint>)GdkKeymapGetForDisplayPointer)(
+                ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)());
+            GdkKeymapKey* entries = null;
+            uint* keyvals = null;
+            var count = 0;
+            if (keymap == 0 || ((delegate* unmanaged[Cdecl]<nint, uint, GdkKeymapKey**, uint**, int*, int>)GdkKeymapGetEntriesForKeycodePointer)(
+                keymap, key->HardwareKeycode, &entries, &keyvals, &count) == 0)
+            {
+                return WebKitGtkKeyboard.GetZoomCommand(key->Keyval, key->State, default, key->HardwareKeycode);
+            }
+            try
+            {
+                Span<uint> levels = stackalloc uint[2];
+                var found = 0;
+                for (var index = 0; index < count && found < levels.Length; index++)
+                {
+                    if (entries[index].Group == key->Group && entries[index].Level is 0 or 1)
+                    {
+                        levels[found++] = keyvals[index];
+                    }
+                }
+                return WebKitGtkKeyboard.GetZoomCommand(key->Keyval, key->State, levels[..found], key->HardwareKeycode);
+            }
+            finally
+            {
+                ((delegate* unmanaged[Cdecl]<void*, void>)GFreePointer)(entries);
+                ((delegate* unmanaged[Cdecl]<void*, void>)GFreePointer)(keyvals);
+            }
         }
 
         internal void DenyPermission(nint request) =>
@@ -1019,6 +1050,29 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             internal double Green;
             internal double Blue;
             internal double Alpha;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GdkEventKey
+        {
+            internal int Type;
+            internal nint Window;
+            internal byte SendEvent;
+            internal uint Time;
+            internal uint State;
+            internal uint Keyval;
+            internal int Length;
+            internal nint String;
+            internal ushort HardwareKeycode;
+            internal byte Group;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GdkKeymapKey
+        {
+            internal uint Keycode;
+            internal int Group;
+            internal int Level;
         }
 
         [StructLayout(LayoutKind.Sequential)]

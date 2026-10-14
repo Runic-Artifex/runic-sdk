@@ -28,6 +28,10 @@ internal static class WebKitGtkKeyboard
     private const uint KeyKeypadAdd = 0xffab;
     private const uint KeyKeypadSubtract = 0xffad;
     private const uint KeyKeypadZero = 0xffb0;
+    private const uint LastAscii = 0x7e;
+
+    // The key of the digit 0: evdev KEY_0 (11) plus 8, as X11 and Wayland report it.
+    private const uint KeycodeZero = 19;
 
     internal const double DefaultZoom = 1.0;
 
@@ -41,14 +45,39 @@ internal static class WebKitGtkKeyboard
     private const double Tolerance = 0.005;
 
     /// <summary>Maps a key press that the page did not handle to a zoom command.</summary>
-    /// <remarks>Control must be held without Alt, Super, Hyper or Meta. Shift is allowed, because some layouts need it for + or _.</remarks>
-    internal static PageZoomCommand GetZoomCommand(uint keyval, uint state)
+    /// <param name="keyval">The key symbol the active layout produced.</param>
+    /// <param name="state">The modifiers. Control must be held without Alt, Super, Hyper or Meta. Shift is allowed, because some layouts need it for + or _.</param>
+    /// <param name="keyLevels">
+    /// The symbols of the same physical key at levels 1 and 2 (unshifted and shifted) of each layout group.
+    /// When the produced symbol is no zoom key, as on AZERTY, where the 0 key types à without Shift, a digit
+    /// or sign on one of these levels counts, as in Firefox and Chromium.
+    /// </param>
+    /// <param name="keycode">
+    /// The hardware keycode. Some layouts, such as Lithuanian, have the digit 0 only on a third level; the
+    /// key in the place of 0 then resets the zoom when it types no ASCII character.
+    /// </param>
+    internal static PageZoomCommand GetZoomCommand(uint keyval, uint state, ReadOnlySpan<uint> keyLevels = default, uint keycode = 0)
     {
-        if ((state & ControlMask) == 0 || (state & (AltMask | SuperMask | HyperMask | MetaMask)) != 0)
+        if (!IsZoomModifier(state))
         {
             return PageZoomCommand.None;
         }
-        return keyval switch
+        var command = Map(keyval);
+        foreach (var level in keyLevels)
+        {
+            if (command != PageZoomCommand.None)
+            {
+                break;
+            }
+            command = Map(level);
+        }
+        if (command == PageZoomCommand.None && keycode == KeycodeZero && keyval > LastAscii)
+        {
+            command = PageZoomCommand.Reset;
+        }
+        return command;
+
+        static PageZoomCommand Map(uint keyval) => keyval switch
         {
             KeyPlus or KeyEqual or KeyKeypadAdd => PageZoomCommand.In,
             KeyMinus or KeyUnderscore or KeyKeypadSubtract => PageZoomCommand.Out,
@@ -56,6 +85,10 @@ internal static class WebKitGtkKeyboard
             _ => PageZoomCommand.None,
         };
     }
+
+    /// <summary>Whether the modifiers are Control, with or without Shift, and no Alt, Super, Hyper or Meta.</summary>
+    internal static bool IsZoomModifier(uint state) =>
+        (state & ControlMask) != 0 && (state & (AltMask | SuperMask | HyperMask | MetaMask)) == 0;
 
     /// <summary>Maps a wheel message of the page script: 1 zooms in, -1 out.</summary>
     internal static PageZoomCommand GetWheelZoomCommand(int message) => message switch
@@ -101,109 +134,18 @@ internal static class WebKitGtkKeyboard
 
     internal const string ZoomMessageHandler = "runicZoom";
 
-    // Runs in its own script world in the top frame, from document start.
-    //
-    // Tab: WebKitGTK cannot give the page focus from one end. When Tab leaves the last
-    // control, WebKit clears the focused element and hands focus to the GTK window,
-    // which has nothing else to focus, so focus returns to the view with no focused
-    // element: a silent stop for screen readers. When a Tab or Shift+Tab that the page
-    // did not cancel clears the focus this way, the script focuses the first or last
-    // control, as a browser window does.
-    //
-    // Wheel: WebKit scrolls on Control and the wheel, so the host cannot wait for the
-    // page to leave the event unhandled, as it does for keys. While Control is held,
-    // the script cancels a wheel event that the page did not cancel and asks the host
-    // to zoom. The listener exists only while Control is held: a cancelable wheel
-    // listener makes WebKit wait for the page before scrolling.
-    internal const string Script = """
-(() => {
-  "use strict";
-  let tab = null;
-  addEventListener("keydown", event => {
-    if (event.key === "Control") { watchWheel(true); return; }
-    if (event.key !== "Tab" || event.ctrlKey || event.altKey || event.metaKey) return;
-    tab = event;
-    setTimeout(() => { if (tab === event) tab = null; });
-  }, true);
-  addEventListener("keyup", event => { if (event.key === "Control") watchWheel(false); }, true);
-  addEventListener("blur", event => { if (event.target === window) watchWheel(false); }, true);
-  addEventListener("focusout", event => {
-    const pending = tab;
-    if (!pending || pending.defaultPrevented || event.relatedTarget !== null) return;
-    tab = null;
-    setTimeout(() => {
-      const active = document.activeElement;
-      if (active && active !== document.body && active !== document.documentElement) return;
-      const order = candidates();
-      if (pending.shiftKey) order.reverse();
-      for (const element of order) {
-        const target = checkedRadio(element) ?? element;
-        target.focus({ focusVisible: true });
-        if (deepActive() === target) return;
-      }
+    // The script lives in WebKitGtkKeyboard.js, which a browser test also loads, and is
+    // embedded in each assembly that links this file.
+    private static readonly Lazy<string> ScriptSource = new(static () =>
+    {
+        using var stream = typeof(WebKitGtkKeyboard).Assembly.GetManifestResourceStream(ScriptResource)
+            ?? throw new InvalidOperationException("The WebKitGTK keyboard script is not embedded.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     });
-  }, true);
 
-  let watching = false;
-  let wheel = 0;
-  function watchWheel(on) {
-    if (on === watching) return;
-    watching = on;
-    wheel = 0;
-    if (on) addEventListener("wheel", zoomWheel, { passive: false });
-    else removeEventListener("wheel", zoomWheel, { passive: false });
-  }
-  // Wheels report a whole step per notch; touchpads report small steps, which add up.
-  function zoomWheel(event) {
-    if (!event.ctrlKey || event.altKey || event.metaKey || event.defaultPrevented || !event.deltaY) return;
-    event.preventDefault();
-    const step = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? event.deltaY / 40 : event.deltaY;
-    if (step * wheel < 0) wheel = 0;
-    wheel += step;
-    if (Math.abs(wheel) < 1) return;
-    const message = wheel < 0 ? 1 : -1;
-    wheel = 0;
-    window.webkit?.messageHandlers?.runicZoom?.postMessage(message);
-  }
+    internal const string ScriptResource = "Runic.Desktop.WebKitGtkKeyboard.js";
 
-  function deepActive() {
-    let active = document.activeElement;
-    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
-    return active;
-  }
-  function visible(element) {
-    if (typeof element.checkVisibility === "function")
-      return element.checkVisibility({ visibilityProperty: true });
-    return element.getClientRects().length > 0;
-  }
-  function tabbable(element) {
-    if (element.tabIndex < 0 || element.disabled || element.closest("[inert]")) return false;
-    if (/^(IFRAME|FRAME|OBJECT|EMBED)$/.test(element.tagName)) return false;
-    return visible(element);
-  }
-  function collect(root, elements) {
-    for (const element of root.querySelectorAll("*")) {
-      if (tabbable(element)) elements.push(element);
-      if (element.shadowRoot) collect(element.shadowRoot, elements);
-    }
-    return elements;
-  }
-  // Sequential order: positive tabindex values first, ascending, then document order.
-  function candidates() {
-    const elements = collect(document, []);
-    const positive = elements.filter(element => element.tabIndex > 0);
-    positive.sort((left, right) => left.tabIndex - right.tabIndex);
-    return positive.concat(elements.filter(element => element.tabIndex === 0));
-  }
-  // Tab enters a radio group at its checked button.
-  function checkedRadio(element) {
-    if (!(element instanceof HTMLInputElement) || element.type !== "radio" || !element.name || element.checked) return null;
-    const scope = element.form ?? element.getRootNode();
-    for (const radio of scope.querySelectorAll("input[type=radio]")) {
-      if (radio.name === element.name && radio.checked && (radio.form ?? null) === (element.form ?? null) && tabbable(radio)) return radio;
-    }
-    return null;
-  }
-})();
-""";
+    /// <summary>The keyboard script for the top frame; see WebKitGtkKeyboard.js.</summary>
+    internal static string Script => ScriptSource.Value;
 }
