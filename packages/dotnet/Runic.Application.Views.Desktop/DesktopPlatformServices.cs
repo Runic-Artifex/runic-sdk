@@ -254,7 +254,7 @@ public static class PlatformServices
     /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
     /// <remarks>
     /// The desktop decides whether to grant focus; without a context many Wayland compositors only mark the window as
-    /// wanting attention. Linux presents GTK 3 and GTK 4 windows. Windows restores a minimized window and brings it to
+    /// wanting attention. Linux presents GTK 3 and GTK 4 windows. Windows restores a minimized window or shows a hidden one, and brings it to
     /// the foreground when the desktop allows it, as it does for the running instance after
     /// <see cref="Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> forwards a launch; when
     /// Windows refuses, the taskbar button flashes and the result is <see cref="PlatformFailureCode.PermissionDenied"/>.

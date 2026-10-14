@@ -74,3 +74,5 @@ WM_DESTROY
 OIC_SAMPLE
 EndMenu
 IsWindow
+WM_ENDSESSION
+IsWindowVisible

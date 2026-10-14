@@ -41,7 +41,7 @@ types are internal and never appear in the public API (`PublicAPI.*.txt` unchang
 | Status icon | (new) window class, hidden window and message loop | `RegisterClassEx`, `CreateWindowEx`, `DefWindowProc`, `GetMessage`, `TranslateMessage`, `DispatchMessage`, `PostMessage`, `PostQuitMessage`, `DestroyWindow`, `RegisterWindowMessage`, `ChangeWindowMessageFilterEx`, `GetModuleHandle` | Raw overloads. The window procedure is an `[UnmanagedCallersOnly]` static method assigned to `WNDCLASSEXW.lpfnWndProc`, so no delegate is marshalled. |
 | Status icon | (new) menu | `CreatePopupMenu`, `AppendMenu`, `TrackPopupMenuEx`, `DestroyMenu`, `EndMenu`, `SetForegroundWindow`, `GetSystemMetrics` | Raw `HMENU` overloads; `DestroyMenu` on the top menu releases its submenus. |
 | Status icon | (new) icons | `CreateDIBSection`, `CreateBitmap`, `CreateIconIndirect`, `DeleteObject`, `DestroyIcon`, `LoadImage` | Raw overloads. The generated `DeleteObjectSafeHandle`/`DestroyIconSafeHandle` overloads are not used: the bitmaps are deleted right after `CreateIconIndirect`, and the icon lives until the shell shows its successor. A shared system icon (`LR_SHARED`) is never destroyed. |
-| Presentation | (new) | `GetAncestor`, `IsIconic`, `ShowWindow`, `SetForegroundWindow`, `GetForegroundWindow`, `FlashWindowEx`, `IsWindow` | Raw overloads, called on the window's thread through `INativePickerOwner.InvokeAsync`. |
+| Presentation | (new) | `GetAncestor`, `IsIconic`, `IsWindowVisible`, `ShowWindow`, `SetForegroundWindow`, `GetForegroundWindow`, `FlashWindowEx`, `IsWindow` | Raw overloads, called on the window's thread through `INativePickerOwner.InvokeAsync`. |
 
 ## Retained handwritten interop
 

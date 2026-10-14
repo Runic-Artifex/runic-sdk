@@ -49,10 +49,18 @@ line, cut to `szTip`'s 127 characters. The window is a hidden top-level window
 rather than a message-only one, because message-only windows do not receive the
 `TaskbarCreated` broadcast: after Explorer restarts, the icon is added again.
 Without a taskbar, `ShowAsync` returns unavailable and the icon appears when
-one starts.
+one starts. Applications report that Enter can reach an icon as two
+`NIN_KEYSELECT` notifications, so a repeat within 250 ms raises nothing.
 
-`PlatformServices.PresentAsync(owner)` restores a minimized Desktop window and
-calls `SetForegroundWindow` on the window's thread. Windows grants the
+The icon belongs to the application: only `HideAsync` and `DisposeAsync`
+remove it. Its window ignores `WM_CLOSE` from other processes (`taskkill`
+without `/F`, Restart Manager). When the session ends (`WM_ENDSESSION`), or the
+window is destroyed some other way, the icon is removed and the window's
+thread ends. A later `ShowAsync` starts a new window.
+
+`PlatformServices.PresentAsync(owner)` restores a minimized Desktop window,
+shows a hidden one (as a close-to-tray application leaves it), and calls
+`SetForegroundWindow` on the window's thread. Windows grants the
 foreground only to the process the user just started, so
 `ApplicationInstance.ClaimAsync` calls `AllowSetForegroundWindow` for the
 running instance before it forwards a launch. When Windows still refuses, the
@@ -62,3 +70,6 @@ taskbar button flashes (`FlashWindowEx`) and the result is
 CI's `Native / win-x64` job runs the `NativeStatusIcon` and
 `NativePresentation` categories of `Runic.Platform.Windows.Tests` with JIT and
 NativeAOT on the runner's desktop session.
+
+WPF windows have no `DesktopNativeOwner`, so they have no `PresentAsync` path
+yet ([#267](https://github.com/Runic-Artifex/runic-sdk/issues/267)).

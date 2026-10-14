@@ -15,6 +15,8 @@ internal static class Program
     public static int Main(string[] args)
 #pragma warning restore TUnit0034
     {
+        // The running instance in another process, for the forwarding test (ApplicationInstanceTests).
+        if (args is ["--instance-primary", var directory]) return ApplicationInstanceTests.RunPrimaryAsync(directory).GetAwaiter().GetResult();
         if (OperatingSystem.IsMacOS() && args.Any(static arg => arg.Contains("Category=NativeServices", StringComparison.Ordinal)
             || arg.Contains("Category=NativeSelect", StringComparison.Ordinal)))
         {

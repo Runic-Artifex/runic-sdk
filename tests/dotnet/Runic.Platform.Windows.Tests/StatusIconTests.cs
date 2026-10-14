@@ -156,12 +156,40 @@ internal sealed partial class StatusIconTests
         }
         else Console.WriteLine("Not checked without a taskbar: adding the icon again on TaskbarCreated.");
 
+        bool added = shown is PlatformResult<PlatformUnit>.Success;
+        // Enter can arrive as two NIN_KEYSELECT; one key press is one primary action.
+        await Task.Delay(TimeSpan.FromMilliseconds(WindowsStatusIcon.KeySelectRepeatMilliseconds * 2));
+        Post(window, WindowsStatusIcon.CallbackMessage, 0, WindowsShellInterop.NIN_KEYSELECT | WindowsStatusIcon.IconId << 16);
+        Post(window, WindowsStatusIcon.CallbackMessage, 0, WindowsShellInterop.NIN_KEYSELECT | WindowsStatusIcon.IconId << 16);
+        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.Primary }, "a repeated key select is one primary action");
+        await Task.Delay(TimeSpan.FromMilliseconds(WindowsStatusIcon.KeySelectRepeatMilliseconds * 2));
+        Check(!activations.Reader.TryRead(out _), "the repeat raised nothing");
+
         Check(await icon.HideAsync() is PlatformResult<PlatformUnit>.Success, "hiding removes the icon");
         Check(await icon.ShowAsync(state) is var shownAgain && shownAgain.GetType() == shown.GetType(), "showing after hiding adds it again");
-        await icon.DisposeAsync();
-        Check(await WaitForAsync(() => PInvoke.IsWindow((HWND)window) ? 0 : 1) == 1, "disposal destroys the window");
-        Console.WriteLine($"PASS native Windows status icon ({(shown is PlatformResult<PlatformUnit>.Success ? "in the notification area" : "without a taskbar")}): "
-            + "add, modify, attention icon, primary, secondary, menu choice" + (shown is PlatformResult<PlatformUnit>.Success ? ", TaskbarCreated" : "") + ", hide and disposal");
+
+        // WM_CLOSE from another process (taskkill without /F, Restart Manager) leaves the icon to the application.
+        Post(window, PInvoke.WM_CLOSE, 0, 0);
+        await Task.Delay(500);
+        Check(PInvoke.IsWindow((HWND)window) && icon.Window == window && (!added || Notify(WindowsShellInterop.NIM_MODIFY, window) != 0),
+            "an outside WM_CLOSE is ignored");
+
+        // The session ending destroys the window and removes the icon; the next ShowAsync starts a new window.
+        Post(window, PInvoke.WM_ENDSESSION, 1, 0);
+        Check(await WaitForAsync(() => PInvoke.IsWindow((HWND)window) ? 0 : 1) == 1 && icon.Window == 0, "the session's end destroys the window");
+        Check(!added || Notify(WindowsShellInterop.NIM_MODIFY, window) == 0, "and removes the icon");
+        Check(await icon.ShowAsync(state) is var restarted && restarted.GetType() == shown.GetType(), "ShowAsync starts again");
+        nint second = icon.Window;
+        Check(second != 0 && second != window, "with a new window");
+        Post(second, WindowsStatusIcon.CallbackMessage, 0, WindowsShellInterop.NIN_SELECT | WindowsStatusIcon.IconId << 16);
+        Check(await Next(activations) is { Kind: DesktopStatusIconActivationKind.Primary }, "the new window raises activations");
+
+        await icon.DisposeAsync().AsTask().WaitAsync(Wait);
+        Check(await WaitForAsync(() => PInvoke.IsWindow((HWND)second) ? 0 : 1) == 1, "disposal destroys the window");
+        Check(!added || Notify(WindowsShellInterop.NIM_MODIFY, second) == 0, "disposal removes the icon");
+        Console.WriteLine($"PASS native Windows status icon ({(added ? "in the notification area" : "without a taskbar")}): "
+            + "add, modify, attention icon, primary, secondary, menu choice" + (added ? ", TaskbarCreated" : "")
+            + ", repeated key select, outside WM_CLOSE, session end and restart, hide and disposal");
     }
 
     // The icon's own entry, as Explorer knows it.
@@ -217,6 +245,19 @@ internal sealed partial class StatusIconTests
                 ? "PASS native Windows presentation: restored and brought to the foreground"
                 : "PASS native Windows presentation: restored; Windows refused the foreground and the taskbar button flashes");
             PInvoke.DestroyWindow(window);
+
+            // A close-to-tray application hides its window; presenting shows it again.
+            var hidden = CreateTestWindow(visible: false);
+            try
+            {
+                Check(!PInvoke.IsWindowVisible(hidden), "the window starts hidden");
+                var shown = await WindowsWindowPresentation.PresentAsync(new InlineOwner(hidden), CancellationToken.None);
+                Console.WriteLine($"PresentAsync (hidden window): {shown}");
+                Check(PInvoke.IsWindowVisible(hidden) && !PInvoke.IsIconic(hidden), "presenting shows a hidden window");
+                Check(shown is PlatformResult<PlatformUnit>.Success || shown is PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied },
+                    "the hidden window comes forward, or its taskbar button flashes");
+            }
+            finally { PInvoke.DestroyWindow(hidden); }
             var closed = await WindowsWindowPresentation.PresentAsync(new InlineOwner(default), CancellationToken.None);
             Check(closed is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed), "a closed owner is reported closed");
         }
@@ -224,11 +265,11 @@ internal sealed partial class StatusIconTests
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows8.0")]
-    private static unsafe HWND CreateTestWindow()
+    private static unsafe HWND CreateTestWindow(bool visible = true)
     {
         fixed (char* className = "STATIC")
         fixed (char* title = "Runic presentation test")
-            return PInvoke.CreateWindowEx(0, className, title, WINDOW_STYLE.WS_OVERLAPPEDWINDOW | WINDOW_STYLE.WS_VISIBLE,
+            return PInvoke.CreateWindowEx(0, className, title, WINDOW_STYLE.WS_OVERLAPPEDWINDOW | (visible ? WINDOW_STYLE.WS_VISIBLE : 0),
                 100, 100, 320, 200, default, default, default, null);
     }
 

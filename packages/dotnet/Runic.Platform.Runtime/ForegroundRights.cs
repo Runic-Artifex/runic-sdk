@@ -10,11 +10,16 @@ internal static partial class ForegroundRights
     // SIO_AF_UNIX_GETPEERPID: the process at the other end of a Unix domain socket.
     private const int GetPeerProcessId = 0x58000100;
 
+    // Observes each grant (the process ID, and whether Windows allowed it), for the tests.
+    internal static Action<int, bool>? Granted;
+
     internal static void GrantPeer(Socket socket)
     {
         if (!OperatingSystem.IsWindows() || PeerProcessId(socket) is not { } processId) return;
-        try { _ = AllowSetForegroundWindow((uint)processId); }
-        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { /* Without user32 no window comes forward. */ }
+        bool allowed;
+        try { allowed = AllowSetForegroundWindow((uint)processId) != 0; }
+        catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException) { return; /* Without user32 no window comes forward. */ }
+        Granted?.Invoke(processId, allowed);
     }
 
     // Null where Windows cannot tell, such as before the Windows 10 versions that report it.

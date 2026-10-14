@@ -29,7 +29,9 @@ internal static class WindowsWindowPresentation
     {
         var window = PInvoke.GetAncestor((HWND)handle, GET_ANCESTOR_FLAGS.GA_ROOT);
         if (window == default) window = (HWND)handle;
+        // A minimized window is restored; a hidden one, as a close-to-tray application leaves it, is shown.
         if (PInvoke.IsIconic(window)) PInvoke.ShowWindow(window, SHOW_WINDOW_CMD.SW_RESTORE);
+        else if (!PInvoke.IsWindowVisible(window)) PInvoke.ShowWindow(window, SHOW_WINDOW_CMD.SW_SHOW);
         if (PInvoke.SetForegroundWindow(window) && PInvoke.GetForegroundWindow() == window)
             return new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
         var flash = new FLASHWINFO

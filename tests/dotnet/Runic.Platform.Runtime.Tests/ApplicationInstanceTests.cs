@@ -143,42 +143,58 @@ internal sealed class ApplicationInstanceTests
         Check(!System.IO.Directory.Exists(directory), "nothing is created");
     }
 
-    // The launching process grants the running instance the foreground through the socket's peer process ID.
-    [Test, DisplayName("INSTANCE: on Windows a forwarding process finds the running instance's process")]
-    public async Task FindsTheRunningInstanceProcessAsync()
+    // The launching process grants the running instance, here another process, the foreground through the socket's
+    // peer process ID. Two processes, so the instance's ID cannot be confused with the launching process's own.
+    [Test, DisplayName("INSTANCE: a forwarded launch lets the running instance in another process take the foreground")]
+    public async Task GrantsTheRunningInstanceTheForegroundAsync()
     {
         string directory = Directory();
-        System.IO.Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, "peer.sock");
+        var granted = new List<(int ProcessId, bool Allowed)>();
+        string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Missing executable");
+        var start = new System.Diagnostics.ProcessStartInfo(executable) { RedirectStandardOutput = true, UseShellExecute = false };
+        if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Runic.Platform.Runtime.Tests.dll"));
+        start.ArgumentList.Add("--instance-primary");
+        start.ArgumentList.Add(directory);
+        using var primary = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("The running instance did not start.");
+        ForegroundRights.Granted = (processId, allowed) => { lock (granted) granted.Add((processId, allowed)); };
         try
         {
-            using var listener = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
-            listener.Bind(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
-            listener.Listen(1);
-            using var client = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
-            await client.ConnectAsync(new System.Net.Sockets.UnixDomainSocketEndPoint(path));
-            using var accepted = await listener.AcceptAsync();
-            int? peer = ForegroundRights.PeerProcessId(client);
+            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "ready", "the other process is the running instance");
+            var claim = await ApplicationInstance.ClaimAsync("org.example.Peer", new ApplicationLaunch(["--show"], "/"), directory, default);
+            Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded }, "the launch is forwarded");
+            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "launched --show", "the running instance receives it");
+            await primary.WaitForExitAsync().WaitAsync(Wait);
             if (OperatingSystem.IsWindows())
             {
-                string answers = "";
-                if (peer != Environment.ProcessId)
-                {
-                    // What Windows answers on each end, for the failure message.
-                    foreach (var (name, socket) in new[] { ("client", client), ("accepted", accepted) })
-                    {
-                        var buffer = new byte[4];
-                        try { answers += $" {name}: {socket.IOControl(0x58000100, null, buffer)} bytes, {BitConverter.ToInt32(buffer)};"; }
-                        catch (Exception error) { answers += $" {name}: {error.GetType().Name} {(error as System.Net.Sockets.SocketException)?.SocketErrorCode} {error.Message};"; }
-                    }
-                }
-                Check(peer == Environment.ProcessId, $"the peer is this process {Environment.ProcessId}, not {peer?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unknown"};{answers}");
-                // Granting needs no window and must not throw.
-                ForegroundRights.GrantPeer(client);
+                Check(granted is [{ ProcessId: var id }] && id == primary.Id,
+                    $"AllowSetForegroundWindow was called for the running instance {primary.Id}, not [{string.Join(", ", granted)}]");
+                Console.WriteLine($"AllowSetForegroundWindow({primary.Id}) {(granted[0].Allowed ? "succeeded" : "was refused: this process does not have the foreground")}");
             }
-            else Check(peer is null, "other systems do not ask");
+            else Check(granted.Count == 0, "only Windows grants the foreground");
         }
-        finally { System.IO.Directory.Delete(directory, recursive: true); }
+        finally
+        {
+            ForegroundRights.Granted = null;
+            if (!primary.HasExited) primary.Kill();
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // The child process's side: become the running instance, report one launch and end.
+    internal static async Task<int> RunPrimaryAsync(string directory)
+    {
+        var claim = await ApplicationInstance.ClaimAsync("org.example.Peer", new ApplicationLaunch([], "/"), directory, default);
+        if (claim is not PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }) return 1;
+        await using (instance)
+        {
+            var launched = new TaskCompletionSource<ApplicationLaunch>(TaskCreationOptions.RunContinuationsAsynchronously);
+            instance.Launched += (_, launch) => launched.TrySetResult(launch);
+            Console.WriteLine("ready");
+            var launch = await launched.Task.WaitAsync(TimeSpan.FromSeconds(20));
+            Console.WriteLine("launched " + string.Join(' ', launch.Arguments));
+        }
+        return 0;
     }
 
     [Test, DisplayName("INSTANCE: IDs, launches and directories others can enter are refused")]
