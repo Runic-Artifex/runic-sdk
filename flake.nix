@@ -15,6 +15,31 @@
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
     in
     {
+      # Packaging Runic applications: buildRunicApplication, mkDevShell and the NixOS and Home Manager modules.
+      # See nix/README.md.
+      lib = import ./nix/lib;
+      overlays.default = final: prev: { buildRunicApplication = self.lib.buildRunicApplication final; };
+      nixosModules.runic-applications = import ./nix/modules/nixos.nix;
+      homeManagerModules.runic-applications = import ./nix/modules/home-manager.nix;
+
+      # The status-icon example built with buildRunicApplication, under JIT and NativeAOT.
+      checks.x86_64-linux =
+        let
+          examples = import ./nix/examples.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            runic = self.lib;
+          };
+        in
+        {
+          example-status-icon = examples.status-icon;
+          example-status-icon-aot = examples.status-icon-aot;
+          example-privileged-smoke = examples.privileged-smoke;
+          home-manager-module = import ./nix/tests/modules.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            inherit self;
+          };
+        };
+
       # The portal backends are intentionally split into two images. A picker
       # or notification therefore cannot accidentally be served by the host
       # desktop's preferred backend.
@@ -59,6 +84,8 @@
           application-lifetime-plasma = (import ./nixos/application-lifetime { inherit pkgs; }).plasma;
           # Privileged actions against a real Polkit; see nixos/privileged-operations.
           privileged-operations-polkit = (import ./nixos/privileged-operations { inherit pkgs; }).polkit;
+          # A packaged application installed through the NixOS module; see nixos/packaging.
+          packaging-nixos = import ./nixos/packaging { inherit pkgs self; };
           desktop-flatpak-tools = pkgs.buildEnv {
             name = "runic-desktop-flatpak-tools";
             paths = [ pkgs.flatpak pkgs.bash pkgs.coreutils pkgs.nix ];
@@ -189,6 +216,20 @@
           ];
         in
         {
+          # tests/templates/Test-NixTemplate.sh and the Nix workflow: the .NET SDK, Node and Bun to pack the
+          # template, and Xvfb for its window check, without the full development shell's desktop stack.
+          packaging = self.lib.mkDevShell pkgs {
+            hosts = [ ];
+            packageManagers = [ "bun" ];
+            packages = with pkgs; [
+              curl
+              dbus
+              git
+              jq
+              procps
+              xvfb-run
+            ];
+          };
           default = pkgs.mkShell {
             packages = with pkgs; [
               git

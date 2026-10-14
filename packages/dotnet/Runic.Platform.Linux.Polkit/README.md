@@ -18,7 +18,7 @@ Declare each action once, as an item in the application's project:
 <ItemGroup>
   <PackageReference Include="Runic.Platform.Linux.Polkit" />
   <RunicPrivilegedAction Include="org.example.app.activate"
-                         Program="$(AppInstallPrefix)/libexec/example/example-helper"
+                         Program="$(RunicApplicationInstallPrefix)/libexec/example/example-helper"
                          Verb="activate"
                          Description="Activate a system configuration"
                          Message="Authentication is required to activate the system configuration."
@@ -33,6 +33,12 @@ come from Runic.Platform, which this package depends on; see
 [Declare privileged actions](../Runic.Platform/README.md#declare-privileged-actions).
 This package adds the Polkit policy and the metadata only Polkit reads
 (`IconName`, `AllowAny`, `AllowInactive`, `AllowActive` and `AllowGui`).
+
+`RunicApplicationInstallPrefix` is the prefix the application is installed
+under. The [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#privileged-actions)
+sets it to the package's `$out`, where the program is its wrapper
+`$(RunicApplicationInstallPrefix)/bin/<executable>`; another build sets it
+itself, for example to `/usr`.
 
 Declare the actions in one project. When the privileged program is a separate
 project, give both projects the same items, for example from one imported
@@ -59,8 +65,10 @@ Each build writes, under `obj/.../runic-privileged/`:
   application and the privileged program use it.
 - `<RunicPolkitPolicyName>.policy`, copied to the output and publish
   directories at `share/polkit-1/actions/`. Install it in
-  `/usr/share/polkit-1/actions` (or `$out/share/polkit-1/actions` in a Nix
-  package, which NixOS links into the system's actions directory). Without it,
+  `/usr/share/polkit-1/actions`. The Nix builder installs it in
+  `$out/share/polkit-1/actions`, which NixOS links into the system's actions
+  directory when the package is in `environment.systemPackages` (the NixOS
+  module does that). Without it,
   pkexec falls back to its generic `org.freedesktop.policykit.exec` action and
   asks for an administrator with a generic message.
 
