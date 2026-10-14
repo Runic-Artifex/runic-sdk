@@ -211,6 +211,38 @@ as such a late call: nothing is invoked, no diagnostic is reported, and the repl
 is `{"ok":false,"state":null,"error":{"kind":"disconnected","message":"This view is no longer connected."}}`,
 the envelope CS-WebUI sends for an unbound route.
 
+## Accessibility
+
+On Linux, the embedded window is WebKitGTK, and a screen reader such as Orca
+reads the page through WebKit's accessibility tree. Two differences from
+Chromium, which CS-WebUI and WebView2 use, were seen with Orca 50 and
+WebKitGTK 4.1 (GTK 3); GTK 4 was not compared.
+
+**Lists styled with `list-style: none` are not lists.** WebKit exposes a `ul`
+or `ol` without list markers as a panel, a plain group, as Safari does. Only its items
+remain list items, so Orca's list navigation (L) reports "No more lists" and
+does not count the items. Tailwind's base styles remove the markers from every
+list, so a Tailwind page loses all its lists on Runic Desktop. Chromium keeps
+them. Give each such list an explicit `role="list"`:
+
+```html
+<ul role="list" class="divide-y">
+  <li class="py-2">Restore point 12</li>
+  <li class="py-2">Restore point 11</li>
+</ul>
+```
+
+The role is needed wherever a list has no markers, whether Tailwind's base
+styles, its `list-none` utility or a stylesheet of your own removed them. It
+changes nothing in Chromium. The `runic-app` templates render no lists.
+
+**The page is not announced when the window opens.** Orca announces only the
+window title, here the page's `<title>`, and "frame". On CS-WebUI it also says
+that the page finished loading, counts its landmarks and headings, and starts
+reading. On Runic Desktop the user reaches the content with Orca's browse-mode
+keys, such as H for the next heading. Give the page a `<title>` that names it,
+a `main` landmark and headings.
+
 ## Security notes
 
 - A local client that holds the session credential can take the only Bridge

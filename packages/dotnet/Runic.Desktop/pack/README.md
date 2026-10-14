@@ -68,6 +68,10 @@ dotnet run --project samples/Runic.Desktop.Sample -- --webview
 - macOS uses the system WebKit framework.
 - Linux requires explicit `DesktopHostOptions.Linux.EmbeddedBackend` selection: GTK3/WebKitGTK 4.1, or the optional `Runic.Desktop.Gtk4` provider with GTK4/WebKitGTK 6.0, plus a graphical display.
 
+WebKit does not report a list without list markers, such as every list on a
+Tailwind page, as a list to a screen reader; add `role="list"` to it. See
+[accessibility](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop#accessibility).
+
 Applications can provide an `IDesktopWindowHostFactory` in immutable host
 options without replacing the managed server, transport, capabilities, or
 lifecycle.
