@@ -226,9 +226,11 @@ internal sealed class PrivilegedModelTests
         Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Unavailable:BackendUnavailable", "no daemon");
         host.Channel.PrepareReply = new(MacReplyStatus.UntrustedDaemon);
         Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Failed:InvalidData", "a service that is not the daemon");
+        host.Channel.PrepareReply = new(MacReplyStatus.Interrupted);
+        Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Unavailable:BackendUnavailable", "a daemon that refused or left before anything ran");
         host.Channel.PrepareReply = new(MacReplyStatus.Failed, -60005);
         Check(Describe(await provider.RunAsync(new(Shell, ["true"]))) == "Failed:IoError", "the rights could not be defined");
-        Check(host.Authorizations == 0 && host.Channel.Disposals == 3, "never asked; every connection closed");
+        Check(host.Authorizations == 0 && host.Channel.Disposals == 4, "never asked; every connection closed");
     }
 
     [Test, DisplayName("provider: dismissed and denied authorization, with the rights destroyed")]

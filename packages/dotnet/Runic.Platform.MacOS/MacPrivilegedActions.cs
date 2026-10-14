@@ -154,6 +154,9 @@ internal sealed class MacPrivilegedProvider : IDesktopPrivilegedActions
         MacReply prepared;
         try { prepared = await channel.PrepareAsync().WaitAsync(PrepareTimeout, cancellationToken).ConfigureAwait(false); }
         catch (TimeoutException) { prepared = new MacReply(MacReplyStatus.Unreachable); }
+        // Nothing runs before the authorization: a daemon that went away during prepare, or refused this client
+        // (libxpc reports its cancellation as an interruption), is simply not reachable.
+        if (prepared.Status == MacReplyStatus.Interrupted) prepared = new MacReply(MacReplyStatus.Unreachable);
         if (prepared.Status != MacReplyStatus.Ready) return MacPrivilegedOutcome.FromReply(prepared);
 
         // AuthorizationCopyRights blocks while the dialog is open and cannot be withdrawn. A cancelled run stops
