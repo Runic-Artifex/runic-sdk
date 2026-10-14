@@ -139,8 +139,9 @@ public static class PlatformServices
     /// Linux registers a StatusNotifierItem with the desktop's status area (Plasma, Waybar's tray, or GNOME with the
     /// AppIndicator extension) without loading GTK. Windows adds a notification-area icon with <c>Shell_NotifyIcon</c>
     /// from RGBA images, ignoring theme names, and adds it again when Explorer restarts. Creating it connects to
-    /// nothing; the first <see cref="IDesktopStatusIcon.ShowAsync"/> does. macOS has no provider yet: every request
-    /// reports <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// nothing; the first <see cref="IDesktopStatusIcon.ShowAsync"/> does. macOS shows an <c>NSStatusItem</c> in the
+    /// menu bar once the Desktop event loop runs, and reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>
+    /// without that loop; it ignores <paramref name="applicationId"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -152,6 +153,7 @@ public static class PlatformServices
         if (OperatingSystem.IsWindows()) icon = Optional(CreateWindowsStatusIcon);
 #if RUNIC_PORTABLE_PLATFORMS
         else if (OperatingSystem.IsLinux()) icon = CreatePortalStatusIcon(applicationId, logger);
+        else if (OperatingSystem.IsMacOS()) icon = CreateMacOSStatusIcon();
 #endif
         return icon ?? DesktopStatusIcons.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -161,19 +163,28 @@ public static class PlatformServices
     private static IDesktopStatusIcon CreatePortalStatusIcon(string? applicationId, ILogger? logger) =>
         new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
             .CreateStatusIcon();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static MacStatusIcon CreateMacOSStatusIcon() => new MacStatusIcon();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static MacLoginStartup CreateMacOSLoginStartup() => new MacLoginStartup();
 #endif
 
     /// <summary>Creates login startup for the application from the provider for the operating system.</summary>
     /// <param name="applicationId">
     /// The application's ID: on Linux the reverse-DNS ID of its installed desktop entry, which names the autostart
     /// entry; on Windows the name of its Run value. <see langword="null"/> leaves login startup unconfigured, except
-    /// inside a Flatpak or Snap sandbox, where the desktop portal knows the application.
+    /// inside a Flatpak or Snap sandbox, where the desktop portal knows the application. macOS uses the bundle and
+    /// ignores it.
     /// </param>
     /// <remarks>
     /// Nothing is registered until <see cref="IDesktopLoginStartup.EnableAsync"/>, which an application calls only
     /// when the user asks. Linux writes an XDG autostart entry, or asks the Background portal inside a sandbox;
-    /// Windows writes the user's Run key. macOS has no provider yet: every request reports
-    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// Windows writes the user's Run key. macOS 13 and later registers the application bundle as a login item with
+    /// <c>SMAppService</c>, which starts it without the request's arguments; a login item waiting for the user's
+    /// approval reports <see cref="PlatformFailureCode.PermissionDenied"/>, and a process outside an application
+    /// bundle, or an earlier macOS, reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.
     /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
     /// one instance for the application.
     /// </remarks>
@@ -188,6 +199,7 @@ public static class PlatformServices
         else if (OperatingSystem.IsLinux())
             startup = new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
                 .CreateLoginStartup();
+        else if (OperatingSystem.IsMacOS()) startup = CreateMacOSLoginStartup();
 #endif
         return startup ?? DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
@@ -258,10 +270,12 @@ public static class PlatformServices
     /// the foreground when the desktop allows it, as it does for the running instance after
     /// <see cref="Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string, ApplicationLaunch, CancellationToken)"/> forwards a launch; when
     /// Windows refuses, the taskbar button flashes and the result is <see cref="PlatformFailureCode.PermissionDenied"/>.
-    /// A window without native dispatch, such as an installed browser, reports
+    /// macOS orders the window front, also a hidden or minimized one, and activates the application, cooperatively on
+    /// macOS 14 and later, where a forwarding launch yields to it, and otherwise as the user's request; when macOS
+    /// keeps another application active, the result is <see cref="PlatformFailureCode.PermissionDenied"/>. It needs no
+    /// context. A window without native dispatch, such as an installed browser, reports
     /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>, and a closed one
-    /// <see cref="PlatformUnavailableReason.OwnerClosed"/>; macOS reports
-    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/> for now.
+    /// <see cref="PlatformUnavailableReason.OwnerClosed"/>.
     /// </remarks>
     public static async ValueTask<PlatformResult<PlatformUnit>> PresentAsync(DesktopNativeOwner owner, DesktopActivationContext? context = null,
         CancellationToken cancellationToken = default)
@@ -282,6 +296,8 @@ public static class PlatformServices
             if (provider == DesktopPlatformProvider.LinuxGtk3) { await PresentGtk3(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
             if (provider == DesktopPlatformProvider.LinuxGtk4 && OperatingSystem.IsLinux())
             { await PresentGtk4(owner, context, cancellationToken).ConfigureAwait(false); return Presented; }
+            if (provider == DesktopPlatformProvider.MacOS && OperatingSystem.IsMacOS())
+                return await PresentMacOS(owner, cancellationToken).ConfigureAwait(false);
 #endif
             return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         }
@@ -303,6 +319,11 @@ public static class PlatformServices
     [SupportedOSPlatform("linux")]
     private static ValueTask PresentGtk4(DesktopNativeOwner owner, DesktopActivationContext? context, CancellationToken cancellationToken) =>
         new Gtk4PortalWindowOwner(owner).PresentAsync(context, cancellationToken);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [SupportedOSPlatform("macos")]
+    private static ValueTask<PlatformResult<PlatformUnit>> PresentMacOS(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
+        MacWindowPresenter.PresentAsync(owner, cancellationToken);
 #endif
 
     [MethodImpl(MethodImplOptions.NoInlining)]

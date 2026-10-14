@@ -21,6 +21,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly ConcurrentDictionary<nint, MacOsWkWebViewHost> Hosts = new();
     private static readonly ConcurrentQueue<NativeDispatchWork> MainQueue = new();
     private static readonly nint DelegateClass = CreateDelegateClass();
+    private static readonly nint MenuTargetClass = CreateMenuTargetClass();
+    private static nint s_menuTarget;
 
     private readonly TaskCompletionSource _closed = NewCompletionSource();
     private nint _application;
@@ -159,21 +161,26 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
 
         ProcessPendingMainThreadWork();
+        PumpApplicationEvents(_application);
+    }
 
+    // Sends every queued AppKit event, which also runs the main dispatch queue.
+    private static void PumpApplicationEvents(nint application)
+    {
         var date = Api.SendNint(Api.GetClass("NSDate"), "distantPast");
         var mode = Api.CreateString("kCFRunLoopDefaultMode");
         try
         {
             while (true)
             {
-                var webEvent = Api.NextEvent(_application, EventMaskAny, date, mode, true);
+                var webEvent = Api.NextEvent(application, EventMaskAny, date, mode, true);
                 if (webEvent == 0)
                 {
                     break;
                 }
-                Api.SendVoidNint(_application, "sendEvent:", webEvent);
+                Api.SendVoidNint(application, "sendEvent:", webEvent);
             }
-            Api.SendVoid(_application, "updateWindows");
+            Api.SendVoid(application, "updateWindows");
         }
         finally
         {
@@ -187,7 +194,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         try
         {
             ProcessPendingMainThreadWork();
-            foreach (var host in Hosts.Values) host.ProcessEvents();
+            // NSApp exists once a window or a window-independent service, such as a status item, created it. Its
+            // events arrive with or without an open window. Before that, the run loop still runs the main dispatch
+            // queue, through which those services start.
+            var application = Api.SharedApplicationIfCreated();
+            if (application != 0) PumpApplicationEvents(application);
+            else Api.RunLoopOnce();
         }
         finally { Api.SendVoid(pool, "drain"); }
     }
@@ -247,8 +259,13 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private void Create(Uri url, WebUiEmbeddedHostOptions options)
     {
         _application = Api.SendNint(Api.GetClass("NSApplication"), "sharedApplication");
-        Api.SendBoolLong(_application, "setActivationPolicy:", ApplicationActivationPolicyRegular);
+        // A bundle with LSUIElement runs without a Dock icon and menu bar, also while it shows a window.
+        if (!Api.InfoDictionaryBool("LSUIElement"))
+        {
+            Api.SendBoolLong(_application, "setActivationPolicy:", ApplicationActivationPolicyRegular);
+        }
         Api.SendVoid(_application, "finishLaunching");
+        InstallMainMenu(_application);
 
         var style = options.Frameless || options.Kiosk
             ? StyleBorderless | (options.Resizable ? StyleResizable : 0)
@@ -283,8 +300,12 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             Api.SendVoidNint(_webView, "setUnderPageBackgroundColor:", clear);
         }
         Api.SendVoidUlong(_webView, "setAutoresizingMask:", ViewWidthSizable | ViewHeightSizable);
+        // A trackpad pinch magnifies the page, as in Safari; WebKit lets the page cancel the gesture first.
+        Api.SendVoidBool(_webView, "setAllowsMagnification:", true);
         var contentView = Api.SendNint(_window, "contentView");
         Api.SendVoidNint(contentView, "addSubview:", _webView);
+        // Keys reach the page without a click first, and the page sees Command keys before the View menu.
+        Api.SendNintNint(_window, "makeFirstResponder:", _webView);
         if (options.Centered)
         {
             Api.SendVoid(_window, "center");
@@ -331,6 +352,99 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         finally
         {
             Api.SendVoid(value, "release");
+        }
+    }
+
+    // Main thread only. Applies a zoom command to the page of the key window.
+    private void Zoom(PageZoomCommand command)
+    {
+        if (_webView == 0 || !Api.RespondsToSelector(_webView, "setPageZoom:"))
+        {
+            return;
+        }
+        Api.SendVoidDouble(_webView, "setPageZoom:", MacOsPageZoom.Apply(command, Api.SendDouble(_webView, "pageZoom")));
+        if (command == PageZoomCommand.Reset)
+        {
+            Api.SendVoidDouble(_webView, "setMagnification:", 1.0);
+        }
+    }
+
+    // Completes the application's main menu once, when its first window opens (MacOsMainMenu). Main thread only.
+    private static void InstallMainMenu(nint application)
+    {
+        if (s_menuTarget != 0 || MenuTargetClass == 0)
+        {
+            return;
+        }
+        s_menuTarget = Api.SendNint(Api.SendNint(MenuTargetClass, "alloc"), "init");
+        var mainMenu = Api.SendNint(application, "mainMenu");
+        bool complete = MacOsMainMenu.Completes(mainMenu != 0, mainMenu != 0 && Api.HasAnyKeyEquivalent(mainMenu));
+        if (mainMenu == 0)
+        {
+            mainMenu = Api.NewMenu("");
+            Api.SendVoidNint(application, "setMainMenu:", mainMenu);
+            Api.SendVoid(mainMenu, "release");
+        }
+        if (complete)
+        {
+            var name = Api.Text(Api.SendNint(Api.SendNint(Api.GetClass("NSProcessInfo"), "processInfo"), "processName"));
+            // The first item's menu is the application menu, which AppKit titles with the application's name.
+            var applicationMenu = Api.SendNint(mainMenu, "numberOfItems") > 0
+                ? Api.SendNint(Api.SendNintNint(mainMenu, "itemAtIndex:", 0), "submenu") : 0;
+            if (applicationMenu == 0)
+            {
+                applicationMenu = Api.InsertSubmenu(mainMenu, "", 0, null);
+            }
+            if (Api.SendNint(applicationMenu, "numberOfItems") == 0)
+            {
+                Api.AddItems(applicationMenu, MacOsMainMenu.Application, name, s_menuTarget);
+            }
+            if (Api.FindSubmenu(mainMenu, MacOsMainMenu.EditIdentifier, MacOsMainMenu.EditActions) == 0)
+            {
+                Api.AddItems(Api.InsertSubmenu(mainMenu, "Edit", 1, MacOsMainMenu.EditIdentifier), MacOsMainMenu.Edit, name, s_menuTarget);
+            }
+        }
+        // The zoom items go into any main menu that has no Command and = or + of its own.
+        if (!Api.HasCommandKey(mainMenu, "=") && !Api.HasCommandKey(mainMenu, "+"))
+        {
+            var view = Api.FindSubmenu(mainMenu, MacOsMainMenu.ViewIdentifier, MacOsMainMenu.ViewActions);
+            if (view == 0)
+            {
+                var edit = Api.IndexOfSubmenu(mainMenu, Api.FindSubmenu(mainMenu, MacOsMainMenu.EditIdentifier, MacOsMainMenu.EditActions));
+                view = Api.InsertSubmenu(mainMenu, "View", edit >= 0 ? edit + 1 : Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.ViewIdentifier);
+            }
+            else if (Api.SendNint(view, "numberOfItems") > 0)
+            {
+                Api.SendVoidNint(view, "addItem:", Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+            }
+            foreach (var item in MacOsPageZoom.MenuItems)
+            {
+                Api.AddMenuItem(view, item.Title, MacOsPageZoom.Selector(item.Command), item.KeyEquivalent, MacOsPageZoom.CommandModifier,
+                    s_menuTarget, item.Hidden);
+            }
+        }
+        if (complete && Api.SendNint(application, "windowsMenu") == 0
+            && Api.FindSubmenu(mainMenu, MacOsMainMenu.WindowIdentifier, MacOsMainMenu.WindowActions) == 0)
+        {
+            var window = Api.InsertSubmenu(mainMenu, "Window", Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.WindowIdentifier);
+            Api.AddItems(window, MacOsMainMenu.Window, "", s_menuTarget);
+            Api.SendVoidNint(application, "setWindowsMenu:", window);
+        }
+    }
+
+    // Quit asks every window to close, as its close button does: a close guard decides for its window.
+    private static void QuitApplication()
+    {
+        foreach (var host in Hosts.Values.ToArray())
+        {
+            if (host._closeRequested is { } requestClose)
+            {
+                requestClose();
+            }
+            else if (host.IsOpen)
+            {
+                Api.SendVoid(host._window, "close");
+            }
         }
     }
 
@@ -395,6 +509,69 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         return type;
     }
 
+    private static unsafe nint CreateMenuTargetClass()
+    {
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable)
+        {
+            return 0;
+        }
+        var existing = Api.GetClass("RunicDesktopMenuTarget");
+        if (existing != 0)
+        {
+            return existing;
+        }
+        var type = Api.AllocateClassPair(Api.GetClass("NSObject"), "RunicDesktopMenuTarget");
+        if (type == 0)
+        {
+            return 0;
+        }
+        Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.In), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ZoomIn, "v@:@");
+        Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Out), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ZoomOut, "v@:@");
+        Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Reset), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ActualSize, "v@:@");
+        Api.AddMethod(type, MacOsMainMenu.QuitAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&Quit, "v@:@");
+        Api.RegisterClassPair(type);
+        return type;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ZoomIn(nint self, nint selector, nint sender) => ZoomKeyWindow(PageZoomCommand.In);
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ZoomOut(nint self, nint selector, nint sender) => ZoomKeyWindow(PageZoomCommand.Out);
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void ActualSize(nint self, nint selector, nint sender) => ZoomKeyWindow(PageZoomCommand.Reset);
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void Quit(nint self, nint selector, nint sender)
+    {
+        try
+        {
+            QuitApplication();
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    private static void ZoomKeyWindow(PageZoomCommand command)
+    {
+        try
+        {
+            var application = Api.SendNint(Api.GetClass("NSApplication"), "sharedApplication");
+            if (Hosts.TryGetValue(Api.SendNint(application, "keyWindow"), out var host)
+                || Hosts.TryGetValue(Api.SendNint(application, "mainWindow"), out host))
+            {
+                host.Zoom(command);
+            }
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static byte WindowShouldClose(nint self, nint selector, nint window)
     {
@@ -434,6 +611,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         private readonly nint _appKit;
         private readonly nint _messageSend;
         private readonly nint _webKit;
+        private readonly nint _runLoopDefaultMode;
 
         internal ObjC()
         {
@@ -448,9 +626,182 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             {
                 IsAvailable = GetClass("WKWebView") != 0 && GetClass("NSWindow") != 0;
             }
+            if (IsAvailable
+                && NativeLibrary.TryLoad("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", out var coreFoundation)
+                && NativeLibrary.TryGetExport(coreFoundation, "kCFRunLoopDefaultMode", out var mode))
+            {
+                _runLoopDefaultMode = *(nint*)mode;
+            }
         }
 
         internal bool IsAvailable { get; }
+
+        // NSApp, without creating it.
+        internal nint SharedApplicationIfCreated() =>
+            IsAvailable && NativeLibrary.TryGetExport(_appKit, "NSApp", out var variable) ? *(nint*)variable : 0;
+
+        // Runs the main run loop once without waiting, which runs the main dispatch queue.
+        internal void RunLoopOnce()
+        {
+            if (_runLoopDefaultMode != 0)
+            {
+                _ = Native.CFRunLoopRunInMode(_runLoopDefaultMode, 0, 0);
+            }
+        }
+
+        internal bool InfoDictionaryBool(string key)
+        {
+            var name = CreateString(key);
+            try
+            {
+                var value = SendNintNint(SendNint(GetClass("NSBundle"), "mainBundle"), "objectForInfoDictionaryKey:", name);
+                return value != 0 && RespondsToSelector(value, "boolValue")
+                    && ((delegate* unmanaged[Cdecl]<nint, nint, byte>)_messageSend)(value, Selector("boolValue")) != 0;
+            }
+            finally
+            {
+                SendVoid(name, "release");
+            }
+        }
+
+        internal string Text(nint value) =>
+            value == 0 ? "" : Marshal.PtrToStringUTF8(SendNint(value, "UTF8String")) ?? "";
+
+        internal double SendDouble(nint receiver, string selector) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, double>)_messageSend)(receiver, Selector(selector));
+
+        internal void SendVoidDouble(nint receiver, string selector, double value) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, double, void>)_messageSend)(receiver, Selector(selector), value);
+
+        internal nint NewMenu(string title)
+        {
+            var text = CreateString(title);
+            try
+            {
+                return SendNintNint(SendNint(GetClass("NSMenu"), "alloc"), "initWithTitle:", text);
+            }
+            finally
+            {
+                SendVoid(text, "release");
+            }
+        }
+
+        // Inserts an item with a new submenu at the index and returns the submenu, which the item retains.
+        internal nint InsertSubmenu(nint menu, string title, nint index, string? identifier)
+        {
+            var submenu = NewMenu(title);
+            var item = AllocMenuItem(title, 0, "");
+            SendVoidNint(item, "setSubmenu:", submenu);
+            if (identifier is not null)
+            {
+                var text = CreateString(identifier);
+                SendVoidNint(item, "setIdentifier:", text);
+                SendVoid(text, "release");
+            }
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(menu, Selector("insertItem:atIndex:"), item,
+                Math.Min(index, SendNint(menu, "numberOfItems")));
+            SendVoid(item, "release");
+            SendVoid(submenu, "release");
+            return submenu;
+        }
+
+        internal void AddItems(nint menu, IEnumerable<MacOsMainMenu.Item> items, string name, nint target)
+        {
+            foreach (var item in items)
+            {
+                if (item.Action is null)
+                {
+                    SendVoidNint(menu, "addItem:", SendNint(GetClass("NSMenuItem"), "separatorItem"));
+                    continue;
+                }
+                AddMenuItem(menu, string.Format(System.Globalization.CultureInfo.InvariantCulture, item.Title, name), item.Action,
+                    item.KeyEquivalent, item.Modifiers, item.OwnTarget ? target : 0, false);
+            }
+        }
+
+        // The submenu of a top-level item with the identifier, or whose submenu has one of the actions; 0 otherwise.
+        internal nint FindSubmenu(nint mainMenu, string identifier, string[] actions)
+        {
+            for (nint index = 0, count = SendNint(mainMenu, "numberOfItems"); index < count; index++)
+            {
+                var item = SendNintNint(mainMenu, "itemAtIndex:", index);
+                var submenu = SendNint(item, "submenu");
+                if (submenu == 0)
+                {
+                    continue;
+                }
+                if (Text(SendNint(item, "identifier")) == identifier)
+                {
+                    return submenu;
+                }
+                for (nint child = 0, children = SendNint(submenu, "numberOfItems"); child < children; child++)
+                {
+                    var action = SendNint(SendNintNint(submenu, "itemAtIndex:", child), "action");
+                    if (action != 0 && actions.Contains(Marshal.PtrToStringUTF8(Native.SelGetName(action)), StringComparer.Ordinal))
+                    {
+                        return submenu;
+                    }
+                }
+            }
+            return 0;
+        }
+
+        internal nint IndexOfSubmenu(nint mainMenu, nint submenu) =>
+            submenu == 0 ? -1 : SendNintNint(mainMenu, "indexOfItemWithSubmenu:", submenu);
+
+        // Whether the menu or a submenu has an item for Command and the key, without other modifiers.
+        internal bool HasCommandKey(nint menu, string key) => AnyItem(menu, item =>
+            MacOsMainMenu.IsCommandKey(Text(SendNint(item, "keyEquivalent")), unchecked((ulong)SendNint(item, "keyEquivalentModifierMask")), key));
+
+        internal bool HasAnyKeyEquivalent(nint menu) => AnyItem(menu, item => Text(SendNint(item, "keyEquivalent")).Length > 0);
+
+        private bool AnyItem(nint menu, Func<nint, bool> match)
+        {
+            for (nint index = 0, count = SendNint(menu, "numberOfItems"); index < count; index++)
+            {
+                var item = SendNintNint(menu, "itemAtIndex:", index);
+                if (match(item) || (SendNint(item, "submenu") is var submenu and not 0 && AnyItem(submenu, match)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // A target of 0 sends the action along the responder chain. A hidden item answers its key equivalent
+        // (allowsKeyEquivalentWhenHidden, macOS 10.13).
+        internal void AddMenuItem(nint menu, string title, string action, string keyEquivalent, ulong modifiers, nint target, bool hidden)
+        {
+            var item = AllocMenuItem(title, Selector(action), keyEquivalent);
+            SendVoidUlong(item, "setKeyEquivalentModifierMask:", modifiers);
+            if (target != 0)
+            {
+                SendVoidNint(item, "setTarget:", target);
+            }
+            if (hidden)
+            {
+                SendVoidBool(item, "setHidden:", true);
+                SendVoidBool(item, "setAllowsKeyEquivalentWhenHidden:", true);
+            }
+            SendVoidNint(menu, "addItem:", item);
+            SendVoid(item, "release");
+        }
+
+        private nint AllocMenuItem(string title, nint action, string keyEquivalent)
+        {
+            var text = CreateString(title);
+            var key = CreateString(keyEquivalent);
+            try
+            {
+                return ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, nint, nint>)_messageSend)(
+                    SendNint(GetClass("NSMenuItem"), "alloc"), Selector("initWithTitle:action:keyEquivalent:"), text, action, key);
+            }
+            finally
+            {
+                SendVoid(key, "release");
+                SendVoid(text, "release");
+            }
+        }
 
         internal nint GetClass(string name)
         {
@@ -593,6 +944,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "objc_getClass")]
         internal static unsafe partial nint ObjCGetClass(byte* name);
 
+        [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "sel_getName")]
+        internal static partial nint SelGetName(nint selector);
+
         [LibraryImport("/usr/lib/libobjc.A.dylib", EntryPoint = "sel_registerName")]
         internal static unsafe partial nint SelRegisterName(byte* name);
 
@@ -608,6 +962,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         [LibraryImport("/usr/lib/libSystem.B.dylib", EntryPoint = "pthread_main_np")]
         internal static partial int PthreadMainNp();
+
+        [LibraryImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation", EntryPoint = "CFRunLoopRunInMode")]
+        internal static partial int CFRunLoopRunInMode(nint mode, double seconds, byte returnAfterSourceHandled);
 
     }
 }

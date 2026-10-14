@@ -245,18 +245,20 @@ a `main` landmark and headings.
 
 ## Keyboard and zoom in embedded windows
 
-Embedded windows on Linux behave like a browser window for focus and zoom. Runic
-Desktop checks this on the GTK 3 host and the GTK 4 provider with real key presses
-on X11 and Wayland. On Windows and macOS the engine's own behaviour applies, which
-was not checked on those systems:
+Embedded windows on Linux and macOS behave like a browser window for zoom, and on
+Linux also for focus. Runic Desktop checks this on the GTK 3 host and the GTK 4
+provider with real key presses on X11 and Wayland, and on macOS with keyboard
+events posted to the AppKit event queue. On Windows the engine's own behaviour
+applies, and macOS focus is WebKit's own; neither was checked on those systems.
+macOS uses Command where Linux and Windows use Ctrl, as browsers do:
 
-| | WebKitGTK (GTK 3 and GTK 4), checked | WebView2 (Windows), expected | WKWebView (macOS), expected |
+| | WebKitGTK (GTK 3 and GTK 4), checked | WebView2 (Windows), expected | WKWebView (macOS) |
 | --- | --- | --- | --- |
-| Tab after the last control | Focuses the first control | Focuses the first control: Runic Desktop leaves WebView2's focus handling at its default | Focuses the first control: WebKit focuses the page from its start |
-| Shift+Tab before the first control | Focuses the last control | Focuses the last control | Focuses the last control |
-| Ctrl and + or =, Ctrl and − | Zoom in or out in steps from 30 % to 300 % | WebView2's browser zoom, left enabled | Not available |
-| Ctrl and 0 | Resets the zoom to 100 % | WebView2's browser zoom | Not available |
-| Ctrl and the scroll wheel | Zooms in or out | WebView2's browser zoom | Not available |
+| Tab after the last control | Focuses the first control | Focuses the first control: Runic Desktop leaves WebView2's focus handling at its default | Expected: focuses the first control, as WebKit focuses the page from its start |
+| Shift+Tab before the first control | Focuses the last control | Focuses the last control | Expected: focuses the last control |
+| Ctrl and + or =, Ctrl and − (Command on macOS) | Zoom in or out in steps from 30 % to 300 % | WebView2's browser zoom, left enabled | Checked: zoom in or out in the same steps, from the View menu |
+| Ctrl and 0 (Command on macOS) | Resets the zoom to 100 % | WebView2's browser zoom | Checked: resets the zoom and a pinch magnification |
+| Ctrl and the scroll wheel | Zooms in or out | WebView2's browser zoom | Not on macOS, as in Safari; expected: a trackpad pinch magnifies |
 
 WebKitGTK cannot move focus from the end of a page to its start by itself: it gives
 focus to the GTK window, which has nothing else to focus, and the page is left with no
@@ -299,10 +301,35 @@ There is no option to turn zoom off or to set the initial zoom: a page that must
 zoom cancels these events, which works with WebView2 too. GNOME's large text setting
 applies as well.
 
-WKWebView offers no zoom keys and Runic Desktop does not add them yet
-([#259](https://github.com/Runic-Artifex/runic-sdk/issues/259)); use the system's
-zoom or larger text settings. On macOS, Tab reaches buttons and links only with
-Keyboard Navigation turned on in the system settings, as in Safari.
+WKWebView offers page zoom but no zoom keys: Safari zooms from its View menu. When
+the first window opens, the macOS host adds Zoom In (Command and + or =), Zoom Out
+(Command and −) and Actual Size (Command and 0), in the Linux steps, to the View
+menu of the application's main menu, which it finds by its full-screen or sidebar
+items and otherwise creates. The web view has keyboard focus when the window opens,
+so WKWebView hands each Command key to the page first, and the menu acts only on a
+key whose `keydown` the page did not cancel with `preventDefault()`, also while a
+text field has focus. A main menu that already has Command and = or + keeps its own
+items, and a main menu the application sets later replaces these. A trackpad pinch magnifies the page, as in Safari, and Actual Size
+undoes it too. Control and these keys do nothing on macOS.
+
+The macOS host also gives the application the standard menus, unless it supplies
+its own main menu (one with key equivalents) before the first window opens. It
+completes AppKit's empty default menu instead of adding a second one:
+
+- the application menu: About, Hide (Command and H), Hide Others (Option,
+  Command and H), Show All and Quit (Command and Q). Quit asks every window to
+  close, as its close button does, so a close guard (`ConfirmCloseAsync`) can keep
+  its window open; the application ends when its code returns, as after closing
+  the windows by hand;
+- Edit: Undo, Redo, Cut, Copy, Paste and Select All with their usual Command keys.
+  They send AppKit's standard actions to the focused web view, so text fields copy
+  and paste as in Safari;
+- Window: Minimize (Command and M), Zoom and Bring All to Front.
+
+The menu titles are English. CI checks Command and A, C and V between two text
+fields, and Command and Q through a close guard, on the macOS runner. On macOS, Tab reaches
+buttons and links only with Keyboard Navigation turned on in the system settings,
+as in Safari.
 
 ## Security notes
 

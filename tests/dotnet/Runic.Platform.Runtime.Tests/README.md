@@ -29,6 +29,15 @@ direnv exec . dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests/Run
 direnv exec . dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -- --treenode-filter "/*/*/*/*[Category=NativeSelect]"
 ```
 
+The `NativeAppKit` category runs without a user on macOS, and CI runs it on the macOS runner
+under JIT and NativeAOT. It shows a real menu-bar status item before any window opens, checks its
+images, menu and actions, checks that an unbundled process reports login startup unavailable, and
+presents a hidden Desktop window:
+
+```sh
+direnv exec . dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
+```
+
 `RUNIC_TEST_SERVICE` can select `All`, `Notifications`, `Open`,
 `ChooseApplication`, or `Reveal` for the `NativeServices` category. The entry point is
 hand-written for macOS: when a native category is selected it runs the test application inside

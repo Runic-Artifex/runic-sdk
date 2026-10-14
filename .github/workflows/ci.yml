@@ -629,6 +629,20 @@ jobs:
         run: |
           dotnet publish tests/dotnet/Runic.Platform.Runtime.Tests/Runic.Platform.Runtime.Tests.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/platform-runtime-aot
           ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}
+      # A real NSStatusItem without a window, its menu and actions, the unbundled login item and window presentation.
+      - name: Verify macOS status item, login item and window presentation with JIT and NativeAOT
+        if: runner.os == 'macOS'
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
+          ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
+      # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms;
+      # Command and A, C, V copy and paste through the Edit menu, and Command and Q asks the close guard.
+      - name: Exercise page zoom, Edit and Quit keys in the macOS window
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --zoom
       - name: Prepare signed macOS sandbox fixture for manual permission evidence
         if: runner.os == 'macOS'
         shell: bash
