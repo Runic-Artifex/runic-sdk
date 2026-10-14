@@ -16,5 +16,7 @@
     <PackageReference Include="GirCore.WebKit-6.0" />
     <None Include="README.md" Pack="true" PackagePath="/" />
     <Compile Include="../Runic.Desktop/Internal/Gtk4NativeLibraries.cs" Link="Shared/Gtk4NativeLibraries.cs" />
+    <Compile Include="../Runic.Desktop/Internal/WebKitGtkKeyboard.cs" Link="Shared/WebKitGtkKeyboard.cs" />
+    <EmbeddedResource Include="../Runic.Desktop/Internal/WebKitGtkKeyboard.js" Link="Shared/WebKitGtkKeyboard.js" LogicalName="Runic.Desktop.WebKitGtkKeyboard.js" />
   </ItemGroup>
 </Project>

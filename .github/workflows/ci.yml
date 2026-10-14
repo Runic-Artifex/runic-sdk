@@ -473,7 +473,7 @@ jobs:
           overwrite: true
       - name: Install Linux native WebView prerequisites
         if: runner.os == 'Linux'
-        run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
+        run: eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core xdotool
       - name: Permit the WebKit sandbox on Ubuntu
         if: runner.os == 'Linux'
         run: eng/ci/permit-webkit-sandbox.sh
@@ -485,6 +485,15 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Linux
         if: runner.os == 'Linux'
         run: GDK_BACKEND=x11 xvfb-run -a dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+      # Real key presses and wheel clicks through XTEST; see keyboard-driver.sh.
+      - name: Exercise keyboard focus and zoom in the GTK 3 window
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        run: GDK_BACKEND=x11 xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk3 dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll
+      - name: Check the WebKitGTK keyboard script in Chromium
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: bun test --timeout 60000 tests/native/Runic.Desktop.WebViewSmoke/keyboard-script.test.mjs
       - name: Exercise direct portal protocol
         if: runner.os == 'Linux'
         # The explicit DBus cases need a session bus; the managed job runs the portable cases.
@@ -510,6 +519,7 @@ jobs:
           dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
           dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           # The run without a filter keeps the portable cases covered under NativeAOT.

@@ -386,6 +386,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private int _cleanupQueued;
     private int _createStarted;
     private NativeObjectFinalizationProbe? _finalization;
+    private Gtk.EventControllerKey? _keys;
+    private UserContentManager? _contentManager;
 
     public event EventHandler? Closed;
 
@@ -552,6 +554,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         Gtk.ApplicationWindow? window = null;
         WebView? webView = null;
         NativeObjectFinalizationProbe? finalization = null;
+        Gtk.EventControllerKey? keys = null;
+        UserContentManager? contentManager = null;
         var registered = false;
         try
         {
@@ -591,6 +595,43 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
                     null);
                 webView.GetUserContentManager().AddScript(script);
             }
+            // When Tab leaves the page, WebKit asks the window to move focus on. GTK 4
+            // would move it into the hidden text view WebKit uses to translate key
+            // bindings, a child of the view from its construction, and keys would no
+            // longer reach the page. Without it, focus wraps back to the view, which
+            // must therefore be focusable itself (WebKit sets only can-focus). The
+            // keyboard script then focuses the other end of the page. Children WebKit
+            // adds later, such as script dialogs and the emoji chooser, must take focus.
+            for (var child = webView.GetFirstChild(); child is not null; child = child.GetNextSibling())
+            {
+                if (child.GetCssName() == "textview")
+                {
+                    child.SetCanFocus(false);
+                }
+            }
+            webView.SetFocusable(true);
+            contentManager = webView.GetUserContentManager();
+            if (!contentManager.RegisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld))
+            {
+                throw new InvalidOperationException("WebKitGTK could not register the zoom message handler.");
+            }
+            UserContentManager.ScriptMessageReceivedSignal.Connect(contentManager, OnZoomMessage, false, WebKitGtkKeyboard.ZoomMessageHandler);
+            using (var keyboardScript = UserScript.NewForWorld(
+                WebKitGtkKeyboard.Script,
+                UserContentInjectedFrames.TopFrame,
+                UserScriptInjectionTime.Start,
+                WebKitGtkKeyboard.ScriptWorld,
+                null,
+                null))
+            {
+                contentManager.AddScript(keyboardScript);
+            }
+            // WebKit sends each key to the page first and passes on only those the page
+            // did not handle. They reach the window's bubble phase. The keyboard script
+            // reports Control and the wheel, which WebKit would otherwise scroll with.
+            keys = Gtk.EventControllerKey.New();
+            keys.OnKeyPressed += OnUnhandledKeyPressed;
+            window.AddController(keys);
             window.SetChild(webView);
             // Hidden windows still need a native surface for portal ownership
             // and orderly Wayland teardown. Realizing does not map/show them.
@@ -617,6 +658,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             _window = window;
             _webView = webView;
             _finalization = finalization;
+            _keys = keys;
+            _contentManager = contentManager;
             Gtk4Application.Register(this);
             registered = true;
             Volatile.Write(ref _isOpen, 1);
@@ -631,6 +674,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             {
                 webView.OnPermissionRequest -= OnPermissionRequest;
             }
+            DetachZoomHandlers(keys, contentManager);
             if (window is not null)
             {
                 window.OnCloseRequest -= OnCloseRequest;
@@ -641,6 +685,8 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             window?.Dispose();
             _window = null;
             _webView = null;
+            _keys = null;
+            _contentManager = null;
             Volatile.Write(ref _isOpen, 0);
             var tracked = Interlocked.Exchange(ref _finalization, null) ?? finalization;
             if (tracked is null)
@@ -717,6 +763,57 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         return false;
     }
 
+    private bool OnUnhandledKeyPressed(Gtk.EventControllerKey controller, Gtk.EventControllerKey.KeyPressedSignalArgs args)
+    {
+        var command = GetZoomCommand(controller, args);
+        if (command == PageZoomCommand.None || _webView is not { } webView)
+        {
+            return false;
+        }
+        webView.SetZoomLevel(WebKitGtkKeyboard.Apply(command, webView.GetZoomLevel()));
+        return true;
+    }
+
+    // The produced symbol first; when it is no zoom key, the unshifted and shifted
+    // symbols of the same physical key in the event's layout.
+    private static PageZoomCommand GetZoomCommand(Gtk.EventControllerKey controller, Gtk.EventControllerKey.KeyPressedSignalArgs args)
+    {
+        var state = (uint)args.State;
+        var command = WebKitGtkKeyboard.GetZoomCommand(args.Keyval, state);
+        if (command != PageZoomCommand.None || !WebKitGtkKeyboard.IsZoomModifier(state)
+            || controller.GetCurrentEvent() is not Gdk.KeyEvent keyEvent
+            || controller.GetWidget() is not { } widget)
+        {
+            return command;
+        }
+        Span<uint> levels = stackalloc uint[2];
+        var found = KeyLevels.Find(widget.GetDisplay().Handle.DangerousGetHandle(), args.Keycode, keyEvent.GetLayout(), levels);
+        return WebKitGtkKeyboard.GetZoomCommand(args.Keyval, state, levels[..found], args.Keycode);
+    }
+
+    // Connected for the zoom handler only, as the detail of script-message-received.
+    private void OnZoomMessage(UserContentManager _, UserContentManager.ScriptMessageReceivedSignalArgs args)
+    {
+        var command = WebKitGtkKeyboard.GetWheelZoomCommand(args.Value.ToInt32());
+        if (command != PageZoomCommand.None && _webView is { } webView)
+        {
+            webView.SetZoomLevel(WebKitGtkKeyboard.Apply(command, webView.GetZoomLevel()));
+        }
+    }
+
+    private void DetachZoomHandlers(Gtk.EventControllerKey? keys, UserContentManager? contentManager)
+    {
+        if (keys is not null)
+        {
+            keys.OnKeyPressed -= OnUnhandledKeyPressed;
+        }
+        if (contentManager is not null)
+        {
+            UserContentManager.ScriptMessageReceivedSignal.Disconnect(contentManager, OnZoomMessage);
+            contentManager.UnregisterScriptMessageHandler(WebKitGtkKeyboard.ZoomMessageHandler, WebKitGtkKeyboard.ScriptWorld);
+        }
+    }
+
     // An unhandled request is denied by WebKit, so a grant must allow explicitly.
     private bool OnPermissionRequest(WebView webView, WebView.PermissionRequestSignalArgs request)
     {
@@ -780,6 +877,9 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         }
 
         webView.OnPermissionRequest -= OnPermissionRequest;
+        DetachZoomHandlers(_keys, _contentManager);
+        _keys = null;
+        _contentManager = null;
         window.OnCloseRequest -= OnCloseRequest;
         window.OnDestroy -= OnDestroyed;
         webView.TryClose();
@@ -996,4 +1096,51 @@ internal sealed class Gtk4Dispatcher
             }
         }
     }
+}
+
+// gdk_display_map_keycode, which GirCore does not bind.
+internal static unsafe partial class KeyLevels
+{
+    // Writes the unshifted and shifted symbols of a physical key in one layout group.
+    internal static int Find(nint display, uint keycode, uint group, Span<uint> levels)
+    {
+        GdkKeymapKey* entries = null;
+        uint* keyvals = null;
+        var count = 0;
+        if (MapKeycode(display, keycode, &entries, &keyvals, &count) == 0)
+        {
+            return 0;
+        }
+        try
+        {
+            var found = 0;
+            for (var index = 0; index < count && found < levels.Length; index++)
+            {
+                if (entries[index].Group == group && entries[index].Level is 0 or 1)
+                {
+                    levels[found++] = keyvals[index];
+                }
+            }
+            return found;
+        }
+        finally
+        {
+            Free(entries);
+            Free(keyvals);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GdkKeymapKey
+    {
+        internal uint Keycode;
+        internal int Group;
+        internal int Level;
+    }
+
+    [LibraryImport("libgtk-4.so.1", EntryPoint = "gdk_display_map_keycode")]
+    private static partial int MapKeycode(nint display, uint keycode, GdkKeymapKey** keys, uint** keyvals, int* count);
+
+    [LibraryImport("libglib-2.0.so.0", EntryPoint = "g_free")]
+    private static partial void Free(void* memory);
 }

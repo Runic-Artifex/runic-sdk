@@ -9,6 +9,19 @@ using System.Runtime.Versioning;
 
 if (args.Contains("--usability", StringComparer.Ordinal)) return UsabilitySmoke.Run();
 
+if (args.Contains("--keyboard", StringComparer.Ordinal))
+{
+    return Gtk4Application.Run(async () =>
+    {
+        await KeyboardSmoke.RunAsync(new DesktopHostOptions
+        {
+            Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk4WebKit6 },
+            WindowHostFactory = new Gtk4WindowHostFactory(),
+        }, "gtk4");
+        return 0;
+    });
+}
+
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 
