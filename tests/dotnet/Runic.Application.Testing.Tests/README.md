@@ -22,6 +22,11 @@ direnv exec . dotnet run --project tests/dotnet/Runic.Application.Testing.Tests 
 selected the same way, by class name. The cases run one at a time
 (`[assembly: NotInParallel]` in `AssemblyInfo.cs`).
 
+`PathWatcherTests` (category `FileSystem`) watch real temporary files,
+symbolic links and Git repositories. The managed CI job runs them on Linux and
+the native job on Windows and macOS. They skip, with the reason, when `git` is
+missing or Windows does not allow creating symbolic links.
+
 ## Generated client checks
 
 `GeneratedClientHarness` and `GeneratedInteractionClientHarness` are cases of

@@ -114,6 +114,36 @@ drivers issue mount tokens `test:mount1`, ... and operation request ids `request
 
 The constructor without options keeps the system clock and random ids.
 
+### File watchers
+
+`RunicPathWatchTester` drives the `RunicPathWatcher`s started with its
+`Options` (see [Watching files](../Runic.Application.Views/README.md#watching-files)):
+their debounce and polling run on its `FakeTimeProvider`, `Time`. Give the
+options to the ViewModel that starts the watcher:
+
+```csharp
+var watching = new RunicPathWatchTester();
+using var overview = new OverviewViewModel(context, watching.Options);
+
+File.WriteAllText(Path.Combine(checkout, "flake.lock"), lockText);
+var change = await watching.NextChangeAsync();     // after the callback ran in the model context
+
+// A path the test cannot change: report it as if the platform had.
+await watching.TriggerAsync("/run/current-system");
+```
+
+- `NextChangeAsync` returns the next change not returned yet, once its callback
+  has run. While none is reported, it advances `Time` one debounce interval at a
+  time, so events that arrive from a real file system are delivered. It throws
+  `TimeoutException` after 10 seconds of real time.
+- `TriggerAsync(path)` marks the targets with that path changed in every active
+  watcher, whether or not they changed, and returns `NextChangeAsync`. It throws
+  `InvalidOperationException` when no active watcher has such a target.
+- `DrainAsync` advances `Time` for 300 ms of real time and returns what was
+  reported meanwhile, to assert that a burst produced one change or nothing more.
+- `ActiveWatchers` counts the watchers that are started and not disposed, to
+  check that a ViewModel stops its watcher.
+
 ### Drivers
 
 `host.Root` drives the root ViewModel. `View<T>(vm => vm.Content)` and
