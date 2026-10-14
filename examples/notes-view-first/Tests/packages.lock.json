@@ -136,7 +136,7 @@
           "CommunityToolkit.Mvvm": "[8.4.2, )",
           "Microsoft.Extensions.DependencyInjection": "[10.0.12, )",
           "ReactiveUI": "[26.0.1, )",
-          "Runic.Application.Views.CsWebUi": "[0.7.0-preview.8, )",
+          "Runic.Application.Views.CsWebUi": "[0.7.0-preview.9, )",
           "Splat": "[21.0.0, )"
         }
       },
@@ -144,7 +144,7 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.TimeProvider.Testing": "[10.10.0, )",
-          "Runic.Application.Views": "[0.7.0-preview.8, )"
+          "Runic.Application.Views": "[0.7.0-preview.9, )"
         }
       },
       "runic.application.views": {
@@ -152,7 +152,7 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.12, )",
-          "Runic.Navigation": "[0.7.0-preview.8, )"
+          "Runic.Navigation": "[0.7.0-preview.9, )"
         }
       },
       "runic.application.views.cswebui": {
@@ -160,8 +160,8 @@
         "dependencies": {
           "CsWebUi": "[2.5.0-beta.4.6, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.12, )",
-          "Runic.Application.Views": "[0.7.0-preview.8, )",
-          "Runic.Platform": "[0.7.0-preview.8, )"
+          "Runic.Application.Views": "[0.7.0-preview.9, )",
+          "Runic.Platform": "[0.7.0-preview.9, )"
         }
       },
       "runic.navigation": {
