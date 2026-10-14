@@ -226,6 +226,7 @@
         "tools/dotnet-runic",
         "tests/dotnet/Runic.Application.Tool.Tests",
         "tests/dotnet/Runic.Application.Testing.Tests",
+        "tests/dotnet/Runic.Application.Logging.Tests",
         "tests/dotnet/Runic.Application.Views.Desktop.Tests",
         "tests/benchmarks/Runic.Application.Views.Benchmarks",
         "eng/branding/application",
