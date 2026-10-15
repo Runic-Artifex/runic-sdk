@@ -226,6 +226,9 @@ public sealed class DesktopSurface : IAsyncDisposable
 
     internal bool IsCurrentWindow(DesktopWindow window) => ReferenceEquals(Volatile.Read(ref _window), window);
 
+    // Whether a window is open or opening, so a shutdown request has a window to close.
+    internal bool HasOpenOrOpeningWindow => _windowGate.CurrentCount == 0 || Volatile.Read(ref _window) is { IsOpen: true };
+
     internal async ValueTask RunWindowOperationAsync(DesktopWindow window,
         DesktopWindowCapabilities capability, Func<ValueTask> operation, CancellationToken cancellationToken)
     {

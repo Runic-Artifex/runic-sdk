@@ -110,7 +110,9 @@ public sealed record DesktopHostOptions
     /// The first signal cancels <see cref="DesktopHost.ShutdownRequested"/> and closes every open window without
     /// close confirmation, as if the user had closed them; the application then returns, its window and services
     /// release their work, and the host is disposed. A second Ctrl+C, at least a second after the first signal, keeps
-    /// its default action and ends the process at once; other repeats are ignored. Set to <see langword="false"/> when the application handles these signals itself. Hosts created with
+    /// its default action and ends the process at once; other repeats are ignored. While no window is open and the
+    /// application has not read <see cref="DesktopHost.ShutdownRequested"/>, nothing would end it, so the first signal
+    /// also keeps its default action. Set to <see langword="false"/> when the application handles these signals itself. Hosts created with
     /// <see cref="DesktopHost.StartAsync"/> never register signal handlers.
     /// </remarks>
     public bool HandleShutdownSignals { get; init; } = true;

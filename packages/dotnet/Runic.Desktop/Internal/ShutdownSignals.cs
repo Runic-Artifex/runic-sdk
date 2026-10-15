@@ -33,6 +33,10 @@ internal sealed class ShutdownSignals : IDisposable
 
     private void Handle(PosixSignalContext context)
     {
+        // A windowless application that never read ShutdownRequested cannot learn of the request (#279): absorbing
+        // the signal would leave it running until SIGKILL, so the signal keeps its default action. A repeat after an
+        // absorbed first signal is still a copy of that one.
+        if (Volatile.Read(ref _firstSignalAt) == 0 && !_host.CanShutDownInOrder) return;
         // Handlers for different signals run concurrently, so the first time is recorded before anything else.
         long now = Environment.TickCount64;
         long first = Interlocked.CompareExchange(ref _firstSignalAt, now, 0);

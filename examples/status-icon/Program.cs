@@ -35,6 +35,9 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions(), async host =>
     var icon = provider.GetRequiredService<IDesktopStatusIcon>();
     var startup = provider.GetRequiredService<IDesktopLoginStartup>();
     icon.Activated += (_, activation) => events.Writer.TryWrite(activation);
+    // Ctrl+C, SIGTERM (systemctl stop, logging out) and SIGHUP end the loop below as Quit does; the host closes the
+    // counter if it is open. Without this the signal would not end a loop that waits for activations.
+    using var shutdown = host.Desktop.ShutdownRequested.Register(() => events.Writer.TryComplete());
 
     // A sandbox can change login startup but not report it; without a provider it cannot change either.
     var known = await startup.IsEnabledAsync();
