@@ -54,7 +54,7 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `host.Desktop.ShutdownRequested`. A body without a window, such as one behind
   a status icon, sets `DesktopHostOptions.HandlesShutdownWithoutWindow` and ends
   its loop on that token; without that option, a signal that arrives while no
-  window is open ends the process with its default action.
+  Window is open or served ends the process with its default action.
 - `host.OpenWindowAsync<TWindow>(options, cancellationToken)`, from
   `Runic.Application.Views`, creates the Window's DI scope, resolves its
   ViewModel, opens a `DesktopSurface` and its presentation, and attaches the

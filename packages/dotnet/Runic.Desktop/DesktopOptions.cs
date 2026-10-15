@@ -110,9 +110,9 @@ public sealed record DesktopHostOptions
     /// The first signal cancels <see cref="DesktopHost.ShutdownRequested"/> and closes every open window without
     /// close confirmation, as if the user had closed them; the application then returns, its window and services
     /// release their work, and the host is disposed. A second Ctrl+C, at least a second after the first signal, keeps
-    /// its default action and ends the process at once; other repeats are ignored. While no window is open, the first
-    /// signal also keeps its default action unless <see cref="HandlesShutdownWithoutWindow"/> is set: nothing would end
-    /// the application. Set to <see langword="false"/> when the application handles these signals itself. Hosts created with
+    /// its default action and ends the process at once; other repeats are ignored. While the host has no surface (no
+    /// window and no page served at a surface URL), the first signal also keeps its default action unless
+    /// <see cref="HandlesShutdownWithoutWindow"/> is set: nothing would end the application. Set to <see langword="false"/> when the application handles these signals itself. Hosts created with
     /// <see cref="DesktopHost.StartAsync"/> never register signal handlers.
     /// </remarks>
     public bool HandleShutdownSignals { get; init; } = true;
@@ -124,9 +124,9 @@ public sealed record DesktopHostOptions
     /// <remarks>
     /// Set it for an application that runs without a window, such as one behind a status icon, and end its loop on
     /// <see cref="DesktopHost.ShutdownRequested"/>. Then the first Ctrl+C, SIGTERM or SIGHUP shuts it down in order
-    /// whether or not a window is open. When it is <see langword="false"/> and no window is open or opening, the first
-    /// signal keeps its default action and ends the process, because the host has no window to close and nothing else
-    /// would end the application. Has no effect when <see cref="HandleShutdownSignals"/> is <see langword="false"/>.
+    /// whether or not a window is open. When it is <see langword="false"/> and the host has no surface, neither a native
+    /// or browser window nor a page served at a surface URL, the first signal keeps its default action and ends the
+    /// process, because the host has nothing to close and nothing else would end the application. Has no effect when <see cref="HandleShutdownSignals"/> is <see langword="false"/>.
     /// </remarks>
     public bool HandlesShutdownWithoutWindow { get; init; }
 

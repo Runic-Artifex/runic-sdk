@@ -40,16 +40,16 @@ public sealed class DesktopHost : IAsyncDisposable
     /// <see cref="DesktopWindow.WaitForCloseAsync"/> returns and the application shuts down as if the user had closed its
     /// last window. Use the token to end application work that does not wait for a window, such as an application
     /// that runs behind a status icon, and set <see cref="DesktopHostOptions.HandlesShutdownWithoutWindow"/> so a
-    /// signal that arrives while no window is open requests shutdown too.
+    /// signal that arrives while the host has no surface requests shutdown too.
     /// See <see cref="DesktopHostOptions.HandleShutdownSignals"/>.
     /// </remarks>
     public CancellationToken ShutdownRequested => _shutdown.Token;
 
-    // Whether a shutdown request reaches the application: a window it waits for is open or opening, or the
-    // application declared that it ends on ShutdownRequested without one. Otherwise a termination signal the host
-    // absorbed would leave the process running.
-    internal bool CanShutDownInOrder =>
-        _options.HandlesShutdownWithoutWindow || _surfaces.Values.Any(static surface => surface.HasOpenOrOpeningWindow);
+    // Whether a shutdown request reaches the application: it presents a surface, in a native or browser window or
+    // served at its URL (serve-only mode), which the shutdown closes or stops serving; or it declared that it ends on
+    // ShutdownRequested without one. Otherwise a termination signal the host absorbed would leave the process running.
+    // A surface is registered before its server starts and removed when it is disposed.
+    internal bool CanShutDownInOrder => _options.HandlesShutdownWithoutWindow || !_surfaces.IsEmpty;
 
     internal bool IsShutdownRequested => Volatile.Read(ref _shutdownRequested) != 0;
 

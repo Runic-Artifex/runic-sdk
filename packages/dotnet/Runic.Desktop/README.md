@@ -31,9 +31,10 @@ closes on its own UI thread. An application without a window, such as one
 behind a status icon, has nothing to close: it sets
 `DesktopHostOptions.HandlesShutdownWithoutWindow` to `true` and ends its work
 when `host.ShutdownRequested` is cancelled, for example by completing the loop
-that waits for activations. Without that option, a signal that arrives while no
-window is open or opening keeps its default action and ends the process without
-that cleanup, because nothing would end the application. A second Ctrl+C, a second or later after the first
+that waits for activations. Without that option, a signal that arrives while the
+host has no surface (no native or browser window and no page served at a
+surface URL) keeps its default action and ends the process without that
+cleanup, because nothing would end the application. A second Ctrl+C, a second or later after the first
 signal, ends the process at once; the copies that `dotnet run`, `dotnet watch`
 and `dotnet runic dev` forward do not. Set
 `DesktopHostOptions.HandleShutdownSignals` to `false` to handle these signals

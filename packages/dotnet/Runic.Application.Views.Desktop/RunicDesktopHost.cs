@@ -103,8 +103,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// the open windows, so <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns, and cancel
     /// <see cref="DesktopHost.ShutdownRequested"/>. A body that runs without a window, for example behind a status icon,
     /// sets <see cref="DesktopHostOptions.HandlesShutdownWithoutWindow"/> and ends when
-    /// <c>host.Desktop.ShutdownRequested</c> is cancelled; without that option, a signal that arrives while no window is
-    /// open ends the process with its default action. Dispose <paramref name="services"/> after this method returns.
+    /// <c>host.Desktop.ShutdownRequested</c> is cancelled; without that option, a signal that arrives while no Window is
+    /// open or served ends the process with its default action. Dispose <paramref name="services"/> after this method returns.
     /// When <see cref="DesktopHostOptions.LoggerFactory"/> is not set, the host logs through the
     /// <c>ILoggerFactory</c> registered in <paramref name="services"/>, if any, until this method returns; a host
     /// message after that, such as a browser profile that still cannot be deleted, goes to <c>Trace</c>.

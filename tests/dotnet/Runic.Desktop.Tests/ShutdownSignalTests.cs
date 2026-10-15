@@ -113,7 +113,7 @@ public sealed partial class ShutdownSignalTests
     }
 
     [Test]
-    public async Task ShutdownReachesTheApplicationThroughAnOpenWindow()
+    public async Task ShutdownReachesTheApplicationThroughEverySurface()
     {
         await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
         {
@@ -124,12 +124,14 @@ public sealed partial class ShutdownSignalTests
         _ = host.ShutdownRequested;
         Assert.False(host.CanShutDownInOrder);
 
-        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("x") });
-        // A surface alone does not wait for a shutdown request; its window does.
-        Assert.False(host.CanShutDownInOrder);
+        // A surface served at its URL without a window, as in serve-only mode, stops serving on the request.
+        var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("x") });
+        Assert.True(host.CanShutDownInOrder);
         var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
         Assert.True(host.CanShutDownInOrder);
         await window.CloseAsync();
+        Assert.True(host.CanShutDownInOrder);
+        await surface.DisposeAsync();
         Assert.False(host.CanShutDownInOrder);
     }
 
