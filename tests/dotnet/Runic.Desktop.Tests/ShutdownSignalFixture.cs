@@ -38,10 +38,12 @@ internal static partial class ShutdownSignalFixture
                 WindowHostFactory = factory,
                 WaitForConnection = false,
                 HandleShutdownSignals = mode != "opt-out",
+                HandlesShutdownWithoutWindow = mode == "windowless",
             },
             async host =>
             {
                 started = host;
+                if (mode is "windowless" or "windowless-undeclared") return await RunWindowlessAsync(host);
                 host.ShutdownRequested.Register(static () => Report("shutdown-requested"));
                 await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
                 {
@@ -73,9 +75,23 @@ internal static partial class ShutdownSignalFixture
         }
         catch (ObjectDisposedException)
         {
-            Report(factory.Host is { Disposed: true } ? "host-disposed" : "window-host-leaked");
+            // A windowless application never creates a window host.
+            Report(factory.Host is null or { Disposed: true } ? "host-disposed" : "window-host-leaked");
         }
         return exitCode;
+    }
+
+    // An application without a window, as behind a status icon, that ends its work on ShutdownRequested.
+    // "windowless" declares it with HandlesShutdownWithoutWindow; "windowless-undeclared" does not, so reading the
+    // token alone must not make the host absorb the signal.
+    private static async Task<int> RunWindowlessAsync(DesktopHost host)
+    {
+        var shutdown = host.ShutdownRequested;
+        Report("ready");
+        try { await Task.Delay(Timeout.Infinite, shutdown); }
+        catch (OperationCanceledException) { Report("shutdown-requested"); }
+        Report("work-drained");
+        return ApplicationExitCode;
     }
 
     private static void Report(string step)

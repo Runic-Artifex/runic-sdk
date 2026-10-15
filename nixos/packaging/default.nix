@@ -1,7 +1,7 @@
 # Applications packaged with buildRunicApplication and installed through the NixOS module, in a VM. The status-icon
-# example (NativeAOT) runs as the module's user service in an X session, and a second launch reaches it; the
-# privileged smoke's Polkit policy is registered from the system profile, and pkexec runs its action through the
-# package's wrapper. Both packages are built in the sandbox, so the test needs only KVM:
+# example (NativeAOT) runs as the module's user service in an X session, a second launch reaches it, and
+# systemctl --user stop ends it in order; the privileged smoke's Polkit policy is registered from the system profile,
+# and pkexec runs its action through the package's wrapper. Both packages are built in the sandbox, so the test needs only KVM:
 #
 #   nix build .#packaging-nixos -L
 { pkgs, self }:
@@ -85,5 +85,17 @@ pkgs.testers.runNixOSTest {
         assert "result: completed 3" in output, output
         assert "out: helper dev.runic.privileged-smoke.allowed caller=1000" in output, output
         assert "out: arg <two words>" in output, output
+
+    with subtest("systemctl --user stop ends the user service in order"):
+        # SIGTERM ends the windowless application through DesktopHost.ShutdownRequested (#279): it hides the icon,
+        # releases the single instance and exits 0, long before systemd's stop timeout escalates to SIGKILL.
+        user("timeout 10 systemctl --user stop status-icon.service")
+        result = user("systemctl --user show status-icon.service -p ActiveState -p Result -p ExecMainCode -p ExecMainStatus")
+        print(result)
+        assert "ActiveState=inactive" in result, result
+        assert "Result=success" in result, result
+        # Exited (code 1) with status 0, not killed by the signal.
+        assert "ExecMainCode=1" in result, result
+        assert "ExecMainStatus=0" in result, result
   '';
 }

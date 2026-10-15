@@ -30,11 +30,15 @@ services.AddRunicPlatformServices(ApplicationId);
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 
 // The application starts without a window: only the icon in the desktop's status area.
-return RunicDesktopHost.Run(provider, new DesktopHostOptions(), async host =>
+// The loop below ends on ShutdownRequested, so Ctrl+C and SIGTERM shut it down in order also without a window.
+return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWithoutWindow = true }, async host =>
 {
     var icon = provider.GetRequiredService<IDesktopStatusIcon>();
     var startup = provider.GetRequiredService<IDesktopLoginStartup>();
     icon.Activated += (_, activation) => events.Writer.TryWrite(activation);
+    // Ctrl+C, SIGTERM (systemctl stop, logging out) and SIGHUP end the loop below as Quit does; the host closes the
+    // counter if it is open. Without this the signal would not end a loop that waits for activations.
+    using var shutdown = host.Desktop.ShutdownRequested.Register(() => events.Writer.TryComplete());
 
     // A sandbox can change login startup but not report it; without a provider it cannot change either.
     var known = await startup.IsEnabledAsync();

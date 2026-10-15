@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Desktop.DesktopHostOptions.HandlesShutdownWithoutWindow.get -> bool
+Runic.Desktop.DesktopHostOptions.HandlesShutdownWithoutWindow.init -> void

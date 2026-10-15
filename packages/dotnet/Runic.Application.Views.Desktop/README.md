@@ -50,7 +50,11 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `DesktopHost` and runs the asynchronous application on the event loop the
   platform needs (`DesktopEventLoop`): the process main thread on macOS and with
   GTK 4. Call it from `Main` before any `await` and return its result. Ctrl+C
-  and SIGTERM close the open windows, so `WaitForCloseAsync` returns.
+  and SIGTERM close the open windows, so `WaitForCloseAsync` returns, and cancel
+  `host.Desktop.ShutdownRequested`. A body without a window, such as one behind
+  a status icon, sets `DesktopHostOptions.HandlesShutdownWithoutWindow` and ends
+  its loop on that token; without that option, a signal that arrives while no
+  Window is open or served ends the process with its default action.
 - `host.OpenWindowAsync<TWindow>(options, cancellationToken)`, from
   `Runic.Application.Views`, creates the Window's DI scope, resolves its
   ViewModel, opens a `DesktopSurface` and its presentation, and attaches the

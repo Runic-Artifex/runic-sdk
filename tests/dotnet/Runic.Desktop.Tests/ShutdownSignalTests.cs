@@ -76,6 +76,78 @@ public sealed partial class ShutdownSignalTests
     }
 
     [Test]
+    [DisplayName("SignalEndsAWindowlessApplicationThroughShutdownRequested(signal: $signal)")]
+    [Arguments("SIGINT")]
+    [Arguments("SIGTERM")]
+    public async Task SignalEndsAWindowlessApplicationThroughShutdownRequested(string signal)
+    {
+        // A status-icon application has no window to close; it opts in and ends its loop on ShutdownRequested (#279).
+        if (OperatingSystem.IsWindows() && signal != "SIGINT") return;
+        await using var fixture = Fixture.Start("windowless");
+        await fixture.WaitForAsync("ready");
+
+        fixture.Send(signal);
+
+        await fixture.WaitForAsync("shutdown-requested");
+        await fixture.WaitForAsync("work-drained");
+        await fixture.WaitForAsync("host-disposed");
+        Assert.Equal(ShutdownSignalFixture.ApplicationExitCode, await fixture.WaitForExitAsync());
+    }
+
+    [Test]
+    [DisplayName("SignalKeepsItsDefaultActionInAWindowlessApplicationThatDoesNotOptIn(signal: $signal)")]
+    [Arguments("SIGINT")]
+    [Arguments("SIGTERM")]
+    public async Task SignalKeepsItsDefaultActionInAWindowlessApplicationThatDoesNotOptIn(string signal)
+    {
+        // Without a window and without HandlesShutdownWithoutWindow, an absorbed signal could leave the process running
+        // until SIGKILL (#279). The fixture reads ShutdownRequested; reading it does not opt in.
+        if (OperatingSystem.IsWindows() && signal != "SIGINT") return;
+        await using var fixture = Fixture.Start("windowless-undeclared");
+        await fixture.WaitForAsync("ready");
+
+        fixture.Send(signal);
+
+        Assert.NotEqual(ShutdownSignalFixture.ApplicationExitCode, await fixture.WaitForExitAsync());
+        Assert.DoesNotContain("host-disposed", fixture.Output);
+    }
+
+    [Test]
+    public async Task ShutdownReachesTheApplicationThroughEverySurface()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new ClosableWindowHostFactory(),
+            WaitForConnection = false,
+        });
+        // Reading the token is not a declaration.
+        _ = host.ShutdownRequested;
+        Assert.False(host.CanShutDownInOrder);
+
+        // A surface served at its URL without a window, as in serve-only mode, stops serving on the request.
+        var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("x") });
+        Assert.True(host.CanShutDownInOrder);
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        Assert.True(host.CanShutDownInOrder);
+        await window.CloseAsync();
+        Assert.True(host.CanShutDownInOrder);
+        await surface.DisposeAsync();
+        Assert.False(host.CanShutDownInOrder);
+    }
+
+    [Test]
+    public async Task ShutdownReachesAWindowlessApplicationThatOptsIn()
+    {
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new ClosableWindowHostFactory(),
+            WaitForConnection = false,
+            HandlesShutdownWithoutWindow = true,
+        });
+        Assert.True(host.CanShutDownInOrder);
+    }
+
+    [Test]
     public async Task OptOutKeepsTheDefaultSignalAction()
     {
         await using var fixture = Fixture.Start("opt-out");
