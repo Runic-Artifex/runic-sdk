@@ -20,7 +20,7 @@ The builder is verified on `x86_64-linux`, under JIT and NativeAOT.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     runic-sdk = {
-      url = "github:Runic-Artifex/runic-sdk/v0.8.0-preview.2";
+      url = "github:Runic-Artifex/runic-sdk/v0.8.0-preview.3";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
