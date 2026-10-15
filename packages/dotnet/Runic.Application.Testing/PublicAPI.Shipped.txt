@@ -221,3 +221,11 @@ Runic.Application.Testing.RunicServeOnlyApplication.StopAsync(System.TimeSpan? t
 Runic.Application.Testing.RunicServeOnlyApplication.Url.get -> System.Uri!
 static Runic.Application.Testing.RunicServeOnlyApplication.StartAsync(System.Diagnostics.ProcessStartInfo! startInfo, System.TimeSpan? timeout = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.Task<Runic.Application.Testing.RunicServeOnlyApplication!>!
 static Runic.Application.Testing.RunicServeOnlyApplication.CreateStartInfo(string! applicationPath) -> System.Diagnostics.ProcessStartInfo!
+Runic.Application.Testing.RunicPathWatchTester
+Runic.Application.Testing.RunicPathWatchTester.ActiveWatchers.get -> int
+Runic.Application.Testing.RunicPathWatchTester.DrainAsync(System.TimeSpan? quiet = null) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicPathChange!>!>!
+Runic.Application.Testing.RunicPathWatchTester.NextChangeAsync(System.TimeSpan? timeout = null) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!
+Runic.Application.Testing.RunicPathWatchTester.Options.get -> Runic.Application.Views.RunicPathWatcherOptions!
+Runic.Application.Testing.RunicPathWatchTester.RunicPathWatchTester(System.TimeSpan? debounce = null) -> void
+Runic.Application.Testing.RunicPathWatchTester.Time.get -> Microsoft.Extensions.Time.Testing.FakeTimeProvider!
+Runic.Application.Testing.RunicPathWatchTester.TriggerAsync(string! path, System.TimeSpan? timeout = null) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!

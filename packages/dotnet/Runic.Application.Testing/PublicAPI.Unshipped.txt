@@ -1,9 +1,1 @@
 #nullable enable
-Runic.Application.Testing.RunicPathWatchTester
-Runic.Application.Testing.RunicPathWatchTester.ActiveWatchers.get -> int
-Runic.Application.Testing.RunicPathWatchTester.DrainAsync(System.TimeSpan? quiet = null) -> System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Runic.Application.Views.RunicPathChange!>!>!
-Runic.Application.Testing.RunicPathWatchTester.NextChangeAsync(System.TimeSpan? timeout = null) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!
-Runic.Application.Testing.RunicPathWatchTester.Options.get -> Runic.Application.Views.RunicPathWatcherOptions!
-Runic.Application.Testing.RunicPathWatchTester.RunicPathWatchTester(System.TimeSpan? debounce = null) -> void
-Runic.Application.Testing.RunicPathWatchTester.Time.get -> Microsoft.Extensions.Time.Testing.FakeTimeProvider!
-Runic.Application.Testing.RunicPathWatchTester.TriggerAsync(string! path, System.TimeSpan? timeout = null) -> System.Threading.Tasks.Task<Runic.Application.Views.RunicPathChange!>!

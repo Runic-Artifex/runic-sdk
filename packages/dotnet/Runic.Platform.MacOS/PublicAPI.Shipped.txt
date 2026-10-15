@@ -6,3 +6,49 @@ static Runic.Platform.MacOS.MacOSPlatformProvider.CreateInhibition() -> Runic.Pl
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateNotifications() -> Runic.Platform.IDesktopNotifications!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
 static Runic.Platform.MacOS.MacOSPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
+Runic.Platform.MacOS.MacPrivilegedActions
+Runic.Platform.MacOS.MacPrivilegedDaemon
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.ApplicationIdentifier.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.ApplicationRequirement.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.ApplicationRequirement.init -> void
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.DaemonIdentifier.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.DaemonRequirement.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.DaemonRequirement.init -> void
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.DevelopmentSigning.get -> bool
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.DevelopmentSigning.init -> void
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.FindRight(string! actionId) -> Runic.Platform.MacOS.MacPrivilegedRight?
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.Label.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.MacPrivilegedDaemonDefinition(string! label, string! teamIdentifier, string! applicationIdentifier, string! daemonIdentifier, System.Collections.Generic.IEnumerable<Runic.Platform.MacOS.MacPrivilegedRight!>! rights) -> void
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.PlistName.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.ProgramRequirement.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.ProgramRequirement.init -> void
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.Rights.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.MacOS.MacPrivilegedRight!>
+Runic.Platform.MacOS.MacPrivilegedDaemonDefinition.TeamIdentifier.get -> string!
+Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+Runic.Platform.MacOS.MacPrivilegedDaemonStatus.Enabled = 1 -> Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+Runic.Platform.MacOS.MacPrivilegedDaemonStatus.NotFound = 3 -> Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+Runic.Platform.MacOS.MacPrivilegedDaemonStatus.NotRegistered = 0 -> Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+Runic.Platform.MacOS.MacPrivilegedDaemonStatus.RequiresApproval = 2 -> Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+Runic.Platform.MacOS.MacPrivilegedDaemonStatus.Unavailable = 4 -> Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+Runic.Platform.MacOS.MacPrivilegedRight
+Runic.Platform.MacOS.MacPrivilegedRight.<Clone>$() -> Runic.Platform.MacOS.MacPrivilegedRight!
+Runic.Platform.MacOS.MacPrivilegedRight.ActionId.get -> string!
+Runic.Platform.MacOS.MacPrivilegedRight.Equals(Runic.Platform.MacOS.MacPrivilegedRight? other) -> bool
+Runic.Platform.MacOS.MacPrivilegedRight.MacPrivilegedRight(string! actionId, string! message) -> void
+Runic.Platform.MacOS.MacPrivilegedRight.Message.get -> string!
+Runic.Platform.MacOS.MacPrivilegedRight.Program.get -> string?
+Runic.Platform.MacOS.MacPrivilegedRight.Program.init -> void
+Runic.Platform.MacOS.MacPrivilegedRight.ProgramIdentifier.get -> string?
+Runic.Platform.MacOS.MacPrivilegedRight.ProgramIdentifier.init -> void
+override Runic.Platform.MacOS.MacPrivilegedRight.Equals(object? obj) -> bool
+override Runic.Platform.MacOS.MacPrivilegedRight.GetHashCode() -> int
+override Runic.Platform.MacOS.MacPrivilegedRight.ToString() -> string!
+static Runic.Platform.MacOS.MacPrivilegedActions.Create(System.Collections.Generic.IEnumerable<Runic.Platform.PrivilegedActionDeclaration!>! actions, Runic.Platform.MacOS.MacPrivilegedDaemonDefinition! daemon) -> Runic.Platform.IDesktopPrivilegedActions!
+static Runic.Platform.MacOS.MacPrivilegedActions.GetDaemonStatus(Runic.Platform.MacOS.MacPrivilegedDaemonDefinition! daemon) -> Runic.Platform.MacOS.MacPrivilegedDaemonStatus
+static Runic.Platform.MacOS.MacPrivilegedActions.OpenLoginItemsSettings() -> bool
+static Runic.Platform.MacOS.MacPrivilegedActions.RegisterDaemon(Runic.Platform.MacOS.MacPrivilegedDaemonDefinition! daemon) -> Runic.Platform.PlatformResult<Runic.Platform.MacOS.MacPrivilegedDaemonStatus>!
+static Runic.Platform.MacOS.MacPrivilegedActions.UnregisterDaemon(Runic.Platform.MacOS.MacPrivilegedDaemonDefinition! daemon) -> Runic.Platform.PlatformResult<Runic.Platform.MacOS.MacPrivilegedDaemonStatus>!
+static Runic.Platform.MacOS.MacPrivilegedDaemon.Run(System.Collections.Generic.IEnumerable<Runic.Platform.PrivilegedActionDeclaration!>! actions, Runic.Platform.MacOS.MacPrivilegedDaemonDefinition! daemon) -> int
+static Runic.Platform.MacOS.MacPrivilegedRight.operator !=(Runic.Platform.MacOS.MacPrivilegedRight? left, Runic.Platform.MacOS.MacPrivilegedRight? right) -> bool
+static Runic.Platform.MacOS.MacPrivilegedRight.operator ==(Runic.Platform.MacOS.MacPrivilegedRight? left, Runic.Platform.MacOS.MacPrivilegedRight? right) -> bool
