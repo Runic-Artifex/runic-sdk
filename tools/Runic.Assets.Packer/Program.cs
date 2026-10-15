@@ -247,7 +247,9 @@ internal static class PackerApplication
 
 }
 
-internal sealed record PackerResult(long ArchiveLength);
+// The runic.assets.pack-result/1 payload is { "ArchiveLength": <bytes> }; the name is spelled
+// out so that the JSON context's options cannot rename it.
+internal sealed record PackerResult([property: JsonPropertyName("ArchiveLength")] long ArchiveLength);
 
 [JsonSerializable(typeof(PackerResult))]
 internal sealed partial class PackerJsonContext : JsonSerializerContext;

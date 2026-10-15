@@ -33,8 +33,11 @@ internal static partial class CreateApplication
         CancellationToken cancellationToken)
     {
         var console = new SpectreCommandConsole(context.Console);
-        bool interactive = context.Console.IsInteractive && !request.UseDefaults &&
-            context.OutputMode == CommandOutputMode.Human;
+        // The questions are Spectre prompts on standard output. Runic.CommandLine 0.7 counts a
+        // console as interactive when standard input and standard error are terminals, so also
+        // require standard output to be one: redirected output keeps using the defaults.
+        bool interactive = context.Console.IsInteractive && !context.Console.IsOutputRedirected &&
+            !request.UseDefaults && context.OutputMode == CommandOutputMode.Human;
         TemplateOptionModel model = TemplateOptionModel.Load();
 
         if (!TryResolveExplicit(model, request.Options, out Dictionary<string, TemplateChoice> explicitChoices, out string? usage))
