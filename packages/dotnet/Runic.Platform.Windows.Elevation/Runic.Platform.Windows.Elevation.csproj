@@ -13,7 +13,7 @@
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
     <!-- New in this release: nothing to validate against until it ships. -->
     <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.7.0-preview.10</RunicPackageFirstReleaseVersion>
+    <RunicPackageFirstReleaseVersion>0.8.0-preview.1</RunicPackageFirstReleaseVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />

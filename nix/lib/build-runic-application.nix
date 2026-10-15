@@ -208,7 +208,7 @@ buildDotnetModule (
       ++ lib.optional nativeAot "-p:PublishAot=true"
       ++ lib.optionals (frontend' != null && frontend'.nodeModules != null) [
         "-p:RunicApplicationFrontendNodeModulesDirectory=${frontend'.nodeModules}/node_modules"
-        # Runic.Application.Views before 0.7.0-preview.10 knows only this property; the link below serves it.
+        # Runic.Application.Views before 0.8.0-preview.1 knows only this property; the link below serves it.
         "-p:RunicApplicationFrontendInstallEnabled=false"
       ];
 
