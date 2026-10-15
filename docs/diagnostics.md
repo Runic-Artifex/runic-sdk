@@ -278,6 +278,19 @@ replaced.
 `node_modules`, or unset the property to install with the frontend's package
 manager.
 
+### RUNICBRIDGE022
+
+The `Runic.Application.Views` build targets report this error. The project is
+built with `NoBuild=true`, as by `dotnet publish --no-build`, which reuses the
+Bridge code that the earlier build generated in
+`obj/<Configuration>/<TargetFramework>/runic-bridge/` instead of running the
+generator. That code, or the composition that
+`RunicApplicationFrontendCompositionType` names, is not there.
+
+**Fix:** build the project first with the same `Configuration`,
+`TargetFramework` and `PublishAot`, then publish with `--no-build`, or publish
+without `--no-build`.
+
 ## dotnet runic
 
 `dotnet runic` reports these codes as the fault of a failed command, except
