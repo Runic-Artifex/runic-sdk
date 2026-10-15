@@ -141,6 +141,37 @@ internal sealed class CreateTests
         Equal("MyApp", ResultProperty(output, "Directory"));
     }
 
+    // runic.create/1 names its properties in PascalCase. Runic.CommandLine 0.6.0-preview.3 and later
+    // serialize through the JSON context's options, so the names must not depend on them.
+    [Test, DisplayName("runic.create/1 keeps its PascalCase payload")]
+    public void JsonPayloadKeepsItsContract()
+    {
+        (int exitCode, string output, _) = Run("MyApp", "--yes", "--dry-run", "--format", "json");
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        Equal("runic.create/1", root.GetProperty("payloadType").GetString());
+        JsonElement payload = root.GetProperty("payload");
+        Equal(
+            "Name,Directory,Version,Options,Commands,ReproduceCommand,Created",
+            string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
+        // Options is keyed by the template's option names, not by a naming policy.
+        string[] options = [.. payload.GetProperty("Options").EnumerateObject().Select(property => property.Name)];
+        True(Runic.Create.Program.OptionFlags.All(options.Contains), string.Join(",", options));
+    }
+
+    // Runic.CommandLine 0.7 calls a console interactive when standard input and standard error are
+    // terminals. The creator's questions are written to standard output, so with standard output
+    // redirected it must not ask and uses the defaults, as before.
+    [Test, DisplayName("redirected standard output uses the defaults instead of asking")]
+    public void RedirectedOutputDoesNotAsk()
+    {
+        var console = new CaptureConsole { IsInteractive = true };
+        int exitCode = Runic.Create.Program.CreateApp(console, _ => null).RunAsync(["MyApp", "--dry-run"]).GetAwaiter().GetResult();
+        Equal("0", exitCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + console.Error);
+        True(console.Output.ToString().Contains("dotnet new runic-app --name MyApp", StringComparison.Ordinal), console.Output.ToString());
+    }
+
     private static (int ExitCode, string Output, string Error) Run(params string[] arguments)
     {
         var console = new CaptureConsole();
@@ -160,7 +191,7 @@ internal sealed class CreateTests
         public StringBuilder Error { get; } = new();
         public bool IsErrorRedirected => true;
         public bool IsInputRedirected => true;
-        public bool IsInteractive => false;
+        public bool IsInteractive { get; init; }
         public bool IsOutputRedirected => true;
         public ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken) => ValueTask.FromResult<string?>(null);
 
