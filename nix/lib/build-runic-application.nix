@@ -231,9 +231,10 @@ buildDotnetModule (
 
   }
   // lib.optionalAttrs (nativeAot && !(args ? installPhase)) {
-    # buildDotnetModule publishes with --no-build. Runic.Application.Views 0.7.0-preview.9 and earlier then build
+    # buildDotnetModule publishes with --no-build. Runic.Application.Views 0.8.0-preview.1 and earlier then build
     # the bridge's bootstrap pass again for NativeAOT, which --no-build refuses (NETSDK1085), so publish lets
-    # MSBuild skip what the build phase left up to date instead.
+    # MSBuild skip what the build phase left up to date instead. Later versions reuse the generated code under
+    # --no-build (#278); keep this while the builder supports applications on the earlier versions.
     installPhase = ''
       runHook preInstall
       local -a projectFiles flags installFlags runtimeIds

@@ -520,3 +520,65 @@ test("an unknown RunicApplicationHost does not warn in a library", () => {
   assert.equal(result.status, 0, result.stdout);
   assert.doesNotMatch(result.stdout, /RUNICBRIDGE019/);
 });
+
+// #278: dotnet publish --no-build with NativeAOT schedules CoreCompile, so Bridge generation runs
+// with NoBuild=true. Building the generator or the bootstrap pass then failed with NETSDK1085.
+// The build before it generated the code: reuse it, and say so when it is missing.
+function noBuildProject(name, { generated = [], noViews = false } = {}) {
+  const project = join(directory, name);
+  const output = join(project, "obj/Debug/net10.0/runic-bridge");
+  mkdirSync(output, { recursive: true });
+  for (const file of generated) writeFileSync(join(output, file), "// generated\n");
+  if (noViews) writeFileSync(join(output, "RunicBridge.NoViews.marker"), "");
+  writeFileSync(join(project, "App.proj"), `<Project>
+  <PropertyGroup>
+    <AssemblyName>App</AssemblyName>
+    <RunicApplicationFrontendGenerationEnabled>true</RunicApplicationFrontendGenerationEnabled>
+    <RunicApplicationFrontendBuildEnabled>false</RunicApplicationFrontendBuildEnabled>
+    <RunicApplicationFrontendCompositionType>App.RunicViews</RunicApplicationFrontendCompositionType>
+    <Configuration>Debug</Configuration>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <!-- The Microsoft.NET.Sdk targets that RunicViewsGenerateBridge depends on. -->
+  <Target Name="ResolveProjectReferences" />
+  <Target Name="InitializeSourceRootMappedPaths" />
+  <Import Project="${targets}" />
+</Project>
+`);
+  return { project, output };
+}
+
+function generateWithoutBuild(project, extra = []) {
+  const result = spawnSync("dotnet", ["msbuild", join(project, "App.proj"), "-t:RunicViewsGenerateBridge", "-p:NoBuild=true",
+    ...extra, "-nologo", "-noAutoResponse", "-nodeReuse:false", "-v:m", "-clp:NoSummary"], { cwd: project, encoding: "utf8" });
+  return { status: result.status, output: `${result.stdout}${result.stderr}` };
+}
+
+test("NoBuild reuses the generated Bridge code instead of building the generator", () => {
+  const generated = ["App.CounterViewModel.Bridge.g.cs", "App.CounterWindow.View.g.cs", "RunicBridgeComposition.g.cs"];
+  const { project, output } = noBuildProject("no-build", { generated });
+  const result = generateWithoutBuild(project, ["-getItem:Compile"]);
+  assert.equal(result.status, 0, result.output);
+  assert.doesNotMatch(result.output, /NETSDK1085|error/, result.output);
+  const compile = JSON.parse(result.output.slice(result.output.indexOf("{"))).Items.Compile
+    .map(item => item.FullPath.slice(output.length + 1)).sort();
+  assert.deepEqual(compile, [...generated].sort());
+});
+
+test("NoBuild without generated Bridge code fails with RUNICBRIDGE022", () => {
+  let { project } = noBuildProject("no-build-missing");
+  let result = generateWithoutBuild(project);
+  assert.notEqual(result.status, 0, result.output);
+  assert.deepEqual(errors(result.output).map(line => line.match(/error (\w+):/)?.[1]), ["RUNICBRIDGE022"], result.output);
+  assert.doesNotMatch(result.output, /NETSDK1085/);
+
+  // A composition type needs its composition too.
+  ({ project } = noBuildProject("no-build-no-composition", { generated: ["App.CounterWindow.View.g.cs"] }));
+  result = generateWithoutBuild(project);
+  assert.deepEqual(errors(result.output).map(line => line.match(/error (\w+):/)?.[1]), ["RUNICBRIDGE022"], result.output);
+
+  // An application that declared no View left the marker and needs no code.
+  ({ project } = noBuildProject("no-build-no-views", { noViews: true }));
+  result = generateWithoutBuild(project);
+  assert.equal(result.status, 0, result.output);
+});
