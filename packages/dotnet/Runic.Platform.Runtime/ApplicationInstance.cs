@@ -80,8 +80,6 @@ public static class ApplicationInstance
     /// <c>ApplicationInstance</c> diagnostic whose code is the reply protocol version that instance supports, 0 for
     /// none; the launch was not handled.
     /// </returns>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "options is required, so no call binds to both overloads.")]
     public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
         ApplicationInstanceOptions options, CancellationToken cancellationToken = default)
     {
