@@ -24,8 +24,10 @@ exits; the primary instance raises `IApplicationInstance.Launched`, and
 `IDesktopStatusIcon.Activated` and `Launched` are raised on worker threads. The
 sample hands each to the host's application loop through a channel, so Windows
 open and close only there. The application lives as long as that loop: closing
-the last Window does not end it. Ctrl+C, SIGTERM (`systemctl --user stop`,
-logging out) and SIGHUP cancel `host.Desktop.ShutdownRequested`, which completes
+the last Window does not end it. The sample sets
+`DesktopHostOptions.HandlesShutdownWithoutWindow`, so Ctrl+C, SIGTERM
+(`systemctl --user stop`, logging out) and SIGHUP cancel
+`host.Desktop.ShutdownRequested` also while no window is open. That completes
 the channel, so the loop ends as **Quit** does: the counter closes, the icon is
 hidden and the single-instance claim is released.
 

@@ -14,7 +14,6 @@ public sealed class DesktopHost : IAsyncDisposable
     // Not disposed: a late termination signal may still cancel it after the host is disposed.
     private readonly CancellationTokenSource _shutdown = new();
     private int _shutdownRequested;
-    private int _shutdownObserved;
     private int _disposed;
 
     private DesktopHost(DesktopHostOptions options)
@@ -40,23 +39,17 @@ public sealed class DesktopHost : IAsyncDisposable
     /// SIGTERM or a closed Windows console, then closes every open window without close confirmation, so
     /// <see cref="DesktopWindow.WaitForCloseAsync"/> returns and the application shuts down as if the user had closed its
     /// last window. Use the token to end application work that does not wait for a window, such as an application
-    /// that runs behind a status icon. While no window is open and the application has not read this token, nothing
-    /// would end the application, so a termination signal keeps its default action and ends the process.
+    /// that runs behind a status icon, and set <see cref="DesktopHostOptions.HandlesShutdownWithoutWindow"/> so a
+    /// signal that arrives while no window is open requests shutdown too.
     /// See <see cref="DesktopHostOptions.HandleShutdownSignals"/>.
     /// </remarks>
-    public CancellationToken ShutdownRequested
-    {
-        get
-        {
-            Volatile.Write(ref _shutdownObserved, 1);
-            return _shutdown.Token;
-        }
-    }
+    public CancellationToken ShutdownRequested => _shutdown.Token;
 
-    // Whether a shutdown request reaches the application: a window it waits for is open or opening, or it read
-    // ShutdownRequested. Otherwise a termination signal it absorbed would leave the process running.
+    // Whether a shutdown request reaches the application: a window it waits for is open or opening, or the
+    // application declared that it ends on ShutdownRequested without one. Otherwise a termination signal the host
+    // absorbed would leave the process running.
     internal bool CanShutDownInOrder =>
-        Volatile.Read(ref _shutdownObserved) != 0 || _surfaces.Values.Any(static surface => surface.HasOpenOrOpeningWindow);
+        _options.HandlesShutdownWithoutWindow || _surfaces.Values.Any(static surface => surface.HasOpenOrOpeningWindow);
 
     internal bool IsShutdownRequested => Volatile.Read(ref _shutdownRequested) != 0;
 

@@ -28,11 +28,12 @@ confirmation, so `WaitForCloseAsync` returns. The application then releases its
 work, for example by disposing the services that own an `AcceptedWorkScope`,
 and `DesktopEventLoop.Run` disposes the host before the loop ends. Each window
 closes on its own UI thread. An application without a window, such as one
-behind a status icon, has nothing to close: it ends its work when
-`host.ShutdownRequested` is cancelled, for example by completing the loop that
-waits for activations. While no window is open and the application has not read
-`host.ShutdownRequested`, nothing would end it, so the signal keeps its default
-action and ends the process without that cleanup. A second Ctrl+C, a second or later after the first
+behind a status icon, has nothing to close: it sets
+`DesktopHostOptions.HandlesShutdownWithoutWindow` to `true` and ends its work
+when `host.ShutdownRequested` is cancelled, for example by completing the loop
+that waits for activations. Without that option, a signal that arrives while no
+window is open or opening keeps its default action and ends the process without
+that cleanup, because nothing would end the application. A second Ctrl+C, a second or later after the first
 signal, ends the process at once; the copies that `dotnet run`, `dotnet watch`
 and `dotnet runic dev` forward do not. Set
 `DesktopHostOptions.HandleShutdownSignals` to `false` to handle these signals

@@ -30,7 +30,8 @@ services.AddRunicPlatformServices(ApplicationId);
 await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
 
 // The application starts without a window: only the icon in the desktop's status area.
-return RunicDesktopHost.Run(provider, new DesktopHostOptions(), async host =>
+// The loop below ends on ShutdownRequested, so Ctrl+C and SIGTERM shut it down in order also without a window.
+return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWithoutWindow = true }, async host =>
 {
     var icon = provider.GetRequiredService<IDesktopStatusIcon>();
     var startup = provider.GetRequiredService<IDesktopLoginStartup>();
