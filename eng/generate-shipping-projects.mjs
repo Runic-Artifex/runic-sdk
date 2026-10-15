@@ -21,8 +21,10 @@ export function shippingProjects(workspace) {
 
 // Each component policy owns the flag that marks a project as trimmable, AOT-compatible
 // and analyzed as shipping code. Desktop keeps its separate policy and sets both explicitly.
+// platform.props is the application policy with Runic Desktop's package icon.
 const policies = [
   { props: "application.props", required: ["RunicApplicationShippingProject"] },
+  { props: "platform.props", required: ["RunicApplicationShippingProject"] },
   { props: "assets.props", required: ["RunicAssetsShippingProject"] },
   { props: "desktop.props", required: ["IsAotCompatible", "IsTrimmable"] },
 ];

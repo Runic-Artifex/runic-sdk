@@ -1,0 +1,7 @@
+<Project>
+  <!-- Platform services belong to Runic Desktop, so their packages carry its icon. -->
+  <PropertyGroup>
+    <RunicPolicyIcon>$(MSBuildThisFileDirectory)../branding/desktop/icon.png</RunicPolicyIcon>
+  </PropertyGroup>
+  <Import Project="application.props" />
+</Project>
