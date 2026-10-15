@@ -426,13 +426,24 @@
 
   <!-- In a WPF project this runs before the temporary markup assembly, so
        that assembly can compile the generated code (see
-       RunicViewsMarkupTemporaryCompile). -->
+       RunicViewsMarkupTemporaryCompile).
+
+       With NoBuild=true (a publish with the no-build option), NativeAOT still
+       schedules CoreCompile, which is then up to date. The build that came
+       before generated the code, so this target neither builds the generator
+       nor runs the bootstrap pass or the generator (Build would fail with
+       NETSDK1085); it only adds the generated sources to Compile, and reports
+       RUNICBRIDGE022 when they are missing. -->
   <Target Name="RunicViewsGenerateBridge" BeforeTargets="CoreCompile;GenerateTemporaryTargetAssembly"
           DependsOnTargets="RunicViewsDetectBridgeUse;ResolveProjectReferences;RunicViewsBridgePathMap"
           Condition="'$(RunicApplicationFrontendGenerationEnabled)' == 'true' and '$(DesignTimeBuild)' != 'true' and '$(RunicApplicationFrontendBootstrap)' != 'true' and '$(_RunicBridgeMarkupTemporary)' != 'true'">
+    <PropertyGroup>
+      <_RunicBridgeReuseGenerated>false</_RunicBridgeReuseGenerated>
+      <_RunicBridgeReuseGenerated Condition="'$(NoBuild)' == 'true'">true</_RunicBridgeReuseGenerated>
+    </PropertyGroup>
     <MSBuild Projects="$(_RunicBridgeCodegenProject)" Targets="Build"
              Properties="Configuration=$(Configuration);TargetFramework=net10.0;RuntimeIdentifier=;PublishAot=false;SelfContained=false"
-             Condition="Exists('$(_RunicBridgeCodegenProject)')" />
+             Condition="Exists('$(_RunicBridgeCodegenProject)') and '$(_RunicBridgeReuseGenerated)' != 'true'" />
     <!-- In a one-project starter, first compile the ordinary C# source so MVVM
          source generators have finished before Bridge inspection. Analyzers
          are off in this pass: it only feeds the generator, the real build runs
@@ -441,12 +452,12 @@
          still run. -->
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build"
              Properties="RunicApplicationFrontendBootstrap=true;RunicBridgeBootstrap=true;RunAnalyzers=false;RunCodeAnalysis=false;Configuration=$(Configuration);TargetFramework=$(TargetFramework);RuntimeIdentifier=;PublishAot=false;SelfContained=false;CopyLocalLockFileAssemblies=true;OutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/;IntermediateOutputPath=$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/obj/$(Configuration)/$(TargetFramework)/"
-             Condition="'$(RunicApplicationFrontendModelAssembly)' == ''" />
+             Condition="'$(RunicApplicationFrontendModelAssembly)' == '' and '$(_RunicBridgeReuseGenerated)' != 'true'" />
     <PropertyGroup>
       <_RunicBridgeInputAssembly Condition="'$(RunicApplicationFrontendModelAssembly)' == ''">$(MSBuildProjectDirectory)/obj/runic-bridge/bootstrap/bin/$(Configuration)/$(TargetFramework)/$(AssemblyName).dll</_RunicBridgeInputAssembly>
       <_RunicBridgeInputAssembly Condition="'$(RunicApplicationFrontendModelAssembly)' != ''">$(RunicApplicationFrontendModelAssembly)</_RunicBridgeInputAssembly>
     </PropertyGroup>
-    <Error Condition="!Exists('$(_RunicBridgeCodegenDll)')"
+    <Error Condition="!Exists('$(_RunicBridgeCodegenDll)') and '$(_RunicBridgeReuseGenerated)' != 'true'"
            Text="Runic Bridge code generator was not found at $(_RunicBridgeCodegenDll)." />
     <PropertyGroup>
       <_RunicBridgeOptionalArgument Condition="'$(_RunicBridgeOptional)' == 'true'">--optional</_RunicBridgeOptionalArgument>
@@ -464,25 +475,32 @@
     <PropertyGroup>
       <_RunicBridgeFrameworkArgument>@(_RunicBridgeSharedFramework->'--framework &quot;%(Identity)&quot;', ' ')</_RunicBridgeFrameworkArgument>
     </PropertyGroup>
-    <Delete Files="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" />
+    <Delete Files="$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)" Condition="'$(_RunicBridgeReuseGenerated)' != 'true'" />
     <!-- The generator reports its diagnostics in canonical form. They are
          logged once with their codes (see RunicBridgeReportCommandResult);
          a failure that reported none is RUNICBRIDGE001. -->
     <Exec Command="dotnet &quot;$(_RunicBridgeCodegenDll)&quot; --generate &quot;$(_RunicBridgeInputAssembly)&quot; &quot;$(_RunicBridgeGeneratedDir)&quot; &quot;$(RunicApplicationFrontendGeneratedDirectory)&quot; $(_RunicBridgeAotArgument) $(_RunicBridgeCompositionArgument) $(_RunicBridgeReactiveUiFlavorArgument) $(_RunicBridgeOptionalArgument) $(_RunicBridgePathMapArgument) $(_RunicBridgeFrameworkArgument)"
-          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          Condition="'$(_RunicBridgeReuseGenerated)' != 'true'">
       <Output TaskParameter="ExitCode" PropertyName="_RunicBridgeCodegenExitCode" />
       <Output TaskParameter="ConsoleOutput" ItemName="_RunicBridgeCodegenOutputLine" />
     </Exec>
     <PropertyGroup>
       <_RunicBridgeCodegenDiagnostics Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(_RunicBridgeCodegenOutputLine.Identity)', '$(_RunicBridgeCanonicalDiagnostic)'))">true</_RunicBridgeCodegenDiagnostics>
     </PropertyGroup>
-    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeCodegenExitCode)' != '0' or '$(_RunicBridgeCodegenDiagnostics)' == 'true'"
+    <RunicBridgeReportCommandResult Condition="'$(_RunicBridgeReuseGenerated)' != 'true' and ('$(_RunicBridgeCodegenExitCode)' != '0' or '$(_RunicBridgeCodegenDiagnostics)' == 'true')"
         Lines="@(_RunicBridgeCodegenOutputLine)" ExitCode="$(_RunicBridgeCodegenExitCode)"
         FailureCode="RUNICBRIDGE001" FailureFile="$(MSBuildProjectFullPath)"
         FailureText="The Runic Bridge generator exited with code $(_RunicBridgeCodegenExitCode) without reporting an error while inspecting $(_RunicBridgeInputAssembly). Its output is above." />
     <PropertyGroup>
       <_RunicBridgeSkipped Condition="Exists('$(_RunicBridgeGeneratedDir)$(_RunicBridgeNoViewsMarker)')">true</_RunicBridgeSkipped>
     </PropertyGroup>
+    <ItemGroup Condition="'$(_RunicBridgeReuseGenerated)' == 'true' and '$(_RunicBridgeSkipped)' != 'true'">
+      <_RunicBridgeGeneratedSource Include="$(_RunicBridgeGeneratedDir)*.Bridge.g.cs;$(_RunicBridgeGeneratedDir)*.View.g.cs" />
+    </ItemGroup>
+    <Error Code="RUNICBRIDGE022" File="$(MSBuildProjectFullPath)" HelpLink="$(RunicDiagnosticsHelpLinkBase)runicbridge022"
+           Condition="'$(_RunicBridgeReuseGenerated)' == 'true' and '$(_RunicBridgeSkipped)' != 'true' and ('@(_RunicBridgeGeneratedSource)' == '' or ('$(RunicApplicationFrontendCompositionType)' != '' and !Exists('$(_RunicBridgeGeneratedDir)RunicBridgeComposition.g.cs')))"
+           Text="$(AssemblyName) is built with NoBuild=true, as by dotnet publish --no-build, but $([System.IO.Path]::GetFullPath('$(_RunicBridgeGeneratedDir)')) has no Runic Bridge code from an earlier build, and NoBuild does not run the generator. Build the project with the same Configuration, TargetFramework and PublishAot first, or publish without --no-build." />
     <Message Importance="normal" Condition="'$(_RunicBridgeSkipped)' == 'true'"
              Text="Runic Bridge: $(AssemblyName) declares no Runic Window or View, so no bridge code or frontend build is generated. Set RunicApplicationFrontendGenerationEnabled=true to require them, or false to skip the bootstrap build entirely." />
     <ItemGroup Condition="'$(_RunicBridgeSkipped)' == 'true'">

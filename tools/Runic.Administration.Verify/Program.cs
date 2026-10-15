@@ -190,8 +190,18 @@ internal sealed record Options(string Suite, bool Changes, bool ExpectDenied, st
     internal bool Includes(string capability) => Only.Count == 0 || Only.Contains(capability);
 }
 
-internal sealed record VerificationSummary(string RunId, string Suite, bool ChangesEnabled, bool ExpectDenied, string ReportFolder,
-    int Passed, int Failed, int Skipped, int Canceled);
+// The runic.administration.verify/1 payload names its properties in PascalCase, spelled out
+// so that the JSON context's options cannot rename them.
+internal sealed record VerificationSummary(
+    [property: JsonPropertyName("RunId")] string RunId,
+    [property: JsonPropertyName("Suite")] string Suite,
+    [property: JsonPropertyName("ChangesEnabled")] bool ChangesEnabled,
+    [property: JsonPropertyName("ExpectDenied")] bool ExpectDenied,
+    [property: JsonPropertyName("ReportFolder")] string ReportFolder,
+    [property: JsonPropertyName("Passed")] int Passed,
+    [property: JsonPropertyName("Failed")] int Failed,
+    [property: JsonPropertyName("Skipped")] int Skipped,
+    [property: JsonPropertyName("Canceled")] int Canceled);
 
 [JsonSerializable(typeof(VerificationSummary))]
 internal sealed partial class VerifierJsonContext : JsonSerializerContext;
