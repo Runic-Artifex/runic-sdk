@@ -28,7 +28,7 @@ runs:
           export RETRY_CLEANUP="sudo pkill -KILL -x apt-get; sudo pkill -KILL -x dpkg; sleep 2; sudo DEBIAN_FRONTEND=noninteractive dpkg --configure -a"
         fi
         eng/ci/retry.sh 3 600 bunx --bun playwright-core install ${deps[@]+"${deps[@]}"} chromium
-        bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path); console.log("WEBUI_BROWSER_PATH=" + path)' >> "$GITHUB_ENV"
+        bun -e 'import {chromium} from "playwright-core"; const path = chromium.executablePath(); console.log("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=" + path)' >> "$GITHUB_ENV"
     - name: Check the installed browser can start
       shell: bash
       run: |

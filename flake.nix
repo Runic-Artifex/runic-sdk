@@ -264,7 +264,6 @@
                 export GST_PLUGIN_SYSTEM_PATH_1_0="${lib.makeSearchPath "lib/gstreamer-1.0" (with pkgs.gst_all_1; [ gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-libav ])}''${GST_PLUGIN_SYSTEM_PATH_1_0:+:$GST_PLUGIN_SYSTEM_PATH_1_0}"
                 export LD_LIBRARY_PATH="${lib.makeLibraryPath linuxRuntimePackages}:$LD_LIBRARY_PATH"
                 export XDG_DATA_DIRS="${lib.concatMapStringsSep ":" (package: "${package}/share/gsettings-schemas/${package.name}") [ pkgs.gtk3 pkgs.gtk4 pkgs.gsettings-desktop-schemas ]}''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
-                export WEBUI_BROWSER_PATH="${pkgs.chromium}/bin/chromium"
                 export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${pkgs.chromium}/bin/chromium"
               ''}
             '';

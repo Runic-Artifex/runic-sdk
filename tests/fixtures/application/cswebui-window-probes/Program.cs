@@ -6,8 +6,9 @@ using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Application.Views.CsWebUi;
 
-// Each probe prints one marker that CI matches. No probe launches a browser: the window probe serves its
-// content without one, through the same switch test harnesses use.
+// Each probe prints one marker that CI matches. No probe opens a browser window: the window probes serve their
+// content without one, through the same switch test harnesses use, and the show-failure probe selects a browser
+// that does not exist or exits at once.
 Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
 switch (args.SingleOrDefault())
 {
@@ -21,8 +22,10 @@ switch (args.SingleOrDefault())
     case "--probe-missing-bridge":
         await ProbeMissingBridgeAsync();
         break;
+    case "--probe-show-failure":
+        return ProbeShowFailure();
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure");
         return 2;
 }
 WebUiApplication.Clean();
@@ -160,6 +163,81 @@ static int ProbeCloseGuard()
             string.Join('\n', entries.Select(static entry => entry.ToString())));
     Console.WriteLine("FIRST_WINDOW_CLOSE_GUARD_OK");
     return 0;
+}
+
+// A browser that cannot show the window fails OpenWindowAsync with a Window diagnostic that keeps WebUI's exception,
+// logs event 2100 once, and makes Run return 1 when the application does not handle it, instead of an unhandled
+// exception (#265). The browser comes from CSWEBUI_BROWSER_PATH: one that does not exist on every platform, and on
+// Linux a script named chromium that exits at once, so its page never connects.
+static int ProbeShowFailure()
+{
+    Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", null);
+    var folder = Directory.CreateTempSubdirectory("runic-cswebui-show-");
+    try
+    {
+        var missing = Path.Combine(folder.FullName, "missing", "chromium");
+        RequireShowFailure(missing, (diagnostic, error) =>
+            diagnostic.Code == "window-show-failed" && error.Message.Contains("CSWEBUI_BROWSER_PATH", StringComparison.Ordinal));
+        if (OperatingSystem.IsLinux())
+        {
+            var browser = Path.Combine(folder.FullName, "chromium");
+            File.WriteAllText(browser, "#!/bin/sh\necho 'cannot render' >&2\nexit 1\n");
+            File.SetUnixFileMode(browser, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            RequireShowFailure(browser, (diagnostic, error) =>
+                diagnostic.Code is "browser-not-connected" or "browser-not-started" &&
+                error is WebUiShowException { Browser: WebUiBrowser.Chromium } show && show.BrowserPath == browser);
+        }
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable, null);
+        folder.Delete(recursive: true);
+    }
+    Console.WriteLine("FIRST_WINDOW_SHOW_FAILURE_OK");
+    return 0;
+}
+
+static void RequireShowFailure(string browserPath, Func<RunicWindowDiagnostic, WebUiException, bool> expected)
+{
+    Environment.SetEnvironmentVariable(WebUiApplication.BrowserPathEnvironmentVariable, browserPath);
+    var services = new ServiceCollection();
+    services.AddScoped<ProbeViewModel>();
+    services.AddRunicViews();
+    var log = new RecordingLoggerFactory();
+    services.AddSingleton<ILoggerFactory>(log);
+    using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+    RunicWindowConfigurationException? failure = null;
+    var result = RunicCsWebUiHost.Run(provider, async host =>
+    {
+        WebUiApplication.SetConnectionTimeout(2);
+        try
+        {
+            await using var window = await host.OpenWindowAsync<ProbeWindow>();
+        }
+        catch (RunicWindowConfigurationException error)
+        {
+            failure = error;
+            throw;
+        }
+        Console.Error.WriteLine($"The Window opened with the browser {browserPath}.");
+        return 3;
+    });
+    if (result != 1)
+        throw new InvalidOperationException($"Run returned {result} instead of 1 for a window that could not be shown with {browserPath}.");
+    if (failure is not { Diagnostics: [var diagnostic], InnerException: WebUiException error } ||
+        diagnostic.Message != error.Message || !error.Message.Contains(browserPath, StringComparison.Ordinal) ||
+        !expected(diagnostic, error))
+        throw new InvalidOperationException($"OpenWindowAsync did not report the browser {browserPath} that could not show the window:\n{failure}");
+    LogEntry[] entries;
+    lock (log.Entries) entries = [.. log.Entries];
+    if (entries.Count(static entry => entry.EventId.Id == 2100) != 1 || !entries.Any(entry =>
+            entry is { Category: "Runic.Application.Views.CsWebUi", Level: LogLevel.Error } &&
+            entry.EventId is { Id: 2100, Name: "CsWebUiWindowShowFailed" } &&
+            entry.Message.Contains(nameof(ProbeWindow), StringComparison.Ordinal) &&
+            entry.Message.Contains(diagnostic.Code, StringComparison.Ordinal) &&
+            entry.Message.Contains(browserPath, StringComparison.Ordinal)))
+        throw new InvalidOperationException($"The window that could not be shown with {browserPath} was not logged once as event 2100:\n" +
+            string.Join('\n', entries.Select(static entry => entry.ToString())));
 }
 
 static void RequireBridgeNotRegistered(RunicWindowConfigurationException error, string name)

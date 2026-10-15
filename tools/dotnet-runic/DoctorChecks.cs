@@ -760,22 +760,25 @@ internal static class DoctorChecks
                 : "Not required: the WPF host renders the app in its own WebView2 control."));
             return;
         }
-        string? configured = runtime.GetEnvironmentVariable("RUNIC_BROWSER_PATH");
+        // CS-WebUI's browser override; WebUI itself reads no browser variable. On macOS it names the .app bundle.
+        string? configured = runtime.GetEnvironmentVariable(CsWebUiBrowserPathVariable);
         if (!string.IsNullOrWhiteSpace(configured))
         {
             string path = Path.GetFullPath(configured);
-            checks.Add(File.Exists(path)
+            checks.Add(File.Exists(path) || Directory.Exists(path)
                 ? Pass("browser", $"Found configured browser at '{path}'.")
-                : Fail("browser", "RUNIC_BROWSER_PATH points to a missing file.", "Set it to an installed Chromium-family browser or unset it."));
+                : Fail("browser", $"{CsWebUiBrowserPathVariable} points to a missing file.", "Set it to an installed Chromium-family browser or unset it."));
             return;
         }
         string? browser = FindBrowser(runtime);
         checks.Add(browser is not null
             ? Pass("browser", $"Found browser '{browser}'.")
             : Warn("browser", "No Chromium-family browser was found on PATH.", project.Host == RunicViewsHost.CsWebUi
-                ? "CS-WebUI opens the app in an installed browser, preferring Chromium-family browsers, and falls back to the platform WebView. Install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."
-                : $"The project references neither {DoctorProjectConfiguration.CsWebUiPackage} nor {DoctorProjectConfiguration.DesktopPackage}. A browser-based host prefers an installed Chromium-family browser; install Chrome, Edge or Chromium, or set RUNIC_BROWSER_PATH."));
+                ? $"CS-WebUI opens the app in an installed browser, preferring Chromium-family browsers, and falls back to the platform WebView. Install Chrome, Edge or Chromium, or set {CsWebUiBrowserPathVariable}."
+                : $"The project references neither {DoctorProjectConfiguration.CsWebUiPackage} nor {DoctorProjectConfiguration.DesktopPackage}. A browser-based host prefers an installed Chromium-family browser; install Chrome, Edge or Chromium, or set {CsWebUiBrowserPathVariable}."));
     }
+
+    internal const string CsWebUiBrowserPathVariable = "CSWEBUI_BROWSER_PATH";
 
     /// <summary>Finds a Chromium-family browser on this machine.</summary>
     internal static string? FindBrowser(IDoctorRuntime runtime)

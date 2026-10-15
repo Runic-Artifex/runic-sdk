@@ -123,6 +123,9 @@ try {
   const missingBridge = await run("dotnet", [probe, "--probe-missing-bridge"], probes);
   if (!missingBridge.includes("FIRST_WINDOW_MISSING_BRIDGE_OK"))
     throw new Error(`The packaged Window did not report a missing Bridge registration:\n${missingBridge}`);
+  const showFailure = await run("dotnet", [probe, "--probe-show-failure"], probes);
+  if (!showFailure.includes("FIRST_WINDOW_SHOW_FAILURE_OK"))
+    throw new Error(`The packaged Window did not report a browser that could not show it:\n${showFailure}`);
   const browser = await run("node", [join(example, "browser-smoke.mjs")], root, {
     ...process.env,
     RUNIC_FIRST_WINDOW_DLL: join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll")

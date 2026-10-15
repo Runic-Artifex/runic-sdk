@@ -52,8 +52,8 @@ beforeEach(() => {
   chmodSync(executable, 0o755);
   log = join(directory, "launches.log");
   writeFileSync(log, "");
-  for (const name of ["WEBUI_BROWSER_PATH", "RUNIC_STANDIN_LOG", "RUNIC_STANDIN_MODES"]) saved[name] = process.env[name];
-  process.env.WEBUI_BROWSER_PATH = executable;
+  for (const name of ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "RUNIC_STANDIN_LOG", "RUNIC_STANDIN_MODES"]) saved[name] = process.env[name];
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH = executable;
   process.env.RUNIC_STANDIN_LOG = log;
   warnings.length = 0;
   console.warn = message => warnings.push(message);

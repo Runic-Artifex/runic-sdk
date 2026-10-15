@@ -160,7 +160,7 @@ export async function launchChromium(url, { profilePrefix = "runic-smoke-", time
 
 async function startChromium(url, profilePrefix) {
   const profile = await mkdtemp(join(tmpdir(), profilePrefix));
-  const child = spawn(process.env.WEBUI_BROWSER_PATH ?? "chromium", [
+  const child = spawn(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ?? "chromium", [
     "--headless", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
     "--no-first-run", "--no-default-browser-check", "--remote-debugging-port=0",
     `--user-data-dir=${profile}`, url,

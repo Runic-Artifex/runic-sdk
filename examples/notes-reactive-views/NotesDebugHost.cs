@@ -59,10 +59,8 @@ internal sealed class NotesDebugHost : IDisposable
         }
         // WebUI reports a localhost URL but listens on IPv4 loopback only. Windows
         // waits about two seconds on the refused ::1 attempt, so proxy to 127.0.0.1.
+        // CS-WebUI throws when WebUI returns an empty URL, which it did under heavy parallel load.
         var nativeUrl = window.NativeWindow.StartServer("index.html");
-        // Under heavy parallel load the native server has returned "" instead of throwing.
-        if (string.IsNullOrEmpty(nativeUrl))
-            throw new InvalidOperationException("WebUI did not start the backend server: it returned an empty URL.");
         var backendUrl = new UriBuilder(nativeUrl) { Host = "127.0.0.1" }
             .Uri.GetLeftPart(UriPartial.Authority);
         // A port is free when AvailablePort returns it but is bound later, by the

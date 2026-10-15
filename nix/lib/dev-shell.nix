@@ -71,8 +71,11 @@ mkShell (
           lib.concatMapStringsSep ":" (package: "${package}/share/gsettings-schemas/${package.name}") inputs
         }''${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
       ''
+      # CS-WebUI reads CSWEBUI_BROWSER_PATH (WebUI itself reads no browser variable) and then uses only that browser.
+      + lib.optionalString (lib.elem "cswebui" hosts) ''
+        export CSWEBUI_BROWSER_PATH="${chromium}/bin/chromium"
+      ''
       + lib.optionalString browser ''
-        export WEBUI_BROWSER_PATH="${chromium}/bin/chromium"
         export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH="${chromium}/bin/chromium"
       ''
       + shellHook;

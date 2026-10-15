@@ -663,6 +663,21 @@ internal sealed class ToolTests
                 .GetAwaiter().GetResult().Checks.Single(check => check.Name == "browser");
             Equal(DoctorStatus.Warning, browser.Status);
             Contains(browser.Remediation ?? string.Empty, "CS-WebUI");
+            Contains(browser.Remediation ?? string.Empty, "CSWEBUI_BROWSER_PATH");
+        }
+
+        // CS-WebUI's own browser override is checked; WebUI reads no browser variable.
+        using (var workspace = new TestWorkspace())
+        {
+            DoctorProjectConfiguration csWebUi = CreateDoctorProject(workspace, "Runic.Application.Views.CsWebUi", out var authority);
+            var runtime = new FakeDoctorRuntime(authority.Toolchain)
+            {
+                Environment = { ["CSWEBUI_BROWSER_PATH"] = Path.Combine(workspace.Root, "missing", "chromium") },
+            };
+            DoctorCheck browser = DoctorChecks.InspectAsync(csWebUi, "dotnet", runtime, CancellationToken.None)
+                .GetAwaiter().GetResult().Checks.Single(check => check.Name == "browser");
+            Equal(DoctorStatus.Failure, browser.Status);
+            Contains(browser.Message, "CSWEBUI_BROWSER_PATH");
         }
     }
 

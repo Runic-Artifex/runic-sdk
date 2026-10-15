@@ -43,7 +43,16 @@ internal sealed class WebUiBridgeArguments(WebUiEvent value) : IBridgeArguments
 {
     public string ClientKey => value.ClientId.ToString(CultureInfo.InvariantCulture);
     public string ConnectionKey => $"{value.ClientId}:{value.ConnectionId}";
-    public long GetInt64() => value.GetInt64();
-    public bool GetBoolean() => value.GetBoolean();
-    public string GetString() => value.GetString();
+    public long GetInt64() => Read(value.GetInt64);
+    public bool GetBoolean() => Read(value.GetBoolean);
+    public string GetString() => Read(value.GetString);
+
+    // CS-WebUI reads each argument with the length WebUI received and throws InvalidDataException for a call whose
+    // argument claims more than WebUI's message limit. The Bridge routes reject an ArgumentException as an invalid
+    // request, as they do malformed JSON.
+    private static T Read<T>(Func<nuint, T> read)
+    {
+        try { return read(0); }
+        catch (InvalidDataException error) { throw new ArgumentException(error.Message, error); }
+    }
 }
