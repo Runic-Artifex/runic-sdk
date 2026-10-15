@@ -599,3 +599,5 @@ Runic.Desktop.DesktopWindowHostOptions.Y.get -> int?
 Runic.Desktop.DesktopWindowOptions.X.get -> int?
 Runic.Desktop.DesktopWindowOptions.Y.get -> int?
 Runic.Desktop.IDesktopWindowHost.MoveAsync(int x, int y, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Runic.Desktop.DesktopHostOptions.HandlesShutdownWithoutWindow.get -> bool
+Runic.Desktop.DesktopHostOptions.HandlesShutdownWithoutWindow.init -> void
