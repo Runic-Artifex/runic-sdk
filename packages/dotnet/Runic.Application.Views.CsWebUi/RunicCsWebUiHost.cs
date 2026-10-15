@@ -87,10 +87,19 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
     /// <see cref="WebUiApplication.Wait"/> while windows are shown; when that returns, every shown window's
     /// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> completes. Dispose <paramref name="services"/> after
     /// this method returns.
+    /// <para>
+    /// A window that WebUI cannot show, for example because no browser is installed, the browser selected with
+    /// <c>CSWEBUI_BROWSER_PATH</c> or <see cref="WebUiApplication.SetBrowserPath"/> does not exist or fails to start,
+    /// or its page does not connect in time, fails <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/> with a
+    /// <see cref="RunicWindowConfigurationException"/>. Its diagnostic names the browser, its path and the reason, with a
+    /// code such as <c>browser-not-found</c>, and WebUI's exception is the inner exception. The failure is logged as
+    /// event 2100 <c>CsWebUiWindowShowFailed</c>. When the application does not handle it, this method writes the
+    /// message to standard error and returns 1.
+    /// </para>
     /// </remarks>
     /// <param name="services">The application's service provider.</param>
     /// <param name="application">The application. Its result becomes the return value.</param>
-    /// <returns>The value returned by <paramref name="application"/>.</returns>
+    /// <returns>The value returned by <paramref name="application"/>, or 1 when it did not handle a window that could not be shown.</returns>
     public static int Run(IServiceProvider services, Func<RunicCsWebUiHost, Task<int>> application)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -104,6 +113,13 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             loop.Run(work);
             return work.GetAwaiter().GetResult();
         }
+        // Already logged as event 2100. An application that does not handle it exits with its message instead of
+        // an unhandled exception.
+        catch (RunicWindowConfigurationException error) when (error.InnerException is WebUiException)
+        {
+            Console.Error.WriteLine(error.Message);
+            return ShowFailedExitCode;
+        }
         finally
         {
             host._loop = null;
@@ -111,6 +127,9 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             WebUiApplication.Clean();
         }
     }
+
+    // The exit code of Run when a window could not be shown and the application did not handle it.
+    internal const int ShowFailedExitCode = 1;
 
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options) => [];
 
@@ -158,6 +177,7 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
             if (opening.CloseGuard is not null) opening.ReportCloseGuardUnavailable("CS-WebUI");
 
             var options = opening.Options;
+            var windowName = opening.Window.GetType().Name;
             var native = window;
             var shown = host;
             void Show()
@@ -165,7 +185,10 @@ public sealed class RunicCsWebUiHost : IRunicWindowHost
                 native.SetRootFolder(options.ResolveContentRoot());
                 if (options.Width is { } width && options.Height is { } height) native.SetSize((uint)width, (uint)height);
                 ConfigureWindow?.Invoke(native);
-                shown.Show(options.StartPage, UseWebView, ShowWindow);
+                // A browser that cannot be found, started or connected fails the open with its reason, logged as
+                // event 2100, instead of WebUI's exception (#265).
+                try { shown.Show(options.StartPage, UseWebView, ShowWindow); }
+                catch (WebUiException error) { throw CsWebUiLog.ShowFailed(scope.ServiceProvider, windowName, error); }
             }
             if (loop is null) Show();
             else host.WebUiClosed = await loop.ShowAsync(Show, cancellationToken).ConfigureAwait(false);

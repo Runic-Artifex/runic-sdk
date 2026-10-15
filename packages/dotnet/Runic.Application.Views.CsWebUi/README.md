@@ -92,7 +92,11 @@ WebView. `new RunicCsWebUiHost(provider) { UseWebView = true }` always uses the
 WebView: the Edge WebView2 Runtime on Windows, GTK 3 with WebKitGTK 4.1 on
 Linux, or WKWebView on macOS. `ConfigureWindow` configures each `WebUiWindow`
 before it is shown, for example `SetPort`, and `ShowWindow` replaces how it is
-shown, for example to open a frontend development server's URL. For native
+shown, for example to open a frontend development server's URL. To choose one
+browser, set `CSWEBUI_BROWSER_PATH` to its executable (on macOS its `.app`
+bundle) or call `WebUiApplication.SetBrowserPath`; WebUI then uses only that
+browser, with no fallback. WebUI itself reads no browser variable such as
+`WEBUI_BROWSER_PATH`. For native
 windows and platform services, use
 [Runic.Application.Views.Desktop](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md)
 instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformServices`,
@@ -104,6 +108,22 @@ one `IDesktopNotifications` whose requests return
 `Unavailable(ProviderNotConfigured)`; register a platform provider's settings
 or notifications, such as `WindowsPlatformProvider.CreateSettings()`, before it
 to use them on CS-WebUI.
+
+When WebUI cannot show a window, because it finds no browser, the selected
+browser does not exist or does not start, or the page does not connect within
+the connection timeout, `OpenWindowAsync` throws a
+`RunicWindowConfigurationException`, as Runic Desktop does when no presentation
+can open. Its diagnostic names the browser, its path and the reason, with the
+code `browser-not-found`, `browser-not-started`, `browser-not-connected`,
+`webview-not-started` or, for another WebUI error such as an unusable
+`CSWEBUI_BROWSER_PATH`, `window-show-failed`. The `WebUiShowException` (or
+`WebUiException`) is its inner exception. The host logs the failure as event
+2100 `CsWebUiWindowShowFailed` in the category `Runic.Application.Views.CsWebUi`,
+or writes it to `Trace` without an `ILoggerFactory`. When the application does
+not handle the exception, `RunicCsWebUiHost.Run` writes its message to standard
+error and returns 1 instead of ending the process with an unhandled exception.
+WebUI starts browsers detached and discards their output; run the browser with
+the window's URL to see why it fails.
 
 Set `RUNIC_APPLICATION_SERVE_ONLY=1` to start the local server without opening
 anything. Each window then writes `RUNIC_APPLICATION_URL=<url>` to
@@ -132,10 +152,12 @@ A project that references both hosts sets `RunicApplicationHost` (`cswebui` or
 Pages that load `runic-cswebui.js` keep working. The script adapts
 `window.webui` to the generated client's transport contract.
 
-Native WebUI can assign one event slot to two calls that arrive together, and
-one of them then never receives a reply. The script therefore sends the next
+Native WebUI before the build that CsWebUi 2.5.0-beta.4.7 bundles could assign
+one event slot to two calls that arrive together, and one of them then never
+received a reply (webui-dev/webui#721). The script therefore sends the next
 Bridge call only after .NET reports the previous one as received, or after it
-settles. Concurrent calls are sent one server round trip apart. Applications
+settles, which also covers an older WebUI loaded through
+`CSWEBUI_NATIVE_LIBRARY`. Concurrent calls are sent one server round trip apart. Applications
 that keep their own copy of `runic-cswebui.js` should update it.
 
 The window binds all WebUI events because only that binding delivers

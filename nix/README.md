@@ -264,7 +264,10 @@ The shell has the .NET SDK, Node, the package managers, Clang and zlib for
 NativeAOT, and the run-time environment of the hosts: for `desktop` and
 `desktop-gtk4`, GTK and WebKitGTK on `LD_LIBRARY_PATH` with their schemas and
 GIO modules. `cswebui` and `browserTests = true` add Chromium as
-`WEBUI_BROWSER_PATH` and `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`. A shell for both
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`; `cswebui` also sets
+`CSWEBUI_BROWSER_PATH`, so CS-WebUI windows open in that Chromium and fall back
+to no other browser. (WebUI itself reads no browser variable, and never read
+`WEBUI_BROWSER_PATH`.) A shell for both
 Runic Desktop and CS-WebUI has the Desktop libraries, so run headless CS-WebUI
 in a shell without them. Other `mkShell` arguments pass through.
 

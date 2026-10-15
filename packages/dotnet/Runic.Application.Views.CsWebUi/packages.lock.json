@@ -4,11 +4,11 @@
     "net10.0": {
       "CsWebUi": {
         "type": "Direct",
-        "requested": "[2.5.0-beta.4.6, )",
-        "resolved": "2.5.0-beta.4.6",
-        "contentHash": "AbYMV2C1ToGW8J/txXyX8W1JVJpFNkCt5bRXJQ+zTgT7jc+CDicyrxYqrSJHCsJx2QaxxEGqfet1vPcGtR5gWA==",
+        "requested": "[2.5.0-beta.4.7, )",
+        "resolved": "2.5.0-beta.4.7",
+        "contentHash": "qHo0PWbIqteewgp/LTjf5L2R0Qmt+Z7r0g4boIJZdPimcAMfPJsO/PvqcVWkI1efsVdkPJFGdFAb5Ep9ynMGzw==",
         "dependencies": {
-          "CsWebUi.Native": "2.5.0-beta.4.6"
+          "CsWebUi.Native": "2.5.0-beta.4.7"
         }
       },
       "Microsoft.CodeAnalysis.PublicApiAnalyzers": {
@@ -49,9 +49,9 @@
       },
       "CsWebUi.Native": {
         "type": "CentralTransitive",
-        "requested": "[2.5.0-beta.4.6, )",
-        "resolved": "2.5.0-beta.4.6",
-        "contentHash": "2Ntm4X1SuT3BsuteZeHtOdet5N7gv1ll7BCTSjAv17FBCi4jgYRJMMVNRSnfC04cwNxipVpVo0O8iRKcrxd1vw=="
+        "requested": "[2.5.0-beta.4.7, )",
+        "resolved": "2.5.0-beta.4.7",
+        "contentHash": "B0LrDa68M0oGJDkkY869YhMeOqaKlNgS3/TUR/s/aQLTK6GLJ+GXxmhgLbTACg2HXD7W9QYysiM8EqdlhX7+BQ=="
       },
       "Microsoft.Extensions.Logging.Abstractions": {
         "type": "CentralTransitive",

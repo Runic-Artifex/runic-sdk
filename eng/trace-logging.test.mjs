@@ -42,6 +42,9 @@ export const traceAllowList = [
     'TraceWarning($"The diagnostic sink failed for {BrowserLaunchStalledCode}',
     'TraceWarning($"{BrowserLaunchStalledCode}: {message}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/WebUiWindow.cs', fragment })),
+  // A CS-WebUI window that could not be shown, without an ILoggerFactory in the Window's scope.
+  { file: 'packages/dotnet/Runic.Application.Views.CsWebUi/CsWebUiLog.cs',
+    fragment: 'TraceError($"CS-WebUI could not show {window} ({code}): {error.Message}")' },
   // The public DesktopBridgeTransport(surface) constructor takes no logger; Runic's hosts pass one.
   { file: 'packages/dotnet/Runic.Application.Views.Desktop/DesktopBridgeTransport.cs',
     fragment: 'TraceError($"Bridge snapshot delivery for {name} failed: {error}")' },
