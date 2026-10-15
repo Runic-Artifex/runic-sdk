@@ -10,6 +10,13 @@ public sealed record ApplicationLaunch(ImmutableArray<string> Arguments, string 
     public DesktopActivationContext? PlatformContext { get; init; }
 
     /// <summary>
+    /// The way back to the launching process, on a launch the running instance received from a process that waits
+    /// for its reply; null for a launch that only hands over its arguments. Complete it once the launch is handled.
+    /// </summary>
+    /// <remarks>Not sent when forwarding a launch: the running instance sets it.</remarks>
+    public IApplicationLaunchReply? Reply { get; init; }
+
+    /// <summary>
     /// This process's launch: <paramref name="arguments"/>, the current directory, and the activation token or
     /// startup ID the desktop passed in <c>XDG_ACTIVATION_TOKEN</c> or <c>DESKTOP_STARTUP_ID</c>.
     /// </summary>
@@ -41,6 +48,8 @@ public interface IApplicationInstance : IAsyncDisposable
     /// Launches wait for the first handler, so subscribe right after claiming, before slow start-up work. A launching
     /// process reports itself forwarded only once a handler received its launch; one that is not received within a
     /// few seconds, or arrives while this instance is ending, keeps trying and may become the next running instance.
+    /// A launch from a process that waits for a reply carries <see cref="ApplicationLaunch.Reply"/>; complete it once
+    /// the launch is handled, outside the handler if the work takes longer.
     /// </remarks>
     event EventHandler<ApplicationLaunch>? Launched;
 }
@@ -54,7 +63,84 @@ public abstract record ApplicationInstanceClaim
     public sealed record Primary(IApplicationInstance Instance) : ApplicationInstanceClaim;
 
     /// <summary>Another process is the running instance and received this launch. This process should exit.</summary>
-    public sealed record Forwarded : ApplicationInstanceClaim;
+    public sealed record Forwarded : ApplicationInstanceClaim
+    {
+        /// <summary>
+        /// The running instance's reply when this process asked to wait for one: its messages and exit status. Null
+        /// when the launch was only handed over. Dispose it before exiting.
+        /// </summary>
+        public IForwardedLaunchReply? Reply { get; init; }
+    }
+}
+
+/// <summary>
+/// The running instance's side of a reply to a forwarded launch: messages to the launching process, then its exit
+/// status. One launching process, for example a command line, reads them while the running instance does the work.
+/// </summary>
+/// <remarks>
+/// Members can be called from any thread; writes are sent one at a time, in order. A write waits while the launching
+/// process does not read, so a slow reader slows the writer instead of filling memory.
+/// </remarks>
+public interface IApplicationLaunchReply
+{
+    /// <summary>
+    /// Cancelled when the launching process asks to cancel (for example on Ctrl+C), when it goes away, or when this
+    /// instance ends. After a cancel request the launching process still reads messages until the reply completes.
+    /// </summary>
+    CancellationToken Cancelled { get; }
+
+    /// <summary>Sends one message, such as an output line or a JSON event, as UTF-8.</summary>
+    /// <param name="message">At most 1 MiB in UTF-8.</param>
+    /// <param name="cancellationToken">
+    /// Stops waiting for a launching process that does not read. A write cancelled this way ends the reply, since the
+    /// launching process may have received only part of the message.
+    /// </param>
+    /// <returns>False, without sending, once the launching process went away or this instance ended.</returns>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is larger than 1 MiB in UTF-8.</exception>
+    /// <exception cref="InvalidOperationException">The reply was completed.</exception>
+    ValueTask<bool> WriteAsync(string message, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends <paramref name="exitCode"/> after the messages written before and ends the reply. The launching process
+    /// waits until it is called, or until this instance ends.
+    /// </summary>
+    /// <param name="exitCode">The launching process's exit status, for example 0, or 130 after a cancel request.</param>
+    /// <param name="cancellationToken">Stops waiting for a launching process that does not read, ending the reply.</param>
+    /// <exception cref="InvalidOperationException">The reply was already completed.</exception>
+    ValueTask CompleteAsync(int exitCode, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// The launching process's side of a reply to a forwarded launch: the running instance's messages, in order, then its
+/// exit status. Disposing it before the exit status arrives cancels the launch in the running instance.
+/// </summary>
+/// <remarks>Read from one caller at a time. <see cref="CancelAsync"/> can be called at any time, from any thread.</remarks>
+public interface IForwardedLaunchReply : IAsyncDisposable
+{
+    /// <summary>
+    /// The messages not read yet. The sequence ends at the exit status, or when the running instance ended without one;
+    /// <see cref="WaitForExitAsync"/> then tells which.
+    /// </summary>
+    /// <param name="cancellationToken">
+    /// Stops reading and closes the connection, which cancels the launch in the running instance.
+    /// </param>
+    IAsyncEnumerable<string> ReadMessagesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Waits for the exit status, discarding messages not read yet.</summary>
+    /// <param name="cancellationToken">
+    /// Stops waiting and closes the connection, which cancels the launch in the running instance.
+    /// </param>
+    /// <returns>
+    /// The exit status; <see cref="PlatformFailureCode.IoError"/> when the running instance ended or the connection
+    /// broke before it answered, and <see cref="PlatformFailureCode.InvalidData"/> for a malformed reply.
+    /// </returns>
+    ValueTask<PlatformResult<int>> WaitForExitAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Asks the running instance to cancel the launch, raising <see cref="IApplicationLaunchReply.Cancelled"/>, and keeps
+    /// the connection: the running instance's last messages and exit status still arrive. Later calls do nothing.
+    /// </summary>
+    ValueTask CancelAsync();
 }
 
 /// <summary>What to start when the user logs in.</summary>

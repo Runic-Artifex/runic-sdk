@@ -1,1 +1,13 @@
 #nullable enable
+Runic.Platform.Runtime.ApplicationInstanceOptions
+Runic.Platform.Runtime.ApplicationInstanceOptions.ApplicationInstanceOptions() -> void
+Runic.Platform.Runtime.ApplicationInstanceOptions.ReplyToLaunches.get -> bool
+Runic.Platform.Runtime.ApplicationInstanceOptions.ReplyToLaunches.init -> void
+static Runic.Platform.Runtime.ApplicationInstance.ClaimAsync(string! applicationId, Runic.Platform.ApplicationLaunch! launch, Runic.Platform.Runtime.ApplicationInstanceOptions! options, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.ApplicationInstanceClaim!>!>
+override Runic.Platform.Runtime.ApplicationInstanceOptions.Equals(object? obj) -> bool
+override Runic.Platform.Runtime.ApplicationInstanceOptions.GetHashCode() -> int
+override Runic.Platform.Runtime.ApplicationInstanceOptions.ToString() -> string!
+Runic.Platform.Runtime.ApplicationInstanceOptions.<Clone>$() -> Runic.Platform.Runtime.ApplicationInstanceOptions!
+Runic.Platform.Runtime.ApplicationInstanceOptions.Equals(Runic.Platform.Runtime.ApplicationInstanceOptions? other) -> bool
+static Runic.Platform.Runtime.ApplicationInstanceOptions.operator !=(Runic.Platform.Runtime.ApplicationInstanceOptions? left, Runic.Platform.Runtime.ApplicationInstanceOptions? right) -> bool
+static Runic.Platform.Runtime.ApplicationInstanceOptions.operator ==(Runic.Platform.Runtime.ApplicationInstanceOptions? left, Runic.Platform.Runtime.ApplicationInstanceOptions? right) -> bool

@@ -197,6 +197,317 @@ internal sealed class ApplicationInstanceTests
         return 0;
     }
 
+    private static readonly ApplicationInstanceOptions Replies = new() { ReplyToLaunches = true };
+
+    private static async Task<IApplicationInstance> ClaimPrimaryAsync(string directory, ApplicationInstanceOptions options)
+    {
+        var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), options, directory, default);
+        return claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }
+            ? instance : throw new InvalidOperationException($"the first launch is the running instance, not {claim}");
+    }
+
+    private static async Task<IForwardedLaunchReply> ForwardAsync(string directory, params string[] arguments)
+    {
+        var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([.. arguments], "/"), Replies, directory, default);
+        return claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: { } reply } }
+            ? reply : throw new InvalidOperationException($"the launch is forwarded with a reply, not {claim}");
+    }
+
+    private static async Task<List<string>> ReadAllAsync(IForwardedLaunchReply reply)
+    {
+        var messages = new List<string>();
+        await foreach (var message in reply.ReadMessagesAsync()) messages.Add(message);
+        return messages;
+    }
+
+    [Test, DisplayName("INSTANCE: the running instance replies to a forwarded launch with messages and an exit status")]
+    public async Task RepliesAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            await using var instance = await ClaimPrimaryAsync(directory, Replies);
+            var misuse = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            instance.Launched += (_, launch) => _ = Task.Run(async () =>
+            {
+                var reply = launch.Reply ?? throw new InvalidOperationException("a launch that waits carries a reply");
+                await reply.WriteAsync("hello " + launch.Arguments.Single());
+                await reply.WriteAsync("ümlaut ✓");
+                await reply.WriteAsync("");
+                await reply.CompleteAsync(3);
+                try { await reply.WriteAsync("late"); misuse.TrySetResult("a write after completion was sent"); }
+                catch (InvalidOperationException)
+                {
+                    try { await reply.CompleteAsync(4); misuse.TrySetResult("a second exit status was sent"); }
+                    catch (InvalidOperationException) { misuse.TrySetResult("refused"); }
+                }
+            });
+
+            await using var reply = await ForwardAsync(directory, "world");
+            var messages = await ReadAllAsync(reply).WaitAsync(Wait);
+            Check(messages.SequenceEqual(["hello world", "ümlaut ✓", ""]), "the messages arrive in order: " + string.Join(" | ", messages));
+            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Success(3), "the exit status arrives");
+            Check((await ReadAllAsync(reply)).Count == 0 && await reply.WaitForExitAsync() is PlatformResult<int>.Success(3), "the ended reply keeps its exit status");
+            Check(await misuse.Task.WaitAsync(Wait) == "refused", "nothing is sent after the exit status");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: exit statuses arrive, and waiting for one skips the messages not read")]
+    public async Task ExitStatusesAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            await using var instance = await ClaimPrimaryAsync(directory, Replies);
+            instance.Launched += (_, launch) => _ = Task.Run(async () =>
+            {
+                int code = int.Parse(launch.Arguments.Single(), System.Globalization.CultureInfo.InvariantCulture);
+                for (int i = 0; i < 100; i++) await launch.Reply!.WriteAsync("skipped");
+                await launch.Reply!.CompleteAsync(code);
+            });
+            foreach (int code in new[] { 0, 1, 255, -1, int.MinValue })
+            {
+                await using var reply = await ForwardAsync(directory, code.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                var exit = await reply.WaitForExitAsync().AsTask().WaitAsync(Wait);
+                Check(exit is PlatformResult<int>.Success(var received) && received == code, $"exit status {code}, not {exit}");
+            }
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: many replies stream in order, and a reader that does not read slows the writer")]
+    public async Task StreamsManyMessagesAsync()
+    {
+        const int Count = 10_000;
+        string directory = Directory();
+        try
+        {
+            await using var instance = await ClaimPrimaryAsync(directory, Replies);
+            int written = 0;
+            var sizes = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            string padding = new('x', 1024);
+            instance.Launched += (_, launch) => _ = Task.Run(async () =>
+            {
+                var reply = launch.Reply!;
+                for (int i = 0; i < Count; i++)
+                {
+                    if (!await reply.WriteAsync(i.ToString(System.Globalization.CultureInfo.InvariantCulture) + padding)) return;
+                    Volatile.Write(ref written, i + 1);
+                }
+                await reply.WriteAsync(new string('m', 1024 * 1024));
+                try { await reply.WriteAsync(new string('m', 1024 * 1024 + 1)); sizes.TrySetResult("a message over 1 MiB was sent"); }
+                catch (ArgumentException) { sizes.TrySetResult("refused"); }
+                await reply.CompleteAsync(0);
+            });
+
+            await using var reply = await ForwardAsync(directory);
+            await Task.Delay(500);
+            int before = Volatile.Read(ref written);
+            Check(before < Count, $"the writer waits for the reader instead of buffering all {Count} messages ({before} written)");
+            int index = 0;
+            await foreach (var message in reply.ReadMessagesAsync())
+            {
+                if (index < Count)
+                    Check(message == index.ToString(System.Globalization.CultureInfo.InvariantCulture) + padding, $"message {index} arrives in order");
+                else Check(message.Length == 1024 * 1024, "a message of 1 MiB arrives");
+                index++;
+            }
+            Check(index == Count + 1, $"every message arrives ({index})");
+            Check(await reply.WaitForExitAsync() is PlatformResult<int>.Success(0), "the exit status follows the messages");
+            Check(await sizes.Task.WaitAsync(Wait) == "refused", "a message over 1 MiB is refused");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: cancelling a forwarded launch, or leaving, cancels it in the running instance")]
+    public async Task CancelsAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            await using var instance = await ClaimPrimaryAsync(directory, Replies);
+            var leftWrite = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            instance.Launched += (_, launch) => _ = Task.Run(async () =>
+            {
+                var reply = launch.Reply!;
+                await reply.WriteAsync("started");
+                try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitAsync(Wait); }
+                catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
+                if (launch.Arguments.Single() == "cancel")
+                {
+                    await reply.WriteAsync("cancelled");
+                    await reply.CompleteAsync(130);
+                }
+                else leftWrite.TrySetResult(await reply.WriteAsync("nobody reads this"));
+            });
+
+            // Ctrl+C: ask the running instance to cancel, and still read its last messages and exit status.
+            await using (var reply = await ForwardAsync(directory, "cancel"))
+            {
+                await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
+                Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "started", "the launch starts");
+                await reply.CancelAsync();
+                await reply.CancelAsync();
+                Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "cancelled", "the running instance sees the cancel request");
+                Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end at the exit status");
+                Check(await reply.WaitForExitAsync() is PlatformResult<int>.Success(130), "the exit status after cancelling arrives");
+            }
+
+            // Leaving: disposing the reply, or cancelling a read, closes the connection.
+            foreach (bool dispose in new[] { true, false })
+            {
+                leftWrite = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                await using var reply = await ForwardAsync(directory, "leave");
+                using var stop = new CancellationTokenSource();
+                await using (var messages = reply.ReadMessagesAsync(stop.Token).GetAsyncEnumerator())
+                {
+                    Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "started", "the launch starts");
+                    if (dispose) await reply.DisposeAsync();
+                    else
+                    {
+                        var next = messages.MoveNextAsync().AsTask();
+                        await stop.CancelAsync();
+                        try { await next.WaitAsync(Wait); throw new InvalidOperationException("a cancelled read ends"); }
+                        catch (OperationCanceledException) { }
+                    }
+                }
+                Check(!await leftWrite.Task.WaitAsync(Wait), "the running instance is cancelled, and its writes are no longer sent");
+                Check(await reply.WaitForExitAsync() is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "a reply left early has no exit status");
+            }
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: a running instance that ends mid-reply is reported, not waited for")]
+    public async Task PrimaryEndsAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            var instance = await ClaimPrimaryAsync(directory, Replies);
+            var after = new TaskCompletionSource<(bool Cancelled, bool Sent)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            instance.Launched += (_, launch) => _ = Task.Run(async () =>
+            {
+                var reply = launch.Reply!;
+                await reply.WriteAsync("one");
+                try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitAsync(Wait); }
+                catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
+                after.TrySetResult((reply.Cancelled.IsCancellationRequested, await reply.WriteAsync("two")));
+            });
+            await using var reply = await ForwardAsync(directory);
+            await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
+            Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "one", "the reply starts");
+            await instance.DisposeAsync();
+            Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the running instance");
+            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "no exit status is an I/O failure");
+            Check(await after.Task.WaitAsync(Wait) == (true, false), "ending the instance cancels the reply");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test, DisplayName("INSTANCE: a running instance in another process that crashes mid-reply is reported")]
+    public async Task PrimaryCrashesAsync()
+    {
+        string directory = Directory();
+        string executable = Environment.ProcessPath ?? throw new InvalidOperationException("Missing executable");
+        var start = new System.Diagnostics.ProcessStartInfo(executable) { RedirectStandardOutput = true, UseShellExecute = false };
+        if (Path.GetFileNameWithoutExtension(executable).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
+            start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "Runic.Platform.Runtime.Tests.dll"));
+        start.ArgumentList.Add("--instance-replier");
+        start.ArgumentList.Add(directory);
+        using var primary = System.Diagnostics.Process.Start(start) ?? throw new InvalidOperationException("The running instance did not start.");
+        try
+        {
+            Check(await primary.StandardOutput.ReadLineAsync().WaitAsync(Wait) == "ready", "the other process is the running instance");
+            var claim = await ApplicationInstance.ClaimAsync("org.example.Replier", new ApplicationLaunch([], "/"), Replies, directory, default);
+            Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: not null } }, "the launch is forwarded with a reply");
+            await using var reply = ((ApplicationInstanceClaim.Forwarded)((PlatformResult<ApplicationInstanceClaim>.Success)claim).Value).Reply!;
+            await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
+            Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "running", "the reply starts");
+            primary.Kill();
+            Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the crashed process");
+            Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "no exit status is an I/O failure");
+        }
+        finally
+        {
+            if (!primary.HasExited) primary.Kill();
+            await primary.WaitForExitAsync();
+            System.IO.Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // The child process's side: become the running instance, start a reply and never finish it.
+    internal static async Task<int> RunReplierAsync(string directory)
+    {
+        var claim = await ApplicationInstance.ClaimAsync("org.example.Replier", new ApplicationLaunch([], "/"), Replies, directory, default);
+        if (claim is not PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Primary { Instance: var instance } }) return 1;
+        await using (instance)
+        {
+            instance.Launched += (_, launch) => _ = launch.Reply?.WriteAsync("running").AsTask();
+            Console.WriteLine("ready");
+            await Task.Delay(TimeSpan.FromSeconds(20));
+        }
+        return 0;
+    }
+
+    [Test, DisplayName("INSTANCE: one-way launches still hand over, and an instance that does not reply refuses launches that wait")]
+    public async Task OneWayCompatibilityAsync()
+    {
+        string directory = Directory();
+        try
+        {
+            // A running instance that replies still takes launches that only hand over their arguments.
+            await using (var instance = await ClaimPrimaryAsync(directory, Replies))
+            {
+                var launches = Channel.CreateUnbounded<ApplicationLaunch>();
+                instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
+                var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--show"], "/"), directory, default);
+                Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: null } }, "a one-way launch is forwarded without a reply");
+                var received = await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait);
+                Check(received.Arguments.Single() == "--show" && received.Reply is null, "the running instance receives it without a reply");
+            }
+
+            // A running instance claimed without replies refuses, before any handler sees the launch.
+            await using (var instance = await ClaimPrimaryAsync(directory, new ApplicationInstanceOptions()))
+            {
+                var launches = Channel.CreateUnbounded<ApplicationLaunch>();
+                instance.Launched += (_, launch) => launches.Writer.TryWrite(launch);
+                var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitAsync(Wait);
+                Check(claim is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "ApplicationInstance", Code: 0 } },
+                    $"an instance that does not reply is busy, not {claim}");
+                Check(!launches.Reader.TryRead(out _), "the refused launch is not handled");
+            }
+
+            // An earlier SDK closes the connection when it reads the reply marker as a negative launch length.
+            string lockPath = System.IO.Directory.GetFiles(directory, "*.lock").Single();
+            string socketPath = Path.ChangeExtension(lockPath, ".sock");
+            using var held = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using var listener = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.Unix, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Unspecified);
+            listener.Bind(new System.Net.Sockets.UnixDomainSocketEndPoint(socketPath));
+            listener.Listen(16);
+            int connections = 0;
+            var earlier = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    using var client = await listener.AcceptAsync();
+                    Interlocked.Increment(ref connections);
+                    var length = new byte[4];
+                    await client.ReceiveAsync(length);
+                    if (BitConverter.ToInt32(length) is > 0) throw new InvalidOperationException("a launch that waits is not a valid earlier launch");
+                }
+            });
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var old = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["--run"], "/"), Replies, directory, default).AsTask().WaitAsync(Wait);
+            Check(old is PlatformResult<ApplicationInstanceClaim>.Failed { Code: PlatformFailureCode.ResourceBusy, Diagnostic: { Domain: "ApplicationInstance", Code: 0 } },
+                $"an earlier instance is busy, not {old}");
+            Check(stopwatch.Elapsed < TimeSpan.FromSeconds(3), $"and reported promptly, not after the claim deadline ({stopwatch.Elapsed})");
+            Check(Volatile.Read(ref connections) >= 3 && !earlier.IsFaulted, "the earlier instance only saw negative lengths");
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
     [Test, DisplayName("INSTANCE: IDs, launches and directories others can enter are refused")]
     public async Task ValidationAsync()
     {
