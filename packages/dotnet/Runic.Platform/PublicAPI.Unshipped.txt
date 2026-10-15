@@ -1,13 +1,1 @@
 #nullable enable
-Runic.Platform.ApplicationInstanceClaim.Forwarded.Reply.get -> Runic.Platform.IForwardedLaunchReply?
-Runic.Platform.ApplicationInstanceClaim.Forwarded.Reply.init -> void
-Runic.Platform.ApplicationLaunch.Reply.get -> Runic.Platform.IApplicationLaunchReply?
-Runic.Platform.ApplicationLaunch.Reply.init -> void
-Runic.Platform.IApplicationLaunchReply
-Runic.Platform.IApplicationLaunchReply.Cancelled.get -> System.Threading.CancellationToken
-Runic.Platform.IApplicationLaunchReply.CompleteAsync(int exitCode, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Platform.IApplicationLaunchReply.WriteAsync(string! message, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<bool>
-Runic.Platform.IForwardedLaunchReply
-Runic.Platform.IForwardedLaunchReply.CancelAsync() -> System.Threading.Tasks.ValueTask
-Runic.Platform.IForwardedLaunchReply.ReadMessagesAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<string!>!
-Runic.Platform.IForwardedLaunchReply.WaitForExitAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<int>!>
