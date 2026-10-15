@@ -288,7 +288,6 @@
       "paths": [
         "packages/web/svelte",
         "packages/web/sveltekit",
-        "eng/branding/svelte",
         "tests/fixtures/application/operations-consumer",
         "tests/web/svelte-package-consumers"
       ]
