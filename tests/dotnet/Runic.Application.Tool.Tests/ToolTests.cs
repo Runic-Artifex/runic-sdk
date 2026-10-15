@@ -711,6 +711,21 @@ internal sealed class ToolTests
         Equal(0, DetectAll("""{"Properties":{}}""").Length);
     }
 
+    [Test, DisplayName("runic.application.tool/1 keeps its PascalCase payload")]
+    public void ToolCommandPayloadKeepsItsContract()
+    {
+        var result = new ToolCommandResult("support", 0, "Support preview");
+        // The command codec serializes through the context's Default instance since Runic.CommandLine
+        // 0.6.0-preview.3, and through its own options before; names must not depend on either.
+        foreach (JsonSerializerOptions? options in new[] { null, new JsonSerializerOptions(), new JsonSerializerOptions(JsonSerializerDefaults.Web) })
+        {
+            ToolCommandJsonContext context = options is null ? ToolCommandJsonContext.Default : new ToolCommandJsonContext(options);
+            using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(result, context.ToolCommandResult));
+            SequenceEqual(["Command", "ExitCode", "Output"],
+                document.RootElement.EnumerateObject().Select(property => property.Name).ToArray());
+        }
+    }
+
     [Test, DisplayName("doctor JSON payload lists every check")]
     public void DoctorJsonListsChecks()
     {

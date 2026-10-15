@@ -281,7 +281,12 @@ internal static partial class Program
 
 }
 
-internal sealed record ToolCommandResult(string Command, int ExitCode, string? Output = null)
+// The runic.application.tool/1 payload names its properties in PascalCase, spelled out so
+// that the JSON context's options cannot rename them.
+internal sealed record ToolCommandResult(
+    [property: JsonPropertyName("Command")] string Command,
+    [property: JsonPropertyName("ExitCode")] int ExitCode,
+    [property: JsonPropertyName("Output")] string? Output = null)
 {
     public override string ToString() => Output ?? (ExitCode == 0 ? $"{Command}: complete" : $"{Command}: failed ({ExitCode})");
 }

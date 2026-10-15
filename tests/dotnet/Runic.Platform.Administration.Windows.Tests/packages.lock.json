@@ -90,10 +90,48 @@
         "resolved": "0.11.6",
         "contentHash": "f33RkDtZO8VlGXCtmQIviOtxgnUdym9xx/b1p9h91CRGOsJFxCFOFK1FDbVt1OCf1aWwYejUFa2MOQyFWTFjbA=="
       },
+      "Spectre.Console.Ansi": {
+        "type": "Transitive",
+        "resolved": "0.57.2",
+        "contentHash": "Y1+u73shwP+JYHmrkdN6bSt2kaGBEAafhi2nrecczbXdFRey+k7J/WF9YPfcB0rqivv2S8fmif6FSBq9m/AFvw=="
+      },
+      "Runic.AdminVerify": {
+        "type": "Project",
+        "dependencies": {
+          "Runic.CommandLine": "[0.7.0-preview.1, )",
+          "Runic.CommandLine.Spectre": "[0.7.0-preview.1, )",
+          "Runic.Platform.Administration.Windows": "[0.8.0-preview.1, )"
+        }
+      },
       "runic.platform.administration.windows": {
         "type": "Project",
         "dependencies": {
           "System.DirectoryServices.Protocols": "[10.0.12, )"
+        }
+      },
+      "Runic.CommandLine": {
+        "type": "CentralTransitive",
+        "requested": "[0.7.0-preview.1, )",
+        "resolved": "0.7.0-preview.1",
+        "contentHash": "YPfn8rOUIolbOqwBmsyPhggaH7kZ5hTVKDfnoKSE819WI6VxAPPUqTFHFFzg4HjYDFqQi90bXDXsCfGSWddZ/Q=="
+      },
+      "Runic.CommandLine.Spectre": {
+        "type": "CentralTransitive",
+        "requested": "[0.7.0-preview.1, )",
+        "resolved": "0.7.0-preview.1",
+        "contentHash": "KzDKtR4X7OFEKziax2KxW5OR22iHX2WV+UFH9/66SghX6hZRb4o2cv0cuTvOUVO1ov9od31AsyggjMzigNyebw==",
+        "dependencies": {
+          "Runic.CommandLine": "[0.7.0-preview.1]",
+          "Spectre.Console": "0.57.2"
+        }
+      },
+      "Spectre.Console": {
+        "type": "CentralTransitive",
+        "requested": "[0.57.2, )",
+        "resolved": "0.57.2",
+        "contentHash": "wzsB+P9i6F9G+cFOJxRotCiQWNSzZVAMxi8YMiHlGXXU1JLMXGp7zSSqBMmROZS2bzpK5jk+Saa7Evp8HwqhKg==",
+        "dependencies": {
+          "Spectre.Console.Ansi": "0.57.2"
         }
       }
     }

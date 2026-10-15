@@ -128,14 +128,17 @@ internal sealed record CreateRequest(
     string? TemplateSource,
     IReadOnlyDictionary<string, bool> Toggles);
 
+// The runic.create/1 payload names its properties in PascalCase. They are spelled out
+// so that the JSON context's options cannot rename them: since Runic.CommandLine
+// 0.6.0-preview.3, the generated codec serializes through CreateJsonContext.Default.
 internal sealed record CreateResult(
-    string Name,
-    string Directory,
-    string Version,
-    IReadOnlyDictionary<string, string> Options,
-    IReadOnlyList<string> Commands,
-    string ReproduceCommand,
-    bool Created)
+    [property: JsonPropertyName("Name")] string Name,
+    [property: JsonPropertyName("Directory")] string Directory,
+    [property: JsonPropertyName("Version")] string Version,
+    [property: JsonPropertyName("Options")] IReadOnlyDictionary<string, string> Options,
+    [property: JsonPropertyName("Commands")] IReadOnlyList<string> Commands,
+    [property: JsonPropertyName("ReproduceCommand")] string ReproduceCommand,
+    [property: JsonPropertyName("Created")] bool Created)
 {
     [JsonIgnore]
     public string HumanOutput { get; init; } = "";
@@ -156,6 +159,5 @@ internal sealed class CreateExitCodePolicy : IExitCodePolicy
     };
 }
 
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(CreateResult))]
 internal sealed partial class CreateJsonContext : JsonSerializerContext;

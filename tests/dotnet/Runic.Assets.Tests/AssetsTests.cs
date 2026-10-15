@@ -1158,6 +1158,28 @@ internal sealed class AssetsTests
         True(!File.Exists(archive));
     }
 
+    // The documented success line: a runic.assets.pack-result/1 payload of { "ArchiveLength": <bytes> }.
+    // Runic.CommandLine 0.6.0-preview.3 and later serialize through the JSON context's options,
+    // so the payload name must not depend on them.
+    [Test, DisplayName("packer JSON success keeps the runic.assets.pack-result/1 payload")]
+    public async Task PackerJsonSuccess()
+    {
+        using var directory = new TemporaryDirectory();
+        directory.Write("site/index.html", "<p>x</p>");
+        string site = Path.Combine(directory.Path, "site");
+        string archive = Path.Combine(directory.Path, "out.runic-assets");
+
+        (int exitCode, string output, string _) = await RunPackerAsync(site, archive, "--output", "json").ConfigureAwait(false);
+        Equal(0, exitCode);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement root = document.RootElement;
+        True(root.GetProperty("success").GetBoolean());
+        Equal("runic.assets.pack-result/1", root.GetProperty("payloadType").GetString());
+        JsonElement payload = root.GetProperty("payload");
+        Equal("ArchiveLength", string.Join(",", payload.EnumerateObject().Select(property => property.Name)));
+        Equal(new FileInfo(archive).Length, payload.GetProperty("ArchiveLength").GetInt64());
+    }
+
     // Mirrors the technical-content rule of Runic.CommandLine's fault sanitizer.
     private static bool SanitizerRedacts(string value) =>
         value.Contains("Exception", StringComparison.Ordinal)

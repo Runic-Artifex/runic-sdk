@@ -18,6 +18,8 @@
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="System.DirectoryServices.Protocols" />
     <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Administration.Windows/Runic.Platform.Administration.Windows.csproj" />
+    <!-- VerifierPayloadTests pins the verifier's runic.administration.verify/1 payload. -->
+    <ProjectReference Include="../../../tools/Runic.Administration.Verify/Runic.Administration.Verify.csproj" />
   </ItemGroup>
   <Import Project="../../../eng/build/application.targets" />
 </Project>

@@ -12,6 +12,7 @@
     <PackageReference Include="Runic.CommandLine.Spectre" />
     <TrimmerRootAssembly Include="Runic.Platform.Administration.Windows" />
     <None Update="README.md" CopyToPublishDirectory="PreserveNewest" />
+    <InternalsVisibleTo Include="Runic.Platform.Administration.Windows.Tests" />
   </ItemGroup>
   <Import Project="../../eng/build/application.targets" />
 </Project>
