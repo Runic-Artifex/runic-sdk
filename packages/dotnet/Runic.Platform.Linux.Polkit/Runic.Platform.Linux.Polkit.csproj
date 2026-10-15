@@ -10,9 +10,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- The targets report RUNICPA diagnostics with links to docs/diagnostics.md at the release tag. -->
     <RunicPackDiagnosticsHelpLinks>true</RunicPackDiagnosticsHelpLinks>
-    <!-- New in this release: nothing to validate against until it ships. -->
-    <RunicPackageValidationBaselineMissing>true</RunicPackageValidationBaselineMissing>
-    <RunicPackageFirstReleaseVersion>0.8.0-preview.1</RunicPackageFirstReleaseVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Runic.Platform/Runic.Platform.csproj" />
