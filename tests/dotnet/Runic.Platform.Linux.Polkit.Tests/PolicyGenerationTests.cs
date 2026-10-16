@@ -89,6 +89,30 @@ internal sealed class PolicyGenerationTests
         Check(Annotation(action, "org.freedesktop.policykit.exec.argv1") is null, "no argv1 for an action without a verb");
     }
 
+    [Test, DisplayName("policy: RunicApplicationInstallPrefix is /usr unless the build sets it")]
+    public async Task InstallPrefixDefaultsToUsrAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.activate" Program="$(RunicApplicationInstallPrefix)/bin/example" Verb="activate"
+                                   Description="Activate" Message="Authentication is required to activate." />
+            """);
+        foreach (var (arguments, program) in new[]
+        {
+            (Array.Empty<string>(), "/usr/bin/example"),
+            (new[] { "-p:RunicApplicationInstallPrefix=/nix/store/abc-app" }, "/nix/store/abc-app/bin/example"),
+        })
+        {
+            var (exit, output) = await project.BuildAsync(arguments);
+            Check(exit == 0, output);
+            var policy = new XmlDocument();
+            using (var reader = XmlReader.Create(project.Policy, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null }))
+                policy.Load(reader);
+            var action = (XmlElement)policy.SelectSingleNode("/policyconfig/action")!;
+            Check(Annotation(action, "org.freedesktop.policykit.exec.path") == program, $"exec.path with {string.Join(' ', arguments)}");
+            Check(File.ReadAllText(project.Source).Contains($"new(\"org.example.app.activate\", \"{program}\")", StringComparison.Ordinal), "declaration");
+        }
+    }
+
     [Test, DisplayName("policy: invalid declarations are build errors and write nothing")]
     public async Task RejectsInvalidDeclarationsAsync()
     {
