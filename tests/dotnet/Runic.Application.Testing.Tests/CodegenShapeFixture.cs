@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Runic.Application.Views;
 
 namespace Runic.Application.Testing.Tests;
@@ -38,6 +40,10 @@ public sealed class CodegenDerived<T> : CodegenBase<T>
     public T Own { get; set; } = default!;
 }
 
+// Arbitrary JSON (#304): a JsonElement holds JSON null, a JsonNode is never
+// JSON null, and JsonNode? is null for it.
+public sealed record CodegenJson(JsonElement Any, JsonNode? Node, JsonNode Required);
+
 public sealed class CodegenShapeViewModel : INotifyPropertyChanged
 {
     public CodegenShapeMode Mode { get; set; } = CodegenShapeMode.Default;
@@ -54,6 +60,10 @@ public sealed class CodegenShapeViewModel : INotifyPropertyChanged
     public CodegenSlot<string> Required { get; set; } = new("required", null, ["item"], ["value"], new() { ["key"] = "entry" }, new("inner"));
     public CodegenSlot<string?> Optional { get; set; } = new(null, null, [null], [null], new() { ["key"] = null }, new(null));
     public CodegenDerived<string> Derived { get; set; } = new() { Inherited = "base", Own = "own" };
+    public JsonElement Any { get; set; }
+    public JsonElement? MaybeAny { get; set; }
+    public JsonNode? Node { get; set; } = JsonNode.Parse("""{"a":[1,true,null,"s"]}""");
+    public CodegenJson Json { get; set; } = new(JsonDocument.Parse("[1]").RootElement.Clone(), null, JsonValue.Create("required"));
 
     // typeof() carries no annotations: the input is CodegenSlot<string> with
     // non-nullable members, and shares the state property's declaration.

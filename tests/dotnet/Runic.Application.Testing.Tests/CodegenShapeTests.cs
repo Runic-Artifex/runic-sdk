@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Runic.Application.Testing;
 using TUnit.Core;
 
@@ -28,7 +29,35 @@ internal sealed class CodegenShapeTests
                 "A nullable array element was not written as null.");
             Require(state.GetProperty("stamp").GetString() == "2026-10-03T12:30:00.0000000+02:00",
                 "A DateTimeOffset snapshot lost its offset.");
+            // A default JsonElement holds no value and crosses as null.
+            Require(state.GetProperty("any").ValueKind == JsonValueKind.Null && state.GetProperty("maybeAny").ValueKind == JsonValueKind.Null
+                && state.GetProperty("node").GetRawText() == """{"a":[1,true,null,"s"]}"""
+                && state.GetProperty("json").GetRawText() == """{"any":[1],"node":null,"required":"required"}""",
+                $"JSON values were not written as they are: {state}");
         }
+
+        // Any JSON value reads into a JsonElement or a JsonNode (#304).
+        Set(host, "Any", """{"x":[1,2.50,"y"],"n":null}""");
+        Require(model.Any.GetProperty("x")[1].GetRawText() == "2.50" && model.Any.GetProperty("n").ValueKind == JsonValueKind.Null,
+            "A JsonElement did not keep the JSON it was set to.");
+        Set(host, "Any", "null");
+        Require(model.Any.ValueKind == JsonValueKind.Null, "A JsonElement did not accept JSON null.");
+        Set(host, "MaybeAny", "\"text\"");
+        Require(model.MaybeAny is { ValueKind: JsonValueKind.String } text && text.GetString() == "text", "A JsonElement? was not read.");
+        Set(host, "MaybeAny", "null");
+        Require(model.MaybeAny is null, "A JsonElement? did not read JSON null as null.");
+        Set(host, "Node", "[1,{\"a\":false}]");
+        Require(model.Node is JsonArray { Count: 2 } array && array[1]!["a"]!.GetValue<bool>() == false, "A JsonNode? was not read.");
+        Set(host, "Node", "null");
+        Require(model.Node is null, "A JsonNode? did not read JSON null as null.");
+        Set(host, "Json", """{"any":null,"node":{"b":2},"required":0}""");
+        Require(model.Json is { Any.ValueKind: JsonValueKind.Null, Node: JsonObject, Required: JsonValue } && model.Json.Required.GetValue<int>() == 0,
+            "A DTO with JSON members did not round-trip.");
+        Rejected(host, "Json", """{"any":null,"node":null,"required":null}""");
+        Require(model.Json.Required.GetValue<int>() == 0, "A non-nullable JsonNode accepted JSON null.");
+        using (var snapshot = host.Snapshot())
+            Require(snapshot.RootElement.GetProperty("state").GetProperty("json").GetRawText() == """{"any":null,"node":{"b":2},"required":0}""",
+                "A JSON member read from the page was not written back unchanged.");
 
         // Values produced by new Date().toISOString() and by hand in a browser.
         Set(host, "Stamp", "\"2026-10-03T12:34:56.789Z\"");
@@ -155,6 +184,11 @@ internal sealed class CodegenShapeTests
             ("types.ts", types, "export interface CodegenInnerOfNullableOfString {\n  readonly value: string | null;\n}"),
             ("types.ts", types, "export interface CodegenDerivedOfString {\n  readonly inherited: string;\n  readonly own: string;\n}"),
             ("codegenShape.ts", shape, "  readonly required: CodegenSlotOfString;\n  readonly optional: CodegenSlotOfNullableOfString;\n  readonly derived: CodegenDerivedOfString;"),
+            // Any JSON value is unknown; a JsonNode is never JSON null.
+            ("codegenShape.ts", shape, "  readonly any: unknown;\n  readonly maybeAny: unknown;\n  readonly node: unknown;\n  readonly json: CodegenJson;"),
+            ("types.ts", types, "export interface CodegenJson {\n  readonly any: unknown;\n  readonly node: unknown;\n  readonly required: NonNullable<unknown>;\n}"),
+            ("codegenShape.ts", shape, "any: bridgeWire.json(wire.any),"),
+            ("codegenShape.ts", shape, "required: bridgeWire.json(value[\"required\"], false)"),
             // The typeof() command input shares the state property's declaration.
             ("codegenShape.ts", shape, "  apply(codegenSlot: CodegenSlotOfString): Promise<CodegenShapeState>;"),
             ("codegenShape.ts", shape, "bridgeWire.object<CodegenSlotOfString>(wire.required, value => ({ value: bridgeWire.string(value[\"value\"]), "),

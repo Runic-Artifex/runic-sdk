@@ -772,6 +772,8 @@ so a malformed reply never reaches application state.
 | A record, class or struct (DTO) | An `interface` with `readonly` members | A member's name starts with a lower-case letter (`MeasuredAt` is `measuredAt`), unless `[RunicAlias]` or `[JsonPropertyName]` names it. |
 | A `[RunicUnion]` | A union discriminated by `$case` | |
 | A type with `[RunicBridgeCodec]` | The codec's TypeScript type | Whatever the codec writes. |
+| `JsonElement`, `JsonElement?`, `JsonNode?` | `unknown` | Any JSON value, as it is. A `JsonElement` holds JSON `null` as a value; a default `JsonElement`, which holds none, is written as `null`. `JsonNode?` and `JsonElement?` are C# `null` for JSON `null`. |
+| `JsonNode` | `NonNullable<unknown>` | Any JSON value except `null`, which a `JsonNode` cannot hold. `JsonObject`, `JsonArray`, `JsonValue` and `JsonDocument` fail the build: declare a `JsonNode`, or a DTO for a known shape. |
 
 Other framework types, such as `object`, `char`, `Uri` and tuples, fail the
 build with a `RUNICBRIDGE` diagnostic that names the member.
@@ -786,6 +788,14 @@ For a value the UI formats, such as a byte count or a duration in
 milliseconds, prefer `double` in C#: it is a `number` in TypeScript and exact
 for every whole number up to 2^53, which is 8 PiB as a byte count. Keep `long`
 for ids and counters that must stay exact. Use `int` for a small count.
+
+The client checks a JSON value in both directions: it must be `null`, a
+boolean, a finite number, a string, or an array or plain object of them, at
+most 64 levels deep. `undefined` (except as an object member, which
+`JSON.stringify` leaves out), `NaN`, a `bigint`, a `Date` or a `Map` is
+rejected before the call rather than changed by `JSON.stringify`. The value is
+not copied. Its numbers are JavaScript numbers in the page, exact only up to
+2^53, while .NET keeps the digits it reads, such as `2.50`.
 
 A frontend whose own types use optional members (`version?: string`) maps the
 `T | null` members at its edge, for example with `value ?? undefined`.

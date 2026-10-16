@@ -126,4 +126,46 @@ export function encodeUnion(value: unknown): Record<string, unknown> {
   return object;
 }
 
+// .NET reads JSON up to this depth (JsonDocumentOptions.MaxDepth).
+const maximumJsonDepth = 64;
+
+function checkJson(value: unknown, depth: number): void {
+  if (depth > maximumJsonDepth) throw new RangeError(`A JSON value is nested deeper than ${maximumJsonDepth} levels.`);
+  if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new RangeError("A JSON number must be finite.");
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index++) {
+      if (value[index] === undefined) throw new TypeError("A JSON array cannot hold undefined.");
+      checkJson(value[index], depth + 1);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) throw new TypeError("A JSON object must be a plain object.");
+    // JSON.stringify leaves out members that are undefined, as for an optional member.
+    for (const item of Object.values(value)) if (item !== undefined) checkJson(item, depth + 1);
+    return;
+  }
+  throw new TypeError(`A ${typeof value} is not a JSON value.`);
+}
+
+/**
+ * Any JSON value, for a C# `JsonElement` or `JsonNode`: null, a boolean, a
+ * finite number, a string, an array or a plain object of such values. The
+ * value is returned as it is. With `nullable` false, as for a non-nullable
+ * `JsonNode`, null is rejected.
+ */
+export function json(value: unknown, nullable?: true): unknown;
+export function json(value: unknown, nullable: false): NonNullable<unknown>;
+export function json(value: unknown, nullable = true): unknown {
+  if (value === undefined) throw new TypeError("Expected a JSON value.");
+  if (value === null && !nullable) throw new TypeError("Expected a JSON value other than null.");
+  checkJson(value, 1);
+  return value;
+}
+
 export { decodeBigInt as bigint, decodeBoolean as boolean, decodeObject as object, decodeString as string };
