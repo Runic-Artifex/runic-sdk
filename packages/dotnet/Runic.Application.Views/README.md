@@ -301,6 +301,31 @@ public sealed partial class ProjectViewModel(IRunicWindowService windows) : Obse
 - The interface has one method, so a test registers a fake that records the
   requested Window types after the application's services.
 
+#### Windows from another service provider
+
+A host and its window service open Windows from one service provider. A part of
+the application with services of its own, such as a dashboard that a setup
+assistant starts in the same process once it has created what the dashboard
+needs, builds its own provider and creates a host for it on the running
+Desktop host:
+
+```csharp
+await using var dashboardServices = new ServiceCollection()
+    .AddDashboard()            // its ViewModels, AddRunicViews() and AddRunicWindowService()
+    .BuildServiceProvider();
+var dashboard = new RunicDesktopHost(dashboardServices, setupHost.Desktop);
+await using var window = await dashboard.OpenWindowAsync<DashboardWindow>();
+await window.WaitForCloseAsync();
+```
+
+`setupHost` is the `RunicDesktopHost` the application runs on, and `Desktop`
+its event loop's `DesktopHost`; a `RunicDesktopHost` created in
+`DesktopEventLoop.Run(options, desktop => ...)` takes that `desktop`. On
+CS-WebUI, use `new RunicCsWebUiHost(dashboardServices)`. The
+`IRunicWindowService` of the second provider follows the second host once it
+has opened a Window, so the dashboard's ViewModels open further Windows from
+their own services. Both hosts share the event loop and its lifetime.
+
 ### A Window with its own page
 
 Every Window opens `index.html` unless `RunicWindowOptions.StartPage` names
@@ -1515,7 +1540,8 @@ output accordingly. The message properties are listed per event.
 | 1012 | `BridgeCollectionKeysRejected` | Error | A `[RunicCollection]` has a null row or a null, empty or duplicate key, so the route withholds its state. | `Model`, `Field`, `Key`, `Route` |
 | 1013 | `AcceptedWorkFailed` | Error | A task owned by an `AcceptedWorkScope` faults. | `ErrorType` |
 | 1014 | `AcceptedWorkDomainFailed` | Debug | A task owned by an `AcceptedWorkScope` throws a declared failure. | `FailureType` |
-| 1015 | `PathWatchProblem` | Warning | A `RunicPathWatcher` started without a `failed` callback meets a problem it works around: a missing directory, lost events or a watch that could not start. Always written to `Trace`. | `Problem` |
+| 1015 | `PathWatchProblem` | Warning | A `RunicPathWatcher` started without a `failed` callback meets a problem it works around: lost events, a watch limit or a watch that could not start. Always written to `Trace`. | `Problem` |
+| 1016 | `PathWatchPolling` | Debug | A `RunicPathWatcher` started without a `failed` callback polls for a directory that does not exist yet, such as a state directory created on the first start. Not written to `Trace`. | `Problem` |
 | 1020 | `ViewMountFailed` | Error | A .NET View fails to mount. | `Route`, `ErrorType` |
 | 1021 | `ViewRemountFailed` | Error | A View fails to mount again after a reconnect. | `Route`, `ErrorType` |
 | 1033 | `ModelContextReleaseFailed` | Error | A window session's own model context fails to shut down in the background. | `ErrorType` |
@@ -1724,7 +1750,9 @@ too. To react to work-tree edits, add `Directory` or `File` targets for them.
 
 Problems never throw on a watcher thread. They reach the `failed` callback,
 in a model turn, or `System.Diagnostics.Trace` (event 1015) without one, and the watcher
-keeps working by polling every `PollingInterval` (2 s) where it needs to:
+keeps working by polling every `PollingInterval` (2 s) where it needs to. A
+missing directory is expected, as on an application's first start, so without
+a `failed` callback it is event 1016 at `Debug` level instead of a warning:
 
 | `RunicPathWatchErrorKind` | When | Then |
 | --- | --- | --- |

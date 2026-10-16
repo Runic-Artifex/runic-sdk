@@ -277,6 +277,12 @@ internal static partial class ViewsLog
         Message = "Path watcher: {Problem}")]
     internal static partial void PathWatchProblem(ILogger logger, Exception? exception, string problem);
 
+    // A missing directory is a state the watcher expects, such as a state directory an application creates on its
+    // first start: it polls and reports the directory once it appears (#312).
+    [LoggerMessage(EventId = 1016, EventName = "PathWatchPolling", Level = LogLevel.Debug,
+        Message = "Path watcher: {Problem}")]
+    internal static partial void PathWatchPolling(ILogger logger, string problem);
+
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
     internal static partial void MountFailed(ILogger logger, Exception? exception, string route, string errorType);

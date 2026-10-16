@@ -503,7 +503,8 @@ public sealed class RunicPathWatcher : IDisposable
         {
             if (_failed is null)
             {
-                ViewsLog.PathWatchProblem(TraceFallbackLogger.Instance, error.Exception, error.ToString());
+                if (error.Kind is RunicPathWatchErrorKind.Missing) ViewsLog.PathWatchPolling(TraceFallbackLogger.Instance, error.ToString());
+                else ViewsLog.PathWatchProblem(TraceFallbackLogger.Instance, error.Exception, error.ToString());
                 continue;
             }
             _context.TryPost(() =>
