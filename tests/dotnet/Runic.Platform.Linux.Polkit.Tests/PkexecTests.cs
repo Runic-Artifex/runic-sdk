@@ -68,7 +68,9 @@ internal sealed class PkexecTests
         Check(environment.GetValueOrDefault("PATH") == PolkitPrivilegedActions.PkexecPath, $"pkexec gets a fixed PATH: {environment.GetValueOrDefault("PATH")}");
         Check(!environment.ContainsKey("SHELL") && !environment.ContainsKey("HOME") && !environment.ContainsKey("NUGET_PACKAGES"),
             $"pkexec gets no SHELL (it would reject one missing from /etc/shells) and nothing else of the caller's: {string.Join(",", environment.Keys)}");
-        Check(fixture.Host.OpenedProcess, "a pidfd was opened for pkexec");
+        // The program may already have exited and been reaped when the pidfd is opened; CancelBeforeStartAsync checks the
+        // pidfd of a pkexec that is still running.
+        Check(fixture.Host.OpenRequested, "the provider opens a pidfd for pkexec");
     }
 
     [Test, DisplayName("pkexec: terminal authentication is opt-in")]
@@ -157,6 +159,7 @@ internal sealed class PkexecTests
         var watch = Stopwatch.StartNew();
         await ThrowsAsync<OperationCanceledException>(() => fixture.Actions.RunAsync(new PrivilegedActionRequest(fixture.ReportAction, []), cancellation.Token).AsTask(), "cancelled");
         Check(watch.Elapsed < TimeSpan.FromSeconds(20), $"pkexec was stopped, not waited for: {watch.Elapsed}");
+        Check(fixture.Host.OpenedProcess, "a pidfd was opened for the waiting pkexec");
     }
 
     [Test, DisplayName("pkexec: cancelling a program that runs as root closes its input and returns how it ended")]
@@ -234,11 +237,13 @@ internal sealed class PkexecTests
         public ProgramCheck Check { get; set; } = ProgramCheck.Trusted;
         // pkexec has switched to root: the caller can no longer signal it.
         public bool RunsAsRoot { get; set; }
+        public bool OpenRequested { get; private set; }
         public bool OpenedProcess { get; private set; }
         public string? FindPkexec(string? configured) => pkexec;
         public ProgramCheck CheckProgram(string program) => Check;
         public ProcessHandle OpenProcess(int pid)
         {
+            OpenRequested = true;
             var handle = LinuxPolkitHost.Instance.OpenProcess(pid);
             OpenedProcess |= handle.IsValid;
             return handle;
