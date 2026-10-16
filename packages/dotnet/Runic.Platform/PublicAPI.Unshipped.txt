@@ -11,3 +11,15 @@ override Runic.Platform.ApplicationInstanceClaim.NotRunning.ToString() -> string
 override sealed Runic.Platform.ApplicationInstanceClaim.NotRunning.Equals(Runic.Platform.ApplicationInstanceClaim? other) -> bool
 static Runic.Platform.ApplicationInstanceClaim.NotRunning.operator !=(Runic.Platform.ApplicationInstanceClaim.NotRunning? left, Runic.Platform.ApplicationInstanceClaim.NotRunning? right) -> bool
 static Runic.Platform.ApplicationInstanceClaim.NotRunning.operator ==(Runic.Platform.ApplicationInstanceClaim.NotRunning? left, Runic.Platform.ApplicationInstanceClaim.NotRunning? right) -> bool
+Runic.Platform.PrivilegedActionCommand
+Runic.Platform.PrivilegedActionCommand.ArgumentPatterns.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.PrivilegedActionCommand.Equals(Runic.Platform.PrivilegedActionCommand? other) -> bool
+Runic.Platform.PrivilegedActionCommand.MinimumArguments.get -> int
+Runic.Platform.PrivilegedActionCommand.MinimumArguments.init -> void
+Runic.Platform.PrivilegedActionCommand.Name.get -> string!
+Runic.Platform.PrivilegedActionCommand.PrivilegedActionCommand(string! name, params string![]! argumentPatterns) -> void
+Runic.Platform.PrivilegedActionDeclaration.Commands.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.PrivilegedActionCommand!>
+Runic.Platform.PrivilegedActionDeclaration.Commands.init -> void
+override Runic.Platform.PrivilegedActionCommand.Equals(object? obj) -> bool
+override Runic.Platform.PrivilegedActionCommand.GetHashCode() -> int
+override Runic.Platform.PrivilegedActionCommand.ToString() -> string!

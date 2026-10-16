@@ -71,6 +71,73 @@ internal sealed class PolicyGenerationTests
         Check(exit == 0 && File.GetLastWriteTimeUtc(project.Policy) == written, "an unchanged policy is not rewritten");
     }
 
+    // #294: commands share their action's policy entry, so auth_admin_keep keeps one authorization for all of them.
+    [Test, DisplayName("declarations: commands are generated with their action, which keeps one policy entry")]
+    public async Task GeneratesCommandsAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.system" Program="/opt/app/helper" Verb="--privileged" Name="System"
+                                   Description="Change the system" Message="Authentication is required to change the system." AllowActive="auth_admin_keep" />
+            <RunicPrivilegedAction Include="org.example.app.plain" Program="/opt/app/helper" Verb="plain" MaximumArguments="1"
+                                   Description="Plain" Message="m" />
+            <RunicPrivilegedCommand Include="activate-output" Action="org.example.app.system" Arguments="switch|boot;/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+\x3B-]+" />
+            <RunicPrivilegedCommand Include="rollback" Action="org.example.app.system" />
+            <RunicPrivilegedCommand Include="gc" Action="org.example.app.system" Arguments="[1-9][0-9]{0,2}" MinimumArguments="0" />
+            """);
+        var (exit, output) = await project.BuildAsync();
+        Check(exit == 0, output);
+        var source = File.ReadAllText(project.Source);
+        Check(source.Contains("""
+                    Verb = "--privileged",
+                    MaximumArguments = 3,
+                    Commands = global::System.Collections.Immutable.ImmutableArray.Create(
+                        new global::Runic.Platform.PrivilegedActionCommand("activate-output", "switch|boot", "/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+\\x3B-]+"),
+                        new global::Runic.Platform.PrivilegedActionCommand("rollback"),
+                        new global::Runic.Platform.PrivilegedActionCommand("gc", "[1-9][0-9]{0,2}") { MinimumArguments = 0 }),
+                };
+            """.Replace("\r\n", "\n"), StringComparison.Ordinal), source);
+        var plain = source[source.IndexOf(" Plain { get; }", StringComparison.Ordinal)..];
+        Check(plain.Contains("MaximumArguments = 1,", StringComparison.Ordinal) && !plain[..plain.IndexOf("};", StringComparison.Ordinal)].Contains("Commands", StringComparison.Ordinal),
+            "an action without commands is unchanged");
+
+        var policy = new XmlDocument();
+        using (var reader = XmlReader.Create(project.Policy, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null }))
+            policy.Load(reader);
+        var ids = policy.SelectNodes("/policyconfig/action")!.Cast<XmlElement>().Select(a => a.GetAttribute("id")).ToList();
+        Check(ids.SequenceEqual(["org.example.app.system", "org.example.app.plain"]), $"one policy entry per action, not per command: {string.Join(", ", ids)}");
+    }
+
+    [Test, DisplayName("declarations: invalid commands are build errors and write nothing")]
+    public async Task RejectsInvalidCommandsAsync()
+    {
+        using var project = new FixtureProject("""
+            <RunicPrivilegedAction Include="org.example.app.system" Program="/opt/app/helper" Verb="run" Description="d" Message="m" />
+            <RunicPrivilegedAction Include="org.example.app.small" Program="/opt/app/helper" Verb="small" MaximumArguments="1" Description="d" Message="m" />
+            <RunicPrivilegedCommand Include="orphan" Action="org.example.app.missing" />
+            <RunicPrivilegedCommand Include="gc" Action="org.example.app.system" />
+            <RunicPrivilegedCommand Include="gc" Action="org.example.app.system" Arguments="[0-9]+" />
+            <RunicPrivilegedCommand Include="look" Action="org.example.app.system" Arguments="(?=a)a" />
+            <RunicPrivilegedCommand Include="empty" Action="org.example.app.system" Arguments="a;;b" />
+            <RunicPrivilegedCommand Include="minimum" Action="org.example.app.system" Arguments="a" MinimumArguments="2" />
+            <RunicPrivilegedCommand Include="wide" Action="org.example.app.small" Arguments="a;b" />
+            """);
+        var (exit, output) = await project.BuildAsync();
+        Check(exit != 0, output);
+        foreach (var expected in new[]
+        {
+            "names the action 'org.example.app.missing', which no RunicPrivilegedAction item declares",
+            "Privileged command 'gc' of 'org.example.app.system' is declared twice",
+            "Privileged command 'look' of 'org.example.app.system' has a pattern for argument 1 that needs backtracking",
+            "Privileged command 'empty' of 'org.example.app.system' has an empty pattern for argument 2",
+            "Privileged command 'minimum' of 'org.example.app.system' has MinimumArguments '2'",
+            "Privileged action 'org.example.app.small' has MaximumArguments 1, but its command 'wide' takes 3 arguments",
+        })
+            Check(output.Contains(expected, StringComparison.Ordinal), $"{expected} in {output}");
+        Check(output.Contains("RUNICPA015", StringComparison.Ordinal) && output.Contains("RUNICPA008", StringComparison.Ordinal), output);
+        Check(!File.Exists(project.Policy) && !File.Exists(project.Source), "nothing written");
+        Check(!output.Contains("MSB4018", StringComparison.Ordinal), "the task did not crash");
+    }
+
     [Test, DisplayName("policy: a sole action without a verb, and warnings for defaults that skip the administrator")]
     public async Task VerblessActionAndWeakDefaultsAsync()
     {

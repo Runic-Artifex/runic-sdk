@@ -123,6 +123,48 @@ references Runic.Platform as a package:
 | `WindowsProgram` | Windows only: the elevated helper, as a path relative to the application's directory (such as `helpers\example-helper.exe`) or an absolute path. Default: the file name of `Program` with `.exe`, in the application's directory. |
 | `MacProgram` | macOS only: the helper, as a path relative to the application bundle (such as `Contents/MacOS/example-helper`) or an absolute path. |
 
+#### Commands under one action
+
+The platform keeps an authorization per action: Polkit's `auth_admin_keep`
+retains it for the action ID. Several operations of one program that should
+share one authorization, such as activating a system and then collecting
+garbage, are commands of one action, declared as `RunicPrivilegedCommand`
+items. The first argument after the verb names the command, and each further
+argument must match the pattern at its position:
+
+```xml
+<ItemGroup>
+  <RunicPrivilegedAction Include="org.example.app.system"
+                         Program="/usr/libexec/example/example-helper"
+                         Verb="system"
+                         Description="Change the system"
+                         Message="Authentication is required to change the system."
+                         AllowActive="auth_admin_keep" />
+  <RunicPrivilegedCommand Include="activate" Action="org.example.app.system"
+                          Arguments="switch|boot;/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+-]+" />
+  <RunicPrivilegedCommand Include="rollback" Action="org.example.app.system" />
+  <RunicPrivilegedCommand Include="gc" Action="org.example.app.system"
+                          Arguments="[1-9][0-9]{0,2}" MinimumArguments="0" />
+</ItemGroup>
+```
+
+| Metadata | Meaning |
+| --- | --- |
+| Item identity | The command's name, the first argument after the verb. Unique within its action. |
+| `Action` | The ID of the `RunicPrivilegedAction` item it belongs to. Required. |
+| `Arguments` | One pattern per argument after the name, separated by `;`, each matched completely like `ArgumentPattern`. Write `\x3B` for a semicolon inside a pattern. Default: no arguments. |
+| `MinimumArguments` | How many of those arguments are required; the rest may be left out from the end. Default: all. |
+
+An action with commands accepts only its commands. Its `MaximumArguments`
+defaults to the most arguments a command takes, counting the name; its
+`ArgumentPattern`, when set, still applies to every argument, the name
+included. The declaration carries the commands as
+`PrivilegedActionDeclaration.Commands`, so the application's request and the
+privileged program's `PolkitHelper.Match` (or `ElevatedHelper.Match`, or the
+macOS daemon) check the same positions; the program then switches on the
+command name. Invalid commands are build error `RUNICPA015`, and invalid
+command patterns `RUNICPA008`.
+
 Platform packages read further metadata of their own, such as Polkit's
 `IconName` and `AllowActive`; see their guides. Metadata no package reads is
 ignored.
@@ -131,7 +173,7 @@ Each build validates the items and writes `PrivilegedActions.g.cs` under
 `obj/.../runic-privileged/`: an internal static partial class with one
 `PrivilegedActionDeclaration` property per action and `All`. The application
 and its privileged program both use it. Invalid items are build errors
-`RUNICPA001` to `RUNICPA009` and `RUNICPA011`, described in the
+`RUNICPA001` to `RUNICPA009`, `RUNICPA011` and `RUNICPA015`, described in the
 [diagnostics catalog](../../../docs/diagnostics.md#privileged-actions).
 
 | Property | Default |

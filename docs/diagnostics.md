@@ -696,8 +696,9 @@ different values.
 
 ## Privileged actions
 
-The `Runic.Platform` build targets validate `RunicPrivilegedAction` items
-(`RUNICPA001` to `RUNICPA009` and `RUNICPA011`) before any platform target reads
+The `Runic.Platform` build targets validate `RunicPrivilegedAction` and
+`RunicPrivilegedCommand` items (`RUNICPA001` to `RUNICPA009`, `RUNICPA011` and
+`RUNICPA015`) before any platform target reads
 them; the `Runic.Platform.Linux.Polkit` targets then report `RUNICPA010`,
 `RUNICPA012`, `RUNICPA013` and `RUNICPA014` before they write the Polkit policy.
 The `PrivilegedActions` class is written only when none of them remains. See
@@ -761,7 +762,8 @@ symbolic links, `.` or `..`, for example `$(MyInstallPrefix)/libexec/app/helper`
 
 ### RUNICPA008
 
-`ArgumentPattern` is not a valid regular expression on its own, or it needs
+`ArgumentPattern`, or a pattern in a `RunicPrivilegedCommand`'s `Arguments`, is
+not a valid regular expression on its own, or it needs
 backtracking. It is compiled with `RegexOptions.NonBacktracking`, as at run
 time, so backreferences and lookarounds are rejected here.
 
@@ -821,6 +823,21 @@ between the user's processes and root.
 **Fix:** use `auth_admin` or `auth_admin_keep`. To let specific users or groups
 run the action without a password, add a site rule in `/etc/polkit-1/rules.d`
 on the machines that need it.
+
+### RUNICPA015
+
+A `RunicPrivilegedCommand` item is invalid: its `Action` names no
+`RunicPrivilegedAction` item, its name is empty, longer than 4096 characters or
+contains a NUL character, its action has another command with the same name,
+`Arguments` has an empty pattern (two `;` in a row) or more than 63 patterns,
+or `MinimumArguments` is not a number from 0 to the number of patterns. It is
+also reported when an action sets `MaximumArguments` lower than one of its
+commands needs, counting the command name.
+
+**Fix:** set `Action` to an action's ID, give each command of an action its own
+name, write one pattern per argument separated by `;` (`\x3B` for a semicolon
+inside a pattern), and remove `MaximumArguments` from an action with commands,
+which then accepts as many arguments as its longest command.
 
 ### RUNICPA101
 

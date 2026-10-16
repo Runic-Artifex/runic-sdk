@@ -26,6 +26,7 @@ public sealed class PrivilegedActionDeclaration
     // Compiled on the first AcceptsArguments: a NonBacktracking regex costs tens of milliseconds under the JIT, which
     // every process reading the generated declarations would pay at startup (#315).
     private Regex? _argumentRegex;
+    private ImmutableArray<PrivilegedActionCommand> _commands = [];
 
     /// <summary>Declares an action.</summary>
     /// <param name="id">A lowercase reverse-DNS identifier such as <c>org.example.app.activate</c>; see <see cref="IsValidId"/>.</param>
@@ -95,42 +96,80 @@ public sealed class PrivilegedActionDeclaration
         init => _argumentPattern = value;
     }
 
+    /// <summary>
+    /// The commands the action runs: when there are any, the first argument after the verb names one, and the
+    /// arguments after it must be within that command. Empty, the default, accepts arguments without commands.
+    /// </summary>
+    /// <remarks>
+    /// Commands let several operations of one program share one action, and so one authorization that
+    /// <c>auth_admin_keep</c> retains, while each operation still declares the arguments it takes at each position.
+    /// The arguments must also be within <see cref="MaximumArguments"/> and <see cref="ArgumentPattern"/>, which count
+    /// and match the command name too. <c>RunicPrivilegedCommand</c> items generate the commands and the maximum.
+    /// </remarks>
+    /// <exception cref="ArgumentException">A command is null, or two commands have the same name.</exception>
+    public ImmutableArray<PrivilegedActionCommand> Commands
+    {
+        get => _commands;
+        init
+        {
+            var commands = value.IsDefault ? [] : value;
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var command in commands)
+            {
+                if (command is null) throw new ArgumentException("A command is null.", nameof(value));
+                if (!names.Add(command.Name)) throw new ArgumentException($"Two commands are named '{command.Name}'.", nameof(value));
+            }
+            _commands = commands;
+        }
+    }
+
     /// <summary>The options <see cref="ArgumentPattern"/> is compiled with, at build time and at run time.</summary>
     public const RegexOptions PatternOptions = RegexOptions.NonBacktracking | RegexOptions.CultureInvariant;
 
     /// <summary>
     /// Whether <paramref name="arguments"/>, the arguments after the verb, are within this declaration: at most
     /// <see cref="MaximumArguments"/>, each without NUL characters, at most <see cref="ArgumentLengthLimit"/> long
-    /// and matching <see cref="ArgumentPattern"/>.
+    /// and matching <see cref="ArgumentPattern"/>; and, when the action has <see cref="Commands"/>, a command's name
+    /// followed by arguments within that command.
     /// </summary>
     /// <exception cref="ArgumentException">
-    /// <see cref="ArgumentPattern"/> is invalid on its own, for example with an unbalanced group, or once anchored.
+    /// <see cref="ArgumentPattern"/> or a command's pattern is invalid on its own, for example with an unbalanced
+    /// group, or once anchored.
     /// </exception>
     /// <exception cref="NotSupportedException">
-    /// <see cref="ArgumentPattern"/> needs backtracking (backreferences or lookarounds).
+    /// <see cref="ArgumentPattern"/> or a command's pattern needs backtracking (backreferences or lookarounds).
     /// </exception>
     public bool AcceptsArguments(IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         // Compiled before the arguments are checked, so that an invalid pattern is reported on the first call.
         var regex = _argumentPattern is null ? null : Volatile.Read(ref _argumentRegex) ?? CompileArgumentPattern();
+        foreach (var command in _commands) command.Compile();
         if (arguments.Count > MaximumArguments) return false;
         foreach (var argument in arguments)
         {
             if (argument is null || argument.Length > ArgumentLengthLimit || argument.Contains('\0')) return false;
             if (regex is not null && !regex.IsMatch(argument)) return false;
         }
-        return true;
+        if (_commands.IsEmpty) return true;
+        if (arguments.Count == 0) return false;
+        foreach (var command in _commands)
+            if (string.Equals(command.Name, arguments[0], StringComparison.Ordinal)) return command.Accepts(arguments);
+        return false;
     }
 
     private Regex CompileArgumentPattern()
     {
-        var pattern = _argumentPattern!;
-        // Compiled alone first, so that "a)|(b" cannot close the anchoring group and match a part.
-        _ = new Regex(pattern, PatternOptions);
-        var regex = new Regex($"^(?:{pattern})\\z", PatternOptions);
+        var regex = CompileAnchored(_argumentPattern!);
         // Threads that compile it at the same time agree on one instance.
         return Interlocked.CompareExchange(ref _argumentRegex, regex, null) ?? regex;
+    }
+
+    internal static Regex CompileAnchored(string pattern)
+    {
+        // Compiled alone first, so that "a)|(b" cannot close the anchoring group and match a part.
+        _ = new Regex(pattern, PatternOptions);
+        return new Regex($"^(?:{pattern})\\z", PatternOptions);
     }
 
     /// <summary>The complete argument vector after the program: the verb, when declared, then <paramref name="arguments"/>.</summary>
@@ -177,6 +216,107 @@ public sealed class PrivilegedActionDeclaration
             if (segment is "" or "." or "..") return false;
         return true;
     }
+}
+
+/// <summary>
+/// A command of a <see cref="PrivilegedActionDeclaration"/>: the first argument after the verb, and a pattern for
+/// each argument that may follow it.
+/// </summary>
+/// <remarks>
+/// Declare commands with <c>RunicPrivilegedCommand</c> items. A command is equal to another with the same name,
+/// patterns and <see cref="MinimumArguments"/>.
+/// </remarks>
+public sealed class PrivilegedActionCommand : IEquatable<PrivilegedActionCommand>
+{
+    private readonly int _minimumArguments;
+    private Regex[]? _regexes;
+
+    /// <summary>Declares a command.</summary>
+    /// <param name="name">The command's name, which the first argument after the verb must equal.</param>
+    /// <param name="argumentPatterns">
+    /// One pattern for each argument after the name, in order, each matched against the whole argument like
+    /// <see cref="PrivilegedActionDeclaration.ArgumentPattern"/>. The command accepts no more arguments than
+    /// patterns.
+    /// </param>
+    /// <exception cref="ArgumentException">
+    /// The name is empty, longer than <see cref="PrivilegedActionDeclaration.ArgumentLengthLimit"/> or contains a NUL
+    /// character, a pattern is null, or there are more than <see cref="PrivilegedActionDeclaration.ArgumentLimit"/>
+    /// minus one patterns.
+    /// </exception>
+    public PrivilegedActionCommand(string name, params string[] argumentPatterns)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(argumentPatterns);
+        if (name.Length is 0 or > PrivilegedActionDeclaration.ArgumentLengthLimit || name.Contains('\0'))
+            throw new ArgumentException("A command name is a non-empty argument without NUL characters.", nameof(name));
+        if (argumentPatterns.Length >= PrivilegedActionDeclaration.ArgumentLimit)
+            throw new ArgumentException($"A command takes at most {PrivilegedActionDeclaration.ArgumentLimit - 1} arguments after its name.", nameof(argumentPatterns));
+        if (argumentPatterns.Any(pattern => pattern is null)) throw new ArgumentException("A pattern is null.", nameof(argumentPatterns));
+        Name = name;
+        ArgumentPatterns = [.. argumentPatterns];
+        _minimumArguments = argumentPatterns.Length;
+    }
+
+    /// <summary>The command's name, the first argument after the verb.</summary>
+    public string Name { get; }
+
+    /// <summary>The patterns of the arguments after the name, by position.</summary>
+    public ImmutableArray<string> ArgumentPatterns { get; }
+
+    /// <summary>
+    /// How many arguments after the name are required, from 0 to the number of <see cref="ArgumentPatterns"/>; the
+    /// rest may be left out from the end. The default requires them all.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative or greater than the number of patterns.</exception>
+    public int MinimumArguments
+    {
+        get => _minimumArguments;
+        init
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, ArgumentPatterns.Length);
+            _minimumArguments = value;
+        }
+    }
+
+    // Compiled with the declaration's pattern on its first check, for the same reason (#315).
+    internal void Compile()
+    {
+        if (Volatile.Read(ref _regexes) is null)
+            Interlocked.CompareExchange(ref _regexes, [.. ArgumentPatterns.Select(PrivilegedActionDeclaration.CompileAnchored)], null);
+    }
+
+    // arguments[0] is the name.
+    internal bool Accepts(IReadOnlyList<string> arguments)
+    {
+        Compile();
+        var count = arguments.Count - 1;
+        if (count < MinimumArguments || count > ArgumentPatterns.Length) return false;
+        for (var i = 0; i < count; i++)
+            if (!_regexes![i].IsMatch(arguments[i + 1])) return false;
+        return true;
+    }
+
+    /// <inheritdoc />
+    public bool Equals(PrivilegedActionCommand? other) =>
+        other is not null && (ReferenceEquals(this, other) || (Name == other.Name && MinimumArguments == other.MinimumArguments
+            && ArgumentPatterns.SequenceEqual(other.ArgumentPatterns, StringComparer.Ordinal)));
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj) => Equals(obj as PrivilegedActionCommand);
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(Name, StringComparer.Ordinal);
+        hash.Add(MinimumArguments);
+        foreach (var pattern in ArgumentPatterns) hash.Add(pattern, StringComparer.Ordinal);
+        return hash.ToHashCode();
+    }
+
+    /// <inheritdoc />
+    public override string ToString() => Name;
 }
 
 /// <summary>One run of a declared privileged action.</summary>

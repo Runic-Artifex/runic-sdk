@@ -135,7 +135,8 @@ public sealed class WindowsPrivilegedActions : IDesktopPrivilegedActions
     }
 
     private static bool SameDeclaration(PrivilegedActionDeclaration a, PrivilegedActionDeclaration b) =>
-        ReferenceEquals(a, b) || (a.Program == b.Program && a.Verb == b.Verb && a.MaximumArguments == b.MaximumArguments && a.ArgumentPattern == b.ArgumentPattern);
+        ReferenceEquals(a, b) || (a.Program == b.Program && a.Verb == b.Verb && a.MaximumArguments == b.MaximumArguments && a.ArgumentPattern == b.ArgumentPattern
+            && a.Commands.SequenceEqual(b.Commands));
 
     private static List<PrivilegedActionDeclaration> Index(IEnumerable<PrivilegedActionDeclaration> actions)
     {

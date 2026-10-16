@@ -79,6 +79,78 @@ internal sealed class DeclarationTests
     private static PrivilegedActionDeclaration Pattern(string pattern) =>
         new("org.example.a", "/x") { MaximumArguments = 1, ArgumentPattern = pattern };
 
+    // #294: several operations of one program share one action, so auth_admin_keep keeps one authorization for them,
+    // and each still declares its arguments by position.
+    [Test, DisplayName("declaration: commands check the arguments after their name by position")]
+    public void Commands()
+    {
+        var store = "/nix/store/" + new string('a', 32) + "-nixos-system-host";
+        var action = new PrivilegedActionDeclaration("org.example.app.system", "/usr/libexec/app/helper")
+        {
+            Verb = "--privileged",
+            MaximumArguments = 3,
+            Commands =
+            [
+                new("activate-output", "switch|boot", "/nix/store/[a-z0-9]{32}-nixos-system-[A-Za-z0-9._+-]+"),
+                new("rollback"),
+                new("gc", "[1-9][0-9]{0,2}") { MinimumArguments = 0 },
+            ],
+        };
+        Check(action.AcceptsArguments(["activate-output", "switch", store]), "activate-output");
+        Check(!action.AcceptsArguments(["activate-output", store, "switch"]), "each pattern applies to its position only");
+        Check(!action.AcceptsArguments(["activate-output", "switch"]), "a required argument is missing");
+        Check(action.AcceptsArguments(["rollback"]), "a command without arguments");
+        Check(!action.AcceptsArguments(["rollback", "1"]), "no more arguments than patterns");
+        Check(action.AcceptsArguments(["gc"]) && action.AcceptsArguments(["gc", "100"]), "an optional trailing argument");
+        Check(!action.AcceptsArguments(["gc", "0"]) && !action.AcceptsArguments(["gc", "1000"]), "the optional argument matches its pattern completely");
+        Check(!action.AcceptsArguments([]), "an action with commands needs one");
+        Check(!action.AcceptsArguments(["switch"]) && !action.AcceptsArguments(["GC"]), "unknown commands; names are compared ordinally");
+        Check(!action.AcceptsArguments(["gc", "1\0"]), "NUL is still refused");
+        Check(action.CreateArgumentVector(["gc", "5"]).SequenceEqual(["--privileged", "gc", "5"]), "the verb, then the command");
+        Check(PolkitHelper.MatchCore([action], ["--privileged", "activate-output", "boot", store], out var rest) == action
+            && rest.SequenceEqual(["activate-output", "boot", store]), "the helper matches by command too");
+        Check(PolkitHelper.MatchCore([action], ["--privileged", "activate-output", "boot", "/etc"], out _) is null, "and refuses a command's wrong argument");
+
+        var bounded = new PrivilegedActionDeclaration("org.example.app.bounded", "/x") { MaximumArguments = 1, Commands = [new("gc", "[0-9]+")] };
+        Check(bounded.AcceptsArguments(["gc"]) is false && !bounded.AcceptsArguments(["gc", "1"]), "MaximumArguments still counts the name and its arguments");
+        var shared = new PrivilegedActionDeclaration("org.example.app.shared", "/x") { MaximumArguments = 2, ArgumentPattern = "[a-z0-9]+", Commands = [new("gc", "[0-9]+")] };
+        Check(shared.AcceptsArguments(["gc", "1"]) && !new PrivilegedActionDeclaration("org.example.app.upper", "/x") { MaximumArguments = 2, ArgumentPattern = "[a-z]+", Commands = [new("gc", "[0-9]+")] }.AcceptsArguments(["gc", "1"]),
+            "ArgumentPattern still applies to every argument");
+
+        Check(new PrivilegedActionDeclaration("org.example.a", "/x").Commands.IsEmpty, "no commands by default");
+        Check(new PrivilegedActionDeclaration("org.example.a", "/x") { Commands = default }.Commands.IsEmpty, "default is empty");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { Commands = [new("gc"), new("gc", "[0-9]+")] }, "two commands with one name");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { Commands = [null!] }, "a null command");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionCommand(""), "empty name");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionCommand("a\0b"), "NUL in the name");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionCommand("gc", [.. Enumerable.Repeat("x", PrivilegedActionDeclaration.ArgumentLimit)]), "too many patterns");
+        Throws<ArgumentException>(() => _ = new PrivilegedActionCommand("gc", null!, "x"), "a null pattern");
+        Throws<ArgumentOutOfRangeException>(() => _ = new PrivilegedActionCommand("gc", "x") { MinimumArguments = 2 }, "more required arguments than patterns");
+        Throws<ArgumentOutOfRangeException>(() => _ = new PrivilegedActionCommand("gc", "x") { MinimumArguments = -1 }, "negative");
+        var lookaround = new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 2, Commands = [new("rollback"), new("gc", "(?=a)a")] };
+        Throws<NotSupportedException>(() => lookaround.AcceptsArguments(["rollback"]), "every command's patterns are compiled on the first check");
+        Throws<ArgumentException>(() => new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 2, Commands = [new("gc", "a)|(b")] }.AcceptsArguments(["gc", "a"]),
+            "a command pattern cannot escape its anchors");
+
+        Check(new PrivilegedActionCommand("gc", "[0-9]+") { MinimumArguments = 0 }.Equals(new PrivilegedActionCommand("gc", "[0-9]+") { MinimumArguments = 0 })
+            && new PrivilegedActionCommand("gc", "[0-9]+").GetHashCode() == new PrivilegedActionCommand("gc", "[0-9]+").GetHashCode(), "commands compare by value");
+        Check(!new PrivilegedActionCommand("gc", "[0-9]+").Equals(new PrivilegedActionCommand("gc", "[0-9]+") { MinimumArguments = 0 })
+            && !new PrivilegedActionCommand("gc", "[0-9]+").Equals(new PrivilegedActionCommand("gc", "[0-8]+")), "and differ by any part");
+    }
+
+    [Test, DisplayName("provider: a request's declaration must have the provider's commands")]
+    public async Task ProviderComparesCommandsAsync()
+    {
+        PrivilegedActionDeclaration Declare(string pattern) =>
+            new("org.example.app.system", "/opt/app/helper") { Verb = "run", MaximumArguments = 2, Commands = [new("gc", pattern)] };
+        // Without pkexec, a request the provider accepts is unavailable rather than run.
+        var actions = new PolkitPrivilegedActions([Declare("[0-9]+")], new PolkitOptions(), new PkexecTests.FakeHost(null));
+        Check(await actions.RunAsync(new PrivilegedActionRequest(Declare("[0-9]+"), ["gc", "1"])) is PlatformResult<PrivilegedActionCompletion>.Unavailable,
+            "an equal declaration is the provider's");
+        await ThrowsAsync<ArgumentException>(() => actions.RunAsync(new PrivilegedActionRequest(Declare("[0-9a-z]+"), ["gc", "1"])).AsTask(),
+            "a declaration with other commands is not the provider's");
+    }
+
     [Test, DisplayName("declaration: the unavailable provider checks arguments and reports its reason")]
     public async Task UnavailableAsync()
     {

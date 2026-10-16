@@ -54,7 +54,8 @@ off Linux, so application code is the same everywhere.
 
 `RunicPrivilegedAction` items are the single declaration. Runic.Platform's
 `buildTransitive` targets validate the platform-neutral part once
-(`RUNICPA001` to `RUNICPA009` and `RUNICPA011`, in `RunicValidatePrivilegedActions`)
+(`RUNICPA001` to `RUNICPA009`, `RUNICPA011` and `RUNICPA015`, in
+`RunicValidatePrivilegedActions`)
 and write `PrivilegedActions.g.cs`, a partial class with one
 `PrivilegedActionDeclaration` per item, compiled into the application, which
 uses it on both sides of the action. Each platform package adds its artifacts
@@ -87,6 +88,18 @@ matched. If two programs shared a verb, or one had a verbless action, `pkexec
 <path A> <verb>` could be authorized by A's weaker action while the helper acted
 on B's. With globally unique verbs, the verb alone identifies the action that
 pkexec authorized, and `PolkitHelper.Match` uses nothing else.
+
+An action can have commands (`RunicPrivilegedCommand` items, #294): the first
+argument after the verb names one, and each further argument matches the
+pattern at its position, with optional trailing arguments. Commands do not
+change the policy: they share their action's entry, its message and its
+defaults, and so the authorization `auth_admin_keep` retains for that action
+ID. Polkit has no way to give one action several `exec.argv1` values, and a
+second action is a second authorization, so commands are positions within one
+action rather than actions sharing an ID. The declaration carries them
+(`PrivilegedActionDeclaration.Commands`), so the application's request, the
+Polkit and Windows helpers' `Match` and the macOS daemon apply the same
+positional rules, and the program switches on the command name.
 
 Declare the actions in one project. When the privileged program is a separate
 project, both import the same items and only one writes the policy
@@ -212,8 +225,9 @@ security boundary.
   argument is `/nix/store/<hash>-nixos-system-*` with a `switch-to-configuration`.
 - A verb in `exec.argv1` gives each operation its own policy entry and message,
   so "activate a system" and "collect garbage" can have different defaults.
-- Patterns apply to every argument after the verb. Options such as `--foo` are
-  not special: a program that parses options must reject unknown ones itself.
+- Patterns apply to every argument after the verb; a command's patterns apply
+  to their positions. Options such as `--foo` are not special: a program that
+  parses options must reject unknown ones itself.
 
 ### Environment and PATH
 
@@ -929,9 +943,10 @@ Cancellation matches Linux as far as macOS allows:
   cancelling and refusing it. CI cannot sign, notarize or approve.
 - **macOS daemon idle exit**, so the daemon does not stay running after launchd
   started it.
-- **nix-manager adoption** (W300-011): one action per privileged operation
-  (`activate-output`, `activate-generation`, `rollback`, `gc`) with its own verb
-  and message, the existing checks in the helper, and `PolkitHelper.Match` in
+- **nix-manager adoption** (W300-011): nix-manager keeps one action, so that
+  `auth_admin_keep` covers activation followed by garbage collection, with its
+  operations (`activate-output`, `activate-generation`, `rollback`, `gc`) as
+  commands, the existing checks in the helper, and `PolkitHelper.Match` in
   front of them.
 
 ## Verification — 2026-10-14
