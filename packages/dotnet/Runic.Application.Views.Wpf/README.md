@@ -146,3 +146,24 @@ changes shortly after `TabInto` returns, not during the call. Returning from the
 is not yet integrated; mouse focus and explicit shell focus actions remain
 available. Native authentication, reload, focus and unload checks run on Windows;
 Linux can compile the Windows target and run the linked portable session checks.
+
+## Bring the window forward for a second launch
+
+A WPF application that keeps one copy running with
+`ApplicationInstance.ClaimAsync` brings its window forward when another launch
+arrives with `WpfPlatformServices.PresentAsync(window)`, from any thread:
+
+```csharp
+// For each launch the running instance receives:
+var result = await WpfPlatformServices.PresentAsync(mainWindow);
+```
+
+It shows a hidden window, or one not shown yet, with `Window.Show()` and
+restores a minimized one to its previous size, then asks Windows to put it in
+the foreground on the window's dispatcher, as
+`PlatformServices.PresentAsync` does for Runic Desktop windows. Windows lets the
+running instance take the foreground because the forwarding launch allows it
+(`AllowSetForegroundWindow`); otherwise the taskbar button flashes and the
+result is `Failed` with `PermissionDenied`. A closed window, or one whose
+dispatcher shut down, reports `OwnerClosed`. `Window.Activate()` alone neither
+restores the window nor reports a refusal.

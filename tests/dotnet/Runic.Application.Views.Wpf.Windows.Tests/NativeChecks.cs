@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Wpf;
 using Runic.Desktop;
+using Runic.Platform;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -10,6 +11,39 @@ using TUnit.Core;
 // The native WPF checks, after the portable cases (WpfDispatcherExecutor runs them on the dispatcher).
 internal sealed class NativeChecks
 {
+    // #267: a WPF window is brought forward for a forwarded launch: shown when hidden or not shown yet, restored when
+    // minimized, and reported closed once it closed. A CI desktop may keep another window in the foreground, which
+    // flashes the taskbar button instead (PermissionDenied).
+    [Test, NotInParallel("WpfSuite", Order = 15)]
+    public async Task PresentShowsRestoresAndReportsAClosedWindow()
+    {
+        static bool Presented(PlatformResult<PlatformUnit> result) =>
+            result is PlatformResult<PlatformUnit>.Success or PlatformResult<PlatformUnit>.Failed { Code: PlatformFailureCode.PermissionDenied };
+
+        var window = new Window { Width = 320, Height = 200, Title = "Runic WPF present" };
+        try
+        {
+            var shown = await WpfPlatformServices.PresentAsync(window);
+            Program.Check(Presented(shown) && window.IsVisible, $"Presenting a window not shown yet did not show it: {shown}.");
+            window.WindowState = WindowState.Maximized;
+            window.WindowState = WindowState.Minimized;
+            var restored = await WpfPlatformServices.PresentAsync(window);
+            Program.Check(Presented(restored) && window.WindowState == WindowState.Maximized,
+                $"Presenting a minimized window did not restore it to its previous state: {restored}, {window.WindowState}.");
+            window.Hide();
+            var unhidden = await WpfPlatformServices.PresentAsync(window);
+            Program.Check(Presented(unhidden) && window.IsVisible && window.Visibility == Visibility.Visible,
+                $"Presenting a hidden window did not show it: {unhidden}, {window.Visibility}.");
+            // From another thread, as a forwarded launch arrives.
+            var fromPool = await Task.Run(async () => await WpfPlatformServices.PresentAsync(window));
+            Program.Check(Presented(fromPool), $"Presenting from a thread-pool thread failed: {fromPool}.");
+        }
+        finally { window.Close(); }
+        var closed = await WpfPlatformServices.PresentAsync(window);
+        Program.Check(closed is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+            $"Presenting a closed window did not report the owner closed: {closed}.");
+    }
+
     // location.reload() reconnects the page within the same presentation (#196).
     [Test, NotInParallel("WpfSuite", Order = 11)]
     public async Task ChildWebViewAuthenticatesReloadsAndUnloads()
