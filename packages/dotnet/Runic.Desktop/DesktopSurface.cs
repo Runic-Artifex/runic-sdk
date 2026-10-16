@@ -88,6 +88,16 @@ public sealed class DesktopSurface : IAsyncDisposable
         return _engine.ObserveConnections(webUiEvent => handler(new PresentationInvocation(this, webUiEvent)));
     }
 
+    /// <summary>Gets the number of pages connected to this surface.</summary>
+    /// <remarks>
+    /// A page counts from its <see cref="PresentationEventKind.Connected"/> event until its
+    /// <see cref="PresentationEventKind.Disconnected"/> event, and a handler of either event already sees the count
+    /// with that change. A window's page, every tab of a served surface and each reload count separately. A reload
+    /// can disconnect before or after the reloaded page connects, so the count can drop to zero for a moment: to
+    /// end serving when the last browser tab closes, wait a short time after it reaches zero and check again.
+    /// </remarks>
+    public int ConnectionCount => _engine.ConnectedSessionCount;
+
     /// <summary>Opens this surface in one installed browser or embedded WebView.</summary>
     public async ValueTask<DesktopWindow> OpenWindowAsync(
         DesktopWindowOptions? options = null,

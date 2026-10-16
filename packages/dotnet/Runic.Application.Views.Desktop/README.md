@@ -64,6 +64,22 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `new RunicDesktopHost(provider, desktop) { SurfaceOptions = ..., WindowOptions = ... }`
   inside `DesktopEventLoop.Run`. `RunicDesktopHost.DefaultWindowOptions` opens
   the embedded WebView and falls back to an installed browser.
+- `RunicDesktopHost.Resources` serves application files that are not part of
+  the frontend build, such as icons from a cache, from each Window's own
+  address. It is called with each Window as it opens, after its ViewModel is
+  set, and returns that Window's `ContentHandler` or `null`. The surface asks
+  the handler only for a request its content has no file for, before 404, so
+  the page loads `<img src="icons/org.example.App.png">` alike in a native
+  window, in a browser after a fallback and under `RUNIC_APPLICATION_SERVE_ONLY`.
+  The request path is decoded and can contain `..`: map it to known files
+  rather than to the file system.
+
+  ```csharp
+  var host = new RunicDesktopHost(provider, desktop)
+  {
+      Resources = window => window is DashboardWindow ? icons.ServeAsync : null,
+  };
+  ```
 - `host.OpenWindowAsync<TWindow>(options, activation, cancellationToken)` on
   `RunicDesktopHost` opens a Window for a launch or a click: it opens the Window
   as above and presents it with the desktop's activation token or startup ID,
@@ -89,6 +105,8 @@ The same Window and `async host => ...` body run on CS-WebUI with
 - `DesktopBridgeWindow<TViewModel>`, the Window's `Host`, owns the Window's scope, surface, and attachment.
   It exposes `ViewModel`, `Surface`, `Presentation`, `WaitForCloseAsync`, and `CloseAsync`, which
   stops new operations and waits for accepted ones before releasing the scope.
+  `RunicDesktopHost.GetSurface(window)` returns the `Surface` of any Window of
+  this host without naming its ViewModel type, and `null` for another host's.
   It implements `IBridgeWindow`, the lifetime contract shared with the CS-WebUI
   host, and returns the same `BridgeWindowCloseResult`.
 - A Window with `GuardClose` (see
@@ -327,6 +345,27 @@ window, so an application that validates at startup also starts headless. It
 still reports configuration errors, such as `window-option-invalid`,
 `browser-unsupported` or `gtk4-provider-missing`, which fail every launch that
 presents a window.
+
+A served Window can end with its last browser tab, as a `--browser` command
+that opens the URL in the default browser would. The Window's surface counts
+its connected pages in `ConnectionCount`, and a connection event's handler
+already sees the count with that event. A reload disconnects before or after
+the page connects again, so wait a moment before closing:
+
+```csharp
+var surface = RunicDesktopHost.GetSurface(window)!;
+using var connections = surface.SubscribeConnectionEvents(invocation =>
+{
+    if (invocation is not { Kind: PresentationEventKind.Disconnected, Surface.ConnectionCount: 0 }) return;
+    _ = Task.Run(async () =>
+    {
+        await Task.Delay(TimeSpan.FromSeconds(1));
+        if (surface.ConnectionCount == 0) await window.CloseAsync(TimeSpan.Zero);
+    });
+});
+OpenInBrowser(surface.Url);
+await window.WaitForCloseAsync();
+```
 
 The serve-only protocol, the same on both hosts:
 

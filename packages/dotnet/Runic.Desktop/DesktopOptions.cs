@@ -154,6 +154,20 @@ public sealed record DesktopSurfaceOptions
     /// <remarks>Defaults to the current directory with index discovery.</remarks>
     public DesktopContent Content { get; init; } = new DesktopContent.Directory(Environment.CurrentDirectory);
 
+    /// <summary>
+    /// Gets a handler for the requests that <see cref="Content"/> does not serve, such as application files outside
+    /// the frontend build, or <see langword="null"/>, the default, for none.
+    /// </summary>
+    /// <remarks>
+    /// The surface asks the handler for a <c>GET</c> or <c>HEAD</c> request only when <see cref="Content"/> has no
+    /// file or response for it, before it responds 404 Not Found; a <see langword="null"/> response is 404. The
+    /// resources are served from the surface's own URL, so a page shown in a window and the same page served to a
+    /// browser load them alike, for example as <c>&lt;img src="icons/org.example.App.png"&gt;</c>.
+    /// <see cref="ContentRequest.Path"/> is decoded and can contain <c>..</c> segments: never pass it to the file
+    /// system unchecked.
+    /// </remarks>
+    public ContentHandler? Resources { get; init; }
+
     /// <summary>Gets a surface-specific security policy, or the host default when omitted.</summary>
     public DesktopSecurityPolicy? Security { get; init; }
 

@@ -1,3 +1,6 @@
 #nullable enable
 static Runic.Application.Views.Desktop.PlatformServices.PresentAsync(Runic.Application.Views.IRunicWindow! window, Runic.Platform.DesktopActivationContext? context = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Application.Views.Desktop.RunicDesktopHost.OpenWindowAsync<TWindow>(Runic.Application.Views.RunicWindowOptions? options, Runic.Platform.DesktopActivationContext? activation, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TWindow!>
+Runic.Application.Views.Desktop.RunicDesktopHost.Resources.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Desktop.ContentHandler?>?
+Runic.Application.Views.Desktop.RunicDesktopHost.Resources.init -> void
+static Runic.Application.Views.Desktop.RunicDesktopHost.GetSurface(Runic.Application.Views.IRunicWindow! window) -> Runic.Desktop.DesktopSurface?

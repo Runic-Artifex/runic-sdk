@@ -93,6 +93,43 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// </summary>
     public DesktopSurfaceOptions? SurfaceOptions { get; init; }
 
+    /// <summary>
+    /// Chooses the resources of each Window: application files outside the frontend build, such as icons from a
+    /// cache, that the Window's page loads from its own address. <see langword="null"/>, the default, serves none.
+    /// </summary>
+    /// <remarks>
+    /// Called with each Window as it opens, once its ViewModel is set (<see cref="RunicWindow{TViewModel}.ViewModel"/>)
+    /// and before its surface is created. It returns the handler for the requests the Window's content does not serve,
+    /// or <see langword="null"/> for none, and it becomes <see cref="DesktopSurfaceOptions.Resources"/> of the Window's
+    /// surface, replacing the one of <see cref="SurfaceOptions"/>. The resources are served whether the Window is
+    /// shown or served to a browser under <c>RUNIC_APPLICATION_SERVE_ONLY</c>, for as long as the Window is open.
+    /// <code>
+    /// var host = new RunicDesktopHost(provider, desktop)
+    /// {
+    ///     Resources = window =&gt; window is DashboardWindow ? icons.ServeAsync : null,
+    /// };
+    /// </code>
+    /// A handler that throws fails the request with 500, and a callback that throws fails the open.
+    /// </remarks>
+    public Func<IRunicWindow, ContentHandler?>? Resources { get; init; }
+
+    /// <summary>Gets the Desktop surface that serves an open Window of this host, or <see langword="null"/> for another host.</summary>
+    /// <param name="window">The open Window.</param>
+    /// <remarks>
+    /// The surface is the same in a native window, in a browser after a fallback and under
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY</c>. Its <see cref="DesktopSurface.ConnectionCount"/> and
+    /// <see cref="DesktopSurface.SubscribeConnectionEvents"/> tell when the last browser tab of a served Window
+    /// closed, and <see cref="DesktopSurface.Url"/> is its address. It is the
+    /// <see cref="DesktopBridgeWindow{TViewModel}.Surface"/> of <see cref="IRunicWindow.Host"/>, without naming the
+    /// ViewModel type.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
+    public static DesktopSurface? GetSurface(IRunicWindow window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        return window.Host is IDesktopNativeOwnerSource source ? source.Surface : null;
+    }
+
     /// <summary>Runs <paramref name="application"/> with the default <see cref="DesktopHostOptions"/>.</summary>
     /// <inheritdoc cref="Run(IServiceProvider, DesktopHostOptions, Func{RunicDesktopHost, Task{int}})"/>
     public static int Run(IServiceProvider services, Func<RunicDesktopHost, Task<int>> application) =>
@@ -240,6 +277,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             {
                 Content = new DesktopContent.Directory(opening.Options.ResolveContentRoot(), opening.Options.StartPage),
             };
+            if (Resources is { } chooseResources && chooseResources(opening.Window) is { } resources)
+                surfaceOptions = surfaceOptions with { Resources = resources };
             surface = await Desktop.CreateSurfaceAsync(surfaceOptions, cancellationToken).ConfigureAwait(false);
             transport = new DesktopBridgeTransport(surface, loggerFactory?.CreateLogger(DesktopBridgeTransport.LogCategory));
             content = new WindowContentSession(transport,
