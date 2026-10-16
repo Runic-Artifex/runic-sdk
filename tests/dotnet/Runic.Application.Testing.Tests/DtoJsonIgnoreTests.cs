@@ -139,7 +139,7 @@ internal sealed partial class CodegenDiagnosticsTests
         Require(exit == 0, $"Independent shared DTOs were not accepted.\n{output}");
         var cs = Path.Combine(directory, "cs");
         var generated = File.ReadAllText(Path.Combine(cs, "Fixture.IndependentViewModel.Bridge.g.cs"));
-        foreach (var member in new[] { ".IsFiltered", ".HasErrors", ".Hidden" })
+        foreach (var member in new[] { ".IsFiltered", ".HasErrors", ".Hidden", ".Unknown", ".Extra" })
             Require(!generated.Contains(member, StringComparison.Ordinal), $"The shared DTO codec or validation metadata read ignored member {member}.");
         var assembly = CompileGeneratedDtoFixture("IndependentJsonIgnoreConsumer", source, cs, IndependentJsonIgnoreProbe, references);
         var fingerprint = BridgeContractShape.Compute(assembly.GetType("Fixture.IndependentViewModel")!);
@@ -273,10 +273,13 @@ internal sealed partial class CodegenDiagnosticsTests
             [property: JsonPropertyName("author")] string Author = "")
         {
             [JsonIgnore] public bool IsFiltered => Message.Length != 0 || Author.Length != 0;
+            // Members a newer version wrote, kept for the next save (#299).
+            [JsonExtensionData] public System.Collections.Generic.Dictionary<string, System.Text.Json.JsonElement>? Unknown { get; set; }
         }
         public sealed class ValidationDto : INotifyDataErrorInfo
         {
             public string Value { get; set; } = "";
+            [JsonExtensionData] public System.Text.Json.Nodes.JsonObject Extra => throw new InvalidOperationException("Extension data must never be read.");
             [JsonIgnore] public bool HasErrors => true;
             [JsonIgnore] public ValidationDto Hidden => throw new InvalidOperationException("Ignored getters must never run.");
             public event EventHandler<DataErrorsChangedEventArgs>? ErrorsChanged { add { } remove { } }

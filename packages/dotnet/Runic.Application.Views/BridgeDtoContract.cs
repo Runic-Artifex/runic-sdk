@@ -15,6 +15,7 @@ internal static class BridgeDtoContract
     private const string RunicIgnore = "Runic.Application.Views.RunicIgnoreAttribute";
     private const string RunicBridgeJsonIgnore = "Runic.Application.Views.RunicBridgeJsonIgnoreAttribute";
     private const string JsonIgnore = "System.Text.Json.Serialization.JsonIgnoreAttribute";
+    private const string JsonExtensionData = "System.Text.Json.Serialization.JsonExtensionDataAttribute";
 
     internal static bool HonorsJsonIgnore(Assembly modelAssembly) =>
         BridgeAttributeNames.Has(modelAssembly, RunicBridgeJsonIgnore);
@@ -24,11 +25,17 @@ internal static class BridgeDtoContract
     internal static bool IsRunicIgnored(PropertyInfo property) =>
         InheritanceChain(property).Any(declared => BridgeAttributeNames.Has(declared, RunicIgnore));
 
-    // An unconditional [JsonIgnore]: Condition is Always, its default. The
-    // nearest declaration wins, as with GetCustomAttribute(inherit: true).
+    // Under the opt-in: an unconditional [JsonIgnore] (Condition is Always, its
+    // default; the nearest declaration wins, as with GetCustomAttribute(inherit:
+    // true)), or [JsonExtensionData], whose members System.Text.Json keeps for
+    // round-tripping unknown JSON members and which is .NET-only too.
     internal static bool IsIgnored(PropertyInfo property, bool honorJsonIgnore) =>
         IsRunicIgnored(property) ||
-        honorJsonIgnore && InheritanceChain(property).Select(declared => BridgeAttributeNames.Find(declared, JsonIgnore))
+        honorJsonIgnore && (IsUnconditionalJsonIgnore(property)
+            || InheritanceChain(property).Any(declared => BridgeAttributeNames.Has(declared, JsonExtensionData)));
+
+    private static bool IsUnconditionalJsonIgnore(PropertyInfo property) =>
+        InheritanceChain(property).Select(declared => BridgeAttributeNames.Find(declared, JsonIgnore))
                 .FirstOrDefault(entry => entry is not null) is { } jsonIgnore
             && (jsonIgnore.NamedArguments().TryGetValue(nameof(JsonIgnoreAttribute.Condition), out var condition)
                 ? Convert.ToInt32(condition, System.Globalization.CultureInfo.InvariantCulture) : (int)JsonIgnoreCondition.Always) == (int)JsonIgnoreCondition.Always;
