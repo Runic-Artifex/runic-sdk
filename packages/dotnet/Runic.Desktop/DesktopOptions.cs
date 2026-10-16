@@ -273,6 +273,19 @@ public enum DesktopWindowCapabilities
 
     /// <summary>User close requests can be confirmed by <see cref="DesktopWindowOptions.ConfirmCloseAsync"/>.</summary>
     CloseConfirmation = 1 << 6,
+
+    /// <summary>The window can ask the screen reader to announce a message (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
+    Announcements = 1 << 7,
+}
+
+/// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
+public enum DesktopAnnouncementPriority
+{
+    /// <summary>After what the screen reader is saying, as <c>aria-live="polite"</c>.</summary>
+    Polite,
+
+    /// <summary>Interrupting what the screen reader is saying, as <c>aria-live="assertive"</c>; for errors and other messages the user must hear at once.</summary>
+    Assertive,
 }
 
 /// <summary>Configures one browser or embedded-WebView presentation.</summary>

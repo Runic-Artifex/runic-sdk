@@ -335,6 +335,62 @@ public static class PlatformServices
 
     private static readonly PlatformResult<PlatformUnit> Presented = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());
 
+    /// <summary>Asks the screen reader to announce a message for an open Runic Window, such as the result of an action.</summary>
+    /// <param name="window">The open Window, on any host.</param>
+    /// <param name="message">The text to speak, in the page's language.</param>
+    /// <param name="priority">
+    /// <see cref="DesktopAnnouncementPriority.Polite"/>, the default, waits for what the screen reader is saying;
+    /// <see cref="DesktopAnnouncementPriority.Assertive"/> interrupts it.
+    /// </param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <remarks>
+    /// The embedded window announces through the platform's accessibility API, as
+    /// <see cref="DesktopWindow.AnnounceAsync"/> describes; WebKitGTK reports no ARIA live region to Orca, so on Linux
+    /// this is how a page's status reaches a screen reader. A Window without an embedded window reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>: an installed browser after a fallback, a Window served
+    /// under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, or one on another host; a live region in the page reaches the screen
+    /// reader there. A closed window reports <see cref="PlatformUnavailableReason.OwnerClosed"/>, and a custom window
+    /// host without <see cref="DesktopWindowCapabilities.Announcements"/>
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/>. A ViewModel takes
+    /// <see cref="DesktopWindowPlatformServices"/> and calls its <see cref="DesktopWindowPlatformServices.AnnounceAsync"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is empty or white space.</exception>
+    /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
+    public static ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(IRunicWindow window, string message,
+        DesktopAnnouncementPriority priority = DesktopAnnouncementPriority.Polite, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        var presentation = window.Host is IDesktopNativeOwnerSource { NativeOwnerOrNull: { } owner } ? owner.Window : null;
+        return AnnounceAsync(presentation, message, priority, cancellationToken);
+    }
+
+    internal static async ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(DesktopWindow? window, string message,
+        DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (window is null || window.Browser != BrowserKind.Embedded)
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable);
+        if (!window.IsOpen) return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+        if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements))
+            return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        try
+        {
+            await window.AnnounceAsync(message, priority, cancellationToken).ConfigureAwait(false);
+            return Presented;
+        }
+        catch (ObjectDisposedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+        catch (Exception error) when (error is NotSupportedException or DesktopException { Code: "window-capability-unavailable" })
+        {
+            // A runtime older than the API, such as GTK 4.12 or ATK before 2.46, or a window closing meanwhile.
+            return window.IsOpen
+                ? new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+                : new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ValueTask<PlatformResult<PlatformUnit>> PresentWindows(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
         WindowsPlatformProvider.PresentAsync(owner, cancellationToken);
@@ -453,6 +509,7 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
     private readonly object _gate = new();
     private IWindowPlatformServices _current = NotOpen;
     private IWindowPlatformServices? _bound;
+    private DesktopWindow? _window;
     private Task? _disposal;
     private DesktopPlatformProvider _provider;
 
@@ -480,12 +537,38 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
             if (_bound is not null) throw new InvalidOperationException("The platform services are already bound to a window.");
             if (_disposal is not null) return;
             _bound = PlatformServices.Create(owner, out _provider);
+            _window = owner.Window;
             Volatile.Write(ref _current, _bound);
         }
     }
 
     /// <inheritdoc />
     public CapabilitySnapshot GetSnapshot() => Current.GetSnapshot();
+
+    /// <summary>Asks the screen reader to announce a message for the window, such as the result of an action.</summary>
+    /// <param name="message">The text to speak, in the page's language.</param>
+    /// <param name="priority">Whether the message waits for what the screen reader is saying, the default, or interrupts it.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <remarks>
+    /// Announces as <see cref="PlatformServices.AnnounceAsync(IRunicWindow, string, DesktopAnnouncementPriority, CancellationToken)"/>
+    /// does, with the same results. Before the window opens it reports <see cref="PlatformUnavailableReason.OwnerUnavailable"/>,
+    /// and after these services stop <see cref="PlatformUnavailableReason.OwnerClosed"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is empty or white space.</exception>
+    public ValueTask<PlatformResult<PlatformUnit>> AnnounceAsync(string message,
+        DesktopAnnouncementPriority priority = DesktopAnnouncementPriority.Polite, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        DesktopWindow? window;
+        lock (_gate)
+        {
+            if (_disposal is not null)
+                return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
+                    new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed));
+            window = _window;
+        }
+        return PlatformServices.AnnounceAsync(window, message, priority, cancellationToken);
+    }
 
     /// <summary>Stops the services: waits for platform operations, then releases file access the window still owns.</summary>
     public ValueTask DisposeAsync()

@@ -4,7 +4,9 @@
 Select it explicitly; it never loads beside the GTK 3 provider and is not
 selected automatically. The provider is pinned to `GirCore.Gtk-4.0` and
 `GirCore.WebKit-6.0` 0.8.1 (MIT). At runtime it needs GTK 4.12+ and WebKitGTK 6;
-the package contains no native runtime.
+the package contains no native runtime. `DesktopWindow.AnnounceAsync` needs
+GTK 4.14 (`gtk_accessible_announce`); with GTK 4.12 or 4.13 the window reports
+no `DesktopWindowCapabilities.Announcements`.
 
 WebKitGTK must be initialized on the Linux process main thread. Start the
 application with `DesktopEventLoop.Run` directly from `Main`, before an await,

@@ -121,6 +121,18 @@ The same Window and `async host => ...` body run on CS-WebUI with
   the `CloseConfirmation` capability opens the Window unguarded for the user's
   close and logs event 1053 `WindowCloseGuardUnavailable`; `RequestCloseAsync`
   still asks `CanCloseAsync` there.
+- `PlatformServices.AnnounceAsync(window, message, priority)` asks the screen
+  reader to speak a status message for a Window, such as "Saved", through its
+  embedded window (`DesktopWindow.AnnounceAsync`; see
+  [Accessibility](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#accessibility)).
+  WebKitGTK reports no ARIA live region to Orca, so on Linux this is how a
+  page's status reaches a screen reader. A ViewModel takes
+  `DesktopWindowPlatformServices` and calls its `AnnounceAsync(message, priority)`.
+  Both return `Success`, or `Unavailable` with `OwnerUnavailable` for a Window
+  without an embedded window (an installed browser, serve-only mode, another
+  host, or a ViewModel's window that has not opened yet), `OwnerClosed` once it
+  closed, and `BackendUnavailable` for a window host without announcements,
+  such as GTK 4 before 4.14.
 - `services.AddRunicPlatformServices()` registers native file dialogs, the
   text clipboard, and the file launcher for each window scope:
   `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and

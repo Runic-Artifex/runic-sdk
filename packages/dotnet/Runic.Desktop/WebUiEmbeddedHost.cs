@@ -65,6 +65,10 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
 
     /// <summary>Starts a native move operation for a frameless window.</summary>
     ValueTask BeginMoveAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Asks the screen reader to announce a message; requires <see cref="DesktopWindowCapabilities.Announcements"/>.</summary>
+    ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This host cannot make announcements."));
 }
 
 /// <summary>Describes the initial state of an embedded platform WebView window.</summary>

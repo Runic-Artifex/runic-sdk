@@ -523,6 +523,9 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --event-loop
           # SIGTERM closes the GTK window and disposes the host before the GTK loop ends.
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --signal
+          # DesktopWindow.AnnounceAsync reaches AT-SPI as Object:Announcement with GTK 3 and GTK 4 (#318).
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
+          GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when
           # installed, for the document-view save; otherwise that variant reports a skip with its reason.

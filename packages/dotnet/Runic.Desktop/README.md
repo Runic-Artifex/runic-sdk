@@ -276,9 +276,10 @@ for `aria-live` (polite or assertive, with or without `aria-atomic`),
 `role="status"`, `role="alert"`, a separate announcer element, or a changed
 `aria-label` or `aria-description`. Chromium announces all of them, so a page
 that relies on them works on CS-WebUI and WebView2 but is silent on Runic
-Desktop on Linux. Report a change through an element whose native semantics
-Orca follows instead. A value that the user changes, such as a count, is a spin
-button: Orca reads its new value while it has focus.
+Desktop on Linux. Announce it from the backend instead (see below), or report
+it through an element whose native semantics Orca follows. A value that the
+user changes, such as a count, is a spin button: Orca reads its new value while
+it has focus.
 
 ```html
 <span role="spinbutton" tabindex="0" aria-label="Restore points to keep"
@@ -289,6 +290,31 @@ Handle the arrow, Page Up, Page Down, Home and End keys on it as the WAI-ARIA
 spin button pattern describes, and keep focus on it when buttons beside it
 change the value. A result that appears after an action, such as an error, can
 receive focus itself (`tabindex="-1"` and `focus()`), so that Orca reads it.
+
+**Announce status messages from the backend.** `DesktopWindow.AnnounceAsync(message, priority)`
+asks the screen reader to speak a message without moving focus, as a live
+region would: "Saved", "3 updates found", or an error. It needs
+`DesktopWindowCapabilities.Announcements`, which the embedded window reports on
+every platform:
+
+| Host | What the window does | Checked |
+| --- | --- | --- |
+| GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`) |
+| GTK 4 | Calls `gtk_accessible_announce` (GTK 4.14 or later; an older GTK reports no `Announcements`). | As GTK 3 (`--announcement gtk4`) |
+| WebView2 | Raises a UI Automation notification event on the window. | The call succeeds; not checked with Narrator or NVDA |
+| WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | The call succeeds; not checked with VoiceOver |
+
+`DesktopAnnouncementPriority.Polite`, the default, waits for what the screen
+reader is saying, and `Assertive` interrupts it, as `aria-live` does. A browser
+cannot be asked, so an installed browser, including one opened after a
+fallback, reports no `Announcements` and `AnnounceAsync` throws
+`window-capability-unavailable`; keep a live region in the page for it. On
+WebView2 and WKWebView a live region in the page reaches the screen reader too,
+so send each message one way, or it is spoken twice. A custom `IDesktopWindowHost` that reports
+`Announcements` implements `AnnounceAsync`. Runic Windows announce with
+`PlatformServices.AnnounceAsync(window, message)` or, from a ViewModel,
+`DesktopWindowPlatformServices.AnnounceAsync(message)`
+([Runic.Application.Views.Desktop](../Runic.Application.Views.Desktop/README.md)).
 
 **A list item with only a button can crash the page.** WebKitGTK 2.54.1, both
 webkit2gtk-4.1 (GTK 3) and webkitgtk-6.0 (GTK 4), aborts its web process when

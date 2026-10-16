@@ -281,7 +281,8 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
         LinuxDesktopRuntime.CanUse(Backend) && Gtk4Runtime.IsAvailable && !Gtk4Application.DisplayUnavailable;
 
     /// <inheritdoc />
-    public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities;
+    /// <remarks>An open window reports <see cref="DesktopWindowCapabilities.Announcements"/> only with GTK 4.14 or later.</remarks>
+    public DesktopWindowCapabilities Capabilities => Gtk4WindowHost.SupportedCapabilities | DesktopWindowCapabilities.Announcements;
 
     /// <inheritdoc />
     /// <remarks>GTK 4 windows reject X, Y, Centered, Transparent, HighContrast, ProfilePath, BrowserArguments and IconFile.</remarks>
@@ -327,6 +328,31 @@ public sealed class Gtk4WindowHostFactory : ILinuxDesktopWindowHostFactory, IDes
         }
 
         return new Gtk4WindowHost();
+    }
+}
+
+// gtk_accessible_announce, new in GTK 4.14; the provider supports GTK 4.12.
+[SupportedOSPlatform("linux")]
+internal static unsafe class Gtk4Announcement
+{
+    private static readonly Lazy<nint> Function = new(static () =>
+        NativeLibrary.TryLoad(Gtk4NativeLibraries.Gtk, out var library)
+        && NativeLibrary.TryGetExport(library, "gtk_accessible_announce", out var function) ? function : 0);
+
+    internal static bool IsAvailable => Function.Value != 0;
+
+    // GtkAccessibleAnnouncementPriority: LOW = 0, MEDIUM = 1, HIGH = 2. GTK sends MEDIUM as polite and HIGH as assertive.
+    internal static void Announce(nint accessible, string message, bool assertive)
+    {
+        var text = Marshal.StringToCoTaskMemUTF8(message);
+        try
+        {
+            ((delegate* unmanaged[Cdecl]<nint, nint, int, void>)Function.Value)(accessible, text, assertive ? 2 : 1);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem(text);
+        }
     }
 }
 
@@ -397,7 +423,8 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 
     public bool SupportsDocumentStartScript => true;
 
-    public DesktopWindowCapabilities Capabilities => SupportedCapabilities;
+    public DesktopWindowCapabilities Capabilities => SupportedCapabilities |
+        (Gtk4Announcement.IsAvailable ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None);
 
     public bool SupportsNativeDispatch => true;
 
@@ -492,6 +519,18 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default) =>
         new(Gtk4Dispatcher.Instance.InvokeAsync(() => GetWindow().Minimize(), cancellationToken));
+
+    // WebKitGTK reports no live-region change to AT-SPI (#318); the window announces through GTK's AT-SPI context.
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!Gtk4Announcement.IsAvailable)
+        {
+            return ValueTask.FromException(new NotSupportedException("GTK 4.14 or later is required for announcements."));
+        }
+        return new(Gtk4Dispatcher.Instance.InvokeAsync(() => Gtk4Announcement.Announce(
+            GetWindow().Handle.DangerousGetHandle(), message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken));
+    }
 
     public ValueTask ToggleMaximizedAsync(CancellationToken cancellationToken = default) =>
         new(Gtk4Dispatcher.Instance.InvokeAsync(() =>

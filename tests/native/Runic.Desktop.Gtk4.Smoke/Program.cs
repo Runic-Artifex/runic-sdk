@@ -22,6 +22,9 @@ if (args.Contains("--keyboard", StringComparer.Ordinal))
     });
 }
 
+if (Array.IndexOf(args, "--announcement") is var announcement and >= 0)
+    return AnnouncementSmoke.Run(announcement + 1 < args.Length ? args[announcement + 1] : "gtk4");
+
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 

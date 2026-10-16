@@ -1004,6 +1004,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     public Task FocusAsync(CancellationToken cancellationToken = default)
         => GetEmbeddedHost().FocusAsync(cancellationToken).AsTask();
 
+    internal Task AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken)
+        => GetEmbeddedHost().AnnounceAsync(message, priority, cancellationToken).AsTask();
+
     /// <summary>Minimizes the embedded platform window.</summary>
     public void Minimize() => MinimizeAsync().GetAwaiter().GetResult();
 

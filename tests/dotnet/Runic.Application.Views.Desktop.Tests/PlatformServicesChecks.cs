@@ -148,6 +148,57 @@ internal sealed class PlatformServicesChecks
         }
     }
 
+    // #318: a Window announces through its embedded window, from the static facade and from the services a ViewModel
+    // holds; a window that cannot, or none, reports why.
+    [Test, NotInParallel(Order = 16)]
+    public async Task AnnouncementsReachTheEmbeddedWindowOrReportWhyNot()
+    {
+        await using (var provider = CreateProvider())
+        {
+            var factory = new NativeDispatchFactory { Announces = true };
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+            var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            var services = (DesktopWindowPlatformServices)window.ViewModel.Platform;
+            try
+            {
+                Require(await PlatformServices.AnnounceAsync(window, "Saved") is PlatformResult<PlatformUnit>.Success,
+                    "A Window did not announce through its embedded window.");
+                Require(await services.AnnounceAsync("The disk is full", DesktopAnnouncementPriority.Assertive) is PlatformResult<PlatformUnit>.Success,
+                    "The ViewModel's platform services did not announce.");
+                Require(factory.Hosts[0].Announcements.SequenceEqual(
+                    [("Saved", DesktopAnnouncementPriority.Polite), ("The disk is full", DesktopAnnouncementPriority.Assertive)]),
+                    "The embedded window did not receive the announcements with their priorities.");
+                await ((DesktopBridgeWindow<FileViewModel>)window.Host).Presentation.CloseAsync();
+                Require(await PlatformServices.AnnounceAsync(window, "Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                    "A Window whose presentation closed did not report the owner closed.");
+            }
+            finally
+            {
+                await window.DisposeAsync();
+            }
+            Require(await services.AnnounceAsync("Late") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                "The services of a closed window did not report the owner closed.");
+        }
+
+        await using (var provider = CreateProvider())
+        {
+            var factory = new NativeDispatchFactory();
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = factory, WaitForConnection = false });
+            await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            Require(await PlatformServices.AnnounceAsync(window, "Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+                "A window host without announcements did not report the backend unavailable.");
+            Require(factory.Hosts[0].Announcements.IsEmpty, "A window host without announcements received one.");
+        }
+
+        var unbound = new DesktopWindowPlatformServices();
+        Require(await unbound.AnnounceAsync("Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+            "Services of a window that has not opened did not report the owner unavailable.");
+        var rejected = false;
+        try { _ = await unbound.AnnounceAsync(""); }
+        catch (ArgumentException) { rejected = true; }
+        Require(rejected, "An empty announcement was accepted.");
+    }
+
     // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is
     // shown, so that the compositor gives it focus. Without a context, for a hidden window and for a window without
     // native dispatch nothing is presented, and a presentation that fails does not fail the open.

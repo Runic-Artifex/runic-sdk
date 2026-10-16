@@ -358,6 +358,12 @@ static async Task ExerciseFirstWindowAsync(DesktopSurface surface, DesktopWindow
 
     await window.ResizeAsync(700, 500);
     await window.MoveAsync(20, 30);
+    // The platform's accessibility API accepts the announcement; the GTK 4 smoke's --announcement checks what
+    // reaches AT-SPI.
+    if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements))
+        throw new InvalidOperationException("The embedded window did not advertise announcements.");
+    await window.AnnounceAsync("Runic Desktop smoke announcement");
+    await window.AnnounceAsync("Runic Desktop smoke alert", DesktopAnnouncementPriority.Assertive);
     await window.FocusAsync();
     await window.MinimizeAsync();
     await window.ToggleMaximizedAsync();
