@@ -19,7 +19,8 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
         : null;
 
     internal override MvvmCommand? InspectCommand(PropertyInfo command) =>
-        ToolkitCommandInspector.InspectContract(command) is { } contract ? new Command(contract) : null;
+        ToolkitCommandInspector.InspectContract(command) is { } contract
+            ? new Command(contract, ToolkitCommandInspector.CanExecuteMember(command)) : null;
 
     internal override void AppendSupportTypes(StringBuilder cs, IEnumerable<GeneratedCommandPlan> plans)
     {
@@ -39,9 +40,10 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
         cs.AppendLine();
     }
 
-    private sealed class Command(ToolkitCommandContract contract) : MvvmCommand
+    private sealed class Command(ToolkitCommandContract contract, string? canExecute) : MvvmCommand
     {
         internal override bool IsAsync => contract.IsAsync;
+        internal override string? AvailabilityMember => canExecute;
         internal override Type? Input => contract.Input;
         internal override Type[] ContractArguments => contract.Input is { } input ? [input] : [];
 

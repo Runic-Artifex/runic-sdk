@@ -60,6 +60,12 @@ type named like a generated bridge (`CounterBridge` beside `CounterViewModel`)
 collides with it, and so would a generated TypeScript module that declares one
 name twice.
 
+A command without an argument publishes its availability as `canX` state, so a
+state property of that wire name collides with it, unless the command declares
+the property as its availability with CommunityToolkit's
+`[RelayCommand(CanExecute = nameof(CanX))]`; then the property is written once,
+as the availability.
+
 The generator's own TypeScript bindings, such as the client's wire type,
 runtime imports and page reference caches, never collide with names derived
 from your types: when a ViewModel is named `WireViewModel` or `ViewViewModel`,

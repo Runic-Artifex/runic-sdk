@@ -1164,6 +1164,15 @@ requires Toolkit's generator metadata, the paired async command, and its
 cancellation-token method with `IncludeCancelCommand = true`; other plain
 `ICommand` properties still require `[RunicCommandInput]`.
 
+A command without an argument publishes its availability as `canX` state. When
+`[RelayCommand(CanExecute = nameof(CanCreate))]` names a `bool` property whose
+wire name is that state, such as `CanCreate` for `CreateCommand`, the property
+is that availability and is written once, from the command's `CanExecute`.
+A `PropertyChanged` for the property publishes it, so it needs no
+`[RunicIgnore]`, and the page needs no `NotifyCanExecuteChangedFor`. A property with another name, or one for a
+command with an argument, whose availability is the `canX(input)` query, stays
+state of its own.
+
 Checked-write receipts decode their values just like state: for example, an
 `Int64` receipt's `snapshot.value` or conflict's `incoming.value` is a `bigint`.
 An identical request ID and payload replays its receipt. Reusing an ID with a

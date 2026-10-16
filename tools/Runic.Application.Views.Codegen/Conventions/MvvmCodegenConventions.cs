@@ -59,6 +59,13 @@ internal abstract class MvvmCommand
     /// <summary>True when the snapshot carries is&lt;Name&gt;Executing.</summary>
     internal virtual bool HasExecutionState => IsAsync;
 
+    /// <summary>
+    /// The ViewModel property the command's availability is declared as, such as the Toolkit's
+    /// <c>[RelayCommand(CanExecute = nameof(CanSave))]</c>, or null. A command without an argument publishes that
+    /// availability as <c>can&lt;Name&gt;</c> state, so a property of the same wire name is the same value.
+    /// </summary>
+    internal virtual string? AvailabilityMember => null;
+
     /// <summary>True when the command honours <see cref="RunicCommandResultAttribute"/>.</summary>
     internal virtual bool SelectsResultCardinality => false;
 
