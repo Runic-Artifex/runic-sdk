@@ -248,22 +248,11 @@ public sealed class DesktopHost : IAsyncDisposable
         {
             if (content is DesktopContent.Handler { Resolve: var handler })
             {
-                engine.SetRequestHandler(async (context, requestPath, token) =>
-                {
-                    context.Items.TryGetValue(typeof(PresentationRequestCancellation), out var cancellation);
-                    var request = new ContentRequest(
-                        requestPath,
-                        context.Request.Method,
-                        new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
-                            context.Request.Headers.ToDictionary(
-                                static header => header.Key,
-                                static header => header.Value.ToString(),
-                                StringComparer.OrdinalIgnoreCase)),
-                        context.RequestServices,
-                        cancellation as PresentationRequestCancellation);
-                    var response = await handler(request, token).ConfigureAwait(false);
-                    return response?.ToCompatibilityContent();
-                });
+                engine.SetRequestHandler(Adapt(handler));
+            }
+            if (configured.Resources is { } resources)
+            {
+                engine.SetResourceHandler(Adapt(resources));
             }
             await engine.StartServerAsync(content, cancellationToken).ConfigureAwait(false);
             return surface;
@@ -275,6 +264,24 @@ public sealed class DesktopHost : IAsyncDisposable
             throw;
         }
     }
+
+    private static Func<Microsoft.AspNetCore.Http.HttpContext, string, CancellationToken, ValueTask<WebUiContent?>> Adapt(
+        ContentHandler handler) => async (context, requestPath, token) =>
+        {
+            context.Items.TryGetValue(typeof(PresentationRequestCancellation), out var cancellation);
+            var request = new ContentRequest(
+                requestPath,
+                context.Request.Method,
+                new System.Collections.ObjectModel.ReadOnlyDictionary<string, string>(
+                    context.Request.Headers.ToDictionary(
+                        static header => header.Key,
+                        static header => header.Value.ToString(),
+                        StringComparer.OrdinalIgnoreCase)),
+                context.RequestServices,
+                cancellation as PresentationRequestCancellation);
+            var response = await handler(request, token).ConfigureAwait(false);
+            return response?.ToCompatibilityContent();
+        };
 
     /// <inheritdoc />
     public ValueTask DisposeAsync()

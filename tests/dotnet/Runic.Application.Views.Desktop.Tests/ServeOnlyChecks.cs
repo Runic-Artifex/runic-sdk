@@ -242,6 +242,112 @@ internal sealed class ServeOnlyChecks
         }
     }
 
+    // #313, #317: a Window serves the resources RunicDesktopHost.Resources chose for it, shown and served alike, and
+    // RunicDesktopHost.GetSurface tells when the last browser tab of a served Window disconnected.
+    [Test, NotInParallel(Order = 4)]
+    public async Task WindowsServeTheirResourcesShownAndServedAndCountTheirConnections()
+    {
+        string? serveOnly = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY");
+        var console = Console.Out;
+        var input = Console.In;
+        var lines = new LineReader();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            Console.SetIn(lines);
+            Console.SetOut(new StringWriter());
+            var services = new ServiceCollection();
+            services.AddScoped<OrderedCollectionModel>();
+            services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+                _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+            await using var provider = services.BuildServiceProvider();
+            await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = new NativeDispatchFactory(),
+                WaitForConnection = false,
+            });
+            var chosen = new List<IRunicWindow>();
+            var host = new RunicDesktopHost(provider, desktop)
+            {
+                SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+                WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded },
+                Resources = window =>
+                {
+                    chosen.Add(window);
+                    var model = ((RunicWindow<OrderedCollectionModel>)window).ViewModel;
+                    return window is ProbeWindow
+                        ? (request, _) => ValueTask.FromResult<ContentResponse?>(request.Path == "/icons/app.svg"
+                            ? ContentResponse.Text($"<svg>{model.GetHashCode()}</svg>", "image/svg+xml")
+                            : null)
+                        : null;
+                },
+            };
+            using var client = new HttpClient();
+
+            async Task CheckResourcesAsync(IRunicWindow window, string mode)
+            {
+                var surface = RunicDesktopHost.GetSurface(window)
+                    ?? throw new InvalidOperationException($"GetSurface returned no surface ({mode}).");
+                Check(ReferenceEquals(surface, ((DesktopBridgeWindow<OrderedCollectionModel>)window.Host).Surface),
+                    $"GetSurface returned another surface than the Window's ({mode}).");
+                using var icon = await client.GetAsync(new Uri(surface.Url, "icons/app.svg"), deadline.Token);
+                Check(icon.IsSuccessStatusCode && icon.Content.Headers.ContentType?.MediaType == "image/svg+xml",
+                    $"The Window did not serve its resource ({mode}): {icon.StatusCode}.");
+                var expected = $"<svg>{((RunicWindow<OrderedCollectionModel>)window).ViewModel.GetHashCode()}</svg>";
+                Check(await icon.Content.ReadAsStringAsync(deadline.Token) == expected,
+                    $"The resource was not the one chosen for this Window ({mode}).");
+                using var missing = await client.GetAsync(new Uri(surface.Url, "icons/other.svg"), deadline.Token);
+                Check(missing.StatusCode == System.Net.HttpStatusCode.NotFound,
+                    $"A resource the handler does not have was not 404 ({mode}): {missing.StatusCode}.");
+                Check(await client.GetStringAsync(surface.Url, deadline.Token) == "<!doctype html>",
+                    $"The resources replaced the Window's content ({mode}).");
+            }
+
+            await using (var shown = await host.OpenWindowAsync<ProbeWindow>(cancellationToken: deadline.Token))
+            await using (var other = await host.OpenWindowAsync<OtherProbeWindow>(cancellationToken: deadline.Token))
+            {
+                Check(chosen.SequenceEqual<IRunicWindow>([shown, other]), "Resources was not called once for each Window.");
+                await CheckResourcesAsync(shown, "shown");
+                var otherSurface = RunicDesktopHost.GetSurface(other)!;
+                using var none = await client.GetAsync(new Uri(otherSurface.Url, "icons/app.svg"), deadline.Token);
+                Check(none.StatusCode == System.Net.HttpStatusCode.NotFound,
+                    $"A Window without resources served another Window's: {none.StatusCode}.");
+            }
+
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
+            await using var served = await host.OpenWindowAsync<ProbeWindow>(cancellationToken: deadline.Token);
+            await CheckResourcesAsync(served, "served");
+
+            var servedSurface = RunicDesktopHost.GetSurface(served)!;
+            Check(servedSurface.ConnectionCount == 0, $"A served Window without a tab counted {servedSurface.ConnectionCount}.");
+            var counts = new System.Collections.Concurrent.ConcurrentQueue<(PresentationEventKind, int)>();
+            var lastTabClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var connections = servedSurface.SubscribeConnectionEvents(invocation =>
+            {
+                counts.Enqueue((invocation.Kind, invocation.Surface.ConnectionCount));
+                if (invocation.Kind == PresentationEventKind.Disconnected && invocation.Surface.ConnectionCount == 0)
+                    lastTabClosed.TrySetResult();
+            });
+            using (var tab = await DesktopWireClient.ConnectAsync(servedSurface, deadline.Token))
+            {
+                while (servedSurface.ConnectionCount != 1) await Task.Delay(10, deadline.Token);
+            }
+            await lastTabClosed.Task.WaitAsync(deadline.Token);
+            Check(counts.SequenceEqual([(PresentationEventKind.Connected, 1), (PresentationEventKind.Disconnected, 0)]),
+                $"The connection events saw the counts {string.Join(", ", counts)}.");
+            lines.Send("");
+        }
+        finally
+        {
+            lines.Send(null);
+            Console.SetOut(console);
+            Console.SetIn(input);
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", serveOnly);
+        }
+    }
+
+    private sealed class OtherProbeWindow : RunicWindow<OrderedCollectionModel>;
+
     private static readonly string[] s_validationVariables =
         ["RUNIC_APPLICATION_SERVE_ONLY", "RUNIC_APPLICATION_CLOSE_AFTER_OPEN", "DISPLAY", "WAYLAND_DISPLAY"];
 

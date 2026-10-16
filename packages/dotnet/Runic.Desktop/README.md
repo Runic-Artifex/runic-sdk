@@ -61,6 +61,16 @@ names the entry and the HTML pages the root has, instead of a window that times
 out: add the page to the frontend build inputs (for Vite,
 `build.rolldownOptions.input`) so the build emits it.
 
+`DesktopSurfaceOptions.Resources` adds a `ContentHandler` for what `Content`
+does not serve, such as application files outside the frontend build: icons
+from a cache, or images the backend renders. The surface asks it only for a
+`GET` or `HEAD` request that `Content` has no file or response for, before it
+responds 404, so a file of `Content` always wins. The resources share the
+surface's address, so a page shown in an embedded window and the same page
+served to a browser load them alike. The request path is decoded and can
+contain `..` segments; map it to known files, never to the file system
+unchecked.
+
 Content handlers receive request-scoped services and may return fixed or
 request-owned streaming responses. Stream writes are awaited for backpressure;
 requester disconnect, surface close, and host shutdown propagate cancellation
@@ -188,6 +198,14 @@ control callbacks available. For one connection:
   to its call.
 - `Disconnected` is dispatched after every capability call the connection
   accepted has completed, and no call or event of that connection follows it.
+
+`DesktopSurface.ConnectionCount` is the number of connections between their
+`Connected` and `Disconnected` events, and a connection event's handler
+already sees it with that event. A connection whose `Connected` event was never
+dispatched, because it lost its admission first, is not counted. A served
+surface can therefore end with its last browser tab: on a `Disconnected` event
+that leaves the count at zero, wait a moment, since a reload can disconnect
+before the page connects again, and check the count again.
 
 Separate connections, such as several admitted clients, are independent. A
 handler that needs exclusive access across awaits must serialize itself, for

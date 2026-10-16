@@ -9,6 +9,8 @@ namespace Runic.Application.Views.Desktop;
 internal interface IDesktopNativeOwnerSource
 {
     DesktopNativeOwner? NativeOwnerOrNull { get; }
+
+    DesktopSurface Surface { get; }
 }
 
 /// <summary>Owns one Desktop surface, presentation, ViewModel scope, and Views session.</summary>

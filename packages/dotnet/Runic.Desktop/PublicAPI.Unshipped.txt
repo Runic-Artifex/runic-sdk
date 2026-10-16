@@ -1,3 +1,6 @@
 #nullable enable
 Runic.Desktop.DesktopWindowHostOptions.ReportDiagnostic.get -> System.Action<Runic.Desktop.DesktopDiagnostic!>?
 Runic.Desktop.DesktopWindowHostOptions.ReportDiagnostic.init -> void
+Runic.Desktop.DesktopSurface.ConnectionCount.get -> int
+Runic.Desktop.DesktopSurfaceOptions.Resources.get -> Runic.Desktop.ContentHandler?
+Runic.Desktop.DesktopSurfaceOptions.Resources.init -> void

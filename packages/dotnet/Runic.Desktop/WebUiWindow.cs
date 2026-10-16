@@ -42,6 +42,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private readonly object _connectionObserverGate = new();
     private Action<WebUiEvent>[] _connectionObservers = [];
     private readonly ConcurrentDictionary<Guid, WebUiSession> _sessions = new();
+    // The sessions whose Connected event was dispatched and whose Disconnected event was not.
+    private readonly ConcurrentDictionary<Guid, byte> _connectedSessions = new();
     private readonly ConcurrentDictionary<string, nuint> _clients = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _presentationGate = new(1, 1);
@@ -82,6 +84,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private Uri? _externalUrl;
     private WebUiFileHandler? _fileHandler;
     private Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? _requestHandler;
+    // DesktopSurfaceOptions.Resources: asked for what the content does not serve, before 404 (#313).
+    private Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? _resourceHandler;
     private bool _allowIndexFallback;
     private bool _isPublic;
     private bool _profileConfigured;
@@ -141,6 +145,9 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     /// <summary>Gets whether the server accepts connections on non-loopback interfaces.</summary>
     public bool IsPublic => _isPublic;
+
+    /// <summary>Gets the number of sessions between their Connected and Disconnected events.</summary>
+    internal int ConnectedSessionCount => _connectedSessions.Count;
 
     /// <summary>Gets whether this window currently owns a browser process or authenticated client.</summary>
     public bool IsShown =>
@@ -845,6 +852,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
         Volatile.Write(ref _requestHandler, handler);
 
+    internal void SetResourceHandler(
+        Func<HttpContext, string, CancellationToken, ValueTask<WebUiContent?>>? handler) =>
+        Volatile.Write(ref _resourceHandler, handler);
+
     /// <summary>Sets the browser profile name and storage path used for this window.</summary>
     public void SetProfile(string name, string path)
     {
@@ -1322,6 +1333,10 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         CancellationToken cancellationToken)
     {
         var eventNumber = (nuint)Interlocked.Increment(ref _nextEventNumber);
+        // Counted when the event is dispatched, so its handlers see the count with this connection. A session whose
+        // Connected event was never dispatched, because it lost its admission first, is not counted (#317).
+        if (eventType == WebUiEventType.Connected) _connectedSessions.TryAdd(session.Id, 0);
+        else if (eventType == WebUiEventType.Disconnected) _connectedSessions.TryRemove(session.Id, out _);
         _bindings.TryGetValue(string.Empty, out var allEventsRegistration);
         if (allEventsRegistration is not null)
         {
@@ -2146,25 +2161,6 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             }
         }
 
-        if (path is "/favicon.ico" or "/favicon.svg")
-        {
-            var iconPath = ResolveLocalPath(path);
-            if (iconPath is not null && File.Exists(iconPath))
-            {
-                await SendFileAsync(context, iconPath, path).ConfigureAwait(false);
-                return;
-            }
-
-            if (path == "/favicon.ico")
-            {
-                Redirect(context, "/favicon.svg");
-                return;
-            }
-
-            await SendTextAsync(context, DefaultIcon, "image/svg+xml").ConfigureAwait(false);
-            return;
-        }
-
         var localPath = ResolveLocalPath(path);
         if (localPath is not null && File.Exists(localPath))
         {
@@ -2172,7 +2168,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             return;
         }
 
-        if (localPath is not null && Directory.Exists(localPath))
+        if (localPath is not null && Directory.Exists(localPath) && path is not "/favicon.ico" and not "/favicon.svg")
         {
             var index = FindPhysicalIndex(path, localPath);
             if (index is not null)
@@ -2180,6 +2176,31 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 Redirect(context, index);
                 return;
             }
+        }
+
+        // The application's resources serve what the content does not, such as icons from a cache, in a window and
+        // in a browser alike.
+        var resourceHandler = Volatile.Read(ref _resourceHandler);
+        if (resourceHandler is not null)
+        {
+            var resource = await resourceHandler(context, path, cancellationToken).ConfigureAwait(false);
+            if (resource is not null)
+            {
+                await SendVirtualContentAsync(context, path, resource, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        if (path == "/favicon.ico")
+        {
+            Redirect(context, "/favicon.svg");
+            return;
+        }
+
+        if (path == "/favicon.svg")
+        {
+            await SendTextAsync(context, DefaultIcon, "image/svg+xml").ConfigureAwait(false);
+            return;
         }
 
         await SendNotFoundAsync(context).ConfigureAwait(false);

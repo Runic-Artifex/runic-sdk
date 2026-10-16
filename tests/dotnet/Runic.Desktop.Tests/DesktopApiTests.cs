@@ -733,6 +733,78 @@ public sealed class DesktopApiTests
         }
     }
 
+    // #313: the resources serve what the content does not, before 404, for every kind of content.
+    [Test]
+    public async Task ResourcesServeWhatTheContentDoesNot()
+    {
+        var root = Directory.CreateTempSubdirectory("runic-desktop-resources-");
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "index.html"), "index");
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "shared.txt"), "content");
+            var asked = new ConcurrentQueue<string>();
+            ContentHandler resources = (request, _) =>
+            {
+                asked.Enqueue($"{request.Method} {request.Path}");
+                return ValueTask.FromResult<ContentResponse?>(request.Path switch
+                {
+                    "/icons/app.svg" => ContentResponse.Text("<svg/>", "image/svg+xml"),
+                    "/shared.txt" => ContentResponse.Text("resource", "text/plain"),
+                    "/favicon.svg" => ContentResponse.Text("<svg>icon</svg>", "image/svg+xml"),
+                    "/fails" => throw new InvalidOperationException("The resource failed."),
+                    _ => null,
+                });
+            };
+            await using var host = await DesktopHost.StartAsync(new DesktopHostOptions { WaitForConnection = false });
+            using var client = new HttpClient();
+
+            await using (var directory = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Directory(root.FullName),
+                Resources = resources,
+            }))
+            {
+                Assert.Equal("index", await client.GetStringAsync(directory.Url));
+                using var icon = await client.GetAsync(new Uri(directory.Url, "icons/app.svg"));
+                Assert.Equal(HttpStatusCode.OK, icon.StatusCode);
+                Assert.Equal("image/svg+xml", icon.Content.Headers.ContentType?.MediaType);
+                Assert.Equal("<svg/>", await icon.Content.ReadAsStringAsync());
+                using var head = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, new Uri(directory.Url, "icons/app.svg")));
+                Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+                // The content's file wins over a resource of the same path, and the favicon the content lacks is the
+                // resource's rather than the default one.
+                Assert.Equal("content", await client.GetStringAsync(new Uri(directory.Url, "shared.txt")));
+                Assert.Equal("<svg>icon</svg>", await client.GetStringAsync(new Uri(directory.Url, "favicon.svg")));
+                using var missing = await client.GetAsync(new Uri(directory.Url, "icons/other.svg"));
+                Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+                using var failed = await client.GetAsync(new Uri(directory.Url, "fails"));
+                Assert.Equal(HttpStatusCode.InternalServerError, failed.StatusCode);
+                Assert.DoesNotContain("GET /shared.txt", asked);
+                Assert.Contains("HEAD /icons/app.svg", asked);
+            }
+
+            await using var html = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("<!doctype html>"),
+                Resources = resources,
+            });
+            Assert.Equal("<!doctype html>", await client.GetStringAsync(html.Url));
+            Assert.Equal("<svg/>", await client.GetStringAsync(new Uri(html.Url, "icons/app.svg")));
+            Assert.Equal("resource", await client.GetStringAsync(new Uri(html.Url, "shared.txt")));
+
+            await using var without = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+            {
+                Content = new DesktopContent.Html("<!doctype html>"),
+            });
+            using var none = await client.GetAsync(new Uri(without.Url, "icons/app.svg"));
+            Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [Test]
     public async Task OnlyDirectoryContentServesLocalFiles()
     {

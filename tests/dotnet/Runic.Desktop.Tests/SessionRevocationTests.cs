@@ -204,6 +204,52 @@ public sealed class SessionRevocationTests
         Assert.Equal(expected, second.ToArray());
     }
 
+    // #317: the surface counts its connected pages, and a connection handler already sees its own change, so the
+    // last tab of a served surface is the Disconnected event that leaves the count at zero.
+    [Test]
+    public async Task ConnectionCountFollowsTheConnectionEvents()
+    {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var host = await DesktopHost.StartAsync();
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions
+        {
+            Content = new DesktopContent.Html("<!doctype html>"),
+            Security = new DesktopSecurityPolicy { ClientAdmission = DesktopClientAdmission.Multiple },
+        });
+        var seen = new System.Collections.Concurrent.ConcurrentQueue<(PresentationEventKind Kind, int Count)>();
+        var lastClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = surface.SubscribeConnectionEvents(invocation =>
+        {
+            seen.Enqueue((invocation.Kind, invocation.Surface.ConnectionCount));
+            if (invocation.Kind == PresentationEventKind.Disconnected && invocation.Surface.ConnectionCount == 0)
+                lastClosed.TrySetResult();
+        });
+        Assert.Equal(0, surface.ConnectionCount);
+
+        var (first, _, _) = await ConnectToSurfaceAsync(surface.Url, deadline.Token);
+        using (first)
+        {
+            while (seen.IsEmpty) await Task.Delay(10, deadline.Token);
+            Assert.Equal(1, surface.ConnectionCount);
+            var (second, _, _) = await ConnectToSurfaceAsync(surface.Url, deadline.Token);
+            using var secondSocket = second;
+            while (seen.Count < 2) await Task.Delay(10, deadline.Token);
+            Assert.Equal(2, surface.ConnectionCount);
+            await first.CloseAsync(WebSocketCloseStatus.NormalClosure, null, deadline.Token);
+            while (seen.Count < 3) await Task.Delay(10, deadline.Token);
+            Assert.Equal(1, surface.ConnectionCount);
+            Assert.False(lastClosed.Task.IsCompleted);
+            await second.CloseAsync(WebSocketCloseStatus.NormalClosure, null, deadline.Token);
+        }
+
+        await lastClosed.Task.WaitAsync(deadline.Token);
+        Assert.Equal(0, surface.ConnectionCount);
+        Assert.Equal(
+            [(PresentationEventKind.Connected, 1), (PresentationEventKind.Connected, 2), (PresentationEventKind.Disconnected, 1),
+             (PresentationEventKind.Disconnected, 0)],
+            seen.ToArray());
+    }
+
     private static async Task<(ClientWebSocket Socket, uint Token, byte[] Reply)> ConnectToSurfaceAsync(
         Uri surfaceUrl,
         CancellationToken cancellationToken)
