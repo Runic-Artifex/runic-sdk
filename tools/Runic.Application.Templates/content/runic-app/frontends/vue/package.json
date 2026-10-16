@@ -8,7 +8,7 @@
   },
   "type": "module",
   "scripts": {
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "vite build && vue-tsc --noEmit",
     "dev": "vite",
     "typecheck": "vue-tsc --noEmit"
   },

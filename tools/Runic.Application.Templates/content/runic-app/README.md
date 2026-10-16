@@ -137,6 +137,12 @@ The generated clients are not committed: `.gitignore` excludes
 `Frontend/src/generated`, and `dotnet build` or `dotnet runic dev` writes
 them again. Until the first build, your editor and
 `__PACKAGE_MANAGER_NAME__ run typecheck` report the missing modules.
+<!--#if (frontend != "angular") -->
+The frontend's `build` script runs `vite build` before the type check, so
+modules that a Vite plugin generates, such as the Runic Translations
+`virtual:runic-translations/...` declarations, exist when the check runs on a
+clean checkout.
+<!--#endif -->
 
 <!--#if (tests) -->
 ## Test it
