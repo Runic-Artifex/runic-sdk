@@ -78,6 +78,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, `pnpmFetcherVersion` (default 4), or `nodeModules`. See below. |
 | `host` | `"desktop"` | `desktop` (GTK 3, WebKitGTK 4.1), `desktop-gtk4` (GTK 4, WebKitGTK 6.0), `cswebui`, or `null`: which libraries the host loads at run time. |
 | `withMedia` | `false` | GStreamer plugins for audio and video in WebKitGTK. |
+| `withSpeechSynthesis` | `true` | WebKitGTK with speech synthesis. `false` uses one built without it; see [Without speech synthesis](#without-speech-synthesis). |
 | `nativeAot` | `false` | Publish `projectFile` with NativeAOT; see [NativeAOT](#nativeaot). Self-contained either way when set. |
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
 | `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. |
@@ -191,6 +192,25 @@ and removes it from its environment, and trusts it only for a wrapper in the
 same package (`<prefix>/bin/<name>`, with the program below `<prefix>`). That path names one version of the package; on
 NixOS or Home Manager, the modules' user service starts whatever version is
 installed.
+
+### Without speech synthesis
+
+WebKitGTK implements the Web Speech API's `speechSynthesis` with flite, which
+it links together with the audio libraries only flite uses. A page that never
+speaks, such as a dashboard, does not need them. Screen readers such as Orca
+speak through their own speech service, not through WebKitGTK, so they are not
+affected. With `withSpeechSynthesis = false` the wrapper loads a WebKitGTK
+configured with `-DENABLE_SPEECH_SYNTHESIS=OFF` and without flite, for both
+`desktop` and `desktop-gtk4`. With the nixpkgs of this flake's lock, WebKitGTK
+4.1's closure loses 72.6 MiB of its 839.5 MiB: flite (60.5 MiB), PulseAudio,
+libsndfile, FFTW and their codecs. With `withMedia`, GStreamer's plugins still
+bring PulseAudio. `speechSynthesis` is then missing in the page.
+
+nixpkgs' binary cache has no such WebKitGTK, so the first build compiles it from
+source, which takes hours and needs the `big-parallel` system feature. Build it
+once on a machine or cache of your own, for example with a binary cache that your
+CI fills, rather than on every user's machine. The default keeps nixpkgs'
+WebKitGTK, which the cache has.
 
 ### Privileged actions
 
