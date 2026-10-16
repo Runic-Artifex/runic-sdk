@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Platform.Runtime.ApplicationInstanceOptions.ForwardOnly.get -> bool
+Runic.Platform.Runtime.ApplicationInstanceOptions.ForwardOnly.init -> void

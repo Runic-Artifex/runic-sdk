@@ -328,12 +328,18 @@ internal sealed class ApplicationInstanceTests
         {
             await using var instance = await ClaimPrimaryAsync(directory, Replies);
             var leftWrite = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var reasons = new TaskCompletionSource<(bool CancelRequested, bool Disconnected, bool SeenFirst)>(TaskCreationOptions.RunContinuationsAsynchronously);
             instance.Launched += (_, launch) => _ = Task.Run(async () =>
             {
                 var reply = launch.Reply!;
+                // #309: the reason is cancelled before Cancelled, so a callback on Cancelled can tell which it was.
+                var seenFirst = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var registration = reply.Cancelled.Register(() =>
+                    seenFirst.TrySetResult(reply.CancelRequested.IsCancellationRequested || reply.Disconnected.IsCancellationRequested));
                 await reply.WriteAsync("started");
                 try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitAsync(Wait); }
                 catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
+                reasons.TrySetResult((reply.CancelRequested.IsCancellationRequested, reply.Disconnected.IsCancellationRequested, await seenFirst.Task.WaitAsync(Wait)));
                 if (launch.Arguments.Single() == "cancel")
                 {
                     await reply.WriteAsync("cancelled");
@@ -352,12 +358,14 @@ internal sealed class ApplicationInstanceTests
                 Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "cancelled", "the running instance sees the cancel request");
                 Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end at the exit status");
                 Check(await reply.WaitForExitAsync() is PlatformResult<int>.Success(130), "the exit status after cancelling arrives");
+                Check(await reasons.Task.WaitAsync(Wait) == (true, false, true), $"a cancel request is CancelRequested, not Disconnected: {reasons.Task.Result}");
             }
 
             // Leaving: disposing the reply, or cancelling a read, closes the connection.
             foreach (bool dispose in new[] { true, false })
             {
                 leftWrite = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                reasons = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 await using var reply = await ForwardAsync(directory, "leave");
                 using var stop = new CancellationTokenSource();
                 await using (var messages = reply.ReadMessagesAsync(stop.Token).GetAsyncEnumerator())
@@ -373,8 +381,67 @@ internal sealed class ApplicationInstanceTests
                     }
                 }
                 Check(!await leftWrite.Task.WaitAsync(Wait), "the running instance is cancelled, and its writes are no longer sent");
+                Check(await reasons.Task.WaitAsync(Wait) == (false, true, true), $"leaving is Disconnected, not CancelRequested (dispose: {dispose}): {reasons.Task.Result}");
                 Check(await reply.WaitForExitAsync() is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "a reply left early has no exit status");
             }
+        }
+        finally { System.IO.Directory.Delete(directory, recursive: true); }
+    }
+
+    // #308: a command line that only talks to a running daemon never becomes the instance itself.
+    [Test, DisplayName("INSTANCE: a forward-only launch reaches a running instance and never becomes one")]
+    public async Task ForwardOnlyAsync()
+    {
+        string directory = Directory();
+        var forwardOnly = Replies with { ForwardOnly = true };
+        try
+        {
+            foreach (var options in new[] { forwardOnly, new ApplicationInstanceOptions { ForwardOnly = true } })
+            {
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var none = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), options, directory, default).AsTask().WaitAsync(Wait);
+                Check(none is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, $"without an instance it is not running, not {none}");
+                Check(stopwatch.Elapsed < TimeSpan.FromSeconds(1), $"and reported at once ({stopwatch.Elapsed})");
+            }
+            Check(System.IO.Directory.GetFiles(directory, "*.sock").Length == 0, "nothing listens for launches");
+
+            // The next launch becomes the instance at once: the forward-only launch did not keep the lock.
+            var stopwatch2 = System.Diagnostics.Stopwatch.StartNew();
+            await using (var instance = await ClaimPrimaryAsync(directory, Replies))
+            {
+                Check(stopwatch2.Elapsed < TimeSpan.FromSeconds(1), $"the next launch is the instance at once ({stopwatch2.Elapsed})");
+                instance.Launched += (_, launch) => _ = Task.Run(async () =>
+                {
+                    if (launch.Reply is not { } reply) return;
+                    await reply.WriteAsync("from the instance");
+                    await reply.CompleteAsync(7);
+                });
+                var claim = await ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["status"], "/"), forwardOnly, directory, default);
+                Check(claim is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: { } reply } }, $"with an instance it is forwarded, not {claim}");
+                await using var forwarded = ((ApplicationInstanceClaim.Forwarded)((PlatformResult<ApplicationInstanceClaim>.Success)claim).Value).Reply!;
+                Check((await ReadAllAsync(forwarded).WaitAsync(Wait)).SequenceEqual(["from the instance"]) && await forwarded.WaitForExitAsync() is PlatformResult<int>.Success(7),
+                    "and the reply arrives");
+            }
+
+            // An instance that is starting, which holds the lock but has no handler yet, is waited for.
+            await using (var starting = await ClaimPrimaryAsync(directory, new ApplicationInstanceOptions()))
+            {
+                var claim = ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch(["early"], "/"), new ApplicationInstanceOptions { ForwardOnly = true }, directory, default).AsTask();
+                await Task.Delay(300);
+                Check(!claim.IsCompleted, "a forward-only launch waits for a starting instance");
+                var launches = Channel.CreateUnbounded<ApplicationLaunch>();
+                starting.Launched += (_, launch) => launches.Writer.TryWrite(launch);
+                Check(await claim.WaitAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.Forwarded { Reply: null } }, "and is forwarded to it");
+                Check((await launches.Reader.ReadAsync().AsTask().WaitAsync(Wait)).Arguments.Single() == "early", "which receives it");
+            }
+
+            // An instance that ends while the launch waits: not running, rather than taking over.
+            var ending = await ClaimPrimaryAsync(directory, new ApplicationInstanceOptions());
+            var late = ApplicationInstance.ClaimAsync("org.example.App", new ApplicationLaunch([], "/"), new ApplicationInstanceOptions { ForwardOnly = true }, directory, default).AsTask();
+            await Task.Delay(300);
+            await ending.DisposeAsync();
+            Check(await late.WaitAsync(Wait) is PlatformResult<ApplicationInstanceClaim>.Success { Value: ApplicationInstanceClaim.NotRunning }, "an instance that ended is not running");
+            await (await ClaimPrimaryAsync(directory, new ApplicationInstanceOptions())).DisposeAsync();
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
@@ -386,14 +453,15 @@ internal sealed class ApplicationInstanceTests
         try
         {
             var instance = await ClaimPrimaryAsync(directory, Replies);
-            var after = new TaskCompletionSource<(bool Cancelled, bool Sent)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var after = new TaskCompletionSource<(bool Cancelled, bool Disconnected, bool CancelRequested, bool Sent)>(TaskCreationOptions.RunContinuationsAsynchronously);
             instance.Launched += (_, launch) => _ = Task.Run(async () =>
             {
                 var reply = launch.Reply!;
                 await reply.WriteAsync("one");
                 try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitAsync(Wait); }
                 catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
-                after.TrySetResult((reply.Cancelled.IsCancellationRequested, await reply.WriteAsync("two")));
+                after.TrySetResult((reply.Cancelled.IsCancellationRequested, reply.Disconnected.IsCancellationRequested, reply.CancelRequested.IsCancellationRequested,
+                    await reply.WriteAsync("two")));
             });
             await using var reply = await ForwardAsync(directory);
             await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
@@ -401,7 +469,7 @@ internal sealed class ApplicationInstanceTests
             await instance.DisposeAsync();
             Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end with the running instance");
             Check(await reply.WaitForExitAsync().AsTask().WaitAsync(Wait) is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "no exit status is an I/O failure");
-            Check(await after.Task.WaitAsync(Wait) == (true, false), "ending the instance cancels the reply");
+            Check(await after.Task.WaitAsync(Wait) == (true, true, false, false), "ending the instance cancels the reply as Disconnected");
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
     }
