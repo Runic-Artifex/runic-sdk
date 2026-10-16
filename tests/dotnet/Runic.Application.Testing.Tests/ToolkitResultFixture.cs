@@ -29,7 +29,11 @@ public sealed partial class ToolkitResultViewModel : ObservableObject
 
     // Without a result: still a BridgeOperation<void>.
     [RelayCommand]
-    private Task RefreshAsync() => Task.CompletedTask;
+    private Task RefreshAsync()
+    {
+        OnPropertyChanged(nameof(Runs));
+        return Task.CompletedTask;
+    }
 }
 
 public sealed partial class ToolkitResultWindow
