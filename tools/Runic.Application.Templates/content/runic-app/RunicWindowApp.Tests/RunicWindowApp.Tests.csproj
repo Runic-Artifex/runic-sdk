@@ -5,6 +5,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
+<!--#if (nix) -->
+    <!-- dotnet restore writes packages.lock.json, from which flake.nix restores the tests in locked mode for
+         linux-x64 and runs them (doCheck). They run under the JIT, also in the NativeAOT package. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+<!--#endif -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="TUnit" Version="1.73.19" />

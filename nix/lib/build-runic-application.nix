@@ -54,6 +54,11 @@
   # it references and testProjectFile are restored and built as their own project files say.
   nativeAot ? false,
   selfContainedBuild ? nativeAot,
+  # How doCheck runs testProjectFile, named as in global.json's test.runner:
+  #   VSTest                      nixpkgs' `dotnet test`, with testFilters and disabledTests
+  #   Microsoft.Testing.Platform  each test project's built test application (TUnit; MSTest or xUnit.net v3 with
+  #                               their Microsoft.Testing.Platform runner), with dotnetTestFlags as its options
+  testRunner ? "VSTest",
   # makeDesktopItem results, installed in $out/share/applications.
   desktopItems ? [ ],
   # Icons for the desktop entry: { scalable = ./app.svg; "256x256" = ./app-256.png; }, installed as
@@ -142,6 +147,49 @@ let
           .${packageManager};
       };
 
+  # dotnet test speaks VSTest unless global.json selects Microsoft.Testing.Platform in the directory it runs from,
+  # and its VSTest options (--logger, --filter) are not test application options. The check runs each test
+  # application itself instead, from the path the build wrote it to, with the build's properties.
+  testRunner' =
+    assert lib.assertMsg (lib.elem testRunner [
+      "VSTest"
+      "Microsoft.Testing.Platform"
+    ]) "buildRunicApplication: testRunner must be VSTest or Microsoft.Testing.Platform, not ${toString testRunner}";
+    assert lib.assertMsg (testRunner == "VSTest" || !(args.doCheck or false) || args.testProjectFile or null != null)
+      "buildRunicApplication: testRunner = \"Microsoft.Testing.Platform\" runs testProjectFile's test application; set testProjectFile.";
+    assert lib.assertMsg (testRunner == "VSTest" || (args.testFilters or [ ] == [ ] && args.disabledTests or [ ] == [ ]))
+      "buildRunicApplication: testFilters and disabledTests are VSTest filters. With Microsoft.Testing.Platform, pass the test framework's own filter option in dotnetTestFlags, such as [ \"--treenode-filter\" \"/*/*/*/*[Category!=Slow]\" ] for TUnit.";
+    testRunner;
+  testingPlatformCheckPhase = ''
+    runHook preCheck
+    local -a testProjectFiles flags testFlags runtimeIds runtimeDeps
+    concatTo testProjectFiles dotnetTestProjectFiles
+    concatTo flags dotnetFlags
+    concatTo testFlags dotnetTestFlags
+    concatTo runtimeIds dotnetRuntimeIds
+    concatTo runtimeDeps dotnetRuntimeDeps
+    if [[ -v dotnetSelfContainedBuild ]]; then
+      if [[ -n $dotnetSelfContainedBuild ]]; then flags+=("-p:SelfContained=true"); else flags+=("-p:SelfContained=false"); fi
+    fi
+    local libraryPath=''${LD_LIBRARY_PATH-}
+    if (( ''${#runtimeDeps[@]} > 0 )); then
+      local -a libraryPaths=("''${runtimeDeps[@]/%//lib}")
+      local IFS=:
+      libraryPath="''${libraryPaths[*]}''${libraryPath:+:}$libraryPath"
+      unset IFS
+    fi
+    local projectFile runtimeId testApplication
+    for projectFile in "''${testProjectFiles[@]}"; do
+      for runtimeId in "''${runtimeIds[@]}"; do
+        testApplication=$(dotnet msbuild "$projectFile" -nologo -getProperty:TargetPath \
+          -p:Configuration="''${dotnetBuildType-Release}" -p:RuntimeIdentifier="$runtimeId" "''${flags[@]}")
+        echo "Running $testApplication"
+        LD_LIBRARY_PATH=$libraryPath dotnet "$testApplication" "''${testFlags[@]}"
+      done
+    done
+    runHook postCheck
+  '';
+
   # nativeAot sets PublishAot in the evaluation of projectFile alone, through CustomAfterDirectoryBuildProps, rather
   # than with -p:PublishAot=true, a global property that also reaches testProjectFile and its own restore, which then
   # needs a NativeAOT lock file (#316). Projects whose path the build exports as RunicNativeAotProjectFiles
@@ -169,6 +217,7 @@ buildDotnetModule (
     "icons"
     "iconName"
     "nodejs"
+    "testRunner"
   ]
   // {
     inherit
@@ -259,6 +308,9 @@ buildDotnetModule (
     inherit makeWrapperArgs;
 
   }
+  // lib.optionalAttrs (testRunner' == "Microsoft.Testing.Platform" && !(args ? checkPhase)) {
+    checkPhase = testingPlatformCheckPhase;
+  }
   // lib.optionalAttrs (nativeAot && !(args ? installPhase)) {
     # buildDotnetModule publishes with --no-build. Runic.Application.Views 0.8.0-preview.1 and earlier then build
     # the bridge's bootstrap pass again for NativeAOT, which --no-build refuses (NETSDK1085), so publish lets
@@ -344,7 +396,7 @@ buildDotnetModule (
       passthru
       // lib.optionalAttrs (frontend' != null) { frontendNodeModules = frontend'.nodeModules; }
       // {
-        inherit host nativeAot;
+        inherit host nativeAot testRunner;
       };
 
     meta = {

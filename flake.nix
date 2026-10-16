@@ -34,6 +34,10 @@
           example-status-icon = examples.status-icon;
           example-status-icon-aot = examples.status-icon-aot;
           example-privileged-smoke = examples.privileged-smoke;
+          builder-test-runner = import ./nix/tests/test-runner.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            runic = self.lib;
+          };
           home-manager-module = import ./nix/tests/modules.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;

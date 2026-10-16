@@ -81,6 +81,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `withSpeechSynthesis` | `true` | WebKitGTK with speech synthesis. `false` uses one built without it; see [Without speech synthesis](#without-speech-synthesis). |
 | `nativeAot` | `false` | Publish `projectFile` with NativeAOT; see [NativeAOT](#nativeaot). Self-contained either way when set. |
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
+| `testRunner` | `"VSTest"` | How `doCheck` runs `testProjectFile`: `"VSTest"` with nixpkgs' `dotnet test`, or `"Microsoft.Testing.Platform"`; see [Tests](#tests). |
 | `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. |
 | `icons` | `{ }` | `{ scalable = ./app.svg; "256x256" = ./app.png; }`, installed as `$out/share/icons/hicolor/<size>/apps/<iconName>.<svg or png>`. |
 | `iconName` | `pname` | The icon's name, which the desktop entry's `icon` refers to. |
@@ -232,6 +233,33 @@ whose program needs `DOTNET_ROOT`. The build fails when a policy names a program
 outside the package, or one that is not an executable regular file at its real
 path.
 
+### Tests
+
+With `doCheck = true`, the build runs the tests of `testProjectFile` (a path
+relative to `src`, or a list of them) after building them. Their
+`packages.lock.json` belongs in `nugetLockFiles`, with the runtime's section
+like the application's.
+
+nixpkgs runs them with `dotnet test` and VSTest options such as `--logger`.
+A Microsoft.Testing.Platform test application, as TUnit builds and MSTest and
+xUnit.net v3 build with their own runner, rejects them, and `dotnet test` uses
+Microsoft.Testing.Platform only when the `global.json` of the directory it runs
+in selects it. Set `testRunner = "Microsoft.Testing.Platform"`: the build then
+runs each test application it built, with `dotnet <TestProject>.dll`, and fails
+when a test fails or none ran. `dotnetTestFlags` are the test application's
+options, such as TUnit's `--treenode-filter`; `testFilters` and `disabledTests`
+are VSTest filters and fail evaluation with it.
+
+```nix
+testProjectFile = "MyApp.Tests/MyApp.Tests.csproj";
+nugetLockFiles = [ ./MyApp/packages.lock.json ./MyApp.Tests/packages.lock.json ];
+doCheck = true;
+testRunner = "Microsoft.Testing.Platform";
+```
+
+`dotnet new runic-app --nix --tests` creates such a test project, and its
+`nix flake check` runs the tests.
+
 ### NativeAOT
 
 `nativeAot = true` publishes `projectFile` with NativeAOT for the system's
@@ -299,13 +327,19 @@ GIO modules. `cswebui` and `browserTests = true` add Chromium as
 to no other browser. (WebUI itself reads no browser variable, and never read
 `WEBUI_BROWSER_PATH`.) A shell for both
 Runic Desktop and CS-WebUI has the Desktop libraries, so run headless CS-WebUI
-in a shell without them. Other `mkShell` arguments pass through.
+in a shell without them. `dotnet-sdk` (default the .NET 10 SDK) and `nodejs`
+(default Node 24) select the toolchain: pass the ones an existing shell or the
+package uses, such as `nodejs = pkgs.nodejs_22;`, so that the shell and the
+build agree; `buildRunicApplication` takes the same two arguments. Other
+`mkShell` arguments pass through.
 
 ## Tests in the SDK
 
 - `nix flake check` builds the status-icon example under JIT and NativeAOT, the
   privileged-actions smoke with its policy, and evaluates the Home Manager
-  module.
+  module. Its `builder-*` checks build small consumers from
+  `tests/fixtures/nix`: `builder-test-runner` runs a TUnit project with
+  `testRunner = "Microsoft.Testing.Platform"`.
 - `nix build .#packaging-nixos -L` runs a NixOS VM (KVM) that installs the
   NativeAOT status-icon example and the smoke through the NixOS module. It
   checks the desktop entry and icon, that the user service starts with an X
@@ -313,7 +347,9 @@ in a shell without them. Other `mkShell` arguments pass through.
   the package's program, and that pkexec runs the action through the wrapper.
 - `tests/templates/Test-NixTemplate.sh <published-version> npm pnpm bun aot`
   creates `--nix` projects from this checkout's template against a published
-  Runic version and builds their flakes with this checkout's builder. For npm
-  it also checks that a lock without `linux-x64` and a stale lock fail. With
+  Runic version and builds their flakes with this checkout's builder. The npm
+  project has the test project (`--tests`), whose tests both of its packages
+  run. For npm it also checks that a lock without `linux-x64` and a stale lock
+  fail. With
   `RUNIC_NIX_TEMPLATE_WINDOW=1` each application opens its window under Xvfb
   and must load GTK and WebKitGTK from the store.

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import { test } from "node:test";
 import { root } from "../../eng/run.mjs";
 
 // The Nix workflow is path-filtered. Its flake checks build the SDK examples from the sources that
-// nix/examples.nix lists, so a change to any of them must run it.
+// nix/examples.nix lists, and the builder's fixtures that nix/tests names, so a change to any of them must run it.
 const workflow = readFileSync(resolve(root, ".github/workflows/nix.yml"), "utf8");
 
 function filters(event) {
@@ -27,8 +27,11 @@ function matches(patterns, file) {
   return included;
 }
 
-const sources = [...new Set([...readFileSync(resolve(root, "nix/examples.nix"), "utf8")
-  .matchAll(/\.\.\/([A-Za-z0-9._-][A-Za-z0-9._/-]*)/g)].map(([, path]) => path.replace(/\/$/, "")))].filter(path => path !== ".");
+// The relative paths in the Nix files the flake checks build, as paths from the repository root.
+const nixFiles = ["nix/examples.nix", ...readdirSync(resolve(root, "nix/tests")).filter(name => name.endsWith(".nix")).map(name => `nix/tests/${name}`)];
+const sources = [...new Set(nixFiles.flatMap(file => [...readFileSync(resolve(root, file), "utf8")
+  .matchAll(/(?:\.\.\/)+[A-Za-z0-9_-][A-Za-z0-9._/-]*/g)]
+  .map(([path]) => relative(root, resolve(root, dirname(file), path.replace(/\/$/, ""))))))].filter(path => path !== "");
 
 test("the Nix workflow runs for every source of the packaged examples", () => {
   assert.ok(sources.length > 10, `nix/examples.nix lists ${sources.length} sources`);
@@ -37,7 +40,7 @@ test("the Nix workflow runs for every source of the packaged examples", () => {
     for (const source of sources) {
       // A directory is covered when a file in it is.
       const file = statSync(resolve(root, source)).isDirectory() ? `${source}/Project.csproj` : source;
-      assert.ok(matches(patterns, file), `${event} paths of nix.yml miss ${source}, which nix/examples.nix builds from`);
+      assert.ok(matches(patterns, file), `${event} paths of nix.yml miss ${source}, which the flake checks build from`);
     }
     for (const file of ["nix/lib/build-runic-application.nix", "flake.lock", "tools/Runic.Application.Templates/content/runic-app/flake.nix"])
       assert.ok(matches(patterns, file), `${event} paths of nix.yml miss ${file}`);

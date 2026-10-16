@@ -7,7 +7,8 @@
 #
 #   tests/templates/Test-NixTemplate.sh <published-version> [npm|pnpm|bun|aot ...]
 #
-# "aot" builds the npm project's native-aot package as well. With RUNIC_NIX_TEMPLATE_WINDOW=1 each application
+# "aot" builds the npm project's native-aot package as well. The npm project has the TUnit test project
+# (--tests), which both of its packages build and run. With RUNIC_NIX_TEMPLATE_WINDOW=1 each application
 # also opens its window under Xvfb (xvfb-run and dbus-run-session from the development shell) with only the
 # wrapper's environment, and must have loaded GTK 3 and WebKitGTK 4.1 from the Nix store and started WebKit's
 # web process. Run it in the SDK's development shell (it packs the template with dotnet and Bun); it needs
@@ -145,7 +146,9 @@ for case in "${cases[@]}"; do
   project="$work/NixApp-$manager"
   if [[ ! -d "$project" ]]; then
     echo "Creating a --nix project with $manager"
-    quiet dotnet new runic-app --name NixApp --output "$project" --nix --package-manager "$manager" \
+    options=()
+    [[ "$manager" == npm ]] && options=(--tests)
+    quiet dotnet new runic-app --name NixApp --output "$project" --nix --package-manager "$manager" "${options[@]}" \
       --debug:custom-hive "$work/hive"
     grep -q '<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>' "$project/NixApp.csproj"
     grep -qx '/result' "$project/.gitignore"
@@ -156,6 +159,11 @@ for case in "${cases[@]}"; do
     # What the project's README asks for before the first nix build: the NuGet lock, and the files in Git.
     quiet dotnet restore "$project/NixApp.csproj"
     quiet dotnet restore "$project/NixApp.csproj" -p:PublishAot=true
+    if [[ -d "$project/NixApp.Tests" ]]; then
+      quiet dotnet restore "$project/NixApp.Tests/NixApp.Tests.csproj"
+      jq -e '.dependencies["net10.0/linux-x64"]' "$project/NixApp.Tests/packages.lock.json" > /dev/null \
+        || { echo "NixApp.Tests/packages.lock.json has no linux-x64 section" >&2; exit 1; }
+    fi
     for lock in packages.lock.json packages.aot.lock.json; do
       jq -e '.dependencies["net10.0/linux-x64"]' "$project/$lock" > /dev/null || { echo "$lock has no linux-x64 section" >&2; exit 1; }
     done
@@ -169,6 +177,10 @@ for case in "${cases[@]}"; do
   [[ "$case" == aot ]] && output=native-aot
   echo "Building $output with $manager"
   build "$project" "$output"
+  if [[ -d "$project/NixApp.Tests" ]]; then
+    grep -q 'Test run summary: Passed!' "$work/build.log" || { tail -n 60 "$work/build.log" >&2; echo "The build ran no tests." >&2; exit 1; }
+    echo "  tests: passed in the build"
+  fi
   test -f "$project/result-$output/share/applications/NixApp.desktop"
   serve "$project/result-$output/bin/NixApp"
   if [[ "${RUNIC_NIX_TEMPLATE_WINDOW:-}" == 1 ]]; then window "$project/result-$output/bin/NixApp"; fi
