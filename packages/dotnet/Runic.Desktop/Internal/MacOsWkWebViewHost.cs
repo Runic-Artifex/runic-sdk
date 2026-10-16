@@ -35,6 +35,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => IsMainThread;
@@ -109,6 +112,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidNint(_window, "miniaturize:", 0), cancellationToken);
+
+    // NSAccessibilityAnnouncementRequestedNotification for the window, which VoiceOver speaks; assertive messages
+    // have NSAccessibilityPriorityHigh, polite ones NSAccessibilityPriorityMedium.
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
+        => InvokeAsync(() => Api.Announce(_window, message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken);
 
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Api.SendVoidNint(_window, "zoom:", 0), cancellationToken);
@@ -909,6 +917,38 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         internal nint NextEvent(nint application, ulong mask, nint date, nint mode, bool dequeue) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, ulong, nint, nint, byte, nint>)_messageSend)(
                 application, Selector("nextEventMatchingMask:untilDate:inMode:dequeue:"), mask, date, mode, dequeue ? (byte)1 : (byte)0);
+
+        internal void Announce(nint element, string message, bool assertive)
+        {
+            const long PriorityMedium = 50;
+            const long PriorityHigh = 90;
+            if (!NativeLibrary.TryGetExport(_appKit, "NSAccessibilityPostNotificationWithUserInfo", out var post)
+                || !NativeLibrary.TryGetExport(_appKit, "NSAccessibilityAnnouncementRequestedNotification", out var notification)
+                || !NativeLibrary.TryGetExport(_appKit, "NSAccessibilityAnnouncementKey", out var announcementKey)
+                || !NativeLibrary.TryGetExport(_appKit, "NSAccessibilityPriorityKey", out var priorityKey))
+            {
+                throw new NotSupportedException("AppKit does not offer accessibility announcements.");
+            }
+            var text = CreateString(message);
+            var level = ((delegate* unmanaged[Cdecl]<nint, nint, long, nint>)_messageSend)(
+                SendNint(GetClass("NSNumber"), "alloc"), Selector("initWithLong:"), assertive ? PriorityHigh : PriorityMedium);
+            var userInfo = SendNint(SendNint(GetClass("NSMutableDictionary"), "alloc"), "init");
+            try
+            {
+                SetObject(userInfo, text, *(nint*)announcementKey);
+                SetObject(userInfo, level, *(nint*)priorityKey);
+                ((delegate* unmanaged[Cdecl]<nint, nint, nint, void>)post)(element, *(nint*)notification, userInfo);
+            }
+            finally
+            {
+                SendVoid(userInfo, "release");
+                SendVoid(level, "release");
+                SendVoid(text, "release");
+            }
+        }
+
+        private void SetObject(nint dictionary, nint value, nint key) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(dictionary, Selector("setObject:forKey:"), value, key);
 
         internal nint CreateString(string value)
         {

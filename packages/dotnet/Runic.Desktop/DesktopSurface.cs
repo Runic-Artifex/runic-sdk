@@ -639,6 +639,37 @@ public sealed class DesktopWindow : IAsyncDisposable
             () => new ValueTask(_engine.FocusAsync(cancellationToken)), cancellationToken);
     }
 
+    /// <summary>Asks the screen reader to announce a message, such as the result of an action.</summary>
+    /// <param name="message">The text to speak, in the page's language.</param>
+    /// <param name="priority">
+    /// <see cref="DesktopAnnouncementPriority.Polite"/>, the default, waits for what the screen reader is saying;
+    /// <see cref="DesktopAnnouncementPriority.Assertive"/> interrupts it.
+    /// </param>
+    /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
+    /// <returns>A task that completes when the message has been passed to the platform's accessibility API.</returns>
+    /// <remarks>
+    /// Requires <see cref="DesktopWindowCapabilities.Announcements"/>, which the embedded window reports on every
+    /// platform. It is the native counterpart of an ARIA live region, which WebKitGTK does not report to Orca: on
+    /// Linux the window's accessible object emits the AT-SPI <c>Announcement</c> event (ATK's <c>notification</c>
+    /// signal with GTK 3, <c>gtk_accessible_announce</c> with GTK 4.14 or later), on Windows the window raises a
+    /// UI Automation notification event, and on macOS it posts
+    /// <c>NSAccessibilityAnnouncementRequestedNotification</c>. Whether and when the message is spoken is up to the
+    /// screen reader. A browser cannot be asked: an installed browser, including one opened after a fallback, reports
+    /// no such capability, so keep a live region in the page for it.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="message"/> is empty or white space.</exception>
+    /// <exception cref="ObjectDisposedException">The surface is disposed, or this window is closed or was replaced.</exception>
+    /// <exception cref="DesktopException">The window lacks the required capability (<c>window-capability-unavailable</c>).</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority = DesktopAnnouncementPriority.Polite,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        if (!Enum.IsDefined(priority)) throw new ArgumentOutOfRangeException(nameof(priority));
+        return _surface.RunWindowOperationAsync(this, DesktopWindowCapabilities.Announcements,
+            () => new ValueTask(_engine.AnnounceAsync(message, priority, cancellationToken)), cancellationToken);
+    }
+
     /// <summary>Minimizes the window.</summary>
     /// <param name="cancellationToken">Cancels waiting for the window and the queued native operation.</param>
     /// <returns>A task that completes when the window has been minimized.</returns>

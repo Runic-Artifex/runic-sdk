@@ -169,6 +169,18 @@ public interface IDesktopWindowHost : IAsyncDisposable
     /// <see cref="NotSupportedException"/>. Do not throw synchronously: that ends the session's receive loop.
     /// </remarks>
     ValueTask BeginMoveAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Asks the screen reader to announce <paramref name="message"/> for the open window.</summary>
+    /// <param name="message">The text to speak.</param>
+    /// <param name="priority">Whether the message waits for what the screen reader is saying or interrupts it.</param>
+    /// <param name="cancellationToken">Cancels the queued request.</param>
+    /// <returns>A task that completes when the request has been passed to the platform's accessibility API.</returns>
+    /// <remarks>
+    /// Runic Desktop calls it only when <see cref="Capabilities"/> includes
+    /// <see cref="DesktopWindowCapabilities.Announcements"/>. The default throws <see cref="NotSupportedException"/>.
+    /// </remarks>
+    ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new NotSupportedException("This window host cannot make announcements."));
 }
 
 /// <summary>Describes the immutable initial state of an embedded window host.</summary>
@@ -330,6 +342,9 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
 
     public ValueTask BeginMoveAsync(CancellationToken cancellationToken = default) =>
         _host.BeginMoveAsync(cancellationToken);
+
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default) =>
+        _host.AnnounceAsync(message, priority, cancellationToken);
 
     public async ValueTask DisposeAsync()
     {

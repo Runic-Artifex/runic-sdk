@@ -23,6 +23,10 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+
+    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
@@ -108,6 +112,11 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() => Api.GtkWindowIconify(_window), cancellationToken);
+
+    // WebKitGTK reports no live-region change to AT-SPI (#318), so the window's accessible object announces instead:
+    // ATK's notification signal, which the AT-SPI bridge sends as Object:Announcement with the politeness.
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
+        => InvokeWindowAsync(() => Api.Announce(_window, message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken);
 
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
         => InvokeWindowAsync(() =>
@@ -621,6 +630,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GdkDeviceGetPositionPointer = Required(_gtk, "gdk_device_get_position");
                 GSignalConnectDataPointer = Required(_gtk, "g_signal_connect_data");
                 GObjectUnrefPointer = Required(_gObject, "g_object_unref");
+                GtkWidgetGetAccessiblePointer = Required(_gtk, "gtk_widget_get_accessible");
+                GSignalLookupPointer = Required(_gObject, "g_signal_lookup");
+                GSignalEmitvPointer = Required(_gObject, "g_signal_emitv");
+                GValueInitPointer = Required(_gObject, "g_value_init");
+                GValueUnsetPointer = Required(_gObject, "g_value_unset");
+                GValueSetObjectPointer = Required(_gObject, "g_value_set_object");
+                GValueSetStringPointer = Required(_gObject, "g_value_set_string");
+                GValueSetIntPointer = Required(_gObject, "g_value_set_int");
                 GtkWindowSetIconFromFilePointer = Optional(_gtk, "gtk_window_set_icon_from_file");
                 GtkWidgetSetVisualPointer = Optional(_gtk, "gtk_widget_set_visual");
                 GtkWidgetGetScreenPointer = Optional(_gtk, "gtk_widget_get_screen");
@@ -698,6 +715,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint GdkSeatGetPointerPointer { get; }
         private nint GdkDeviceGetPositionPointer { get; }
         private nint GSignalConnectDataPointer { get; }
+        private nint GtkWidgetGetAccessiblePointer { get; }
+        private nint GSignalLookupPointer { get; }
+        private nint GSignalEmitvPointer { get; }
+        private nint GValueInitPointer { get; }
+        private nint GValueUnsetPointer { get; }
+        private nint GValueSetObjectPointer { get; }
+        private nint GValueSetStringPointer { get; }
+        private nint GValueSetIntPointer { get; }
         private nint GObjectUnrefPointer { get; }
         private nint GtkWindowSetIconFromFilePointer { get; }
         private nint GtkWidgetSetVisualPointer { get; }
@@ -783,6 +808,80 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             }
             using var value = Utf8String.Create(path);
             ((delegate* unmanaged[Cdecl]<nint, byte*, nint, int>)GtkWindowSetIconFromFilePointer)(window, value.Pointer, 0);
+        }
+
+        // Emits AtkObject::notification (ATK 2.50, with AtkLive politeness) on the widget's accessible object, or
+        // AtkObject::announcement (ATK 2.46, always polite) on an older ATK. g_signal_emitv avoids a variadic call.
+        internal void Announce(nint widget, string message, bool assertive)
+        {
+            var accessible = ((delegate* unmanaged[Cdecl]<nint, nint>)GtkWidgetGetAccessiblePointer)(widget);
+            if (accessible == 0)
+            {
+                throw new InvalidOperationException("The window has no accessible object.");
+            }
+            // G_TYPE_FROM_INSTANCE: the instance's class starts with its GType.
+            var type = **(nuint**)accessible;
+            var signal = Lookup("notification", type, out var withPoliteness);
+            var values = stackalloc GValue[3];
+            new Span<GValue>(values, 3).Clear();
+            var count = withPoliteness ? 3 : 2;
+            ((delegate* unmanaged[Cdecl]<GValue*, nuint, GValue*>)GValueInitPointer)(&values[0], type);
+            ((delegate* unmanaged[Cdecl]<GValue*, nint, void>)GValueSetObjectPointer)(&values[0], accessible);
+            ((delegate* unmanaged[Cdecl]<GValue*, nuint, GValue*>)GValueInitPointer)(&values[1], GTypeString);
+            using (var text = Utf8String.Create(message))
+            {
+                ((delegate* unmanaged[Cdecl]<GValue*, byte*, void>)GValueSetStringPointer)(&values[1], text.Pointer);
+            }
+            if (withPoliteness)
+            {
+                ((delegate* unmanaged[Cdecl]<GValue*, nuint, GValue*>)GValueInitPointer)(&values[2], GTypeInt);
+                ((delegate* unmanaged[Cdecl]<GValue*, int, void>)GValueSetIntPointer)(&values[2], assertive ? AtkLiveAssertive : AtkLivePolite);
+            }
+            try
+            {
+                ((delegate* unmanaged[Cdecl]<GValue*, uint, uint, GValue*, void>)GSignalEmitvPointer)(values, signal, 0, null);
+            }
+            finally
+            {
+                for (var index = 0; index < count; index++)
+                {
+                    ((delegate* unmanaged[Cdecl]<GValue*, void>)GValueUnsetPointer)(&values[index]);
+                }
+            }
+        }
+
+        private uint Lookup(string name, nuint type, out bool withPoliteness)
+        {
+            using (var notification = Utf8String.Create(name))
+            {
+                var signal = ((delegate* unmanaged[Cdecl]<byte*, nuint, uint>)GSignalLookupPointer)(notification.Pointer, type);
+                if (signal != 0)
+                {
+                    withPoliteness = true;
+                    return signal;
+                }
+            }
+            withPoliteness = false;
+            using var announcement = Utf8String.Create("announcement");
+            var fallback = ((delegate* unmanaged[Cdecl]<byte*, nuint, uint>)GSignalLookupPointer)(announcement.Pointer, type);
+            return fallback != 0
+                ? fallback
+                : throw new NotSupportedException("ATK 2.46 or later is required for announcements.");
+        }
+
+        // G_TYPE_MAKE_FUNDAMENTAL(6) and (16), and AtkLive's values.
+        private const nuint GTypeInt = 6 << 2;
+        private const nuint GTypeString = 16 << 2;
+        private const int AtkLivePolite = 1;
+        private const int AtkLiveAssertive = 2;
+
+        // GType g_type; union { gint64 v_int64; gpointer v_pointer; ... } data[2].
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GValue
+        {
+            internal nuint Type;
+            internal long Data0;
+            internal long Data1;
         }
 
         internal void Connect(nint instance, string signal, nint callback, LinuxWebKitGtkHost host, bool after = false)

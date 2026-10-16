@@ -61,6 +61,9 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private int _disposed;
 
     public bool SupportsCloseConfirmation => true;
+    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => ReferenceEquals(Thread.CurrentThread, _thread);
@@ -157,6 +160,43 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     public ValueTask MinimizeAsync(CancellationToken cancellationToken = default)
         => InvokeAsync(() => Native.ShowWindow(_window, SwMinimize), cancellationToken);
+
+    // A UI Automation notification event on the window's host provider, which Narrator and NVDA speak. Polite messages
+    // are queued (NotificationProcessing_All); assertive ones replace those not yet spoken (ImportantMostRecent).
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
+        => InvokeAsync(() => RaiseNotification(_window, message, priority == DesktopAnnouncementPriority.Assertive), cancellationToken);
+
+    private static unsafe void RaiseNotification(nint window, string message, bool assertive)
+    {
+        const int NotificationKindOther = 4;
+        const int NotificationProcessingImportantMostRecent = 1;
+        const int NotificationProcessingAll = 2;
+        int result;
+        try
+        {
+            result = Native.UiaHostProviderFromHwnd(window, out var provider);
+            if (result < 0) Marshal.ThrowExceptionForHR(result);
+            var text = Native.SysAllocString(message);
+            var activity = Native.SysAllocString("Runic.Desktop.Announcement");
+            try
+            {
+                result = Native.UiaRaiseNotificationEvent(provider, NotificationKindOther,
+                    assertive ? NotificationProcessingImportantMostRecent : NotificationProcessingAll, text, activity);
+            }
+            finally
+            {
+                Native.SysFreeString(activity);
+                Native.SysFreeString(text);
+                // IUnknown::Release.
+                _ = ((delegate* unmanaged[Stdcall]<nint, uint>)(*(*(nint**)provider + 2)))(provider);
+            }
+        }
+        catch (EntryPointNotFoundException error)
+        {
+            throw new NotSupportedException("Windows 10 version 1709 or later is required for announcements.", error);
+        }
+        if (result < 0) Marshal.ThrowExceptionForHR(result);
+    }
 
     // Ask the window: the user can also maximize or restore it from its frame.
     public ValueTask MaximizeAsync(CancellationToken cancellationToken = default)
@@ -599,6 +639,18 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
 
     private static partial class Native
     {
+        [LibraryImport("uiautomationcore.dll")]
+        internal static partial int UiaHostProviderFromHwnd(nint window, out nint provider);
+
+        [LibraryImport("uiautomationcore.dll")]
+        internal static partial int UiaRaiseNotificationEvent(nint provider, int kind, int processing, nint displayString, nint activityId);
+
+        [LibraryImport("oleaut32.dll", StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial nint SysAllocString(string value);
+
+        [LibraryImport("oleaut32.dll")]
+        internal static partial void SysFreeString(nint value);
+
         [LibraryImport("ole32.dll")]
         internal static partial int CoInitializeEx(nint reserved, uint concurrencyModel);
 

@@ -805,6 +805,37 @@ public sealed class DesktopApiTests
         }
     }
 
+    // #318: an embedded window that advertises announcements receives them with their priority; another window, and a
+    // browser, report the capability unavailable.
+    [Test]
+    public async Task AnnouncementsReachAWindowHostThatAdvertisesThem()
+    {
+        var announcing = new RecordingWindowHostFactory { Announces = true };
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = announcing, WaitForConnection = false }))
+        await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
+        {
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            Assert.True(window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements));
+            await window.AnnounceAsync("Saved");
+            await window.AnnounceAsync("The disk is full", DesktopAnnouncementPriority.Assertive);
+            Assert.Equal([("Saved", DesktopAnnouncementPriority.Polite), ("The disk is full", DesktopAnnouncementPriority.Assertive)],
+                announcing.Host!.Announcements.ToArray());
+            await Assert.ThrowsAsync<ArgumentException>(async () => await window.AnnounceAsync(" "));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await window.AnnounceAsync("x", (DesktopAnnouncementPriority)7));
+        }
+
+        var silent = new RecordingWindowHostFactory();
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = silent, WaitForConnection = false }))
+        await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") }))
+        {
+            await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+            Assert.False(window.Capabilities.HasFlag(DesktopWindowCapabilities.Announcements));
+            var error = await Assert.ThrowsAsync<DesktopException>(async () => await window.AnnounceAsync("Saved"));
+            Assert.Equal("window-capability-unavailable", error.Code);
+            Assert.Empty(silent.Host!.Announcements);
+        }
+    }
+
     [Test]
     public async Task OnlyDirectoryContentServesLocalFiles()
     {
@@ -1362,10 +1393,12 @@ public sealed class DesktopApiTests
         public bool IsSupported => true;
         public bool SupportsCloseConfirmation { get; init; }
         public bool SupportsDocumentStartScript { get; init; }
+        public bool Announces { get; init; }
         public IDesktopWindowHost Create() => Host = new RecordingWindowHost
         {
             SupportsCloseConfirmation = SupportsCloseConfirmation,
             SupportsDocumentStartScript = SupportsDocumentStartScript,
+            Announces = Announces,
         };
     }
 
@@ -1373,6 +1406,18 @@ public sealed class DesktopApiTests
     {
         public bool SupportsCloseConfirmation { get; init; }
         public bool SupportsDocumentStartScript { get; init; }
+        public bool Announces { get; init; }
+        public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+            DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
+            DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None);
+        internal ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
+
+        public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Announcements.Enqueue((message, priority));
+            return ValueTask.CompletedTask;
+        }
         public event EventHandler? Closed;
         public bool IsOpen { get; private set; }
         public nint NativeHandle => IsOpen ? 1 : 0;

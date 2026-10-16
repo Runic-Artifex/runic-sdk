@@ -500,10 +500,11 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
 {
     public List<NativeDispatchHost> Hosts { get; } = [];
     public bool SupportsDispatch { get; init; } = true;
+    public bool Announces { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
-        var host = new NativeDispatchHost { SupportsNativeDispatch = SupportsDispatch };
+        var host = new NativeDispatchHost { SupportsNativeDispatch = SupportsDispatch, Announces = Announces };
         Hosts.Add(host);
         return host;
     }
@@ -520,6 +521,16 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost
     public bool IsOpen => _open;
     public nint NativeHandle => _open ? Handle : 0;
     public bool SupportsNativeDispatch { get; init; } = true;
+    public bool Announces { get; init; }
+    public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
+        DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
+        DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None);
+    public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
+    public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
+    {
+        Announcements.Enqueue((message, priority));
+        return ValueTask.CompletedTask;
+    }
     public bool CheckNativeAccess() => _onNativeThread;
     public async ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken)
     {
