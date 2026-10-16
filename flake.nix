@@ -42,6 +42,10 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;
           };
+          builder-locks = import ./nix/tests/locks.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            runic = self.lib;
+          };
           builder-without-speech-synthesis = import ./nix/tests/speech-synthesis.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;

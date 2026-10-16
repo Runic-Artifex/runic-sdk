@@ -72,7 +72,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | --- | --- | --- |
 | `pname`, `version`, `src` | required | As for `buildDotnetModule`. |
 | `projectFile` | required | The application's project, relative to `src`. |
-| `nugetLockFiles` | `[ ]` | `packages.lock.json` files whose packages restore the project: its own, and those of projects it references. |
+| `nugetLockFiles` | `[ ]` | `packages.lock.json` files whose packages restore the project: its own, and those of projects it references. `{ linux-x64 = [ ... ]; linux-arm64 = [ ... ]; }` for several runtimes; see [Several runtimes](#several-runtimes). |
 | `nugetDeps` | `null` | More NuGet packages: a `deps.json`, a package derivation or a list of them, as `buildDotnetModule` takes. |
 | `nugetLockedMode` | `true` with lock files | Restore with `RestoreLockedMode`, so a lock file that no longer matches the project fails the build. |
 | `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, `pnpmFetcherVersion` (default 4), or `nodeModules`. See below. |
@@ -134,6 +134,38 @@ and write it with `dotnet restore -p:PublishAot=true`. The compiler packages
 come from the .NET SDK, so they are not downloaded. When several lock files
 record different hashes for the same package and version, evaluation fails.
 
+#### Several runtimes
+
+The locked restore is for one runtime identifier alone (`dotnet restore
+--runtime`), and fails with `NU1004` when the lock file lists other runtimes
+too, so evaluation rejects such a lock. To build for `x86_64-linux` and
+`aarch64-linux`, keep one lock file per runtime and project, chosen by
+`RuntimeIdentifiers`, and pass them keyed by runtime identifier; the build takes
+those of its system's runtime:
+
+```xml
+<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+<RuntimeIdentifiers>linux-x64</RuntimeIdentifiers>
+<NuGetLockFilePath Condition="'$(RuntimeIdentifiers)' == 'linux-arm64'">packages.linux-arm64.lock.json</NuGetLockFilePath>
+```
+
+```sh
+dotnet restore                                    # packages.lock.json
+dotnet restore -p:RuntimeIdentifiers=linux-arm64  # packages.linux-arm64.lock.json
+```
+
+```nix
+nugetLockFiles = {
+  linux-x64 = [ ./MyApp/packages.lock.json ];
+  linux-arm64 = [ ./MyApp/packages.linux-arm64.lock.json ];
+};
+```
+
+The restore for another runtime runs on any system. With NativeAOT, add a
+condition on `PublishAot` for each runtime's NativeAOT lock file, such as
+`packages.linux-arm64.aot.lock.json`, and restore it with
+`dotnet restore -p:PublishAot=true -p:RuntimeIdentifiers=linux-arm64`.
+
 Packages from another feed, or a project without lock files, use nixpkgs'
 `deps.json`: set `nugetDeps = ./deps.json`, and generate it with
 `nix build .#default.fetch-deps && ./result`.
@@ -155,8 +187,30 @@ Runic targets build the frontend without installing.
 
 A required hash starts as `lib.fakeHash`. The first `nix build` fails and
 reports the real hash; replace it, and update it whenever the lock file
-changes. Bun installs only the current platform's optional packages, so its hash
-differs per system.
+changes. Nix names the download by its hash, so a changed lock file with the
+previous hash would get the previous download. The npm and Bun builds compare
+the lock file the download came from with the frontend's and fail when they
+differ; pnpm installs from the frontend's lock file and fails when the download
+lacks a package.
+
+Bun installs only one system's optional packages, such as a bundler's native
+binary, so its hash can differ per system. `hash` then takes one per system:
+
+```nix
+frontend = {
+  packageManager = "bun";
+  hash = {
+    x86_64-linux = "sha256-...";
+    aarch64-linux = lib.fakeHash;
+  };
+};
+```
+
+The install is told the system's OS and CPU (`bun install --os=linux
+--cpu=arm64`), so any system can compute another's hash:
+`nix build .#default.frontendNodeModules.fetchedFor.aarch64-linux` installs the
+`aarch64-linux` packages and reports their hash. Nix names the download by its
+hash alone, so a build on `aarch64-linux` uses the same download.
 
 The build runs `npm run build`, `pnpm run build` or `bun run --bun build` as
 usual, with pnpm told not to fetch the version that `package.json` names and
@@ -353,3 +407,6 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   fail. With
   `RUNIC_NIX_TEMPLATE_WINDOW=1` each application opens its window under Xvfb
   and must load GTK and WebKitGTK from the store.
+- The `builder-locks` flake check requires that a Bun frontend whose lock
+  changed without its hash fails, that another system's Bun install builds,
+  and that lock files are chosen and checked per runtime identifier.
