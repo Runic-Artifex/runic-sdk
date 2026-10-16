@@ -65,7 +65,7 @@ static async Task RunAsyncSmoke()
     {
     var closeGuard = new SmokeCloseGuard();
     await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(FirstPage()) }))
-    await using (var window = await surface.OpenWindowAsync(FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync }))
+    await using (var window = await OpenFirstWindowAsync(surface, FirstWindowOptions() with { ConfirmCloseAsync = closeGuard.ConfirmAsync }))
     {
         await ExerciseFirstWindowAsync(surface, window);
         if (SmokeSoak.Enabled) await SmokeSoak.ExerciseAsync(surface, window, closeGuard);
@@ -401,6 +401,36 @@ static void AssertClosed(DesktopWindow window)
     {
         throw new InvalidOperationException("The embedded platform window did not close.");
     }
+}
+
+// The job's first WebView2 starts a browser process on a fresh runner. Rarely that process never registers, and
+// CreateCoreWebView2Controller fails with CO_E_SERVER_EXEC_FAILURE once COM's two-minute server start timeout ends
+// (#307). The runtime, not Runic, failed to start, and a rerun of the job passes, so the smoke records what was
+// running and opens the window once more, in a new profile, within its three-minute deadline.
+static async Task<DesktopWindow> OpenFirstWindowAsync(DesktopSurface surface, DesktopWindowOptions options)
+{
+    try
+    {
+        return await surface.OpenWindowAsync(options);
+    }
+    catch (DesktopException exception) when (OperatingSystem.IsWindows() && exception.Retryable && IsWebView2ServerExecFailure(exception))
+    {
+        var browsers = System.Diagnostics.Process.GetProcessesByName("msedgewebview2");
+        Console.Error.WriteLine(
+            $"WebView2's browser process did not start (CO_E_SERVER_EXEC_FAILURE, #307); {browsers.Length} msedgewebview2 processes are running. Retrying once.");
+        foreach (var browser in browsers) browser.Dispose();
+        return await surface.OpenWindowAsync(options);
+    }
+}
+
+static bool IsWebView2ServerExecFailure(Exception exception)
+{
+    const int CoEServerExecFailure = unchecked((int)0x80080005);
+    for (Exception? current = exception; current is not null; current = current.InnerException)
+    {
+        if (current is COMException { ErrorCode: CoEServerExecFailure }) return true;
+    }
+    return false;
 }
 
 static DesktopHostOptions CreateHostOptions() => new()
