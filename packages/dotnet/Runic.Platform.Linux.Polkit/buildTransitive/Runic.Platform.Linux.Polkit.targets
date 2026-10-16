@@ -7,6 +7,11 @@
   -->
 
   <PropertyGroup>
+    <!-- The prefix the application is installed under, for a privileged action's Program, such as
+         $(RunicApplicationInstallPrefix)/bin/my-app. The Nix builder sets it to the package's $out; other builds
+         install under /usr unless they set it. MSBuild evaluates every property before the items, so the items
+         in the project's body see this default. -->
+    <RunicApplicationInstallPrefix Condition="'$(RunicApplicationInstallPrefix)' == ''">/usr</RunicApplicationInstallPrefix>
     <!-- Runic.Platform writes the declarations only after the policy succeeded. -->
     <RunicPrivilegedActionsDependsOn>$(RunicPrivilegedActionsDependsOn);RunicGeneratePolkitPolicy</RunicPrivilegedActionsDependsOn>
   </PropertyGroup>

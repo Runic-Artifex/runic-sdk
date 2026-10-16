@@ -198,7 +198,7 @@ installed.
 `RunicPrivilegedAction` items to `share/polkit-1/actions` in the publish
 directory; the builder installs it in `$out/share/polkit-1/actions`. The build
 exports `RunicApplicationInstallPrefix` as `$out`, so the policy can name the
-installed program:
+installed program (other builds default it to `/usr`):
 
 ```xml
 <RunicPrivilegedAction Include="org.example.app.activate"

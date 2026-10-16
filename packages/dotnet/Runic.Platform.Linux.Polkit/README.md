@@ -35,10 +35,14 @@ This package adds the Polkit policy and the metadata only Polkit reads
 (`IconName`, `AllowAny`, `AllowInactive`, `AllowActive` and `AllowGui`).
 
 `RunicApplicationInstallPrefix` is the prefix the application is installed
-under. The [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#privileged-actions)
+under, `/usr` unless the build sets it. The [Nix builder](https://github.com/Runic-Artifex/runic-sdk/blob/main/nix/README.md#privileged-actions)
 sets it to the package's `$out`, where the program is its wrapper
-`$(RunicApplicationInstallPrefix)/bin/<executable>`; another build sets it
-itself, for example to `/usr`.
+`$(RunicApplicationInstallPrefix)/bin/<executable>`. A package installed
+elsewhere sets it in the project or on the command line, for example
+`dotnet publish -p:RunicApplicationInstallPrefix=/opt/example`; an
+environment variable of the same name works too. The policy and the generated
+class carry the path, so the build must name the prefix the package installs
+under.
 
 Declare the actions in one project. When the privileged program is a separate
 project, give both projects the same items, for example from one imported
