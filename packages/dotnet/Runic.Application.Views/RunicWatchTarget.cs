@@ -43,7 +43,8 @@ public sealed class RunicWatchTarget
 
     /// <summary>
     /// Watches the entries of one directory whose names match <paramref name="pattern"/>: one is added, removed or
-    /// renamed. Writes to an entry do not count, and subdirectories are not searched.
+    /// renamed. Writes to an entry do not count, nor does an entry replaced by renaming another file over it; use
+    /// <see cref="Files"/> for those. Subdirectories are not searched.
     /// </summary>
     /// <param name="path">The directory's path. It need not exist.</param>
     /// <param name="pattern">
@@ -54,6 +55,27 @@ public sealed class RunicWatchTarget
     {
         ArgumentException.ThrowIfNullOrEmpty(pattern);
         return new(WatchTargetKind.Directory, path, pattern);
+    }
+
+    /// <summary>
+    /// Watches each entry of one directory whose name matches <paramref name="pattern"/> as <see cref="File"/> watches
+    /// one file: an entry is added, removed, renamed, written, or replaced, as when a program writes a temporary file
+    /// and renames it over the entry to update it atomically. Subdirectories are not searched.
+    /// </summary>
+    /// <remarks>
+    /// An event that names a matching entry counts, as for <see cref="File"/>; a temporary file whose name does not
+    /// match is ignored until it is renamed to one that does. Where the watcher polls, it compares each entry's size
+    /// and write time, so it reads every matching entry's metadata on each poll: prefer a pattern that matches only
+    /// the entries of interest.
+    /// </remarks>
+    /// <param name="path">The directory's path. It need not exist.</param>
+    /// <param name="pattern">
+    /// A simple pattern with <c>*</c> and <c>?</c>, such as <c>*.json</c>, matched with the platform's file-name casing.
+    /// </param>
+    public static RunicWatchTarget Files(string path, string pattern = "*")
+    {
+        ArgumentException.ThrowIfNullOrEmpty(pattern);
+        return new(WatchTargetKind.Files, path, pattern);
     }
 
     /// <summary>
@@ -79,6 +101,7 @@ public sealed class RunicWatchTarget
     public override string ToString() => Kind switch
     {
         WatchTargetKind.Directory => $"Directory {System.IO.Path.Combine(Path, Pattern)}",
+        WatchTargetKind.Files => $"Files {System.IO.Path.Combine(Path, Pattern)}",
         _ => $"{Kind} {Path}",
     };
 
@@ -87,7 +110,8 @@ public sealed class RunicWatchTarget
     {
         WatchTargetKind.File => ProbeFile(),
         WatchTargetKind.Link => ProbeLink(),
-        WatchTargetKind.Directory => ProbeDirectory(),
+        WatchTargetKind.Directory => ProbeDirectory(entries: false),
+        WatchTargetKind.Files => ProbeDirectory(entries: true),
         _ => ProbeGit(),
     };
 
@@ -119,7 +143,8 @@ public sealed class RunicWatchTarget
         return new(signature.ToString(), specs, DirectoryOrMissing(specs[0].Directory), null);
     }
 
-    private WatchProbe ProbeDirectory()
+    // The names of the matching entries and, with entries, what DescribeEntry reads of each.
+    private WatchProbe ProbeDirectory(bool entries)
     {
         var directory = WatchPaths.Canonical(FullPath);
         var signature = new StringBuilder();
@@ -131,7 +156,11 @@ public sealed class RunicWatchTarget
                 foreach (var entry in System.IO.Directory.EnumerateFileSystemEntries(directory, Pattern, EntryOptions))
                     names.Add(System.IO.Path.GetFileName(entry));
                 names.Sort(StringComparer.Ordinal);
-                foreach (var name in names) signature.Append(name).Append('\n');
+                foreach (var name in names)
+                {
+                    signature.Append(name).Append('\n');
+                    if (entries) signature.Append(DescribeEntry(System.IO.Path.Combine(directory, name)).Replace('\n', ' ')).Append('\n');
+                }
             }
             catch (Exception exception) when (IsFileSystemFailure(exception)) { signature.Append("unreadable"); }
         }
@@ -284,6 +313,7 @@ internal enum WatchTargetKind
     Link,
     Directory,
     GitHead,
+    Files,
 }
 
 // Events under Directory whose name matches Pattern; with Recursive, every event below Directory.

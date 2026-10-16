@@ -129,6 +129,59 @@ internal sealed class PathWatcherTests
         Require(removed.Contains(target), $"Expected the removed entry, got {Describe(removed)}.");
     }
 
+    // #302: a program that updates a record atomically writes a temporary file and renames it over the record. The
+    // directory's entries keep their names, so Directory does not report it; Files does.
+    [Test]
+    public async Task FilesReplacedByRenameAreReported()
+    {
+        using var root = new TempDirectory();
+        var records = root.Directory("operations");
+        var record = root.File(Path.Combine("operations", "1.json"), "{\"status\":\"running\"}");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var files = RunicWatchTarget.Files(records, "*.json");
+        var names = RunicWatchTarget.Directory(records, "*.json");
+        using var watcher = RunicPathWatcher.Start(context, [names, files], _ => { }, options: tester.Options);
+
+        // The same length and write time as the record it replaces: only the event tells them apart.
+        Replace(record, "{\"status\":\"stopped\"}", keepWriteTime: true);
+        var replaced = await EventAsync(tester, watcher);
+        var rest = await tester.DrainAsync();
+        var all = rest.Prepend(replaced).SelectMany(change => change.Targets).ToHashSet();
+        Require(all.SetEquals([files]), $"Expected only the Files target for a replaced entry, got {string.Join(", ", all)}.");
+
+        // A write in place counts too, as for File.
+        using (var stream = new FileStream(record, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+            stream.Write("{"u8);
+        var written = await EventAsync(tester, watcher);
+        Require(written.Contains(files) && !written.Contains(names), $"Expected the written entry, got {Describe(written)}.");
+
+        // A new entry is reported by both, and files that don't match the pattern by neither.
+        var added = Path.Combine(records, "2.json");
+        File.WriteAllText(Path.Combine(records, "2.json.tmp"), "{}");
+        await Task.Delay(Settle);
+        Require((await tester.DrainAsync()).Count == 0, "A temporary file that does not match the pattern was reported.");
+        File.Move(Path.Combine(records, "2.json.tmp"), added);
+        var created = await EventAsync(tester, watcher);
+        all = (await tester.DrainAsync()).Prepend(created).SelectMany(change => change.Targets).ToHashSet();
+        Require(all.SetEquals([names, files]), $"Expected both targets for a new entry, got {string.Join(", ", all)}.");
+
+        // Without events, the backstop read compares each entry's size and write time.
+        watcher.IgnoreEvents = true;
+        Replace(added, "{\"status\":\"running\",\"step\":2}");
+        var polled = await NextOrDescribeAsync(tester, watcher, TimeSpan.FromSeconds(30));
+        Require(polled.Contains(files) && !polled.Contains(names) && !polled.ByEvent, $"Expected the backstop read to report the replaced entry, got {Describe(polled)}.");
+    }
+
+    // Writes a temporary file beside path and renames it over path, as atomic writers do.
+    private static void Replace(string path, string text, bool keepWriteTime = false)
+    {
+        var temporary = path + ".tmp";
+        File.WriteAllText(temporary, text);
+        if (keepWriteTime) File.SetLastWriteTimeUtc(temporary, File.GetLastWriteTimeUtc(path));
+        File.Move(temporary, path, overwrite: true);
+    }
+
     [Test]
     public async Task WatchedDirectoryDeletedAndRecreatedIsReported()
     {

@@ -11,8 +11,8 @@ namespace Runic.Application.Views;
 /// <see cref="RunicPathWatcherOptions.Debounce"/>, or ten debounce intervals after the first event of a burst at
 /// the latest. The watcher then reads each affected target, and reports the targets whose state differs from the
 /// last reading, so noise such as a lock file next to a Git ref is not reported. A target that changes and changes
-/// back within that window is therefore not reported, except a <see cref="RunicWatchTarget.File"/>, for which an
-/// event alone counts.
+/// back within that window is therefore not reported, except a <see cref="RunicWatchTarget.File"/> or
+/// <see cref="RunicWatchTarget.Files"/>, for which an event alone counts.
 /// </para>
 /// <para>
 /// Both callbacks run in turns of the model context, so they can set ViewModel state directly. The watcher
@@ -199,8 +199,9 @@ public sealed class RunicPathWatcher : IDisposable
                     if (RunicWatchTarget.Matches(spec, fullPath))
                     {
                         state.Dirty = state.ByEvent = true;
-                        // A write keeps a file's size and can keep its time stamp; trust the event.
-                        if (state.Target.Kind == WatchTargetKind.File) state.Forced = true;
+                        // A write keeps a file's size and can keep its time stamp, and a file renamed over an
+                        // entry can have the same size and time as the one it replaced; trust the event.
+                        if (state.Target.Kind is WatchTargetKind.File or WatchTargetKind.Files) state.Forced = true;
                         matched = true;
                     }
                     // The parent's watch names a watched directory: it may have been replaced. Evaluating checks it.
@@ -228,7 +229,7 @@ public sealed class RunicPathWatcher : IDisposable
             {
                 if (!state.Probe.Specs.Any(spec => WatchPaths.Comparer.Equals(spec.Directory, directory))) continue;
                 state.Dirty = true;
-                if (state.Target.Kind == WatchTargetKind.File) state.Forced = true;
+                if (state.Target.Kind is WatchTargetKind.File or WatchTargetKind.Files) state.Forced = true;
             }
             if (stopped)
             {
