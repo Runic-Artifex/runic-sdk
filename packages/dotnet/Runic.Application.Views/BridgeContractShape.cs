@@ -179,7 +179,9 @@ public static class BridgeContractShape
             AppendType(parts, property.PropertyType, new NullabilityInfoContext().Create(property), path + "." + wire, stack, honorJsonIgnore, property.GetCustomAttribute<RunicBridgeCodecAttribute>(true));
         }
         var constructors = type.GetConstructors(BindingFlags.Instance | BindingFlags.Public).OrderBy(constructor => constructor.MetadataToken)
-            .Select(constructor => string.Join(",", constructor.GetParameters().Select(parameter => parameter.Name + ":" + TypeName(parameter.ParameterType))));
+            .Select(constructor => string.Join(",", constructor.GetParameters().Select(parameter => parameter.Name + ":" + TypeName(parameter.ParameterType)
+                // A parameter with a default makes its member optional for the page.
+                + (parameter.HasDefaultValue ? "=default" : ""))));
         parts.Add($"dto-constructors:{path}:{string.Join("|", constructors)}");
         stack.Remove(type);
     }

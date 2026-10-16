@@ -19,7 +19,8 @@ internal sealed partial class CodegenDiagnosticsTests
             {
                 [JsonIgnore] public bool IsFiltered => Message.Length != 0 || Author.Length != 0;
             }
-            public sealed class HistoryViewModel : FixtureModel { public HistoryQuery Query { get; } = new("", ""); }
+            // Settable, so the page sends it and .NET constructs it.
+            public sealed class HistoryViewModel : FixtureModel { public HistoryQuery Query { get; set; } = new("", ""); }
             public sealed partial class HistoryWindow : RunicWindow<HistoryViewModel>;
             """;
 

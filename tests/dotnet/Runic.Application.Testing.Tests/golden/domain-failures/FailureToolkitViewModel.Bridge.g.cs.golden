@@ -81,10 +81,7 @@ private static class ReserveCommandFailureCodec
 
     private static global::Runic.Application.Testing.Tests.NoteQuotaExceeded Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "limit");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "requested");
-        return new global::Runic.Application.Testing.Tests.NoteQuotaExceeded(Read1(value_0), Read2(value_1));
+        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteQuotaExceeded is only written to the page.");
     }
 
     private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.Int32 value)
@@ -150,8 +147,7 @@ private static class SaveCommandFailureCodec
 
     private static global::Runic.Application.Testing.Tests.NoteTitleRequired Read1(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        return new global::Runic.Application.Testing.Tests.NoteTitleRequired();
+        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleRequired is only written to the page.");
     }
 
     private static void Write2(global::System.Text.Json.Utf8JsonWriter writer, global::Runic.Application.Testing.Tests.NoteTitleTaken value)
@@ -163,9 +159,7 @@ private static class SaveCommandFailureCodec
 
     private static global::Runic.Application.Testing.Tests.NoteTitleTaken Read2(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "existingTitle");
-        return new global::Runic.Application.Testing.Tests.NoteTitleTaken(Read3(value_0));
+        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.NoteTitleTaken is only written to the page.");
     }
 
     private static void Write3(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)

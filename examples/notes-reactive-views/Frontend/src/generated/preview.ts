@@ -32,7 +32,7 @@ function hydrate(wire: WireState): PreviewState {
     body: bridgeWire.string(wire.body),
   };
 }
-const bridgeContract = "NotesReactiveViews.PreviewViewModel:79D2D4A3CA4F5AC94637C31280D660A0B53E13BFB9CCDE287A25C2DD574E3918";
+const bridgeContract = "NotesReactiveViews.PreviewViewModel:905A986DAD0ADA0C639A903EE9562DD02E2230A88D54D4B8CA3AA50F806AB523";
 
 /**
  * Connects a Preview client. It waits up to `options.timeout` milliseconds (default 5000) for the

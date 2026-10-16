@@ -28,11 +28,15 @@ internal sealed class BridgeTypeGraph
     /// <param name="rootPath">The member path named in diagnostics.</param>
     /// <param name="origin">The declaration a diagnostic points at, normally the ViewModel property.</param>
     /// <param name="honorJsonIgnore">Whether the model assembly opts into unconditional JSON ignores on DTOs.</param>
+    /// <param name="direction">
+    /// Where the value crosses: only a value the page sends (<see cref="BridgeValueDirection.FromPage"/>) needs a
+    /// constructible reader.
+    /// </param>
     internal static BridgeTypeGraph Discover(Type type, NullabilityInfo? nullability = null, string? rootPath = null,
-        MemberInfo? origin = null, bool honorJsonIgnore = false)
+        MemberInfo? origin = null, bool honorJsonIgnore = false, BridgeValueDirection direction = BridgeValueDirection.Both)
     {
         ArgumentNullException.ThrowIfNull(type);
-        var builder = new Builder(honorJsonIgnore);
+        var builder = new Builder(honorJsonIgnore, direction);
         var root = builder.Build(type, TypeNullability.From(nullability), rootPath ?? type.Name, [], null, origin: origin);
         return new(root, builder.Nodes);
     }
@@ -162,7 +166,10 @@ internal sealed class BridgeTypeGraph
     /// The exported declaration of a named enum, DTO or union node, with the
     /// C# XML documentation of the type and its members.
     /// </summary>
-    internal static string TypeScriptDeclaration(BridgeTypeNode node, string name)
+    /// <param name="fromPageOnly">
+    /// No value of the type reaches the page, so a member that .NET fills in when it is missing is optional.
+    /// </param>
+    internal static string TypeScriptDeclaration(BridgeTypeNode node, string name, bool fromPageOnly = false)
     {
         var source = new StringBuilder();
         var type = node.NonNullableType;
@@ -191,7 +198,8 @@ internal sealed class BridgeTypeGraph
                 foreach (var member in node.Members)
                 {
                     XmlDocumentation.Append(source, "  ", WithTypeScriptNote(XmlDocumentation.Summary(member.Property), member.Type));
-                    source.AppendLine($"  readonly {PropertyKey(member.WireName)}: {TypeScriptType(member.Type)};");
+                    var optional = member.Absent || fromPageOnly && member.Optional;
+                    source.AppendLine($"  readonly {PropertyKey(member.WireName)}{(optional ? "?" : "")}: {TypeScriptType(member.Type)};");
                 }
                 source.AppendLine("}");
                 break;
@@ -251,7 +259,7 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Enum => $"bridgeWire.enumName<{TypeScriptNamedTypes.Reference(node)}>({expression}, [{string.Join(", ", node.EnumCases.Select(@case => Quote(@case.WireName)))}])",
             BridgeWireKind.Array or BridgeWireKind.List => $"bridgeWire.array({expression}, item => {ArrowBody(EmitTypeScriptDecoder(node.Element!, "item"))})",
             BridgeWireKind.StringDictionary => $"bridgeWire.stringRecord({expression}, item => {ArrowBody(EmitTypeScriptDecoder(node.Value!, "item"))})",
-            BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => LiteralKey(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
+            BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => {DecodeMembersTypeScript(node, node, "value", null)})",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
             BridgeWireKind.Json => JsonTypeScript(node, expression),
@@ -267,15 +275,36 @@ internal sealed class BridgeTypeGraph
             ? $"bridgeWire.json({expression})"
             : $"bridgeWire.json({expression}, false)";
 
+    // A member that .NET fills in when it is missing may be missing from a
+    // value the page encoded, as a mock reads it: a nullable member reads as
+    // null, another one is left out. The declared type then asserts the object.
+    private static string DecodeMembersTypeScript(BridgeTypeNode node, BridgeTypeNode declared, string value, string? discriminator)
+    {
+        var fields = new List<string>();
+        if (discriminator is not null) fields.Add($"$case: {Quote(discriminator)}");
+        var omits = false;
+        foreach (var member in node.Members)
+        {
+            var access = value + "[" + Quote(member.WireName) + "]";
+            var decoded = EmitTypeScriptDecoder(member.Type, access);
+            if (!member.MayBeMissing) fields.Add(LiteralKey(member.WireName) + ": " + decoded);
+            else if (member.Type.IsNullable && !member.Absent) fields.Add($"{LiteralKey(member.WireName)}: {access} === undefined ? null : {decoded}");
+            else
+            {
+                omits = true;
+                fields.Add($"...({access} === undefined ? {{}} : {{ {LiteralKey(member.WireName)}: {decoded} }})");
+            }
+        }
+        // The layout of earlier generated clients, so output without optional members is unchanged.
+        var literal = "{ " + string.Join(", ", fields) + (discriminator is null ? "}" : " }");
+        return omits ? $"({literal} as {TypeScriptNamedTypes.Reference(declared)})" : discriminator is null ? $"({literal})" : literal;
+    }
+
     private static string DecodeUnionTypeScript(BridgeTypeNode node, string expression)
     {
         var value = $"bridgeDecodedUnion{node.Id}";
         var cases = string.Join(" ", node.Cases.Select(@case =>
-        {
-            var fields = string.Join(", ", @case.Type.Members.Select(member =>
-                LiteralKey(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, value + "[" + Quote(member.WireName) + "]")));
-            return $"case {Quote(@case.Discriminator)}: return {{ $case: {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
-        }));
+            $"case {Quote(@case.Discriminator)}: return {DecodeMembersTypeScript(@case.Type, node, value, @case.Discriminator)};"));
         // The declared return type keeps each $case a literal, so the value
         // is the named union rather than a widened object.
         return $"((): {TypeScriptNamedTypes.Reference(node)} => {{ const {value}: any = bridgeWire.union({expression}); switch ({value}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
@@ -302,7 +331,7 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.DateTimeOffset => $"bridgeWire.dateTimeOffset({value})",
             BridgeWireKind.Array or BridgeWireKind.List => $"{value}.map(item => {ArrowBody(EncodeTypeScript(node.Element!, "item"))})",
             BridgeWireKind.StringDictionary => $"Object.fromEntries(Object.entries({value}).map(([key, item]) => [key, {EncodeTypeScript(node.Value!, "item")}]))",
-            BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, value + "[" + Quote(member.WireName) + "]"))) + " }",
+            BridgeWireKind.Dto => "{ " + string.Join(", ", node.Members.Select(member => "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, value + "[" + Quote(member.WireName) + "]"))) + " }",
             BridgeWireKind.Union => EncodeUnionTypeScript(node, value),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptEncoderExpression.Replace("$value", value, StringComparison.Ordinal),
             _ => value,
@@ -312,13 +341,22 @@ internal sealed class BridgeTypeGraph
             : nonNull;
     }
 
+    // A member the page may leave out stays undefined, which JSON.stringify
+    // omits, so .NET fills it in.
+    private static string EncodeMemberTypeScript(BridgeTypeMember member, string expression)
+    {
+        if (!member.MayBeMissing) return EncodeTypeScript(member.Type, expression);
+        var local = $"bridgeOptional{member.Type.Id}";
+        return $"(() => {{ const {local} = {expression}; return {local} === undefined ? undefined : {EncodeTypeScript(member.Type, local)}; }})()";
+    }
+
     private static string EncodeUnionTypeScript(BridgeTypeNode node, string expression)
     {
         var unionValue = $"bridgeUnion{node.Id}";
         var cases = string.Join(" ", node.Cases.Select(@case =>
         {
             var fields = string.Join(", ", @case.Type.Members.Select(member =>
-                "[" + Quote(member.WireName) + "]: " + EncodeTypeScript(member.Type, unionValue + "[" + Quote(member.WireName) + "]")));
+                "[" + Quote(member.WireName) + "]: " + EncodeMemberTypeScript(member, unionValue + "[" + Quote(member.WireName) + "]")));
             return $"case {Quote(@case.Discriminator)}: return {{ \"$case\": {Quote(@case.Discriminator)}{(fields.Length == 0 ? string.Empty : ", " + fields)} }};";
         }));
         return $"(() => {{ const {unionValue}: any = bridgeWire.encodeUnion({expression}); switch ({unionValue}.$case) {{ {cases} default: throw new RangeError(\"Unknown union case.\"); }} }})()";
@@ -374,7 +412,7 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Dto:
                 source.AppendLine("        writer.WriteStartObject();");
                 foreach (var member in node.Members)
-                    source.AppendLine($"        writer.WritePropertyName({Quote(member.WireName)}); Write{member.Type.Id}(writer, {value}.{member.Property.Name});");
+                    AppendMemberWriter(source, member, $"{value}.{member.Property.Name}", "        ");
                 source.AppendLine("        writer.WriteEndObject();");
                 break;
             case BridgeWireKind.Union:
@@ -386,7 +424,7 @@ internal sealed class BridgeTypeGraph
                     source.AppendLine($"            case {CSharpType(@case.Type.Type)} item{@case.Type.Id}:");
                     source.AppendLine($"                writer.WriteString(\"$case\", {Quote(@case.Discriminator)});");
                     foreach (var member in @case.Type.Members)
-                        source.AppendLine($"                writer.WritePropertyName({Quote(member.WireName)}); Write{member.Type.Id}(writer, item{@case.Type.Id}.{member.Property.Name});");
+                        AppendMemberWriter(source, member, $"item{@case.Type.Id}.{member.Property.Name}", "                ");
                     source.AppendLine("                break;");
                 }
                 source.AppendLine("            default: throw new global::System.NotSupportedException(\"The value is not a declared bridge-union case.\");");
@@ -408,6 +446,15 @@ internal sealed class BridgeTypeGraph
                 break;
         }
         source.AppendLine("    }");
+    }
+
+    // A JsonElement member without a value is absent from the object.
+    private static void AppendMemberWriter(StringBuilder source, BridgeTypeMember member, string access, string indent)
+    {
+        var write = $"writer.WritePropertyName({Quote(member.WireName)}); Write{member.Type.Id}(writer, {access});";
+        source.AppendLine(member.Absent
+            ? $"{indent}if ({access}.ValueKind is not global::System.Text.Json.JsonValueKind.Undefined) {{ {write} }}"
+            : $"{indent}{write}");
     }
 
     private static void AppendReader(StringBuilder source, BridgeTypeNode node)
@@ -516,25 +563,71 @@ internal sealed class BridgeTypeGraph
 
     private static void AppendDtoReader(StringBuilder source, BridgeTypeNode node)
     {
+        var type = CSharpType(node.NonNullableType, node.Nullability);
+        if (!node.Direction.HasFlag(BridgeValueDirection.FromPage))
+        {
+            // Only written to the page, so it needs no constructor (#312).
+            source.AppendLine($"        throw new global::System.NotSupportedException({Quote($"{TypeIdentity(node.NonNullableType)} is only written to the page.")});");
+            return;
+        }
         source.AppendLine("        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected an object.\");");
         foreach (var member in node.Members)
-            source.AppendLine($"        var {Local(member)} = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, {Quote(member.WireName)});");
+            source.AppendLine(member.Optional
+                ? $"        var has_{member.Index} = element.TryGetProperty({Quote(member.WireName)}, out var {Local(member)});"
+                : $"        var {Local(member)} = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, {Quote(member.WireName)});");
+        string Read(BridgeTypeMember member, string missing) => member.Optional
+            ? $"has_{member.Index} ? Read{member.Type.Id}({Local(member)}) : {missing}"
+            : $"Read{member.Type.Id}({Local(member)})";
         if (node.Constructor is { } constructor)
         {
             var arguments = constructor.GetParameters().Select(parameter =>
             {
                 var member = node.Members.Single(candidate => string.Equals(candidate.Property.Name, parameter.Name, StringComparison.OrdinalIgnoreCase));
-                return $"Read{member.Type.Id}({Local(member)})";
+                return Read(member, member.DefaultExpression ?? "default!");
             });
-            source.AppendLine($"        return new {CSharpType(node.NonNullableType, node.Nullability)}({string.Join(", ", arguments)});");
+            source.AppendLine($"        return new {type}({string.Join(", ", arguments)});");
         }
         else
         {
-            source.AppendLine($"        return new {CSharpType(node.NonNullableType, node.Nullability)} {{");
+            // A missing member keeps the value a new instance has, such as its initializer.
+            if (node.Members.Any(member => member.Optional))
+                source.AppendLine(node.NonNullableType.IsValueType
+                    ? $"        var template = new {type}();"
+                    : $"        {type}? template = null;");
+            var template = node.NonNullableType.IsValueType ? "template" : $"(template ??= new {type}())";
+            source.AppendLine($"        return new {type} {{");
             foreach (var member in node.Members)
-                source.AppendLine($"            {member.Property.Name} = Read{member.Type.Id}({Local(member)}),");
+                source.AppendLine($"            {member.Property.Name} = {Read(member, $"{template}.{member.Property.Name}")},");
             source.AppendLine("        };");
         }
+    }
+
+    // The C# value of a constructor parameter's default, as the compiler records it.
+    private static string DefaultLiteral(ParameterInfo parameter, string path)
+    {
+        var value = parameter.DefaultValue;
+        var type = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
+        if (value is null || value == DBNull.Value || value == Type.Missing) return "default!";
+        var invariant = CultureInfo.InvariantCulture;
+        if (type.IsEnum)
+            return $"({CSharpType(type)})({Convert.ToString(Convert.ChangeType(value, Enum.GetUnderlyingType(type), invariant), invariant)})";
+        return value switch
+        {
+            bool flag => flag ? "true" : "false",
+            string text => Quote(text),
+            char character => $"(char){(int)character}",
+            int number => number.ToString(invariant),
+            long number => number.ToString(invariant) + "L",
+            uint number => number.ToString(invariant) + "U",
+            ulong number => number.ToString(invariant) + "UL",
+            short or ushort or byte or sbyte => $"({CSharpType(type)}){Convert.ToString(value, invariant)}",
+            double number => double.IsNaN(number) ? "double.NaN" : double.IsPositiveInfinity(number) ? "double.PositiveInfinity"
+                : double.IsNegativeInfinity(number) ? "double.NegativeInfinity" : number.ToString("R", invariant) + "D",
+            float number => float.IsNaN(number) ? "float.NaN" : float.IsPositiveInfinity(number) ? "float.PositiveInfinity"
+                : float.IsNegativeInfinity(number) ? "float.NegativeInfinity" : number.ToString("R", invariant) + "F",
+            decimal number => number.ToString(invariant) + "M",
+            _ => throw new BridgeTypeGraphException(path, $"The default value of the constructor parameter {parameter.Name} cannot be written in generated code; remove the default or use a property with a setter."),
+        };
     }
 
     private static string Local(BridgeTypeMember member) => "value_" + member.Index.ToString(CultureInfo.InvariantCulture);
@@ -579,7 +672,7 @@ internal sealed class BridgeTypeGraph
         return "global::" + generic[..generic.IndexOf('`')].Replace('+', '.');
     }
 
-    private sealed class Builder(bool honorJsonIgnore)
+    private sealed class Builder(bool honorJsonIgnore, BridgeValueDirection direction)
     {
         private readonly NullabilityInfoContext _nullability = new();
         private int _nextId;
@@ -613,7 +706,7 @@ internal sealed class BridgeTypeGraph
                 : Nullable.GetUnderlyingType(declared) is not null;
             var type = Nullable.GetUnderlyingType(declared) ?? declared;
             if (stack.Contains(type)) throw new BridgeTypeGraphException(path, "Recursive DTO graphs are not a bridge contract.");
-            var node = new BridgeTypeNode(_nextId++, type, nullable) { Nullability = annotations };
+            var node = new BridgeTypeNode(_nextId++, type, nullable) { Nullability = annotations, Direction = direction };
             Nodes.Add(node);
             if (TryScalar(type, out var scalar)) { node.Kind = scalar; return node; }
             if (type.IsEnum)
@@ -690,7 +783,8 @@ internal sealed class BridgeTypeGraph
                     Build(property.PropertyType, info, path + "." + WireName(property), stack,
                         property.GetCustomAttribute<RunicBridgeCodecAttribute>(inherit: true), origin: property)));
             }
-            node.Constructor = SelectConstructor(type, node.Members, path);
+            if (direction.HasFlag(BridgeValueDirection.FromPage)) node.Constructor = SelectConstructor(type, node.Members, path);
+            MarkOptionalMembers(node, path);
             stack.Remove(type);
             return node;
         }
@@ -916,6 +1010,27 @@ internal sealed class BridgeTypeGraph
             ?? property.GetCustomAttribute<JsonPropertyNameAttribute>(inherit: true)?.Name
             ?? char.ToLowerInvariant(property.Name[0]) + property.Name[1..];
 
+        // A member that .NET fills in when the page leaves it out: a nullable
+        // member, a constructor parameter with a default, and a JsonElement,
+        // whose missing value is a default JsonElement (#312).
+        private static void MarkOptionalMembers(BridgeTypeNode node, string path)
+        {
+            var parameters = node.Constructor?.GetParameters();
+            for (var index = 0; index < node.Members.Count; index++)
+            {
+                var member = node.Members[index];
+                var absent = member.Type is { Kind: BridgeWireKind.Json, IsNullable: false } && member.Type.NonNullableType == typeof(JsonElement);
+                var parameter = parameters?.Single(candidate => string.Equals(candidate.Name, member.Property.Name, StringComparison.OrdinalIgnoreCase));
+                var defaulted = parameter is { HasDefaultValue: true };
+                node.Members[index] = member with
+                {
+                    Absent = absent,
+                    Optional = absent || defaulted || member.Type.IsNullable,
+                    DefaultExpression = defaulted ? DefaultLiteral(parameter!, path + "." + member.WireName) : null,
+                };
+            }
+        }
+
         private static ConstructorInfo? SelectConstructor(Type type, List<BridgeTypeMember> members, string path)
         {
             var names = members.Select(member => member.Property.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -924,7 +1039,7 @@ internal sealed class BridgeTypeGraph
                 .OrderByDescending(candidate => candidate.GetParameters().Length).FirstOrDefault();
             if (constructor is not null) return constructor;
             if (type.GetConstructor(Type.EmptyTypes) is not null && members.All(member => member.Writable)) return null;
-            throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} needs a public constructor whose parameters map to every required property, or a public parameterless constructor with public setters. "
+            throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is read from the page, as a command input, an interaction result or a settable property, so it needs a public constructor whose parameters map to every required property, or a public parameterless constructor with public setters. "
                 + "Exclude computed or .NET-only DTO properties with [RunicIgnore]. To reuse unconditional [JsonIgnore] on shared DTOs, add [assembly: RunicBridgeJsonIgnore] to the presentation/ViewModel assembly. "
                 + "Without that opt-in, [JsonIgnore] only affects System.Text.Json serialization. JsonIgnore conditions Never, WhenWritingNull and WhenWritingDefault remain included in the Bridge contract.");
         }
@@ -957,10 +1072,35 @@ internal sealed class BridgeTypeNode(int id, Type nonNullableType, bool isNullab
     internal List<BridgeEnumCase> EnumCases { get; } = [];
     internal ConstructorInfo? Constructor { get; set; }
     internal CustomCodecDescription? CustomCodec { get; set; }
+    /// <summary>Where values of the graph that contains this node cross.</summary>
+    internal BridgeValueDirection Direction { get; init; } = BridgeValueDirection.Both;
+}
+
+/// <summary>Where a Bridge value crosses: to the page, from it, or both.</summary>
+[Flags]
+internal enum BridgeValueDirection
+{
+    /// <summary>State, a command result, a declared failure or an interaction input.</summary>
+    ToPage = 1,
+    /// <summary>A command input or an interaction output.</summary>
+    FromPage = 2,
+    /// <summary>A settable state property.</summary>
+    Both = ToPage | FromPage,
 }
 
 internal sealed record BridgeTypeMember(int Index, PropertyInfo Property, string WireName, BridgeTypeNode Type)
 {
+    /// <summary>.NET fills the member in when the page leaves it out.</summary>
+    internal bool Optional { get; init; }
+    /// <summary>A JsonElement member: absent from the object when it holds no value.</summary>
+    internal bool Absent { get; init; }
+    /// <summary>The constructor argument for a missing member, when its parameter has a default.</summary>
+    internal string? DefaultExpression { get; init; }
+    /// <summary>
+    /// The member can be missing from a JSON object: it is absent, or optional in a value the page sends. Values that
+    /// only reach the page have every other member, and their TypeScript codecs require it.
+    /// </summary>
+    internal bool MayBeMissing => Absent || Optional && Type.Direction.HasFlag(BridgeValueDirection.FromPage);
     internal bool Readable => Property.GetMethod?.IsPublic == true;
     internal bool Writable => Property.SetMethod?.IsPublic == true;
 }

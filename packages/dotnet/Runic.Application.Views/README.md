@@ -765,7 +765,7 @@ so a malformed reply never reaches application state.
 | `TimeOnly` | `string` | `"08:15:00.0000000"`; `"08:15:00"` is accepted. |
 | `TimeSpan` | `string` | .NET's invariant `c` format, `[-][d.]hh:mm:ss[.fffffff]`, such as `"1.02:03:04"`. |
 | An enum | A union of its wire names, such as `"Editor" \| "Preview"` | The C# name, or its `[RunicAlias]`. A `[Flags]` enum needs a `[RunicBridgeCodec]`. |
-| `T?`, for a value or a reference type | `T \| null` | `null`. The member is always present: it is never optional and never `undefined`. |
+| `T?`, for a value or a reference type | `T \| null` | `null`. In a value that reaches the page the member is always present; see [Optional members](#optional-members) for values the page sends. |
 | `T` with nullable reference types enabled | `T` | Never `null`. Without annotations (`#nullable disable`), a reference type is `T` too. |
 | `T[]`, `List<T>`, `IReadOnlyList<T>`, `IReadOnlyCollection<T>`, `IList<T>`, `ICollection<T>`, `IEnumerable<T>`, `ImmutableArray<T>`, `ImmutableList<T>`, `ObservableCollection<T>`, `ReadOnlyObservableCollection<T>`, `ReadOnlyCollection<T>` | `readonly T[]` | An array. `string?[]` is `readonly (string \| null)[]`. Multi-dimensional arrays and other collections fail the build. |
 | `Dictionary<string, T>`, `IDictionary<string, T>`, `IReadOnlyDictionary<string, T>` | `Readonly<Record<string, T>>` | An object. Other key types fail the build. |
@@ -799,6 +799,43 @@ not copied. Its numbers are JavaScript numbers in the page, exact only up to
 
 A frontend whose own types use optional members (`version?: string`) maps the
 `T | null` members at its edge, for example with `value ?? undefined`.
+
+### Optional members
+
+A DTO that only the page sends, as a command input or an interaction result,
+declares as optional (`label?: string | null`) the members .NET fills in when
+the page leaves them out:
+
+- a nullable member, which is `null` when it is missing;
+- a constructor parameter with a default, which takes that default;
+- a member with a setter or `init` that is nullable, which keeps the value a new
+  instance has, such as its initializer.
+
+```csharp
+public sealed record BuildRequest(string Action, string? Host = null, int Retention = 3);
+```
+
+```ts
+await builds.start({ action: "switch" }); // host null, retention 3
+```
+
+A non-nullable member without a constructor default stays required: .NET
+cannot tell whether it has an initializer. A type that also reaches the page,
+as state, a command result, a declared failure or an interaction input,
+declares every member as present, because .NET always writes it; .NET still
+fills in what a page leaves out.
+
+A `JsonElement` member tells an absent value from `null`. A default
+`JsonElement`, which holds no value, is left out of the object, and the member
+is optional (`previous?: unknown`) everywhere: `undefined` in the page is
+absent, `null` is JSON `null`. A missing member reads as a default
+`JsonElement`. Elsewhere, such as a state property or a command argument of
+its own, a default `JsonElement` is `null`.
+
+A DTO that only reaches the page needs no constructor for its members: a
+class with only read-only or computed properties is fine as state or a result. A DTO the
+page sends needs a public constructor whose parameters map to its properties,
+or a public parameterless constructor with public setters (`RUNICBRIDGE003`).
 
 ## Generator diagnostics
 
@@ -1296,8 +1333,9 @@ Use `[RunicIgnore]` on validation-only DTO properties such as a computed
 ## Shared DTO exclusions
 
 Public readable DTO properties are part of the Bridge contract, including
-computed properties. A DTO reader needs a public constructor matching its
-included properties, or public setters with a public parameterless constructor.
+computed properties. A DTO the page sends needs a public constructor matching its
+included properties, or public setters with a public parameterless constructor;
+one that only reaches the page needs neither ([Optional members](#optional-members)).
 Use `[RunicIgnore]` to leave a property on .NET without exposing it to the Bridge.
 By default, `[JsonIgnore]` affects System.Text.Json serialization only; it does
 not exclude a Bridge property.

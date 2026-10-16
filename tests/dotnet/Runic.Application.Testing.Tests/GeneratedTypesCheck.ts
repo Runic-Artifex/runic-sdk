@@ -1,6 +1,7 @@
 // Type-checked with the generated clients: named enum types are literal
 // unions, so a switch over every case is exhaustive.
 import type { CodegenShapeState } from "./obj/bridge-frontend/generated/codegenShape.js";
+import type { OptionalMemberClient, OptionalMemberState, OptionalRequest } from "./obj/bridge-frontend/generated/optionalMember.js";
 import type { DocumentedLayout, DocumentedState } from "./obj/bridge-frontend/generated/documented.js";
 import type { NamingClient, NamingState } from "./obj/bridge-frontend/generated/naming.js";
 import type { NavDiscardPrompt, NavigationOutcome, ReactiveNavEditorClient } from "./obj/bridge-frontend/generated/reactiveNavEditor.js";
@@ -39,6 +40,17 @@ export const nullJson: CodegenShapeState["json"] = {
   // @ts-expect-error A JsonNode is never JSON null.
   any: [], node: {}, required: null,
 };
+
+// A value the page only sends may leave out what .NET fills in; one it receives has every member.
+export const minimalRequest: OptionalRequest = { kind: "build" };
+export function submitMinimal(client: OptionalMemberClient): Promise<OptionalMemberState> {
+  return client.submit({ kind: "build", extra: undefined }).then(() => client.configure({ name: "settings" }));
+}
+export function summaryRuns(state: OptionalMemberState): number {
+  return state.summary.runs;
+}
+// @ts-expect-error A member without a .NET default is required.
+export const missingKind: OptionalRequest = { label: "no kind" };
 
 // Names next to the reserved client members stay ordinary members: a state
 // property named New and a NewItem command (a NewCommand is RUNICBRIDGE004).

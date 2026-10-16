@@ -82,10 +82,7 @@ private static class ConfirmInteractionInputCodec
 
     private static global::Runic.Application.Testing.Tests.GeneratedInteractionRequest Read0(global::System.Text.Json.JsonElement element)
     {
-        if (element.ValueKind is not global::System.Text.Json.JsonValueKind.Object) throw global::Runic.Application.Views.BridgeWire.Invalid("Expected an object.");
-        var value_0 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "title");
-        var value_1 = global::Runic.Application.Views.BridgeWire.RequiredProperty(element, "attempt");
-        return new global::Runic.Application.Testing.Tests.GeneratedInteractionRequest(Read1(value_0), Read2(value_1));
+        throw new global::System.NotSupportedException("Runic.Application.Testing.Tests.GeneratedInteractionRequest is only written to the page.");
     }
 
     private static void Write1(global::System.Text.Json.Utf8JsonWriter writer, global::System.String value)

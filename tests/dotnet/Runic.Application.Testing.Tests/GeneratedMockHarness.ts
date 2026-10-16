@@ -44,6 +44,24 @@ function fresh(): MockBridge {
   client.dispose();
 }
 
+// Members the page leaves out stay out of the encoded input; a mock decodes a missing nullable one as null.
+{
+  const bridge = fresh();
+  const { connectOptionalMember } = await load("optionalMember");
+  const { mockOptionalMember } = await load("optionalMember.mock");
+  const inputs: unknown[] = [];
+  mockOptionalMember(bridge, {
+    state: { summary: { runs: 0, text: "0 runs" }, versions: [{ name: "new" }, { name: "removed", previous: null }] },
+    commands: { submit: (_state: unknown, input: unknown) => { inputs.push(input); return {}; } },
+  });
+  const client = await connectOptionalMember();
+  assert.deepEqual(client.snapshot.versions, [{ name: "new" }, { name: "removed", previous: null }]);
+  await client.submit({ kind: "build", extra: undefined });
+  await client.submit({ kind: "boot", retention: 1, extra: { a: [1] } });
+  assert.deepEqual(inputs, [{ kind: "build", label: null, edits: null }, { kind: "boot", label: null, retention: 1, edits: null, extra: { a: [1] } }]);
+  client.dispose();
+}
+
 // Keyed collection edits reach the client as delta frames that keep unchanged rows.
 {
   const bridge = fresh();

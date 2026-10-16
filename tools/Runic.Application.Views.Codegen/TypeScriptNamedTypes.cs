@@ -52,6 +52,7 @@ internal static partial class TypeScriptNamedTypes
             ByShape.Add(key, entry);
             Entries.Add(entry);
         }
+        if (node.Direction.HasFlag(BridgeValueDirection.ToPage)) entry.ToPage = true;
         return $"{Marker}{entry.Index}{Marker}";
     }
 
@@ -83,6 +84,22 @@ internal static partial class TypeScriptNamedTypes
         // themselves while it is built.
         for (var index = 0; index < Entries.Count; index++)
             Entries[index].Definition = BridgeTypeGraph.TypeScriptDeclaration(Entries[index].Node, Reference(Entries[index].Node));
+
+        // A type that a value sent to the page contains reaches the page too,
+        // whichever use registered it first. Only a type that never does
+        // declares the members .NET fills in as optional.
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            foreach (var entry in Entries.Where(entry => entry.ToPage))
+                foreach (Match match in Placeholder().Matches(entry.Definition!))
+                {
+                    var contained = Entries[int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)];
+                    if (!contained.ToPage) { contained.ToPage = true; changed = true; }
+                }
+        }
+        foreach (var entry in Entries.Where(entry => !entry.ToPage))
+            entry.Definition = BridgeTypeGraph.TypeScriptDeclaration(entry.Node, Reference(entry.Node), fromPageOnly: true);
 
         // Uses of one C# type with different shapes are told apart by the
         // nullable annotations of their type arguments: Box<string> keeps
@@ -219,6 +236,8 @@ internal static partial class TypeScriptNamedTypes
         internal Type Type { get; } = type;
         internal BridgeTypeNode Node { get; } = node;
         internal string? Definition { get; set; }
+        /// <summary>Some value that reaches the page contains this type.</summary>
+        internal bool ToPage { get; set; }
         internal string BaseName { get; set; } = "";
         internal string? Name { get; set; }
     }
