@@ -86,7 +86,7 @@ internal sealed class InhibitionTests
         internal bool Deny;
         internal bool Respond = true;
         private int _number;
-        internal TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal volatile TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ValueTask HandleMethodAsync(MethodContext context)
         {
             if (context.Request.MemberAsString == "Close")
@@ -96,6 +96,8 @@ internal sealed class InhibitionTests
                 return ValueTask.CompletedTask;
             }
             if (Deny) { context.ReplyError("org.freedesktop.portal.Error.NotAllowed", "Denied"); return ValueTask.CompletedTask; }
+            // The Called of this request, not one the test set after it (#339).
+            var called = Called;
             var reader = context.Request.GetBodyReader();
             if (reader.ReadString() != "x11:1234") throw new InvalidOperationException("Owner not forwarded.");
             Flags = reader.ReadUInt32();
@@ -110,7 +112,7 @@ internal sealed class InhibitionTests
                 connection.TrySendMessage(signal.CreateMessage());
             }
             using var reply = context.CreateReplyWriter("o"); reply.WriteObjectPath(new ObjectPath(path)); context.Reply(reply.CreateMessage());
-            Called.TrySetResult();
+            called.TrySetResult();
             return ValueTask.CompletedTask;
         }
     }

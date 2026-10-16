@@ -58,7 +58,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
     public string? Argument;
     public string? CurrentName;
     public string? Call, RequestPath, ClosedCall, ClosedPath;
-    public TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public volatile TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource Closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     public ValueTask HandleMethodAsync(MethodContext context)
     {
@@ -80,6 +80,9 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
             Closed.TrySetResult();
             return ValueTask.CompletedTask;
         }
+        // Complete the Called the test had set when this request arrived: a handler that finishes after the test moved on and
+        // replaced Called must not report the next request (#339).
+        var called = Called;
         var reader = context.Request.GetBodyReader();
         Parent = reader.ReadString();
         Argument = reader.ReadString();
@@ -111,7 +114,7 @@ sealed class PortalService(DBusConnection connection) : IPathMethodHandler
         using var writer = context.CreateReplyWriter("o");
         writer.WriteObjectPath(new ObjectPath(path));
         context.Reply(writer.CreateMessage());
-        Called.TrySetResult();
+        called.TrySetResult();
         return ValueTask.CompletedTask;
     }
     private static void CheckProperty(bool expected) { if (!expected) throw new InvalidOperationException("Unexpected portal property query."); }
