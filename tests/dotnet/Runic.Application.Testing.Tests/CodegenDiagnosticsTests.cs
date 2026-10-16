@@ -650,18 +650,59 @@ internal sealed partial class CodegenDiagnosticsTests
         process.Start();
         var output = process.StandardOutput.ReadToEndAsync();
         var error = process.StandardError.ReadToEndAsync();
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var elapsed = Stopwatch.StartNew();
+        using var timeout = new CancellationTokenSource(GeneratorTimeout);
         try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
         catch (OperationCanceledException)
         {
+            // #348: a generator that normally exits within half a second ran for more than 30 seconds on a Windows
+            // runner. Keep a dump of it, then stop it and wait for its exit, so it no longer holds the fixture
+            // directory and the timeout, not the cleanup, is the reported failure.
+            var dump = TryWriteDump(process, Path.GetFileNameWithoutExtension(assembly));
             process.Kill(entireProcessTree: true);
-            throw new InvalidOperationException($"{assembly}: the generator did not exit within 30 seconds.");
+            await process.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            var partial = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
+            throw new InvalidOperationException($"{assembly}: the generator did not exit within {GeneratorTimeout.TotalSeconds} seconds"
+                + $" ({elapsed.Elapsed.TotalSeconds:F1} s). {dump}\nIts output so far:\n{partial}");
         }
         var text = await output.ConfigureAwait(false) + await error.ConfigureAwait(false);
         Require(!text.Contains("Unhandled exception", StringComparison.Ordinal),
             $"{assembly}: the generator crashed instead of reporting a diagnostic.\n{text}");
         return (process.ExitCode, text);
     }
+
+    private static readonly TimeSpan GeneratorTimeout = TimeSpan.FromSeconds(30);
+
+    // A full-memory minidump of a stalled generator (dbghelp's MiniDumpWriteDump; dotnet-dump and Visual Studio read it
+    // with managed stacks), written beside the test results, which the WPF job uploads when it fails. The stall was seen
+    // on Windows; elsewhere the message says so.
+    private static string TryWriteDump(Process process, string name)
+    {
+        if (!OperatingSystem.IsWindows()) return "No dump: dumps are written on Windows only.";
+        try
+        {
+            var directory = Path.Combine(FindWorkspaceRoot(), "artifacts", "codegen-timeouts");
+            Directory.CreateDirectory(directory);
+            var path = Path.Combine(directory, $"{name}-{process.Id}.dmp");
+            using (var file = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                // MiniDumpWithFullMemory | MiniDumpWithHandleData | MiniDumpWithFullMemoryInfo | MiniDumpWithThreadInfo
+                const uint DumpType = 0x2 | 0x4 | 0x800 | 0x1000;
+                if (!MiniDumpWriteDump(process.Handle, (uint)process.Id, file.SafeFileHandle.DangerousGetHandle(), DumpType, 0, 0, 0))
+                    return $"No dump: MiniDumpWriteDump failed with {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}.";
+            }
+            return $"Dump: {path}.";
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or InvalidOperationException
+            or DllNotFoundException or EntryPointNotFoundException)
+        {
+            return $"No dump: {failure.Message}";
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("dbghelp.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool MiniDumpWriteDump(nint process, uint processId, nint file, uint dumpType, nint exception, nint userStream, nint callback);
 
     // The generator and this test assembly build with the same version.
     private static string HelpLink(string code)
