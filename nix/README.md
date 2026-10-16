@@ -83,6 +83,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `nativeAot` | `false` | Publish `projectFile` with NativeAOT; see [NativeAOT](#nativeaot). Self-contained either way when set. |
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
 | `testRunner` | `"VSTest"` | How `doCheck` runs `testProjectFile`: `"VSTest"` with nixpkgs' `dotnet test`, or `"Microsoft.Testing.Platform"`; see [Tests](#tests). |
+| `completions` | `null` | Shell completions the program prints, installed for bash, zsh and fish: `program` (default `meta.mainProgram`), `command` (default `[ "completion" ]`) and `shells`. See [Shell completions](#shell-completions). |
 | `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. |
 | `icons` | `{ }` | `{ scalable = ./app.svg; "256x256" = ./app.png; }`, installed as `$out/share/icons/hicolor/<size>/apps/<iconName>.<svg or png>`. |
 | `iconName` | `pname` | The icon's name, which the desktop entry's `icon` refers to. |
@@ -249,6 +250,27 @@ Only the frontend directory's `package.json`, lock file, `.npmrc` and
 `package.json` needs `frontend.nodeModules`, which replaces the fetch with any
 derivation that has `node_modules` at its root; `null` builds a frontend
 without dependencies.
+
+### Shell completions
+
+A command-line application prints its own completion scripts: Runic.CommandLine
+has the `completion bash|zsh|fish` command, and `--completions <shell>` when the
+catalog declares `CommandCatalogBuilder.CompletionOption`. `completions` runs the
+installed program after the build, through its wrapper, once per shell, and
+installs the scripts where the shells and NixOS look for them
+(`share/bash-completion/completions`, `share/zsh/site-functions`,
+`share/fish/vendor_completions.d`):
+
+```nix
+meta.mainProgram = "my-app";
+completions = { };                                # my-app completion bash, zsh, fish
+completions.command = [ "--completions" ];        # my-app --completions bash, ...
+```
+
+The program runs with an empty temporary home (`HOME` and the XDG
+directories). Export anything else it needs in `preFixup`. A script that is
+empty fails the build. A cross build cannot run the program and installs no
+completions.
 
 ### Run time
 
@@ -422,6 +444,8 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   `testRunner = "Microsoft.Testing.Platform"`, and `builder-dotnet-tools`
   restores a local tool from a manifest below the source's root with
   `dotnetTools`.
+- The `builder-completions` flake check installs the bash, zsh and fish
+  completions of a Runic.CommandLine program with `completions`.
 - `nix build .#packaging-nixos -L` runs a NixOS VM (KVM) that installs the
   NativeAOT status-icon example and the smoke through the NixOS module. It
   checks the desktop entry and icon, that the user service starts with an X
