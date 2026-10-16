@@ -281,7 +281,7 @@ internal static partial class ViewsLog
     // first start: it polls and reports the directory once it appears (#312).
     [LoggerMessage(EventId = 1016, EventName = "PathWatchPolling", Level = LogLevel.Debug,
         Message = "Path watcher: {Problem}")]
-    internal static partial void PathWatchPolling(ILogger logger, string problem);
+    internal static partial void PathWatchPolling(ILogger logger, RunicPathWatchError problem);
 
     [LoggerMessage(EventId = 1020, EventName = "ViewMountFailed", Level = LogLevel.Error,
         Message = "Runic View mount on route {Route} failed with {ErrorType}.")]
