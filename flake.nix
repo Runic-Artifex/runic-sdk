@@ -42,6 +42,10 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
           };
+          builder-completions = import ./nix/tests/completions.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            runic = self.lib;
+          };
           home-manager-module = import ./nix/tests/modules.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;

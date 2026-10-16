@@ -14,6 +14,7 @@
   clang,
   zlib,
   libxml2,
+  installShellFiles,
   nodejs_24,
   pnpm,
   bun,
@@ -51,6 +52,14 @@
   #             read at evaluation, so src must be a local path, such as the flake's own source.
   #   hashes    { <package ID> = <hash of the .nupkg>; } for each tool in it
   dotnetTools ? null,
+  # Shell completions that the program prints, installed for bash, zsh and fish (share/bash-completion,
+  # share/zsh/site-functions, share/fish/vendor_completions.d) by running the installed program after the build:
+  #   program  the program in bin; default meta.mainProgram
+  #   command  its arguments before the shell's name; default [ "completion" ], Runic.CommandLine's command.
+  #            [ "--completions" ] for an option declared with CommandCatalogBuilder.CompletionOption.
+  #   shells   default [ "bash" "zsh" "fish" ]
+  # A cross build cannot run the program and installs none.
+  completions ? null,
   # desktop, desktop-gtk4, cswebui or null: the libraries the host loads at run time.
   host ? "desktop",
   # GStreamer plugins for audio and video in WebKitGTK.
@@ -242,6 +251,27 @@ let
     runHook postCheck
   '';
 
+  completions' =
+    if completions == null then
+      null
+    else
+      let
+        program =
+          completions.program or args.meta.mainProgram or (throw
+            "buildRunicApplication: completions needs the program that prints them: set completions.program or meta.mainProgram.");
+        shells = completions.shells or [
+          "bash"
+          "zsh"
+          "fish"
+        ];
+      in
+      assert lib.assertMsg (lib.all (shell: lib.elem shell [ "bash" "zsh" "fish" ]) shells)
+        "buildRunicApplication: completions.shells may name bash, zsh and fish, not ${lib.concatStringsSep ", " shells}.";
+      {
+        inherit program shells;
+        command = completions.command or [ "completion" ];
+      };
+
   # nativeAot sets PublishAot in the evaluation of projectFile alone, through CustomAfterDirectoryBuildProps, rather
   # than with -p:PublishAot=true, a global property that also reaches testProjectFile and its own restore, which then
   # needs a NativeAOT lock file (#316). Projects whose path the build exports as RunicNativeAotProjectFiles
@@ -270,6 +300,7 @@ buildDotnetModule (
     "iconName"
     "nodejs"
     "testRunner"
+    "completions"
     "dotnetTools"
   ]
   // {
@@ -330,6 +361,7 @@ buildDotnetModule (
       ++ [
         makeBinaryWrapper
         copyDesktopItems
+        installShellFiles
         writableTmpDirAsHomeHook
         libxml2
         nodejs
@@ -465,6 +497,22 @@ buildDotnetModule (
         done < <(xmllint --xpath '//annotate[@key="org.freedesktop.policykit.exec.path"]/text()' "$policy" 2>/dev/null; echo)
         xmllint --noout "$policy"
       done
+      ${lib.optionalString (completions' != null && stdenvNoCC.buildPlatform.canExecute stdenvNoCC.hostPlatform) ''
+        # The program prints each shell's script through its wrapper, with a home of its own.
+        runicCompletions=$(mktemp -d)
+        for shell in ${lib.escapeShellArgs completions'.shells}; do
+          HOME=$runicCompletions/home XDG_CONFIG_HOME=$runicCompletions/config XDG_DATA_HOME=$runicCompletions/data \
+            XDG_STATE_HOME=$runicCompletions/state XDG_CACHE_HOME=$runicCompletions/cache \
+            $out/bin/${lib.escapeShellArg completions'.program} ${lib.escapeShellArgs completions'.command} "$shell" \
+            > "$runicCompletions/completion.$shell"
+          if [[ ! -s $runicCompletions/completion.$shell ]]; then
+            echo "error: $out/bin/${completions'.program} ${toString completions'.command} $shell printed no completions." >&2
+            exit 1
+          fi
+          installShellCompletion --cmd ${lib.escapeShellArg completions'.program} "--$shell" "$runicCompletions/completion.$shell"
+        done
+        rm -r "$runicCompletions"
+      ''}
       ${args.postFixup or ""}
     '';
 
