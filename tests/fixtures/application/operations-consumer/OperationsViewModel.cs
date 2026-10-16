@@ -57,7 +57,8 @@ public sealed class OperationsViewModel : ReactiveObject, IAsyncDisposable
             _accepted.RunAsync(() => MutateAsync(token)), scheduler);
     }
 
-    public HistoryQuery Query { get; } = new("history", "author", null);
+    // Settable, so the page sends it and the Bridge constructs it.
+    public HistoryQuery Query { get; set; } = new("history", "author", null);
     [JsonIgnore] public string RootVisible => "root-visible";
     public string Draft { get => _draft; private set => this.RaiseAndSetIfChanged(ref _draft, value); }
     public string Selected { get => _selected; private set => this.RaiseAndSetIfChanged(ref _selected, value); }

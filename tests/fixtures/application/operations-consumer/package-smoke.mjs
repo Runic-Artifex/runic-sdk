@@ -71,7 +71,8 @@ try {
   assert.equal(Object.keys(contractsAssets.libraries).some(name => name.startsWith("Runic.")), false,
     "The shared DTO library acquired a Runic dependency.");
   // Opt-in is a deliberate compatibility boundary. Default generation retains
-  // the existing diagnostic instead of silently changing shared contracts.
+  // the existing diagnostic for a DTO the page sends instead of silently
+  // changing shared contracts.
   const baseline = await run("dotnet", ["build", "OperationsConsumer.csproj", "-c", "Release", ...properties,
     "-p:EnableJsonIgnoreOptIn=false", "-p:RunicApplicationFrontendBuildEnabled=false"], directory, true);
   assert.notEqual(baseline.code, 0, "Generation unexpectedly accepted the computed DTO without opt-in.");

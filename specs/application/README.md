@@ -135,7 +135,11 @@ such a reply is `disconnected`. A checked write adds `receipt`:
 `applied` or `committed-with-error` with `snapshot: {value, version}`,
 `conflict` with `incoming`, or `rejected` with `message`.
 
-State is a JSON object with `revision` and the generated members. Content is
+State is a JSON object with `revision` and the generated members. A DTO in
+state, a result or a failure has every member, except a `JsonElement` member
+that holds no value, which is absent. A reader of a value the page sends fills
+in a missing member that is nullable or whose constructor parameter has a
+default, and rejects any other missing member. Content is
 `{kind, id}` or null; content collections are arrays of references. Checked
 fields add hidden metadata, `__runicFields: {<wire name>: {version}}`, which a
 client strips before exposing state.

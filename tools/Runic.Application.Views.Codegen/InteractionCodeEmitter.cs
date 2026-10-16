@@ -37,10 +37,10 @@ internal static class InteractionCodeEmitter
             plans.Add(new GeneratedInteractionPlan(property, interaction,
                 BridgeTypeGraph.Discover(interaction.Input,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 0),
-                    $"{modelName}.{property.Name}.input", property, honorJsonIgnore),
+                    $"{modelName}.{property.Name}.input", property, honorJsonIgnore, BridgeValueDirection.ToPage),
                 BridgeTypeGraph.Discover(interaction.Output,
                     ContractNullability.Argument(property, nullability, [interaction.Input, interaction.Output], 1),
-                    $"{modelName}.{property.Name}.output", property, honorJsonIgnore),
+                    $"{modelName}.{property.Name}.output", property, honorJsonIgnore, BridgeValueDirection.FromPage),
                 $"{contractFingerprint}:interaction:{property.Name}"));
         }
         return [.. plans];

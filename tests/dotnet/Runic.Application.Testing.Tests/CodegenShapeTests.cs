@@ -186,7 +186,7 @@ internal sealed class CodegenShapeTests
             ("codegenShape.ts", shape, "  readonly required: CodegenSlotOfString;\n  readonly optional: CodegenSlotOfNullableOfString;\n  readonly derived: CodegenDerivedOfString;"),
             // Any JSON value is unknown; a JsonNode is never JSON null.
             ("codegenShape.ts", shape, "  readonly any: unknown;\n  readonly maybeAny: unknown;\n  readonly node: unknown;\n  readonly json: CodegenJson;"),
-            ("types.ts", types, "export interface CodegenJson {\n  readonly any: unknown;\n  readonly node: unknown;\n  readonly required: NonNullable<unknown>;\n}"),
+            ("types.ts", types, "export interface CodegenJson {\n  readonly any?: unknown;\n  readonly node: unknown;\n  readonly required: NonNullable<unknown>;\n}"),
             ("codegenShape.ts", shape, "any: bridgeWire.json(wire.any),"),
             ("codegenShape.ts", shape, "required: bridgeWire.json(value[\"required\"], false)"),
             // The typeof() command input shares the state property's declaration.

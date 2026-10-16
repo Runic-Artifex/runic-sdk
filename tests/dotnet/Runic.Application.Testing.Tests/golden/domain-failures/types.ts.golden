@@ -21,7 +21,7 @@ export interface CodegenInnerOfString {
 }
 
 export interface CodegenJson {
-  readonly any: unknown;
+  readonly any?: unknown;
   readonly node: unknown;
   readonly required: NonNullable<unknown>;
 }
@@ -174,6 +174,35 @@ export type NoteSaveFailure =
 
 export interface NoteTitleTaken {
   readonly existingTitle: string;
+}
+
+export interface OptionalRequest {
+  readonly kind: string;
+  readonly label?: string | null;
+  readonly retention?: number;
+  readonly edits?: boolean | null;
+  readonly extra?: unknown;
+  readonly scope?: OptionalScope;
+  readonly ratio?: number;
+  readonly note?: string;
+}
+
+export type OptionalScope = "All" | "Home" | "System";
+
+export interface OptionalSettings {
+  readonly name: string;
+  readonly limit?: number | null;
+  readonly note?: string | null;
+}
+
+export interface OptionalSummary {
+  readonly runs: number;
+  readonly text: string;
+}
+
+export interface OptionalVersion {
+  readonly name: string;
+  readonly previous?: unknown;
 }
 
 export interface ReservedNamesbridgeWire {
