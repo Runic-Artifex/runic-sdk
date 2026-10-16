@@ -86,7 +86,7 @@ for name in ['core','consumer']:
   }
  } finally {rmSync(dir,{recursive:true,force:true});}
 });
-import { fetchRegistry, registryMatches } from './registry.mjs';
+import { fetchRegistry, registryMatches, nugetLists, waitForNuget } from './registry.mjs';
 test('registry polling retries availability and transient status with Retry-After', async()=>{
  const statuses=[404,429,503,200], delays=[];let time=0;
  const response=await fetchRegistry('https://registry.npmjs.org/test',{
@@ -112,6 +112,28 @@ test('registry polling is bounded and never retries mismatching published bytes'
   reads++;return reads===1 ? Response.json({name:p.name,version:VERSION,dist:{tarball:'https://registry.npmjs.org/test.tgz'}}) : new Response('wrong');
  }})).rejects.toThrow('Registry bytes differ');
  expect(reads).toBe(2);
+});
+
+test('after publication, the release waits until nuget.org lists every NuGet package version (#337)', async()=>{
+ const urls=[];
+ const listing=versions=>async url=>{urls.push(url);return versions===null ? new Response('',{status:404}) : Response.json({versions});};
+ expect(await nugetLists('Runic.Desktop','0.8.0-Preview.4',{fetchImpl:listing(['0.8.0-preview.3','0.8.0-preview.4'])})).toBe(true);
+ expect(urls).toEqual(['https://api.nuget.org/v3-flatcontainer/runic.desktop/index.json']);
+ expect(await nugetLists('Runic.Desktop','0.8.0-preview.4',{fetchImpl:listing(['0.8.0-preview.3'])})).toBe(false);
+ expect(await nugetLists('Runic.New','0.8.0-preview.4',{fetchImpl:listing(null)})).toBe(false);
+ await expect(nugetLists('Runic.Desktop','0.8.0-preview.4',{fetchImpl:async()=>new Response('',{status:500})})).rejects.toThrow('NuGet version list failed');
+ const packages=[{registry:'nuget',name:'Runic.A',version:'1.0.0'},{registry:'nuget',name:'Runic.B',version:'1.0.0'},{registry:'npm',name:'@runic-artifex/a',version:'1.0.0'}];
+ // Runic.A is listed from the first poll, Runic.B from the third; npm packages are not polled, and a listed package is not asked again.
+ let time=0;const asked=[],logs=[],sleeps=[];
+ await waitForNuget(packages,{now:()=>time,sleep:async ms=>{sleeps.push(ms);time+=ms;},log:line=>logs.push(line),intervalMs:1000,timeoutMs:10000,
+  lists:async name=>{asked.push(name);return name==='Runic.A' || sleeps.length>=2;}});
+ expect(asked).toEqual(['Runic.A','Runic.B','Runic.B','Runic.B']);
+ expect(sleeps).toEqual([1000,1000]);
+ expect(logs[0]).toBe('Waiting for nuget.org to list 1 package(s): Runic.B 1.0.0');
+ time=0;
+ await expect(waitForNuget(packages,{now:()=>time,sleep:async ms=>{time+=ms;},log:()=>{},intervalMs:30000,timeoutMs:120000,lists:async name=>name==='Runic.A'}))
+  .rejects.toThrow('nuget.org still does not list Runic.B 1.0.0 after 2 minutes');
+ expect(time).toBeLessThan(120000);
 });
 
 import { runChecked } from './process.mjs';

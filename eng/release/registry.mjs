@@ -54,6 +54,33 @@ export async function registryMatches(p, options={}) {
   return true;
 }
 
+// dotnet restore lists a package's versions from the flat container and reports NU1102
+// until the pushed version is listed there, which trails an accepted push by minutes
+// (nuget.org documents up to an hour). A listed version is also downloadable.
+export async function nugetLists(id, version, options={}) {
+  const lower=id.toLowerCase();
+  const response=await fetchRegistry(`https://api.nuget.org/v3-flatcontainer/${lower}/index.json`,options);
+  if (response.status === 404) { await response.body?.cancel(); return false; }
+  assert(response.ok, `NuGet version list failed for ${id}: ${response.status}`);
+  const {versions}=await response.json();
+  return versions.includes(version.toLowerCase());
+}
+// Polls until nuget.org lists every NuGet package of the release (#337), within timeoutMs.
+export async function waitForNuget(packages, {timeoutMs=60*60000, intervalMs=30000, now=Date.now,
+  sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms)), log=console.log, lists=nugetLists, ...options} = {}) {
+  const deadline=now()+timeoutMs;
+  let missing=packages.filter(p => p.registry === 'nuget');
+  for (;;) {
+    const listed=await Promise.all(missing.map(p => lists(p.name, p.version, options)));
+    missing=missing.filter((_, index) => !listed[index]);
+    if (missing.length === 0) return;
+    const names=missing.map(p => `${p.name} ${p.version}`).join(', ');
+    assert(now()+intervalMs < deadline, `nuget.org still does not list ${names} after ${Math.round(timeoutMs/60000)} minutes`);
+    log(`Waiting for nuget.org to list ${missing.length} package(s): ${names}`);
+    await sleep(intervalMs);
+  }
+}
+
 // Until 1.0 every release is a preview, so npm latest follows the newest one.
 // Never move latest back to an older version, for example on a late rerun.
 export function needsLatest(current, version) {
