@@ -237,13 +237,20 @@ internal static partial class DirectorySmoke
     {
         public string Path => "/org/freedesktop/portal/desktop";
         public bool HandlesChildPaths => true;
-        internal bool Hold, Directory, Modal;
-        internal uint ResponseCode;
+        internal volatile bool Hold;
+        internal bool Directory, Modal;
+        internal volatile uint ResponseCode;
         internal string? Parent, Title, Method, CurrentName, SaveUri;
-        internal TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal TaskCompletionSource Closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Handlers run on the bus connection's thread. A request's handler completes the Called it read when the request
+        // arrived: one that finishes after its caller already went on and called Reset (#339) must not complete the next
+        // request's Called, or the smoke cancels that request before it reaches the portal and waits for a Close that
+        // never comes.
+        private volatile TaskCompletionSource _called = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private volatile TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Called => _called;
+        internal TaskCompletionSource Closed => _closed;
         internal void Reset()
-        { Called = new(TaskCreationOptions.RunContinuationsAsynchronously); Closed = new(TaskCreationOptions.RunContinuationsAsynchronously); }
+        { _called = new(TaskCreationOptions.RunContinuationsAsynchronously); _closed = new(TaskCreationOptions.RunContinuationsAsynchronously); }
 
         public ValueTask HandleMethodAsync(MethodContext context)
         {
@@ -266,6 +273,9 @@ internal static partial class DirectorySmoke
                 context.ReplyError("org.freedesktop.DBus.Error.UnknownMethod", "This test service implements FileChooser only.");
                 return ValueTask.CompletedTask;
             }
+            var called = _called;
+            bool hold = Hold;
+            uint responseCode = ResponseCode;
             Method = context.Request.MemberAsString;
             Modal = false;
             CurrentName = null;
@@ -287,11 +297,11 @@ internal static partial class DirectorySmoke
             using var reply = context.CreateReplyWriter("o");
             reply.WriteObjectPath(new ObjectPath(requestPath));
             context.Reply(reply.CreateMessage());
-            if (!Hold)
+            if (!hold)
             {
                 using var response = connection.GetMessageWriter();
                 response.WriteSignalHeader(path: requestPath, @interface: "org.freedesktop.portal.Request", member: "Response", signature: "ua{sv}");
-                response.WriteUInt32(ResponseCode);
+                response.WriteUInt32(responseCode);
                 var results = response.WriteDictionaryStart();
                 response.WriteDictionaryEntryStart();
                 response.WriteString("uris");
@@ -299,7 +309,7 @@ internal static partial class DirectorySmoke
                 response.WriteDictionaryEnd(results);
                 connection.TrySendMessage(response.CreateMessage());
             }
-            Called.TrySetResult();
+            called.TrySetResult();
             return ValueTask.CompletedTask;
         }
     }
