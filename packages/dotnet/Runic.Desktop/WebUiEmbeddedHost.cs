@@ -109,4 +109,7 @@ internal sealed record WebUiEmbeddedHostOptions
 
     /// <summary>Credential-bearing script run in every frame before page scripts, when the host supports it.</summary>
     public string? DocumentStartScript { get; init; }
+
+    /// <summary>Reports an event of the open window, such as a terminated web process, to the host's sink and logger.</summary>
+    public Action<DesktopDiagnostic>? ReportDiagnostic { get; init; }
 }

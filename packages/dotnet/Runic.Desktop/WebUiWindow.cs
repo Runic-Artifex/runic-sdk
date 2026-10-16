@@ -9,6 +9,7 @@ using System.Text.Encodings.Web;
 using Runic.Desktop.Internal;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop;
 
@@ -1561,7 +1562,38 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             CustomParameters = _customBrowserParameters,
             AllowedPermissions = _allowedPermissions,
             DocumentStartScript = _embeddedHost?.SupportsDocumentStartScript == true ? CreateDocumentStartScript() : null,
+            ReportDiagnostic = ReportEmbeddedDiagnostic,
         };
+    }
+
+    // An embedded window's own event, such as a crashed web process (#313): to the sink, whose failure is logged, and
+    // to the log.
+    private void ReportEmbeddedDiagnostic(DesktopDiagnostic diagnostic)
+    {
+        try
+        {
+            _runtimeOptions?.DiagnosticSink?.Invoke(diagnostic);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            if (_runtimeOptions?.Logger is { } sinkLogger)
+                DesktopLog.DiagnosticSinkFailed(sinkLogger, exception, diagnostic.Code, DesktopLog.ErrorType(exception));
+            else Trace.TraceWarning($"The diagnostic sink failed for {diagnostic.Code}: {exception.GetType().FullName}");
+        }
+        if (_runtimeOptions?.Logger is { } logger)
+        {
+            DesktopLog.EmbeddedWindowDiagnostic(logger,
+                diagnostic.Severity == DesktopDiagnosticSeverity.Error ? LogLevel.Error : LogLevel.Warning,
+                diagnostic.Code, diagnostic.Message, diagnostic.Remediation ?? string.Empty);
+        }
+        else if (diagnostic.Severity == DesktopDiagnosticSeverity.Error)
+        {
+            Trace.TraceError($"{diagnostic.Code}: {diagnostic.Message}");
+        }
+        else
+        {
+            Trace.TraceWarning($"{diagnostic.Code}: {diagnostic.Message}");
+        }
     }
 
     internal event EventHandler? PresentationClosed;
@@ -2788,13 +2820,16 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         }
     }
 
+    // The redirect keeps the request's query, such as a route a served page reads from location.search (#313). The
+    // fragment never reaches the server; a browser keeps it across a redirect whose location has none.
     private void Redirect(HttpContext context, string location)
     {
         context.Response.StatusCode = StatusCodes.Status302Found;
         var pathBase = _surface?.PathBase;
-        context.Response.Headers.Location = pathBase is { Length: > 0 } && location.StartsWith('/')
+        var target = pathBase is { Length: > 0 } && location.StartsWith('/')
             ? pathBase + location
             : location;
+        context.Response.Headers.Location = target + context.Request.QueryString.ToUriComponent();
     }
 
     private static async Task SendVirtualContentAsync(

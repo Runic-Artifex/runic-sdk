@@ -16,6 +16,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private nint _webView;
     private WebUiEmbeddedHostOptions? _options;
     private Uri? _presentedUrl;
+    private readonly WebKitGtkWebProcess _webProcess = new();
     private int _dispatcherLease;
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
@@ -231,6 +232,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         Api.Connect(_window, "destroy", (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&OnDestroyed, this);
         Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, this);
         Api.Connect(_webView, "permission-request", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnPermissionRequest, this);
+        Api.Connect(_webView, "web-process-terminated", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, void>)&OnWebProcessTerminated, this);
         // WebKit sends each key to the page first. It runs handlers connected after its
         // own only for keys the page did not handle. The keyboard script reports
         // Control and the wheel, which WebKit would otherwise scroll with.
@@ -357,6 +359,27 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             {
                 Api.SetZoomLevel(host._webView, WebKitGtkKeyboard.Apply(command, Api.GetZoomLevel(host._webView)));
             }
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void OnWebProcessTerminated(nint webView, int reason, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host && host._webView == webView)
+            {
+                var (reload, diagnostic) = host._webProcess.Terminated(reason, Environment.TickCount64);
+                if (reload)
+                {
+                    Api.Reload(webView);
+                }
+                host._options?.ReportDiagnostic?.Invoke(diagnostic);
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
         }
     }
 
@@ -606,6 +629,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 WebKitWebContextNewPointer = Required(_webkit, "webkit_web_context_new");
                 WebKitWebViewNewWithContextPointer = Required(_webkit, "webkit_web_view_new_with_context");
                 WebKitWebViewLoadUriPointer = Required(_webkit, "webkit_web_view_load_uri");
+                WebKitWebViewReloadPointer = Required(_webkit, "webkit_web_view_reload");
                 WebKitWebViewGetTitlePointer = Required(_webkit, "webkit_web_view_get_title");
                 WebKitPermissionRequestDenyPointer = Required(_webkit, "webkit_permission_request_deny");
                 WebKitPermissionRequestAllowPointer = Required(_webkit, "webkit_permission_request_allow");
@@ -683,6 +707,7 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         private nint WebKitWebContextNewPointer { get; }
         private nint WebKitWebViewNewWithContextPointer { get; }
         private nint WebKitWebViewLoadUriPointer { get; }
+        private nint WebKitWebViewReloadPointer { get; }
         private nint WebKitWebViewGetTitlePointer { get; }
         private nint WebKitPermissionRequestDenyPointer { get; }
         private nint WebKitPermissionRequestAllowPointer { get; }
@@ -801,6 +826,8 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             using var value = Utf8String.Create(uri);
             ((delegate* unmanaged[Cdecl]<nint, byte*, void>)WebKitWebViewLoadUriPointer)(webView, value.Pointer);
         }
+
+        internal void Reload(nint webView) => ((delegate* unmanaged[Cdecl]<nint, void>)WebKitWebViewReloadPointer)(webView);
 
         internal string? WebKitWebViewGetTitle(nint webView)
         {

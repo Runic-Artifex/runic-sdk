@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Runic.Application.Views;
 using Runic.Desktop;
 using Runic.Navigation;
+using Runic.Platform;
 
 namespace Runic.Application.Views.Desktop;
 
@@ -26,7 +27,8 @@ namespace Runic.Application.Views.Desktop;
 /// The application runs as long as the body passed to <c>Run</c>: closing the last Window does not end it, and a body
 /// may run without any Window, for example behind a status icon. To keep one copy running, claim
 /// <c>ApplicationInstance.ClaimAsync</c> before <c>Run</c> and bring an open Window forward with
-/// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/> when another launch arrives.
+/// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/> when another launch arrives, or open one for it with
+/// <see cref="OpenWindowAsync{TWindow}(RunicWindowOptions?, DesktopActivationContext?, CancellationToken)"/>.
 /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, as on CS-WebUI, no window or browser
 /// is opened: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
 /// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then
@@ -129,6 +131,49 @@ public sealed class RunicDesktopHost : IRunicWindowHost
         try { return DesktopEventLoop.Run(options, desktop => application(new RunicDesktopHost(services, desktop))); }
         finally { lent?.Return(); }
     }
+
+    /// <summary>
+    /// Opens <typeparamref name="TWindow"/> as <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/> does,
+    /// and asks the desktop to give the new window focus with <paramref name="activation"/>.
+    /// </summary>
+    /// <remarks>
+    /// Open a Window for a launch with the launch's activation context, such as
+    /// <see cref="ApplicationLaunch.PlatformContext"/> of a launch the running instance received. Wayland
+    /// compositors such as KWin give a new window focus only with the activation token of the launch it answers;
+    /// without it, the window opens behind the active one and only asks for attention. The window is presented with
+    /// the context as soon as it is shown, as
+    /// <see cref="PlatformServices.PresentAsync(DesktopNativeOwner, DesktopActivationContext?, CancellationToken)"/>
+    /// does; the desktop decides whether to grant focus. Nothing is presented for a <see langword="null"/> context, a
+    /// hidden window (<see cref="DesktopWindowOptions.Hidden"/>), a window served under
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY</c> or an installed browser after an embedded-window fallback. The activation
+    /// follows the options, so a call with one argument still opens through
+    /// <see cref="RunicWindowHostExtensions.OpenWindowAsync{TWindow}"/>.
+    /// </remarks>
+    /// <param name="options">The content and size; <see langword="null"/> opens <c>www/index.html</c> next to the application.</param>
+    /// <param name="activation">The desktop's short-lived activation data. Use it once, promptly.</param>
+    /// <param name="cancellationToken">Cancels opening. A cancelled open releases everything it created.</param>
+    /// <returns>The open Window.</returns>
+    /// <exception cref="RunicWindowConfigurationException">A check failed before anything opened.</exception>
+    public async ValueTask<TWindow> OpenWindowAsync<TWindow>(RunicWindowOptions? options,
+        DesktopActivationContext? activation, CancellationToken cancellationToken = default)
+        where TWindow : class, IRunicWindow, new()
+    {
+        var window = await RunicWindowHostExtensions.OpenWindowAsync<TWindow>(this, options, cancellationToken)
+            .ConfigureAwait(false);
+        if (activation is not null && !WindowOptions.Hidden &&
+            window.Host is IDesktopNativeOwnerSource { NativeOwnerOrNull: { IsAvailable: true } owner })
+        {
+            // A presentation request the desktop may refuse; the open Window stands either way, so the result,
+            // such as a window the user already closed, is not an open failure.
+            try { _ = await Present(owner, activation, CancellationToken.None).ConfigureAwait(false); }
+            catch (Exception error) when (error is not OutOfMemoryException) { }
+        }
+        return window;
+    }
+
+    // PlatformServices.PresentAsync; tests observe the request instead.
+    internal Func<DesktopNativeOwner, DesktopActivationContext?, CancellationToken, ValueTask<PlatformResult<PlatformUnit>>> Present
+    { get; init; } = PlatformServices.PresentAsync;
 
     IReadOnlyList<RunicWindowDiagnostic> IRunicWindowHost.Validate(RunicWindowOptions options)
     {

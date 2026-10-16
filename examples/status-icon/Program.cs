@@ -75,12 +75,13 @@ return RunicDesktopHost.Run(provider, new DesktopHostOptions { HandlesShutdownWi
         }
         if (closed is { IsCompleted: true }) { await window!.DisposeAsync(); window = null; }
         // The primary click, "Open window" and a second launch open the counter, or bring the open one forward.
-        var context = (item as ApplicationLaunch)?.PlatformContext;
+        // The launch's or the click's activation token lets the desktop give the Window focus.
+        var context = (item as ApplicationLaunch)?.PlatformContext ?? (item as DesktopStatusIconActivation)?.PlatformContext;
         if (item is ApplicationLaunch || item is DesktopStatusIconActivation { Kind: DesktopStatusIconActivationKind.Primary } or DesktopStatusIconActivation { MenuItemId: "open" })
         {
             if (window is null)
             {
-                window = await host.OpenWindowAsync<CounterWindow>(new RunicWindowOptions { Width = 480, Height = 320 });
+                window = await host.OpenWindowAsync<CounterWindow>(new RunicWindowOptions { Width = 480, Height = 320 }, context);
                 closed = window.WaitForCloseAsync().AsTask();
             }
             else if (window.Host is DesktopBridgeWindow<CounterViewModel> open)

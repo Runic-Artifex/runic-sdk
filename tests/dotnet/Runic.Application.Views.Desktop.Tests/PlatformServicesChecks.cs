@@ -148,6 +148,58 @@ internal sealed class PlatformServicesChecks
         }
     }
 
+    // #313: a Window opened for a forwarded launch is presented with the launch's activation context as soon as it is
+    // shown, so that the compositor gives it focus. Without a context, for a hidden window and for a window without
+    // native dispatch nothing is presented, and a presentation that fails does not fail the open.
+    [Test, NotInParallel(Order = 16)]
+    public async Task OpenWindowWithActivationPresentsTheNewWindow()
+    {
+        await using var provider = CreateProvider();
+        var activation = new DesktopActivationContext(activationToken: "launch-token");
+        List<(DesktopNativeOwner Owner, DesktopActivationContext? Context)> presented = [];
+        var fail = false;
+        ValueTask<PlatformResult<PlatformUnit>> Record(DesktopNativeOwner owner, DesktopActivationContext? context, CancellationToken _)
+        {
+            presented.Add((owner, context));
+            if (fail) throw new InvalidOperationException("The desktop refused.");
+            return ValueTask.FromResult<PlatformResult<PlatformUnit>>(new PlatformResult<PlatformUnit>.Success(new PlatformUnit()));
+        }
+        RunicDesktopHost Windows(DesktopHost desktop, bool hidden = false) => new(provider, desktop)
+        {
+            SurfaceOptions = new DesktopSurfaceOptions { Content = new DesktopContent.Html("<!doctype html>") },
+            WindowOptions = new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = hidden },
+            Present = Record,
+        };
+
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false }))
+        {
+            await using (var window = await Windows(host).OpenWindowAsync<FileWindow>(null, activation))
+            {
+                var owner = ((DesktopBridgeWindow<FileViewModel>)window.Host).NativeOwner;
+                Require(presented.Count == 1 && ReferenceEquals(presented[0].Owner, owner) && ReferenceEquals(presented[0].Context, activation),
+                    "The new window was not presented once with the launch's activation context.");
+            }
+            await using (await Windows(host).OpenWindowAsync<FileWindow>(options: null, activation: null)) { }
+            await using (await Windows(host, hidden: true).OpenWindowAsync<FileWindow>(null, activation)) { }
+            Require(presented.Count == 1, "A window without a context, or a hidden one, was presented.");
+
+            fail = true;
+            await using (var refused = await Windows(host).OpenWindowAsync<FileWindow>(null, activation))
+            {
+                Require(presented.Count == 2 && refused.Host is DesktopBridgeWindow<FileViewModel> { Presentation.IsOpen: true },
+                    "A refused presentation failed the open or closed the window.");
+            }
+        }
+
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = new NativeDispatchFactory { SupportsDispatch = false },
+            WaitForConnection = false,
+        }))
+        await using (await Windows(host).OpenWindowAsync<FileWindow>(null, activation)) { }
+        Require(presented.Count == 2, "A window without native dispatch was presented.");
+    }
+
     [Test, NotInParallel(Order = 17)]
     public async Task ReadmeSampleReportsAnUnboundWindow()
     {

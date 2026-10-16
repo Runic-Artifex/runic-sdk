@@ -64,6 +64,13 @@ The same Window and `async host => ...` body run on CS-WebUI with
   `new RunicDesktopHost(provider, desktop) { SurfaceOptions = ..., WindowOptions = ... }`
   inside `DesktopEventLoop.Run`. `RunicDesktopHost.DefaultWindowOptions` opens
   the embedded WebView and falls back to an installed browser.
+- `host.OpenWindowAsync<TWindow>(options, activation, cancellationToken)` on
+  `RunicDesktopHost` opens a Window for a launch or a click: it opens the Window
+  as above and presents it with the desktop's activation token or startup ID,
+  such as `ApplicationLaunch.PlatformContext` of a launch the running instance
+  received. Wayland compositors such as KWin give a new window focus only with
+  that token. A Window that is already open is brought forward with
+  `PlatformServices.PresentAsync(window, context)` instead.
 - `host.ValidateWindow<TWindow>(options)` checks, before any window opens, that
   the generated Bridge for the ViewModel is registered and that
   `DesktopHost.Validate` accepts the window options. It returns every problem

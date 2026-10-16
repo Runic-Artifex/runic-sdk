@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Runic.Desktop.Tests;
 
@@ -636,6 +637,51 @@ public sealed class DesktopApiTests
         Assert.Equal("camera=(), microphone=()", response.Headers.GetValues("Permissions-Policy").Single());
     }
 
+    // #313: an embedded window reports its own events, such as a crashed WebKitGTK web process, through
+    // DesktopWindowHostOptions.ReportDiagnostic to the sink and the Desktop logger (event 3010), and a failing sink
+    // does not reach the window.
+    [Test]
+    public async Task EmbeddedWindowDiagnosticsReachTheSinkAndTheLog()
+    {
+        var factory = new RecordingWindowHostFactory();
+        var loggers = new ConfigurationValidationTests.RecordingLoggerFactory();
+        var reported = new ConcurrentQueue<DesktopDiagnostic>();
+        var failSink = false;
+        await using var host = await DesktopHost.StartAsync(new DesktopHostOptions
+        {
+            WindowHostFactory = factory,
+            WaitForConnection = false,
+            LoggerFactory = loggers,
+            DiagnosticSink = diagnostic =>
+            {
+                reported.Enqueue(diagnostic);
+                if (failSink) throw new InvalidOperationException("sink");
+            },
+        });
+        await using var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html("<p>page</p>") });
+        await using var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded });
+        var report = factory.Host?.Options?.ReportDiagnostic;
+        Assert.NotNull(report);
+
+        var crashed = new DesktopDiagnostic(DesktopErrorCategory.OperationFailed, "web-process-terminated",
+            "The window's WebKitGTK web process crashed; the page was reloaded.", Retryable: true, Remediation: "Look.")
+        {
+            Severity = DesktopDiagnosticSeverity.Warning,
+        };
+        report(crashed);
+        Assert.Same(crashed, Assert.Single(reported));
+        var logged = Assert.Single(loggers.Entries, entry => entry.EventId.Id == 3010);
+        Assert.Equal("EmbeddedWindowDiagnostic", logged.EventId.Name);
+        Assert.Equal(LogLevel.Warning, logged.Level);
+        Assert.Equal("Runic.Desktop", logged.Category);
+        Assert.Contains("web-process-terminated", logged.Message, StringComparison.Ordinal);
+
+        failSink = true;
+        report(crashed with { Severity = DesktopDiagnosticSeverity.Error });
+        Assert.Contains(loggers.Entries, entry => entry.EventId.Id == 3009);
+        Assert.Contains(loggers.Entries, entry => entry.EventId.Id == 3010 && entry.Level == LogLevel.Error);
+    }
+
     [Test]
     public async Task DirectoryContentOpensItsEntryAndServesItsFiles()
     {
@@ -670,6 +716,16 @@ public sealed class DesktopApiTests
                 Content = new DesktopContent.Directory(root.FullName),
             });
             Assert.Equal("index", await client.GetStringAsync(discovered.Url));
+
+            // #313: the redirect to the index keeps the query, such as a route the page reads from location.search,
+            // and stays under the surface's path.
+            using var noRedirects = new HttpClientHandler { AllowAutoRedirect = false };
+            using var manual = new HttpClient(noRedirects);
+            using var redirect = await manual.GetAsync(new Uri(discovered.Url, "?view=changes&q=a%20b"));
+            Assert.Equal(HttpStatusCode.Found, redirect.StatusCode);
+            Assert.Equal(new Uri(discovered.Url, "index.html?view=changes&q=a%20b"),
+                new Uri(discovered.Url, redirect.Headers.Location!));
+            Assert.Equal("index", await client.GetStringAsync(new Uri(discovered.Url, "?view=changes")));
         }
         finally
         {

@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Desktop.DesktopWindowHostOptions.ReportDiagnostic.get -> System.Action<Runic.Desktop.DesktopDiagnostic!>?
+Runic.Desktop.DesktopWindowHostOptions.ReportDiagnostic.init -> void
