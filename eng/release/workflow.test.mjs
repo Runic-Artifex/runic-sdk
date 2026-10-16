@@ -95,6 +95,19 @@ test('publication verifies the candidate inventory and does not wait for registr
   expect(Object.keys(release.on.workflow_dispatch.inputs)).toEqual(['version', 'dry-run']);
   expect(existsSync(new URL('../../.github/workflows/preview-evidence.yml', import.meta.url))).toBe(false);
 });
+test('a job after publish waits for nuget.org to list the packages without holding a token or delaying the release (#337)', () => {
+  const release = workflow('publish-preview.yml');
+  const {indexed, publish} = release.jobs;
+  expect(indexed.needs).toBe('publish');
+  expect(indexed.permissions).toEqual({contents: 'read'});
+  expect(indexed.environment).toBeUndefined();
+  expect(indexed.steps.some(s => s.uses?.startsWith('NuGet/login'))).toBe(false);
+  expect(indexed.steps.find(s => s.uses?.startsWith('actions/download-artifact@')).with.name).toBe('release-candidate-${{ github.run_id }}');
+  expect(runs(indexed)).toContain('bun eng/release/cli.mjs wait-indexed artifacts/release/packages.json');
+  // The poll is bounded by its own timeout (an hour); the job's limit only backs it up.
+  expect(indexed['timeout-minutes']).toBeGreaterThan(60);
+  expect(runs(publish)).not.toContain('wait-indexed');
+});
 test('npm latest follows the preview after its GitHub release, never backwards', async () => {
   const { needsLatest } = await import('./registry.mjs');
   const steps = workflow('publish-preview.yml').jobs.publish.steps;

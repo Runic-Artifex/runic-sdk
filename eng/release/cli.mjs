@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { authority, scan, json, sha256, validateCandidate, VERSION, REPOSITORY } from './artifacts.mjs';
-import { registryMatches, needsLatest, npmLatest } from './registry.mjs';
+import { registryMatches, needsLatest, npmLatest, waitForNuget } from './registry.mjs';
 import { publishMissing } from './nuget-policy.mjs';
 import { runChecked } from './process.mjs';
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -48,6 +48,11 @@ else if (command === 'registry') {
       runChecked('dotnet', ['nuget', 'push', path, '--source', 'https://api.nuget.org/v3/index.json', '--api-key', process.env.NUGET_API_KEY]);
     }
   }});
+} else if (command === 'wait-indexed') {
+  // After publish: restores of the release's NuGet packages succeed once this returns.
+  const candidate = json(args[0]); validateCandidate(candidate);
+  await waitForNuget(candidate.packages);
+  console.log(`nuget.org lists every NuGet package of ${VERSION}.`);
 } else if (command === 'tag-latest') {
   const candidate = json(args[0]); validateCandidate(candidate);
   if (!dryRun) assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, 'OIDC unavailable');
@@ -58,4 +63,4 @@ else if (command === 'registry') {
     else if (dryRun) console.log(`Would move ${p.name} latest from ${current ?? '(unpublished)'} to ${VERSION}`);
     else runChecked('npm', ['dist-tag', 'add', `${p.name}@${VERSION}`, 'latest', '--registry', 'https://registry.npmjs.org']);
   }
-} else throw new Error('Use prepare <packages> <source> <run> <manifest>, verify <packages> <manifest>, registry <manifest>, publish <packages> <manifest> [--dry-run], or tag-latest <manifest> [--dry-run]');
+} else throw new Error('Use prepare <packages> <source> <run> <manifest>, verify <packages> <manifest>, registry <manifest>, wait-indexed <manifest>, publish <packages> <manifest> [--dry-run], or tag-latest <manifest> [--dry-run]');

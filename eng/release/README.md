@@ -17,7 +17,10 @@ releases and their evidence remain historical records.
    requested version and commit, attests their build provenance and SBOM, publishes
    those exact packages, creates the GitHub prerelease with generated change notes, a
    package bundle, a CycloneDX SBOM and one checksum file, and moves npm `latest`.
-6. Afterwards, move each library's `PublicAPI.Unshipped.txt` entries into
+6. Wait for the run's `indexed` job: it ends once nuget.org lists every NuGet package
+   of the release, which can take up to an hour after the push. Until then a restore of
+   the new version fails with NU1102, so push the post-release commit after it. Then
+   move each library's `PublicAPI.Unshipped.txt` entries into
    `PublicAPI.Shipped.txt`. A `*REMOVED*` entry is not moved: delete it together
    with the Shipped line it names. Then set `RunicPackageValidationBaselineVersion`
    in `eng/Versions.props` to the published version and delete the
@@ -75,6 +78,10 @@ nonblocking limitations as issues rather than introducing custom waiver formats.
   NuGet push check before the first push, then publishes (npm also with `--provenance`),
   creates the release and moves `latest`. It installs no workspace dependencies:
   the release scripts use only built-in modules.
+- `indexed` (`contents: read`, no environment) runs after `publish` and polls
+  `cli.mjs wait-indexed`: every 30 seconds, for up to an hour, it reads each NuGet
+  package's flat-container version list, which `dotnet restore` uses, until all list
+  the release's version. The GitHub release and npm `latest` do not wait for it.
 
 A dry run therefore ends after `candidate`, with no OIDC token, attestation,
 registry write, tag or release. A failing dry-run check is the failure the real
@@ -134,7 +141,8 @@ If publication fails, rerun the failed `publish` job in the same run. If NuGet i
 indexing a previous push, wait for it to become available before retrying.
 It reuses the same CI artifact, checks already published versions for matching
 contents, and publishes only missing packages. Changed package contents require a new version. Registry indexing and public installation do not block GitHub release creation;
-NuGet can take up to an hour to expose newly accepted packages. Assets upload to a draft before
+NuGet can take up to an hour to expose newly accepted packages, and the `indexed` job
+reports when it has. If that job times out, rerun it. Assets upload to a draft before
 it becomes public, so interrupted uploads can be resumed. An existing published
 release for the same source is preserved on retry, so a rerun after a partial
 publication finishes the remaining steps, including moving `latest`. CI package artifacts are kept for 30 days. If the artifact
@@ -163,7 +171,8 @@ bun test eng/release/template-locks.test.mjs
 
 `cli.mjs prepare` records the package inventory and hashes for the current run;
 `verify` checks the downloaded files; `publish` checks registry identity/content
-before sending missing versions; `registry` checks availability. These are internal
+before sending missing versions; `registry` checks availability; `wait-indexed` waits
+until nuget.org lists the NuGet packages. These are internal
 workflow steps, not files a maintainer must assemble by hand.
 
 ## New NuGet package IDs
