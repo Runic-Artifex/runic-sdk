@@ -25,7 +25,9 @@
   # The application's project file, relative to src.
   projectFile,
   # packages.lock.json files whose packages restore the project: its own, and those of any project it
-  # references or builds. nugetDeps (a deps.json, or a list of NuGet package derivations) adds to them.
+  # references or builds. nugetDeps (a deps.json, or a list of NuGet package derivations) adds to them. For
+  # several runtimes, { linux-x64 = [ ... ]; linux-arm64 = [ ... ]; }: a locked restore needs a lock file per
+  # runtime identifier.
   nugetLockFiles ? [ ],
   nugetDeps ? null,
   # Restore in locked mode (RestoreLockedMode), so a lock file that no longer matches the project fails the
@@ -95,16 +97,34 @@ let
     inherit dotnet-sdk;
   };
   runtimeId = args.runtimeId or (dotnetCorePackages.systemToDotnetRid stdenvNoCC.hostPlatform.system);
-  # Locked mode compares the lock with the restore for this runtime identifier, whose section a lock written
-  # without RuntimeIdentifiers lacks.
-  lockWithoutRuntime = lib.findFirst (
-    file: !(lib.any (key: lib.hasSuffix "/${runtimeId}" key) (lib.attrNames ((lib.importJSON file).dependencies or { })))
-  ) null (lib.toList nugetLockFiles);
+  lockFiles =
+    if lib.isAttrs nugetLockFiles && !lib.isDerivation nugetLockFiles then
+      lib.toList (
+        nugetLockFiles.${runtimeId} or (throw ''
+          buildRunicApplication: nugetLockFiles has no lock files for ${runtimeId}, only for ${lib.concatStringsSep ", " (lib.attrNames nugetLockFiles)}.
+          Restore the projects for it (dotnet restore -p:RuntimeIdentifiers=${runtimeId}) into their own lock files and add them as nugetLockFiles.${runtimeId}; see nix/README.md.'')
+      )
+    else
+      lib.toList nugetLockFiles;
+  # Locked mode compares each lock with a restore for this runtime identifier alone (dotnet restore --runtime): a
+  # lock written without RuntimeIdentifiers lacks its section, and one written for several runtimes has others.
+  lockRuntimes =
+    file:
+    lib.unique (
+      map (key: lib.last (lib.splitString "/" key)) (
+        lib.filter (lib.hasInfix "/") (lib.attrNames ((lib.importJSON file).dependencies or { }))
+      )
+    );
+  lockWithoutRuntime = lib.findFirst (file: !(lib.elem runtimeId (lockRuntimes file))) null lockFiles;
+  lockWithOtherRuntimes = lib.findFirst (file: lockRuntimes file != [ runtimeId ]) null lockFiles;
   checkedLockFiles =
     assert lib.assertMsg (!nugetLockedMode || lockWithoutRuntime == null) ''
       buildRunicApplication: ${toString lockWithoutRuntime} has no ${runtimeId} section, so a locked restore for ${runtimeId} fails.
       Set <RuntimeIdentifiers>${runtimeId}</RuntimeIdentifiers> in the project and run dotnet restore again, or set nugetLockedMode = false.'';
-    nugetLockFiles;
+    assert lib.assertMsg (!nugetLockedMode || lockWithOtherRuntimes == null) ''
+      buildRunicApplication: ${toString lockWithOtherRuntimes} has sections for ${lib.concatStringsSep ", " (lockRuntimes lockWithOtherRuntimes)}, but a locked restore for ${runtimeId} restores that runtime alone and fails (NU1004).
+      Keep one lock file per runtime identifier, and pass them as nugetLockFiles = { ${runtimeId} = [ ... ]; ... }; see nix/README.md.'';
+    lockFiles;
   extraNugetDeps =
     if nugetDeps == null then
       [ ]

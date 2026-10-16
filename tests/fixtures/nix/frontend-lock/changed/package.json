@@ -1,0 +1,7 @@
+{
+  "name": "runic-frontend-lock-fixture",
+  "private": true,
+  "dependencies": {
+    "is-number": "6.0.0"
+  }
+}
