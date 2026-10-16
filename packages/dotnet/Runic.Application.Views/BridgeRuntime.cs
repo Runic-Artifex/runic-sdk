@@ -45,6 +45,11 @@ public sealed class PropertyDescriptor<T>(string name, Func<T, object?> getter, 
 
     /// <summary>The .NET property name.</summary>
     public string Name { get; } = name;
+    /// <summary>
+    /// The wire name of a <see cref="RunicAppendOnlyTextAttribute"/> property whose appended text the Bridge publishes
+    /// as a frame, or <see langword="null"/>. <see cref="Get"/> returns its <see cref="string"/> value.
+    /// </summary>
+    public string? AppendOnlyTextField { get; init; }
     /// <summary>Whether the browser may write the property.</summary>
     public bool CanWrite => setter is not null;
     /// <summary>Reads the property value from <paramref name="vm"/>.</summary>
@@ -301,6 +306,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     private readonly HashSet<string> _generatedCollectionNames;
     private readonly List<BridgeCollectionChange<T>> _pendingCollectionChanges = [];
     private readonly Dictionary<BridgeCollectionDescriptor<T>, Dictionary<object, int>> _collectionIndexes = [];
+    // Append-only text: the value of each field as of the last state or frame
+    // the producer published, and the fields that changed since.
+    private readonly PropertyDescriptor<T>[] _textFields;
+    private readonly Dictionary<PropertyDescriptor<T>, string?> _textBaselines = [];
+    private readonly List<PropertyDescriptor<T>> _pendingTexts = [];
     private long _publishedRevision;
     private bool _requiresSnapshot;
     private long _revision;
@@ -382,6 +392,7 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         _writeSnapshot = writeSnapshot ?? ((_, _, _) => throw new InvalidOperationException("A snapshot writer is required."));
         _writeSnapshotWithFields = writeSnapshotWithFields;
         _properties = properties;
+        _textFields = [.. properties.Where(property => property.AppendOnlyTextField is not null)];
         _checkedProperties = [];
         _commands = commands;
         _contractFingerprint = contractFingerprint;
@@ -434,6 +445,8 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                     _checkedProperties = [.. checkedBindings];
                 }
             }
+            // A client's first state, a snapshot reply, has these values at the initial revision.
+            foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
             _vm.PropertyChanged += OnChanged;
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
@@ -1208,6 +1221,11 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
         lock (_modelGate)
         {
             if (IsInactive) return;
+            if (_textFields.Length > 0 && Array.Find(_textFields, field => field.Name == e.PropertyName) is { } text)
+            {
+                PublishTextCore(text);
+                return;
+            }
             RefreshCollectionSubscriptions();
             RefreshObservedSubObjects();
             Publish();
@@ -1264,7 +1282,18 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
     {
         _requiresSnapshot = true;
         _pendingCollectionChanges.Clear();
+        _pendingTexts.Clear();
         _delivery.RequestState();
+    }
+
+    // A change of an append-only text field takes the next revision. Without a
+    // pending full state it becomes a frame, compared with the value the page
+    // has when it is published, so a batch of appends is one change.
+    private void PublishTextCore(PropertyDescriptor<T> field)
+    {
+        _revision = NextRevision();
+        if (!_requiresSnapshot && !_pendingTexts.Contains(field)) _pendingTexts.Add(field);
+        if (!BridgeSnapshotBatch.TryDefer(_vm, this)) PublishCollectionOrSnapshotCore();
     }
 
     // Called by the delivery in the model turn after it took the request.
@@ -1317,6 +1346,9 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
             _requiresSnapshot = false;
             _rejectedKeys = null;
             _pendingCollectionChanges.Clear();
+            _pendingTexts.Clear();
+            // The state wrote these values in this model turn.
+            foreach (var field in _textFields) _textBaselines[field] = field.Get(_vm) as string;
             return state;
         }
         catch (BridgeSnapshotDetachedException)
@@ -1379,7 +1411,18 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
 
     private void PublishCollectionOrSnapshotCore()
     {
-        if (_requiresSnapshot || _pendingCollectionChanges.Count == 0) { PublishSnapshotCore(); return; }
+        if (_requiresSnapshot || _pendingCollectionChanges.Count == 0 && _pendingTexts.Count == 0) { PublishSnapshotCore(); return; }
+        var texts = new List<(PropertyDescriptor<T> Field, string Value, BridgeTextDelta Delta)>(_pendingTexts.Count);
+        foreach (var field in _pendingTexts)
+        {
+            var value = field.Get(_vm) as string;
+            if (!_textBaselines.TryGetValue(field, out var baseline) || value is null || baseline is null) { PublishSnapshotCore(); return; }
+            if (string.Equals(value, baseline, StringComparison.Ordinal)) continue;
+            if (BridgeTextDelta.Between(baseline, value) is not { } textDelta) { PublishSnapshotCore(); return; }
+            texts.Add((field, value, textDelta));
+        }
+        // A notification that changed nothing still advanced the revision.
+        if (_pendingCollectionChanges.Count == 0 && texts.Count == 0) { PublishSnapshotCore(); return; }
         var delta = WriteJson(writer =>
         {
             writer.WriteStartObject();
@@ -1402,12 +1445,24 @@ public class ViewModelBridge<T> : IDisposable, IHotReloadableBridge, IBridgeDeta
                 writer.WriteEndArray();
                 writer.WriteEndObject();
             }
+            foreach (var (field, _, text) in texts)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("field", field.AppendOnlyTextField);
+                writer.WriteString("kind", "text");
+                writer.WriteNumber("length", text.Length);
+                writer.WriteNumber("trim", text.Trim);
+                writer.WriteString("text", text.Text);
+                writer.WriteEndObject();
+            }
             writer.WriteEndArray();
             writer.WriteEndObject();
         });
         if (!_delivery.EnqueueDelta(delta)) { PublishRecoverySnapshotCore(); return; }
         _publishedRevision = _revision;
         _pendingCollectionChanges.Clear();
+        _pendingTexts.Clear();
+        foreach (var (field, value, _) in texts) _textBaselines[field] = value;
     }
 
     private bool TryPublishItem(object item)

@@ -100,6 +100,20 @@ Application code does not call it. A hand-written or test client that connects
 a collection route itself passes `defineCollections({ rows: defineCollection(...) })`
 in the same way, and its key must match the .NET wire key: the string itself,
 a lowercase GUID, or an `Int32` in decimal.
+### `defineText(nullable?)`
+
+```ts
+function defineText(nullable?: boolean): BridgeCollectionDefinition;
+```
+
+Exported from `@runic-artifex/views/generated`. Describes a C#
+`[RunicAppendOnlyText]` string field, such as a live log: its frames drop
+characters from the start of the text the client has and append text, so a
+long log does not cross whole on every change. Generated modules pass it with
+the collections, as `defineCollections({ log: defineText() })`; `nullable`
+accepts `null` for a `string?`. A change whose length does not match the
+client's text is unusable, and the client reads a fresh snapshot.
+
 ### `collectionViewport(options)`
 
 ```ts

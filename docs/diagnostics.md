@@ -108,11 +108,12 @@ property has no public getter or an empty wire name, ViewModel content or a
 `NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's
 item type has no registered View, or a region slot is a
 `NavigationRegion<object>` or has no ViewModel with a registered View that is a
-`TContent`.
+`TContent`, or a `[RunicAppendOnlyText]` member is not a read-only `string`
+state property.
 
 **Fix:** add a getter, make content read-only to the web view, register a View
-for the item or content type, or give the region a specific content interface
-or base class.
+for the item or content type, give the region a specific content interface
+or base class, or make an append-only text a read-only `string`.
 
 ### RUNICBRIDGE009
 

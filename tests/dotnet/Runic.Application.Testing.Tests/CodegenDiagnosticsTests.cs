@@ -82,6 +82,15 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class JsonObjectWindow : RunicWindow<JsonObjectViewModel>;
                 """, "RUNICBRIDGE003", "public sealed class JsonObjectViewModel",
                 "System.Text.Json.Nodes.JsonObject is not a bridge value. Declare JsonNode or JsonElement for any JSON value").ConfigureAwait(false);
+            // Append-only text is read-only state: the page never writes it (#300).
+            await RejectAt("SettableAppendOnlyText", """
+                public sealed class SettableLogViewModel : FixtureModel { [RunicAppendOnlyText] public string Log { get; set; } = ""; }
+                public sealed partial class SettableLogWindow : RunicWindow<SettableLogViewModel>;
+                """, "RUNICBRIDGE008", "public string Log", "SettableLogViewModel.Log: RunicAppendOnlyText requires a read-only string state property.").ConfigureAwait(false);
+            await RejectAt("NumberAppendOnlyText", """
+                public sealed class CountLogViewModel : FixtureModel { [RunicAppendOnlyText] public int Count => 0; }
+                public sealed partial class CountLogWindow : RunicWindow<CountLogViewModel>;
+                """, "RUNICBRIDGE008", "public int Count", "CountLogViewModel.Count: RunicAppendOnlyText requires a read-only string state property.").ConfigureAwait(false);
             // A nested DTO member points at the DTO property, not the ViewModel.
             await RejectAt("NestedValue", """
                 public sealed class Row

@@ -2,11 +2,21 @@
 export interface BridgeCollectionDefinition {
   readonly decode: (wire: unknown) => unknown;
   readonly key: (item: unknown) => string;
+  /** An append-only text field (`defineText`) rather than a keyed collection. */
+  readonly text?: { readonly nullable: boolean };
 }
 
 /** Keeps collection codecs typed in generated clients. */
 export function defineCollection<T>(decode: (wire: unknown) => T, key: (item: T) => string): BridgeCollectionDefinition {
   return { decode, key: item => key(item as T) };
+}
+
+/**
+ * An append-only text field, a C# `[RunicAppendOnlyText]` string: its frames drop
+ * characters from its start and append text, instead of resending it.
+ */
+export function defineText(nullable = false): BridgeCollectionDefinition {
+  return { decode: wire => wire, key: () => { throw new Error("A text field has no keys."); }, text: { nullable } };
 }
 
 /**
@@ -52,6 +62,10 @@ export function validateCollections(state: unknown, definitions: Readonly<Record
   if (Object.keys(definitions).length === 0) return;
   const values = object(state);
   for (const [field, definition] of Object.entries(definitions)) {
+    if (definition.text) {
+      if (typeof values[field] !== "string" && !(definition.text.nullable && values[field] === null)) throw new Error("Invalid text state.");
+      continue;
+    }
     if (!Array.isArray(values[field])) throw new Error("Invalid collection state.");
     keys(values[field], definition);
   }
@@ -68,6 +82,11 @@ export function applyCollectionDelta(state: unknown, changes: unknown,
     const field = change.field;
     if (typeof field !== "string" || !Object.hasOwn(definitions, field)) throw new Error("Unknown collection field.");
     const definition = definitions[field]!;
+    if (definition.text) {
+      next[field] = applyText(next[field], change);
+      continue;
+    }
+    if (change.kind === "text") throw new Error("A text change for a collection field.");
     if (!Array.isArray(next[field])) throw new Error("Invalid collection state.");
     if (!edited.has(field)) { next[field] = [...next[field]]; edited.add(field); }
     const items = next[field] as unknown[];
@@ -111,6 +130,20 @@ export function applyCollectionDelta(state: unknown, changes: unknown,
 }
 
 /**
+ * Applies a text change `{ field, kind: "text", length, trim, text }`: the
+ * current value must have `length` UTF-16 code units; the first `trim` are
+ * dropped and `text` is appended.
+ */
+function applyText(current: unknown, change: Record<string, unknown>): string {
+  if (change.kind !== "text" || typeof current !== "string" || typeof change.text !== "string") throw new Error("Invalid text change.");
+  const length = index(change.length);
+  const trim = index(change.trim);
+  if (length !== current.length) throw new Error("The text baseline no longer matches.");
+  if (trim > length) throw new Error("Invalid text trim.");
+  return current.slice(trim) + change.text;
+}
+
+/**
  * Applies a frame that `applyCollectionDelta` accepted to the wire state, so the
  * wire stays comparable with a later full state at the same revision.
  */
@@ -118,6 +151,7 @@ export function applyWireDelta(wire: unknown, changes: readonly unknown[]): Reco
   const next = { ...(wire as Record<string, unknown>) };
   const edited = new Set<string>();
   for (const change of changes as readonly { field: string; kind: string; index: number; oldIndex: number; keys: unknown[]; items: unknown[] }[]) {
+    if (change.kind === "text") { next[change.field] = applyText(next[change.field], change as unknown as Record<string, unknown>); continue; }
     if (!edited.has(change.field)) { next[change.field] = [...(next[change.field] as unknown[])]; edited.add(change.field); }
     const rows = next[change.field] as unknown[];
     const count = change.keys.length;

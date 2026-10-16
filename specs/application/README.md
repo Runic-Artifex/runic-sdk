@@ -160,9 +160,11 @@ An opt-in `[RunicCollection]` read-only DTO collection publishes indexed
 `baseRevision` and `revision`, instead of full states. A client applies a frame
 only on top of its current revision and otherwise reads one snapshot. Batches
 above 4,096 changes, delivery queues above 64 frames or 1 MiB, resets and mixed
-changes fall back to full states. [Collection delta frames](collection-deltas.md)
-specifies the frame format, the fallback and recovery rules, and the shared
-conformance fixtures.
+changes fall back to full states. A `[RunicAppendOnlyText]` string, such as a
+live log, publishes `text` changes in the same frames: the number of characters
+dropped from its start and the text appended.
+[Collection delta frames](collection-deltas.md) specifies the frame format, the
+fallback and recovery rules, and the shared conformance fixtures.
 
 ## Content
 

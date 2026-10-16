@@ -1,2 +1,6 @@
 #nullable enable
 static Runic.Application.Views.RunicWatchTarget.Files(string! path, string! pattern = "*") -> Runic.Application.Views.RunicWatchTarget!
+Runic.Application.Views.PropertyDescriptor<T>.AppendOnlyTextField.get -> string?
+Runic.Application.Views.PropertyDescriptor<T>.AppendOnlyTextField.init -> void
+Runic.Application.Views.RunicAppendOnlyTextAttribute
+Runic.Application.Views.RunicAppendOnlyTextAttribute.RunicAppendOnlyTextAttribute() -> void
