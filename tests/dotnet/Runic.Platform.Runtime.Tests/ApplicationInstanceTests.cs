@@ -336,29 +336,39 @@ internal sealed class ApplicationInstanceTests
                 var seenFirst = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 using var registration = reply.Cancelled.Register(() =>
                     seenFirst.TrySetResult(reply.CancelRequested.IsCancellationRequested || reply.Disconnected.IsCancellationRequested));
-                await reply.WriteAsync("started");
-                try { await Task.Delay(Timeout.Infinite, reply.Cancelled).WaitAsync(Wait); }
-                catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
-                reasons.TrySetResult((reply.CancelRequested.IsCancellationRequested, reply.Disconnected.IsCancellationRequested, await seenFirst.Task.WaitAsync(Wait)));
-                if (launch.Arguments.Single() == "cancel")
+                try
                 {
-                    await reply.WriteAsync("cancelled");
-                    await reply.CompleteAsync(130);
+                    await reply.WriteAsync("started");
+                    try { await Within(Task.Delay(Timeout.Infinite, reply.Cancelled), "the running instance sees the launch cancelled or left"); }
+                    catch (OperationCanceledException) when (reply.Cancelled.IsCancellationRequested) { }
+                    reasons.TrySetResult((reply.CancelRequested.IsCancellationRequested, reply.Disconnected.IsCancellationRequested,
+                        await Within(seenFirst.Task, "the reason is cancelled with Cancelled")));
+                    if (launch.Arguments.Single() == "cancel")
+                    {
+                        await reply.WriteAsync("cancelled");
+                        await reply.CompleteAsync(130);
+                    }
+                    else leftWrite.TrySetResult(await reply.WriteAsync("nobody reads this"));
                 }
-                else leftWrite.TrySetResult(await reply.WriteAsync("nobody reads this"));
+                // The test reports what the running instance waited for, rather than timing out on its own wait.
+                catch (Exception error)
+                {
+                    reasons.TrySetException(error);
+                    leftWrite.TrySetException(error);
+                }
             });
 
             // Ctrl+C: ask the running instance to cancel, and still read its last messages and exit status.
             await using (var reply = await ForwardAsync(directory, "cancel"))
             {
                 await using var messages = reply.ReadMessagesAsync().GetAsyncEnumerator();
-                Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "started", "the launch starts");
+                Check(await Within(messages.MoveNextAsync().AsTask(), "the first message") && messages.Current == "started", "the launch starts");
                 await reply.CancelAsync();
                 await reply.CancelAsync();
-                Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "cancelled", "the running instance sees the cancel request");
-                Check(!await messages.MoveNextAsync().AsTask().WaitAsync(Wait), "the messages end at the exit status");
-                Check(await reply.WaitForExitAsync() is PlatformResult<int>.Success(130), "the exit status after cancelling arrives");
-                Check(await reasons.Task.WaitAsync(Wait) == (true, false, true), $"a cancel request is CancelRequested, not Disconnected: {reasons.Task.Result}");
+                Check(await Within(messages.MoveNextAsync().AsTask(), "the message after the cancel request") && messages.Current == "cancelled", "the running instance sees the cancel request");
+                Check(!await Within(messages.MoveNextAsync().AsTask(), "the end of the messages"), "the messages end at the exit status");
+                Check(await Within(reply.WaitForExitAsync().AsTask(), "the exit status after cancelling") is PlatformResult<int>.Success(130), "the exit status after cancelling arrives");
+                Check(await Within(reasons.Task, "the reasons after a cancel request") == (true, false, true), $"a cancel request is CancelRequested, not Disconnected: {reasons.Task.Result}");
             }
 
             // Leaving: disposing the reply, or cancelling a read, closes the connection.
@@ -370,19 +380,19 @@ internal sealed class ApplicationInstanceTests
                 using var stop = new CancellationTokenSource();
                 await using (var messages = reply.ReadMessagesAsync(stop.Token).GetAsyncEnumerator())
                 {
-                    Check(await messages.MoveNextAsync().AsTask().WaitAsync(Wait) && messages.Current == "started", "the launch starts");
+                    Check(await Within(messages.MoveNextAsync().AsTask(), $"the first message (dispose: {dispose})") && messages.Current == "started", "the launch starts");
                     if (dispose) await reply.DisposeAsync();
                     else
                     {
                         var next = messages.MoveNextAsync().AsTask();
                         await stop.CancelAsync();
-                        try { await next.WaitAsync(Wait); throw new InvalidOperationException("a cancelled read ends"); }
+                        try { await Within(next, "the cancelled read ends"); throw new InvalidOperationException("a cancelled read ends"); }
                         catch (OperationCanceledException) { }
                     }
                 }
-                Check(!await leftWrite.Task.WaitAsync(Wait), "the running instance is cancelled, and its writes are no longer sent");
-                Check(await reasons.Task.WaitAsync(Wait) == (false, true, true), $"leaving is Disconnected, not CancelRequested (dispose: {dispose}): {reasons.Task.Result}");
-                Check(await reply.WaitForExitAsync() is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "a reply left early has no exit status");
+                Check(!await Within(leftWrite.Task, $"the running instance's write after leaving (dispose: {dispose})"), "the running instance is cancelled, and its writes are no longer sent");
+                Check(await Within(reasons.Task, $"the reasons after leaving (dispose: {dispose})") == (false, true, true), $"leaving is Disconnected, not CancelRequested (dispose: {dispose}): {reasons.Task.Result}");
+                Check(await Within(reply.WaitForExitAsync().AsTask(), "the result of a reply left early") is PlatformResult<int>.Failed { Code: PlatformFailureCode.IoError }, "a reply left early has no exit status");
             }
         }
         finally { System.IO.Directory.Delete(directory, recursive: true); }
@@ -603,4 +613,17 @@ internal sealed class ApplicationInstanceTests
     }
 
     private static void Check(bool condition, string message) { if (!condition) throw new InvalidOperationException(message); }
+
+    // WaitAsync(Wait), naming the step that timed out (#352): the NativeAOT stack has no line numbers.
+    private static async Task<T> Within<T>(Task<T> task, string step)
+    {
+        try { return await task.WaitAsync(Wait); }
+        catch (TimeoutException error) { throw new TimeoutException($"Timed out after {Wait.TotalSeconds:0} s: {step}.", error); }
+    }
+
+    private static async Task Within(Task task, string step)
+    {
+        try { await task.WaitAsync(Wait); }
+        catch (TimeoutException error) { throw new TimeoutException($"Timed out after {Wait.TotalSeconds:0} s: {step}.", error); }
+    }
 }

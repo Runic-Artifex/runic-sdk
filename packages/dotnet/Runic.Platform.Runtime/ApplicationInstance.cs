@@ -292,6 +292,12 @@ public static class ApplicationInstance
         return Frame(type, payload);
     }
 
+    private static void ShutDown(Socket socket)
+    {
+        try { socket.Shutdown(SocketShutdown.Both); }
+        catch (Exception error) when (error is SocketException or ObjectDisposedException) { /* Already closed or broken. */ }
+    }
+
     private static string? RuntimeDirectory()
     {
         if (OperatingSystem.IsWindows())
@@ -392,6 +398,9 @@ public static class ApplicationInstance
         private async ValueTask<string?> ReadMessageAsync(CancellationToken cancellationToken)
         {
             if (Volatile.Read(ref _result) is not null) return null;
+            // Cancelling closes the connection rather than relying on the platform to cancel a pending socket read,
+            // which Windows' AF_UNIX provider may finish late (#352). The running instance then sees it at once.
+            using var closeOnCancel = cancellationToken.UnsafeRegister(static state => ((ForwardedLaunchReply)state!).Close(), this);
             try
             {
                 switch (await ReadFrameAsync(stream, _header, cancellationToken).ConfigureAwait(false))
@@ -411,6 +420,13 @@ public static class ApplicationInstance
             {
                 End(new PlatformResult<int>.Failed(PlatformFailureCode.IoError));
                 throw;
+            }
+            // The read failed because cancelling closed the connection.
+            catch (Exception error) when (error is IOException or SocketException or EndOfStreamException or ObjectDisposedException
+                && cancellationToken.IsCancellationRequested)
+            {
+                End(new PlatformResult<int>.Failed(PlatformFailureCode.IoError));
+                throw new OperationCanceledException(cancellationToken);
             }
             catch (Exception error) when (error is IOException or SocketException or EndOfStreamException or ObjectDisposedException)
             {
@@ -442,8 +458,10 @@ public static class ApplicationInstance
             return ValueTask.CompletedTask;
         }
 
+        // Shut down before disposing, so the running instance sees the end at once on every platform (#352).
         private void Close()
         {
+            ShutDown(socket);
             stream.Dispose();
             socket.Dispose();
         }
@@ -716,6 +734,7 @@ public static class ApplicationInstance
             {
                 if (Interlocked.Exchange(ref _closed, 1) != 0) return;
                 owner.Untrack(this);
+                ShutDown(socket);
                 stream.Dispose();
                 socket.Dispose();
                 // Not after an exit status: the launch was handled.
