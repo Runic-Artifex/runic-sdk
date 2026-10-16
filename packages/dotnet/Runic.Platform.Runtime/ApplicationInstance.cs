@@ -78,7 +78,9 @@ public static class ApplicationInstance
     /// <see cref="ApplicationInstanceOptions.ReplyToLaunches"/>, <see cref="ApplicationInstanceClaim.Forwarded.Reply"/>
     /// is set, and a running instance that does not reply is <see cref="PlatformFailureCode.ResourceBusy"/> with an
     /// <c>ApplicationInstance</c> diagnostic whose code is the reply protocol version that instance supports, 0 for
-    /// none; the launch was not handled.
+    /// none; the launch was not handled. With <see cref="ApplicationInstanceOptions.ForwardOnly"/>,
+    /// <see cref="ApplicationInstanceClaim.NotRunning"/> when no instance runs, instead of
+    /// <see cref="ApplicationInstanceClaim.Primary"/>.
     /// </returns>
     public static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
         ApplicationInstanceOptions options, CancellationToken cancellationToken = default)
@@ -117,7 +119,11 @@ public static class ApplicationInstance
                 int unanswered = 0;
                 while (true)
                 {
-                    if (TryListen(lockPath, socketPath, options.ReplyToLaunches) is { } instance)
+                    if (options.ForwardOnly)
+                    {
+                        if (!IsRunning(lockPath)) return new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.NotRunning());
+                    }
+                    else if (TryListen(lockPath, socketPath, options.ReplyToLaunches) is { } instance)
                         return new PlatformResult<ApplicationInstanceClaim>.Success(new ApplicationInstanceClaim.Primary(instance));
                     if (!options.ReplyToLaunches)
                     {
@@ -166,6 +172,19 @@ public static class ApplicationInstance
             return new RunningInstance(listener, lockFile, socketPath, replies);
         }
         catch { lockFile.Dispose(); throw; }
+    }
+
+    // Whether a process holds the lock, as the running instance or one starting or ending. The lock is taken only for
+    // the check: nothing listens, so a launch that finds it held meanwhile retries, as while an instance starts.
+    private static bool IsRunning(string lockPath)
+    {
+        try
+        {
+            using var probe = new FileStream(lockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            return false;
+        }
+        catch (FileNotFoundException) { return false; }
+        catch (IOException) when (File.Exists(lockPath)) { return true; }
     }
 
     // False when no instance listens yet, or it did not take the launch. Once sent, the reply is awaited past the
@@ -612,16 +631,20 @@ public static class ApplicationInstance
         // The running instance's side of one reply. Frames go out one at a time; the connection's other direction
         // carries only Cancel, read until the launching process closes it.
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
-            Justification = "Neither the semaphore nor the token source has a wait handle or timer; a handler may use the token after the reply ends.")]
+            Justification = "Neither the semaphore nor the token sources have a wait handle or timer; a handler may use the tokens after the reply ends.")]
         private sealed class LaunchReply(Socket socket, NetworkStream stream, RunningInstance owner) : IApplicationLaunchReply
         {
             // Held until Delivered is sent, so a handler's first message follows it.
             private readonly SemaphoreSlim _writing = new(0, 1);
-            private readonly CancellationTokenSource _cancelled = new();
+            private readonly CancellationTokenSource _cancelled = new(), _cancelRequested = new(), _disconnected = new();
             private int _completed, _closed;
             private bool _exitSent; // Under _writing.
 
             public CancellationToken Cancelled => _cancelled.Token;
+
+            public CancellationToken CancelRequested => _cancelRequested.Token;
+
+            public CancellationToken Disconnected => _disconnected.Token;
 
             internal async Task StartAsync()
             {
@@ -683,7 +706,7 @@ public static class ApplicationInstance
                 try
                 {
                     while (await ReadFrameAsync(stream, header, CancellationToken.None).ConfigureAwait(false) is { Type: Cancel, Length: 0 })
-                        Signal();
+                        Signal(_cancelRequested);
                 }
                 catch (Exception error) when (error is IOException or SocketException or ObjectDisposedException or EndOfStreamException) { }
                 Close(cancel: true);
@@ -696,13 +719,17 @@ public static class ApplicationInstance
                 stream.Dispose();
                 socket.Dispose();
                 // Not after an exit status: the launch was handled.
-                if (cancel && !Volatile.Read(ref _exitSent)) Signal();
+                if (cancel && !Volatile.Read(ref _exitSent)) Signal(_disconnected);
             }
 
-            private void Signal()
+            // The reason first, so a callback on Cancelled can tell which it was.
+            private void Signal(CancellationTokenSource reason)
             {
-                try { _cancelled.Cancel(); }
-                catch (Exception error) { Rethrow(error); }
+                foreach (var source in new[] { reason, _cancelled })
+                {
+                    try { source.Cancel(); }
+                    catch (Exception error) { Rethrow(error); }
+                }
             }
         }
     }
@@ -723,4 +750,16 @@ public sealed record ApplicationInstanceOptions
     /// than leaving them unanswered.
     /// </remarks>
     public bool ReplyToLaunches { get; init; }
+
+    /// <summary>
+    /// Whether this process only forwards its launch and never becomes the running instance: without one,
+    /// <see cref="ApplicationInstance.ClaimAsync(string, ApplicationLaunch, ApplicationInstanceOptions, CancellationToken)"/>
+    /// reports <see cref="ApplicationInstanceClaim.NotRunning"/>, and the launch was not handled. For a command line
+    /// that hands its work to a running daemon or does it itself.
+    /// </summary>
+    /// <remarks>
+    /// An instance that is starting or ending is waited for as with a claim: the launch is forwarded to it, or reported
+    /// not running once it ended. Other launches never wait for this process.
+    /// </remarks>
+    public bool ForwardOnly { get; init; }
 }

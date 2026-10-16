@@ -71,6 +71,12 @@ public abstract record ApplicationInstanceClaim
         /// </summary>
         public IForwardedLaunchReply? Reply { get; init; }
     }
+
+    /// <summary>
+    /// No instance runs, and this process did not become one, because it claimed with <c>ForwardOnly</c>. The launch
+    /// was not handled: handle it here, or report that the application is not running.
+    /// </summary>
+    public sealed record NotRunning : ApplicationInstanceClaim;
 }
 
 /// <summary>
@@ -85,9 +91,31 @@ public interface IApplicationLaunchReply
 {
     /// <summary>
     /// Cancelled when the launching process asks to cancel (for example on Ctrl+C), when it goes away, or when this
-    /// instance ends. After a cancel request the launching process still reads messages until the reply completes.
+    /// instance ends: <see cref="CancelRequested"/> or <see cref="Disconnected"/>, which is cancelled first, so a
+    /// callback registered on this token can tell which. After a cancel request the launching process still reads
+    /// messages until the reply completes.
     /// </summary>
     CancellationToken Cancelled { get; }
+
+    /// <summary>
+    /// Cancelled when the launching process asks to cancel with <see cref="IForwardedLaunchReply.CancelAsync"/>, for
+    /// example on Ctrl+C. It keeps reading messages until the reply completes.
+    /// </summary>
+    /// <remarks>
+    /// Pass this token rather than <see cref="Cancelled"/> to work that should outlive the launching process, such as
+    /// an operation a command line started over SSH: it is not cancelled when the connection drops. The default
+    /// implementation, for implementations written before it existed, returns <see cref="Cancelled"/>.
+    /// </remarks>
+    CancellationToken CancelRequested => Cancelled;
+
+    /// <summary>
+    /// Cancelled when the reply ends without an exit status: the launching process went away or closed it (disposing
+    /// its reply, or cancelling a read), this instance ended, or a write here was cancelled. Writes then return false.
+    /// </summary>
+    /// <remarks>
+    /// The default implementation, for implementations written before it existed, returns <see cref="Cancelled"/>.
+    /// </remarks>
+    CancellationToken Disconnected => Cancelled;
 
     /// <summary>Sends one message, such as an output line or a JSON event, as UTF-8.</summary>
     /// <param name="message">At most 1 MiB in UTF-8.</param>
