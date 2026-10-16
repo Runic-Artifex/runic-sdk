@@ -32,9 +32,6 @@
               lib.fileset.unions [
                 # Local tools are for development; the build needs none of them.
                 (lib.fileset.maybeMissing ./.config)
-#if (tests)
-                ./RunicWindowApp.Tests
-#endif
                 ./flake.nix
                 (lib.fileset.maybeMissing ./flake.lock)
               ]
@@ -42,7 +39,18 @@
           };
           projectFile = "RunicWindowApp.csproj";
           # dotnet restore and dotnet restore -p:PublishAot=true write them; see RunicWindowApp.csproj.
-          nugetLockFiles = [ (if nativeAot then ./packages.aot.lock.json else ./packages.lock.json) ];
+          nugetLockFiles = [
+            (if nativeAot then ./packages.aot.lock.json else ./packages.lock.json)
+#if (tests)
+            ./RunicWindowApp.Tests/packages.lock.json
+#endif
+          ];
+#if (tests)
+          # The build runs the TUnit tests, a Microsoft.Testing.Platform test application, under the JIT.
+          testProjectFile = "RunicWindowApp.Tests/RunicWindowApp.Tests.csproj";
+          doCheck = true;
+          testRunner = "Microsoft.Testing.Platform";
+#endif
           frontend = {
             packageManager = "__PACKAGE_MANAGER_NAME__";
 #if (packageManager == "npm")
@@ -72,6 +80,10 @@
         default = application { nativeAot = false; };
         native-aot = application { nativeAot = true; };
       };
+#if (tests)
+      # nix flake check builds the application, which runs the tests.
+      checks.${system}.default = self.packages.${system}.default;
+#endif
       devShells.${system}.default = runic-sdk.lib.mkDevShell pkgs {
         hosts = [ "__RUNIC_HOST__" ];
         packageManagers = [ "__PACKAGE_MANAGER_NAME__" ];
