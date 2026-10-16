@@ -38,6 +38,10 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;
           };
+          builder-without-speech-synthesis = import ./nix/tests/speech-synthesis.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            inherit self;
+          };
         };
 
       # The portal backends are intentionally split into two images. A picker

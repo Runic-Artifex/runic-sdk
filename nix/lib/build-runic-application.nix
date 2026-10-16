@@ -47,6 +47,9 @@
   host ? "desktop",
   # GStreamer plugins for audio and video in WebKitGTK.
   withMedia ? false,
+  # WebKitGTK with speech synthesis, which links flite. false uses a WebKitGTK built without it, about 70 MiB smaller,
+  # which nixpkgs' binary cache does not have: WebKitGTK then builds from source, for hours.
+  withSpeechSynthesis ? true,
   # Publish projectFile with NativeAOT. Only that project gets PublishAot, as if its project file set it: the projects
   # it references and testProjectFile are restored and built as their own project files say.
   nativeAot ? false,
@@ -73,7 +76,9 @@
 }@args:
 let
   inherit (dotnetCorePackages) fetchNupkg;
-  hostRuntime = callPackage ./hosts.nix { } host;
+  hostRuntime = callPackage ./hosts.nix (lib.optionalAttrs (!withSpeechSynthesis) (
+    lib.getAttrs [ "webkitgtk_4_1" "webkitgtk_6_0" ] (callPackage ./webkitgtk-without-speech-synthesis.nix { })
+  )) host;
   nugetLock = callPackage ./nuget-lock-deps.nix { inherit fetchNupkg; } {
     lockFiles = checkedLockFiles;
     inherit dotnet-sdk;
@@ -158,6 +163,7 @@ buildDotnetModule (
     "frontend"
     "host"
     "withMedia"
+    "withSpeechSynthesis"
     "nativeAot"
     "desktopItems"
     "icons"
