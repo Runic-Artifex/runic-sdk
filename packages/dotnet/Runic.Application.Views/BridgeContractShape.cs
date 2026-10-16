@@ -135,6 +135,11 @@ public static class BridgeContractShape
             parts.Add($"custom:{path}:codec:{TypeName(custom.CodecType)}:ts:{shape?.TypeScriptType ?? "missing"}:decoder:{shape?.DecoderExpression ?? "missing"}:encoder:{shape?.EncoderExpression ?? "missing"}");
             return;
         }
+        if (type == typeof(System.Text.Json.JsonElement) || type == typeof(System.Text.Json.Nodes.JsonNode))
+        {
+            parts.Add($"json:{path}");
+            return;
+        }
         var union = type.GetCustomAttribute<RunicUnionAttribute>();
         if (union is not null)
         {

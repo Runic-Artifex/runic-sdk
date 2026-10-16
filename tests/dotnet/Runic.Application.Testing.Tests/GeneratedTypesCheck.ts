@@ -32,6 +32,14 @@ export const requiredSlot: CodegenShapeState["required"] = {
   value: null, fallback: null, items: [], values: [], map: { key: "m" }, inner: { value: "i" },
 };
 
+// Any JSON value is unknown; a non-nullable JsonNode cannot hold JSON null.
+export const json: CodegenShapeState["json"] = { any: null, node: null, required: { nested: [1, "two"] } };
+
+export const nullJson: CodegenShapeState["json"] = {
+  // @ts-expect-error A JsonNode is never JSON null.
+  any: [], node: {}, required: null,
+};
+
 // Names next to the reserved client members stay ordinary members: a state
 // property named New and a NewItem command (a NewCommand is RUNICBRIDGE004).
 export function newState(state: NamingState): string {

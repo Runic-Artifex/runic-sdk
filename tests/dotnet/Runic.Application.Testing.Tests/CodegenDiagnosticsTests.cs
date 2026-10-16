@@ -76,6 +76,12 @@ internal sealed partial class CodegenDiagnosticsTests
                 public sealed partial class SetWindow : RunicWindow<SetViewModel>;
                 """, "RUNICBRIDGE003", "public sealed class SetViewModel",
                 "System.Collections.Generic.HashSet`1", "is not a supported bridge collection").ConfigureAwait(false);
+            // A JsonObject or JsonArray is not read as a collection; any JSON value is a JsonNode (#304).
+            await RejectAt("JsonObjectValue", """
+                public sealed class JsonObjectViewModel : FixtureModel { public System.Text.Json.Nodes.JsonObject Data { get; } = []; }
+                public sealed partial class JsonObjectWindow : RunicWindow<JsonObjectViewModel>;
+                """, "RUNICBRIDGE003", "public sealed class JsonObjectViewModel",
+                "System.Text.Json.Nodes.JsonObject is not a bridge value. Declare JsonNode or JsonElement for any JSON value").ConfigureAwait(false);
             // A nested DTO member points at the DTO property, not the ViewModel.
             await RejectAt("NestedValue", """
                 public sealed class Row

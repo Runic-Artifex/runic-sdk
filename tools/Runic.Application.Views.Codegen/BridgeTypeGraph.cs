@@ -131,9 +131,11 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Array or BridgeWireKind.List => $"readonly {ArrayElement(TypeScriptType(node.Element!))}[]",
             BridgeWireKind.StringDictionary => $"Readonly<Record<string, {TypeScriptType(node.Value!)}>>",
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptType,
+            // Any JSON value. A JsonNode is never JSON null; null is its C# null.
+            BridgeWireKind.Json => node.IsNullable || node.NonNullableType == typeof(JsonElement) ? "unknown" : "NonNullable<unknown>",
             _ => throw new InvalidOperationException($"No TypeScript form exists for {node.Kind}.")
         };
-        return node.IsNullable ? $"{type} | null" : type;
+        return node.IsNullable && node.Kind is not BridgeWireKind.Json ? $"{type} | null" : type;
     }
 
     private static string ArrayElement(string type) =>
@@ -252,10 +254,18 @@ internal sealed class BridgeTypeGraph
             BridgeWireKind.Dto => $"bridgeWire.object<{TypeScriptNamedTypes.Reference(node)}>({expression}, value => ({{ {string.Join(", ", node.Members.Select(member => LiteralKey(member.WireName) + ": " + EmitTypeScriptDecoder(member.Type, "value[" + Quote(member.WireName) + "]"))) }}}))",
             BridgeWireKind.Union => DecodeUnionTypeScript(node, expression),
             BridgeWireKind.Custom => node.CustomCodec!.TypeScriptDecoderExpression.Replace("$value", expression, StringComparison.Ordinal),
+            BridgeWireKind.Json => JsonTypeScript(node, expression),
             _ => throw new InvalidOperationException($"No TypeScript decoder exists for {node.Kind}.")
         };
-        return node.IsNullable ? $"({expression} === null ? null : {nonNull})" : nonNull;
+        return node.IsNullable && node.Kind is not BridgeWireKind.Json ? $"({expression} === null ? null : {nonNull})" : nonNull;
     }
+
+    // The same check in both directions: the value is JSON, and null only where
+    // the C# type can hold it.
+    private static string JsonTypeScript(BridgeTypeNode node, string expression) =>
+        node.IsNullable || node.NonNullableType == typeof(JsonElement)
+            ? $"bridgeWire.json({expression})"
+            : $"bridgeWire.json({expression}, false)";
 
     private static string DecodeUnionTypeScript(BridgeTypeNode node, string expression)
     {
@@ -273,6 +283,7 @@ internal sealed class BridgeTypeGraph
 
     private static string EncodeTypeScript(BridgeTypeNode node, string expression)
     {
+        if (node.Kind is BridgeWireKind.Json) return JsonTypeScript(node, expression);
         // Capture nullable paths once before encoding. Apart from avoiding a
         // repeated getter, this gives strict TypeScript a local it can narrow:
         // `baseline.value` and an optional DTO member cannot reliably remain
@@ -385,6 +396,13 @@ internal sealed class BridgeTypeGraph
             case BridgeWireKind.Custom:
                 source.AppendLine($"        {CSharpType(node.CustomCodec!.CodecType)}.Write(writer, {value});");
                 break;
+            // A default JsonElement holds no value; it crosses as null.
+            case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
+                source.AppendLine($"        if ({value}.ValueKind is global::System.Text.Json.JsonValueKind.Undefined) writer.WriteNullValue(); else {value}.WriteTo(writer);");
+                break;
+            case BridgeWireKind.Json:
+                source.AppendLine($"        if ({value} is null) writer.WriteNullValue(); else {value}.WriteTo(writer);");
+                break;
             default:
                 source.AppendLine("        throw new global::System.NotSupportedException(\"The generated codec needs a closed-union writer.\");");
                 break;
@@ -448,6 +466,13 @@ internal sealed class BridgeTypeGraph
                 break;
             case BridgeWireKind.Custom:
                 source.AppendLine($"        return {CSharpType(node.CustomCodec!.CodecType)}.Read(element);"); break;
+            // The element belongs to a document that is disposed after the call.
+            case BridgeWireKind.Json when node.NonNullableType == typeof(JsonElement):
+                source.AppendLine("        return element.Clone();"); break;
+            case BridgeWireKind.Json:
+                if (!node.IsNullable)
+                    source.AppendLine("        if (element.ValueKind is global::System.Text.Json.JsonValueKind.Null) throw global::Runic.Application.Views.BridgeWire.Invalid(\"Expected a JSON value other than null.\");");
+                source.AppendLine("        return global::System.Text.Json.Nodes.JsonNode.Parse(element.GetRawText())!;"); break;
             default:
                 source.AppendLine("        throw new global::System.NotSupportedException(\"The generated codec needs a closed-union reader.\");"); break;
         }
@@ -620,6 +645,14 @@ internal sealed class BridgeTypeGraph
                 node.CustomCodec = CustomCodecDescription.Create(type, custom.CodecType, path);
                 return node;
             }
+            if (type == typeof(JsonElement) || type == typeof(System.Text.Json.Nodes.JsonNode))
+            {
+                node.Kind = BridgeWireKind.Json;
+                return node;
+            }
+            // JsonObject and JsonArray would otherwise be rejected as collections.
+            if (typeof(System.Text.Json.Nodes.JsonNode).IsAssignableFrom(type) || type == typeof(JsonDocument))
+                throw new BridgeTypeGraphException(path, $"{TypeIdentity(type)} is not a bridge value. Declare JsonNode or JsonElement for any JSON value, or a DTO for a known shape.");
             if (TryCollection(type, path, out var collection, out var element))
             {
                 node.Kind = collection;
@@ -903,6 +936,8 @@ internal enum BridgeWireKind
     None, Boolean, Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Single, Double, Decimal,
     String, Guid, DateOnly, TimeOnly, DateTime, DateTimeOffset, TimeSpan, BigInteger, Enum, Array, List,
     StringDictionary, Dto, Union, Custom,
+    /// <summary>Any JSON value: a JsonElement or a JsonNode.</summary>
+    Json,
 }
 
 internal sealed class BridgeTypeNode(int id, Type nonNullableType, bool isNullable)

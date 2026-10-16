@@ -20,6 +20,12 @@ export interface CodegenInnerOfString {
   readonly value: string;
 }
 
+export interface CodegenJson {
+  readonly any: unknown;
+  readonly node: unknown;
+  readonly required: NonNullable<unknown>;
+}
+
 export interface CodegenPoint {
   readonly x: number;
   readonly y: number;
