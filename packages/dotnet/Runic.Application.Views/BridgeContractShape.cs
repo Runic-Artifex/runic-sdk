@@ -70,6 +70,11 @@ public static class BridgeContractShape
                     AppendType(parts, input, typed is null ? null : GenericAnnotation(nullability.Create(property), 0), $"{model.Name}.{property.Name}.input", [], honorJsonIgnore);
                 var isAsync = BridgeMvvmConventions.IsAsyncCommand(property.PropertyType);
                 parts.Add($"command-async:{TypeName(model)}:{property.Name}:{isAsync}");
+                // The result of a CommunityToolkit [RelayCommand] method that returns Task<T>.
+                if (isAsync && BridgeCommandSources.SourceMethod(model, property) is { ReturnType: { IsGenericType: true } returned } source
+                    && returned.GetGenericTypeDefinition() == typeof(Task<>))
+                    AppendType(parts, returned.GenericTypeArguments[0], GenericAnnotation(nullability.Create(source.ReturnParameter), 0),
+                        $"{model.Name}.{property.Name}.result", [], honorJsonIgnore);
                 AppendFailure(parts, model, property);
                 continue;
             }

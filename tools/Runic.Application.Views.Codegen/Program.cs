@@ -667,7 +667,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                     ContractNullability.Argument(command, nullability, typed.ContractArguments, 0),
                     $"{model.Name}.{command.Name}.input", source, honorJsonIgnore, BridgeValueDirection.FromPage) : null,
                 ResultGraph: typed.Result is { } result ? BridgeTypeGraph.Discover(result,
-                    ContractNullability.Argument(command, nullability, typed.ContractArguments, 1),
+                    typed.ResultNullability(command, nullability),
                     $"{model.Name}.{command.Name}.result", source, honorJsonIgnore, BridgeValueDirection.ToPage) : null)
             : plainInput is not null
                 ? GeneratedCommandPlan.Plain(BridgeTypeGraph.Discover(plainInput.Input,
@@ -677,7 +677,7 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 $"{model.Name}.{command.Name}: unsupported command shape. Use a CommunityToolkit IRelayCommand or IAsyncRelayCommand, a ReactiveUI ReactiveCommand, or an ICommand with RunicCommandInput.", source);
         if (plan.Command?.SelectsResultCardinality != true && command.GetCustomAttribute<RunicCommandResultAttribute>(true) is not null)
             throw new BridgeDiagnosticException(BridgeDiagnosticCodes.Command,
-                $"{model.Name}.{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; CommunityToolkit and plain commands have no result value.", source);
+                $"{model.Name}.{command.Name}: RunicCommandResult selects a ReactiveUI command's result cardinality; a CommunityToolkit command has the single result of its Task<T> method, and a plain command has none.", source);
         commandPlans.Add(command, plan with
         {
             ParameterName = CommandParameterName(commandSources[command], plan),

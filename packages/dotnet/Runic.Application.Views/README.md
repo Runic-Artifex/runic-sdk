@@ -1174,7 +1174,9 @@ CommunityToolkit `IRelayCommand<T>` and `IAsyncRelayCommand<T>` use the same
 supported input shapes and generated codecs as ReactiveUI commands: scalars,
 nullable values, DTOs, collections, unions, and explicit custom codecs. Generated
 `canX(input)` queries use the actual parameter. Async Toolkit commands expose
-`startX`, completion, recovery, and cancellation, with no invented result value.
+`startX`, completion, recovery, and cancellation. A `[RelayCommand]` method that
+returns `Task<T>` delivers its `T` as the operation's result; one that returns
+`Task` has none.
 Toolkit cancellation calls the command's `Cancel()` and therefore targets its
 current execution; it does not isolate concurrent invocations of the same
 command instance.
@@ -1217,16 +1219,30 @@ What a call gives the page back depends on the command:
 | `canEstimate(choice)` | Whether the command can run with that argument (`Promise<boolean>`). Generated for a command with a parameter, instead of a `canEstimate` state property. |
 | `startEstimate(choice)` | A `BridgeOperation<TResult>` handle for status, Cancel and `outcome()`. |
 
-Only a ReactiveUI command has a typed result route. A public
+A command's result reaches the page through its operation. A public
 `ReactiveCommand<TInput, TResult>` generates `BridgeOperation<TResult>`, and
 `outcome()` resolves to `{ ok: true, value }`; see
 [Generated ReactiveUI contracts](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views.ReactiveUI#generated-reactiveui-contracts).
-A CommunityToolkit command has none. Its operation is a `BridgeOperation<void>`,
-and a `[RelayCommand]` method that returns `Task<T>` does not deliver its `T`.
-With CommunityToolkit.Mvvm, a command hands its result back through ViewModel
-state.
+A CommunityToolkit `[RelayCommand]` method that returns `Task<T>` generates
+`BridgeOperation<T>` the same way, with `T`'s nullability:
 
-Publish such a result in a read-only property, together with the input it
+```csharp
+[RelayCommand(IncludeCancelCommand = true)]
+private async Task<CleanupEstimate> MeasureAsync(CleanupChoice choice, CancellationToken token) =>
+    new(choice.Retention, await estimator.FreedBytesAsync(choice.Retention, token), DateTimeOffset.Now);
+```
+
+```ts
+const outcome = await cleanup.startMeasure({ retention: 3 }).outcome();
+if (outcome.ok) render(outcome.value.bytes);
+```
+
+A method that returns `Task`, a synchronous command and a plain `ICommand` have
+no result: their operation is a `BridgeOperation<void>`. The awaited `measure()`
+call resolves to the state after the command either way.
+
+A result that other parts of the page show, or that must survive a reload, is
+better published as state. Publish it in a read-only property, together with the input it
 answers. The page can then tell whether the result still matches its current
 choice. A second property tells where the work is, so the page can show
 progress, cancellation and failure. This is a simplified version of a cleanup

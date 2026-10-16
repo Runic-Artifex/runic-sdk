@@ -71,7 +71,8 @@ public static class ToolkitCommandInspector
     /// </summary>
     public static string DescriptorFor(PropertyInfo command, string modelType,
         ToolkitCommandContract contract, string? inputType = null,
-        string? readArgument = null, string? encodeArgument = null, string? subscribe = null)
+        string? readArgument = null, string? encodeArgument = null, string? subscribe = null,
+        string? resultType = null, string? encodeResult = null)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelType);
@@ -93,6 +94,14 @@ public static class ToolkitCommandInspector
         // Registering a pre-cancelled token invokes Cancel synchronously. Do
         // not then start a fresh Toolkit execution after that cancellation has
         // already happened.
+        if (contract.Result is not null)
+        {
+            if (string.IsNullOrWhiteSpace(resultType) || string.IsNullOrWhiteSpace(encodeResult))
+                throw new ArgumentException("A Toolkit command with a result needs its generated C# result type and encoder.", nameof(resultType));
+            // ExecuteAsync returns the task of the [RelayCommand] method.
+            var executeResult = $"async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); var execution = command.ExecuteAsync({argument}); await execution.ConfigureAwait(false); var result = ((global::System.Threading.Tasks.Task<{resultType}>)execution).Result; return {encodeResult}; }}";
+            return prefix + ", ExecuteResultAsync: " + executeResult + extras + ")";
+        }
         var execute = $"async (vm, token, argument) => {{ token.ThrowIfCancellationRequested(); var command = {typedCommand}; using var registration = token.Register(command.Cancel); await command.ExecuteAsync({argument}).ConfigureAwait(false); }}";
         return prefix + ", " + execute + extras + ")";
     }
@@ -118,8 +127,21 @@ public static class ToolkitCommandInspector
     {
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))
             throw new NotSupportedException($"{command.Name}: Bridge commands must end with Command.");
-        return new(command.Name[..^"Command".Length], input, isAsync);
+        var name = command.Name[..^"Command".Length];
+        // A [RelayCommand] method that returns Task<T>: the Toolkit's command
+        // returns that task from ExecuteAsync, so its result can be read.
+        var source = isAsync ? SourceMethod(command, name) : null;
+        var result = source?.ReturnType is { IsGenericType: true } returned && returned.GetGenericTypeDefinition() == typeof(Task<>)
+            ? returned.GenericTypeArguments[0] : null;
+        return new(name, input, isAsync) { Result = result, Source = result is null ? null : source };
     }
+
+    // The [RelayCommand] method a generated command property wraps.
+    private static MethodInfo? SourceMethod(PropertyInfo command, string name) =>
+        GeneratorVersion(command) is null || command.DeclaringType is not { } owner ? null
+            : owner.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(method => CommandName(method.Name) == name)
+                .FirstOrDefault(method => method.GetCustomAttribute<RelayCommandAttribute>(false) is not null);
 
     // IncludeCancelCommand emits ICommand, not IRelayCommand. Its public
     // generator metadata plus the attributed source and paired async property
@@ -192,4 +214,10 @@ public static class ToolkitCommandInspector
 public sealed record ToolkitCommandContract(string Name, Type? Input, bool IsAsync)
 {
     public bool HasInput => Input is not null;
+
+    /// <summary>The <c>T</c> of an async command whose method returns <c>Task&lt;T&gt;</c>, or null.</summary>
+    public Type? Result { get; init; }
+
+    /// <summary>The <c>[RelayCommand]</c> method of a command with a <see cref="Result"/>.</summary>
+    public MethodInfo? Source { get; init; }
 }

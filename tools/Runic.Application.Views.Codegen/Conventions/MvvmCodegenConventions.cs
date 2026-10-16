@@ -53,6 +53,10 @@ internal abstract class MvvmCommand
     /// <summary>The contract's generic arguments, which carry the nullability annotations of <see cref="Input"/> and <see cref="Result"/>.</summary>
     internal abstract Type[] ContractArguments { get; }
 
+    /// <summary>The nullable annotations of <see cref="Result"/>, or null when it has none.</summary>
+    internal virtual NullabilityInfo? ResultNullability(PropertyInfo command, NullabilityInfoContext context) =>
+        ContractNullability.Argument(command, context, ContractArguments, 1);
+
     /// <summary>True when the argument is a string the legacy client may send unencoded.</summary>
     internal virtual bool HasStringArgument => false;
 
