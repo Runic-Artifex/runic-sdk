@@ -97,6 +97,23 @@ public static class ToolkitCommandInspector
         return prefix + ", " + execute + extras + ")";
     }
 
+    /// <summary>
+    /// The member named by <c>[RelayCommand(CanExecute = ...)]</c> on the method the command was generated from,
+    /// or <see langword="null"/>.
+    /// </summary>
+    public static string? CanExecuteMember(PropertyInfo command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        if (GeneratorVersion(command) is null || command.DeclaringType is not { } owner
+            || !command.Name.EndsWith("Command", StringComparison.Ordinal))
+            return null;
+        var name = command.Name[..^"Command".Length];
+        return owner.GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(method => CommandName(method.Name) == name)
+            .Select(method => method.GetCustomAttribute<RelayCommandAttribute>(false)?.CanExecute)
+            .FirstOrDefault(member => member is not null);
+    }
+
     private static ToolkitCommandContract Create(PropertyInfo command, Type? input, bool isAsync)
     {
         if (!command.Name.EndsWith("Command", StringComparison.Ordinal))

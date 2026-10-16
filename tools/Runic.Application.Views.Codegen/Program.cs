@@ -538,7 +538,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     var interactions = InteractionCodeEmitter.Discover(declared, model.Name, contractFingerprint, honorJsonIgnore);
     var commands = declared.Where(property => typeof(ICommand).IsAssignableFrom(property.PropertyType)
         || MvvmCodegenConventions.All.Any(convention => InspectCommand(model, property, () => convention.InspectCommand(property)) is not null)).ToArray();
-    var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property)).ToArray();
+    var properties = declared.Except(commands).Except(interactions.Select(plan => plan.Property))
+        .Where(property => !IsCommandAvailability(model, property, commands)).ToArray();
     if (properties.FirstOrDefault(property => WireName(property) == "revision") is { } revision)
         throw new BridgeDiagnosticException(BridgeDiagnosticCodes.NameCollision,
             $"{model.Name}.{revision.Name} conflicts with the generated Bridge revision field.", revision);
@@ -1417,6 +1418,31 @@ static BridgeTypeGraph? FailureGraph(Type model, PropertyInfo command, MemberInf
             $"{model.Name}.{command.Name}: the failure type {BridgeTypeGraph.CSharpType(failure).Replace("global::", "", StringComparison.Ordinal)} must be a Bridge value type other than object, an exception or Nullable<T>.", location);
     return BridgeTypeGraph.Discover(failure, rootPath: $"{model.Name}.{command.Name}.failure", origin: location,
         honorJsonIgnore: BridgeDtoContract.HonorsJsonIgnore(model.Assembly), direction: BridgeValueDirection.ToPage);
+}
+
+// A property that a command without an argument declares as its availability, such as CanCreate for
+// [RelayCommand(CanExecute = nameof(CanCreate))] Create, is that command's can<Name> state already: the
+// snapshot writes the command's CanExecute, which reads the property, and a change of the property
+// publishes a new snapshot. It is not written a second time under the same name (#305).
+static bool IsCommandAvailability(Type model, PropertyInfo property, PropertyInfo[] commands) =>
+    property.PropertyType == typeof(bool) && commands.Any(command =>
+        command.Name.EndsWith("Command", StringComparison.Ordinal)
+        && WireName(property) == "can" + command.Name[..^"Command".Length]
+        && MvvmCodegenConventions.All.Select(convention => InspectCommandOrNull(model, command, convention)).FirstOrDefault(candidate => candidate is not null)
+            is { Input: null } library
+        && library.AvailabilityMember == property.Name);
+
+// A shape error is reported when the command itself is generated.
+static MvvmCommand? InspectCommandOrNull(Type model, PropertyInfo command, MvvmCodegenConvention convention)
+{
+    try
+    {
+        return convention.InspectCommand(command);
+    }
+    catch (NotSupportedException)
+    {
+        return null;
+    }
 }
 
 // The command inspectors live in adapter assemblies and report shape errors
