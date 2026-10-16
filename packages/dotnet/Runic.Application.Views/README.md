@@ -818,7 +818,7 @@ commands.
 | --- | --- | --- |
 | `RUNICBRIDGE001` | Invalid generator invocation or build configuration, such as a malformed `RunicApplicationFrontendCompositionType`; also an internal generator error. | Correct the build property. Report an internal error with the ViewModel that triggers it. |
 | `RUNICBRIDGE002` | A CommunityToolkit `ObservableValidator` ViewModel in a Native AOT publish. | Publish framework-dependent until its validation is verified under AOT. |
-| `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. Exclude computed DTO properties with `[RunicIgnore]`, or opt into unconditional `[JsonIgnore]` as described under [Shared DTO exclusions](#shared-dto-exclusions). A `NavigationResult<T>` holds .NET content: return its `Outcome`, a `NavigationOutcome`, as `CreateBackCommand()` does. |
+| `RUNICBRIDGE003` | A state, command, or interaction value type is not a supported bridge value. The message names the member path, for example `EditorViewModel.Current.value`. | Use a supported scalar, collection, public DTO, `[RunicUnion]` or `[RunicBridgeCodec]` type. Exclude computed DTO properties with `[RunicIgnore]`, or opt into unconditional `[JsonIgnore]` and `[JsonExtensionData]` as described under [Shared DTO exclusions](#shared-dto-exclusions). A `NavigationResult<T>` holds .NET content: return its `Outcome`, a `NavigationOutcome`, as `CreateBackCommand()` does. |
 | `RUNICBRIDGE004` | Two generated names collide: ViewModel names, presentation kinds, state wire names, the reserved `revision` and `validation` fields, interactions, routes, client members, or generated files (including a hand-written `types.ts`), or a type named like a generated bridge (`CounterBridge` beside `CounterViewModel`). Also a command whose client member is reserved in a TypeScript object: `new` (a construct signature), `then` (a thenable client), `constructor`, `__proto__`, `toJSON`, `toString` or `valueOf`. | Rename one member, or set a state wire name with `[RunicAlias]`. Rename a reserved command; the message suggests a name, such as `CreateCommand` for `NewCommand`. |
 | `RUNICBRIDGE005` | The model assembly or one of its dependencies could not be loaded, a Runic View could not be loaded, or a member the Bridge exposes has a type from an assembly the generator cannot load, such as a WPF type. The message names the member path. | Mark a WPF-typed member `[RunicIgnore]`; otherwise check the bootstrap output and package versions. |
 | `RUNICBRIDGE006` | The assembly has no Window or View class (an error only when generation is required, see [Build properties](#build-properties)), one is not public, top-level, concrete and closed, or a View contract is invalid, duplicated or missing. | Make the class public and top-level; give each `[RunicViewContract]` a unique letters-and-digits name. |
@@ -1313,12 +1313,25 @@ public sealed record HistoryQuery(string Message, string Author)
 }
 ```
 
-The opt-in excludes `[JsonIgnore]` and `[JsonIgnore(Condition = JsonIgnoreCondition.Always)]`
-throughout that ViewModel's DTO graphs, including nested DTOs, collections,
+The opt-in excludes `[JsonIgnore]`, `[JsonIgnore(Condition = JsonIgnoreCondition.Always)]`
+and `[JsonExtensionData]` throughout that ViewModel's DTO graphs, including nested DTOs, collections,
 command values, interactions and declared failures. Generated codecs, TypeScript,
 validation traversal and the Hot Reload fingerprint use the same exclusions.
 The Core assembly and the assembly declaring only a Window need no marker.
 Each ViewModel uses its own declaring assembly's policy.
+
+An extension-data member keeps the JSON members a DTO's type does not declare,
+such as those a newer version of the application saved, for System.Text.Json to
+write back. They stay on .NET: a DTO that the Bridge reads from the browser has
+no extension data.
+
+```csharp
+public sealed record SavedRequest(string Kind)
+{
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unknown { get; set; }
+}
+```
 
 `Never`, `WhenWritingNull` and `WhenWritingDefault` remain included; Bridge
 fields have a fixed contract and are emitted even when null or default.

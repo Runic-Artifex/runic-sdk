@@ -51,6 +51,8 @@ internal sealed class BridgeAttributeNamesTests
             [Outer.Nested, Holder.Marker] public string Nested { get; set; } = "";
             [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Reflected { get; set; }
             [JsonIgnore] public string ReflectedImplicit { get; set; } = "";
+            [JsonExtensionData, Localizability] public System.Collections.Generic.Dictionary<string, object>? Extension { get; set; }
+            [JsonExtensionData] public System.Collections.Generic.Dictionary<string, object>? ReflectedExtension { get; set; }
         }
         """;
 
@@ -73,6 +75,11 @@ internal sealed class BridgeAttributeNamesTests
             Require(BridgeDtoContract.HonorsJsonIgnore(assembly), "The assembly opt-in was not found beside a WPF attribute.");
             foreach (var name in new[] { "Implicit", "Always", "ReflectedImplicit" })
                 Require(BridgeDtoContract.IsIgnored(Property(name), honorJsonIgnore: true), $"{name}: an unconditional [JsonIgnore] was not honored.");
+            foreach (var name in new[] { "Extension", "ReflectedExtension" })
+            {
+                Require(BridgeDtoContract.IsIgnored(Property(name), honorJsonIgnore: true), $"{name}: [JsonExtensionData] was not excluded under the opt-in.");
+                Require(!BridgeDtoContract.IsIgnored(Property(name), honorJsonIgnore: false), $"{name}: [JsonExtensionData] was excluded without the opt-in.");
+            }
             foreach (var name in new[] { "WhenNull", "WhenDefault", "Never", "Reflected", "Nested" })
                 Require(!BridgeDtoContract.IsIgnored(Property(name), honorJsonIgnore: true), $"{name}: a conditional or absent [JsonIgnore] excluded the property.");
             Require(!BridgeDtoContract.IsIgnored(Property("Implicit"), honorJsonIgnore: false), "[JsonIgnore] excluded a property without the opt-in.");
