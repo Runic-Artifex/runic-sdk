@@ -144,6 +144,51 @@ A property change on a row that implements `INotifyPropertyChanged` publishes a
 key. Only direct rows are matched: a property change on an object nested inside
 a row publishes a full state.
 
+### Text changes
+
+A read-only `string` property marked `[RunicAppendOnlyText]`, such as a live
+log, publishes text changes in the same frames. The generated client registers
+the field with `defineText()` (`defineText(true)` for a `string?`) among its
+collections.
+
+```json
+{ "__runicDelta": 1, "baseRevision": 7, "revision": 8,
+  "changes": [{ "field": "log", "kind": "text", "length": 128000, "trim": 37, "text": "building /nix/store/...\n" }] }
+```
+
+| Member | Contract |
+| --- | --- |
+| `field` | The generated wire name of the text field. |
+| `kind` | `text`. |
+| `length` | The length, in UTF-16 code units, of the text the change applies to. |
+| `trim` | The number of UTF-16 code units dropped from its start, from 0 to `length`. |
+| `text` | The text appended after them. |
+
+The producer writes the members in this order. It compares the field's value
+with the value of the last state or frame it published on the route and keeps
+the longest suffix of that value that the new value starts with; when none is
+kept, `trim` is `length` and `text` is the whole value. Consecutive changes of
+the field in one batch are one change. The producer publishes a full state
+instead when the field's old or new value is `null`, when the value did not
+change, or when `text` would start inside a surrogate pair. The text is
+compared when the frame is published, so it is the same in .NET and the
+browser up to UTF-16 code units.
+
+The client applies a text change to its current value: it rejects the frame,
+and recovers, when the field is not a registered text field, the current
+value is not a string or its length differs from `length`, `trim` is not a
+nonnegative safe integer up to `length`, or `text` is not a string. A text
+field never takes a collection change, nor a collection field a text change.
+A full state's text field must be a string (or `null` for `defineText(true)`).
+A client from before text changes treats a text field as unknown, discards the
+frame and reads a snapshot.
+
+Fixtures: [text](fixtures/text-deltas/text.json), with a `log` text field and a
+`title` (`"log"`), and the mutations `{ "op": "append", "text" }`,
+`{ "op": "set", "value" }` and `{ "op": "title", "value" }`. The .NET test
+`TextDeltaConformanceTests` and the views test `text-fixtures.test.ts` run
+them like the collection fixtures.
+
 ## Producing frames
 
 Each `INotifyCollectionChanged` notification and each row notification takes the

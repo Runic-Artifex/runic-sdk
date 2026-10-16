@@ -1,0 +1,96 @@
+{
+  "description": "A [RunicAppendOnlyText] field publishes a text change: drop trim UTF-16 code units from the start of the length code units the client has, then append text. A change together with another member, or null, is a full state.",
+  "cases": [
+    {
+      "name": "an append crosses as the appended text",
+      "initial": {"revision": 0, "log": "one", "title": "log"},
+      "steps": [{"each": [{"op": "append", "text": "\ntwo"}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{"field": "log", "kind": "text", "length": 3, "trim": 0, "text": "\ntwo"}]}
+      ],
+      "expected": {"revision": 1, "log": "one\ntwo", "title": "log"}
+    },
+    {
+      "name": "each append is a frame on the previous one",
+      "initial": {"revision": 0, "log": "a", "title": "log"},
+      "steps": [{"each": [{"op": "append", "text": "b"}, {"op": "append", "text": "c"}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{"field": "log", "kind": "text", "length": 1, "trim": 0, "text": "b"}]},
+        {"__runicDelta": 1, "baseRevision": 1, "revision": 2, "changes": [{"field": "log", "kind": "text", "length": 2, "trim": 0, "text": "c"}]}
+      ],
+      "expected": {"revision": 2, "log": "abc", "title": "log"}
+    },
+    {
+      "name": "appends in one batch are one change",
+      "initial": {"revision": 0, "log": "a", "title": "log"},
+      "steps": [{"batch": [{"op": "append", "text": "b"}, {"op": "append", "text": "c"}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 2, "changes": [{"field": "log", "kind": "text", "length": 1, "trim": 0, "text": "bc"}]}
+      ],
+      "expected": {"revision": 2, "log": "abc", "title": "log"}
+    },
+    {
+      "name": "a log that keeps its end drops text from its start",
+      "initial": {"revision": 0, "log": "abcdef", "title": "log"},
+      "steps": [{"each": [{"op": "set", "value": "cdefgh"}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{"field": "log", "kind": "text", "length": 6, "trim": 2, "text": "gh"}]}
+      ],
+      "expected": {"revision": 1, "log": "cdefgh", "title": "log"}
+    },
+    {
+      "name": "the longest shared text is kept",
+      "initial": {"revision": 0, "log": "abab", "title": "log"},
+      "steps": [{"each": [{"op": "set", "value": "babab"}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{"field": "log", "kind": "text", "length": 4, "trim": 1, "text": "ab"}]}
+      ],
+      "expected": {"revision": 1, "log": "babab", "title": "log"}
+    },
+    {
+      "name": "a cleared log drops all of it",
+      "initial": {"revision": 0, "log": "abc", "title": "log"},
+      "steps": [{"each": [{"op": "set", "value": ""}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{"field": "log", "kind": "text", "length": 3, "trim": 3, "text": ""}]}
+      ],
+      "expected": {"revision": 1, "log": "", "title": "log"}
+    },
+    {
+      "name": "a rewritten log replaces its text",
+      "initial": {"revision": 0, "log": "abc", "title": "log"},
+      "steps": [{"each": [{"op": "set", "value": "xyz"}]}],
+      "frames": [
+        {"__runicDelta": 1, "baseRevision": 0, "revision": 1, "changes": [{"field": "log", "kind": "text", "length": 3, "trim": 3, "text": "xyz"}]}
+      ],
+      "expected": {"revision": 1, "log": "xyz", "title": "log"}
+    },
+    {
+      "name": "a change with another member is a full state",
+      "initial": {"revision": 0, "log": "a", "title": "log"},
+      "steps": [{"batch": [{"op": "append", "text": "b"}, {"op": "title", "value": "build"}]}],
+      "frames": [
+        {"revision": 2, "log": "ab", "title": "build"}
+      ],
+      "expected": {"revision": 2, "log": "ab", "title": "build"}
+    },
+    {
+      "name": "null is a full state",
+      "initial": {"revision": 0, "log": null, "title": "log"},
+      "steps": [{"each": [{"op": "set", "value": "a"}]}],
+      "frames": [
+        {"revision": 1, "log": "a", "title": "log"}
+      ],
+      "expected": {"revision": 1, "log": "a", "title": "log"}
+    },
+    {
+      "name": "a notification without a change is a full state",
+      "initial": {"revision": 0, "log": "a", "title": "log"},
+      "steps": [{"each": [{"op": "set", "value": "a"}]}],
+      "frames": [
+        {"revision": 1, "log": "a", "title": "log"}
+      ],
+      "expected": {"revision": 1, "log": "a", "title": "log"}
+    }
+  ]
+}

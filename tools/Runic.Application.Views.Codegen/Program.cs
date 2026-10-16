@@ -638,6 +638,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
                 $"{model.Name}.{property.Name}: the collection key '{attribute.KeyProperty}' must name a nonnullable string, Guid or Int32 row property.", property);
         incrementalCollections.Add(property, key.Property);
     }
+    // Append-only text (#300): a read-only string state property.
+    var textFields = properties.Where(property => property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null).ToArray();
+    foreach (var property in textFields)
+        if (property.PropertyType != typeof(string) || property.SetMethod?.IsPublic == true || !valueProperties.ContainsKey(property))
+            throw new BridgeDiagnosticException(BridgeDiagnosticCodes.State,
+                $"{model.Name}.{property.Name}: RunicAppendOnlyText requires a read-only string state property.", property);
     var hasContent = contentProperties.Count > 0 || contentCollections.Count > 0;
     if (viewTypes is not null) WarnContentWithoutView(model, contentProperties, contentCollections, regionSlots, viewTypes);
     // A region slot presents its Current, whose nullability (always nullable)
@@ -783,7 +789,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}?.Current, null, static vm => vm.{property.Name}),");
             continue;
         }
-        cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}),");
+        // Validation stays atomic with full states, as for collections.
+        var text = textFields.Contains(property) && !hasValidation ? $" {{ AppendOnlyTextField = \"{WireName(property)}\" }}" : "";
+        cs.AppendLine($"            new global::Runic.Application.Views.PropertyDescriptor<{fullType}>(\"{property.Name}\", vm => vm.{property.Name}, {setter}){text},");
     }
     cs.AppendLine("        ],");
     if (needsCheckedWriter)
@@ -1206,7 +1214,8 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (needsCheckedWriter)
         ts.AppendLine($"const {Ref("checkedFieldNames")} = [{string.Join(", ", checkedProperties.Select(property => JsonSerializer.Serialize(WireName(property))))}];");
     ts.AppendLine();
-    if (incrementalCollections.Count > 0)
+    var hasDeltaFields = incrementalCollections.Count > 0 || textFields.Length > 0;
+    if (hasDeltaFields)
     {
         ts.AppendLine($"const {Ref("collectionDefinitions")} = {Ref("defineCollections")}({{");
         foreach (var (property, key) in incrementalCollections)
@@ -1215,10 +1224,12 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
             var keyMember = graph.Root.Element!.Members.Single(member => member.Property == key);
             ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineCollection")}<{graph.ItemTypeScriptType()}>(wire => {BridgeTypeGraph.ArrowBody(graph.EmitItemTypeScriptDecoder("wire"))}, item => String({TsAccess("item", keyMember.WireName)})),");
         }
+        foreach (var property in textFields)
+            ts.AppendLine($"  {TsLiteralKey(WireName(property))}: {Ref("defineText")}({(IsNullableString(property) ? "true" : "")}),");
         ts.AppendLine("});");
     }
     var connectOptions = $"contract: {Ref("bridgeContract")}, route, mount, {Shorthand("hydrate")}"
-        + (incrementalCollections.Count > 0 ? $", collections: {Ref("collectionDefinitions")}" : "")
+        + (hasDeltaFields ? $", collections: {Ref("collectionDefinitions")}" : "")
         + (needsCheckedWriter ? $", checkedFields: {Ref("checkedFieldNames")}" : "")
         + (interactions.Length > 0 ? $", interactions: {Ref("interactionDefinitions")}" : "")
         + (operationPlans.Length > 0 ? $", operations: {Ref("bridgeOperations")}" : "");
@@ -1303,7 +1314,9 @@ static bool GenerateOne(Type model, string csharpPath, string typescriptPath, st
     if (operationPlans.Any(operation => operation.IsStream)) publicImports.Add("type " + Import("BridgeStreamOperation"));
     if (interactions.Length > 0) publicImports.Add("type " + Import("BridgeInteractionContext"));
     var runtimeImports = new List<string> { Import("connectView"), Import("viewReferences") };
-    if (incrementalCollections.Count > 0) runtimeImports.AddRange([Import("defineCollection"), Import("defineCollections")]);
+    if (incrementalCollections.Count > 0) runtimeImports.Add(Import("defineCollection"));
+    if (hasDeltaFields) runtimeImports.Add(Import("defineCollections"));
+    if (textFields.Length > 0) runtimeImports.Add(Import("defineText"));
     if (interactions.Length > 0) runtimeImports.Add(Import("defineInteractions"));
     if (operationPlans.Length > 0) runtimeImports.Add(Import("bridgeOperations"));
     if (hasValidation) runtimeImports.Add(Import("decodeBridgeValidation"));

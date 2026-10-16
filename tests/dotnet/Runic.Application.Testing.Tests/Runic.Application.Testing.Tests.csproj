@@ -39,6 +39,7 @@
   <ItemGroup>
     <None Include="../../../specs/application/fixtures/collection-deltas/*.json" Link="fixtures/collection-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <None Include="../../../specs/application/fixtures/domain-failures/*.json" Link="fixtures/domain-failures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../../specs/application/fixtures/text-deltas/*.json" Link="fixtures/text-deltas/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="'$(RunicApplicationFrontendBootstrap)' == 'true'">
     <Compile Remove="Program.cs" />

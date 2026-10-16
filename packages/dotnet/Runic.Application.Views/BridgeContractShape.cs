@@ -87,6 +87,8 @@ public static class BridgeContractShape
             if (kind != "state") continue;
             if (property.GetCustomAttribute<RunicCollectionAttribute>(true) is { } collection)
                 parts.Add($"collection:{TypeName(model)}:{WireName(property)}:key:{collection.KeyProperty}");
+            if (property.GetCustomAttribute<RunicAppendOnlyTextAttribute>(true) is not null)
+                parts.Add($"append-only-text:{TypeName(model)}:{WireName(property)}");
             // A NavigationRegion<TContent> slot presents its Current; the region
             // kind is part of the contract because its wire value is nullable.
             if (NavigationRegionContent(property.PropertyType) is { } regionContent)

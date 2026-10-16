@@ -897,6 +897,7 @@ commands.
 | `RUNICBRIDGE007` | A ViewModel does not implement `INotifyPropertyChanged`, is not a public top-level class, or has no state, command or interaction. | Change the ViewModel declaration. |
 | `RUNICBRIDGE008` | A state property has no public getter or an empty wire name, ViewModel content or a `NavigationRegion<TContent>` slot has a public setter, a ViewModel collection's item type has no registered View, or a region slot is a `NavigationRegion<object>` or has no ViewModel with a registered View that is a `TContent`. | Add a getter, make content read-only to the web view, register a View for the item or content type, or give the region a specific content interface or base class. |
 | `RUNICBRIDGE009` | A command's name does not end with `Command`, its shape is unsupported, or a non-ReactiveUI command has `[RunicCommandResult]`. | Rename the command or use a supported CommunityToolkit, ReactiveUI or `[RunicCommandInput]` command. |
+| `RUNICBRIDGE008`, append-only text | A `[RunicAppendOnlyText]` member is not a read-only `string` or `string?` state property. | Remove its public setter, or the attribute. |
 | `RUNICBRIDGE010` | A `[RunicCollection]` member is not a read-only, non-nullable collection of DTO rows, or its key is not a non-nullable `string`, `Guid` or `Int32` row property. | Change the collection or its key. |
 | `RUNICBRIDGE011` | A ReactiveUI interaction has no public getter or has a public setter. | Expose the interaction as a get-only property. |
 | `RUNICBRIDGE012` | A `[RunicFailure]` is on a member that is not a Bridge command or its `[RelayCommand]` method, is on both the property and the method, or names `object`, an exception or `Nullable<T>`. | Declare one failure type per command: any Bridge value type, typically a DTO, an enum or a `[RunicUnion]`. A failure type the Bridge cannot encode is `RUNICBRIDGE003` at `{Model}.{Command}.failure`. |
@@ -1359,6 +1360,42 @@ immediately. A batch controls snapshot work; it does not make mutations atomic
 or own the model scheduler. Enter the model's execution context as usual and
 keep the batch around synchronous changes, after awaiting I/O. The translations
 editor uses this during bulk document reconciliation and command result updates.
+
+## Live logs and other growing text
+
+A read-only `string` that grows at its end, such as the output of a running
+build, would otherwise cross whole in every state, up to its full length per
+line of output. Mark it `[RunicAppendOnlyText]`, and a change of the property
+alone crosses as the text it appends:
+
+```csharp
+public sealed partial class OperationsViewModel : ObservableObject
+{
+    private const int LogCharacters = 128_000;
+
+    /// <summary>The end of the running operation's log.</summary>
+    [ObservableProperty, RunicAppendOnlyText]
+    public partial string Log { get; private set; } = "";
+
+    private void OnOutput(string text)
+    {
+        var log = Log + text;
+        // Keeps the last 128 KB; the page receives the dropped length and the new text.
+        Log = log.Length > LogCharacters ? log[^LogCharacters..] : log;
+    }
+}
+```
+
+The page sees an ordinary `log: string`. The Bridge compares the new value with
+the value the page has and publishes a frame with the number of UTF-16 code
+units dropped from its start and the text appended, keeping the longest text
+the two share. Appends in one `BridgeSnapshotBatch` are one change. A cleared
+or replaced log is a frame that drops everything. `null` (for `string?`), a
+change together with other state, a ViewModel with validation, and a page that
+missed a frame get full states, as with `[RunicCollection]`. The property must
+be a read-only `string` or `string?` state property (`RUNICBRIDGE008`). The
+frame format is in
+[collection delta frames](../../../specs/application/collection-deltas.md#text-changes).
 
 ## Structured validation
 
