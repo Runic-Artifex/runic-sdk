@@ -1,6 +1,6 @@
 # Privileged actions against a real Polkit, in a VM. It installs tests/native/Runic.Privileged.Smoke (published
 # with NativeAOT; its publish directory in RUNIC_PRIVILEGED_SMOKE) and its generated policy, then runs each
-# action as an ordinary user: one a rule allows, one a rule denies, one that needs a password with no
+# action as an ordinary user: one a rule allows, one with commands, one a rule denies, one that needs a password with no
 # authentication agent, and with an agent that dismisses the request, and one while polkitd is stopped. It needs
 # KVM and runs outside the sandbox:
 #
@@ -19,7 +19,7 @@ in
       security.polkit.enablePkexecWrapper = true;
       security.polkit.extraConfig = ''
         polkit.addRule(function(action, subject) {
-          if (action.id == "dev.runic.privileged-smoke.allowed" && subject.user == "alice") return polkit.Result.YES;
+          if ((action.id == "dev.runic.privileged-smoke.allowed" || action.id == "dev.runic.privileged-smoke.commands") && subject.user == "alice") return polkit.Result.YES;
           if (action.id == "dev.runic.privileged-smoke.denied") return polkit.Result.NO;
         });
       '';
@@ -65,6 +65,19 @@ in
           assert "err: helper stderr line" in output, output
           assert "RUNIC_CALLER_SECRET" not in output, "pkexec passed the caller's environment"
           machine.fail("test -e /tmp/injected")
+
+      with subtest("Commands share one action, and both sides check their arguments by position"):
+          output = run("commands", "report", "4", "two words")
+          assert result(output) == "result: completed 4", output
+          assert "out: helper dev.runic.privileged-smoke.commands caller=1000 cwd=/\n" in output + "\n", output
+          assert "out: arg <two words>" in output, output
+          assert result(run("commands", "report", "0")) == "result: completed 0", "a trailing argument may be left out"
+          # The caller refuses arguments outside the command before pkexec runs; the helper refuses them too.
+          output = machine.fail(f"runuser -u alice -- {program} run commands report 0 'not;allowed' 2>&1")
+          assert "ArgumentException" in output, output
+          for arguments in ["report 0 'not;allowed'", "report", "state extra", "unknown"]:
+              output = machine.fail(f"runuser -u alice -- /run/wrappers/bin/pkexec {program} commands {arguments} 2>&1")
+              assert "helper: rejected arguments" in output, f"{arguments}: {output}"
 
       with subtest("A rule that refuses is denied"):
           output = run("denied", "report", "0")

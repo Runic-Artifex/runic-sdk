@@ -57,7 +57,7 @@ exactly one policy file declares each action ID.
 | `Description`, `Message`, `IconName` | What the authentication dialog shows. One line each. |
 | `MaximumArguments` | Arguments accepted after the verb, 0 to 64. Default 0. |
 | `ArgumentPattern` | A .NET regular expression every argument after the verb must match completely, compiled with `RegexOptions.NonBacktracking`, so backreferences and lookarounds are build errors. `\d` and `\w` match every script's digits and letters, a negated class such as `[^/]` matches a line break, an inline `(?i)` makes `[a-z]` match the Kelvin sign (U+212A), and `(?x)` turns `#` into a comment: list the allowed characters, without inline options. The pattern is checked alone and anchored at build time. |
-| `AllowAny`, `AllowInactive`, `AllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. `yes`, `auth_self` and `auth_self_keep` are warnings (`RUNICPA014`): grant passwordless access to specific users in a site rule in `/etc/polkit-1/rules.d` instead. |
+| `AllowAny`, `AllowInactive`, `AllowActive` | Polkit defaults for any, inactive and active sessions. Default `auth_admin` for all three: an administrator's password every time. Polkit keeps an `auth_admin_keep` authorization for one action ID, so operations that should share it are commands of one action (`RunicPrivilegedCommand`), which share its policy entry. `yes`, `auth_self` and `auth_self_keep` are warnings (`RUNICPA014`): grant passwordless access to specific users in a site rule in `/etc/polkit-1/rules.d` instead. |
 | `AllowGui` | `true` keeps `DISPLAY` and `XAUTHORITY` for a program that opens windows as root. Default off. |
 | `Name` | The generated property name, when the last ID segment does not make a good one. |
 
@@ -174,9 +174,12 @@ var stop = PolkitHelper.WatchStandardInput(); // cancelled when the application 
 // path (a NixOS system with bin/switch-to-configuration) and use only the resolved path from then on.
 ```
 
-- `ArgumentPattern` applies to every argument; positional rules, such as "first
-  a mode, then a store path", and checks against the system belong in the
-  program. Resolve paths (`realpath`), check the resolved path again and use
+- `ArgumentPattern` applies to every argument. Positional rules, such as "first
+  a mode, then a store path", can be declared as commands
+  (`RunicPrivilegedCommand`, see
+  [Commands under one action](../Runic.Platform/README.md#commands-under-one-action)),
+  which `Match` checks; the program then switches on the command name, the
+  first of `arguments`. Checks against the system belong in the program. Resolve paths (`realpath`), check the resolved path again and use
   only it. A store-path pattern is not a trust boundary: any user can create
   `/nix/store/<hash>-nixos-system-x` by building it, so an action that
   activates a system must stay `auth_admin`.

@@ -187,7 +187,8 @@ internal sealed class MacPrivilegedProvider : IDesktopPrivilegedActions
     }
 
     private static bool SameDeclaration(PrivilegedActionDeclaration a, PrivilegedActionDeclaration b) =>
-        ReferenceEquals(a, b) || (a.Program == b.Program && a.Verb == b.Verb && a.MaximumArguments == b.MaximumArguments && a.ArgumentPattern == b.ArgumentPattern);
+        ReferenceEquals(a, b) || (a.Program == b.Program && a.Verb == b.Verb && a.MaximumArguments == b.MaximumArguments && a.ArgumentPattern == b.ArgumentPattern
+            && a.Commands.SequenceEqual(b.Commands));
 
     /// <summary>Decodes lines, delivers them one at a time and keeps the first exception a callback threw.</summary>
     private sealed class OutputSink(Action<PrivilegedActionOutput>? callback)

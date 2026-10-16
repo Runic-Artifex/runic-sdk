@@ -10,7 +10,16 @@
                              MaximumArguments="1"
                              ArgumentPattern="/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+" />
 
-    These targets validate the platform-neutral part of every item (RUNICPA001 to RUNICPA009 and RUNICPA011) in
+    Several operations of one program can share one action, and so one authorization that auth_admin_keep retains,
+    as RunicPrivilegedCommand items. The first argument after the verb names the command, and each further argument
+    matches the pattern at its position (patterns separated by ';', \x3B for a semicolon in a pattern):
+
+      <RunicPrivilegedCommand Include="activate" Action="org.example.app.system" Arguments="switch|boot;/nix/store/[a-z0-9]{32}-[A-Za-z0-9._+-]+" />
+      <RunicPrivilegedCommand Include="gc" Action="org.example.app.system" Arguments="[1-9][0-9]{0,2}" MinimumArguments="0" />
+
+    An action with commands accepts only them; its MaximumArguments defaults to the most any command takes.
+
+    These targets validate the platform-neutral part of every item (RUNICPA001 to RUNICPA009, RUNICPA011 and RUNICPA015) in
     RunicValidatePrivilegedActions, and write a C# class with one PrivilegedActionDeclaration per item in
     RunicGeneratePrivilegedActions. A platform package adds its own artifacts and checks with a target that depends
     on RunicValidatePrivilegedActions, and appends that target to RunicPrivilegedActionsDependsOn so the class is
@@ -36,6 +45,7 @@
              AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
     <ParameterGroup>
       <Actions ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <Commands ParameterType="Microsoft.Build.Framework.ITaskItem[]" />
       <SourceFile ParameterType="System.String" />
       <Namespace ParameterType="System.String" />
       <ClassName ParameterType="System.String" Required="true" />
@@ -62,6 +72,7 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
     private static readonly Regex Identifier = new Regex("^[A-Za-z_][A-Za-z0-9_]*$");
 
     [Required] public ITaskItem[] Actions { get; set; } = Array.Empty<ITaskItem>();
+    public ITaskItem[] Commands { get; set; } = Array.Empty<ITaskItem>();
     public string SourceFile { get; set; } = "";
     public string Namespace { get; set; } = "";
     [Required] public string ClassName { get; set; } = "";
@@ -74,6 +85,15 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
         public string Id = "", Name = "", Program = "", Description = "";
         public string Verb, ArgumentPattern;
         public int MaximumArguments;
+        public bool MaximumSet;
+        public List<Command> Commands = new List<Command>();
+    }
+
+    private sealed class Command
+    {
+        public string Name = "";
+        public string[] Patterns = Array.Empty<string>();
+        public int MinimumArguments;
     }
 
     public override bool Execute()
@@ -97,6 +117,15 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
             if (clash != null)
                 Error("RUNICPA003", $"Privileged actions '{clash.Id}' and '{action.Id}' cannot be told apart by their first argument; give every action its own Verb, and use an action without a Verb only on its own.");
             actions.Add(action);
+        }
+        foreach (var item in Commands ?? Array.Empty<ITaskItem>()) ReadCommand(item, actions);
+        foreach (var action in actions.Where(a => a.Commands.Count > 0))
+        {
+            // The command name counts as an argument after the verb.
+            var needed = action.Commands.Max(c => c.Patterns.Length) + 1;
+            if (!action.MaximumSet) action.MaximumArguments = needed;
+            else if (action.MaximumArguments < needed)
+                Error("RUNICPA015", $"Privileged action '{action.Id}' has MaximumArguments {action.MaximumArguments.ToString(CultureInfo.InvariantCulture)}, but its command '{action.Commands.First(c => c.Patterns.Length + 1 > action.MaximumArguments).Name}' takes {needed.ToString(CultureInfo.InvariantCulture)} arguments with its name; remove MaximumArguments or raise it.");
         }
         if (Log.HasLoggedErrors) return false;
         if (string.IsNullOrEmpty(SourceFile)) return true;
@@ -125,24 +154,8 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
         if (action.Verb != null && (action.Verb.Length > 4096 || action.Verb.IndexOf('\0') >= 0))
             Error("RUNICPA007", $"Privileged action '{action.Id}' has an invalid Verb.");
         action.ArgumentPattern = Get("ArgumentPattern");
-        if (action.ArgumentPattern != null)
-        {
-            // The options of PrivilegedActionDeclaration.PatternOptions: NonBacktracking (1024) rejects
-            // backreferences and lookarounds here rather than when the application starts. MSBuild on .NET
-            // Framework has no NonBacktracking; there the pattern is checked without it.
-            // Alone and anchored, as PrivilegedActionDeclaration compiles it: "(?x)[a-z]+ # letters" is valid alone,
-            // but its comment swallows the anchoring group's end.
-            try
-            {
-                foreach (var pattern in new[] { action.ArgumentPattern, "^(?:" + action.ArgumentPattern + ")\\z" })
-                {
-                    try { _ = new Regex(pattern, (RegexOptions)1024 | RegexOptions.CultureInvariant); }
-                    catch (ArgumentOutOfRangeException) { _ = new Regex(pattern, RegexOptions.CultureInvariant); }
-                }
-            }
-            catch (ArgumentException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an invalid ArgumentPattern: {e.Message}"); }
-            catch (NotSupportedException e) { Error("RUNICPA008", $"Privileged action '{action.Id}' has an ArgumentPattern that needs backtracking: {e.Message}"); }
-        }
+        if (action.ArgumentPattern != null) CheckPattern(action.ArgumentPattern, $"Privileged action '{action.Id}' has", "ArgumentPattern");
+        action.MaximumSet = Get("MaximumArguments") != null;
         var maximum = Get("MaximumArguments") ?? "0";
         if (!int.TryParse(maximum, NumberStyles.None, CultureInfo.InvariantCulture, out action.MaximumArguments) || action.MaximumArguments > 64)
             Error("RUNICPA009", $"Privileged action '{action.Id}' has MaximumArguments '{maximum}'; use a number from 0 to 64.");
@@ -150,6 +163,60 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
         if (!Identifier.IsMatch(action.Name) || action.Name == ClassName || ReservedNames.Contains(action.Name))
             Error("RUNICPA011", $"Privileged action '{action.Id}' generates the property '{action.Name}', which is not usable; set Name. Reserved names: {string.Join(", ", ReservedNames)}.");
         return action;
+    }
+
+    // The options of PrivilegedActionDeclaration.PatternOptions: NonBacktracking (1024) rejects backreferences and
+    // lookarounds here rather than when the application starts. MSBuild on .NET Framework has no NonBacktracking;
+    // there the pattern is checked without it. Alone and anchored, as PrivilegedActionDeclaration compiles it:
+    // "(?x)[a-z]+ # letters" is valid alone, but its comment swallows the anchoring group's end.
+    private void CheckPattern(string value, string subject, string what)
+    {
+        try
+        {
+            foreach (var pattern in new[] { value, "^(?:" + value + ")\\z" })
+            {
+                try { _ = new Regex(pattern, (RegexOptions)1024 | RegexOptions.CultureInvariant); }
+                catch (ArgumentOutOfRangeException) { _ = new Regex(pattern, RegexOptions.CultureInvariant); }
+            }
+        }
+        catch (ArgumentException e) { Error("RUNICPA008", $"{subject} an invalid {what}: {e.Message}"); }
+        catch (NotSupportedException e) { Error("RUNICPA008", $"{subject} {(what.StartsWith("A", StringComparison.Ordinal) ? "an" : "a")} {what} that needs backtracking: {e.Message}"); }
+    }
+
+    private void ReadCommand(ITaskItem item, List<Action> actions)
+    {
+        var command = new Command { Name = item.ItemSpec };
+        var actionId = item.GetMetadata("Action");
+        var action = actions.FirstOrDefault(a => a.Id == actionId);
+        if (action == null)
+        {
+            Error("RUNICPA015", $"Privileged command '{command.Name}' names the action '{actionId}', which no RunicPrivilegedAction item declares; set Action to the ID of one.");
+            return;
+        }
+        var subject = $"Privileged command '{command.Name}' of '{action.Id}'";
+        if (command.Name.Length == 0 || command.Name.Length > 4096 || command.Name.IndexOf('\0') >= 0)
+        {
+            Error("RUNICPA015", $"{subject} has an invalid name.");
+            return;
+        }
+        if (action.Commands.Any(c => c.Name == command.Name))
+        {
+            Error("RUNICPA015", $"{subject} is declared twice.");
+            return;
+        }
+        var arguments = item.GetMetadata("Arguments");
+        command.Patterns = arguments.Length == 0 ? Array.Empty<string>() : arguments.Split(';');
+        for (var i = 0; i < command.Patterns.Length; i++)
+        {
+            if (command.Patterns[i].Length == 0) Error("RUNICPA015", $"{subject} has an empty pattern for argument {(i + 1).ToString(CultureInfo.InvariantCulture)}; write one pattern per argument, separated by ';'.");
+            else CheckPattern(command.Patterns[i], subject + " has", $"pattern for argument {(i + 1).ToString(CultureInfo.InvariantCulture)}");
+        }
+        if (command.Patterns.Length > 63) Error("RUNICPA015", $"{subject} takes {command.Patterns.Length.ToString(CultureInfo.InvariantCulture)} arguments; at most 63 can follow its name.");
+        var minimum = item.GetMetadata("MinimumArguments");
+        command.MinimumArguments = command.Patterns.Length;
+        if (minimum.Length > 0 && (!int.TryParse(minimum, NumberStyles.None, CultureInfo.InvariantCulture, out command.MinimumArguments) || command.MinimumArguments > command.Patterns.Length))
+            Error("RUNICPA015", $"{subject} has MinimumArguments '{minimum}'; use a number from 0 to the number of patterns in Arguments ({command.Patterns.Length.ToString(CultureInfo.InvariantCulture)}).");
+        action.Commands.Add(command);
     }
 
     private string Source(List<Action> actions)
@@ -169,6 +236,20 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
             if (action.Verb != null) s.Append("        Verb = ").Append(Literal(action.Verb)).Append(",\n");
             s.Append("        MaximumArguments = ").Append(action.MaximumArguments.ToString(CultureInfo.InvariantCulture)).Append(",\n");
             if (action.ArgumentPattern != null) s.Append("        ArgumentPattern = ").Append(Literal(action.ArgumentPattern)).Append(",\n");
+            if (action.Commands.Count > 0)
+            {
+                s.Append("        Commands = global::System.Collections.Immutable.ImmutableArray.Create(\n");
+                for (var i = 0; i < action.Commands.Count; i++)
+                {
+                    var command = action.Commands[i];
+                    s.Append("            new global::Runic.Platform.PrivilegedActionCommand(").Append(Literal(command.Name));
+                    foreach (var pattern in command.Patterns) s.Append(", ").Append(Literal(pattern));
+                    s.Append(')');
+                    if (command.MinimumArguments != command.Patterns.Length)
+                        s.Append(" { MinimumArguments = ").Append(command.MinimumArguments.ToString(CultureInfo.InvariantCulture)).Append(" }");
+                    s.Append(i + 1 < action.Commands.Count ? ",\n" : "),\n");
+                }
+            }
             s.Append("    };\n\n");
         }
         s.Append("    /// <summary>Every declared action, for the provider and for the privileged program's own check.</summary>\n");
@@ -230,6 +311,7 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
   <!-- Validates every item once; platform targets that read the items depend on it. -->
   <Target Name="RunicValidatePrivilegedActions" Condition="'@(RunicPrivilegedAction)' != ''">
     <RunicWritePrivilegedActionDeclarations Actions="@(RunicPrivilegedAction)"
+                                            Commands="@(RunicPrivilegedCommand)"
                                             Namespace="$(RunicPrivilegedActionsNamespace)"
                                             ClassName="$(RunicPrivilegedActionsClassName)"
                                             ReservedNames="$(RunicPrivilegedActionsReservedNames)"
@@ -247,6 +329,7 @@ public sealed class RunicWritePrivilegedActionDeclarations : Task
       <RunicPrivilegedActionsIntermediateDirectory Condition="'$(RunicPrivilegedActionsIntermediateDirectory)' == ''">$(IntermediateOutputPath)runic-privileged/</RunicPrivilegedActionsIntermediateDirectory>
     </PropertyGroup>
     <RunicWritePrivilegedActionDeclarations Actions="@(RunicPrivilegedAction)"
+                                            Commands="@(RunicPrivilegedCommand)"
                                             SourceFile="$(RunicPrivilegedActionsIntermediateDirectory)PrivilegedActions.g.cs"
                                             Namespace="$(RunicPrivilegedActionsNamespace)"
                                             ClassName="$(RunicPrivilegedActionsClassName)"
