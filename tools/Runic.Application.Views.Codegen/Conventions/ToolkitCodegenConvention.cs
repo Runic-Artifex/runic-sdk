@@ -43,6 +43,11 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
     {
         internal override bool IsAsync => contract.IsAsync;
         internal override Type? Input => contract.Input;
+        internal override Type? Result => contract.Result;
+
+        // The method's Task<T> carries the result's annotations.
+        internal override NullabilityInfo? ResultNullability(PropertyInfo command, NullabilityInfoContext context) =>
+            contract.Source is { } source && context.Create(source.ReturnParameter).GenericTypeArguments is [var result] ? result : null;
         internal override Type[] ContractArguments => contract.Input is { } input ? [input] : [];
 
         // The Toolkit generator documents its properties in C# terms ("Gets an
@@ -70,7 +75,11 @@ internal sealed class ToolkitCodegenConvention : MvvmCodegenConvention
             // concurrent executions), so publish on the command's own change.
             var subscribeRunning = contract.IsAsync
                 ? $"Subscribe: (vm, changed) => new ToolkitRunningSubscription(vm.{property.Name}, changed)" : null;
-            return ToolkitCommandInspector.DescriptorFor(property, modelType, contract, toolkitType, readArgument, encodeArgument, subscribeRunning);
+            var resultType = plan.ResultGraph?.RootCSharpType();
+            var encodeResult = resultType is null ? null
+                : $"global::Runic.Application.Views.BridgeOperationResult.Encode(() => global::Runic.Application.Views.BridgeWire.EncodeCanonical(writer => {property.Name}ResultCodec.Write(writer, result)))";
+            return ToolkitCommandInspector.DescriptorFor(property, modelType, contract, toolkitType, readArgument, encodeArgument, subscribeRunning,
+                resultType, encodeResult);
         }
 
         internal override void AppendSnapshotState(StringBuilder cs, PropertyInfo command, string name, GeneratedCommandPlan plan)

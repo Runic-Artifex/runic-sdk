@@ -224,6 +224,16 @@ export interface ToolkitCommandRequest {
   readonly delta: number;
 }
 
+/** What keeping the newest restore points frees. */
+export interface ToolkitEstimate {
+  readonly retention: number;
+  readonly bytes: number;
+}
+
+export interface ToolkitEstimateChoice {
+  readonly retention: number;
+}
+
 export interface TypedSaveRequest {
   readonly documentId: string;
   readonly content: string;
