@@ -7,6 +7,7 @@
   buildDotnetModule,
   dotnetCorePackages,
   runCommand,
+  writeText,
   makeBinaryWrapper,
   copyDesktopItems,
   writableTmpDirAsHomeHook,
@@ -46,6 +47,8 @@
   host ? "desktop",
   # GStreamer plugins for audio and video in WebKitGTK.
   withMedia ? false,
+  # Publish projectFile with NativeAOT. Only that project gets PublishAot, as if its project file set it: the projects
+  # it references and testProjectFile are restored and built as their own project files say.
   nativeAot ? false,
   selfContainedBuild ? nativeAot,
   # makeDesktopItem results, installed in $out/share/applications.
@@ -134,6 +137,19 @@ let
           .${packageManager};
       };
 
+  # nativeAot sets PublishAot in the evaluation of projectFile alone, through CustomAfterDirectoryBuildProps, rather
+  # than with -p:PublishAot=true, a global property that also reaches testProjectFile and its own restore, which then
+  # needs a NativeAOT lock file (#316). Projects whose path the build exports as RunicNativeAotProjectFiles
+  # (preConfigure) get it; the application's project then sees PublishAot in its own body, as a lock file path
+  # chosen there with Condition="'$(PublishAot)' == 'true'" needs.
+  nativeAotProps = writeText "runic-native-aot.props" ''
+    <Project>
+      <PropertyGroup Condition="$([System.String]::Copy(';$(RunicNativeAotProjectFiles);').Contains(';$(MSBuildProjectFullPath);'))">
+        <PublishAot>true</PublishAot>
+      </PropertyGroup>
+    </Project>
+  '';
+
 in
 buildDotnetModule (
   removeAttrs args [
@@ -205,7 +221,7 @@ buildDotnetModule (
 
     dotnetFlags =
       dotnetFlags
-      ++ lib.optional nativeAot "-p:PublishAot=true"
+      ++ lib.optional nativeAot "-p:CustomAfterDirectoryBuildProps=${nativeAotProps}"
       ++ lib.optionals (frontend' != null && frontend'.nodeModules != null) [
         "-p:RunicApplicationFrontendNodeModulesDirectory=${frontend'.nodeModules}/node_modules"
         # Runic.Application.Views before 0.8.0-preview.1 knows only this property; the link below serves it.
@@ -216,6 +232,13 @@ buildDotnetModule (
     #   Program="$(RunicApplicationInstallPrefix)/bin/my-app"
     preConfigure = ''
       export RunicApplicationInstallPrefix=$out
+      ${lib.optionalString nativeAot ''
+        RunicNativeAotProjectFiles=
+        for runicAotProject in ${lib.escapeShellArgs (lib.toList projectFile)}; do
+          RunicNativeAotProjectFiles+="$(realpath --canonicalize-missing --no-symlinks "$runicAotProject");"
+        done
+        export RunicNativeAotProjectFiles=''${RunicNativeAotProjectFiles%;}
+      ''}
       # The frontend build runs offline with read-only node_modules: pnpm must neither fetch the version that
       # package.json names nor install again before `pnpm run`.
       export pnpm_config_pm_on_fail=ignore pnpm_config_verify_deps_before_run=false npm_config_update_notifier=false

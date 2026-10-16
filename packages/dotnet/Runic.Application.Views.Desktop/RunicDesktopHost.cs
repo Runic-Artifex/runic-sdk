@@ -26,12 +26,15 @@ namespace Runic.Application.Views.Desktop;
 /// The application runs as long as the body passed to <c>Run</c>: closing the last Window does not end it, and a body
 /// may run without any Window, for example behind a status icon. To keep one copy running, claim
 /// <c>ApplicationInstance.ClaimAsync</c> before <c>Run</c> and bring an open Window forward with
-/// <see cref="PlatformServices.PresentAsync"/> when another launch arrives.
+/// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/> when another launch arrives.
 /// When the <c>RUNIC_APPLICATION_SERVE_ONLY</c> environment variable is <c>1</c>, as on CS-WebUI, no window or browser
 /// is opened: each window creates its surface, writes <c>RUNIC_APPLICATION_URL=&lt;url&gt;</c> to standard output, and
 /// keeps serving until a line is read from standard input, shutdown is requested or the process ends; then
-/// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. The surface admits one browser, a guarded Window
-/// opens unguarded (event 1053) and platform services report <c>OwnerUnavailable</c>. This switch takes precedence
+/// <see cref="RunicWindow{TViewModel}.WaitForCloseAsync"/> returns. A line ends every Window serving when it is read; a
+/// Window opened after it serves until the next line. The surface admits one browser, a guarded Window
+/// opens unguarded (event 1053) and platform services, including
+/// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/>,
+/// report <c>OwnerUnavailable</c>. This switch takes precedence
 /// over <c>RUNIC_APPLICATION_CLOSE_AFTER_OPEN</c>. <see cref="RunicWindowHostExtensions.ValidateWindow{TWindow}"/>
 /// makes the same decision: it skips the findings of <see cref="DesktopHost.Validate"/> about what this machine lacks
 /// to present a window, such as <c>graphical-session-missing</c>, because no presentation opens, and still reports
@@ -300,24 +303,44 @@ public sealed class RunicDesktopHost : IRunicWindowHost
 
     private static bool ServeOnlyRequested => Environment.GetEnvironmentVariable(ServeOnlyEnvironmentVariable) == "1";
 
-    private static readonly Lazy<Task> s_serveOnlyInput = new(ReadServeOnlyInput);
+    private static readonly object s_serveOnlyGate = new();
+    // Completes when the next line is read; replaced by each line, so a Window that opens later waits for a new one.
+    private static TaskCompletionSource? s_serveOnlyLine;
+    // The standard input a reader thread reads until its end; null when none does.
+    private static TextReader? s_serveOnlyInput;
 
     // CS-WebUI's serve-only contract: serving ends when a line is read from standard input or the process ends.
     // A termination signal only requests shutdown, so it ends serving too.
     private Task<Task> ServeOnlyStopped() =>
-        Task.WhenAny(s_serveOnlyInput.Value, Task.Delay(Timeout.Infinite, Desktop.ShutdownRequested));
+        Task.WhenAny(NextServeOnlyLine(), Task.Delay(Timeout.Infinite, Desktop.ShutdownRequested));
 
-    // One reader for the process: a line ends serving for every window. End of input (for example </dev/null)
-    // is not a stop request.
-    private static Task ReadServeOnlyInput()
+    // One reader for the process: a line ends serving for every Window serving when it is read, and a Window opened
+    // after it waits for the next line (#310). End of input (for example </dev/null) is not a stop request.
+    internal static Task NextServeOnlyLine()
     {
-        var line = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        new Thread(() =>
+        lock (s_serveOnlyGate)
         {
-            if (Console.In.ReadLine() is not null) line.TrySetResult();
-        })
-        { IsBackground = true, Name = "Runic serve-only input" }.Start();
-        return line.Task;
+            var line = s_serveOnlyLine ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var input = Console.In;
+            if (!ReferenceEquals(s_serveOnlyInput, input))
+            {
+                s_serveOnlyInput = input;
+                new Thread(() => ReadServeOnlyInput(input)) { IsBackground = true, Name = "Runic serve-only input" }.Start();
+            }
+            return line.Task;
+        }
+    }
+
+    private static void ReadServeOnlyInput(TextReader input)
+    {
+        while (input.ReadLine() is not null)
+        {
+            TaskCompletionSource? line;
+            lock (s_serveOnlyGate) (line, s_serveOnlyLine) = (s_serveOnlyLine, null);
+            line?.TrySetResult();
+        }
+        lock (s_serveOnlyGate)
+            if (ReferenceEquals(s_serveOnlyInput, input)) s_serveOnlyInput = null;
     }
 
     internal const string CloseAfterOpenEnvironmentVariable = "RUNIC_APPLICATION_CLOSE_AFTER_OPEN";

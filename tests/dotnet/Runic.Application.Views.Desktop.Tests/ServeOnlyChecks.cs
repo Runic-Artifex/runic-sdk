@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Runic.Application.Views;
 using Runic.Application.Views.Desktop;
 using Runic.Desktop;
+using Runic.Platform;
 using TUnit.Core;
 
 // The case replaces Console.Out and Console.In and restores them in finally blocks; the cases do not run in
@@ -70,14 +71,72 @@ internal sealed class ServeOnlyChecks
         }
     }
 
+    // #310: a line ends the Windows serving when it is read; a Window opened after it serves until the next line,
+    // and has no native owner to present.
+    [Test, NotInParallel(Order = 2)]
+    public async Task ServeOnlyLineEndsTheServingWindowsAndAWindowOpenedLaterWaitsForTheNext()
+    {
+        string? serveOnly = Environment.GetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY");
+        var console = Console.Out;
+        var input = Console.In;
+        var lines = new LineReader();
+        try
+        {
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", "1");
+            Console.SetIn(lines);
+            Console.SetOut(new StringWriter());
+
+            var services = new ServiceCollection();
+            services.AddScoped<OrderedCollectionModel>();
+            services.AddScoped<Func<IBridgeTransport, OrderedCollectionModel, IDisposable>>(
+                _ => (transport, model) => new OrderedCollectionBridge(transport, model));
+            await using var provider = services.BuildServiceProvider();
+            await using var desktop = await DesktopHost.StartAsync(new DesktopHostOptions
+            {
+                WindowHostFactory = new NativeDispatchFactory(),
+                WaitForConnection = false,
+            });
+            var host = TestWindows.EmbeddedHtml(provider, desktop);
+
+            await using (var first = await host.OpenWindowAsync<ProbeWindow>())
+            await using (var second = await host.OpenWindowAsync<ProbeWindow>())
+            {
+                var bridge = (DesktopBridgeWindow<OrderedCollectionModel>)first.Host;
+                string? noOwner = null;
+                try { _ = bridge.NativeOwner; }
+                catch (InvalidOperationException error) { noOwner = error.Message; }
+                Check(noOwner?.Contains("RUNIC_APPLICATION_SERVE_ONLY", StringComparison.Ordinal) == true,
+                    $"NativeOwner did not report serve-only mode: '{noOwner}'.");
+                Check(await PlatformServices.PresentAsync(first) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+                    "Presenting a serve-only Window did not report the owner unavailable.");
+
+                var closed = Task.WhenAll(first.WaitForCloseAsync().AsTask(), second.WaitForCloseAsync().AsTask());
+                lines.Send("");
+                await closed.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+
+            await using var reopened = await host.OpenWindowAsync<ProbeWindow>();
+            var reopenedClosed = reopened.WaitForCloseAsync().AsTask();
+            await Task.Delay(200);
+            Check(!reopenedClosed.IsCompleted, "A Window opened after the stop line closed without a new line.");
+            lines.Send("");
+            await reopenedClosed.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            lines.Send(null);
+            Console.SetOut(console);
+            Console.SetIn(input);
+            Environment.SetEnvironmentVariable("RUNIC_APPLICATION_SERVE_ONLY", serveOnly);
+        }
+    }
+
     // #238: ValidateWindow makes the serve-only decision of opening. A presentation this machine cannot open is an
     // error without serve-only, and no finding with it, where the same Window opens and serves its page; an invalid
     // configuration is an error either way. On Linux the
     // environment is the real one of a headless run: GTK 3 selected and no DISPLAY or WAYLAND_DISPLAY. Elsewhere,
     // and in addition on Linux, an embedded-window provider that reports itself unavailable stands in for it.
-    // Serve-only mode reads standard input once per process (RunicDesktopHost.ReadServeOnlyInput), so this case runs
-    // after ServeOnlySwitchServesWithoutAWindowUntilAnInputLine, which needs that reader for its own input line.
-    [Test, NotInParallel(Order = 2)]
+    [Test, NotInParallel(Order = 3)]
     public async Task ValidateWindowSkipsEnvironmentChecksInServeOnlyMode()
     {
         string?[] saved = [.. s_validationVariables.Select(Environment.GetEnvironmentVariable)];
@@ -201,11 +260,19 @@ internal sealed class ServeOnlyChecks
         if (!condition) throw new InvalidOperationException(message);
     }
 
-    // Standard input whose ReadLine blocks until the case sends a line, or null for the end of input.
+    // Standard input whose ReadLine blocks until the case sends a line, or null for the end of input, after which it
+    // stays at the end.
     private sealed class LineReader : TextReader
     {
-        private readonly TaskCompletionSource<string?> _line = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public void Send(string? line) => _line.TrySetResult(line?.TrimEnd('\n'));
-        public override string? ReadLine() => _line.Task.GetAwaiter().GetResult();
+        private readonly System.Collections.Concurrent.BlockingCollection<string?> _lines = [];
+        private volatile bool _ended;
+        public void Send(string? line) { if (!_ended) _lines.Add(line?.TrimEnd('\n')); }
+        public override string? ReadLine()
+        {
+            if (_ended) return null;
+            var line = _lines.Take();
+            if (line is null) _ended = true;
+            return line;
+        }
     }
 }

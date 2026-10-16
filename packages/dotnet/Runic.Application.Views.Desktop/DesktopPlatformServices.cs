@@ -4,6 +4,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Runic.Application.Views;
 using Runic.Desktop;
 using Runic.Platform;
 #if RUNIC_PORTABLE_PLATFORMS
@@ -302,6 +303,34 @@ public static class PlatformServices
             return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
         }
         catch (OwnerClosedException) { return new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed); }
+    }
+
+    /// <summary>Asks the desktop to bring an open Runic Window to the front, for example for a second launch.</summary>
+    /// <param name="window">The open Window, on any host.</param>
+    /// <param name="context">The activation token or startup ID that lets the desktop grant focus, such as
+    /// <see cref="ApplicationLaunch.PlatformContext"/> of a forwarded launch.</param>
+    /// <param name="cancellationToken">Cancels before the request reaches the window.</param>
+    /// <remarks>
+    /// A Window on <see cref="RunicDesktopHost"/> is presented as
+    /// <see cref="PresentAsync(DesktopNativeOwner, DesktopActivationContext?, CancellationToken)"/> presents its
+    /// <see cref="DesktopBridgeWindow{TViewModel}.NativeOwner"/>. A Window without a native owner reports
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>: one served under
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, which has no presentation, or one on another host.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
+    // The overloads differ in their first parameter, which no call omits, so the optional ones cannot make a call
+    // ambiguous or bind to the other overload.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
+        Justification = "The overloads differ in their required first parameter.")]
+    public static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(IRunicWindow window, DesktopActivationContext? context = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (window.Host is IDesktopNativeOwnerSource { NativeOwnerOrNull: { } owner })
+            return PresentAsync(owner, context, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<PlatformResult<PlatformUnit>>(
+            new PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable));
     }
 
     private static readonly PlatformResult<PlatformUnit> Presented = new PlatformResult<PlatformUnit>.Success(new PlatformUnit());

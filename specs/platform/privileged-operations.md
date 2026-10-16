@@ -327,7 +327,12 @@ A pattern is compiled on its own before it is anchored as `^(?:pattern)\z`, so
 build and the runtime use the same options (`NonBacktracking`,
 `CultureInvariant`) and both compile the pattern alone and anchored, so
 backreferences, lookarounds and a pattern such as `(?x)[a-z]+ # letters`,
-whose comment swallows the anchoring group's end, are build errors. .NET's
+whose comment swallows the anchoring group's end, are build errors. The
+runtime compiles the pattern when a declaration first checks arguments rather
+than when it is created: a `NonBacktracking` regex costs tens of milliseconds
+under the JIT, which every process that reads the generated declarations would
+otherwise pay at startup. A declaration written by hand reports an invalid
+pattern from that first check. .NET's
 `\d` and `\w` are Unicode-wide, a negated class such as `[^/]` matches a line
 break, and an inline `(?i)` makes `[a-z]` match the Kelvin sign (U+212A), so
 patterns list the allowed characters without inline options. The privileged program resolves

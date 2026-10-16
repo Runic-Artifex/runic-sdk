@@ -4,8 +4,15 @@ using Runic.Desktop;
 
 namespace Runic.Application.Views.Desktop;
 
+// The native owner of a DesktopBridgeWindow of any ViewModel type; null while it has no presentation, as in
+// serve-only mode.
+internal interface IDesktopNativeOwnerSource
+{
+    DesktopNativeOwner? NativeOwnerOrNull { get; }
+}
+
 /// <summary>Owns one Desktop surface, presentation, ViewModel scope, and Views session.</summary>
-public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewModel : class
+public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow, IDesktopNativeOwnerSource where TViewModel : class
 {
     private readonly object _closeGate = new();
     private readonly AsyncServiceScope _scope;
@@ -54,10 +61,18 @@ public sealed class DesktopBridgeWindow<TViewModel> : IBridgeWindow where TViewM
     /// It is available while the embedded window is open. A presentation without native dispatch, such
     /// as an installed browser after an embedded-window fallback, still has an owner, but its
     /// <see cref="DesktopNativeOwner.IsAvailable"/> is <see langword="false"/>.
+    /// Under <c>RUNIC_APPLICATION_SERVE_ONLY=1</c> the window has no presentation and so no owner; to bring a Window
+    /// forward on any host and in either mode, use
+    /// <see cref="PlatformServices.PresentAsync(IRunicWindow, Runic.Platform.DesktopActivationContext?, CancellationToken)"/>,
+    /// which reports <see cref="Runic.Platform.PlatformUnavailableReason.OwnerUnavailable"/> without one.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">The presentation has not opened yet.</exception>
+    /// <exception cref="InvalidOperationException">The presentation has not opened, or the window serves without one.</exception>
     public DesktopNativeOwner NativeOwner => Volatile.Read(ref _nativeOwner) ??
-        throw new InvalidOperationException("The Desktop presentation has not opened.");
+        throw new InvalidOperationException(Volatile.Read(ref _served) is null
+            ? "The Desktop presentation has not opened."
+            : "The window serves without a presentation (RUNIC_APPLICATION_SERVE_ONLY), so it has no native owner.");
+
+    DesktopNativeOwner? IDesktopNativeOwnerSource.NativeOwnerOrNull => Volatile.Read(ref _nativeOwner);
 
     internal void Attach(IDisposable attachment)
     {

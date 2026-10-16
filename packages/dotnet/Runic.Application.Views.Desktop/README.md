@@ -309,7 +309,10 @@ shutdown, or the process ends; then `WaitForCloseAsync` returns. The URL is
 the surface's capability URL, and the surface admits one browser. It takes
 precedence over `RUNIC_APPLICATION_CLOSE_AFTER_OPEN`. As on CS-WebUI there is
 no native owner: platform services report `OwnerUnavailable`, and a Window
-with `GuardClose` opens unguarded (event 1053). `ValidateWindow` makes the same
+with `GuardClose` opens unguarded (event 1053). `NativeOwner` throws, so bring
+a Window forward with `PlatformServices.PresentAsync(window, context)`, which
+takes the `IRunicWindow` and reports `OwnerUnavailable` in this mode and for a
+Window on another host. `ValidateWindow` makes the same
 decision: in serve-only mode it skips the presentation checks, such as
 `webkitgtk-runtime-missing`, `graphical-session-missing` and
 `presentation-unavailable`, which describe what this machine lacks to present a
@@ -323,8 +326,10 @@ The serve-only protocol, the same on both hosts:
 - **URL.** Each window writes one `RUNIC_APPLICATION_URL=<url>` line to
   standard output once its surface serves. The first line is the first
   window's.
-- **Stop.** Writing a line to standard input ends serving for every window;
-  end of input, such as `</dev/null`, does not. On Runic Desktop on Linux and
+- **Stop.** Writing a line to standard input ends serving for every window
+  serving at that moment; end of input, such as `</dev/null`, does not. On
+  Runic Desktop a window the application opens after that line serves until
+  the next one; on CS-WebUI the line ends the application. On Runic Desktop on Linux and
   macOS, SIGTERM or Ctrl+C also requests shutdown. On Windows a test cannot
   send another process a termination signal, and killing it skips the
   application's cleanup, so write the line.

@@ -50,13 +50,34 @@ internal sealed class DeclarationTests
 
         Throws<ArgumentOutOfRangeException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 65 }, "count limit");
         Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { Verb = "" }, "empty verb");
-        Throws<NotSupportedException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = @"(a)\1" }, "backreferences need backtracking");
-        Throws<NotSupportedException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "(?=a)a" }, "lookarounds need backtracking");
-        Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "a)|(b" }, "a pattern that would escape the anchors");
-        Throws<ArgumentException>(() => _ = new PrivilegedActionDeclaration("org.example.a", "/x") { ArgumentPattern = "(?x)[a-z]+ # letters" }, "a comment that swallows the anchor");
+        Throws<NotSupportedException>(() => Pattern(@"(a)\1").AcceptsArguments([]), "backreferences need backtracking");
+        Throws<NotSupportedException>(() => Pattern("(?=a)a").AcceptsArguments([]), "lookarounds need backtracking");
+        Throws<ArgumentException>(() => Pattern("a)|(b").AcceptsArguments([]), "a pattern that would escape the anchors");
+        Throws<ArgumentException>(() => Pattern("(?x)[a-z]+ # letters").AcceptsArguments([]), "a comment that swallows the anchor");
+        Throws<NotSupportedException>(() => Pattern(@"(a)\1").CreateArgumentVector([]), "the argument vector checks the pattern too");
         var newline = new PrivilegedActionDeclaration("org.example.a", "/x") { MaximumArguments = 1, ArgumentPattern = "[^/]+" };
         Check(newline.AcceptsArguments(["a\nb"]), "a negated class matches a line break, as the documentation warns");
     }
+
+    // #315: a NonBacktracking regex costs tens of milliseconds under the JIT, so a declaration compiles its pattern on
+    // the first AcceptsArguments rather than when the generated declarations are read at startup. An invalid pattern,
+    // which the build rejects for RunicPrivilegedAction items (RUNICPA008), therefore cannot fail before that.
+    [Test, DisplayName("declaration: the pattern is compiled on the first argument check, not on creation")]
+    public async Task PatternCompiledOnFirstCheckAsync()
+    {
+        var invalid = Pattern(@"(a)\1");
+        Check(invalid.ArgumentPattern == @"(a)\1", "the pattern is kept as written");
+        Throws<NotSupportedException>(() => invalid.AcceptsArguments(["a"]), "the first check compiles it");
+        Throws<NotSupportedException>(() => invalid.AcceptsArguments(["a"]), "an invalid pattern fails every check");
+
+        var action = new PrivilegedActionDeclaration("org.example.app.activate", "/usr/libexec/app/helper") { MaximumArguments = 1, ArgumentPattern = "switch|boot" };
+        var checks = Enumerable.Range(0, 8).Select(_ => Task.Run(() => action.AcceptsArguments(["boot"]) && !action.AcceptsArguments(["reboot"]))).ToArray();
+        Check((await Task.WhenAll(checks)).All(result => result), "concurrent first checks agree");
+        Check(action.AcceptsArguments(["switch"]) && !action.AcceptsArguments(["switchboot"]), "the compiled pattern is reused");
+    }
+
+    private static PrivilegedActionDeclaration Pattern(string pattern) =>
+        new("org.example.a", "/x") { MaximumArguments = 1, ArgumentPattern = pattern };
 
     [Test, DisplayName("declaration: the unavailable provider checks arguments and reports its reason")]
     public async Task UnavailableAsync()
