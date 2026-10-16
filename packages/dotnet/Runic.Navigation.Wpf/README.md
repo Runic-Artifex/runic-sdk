@@ -267,6 +267,10 @@ Set it on each host whose region needs a say. The window clears their regions
 one after another, in the order the hosts first loaded, and stops at the first
 clear that doesn't commit.
 
+A close while a clear is still asking joins it and asks nothing more. A close
+once that clear has ended (`IsTransitioning` is `false` again) starts a new
+check, even if the first one hasn't returned yet.
+
 WPF ignores a cancelled close during `Application.Shutdown()` and doesn't
 raise `Closing` when the Windows session ends, so neither asks the guards.
 Close the main window instead of calling `Shutdown()`, and handle

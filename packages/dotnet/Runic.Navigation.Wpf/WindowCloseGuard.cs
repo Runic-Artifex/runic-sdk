@@ -22,6 +22,9 @@ internal sealed class WindowCloseGuard
     // In the order their hosts first loaded.
     private readonly List<WeakReference<INavigationRegion>> _regions = [];
     private bool _checking;
+    // The region the running check clears, and whether a close came after that clear stopped transitioning.
+    private INavigationRegion? _clearing;
+    private bool _closeAgain;
     private bool _approved;
     private bool _closed;
 
@@ -100,11 +103,20 @@ internal sealed class WindowCloseGuard
     {
         if (e.Cancel || _approved || _closed || !Regions().Exists(HasEntries)) return;
         e.Cancel = true;
-        if (_checking) return;
+        if (_checking)
+        {
+            // A close while a clear runs joins it, so a second click during the question asks nothing more. Once that
+            // clear's region stops transitioning, its outcome is decided while the check's own continuation may still
+            // be on its way: a close then is a new request, and is asked again when the check ends without closing.
+            if (_clearing is { IsTransitioning: false }) _closeAgain = true;
+            return;
+        }
         _checking = true;
-        // Posted: WPF ignores the cancel during Application.Shutdown, and the window is gone when this runs.
-        _window.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _ = ClearThenCloseAsync());
+        Check();
     }
+
+    // Posted: WPF ignores the cancel during Application.Shutdown, and the window is gone when this runs.
+    private void Check() => _window.Dispatcher.BeginInvoke(DispatcherPriority.Normal, () => _ = ClearThenCloseAsync());
 
     private async Task ClearThenCloseAsync()
     {
@@ -117,7 +129,8 @@ internal sealed class WindowCloseGuard
             foreach (var region in Regions())
             {
                 if (!HasEntries(region)) continue;
-                clearing = region;
+                clearing = _clearing = region;
+                _closeAgain = false;
                 // The plan of any other clear: every entry's guard and the guards of the child regions the entries own.
                 var result = await region.ClearAsync();
                 if (result is not NavigationResult<object>.Committed) return;
@@ -135,7 +148,14 @@ internal sealed class WindowCloseGuard
         {
             WpfNavigationLog.WindowCloseGuardFailed(WpfNavigationLog.For(clearing?.Navigator.Services), error, WpfNavigationLog.ErrorType(error));
         }
-        finally { _checking = false; }
+        finally
+        {
+            var again = _closeAgain && !_closed;
+            _clearing = null;
+            _closeAgain = false;
+            if (again) Check();
+            else _checking = false;
+        }
     }
 
     private void OnClosed(object? sender, EventArgs e)

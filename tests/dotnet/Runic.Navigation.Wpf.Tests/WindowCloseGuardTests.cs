@@ -267,6 +267,56 @@ internal sealed class WindowCloseGuardTests
         Drain();
     }
 
+    // #358: once a vetoed clear stops transitioning, the region is idle, but the check that ran the clear ends only when
+    // its continuation reaches the dispatcher. A close in that gap (here from the IsTransitioning notification, which is
+    // posted before the clear's result) used to join the finished check and was dropped: cancelled, with no question.
+    [Test, DisplayName("GuardWindowClose asks again after a vetoed clear"), NotInParallel("WpfSuite", Order = 46)]
+    public void CloseAfterVetoedClear()
+    {
+        using var fixture = new NavFixture();
+        var region = fixture.Region(NavigationTarget.Own<object>(new Page("home")));
+        var answers = new Queue<TaskCompletionSource<bool>>();
+        var guards = 0;
+        var editor = new GuardedPage("editor", () =>
+        {
+            guards++;
+            var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            answers.Enqueue(answer);
+            return new ValueTask<bool>(answer.Task);
+        });
+        Pump(region.PushAsync(NavigationTarget.Own<object>(editor)));
+        var host = new NavigationHost { Region = region, GuardWindowClose = true };
+        var window = ShowWindow(host, window => AddTemplates(window, typeof(Page), typeof(GuardedPage)));
+        var closedWhenIdle = false;
+        void CloseWhenIdle(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(INavigationRegion.IsTransitioning) || region.IsTransitioning || closedWhenIdle) return;
+            closedWhenIdle = true;
+            window.Close();
+        }
+        try
+        {
+            window.Close();
+            PumpUntil(() => answers.Count == 1, "the first guard");
+            region.PropertyChanged += CloseWhenIdle;
+            answers.Dequeue().SetResult(false);
+            PumpUntil(() => closedWhenIdle, "the close from the end of the vetoed clear");
+            region.PropertyChanged -= CloseWhenIdle;
+            PumpUntil(() => answers.Count == 1, "the guard of the close after the vetoed clear",
+                () => $"guards asked: {guards}, open: {IsOpen(window)}, transitioning: {region.IsTransitioning}");
+            Require(IsOpen(window) && guards == 2 && ReferenceEquals(region.Current, editor), "The vetoed clear lost the window or its entries.");
+            answers.Dequeue().SetResult(true);
+            PumpUntil(() => !IsOpen(window), "the window to close after the clear");
+            Require(region.CurrentEntry is null && guards == 2, $"The window closed without clearing its region once ({guards} guards asked).");
+        }
+        finally
+        {
+            region.PropertyChanged -= CloseWhenIdle;
+            host.GuardWindowClose = false;
+            if (IsOpen(window)) window.Close();
+        }
+    }
+
     // The Customers tab's view: a host of its page region that guards the window's close.
     private static DataTemplate GuardedPagesTemplate()
     {
