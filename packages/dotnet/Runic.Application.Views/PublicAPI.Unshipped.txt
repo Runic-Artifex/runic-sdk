@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Application.Views.RunicWatchTarget.Files(string! path, string! pattern = "*") -> Runic.Application.Views.RunicWatchTarget!

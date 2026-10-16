@@ -1646,6 +1646,7 @@ public sealed partial class OverviewViewModel : ObservableObject, IDisposable
 | `File(path)` | The file is created, deleted, replaced, renamed or written. | A settings file, `flake.lock` |
 | `Link(path)` | The path a symbolic link leads to, through every link in its chain, differs: the link was created, removed or re-pointed. Changes inside the final file or directory are not reported. | `/run/current-system`, `~/.local/state/nix/profiles/home-manager` |
 | `Directory(path, pattern)` | The set of entry names matching the pattern differs: one is added, removed or renamed. Writes to entries, and a rename onto a name that already existed (the same set of names), are not reported. | `/nix/var/nix/profiles/system-*-link` |
+| `Files(path, pattern)` | An entry matching the pattern changes as for `File`: it is added, removed, renamed, written, or replaced by renaming another file over it, as atomic writers update a file. Where it polls, the watcher reads each matching entry's size and write time. | A directory of records that other processes rewrite, `*.json` |
 | `GitHead(repository)` | The commit `HEAD` resolves to, or the branch it names, differs: a commit, reset, switch, detach or pull. Works in linked worktrees, whose `.git` is a file, follows symbolic refs (five levels, as Git does) and supports the reftable format. `git pack-refs`, fetches and other branches are not reported with the files format. | A configuration checkout |
 
 After an event the watcher waits for `Debounce` (250 ms) without another
@@ -1654,7 +1655,7 @@ those whose state changed. A burst of writes, `ln -sfn`'s temporary link or
 Git's `.lock` files therefore produce one callback or none. For the same
 reason a target that changes and changes back within that window, such as a
 link re-pointed from A to B and back to A, is not reported, except a `File`
-target, for which an event alone counts. `GitHead` reads `HEAD`, the loose ref
+or `Files` target, for which an event that names a matching entry alone counts. `GitHead` reads `HEAD`, the loose ref
 and `packed-refs` itself; it starts no `git` process. With the reftable format
 any update of the ref stack counts, of the repository's and, in a linked
 worktree, of the worktree's own, so other branches and fetches are reported
