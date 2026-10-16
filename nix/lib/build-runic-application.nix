@@ -43,6 +43,12 @@
   # Only the frontend directory's package.json, lock file, .npmrc and pnpm-workspace.yaml are fetched from, so a
   # workspace whose members have their own package.json needs nodeModules.
   frontend ? null,
+  # Local .NET tools that the build runs with `dotnet tool run`, such as dotnet-runic-translations for the
+  # Translations Vite plugin, restored offline from their manifest:
+  #   manifest  the dotnet-tools.json, relative to src; default: .config/dotnet-tools.json beside the project. It is
+  #             read at evaluation, so src must be a local path, such as the flake's own source.
+  #   hashes    { <package ID> = <hash of the .nupkg>; } for each tool in it
+  dotnetTools ? null,
   # desktop, desktop-gtk4, cswebui or null: the libraries the host loads at run time.
   host ? "desktop",
   # GStreamer plugins for audio and video in WebKitGTK.
@@ -108,6 +114,32 @@ let
       nugetDeps
     else
       map fetchNupkg (lib.importJSON nugetDeps);
+
+  # Each tool package is a fixed-output download from nuget.org, linked into the restore's packages folder
+  # (postConfigureNuGet), where `dotnet tool restore` finds it without a source.
+  dotnetTools' =
+    if dotnetTools == null then
+      null
+    else
+      let
+        manifest = dotnetTools.manifest or "${dirOf (lib.head (lib.toList projectFile))}/.config/dotnet-tools.json";
+        tools = (lib.importJSON "${src}/${manifest}").tools or { };
+        hashes = dotnetTools.hashes or { };
+        fetch =
+          id: tool:
+          fetchNupkg {
+            pname = id;
+            inherit (tool) version;
+            hash =
+              hashes.${id} or (throw ''
+                buildRunicApplication: dotnetTools.hashes has no hash for ${id} ${tool.version}, a tool in ${manifest}.
+                Set dotnetTools.hashes.${id} = lib.fakeHash, build, and copy the hash Nix reports.'');
+          };
+      in
+      {
+        inherit manifest;
+        packages = lib.mapAttrsToList fetch tools;
+      };
 
   frontend' =
     if frontend == null then
@@ -218,6 +250,7 @@ buildDotnetModule (
     "iconName"
     "nodejs"
     "testRunner"
+    "dotnetTools"
   ]
   // {
     inherit
@@ -236,11 +269,23 @@ buildDotnetModule (
     # rejects (NU1403). Restore each locked package from the global packages folder instead, linked to the same
     # files, with the hash its lock records: the download was checked against it, and a package that the .NET
     # SDK provides is the same version.
-    postConfigureNuGet = lib.optionalString (nugetLockFiles != [ ]) ''
+    postConfigureNuGet =
+      lib.optionalString (dotnetTools' != null) ''
+        for package in ${lib.escapeShellArgs dotnetTools'.packages}; do
+          for directory in "$package"/share/nuget/packages/*/*; do
+            target="''${NUGET_PACKAGES%/}/''${directory#"$package"/share/nuget/packages/}"
+            mkdir -p "''${target%/*}"
+            ln -sfn "$directory" "$target"
+          done
+        done
+      ''
+      + lib.optionalString (nugetLockFiles != [ ]) ''
       while read -r id packageVersion contentHash; do
         source="''${NUGET_FALLBACK_PACKAGES%/}/$id/$packageVersion"
         [[ -d $source ]] || continue
         target="''${NUGET_PACKAGES%/}/$id/$packageVersion"
+        # With a tool manifest at the root of src, nixpkgs links each package's directory here already.
+        if [[ -L $target ]]; then rm "$target"; fi
         mkdir -p "$target"
         for file in "$source"/* "$source"/.[!.]*; do
           if [[ -e $file && ''${file##*/} != .nupkg.metadata ]]; then ln -s "$file" "$target/"; fi
@@ -249,9 +294,17 @@ buildDotnetModule (
       done <<'RUNIC_LOCKED_PACKAGES'
     ${lib.concatStringsSep "\n" nugetLock.lockedPackages}
     RUNIC_LOCKED_PACKAGES
-      ${args.postConfigureNuGet or ""}
-    '';
+    ''
+      + args.postConfigureNuGet or "";
 
+  }
+  // lib.optionalAttrs (dotnetTools' != null) {
+    # A tool manifest at the root of src makes nixpkgs link every NuGet package into the packages folder for its
+    # own `dotnet tool restore`, which fails on the packages that the .NET SDK provides as well ("File exists").
+    # The tools are linked there above instead.
+    linkNugetPackages = "";
+  }
+  // {
     nativeBuildInputs =
       nativeBuildInputs
       ++ [
@@ -293,6 +346,9 @@ buildDotnetModule (
           RunicNativeAotProjectFiles+="$(realpath --canonicalize-missing --no-symlinks "$runicAotProject");"
         done
         export RunicNativeAotProjectFiles=''${RunicNativeAotProjectFiles%;}
+      ''}
+      ${lib.optionalString (dotnetTools' != null) ''
+        dotnet tool restore --tool-manifest ${lib.escapeShellArg dotnetTools'.manifest}
       ''}
       # The frontend build runs offline with read-only node_modules: pnpm must neither fetch the version that
       # package.json names nor install again before `pnpm run`.

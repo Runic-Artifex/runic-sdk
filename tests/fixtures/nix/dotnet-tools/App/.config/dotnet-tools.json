@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "dotnet-runic-translations": {
+      "version": "0.7.0-preview.2",
+      "commands": ["runic-translations"],
+      "rollForward": false
+    }
+  }
+}
