@@ -1091,6 +1091,10 @@ shared code or the Vite configuration reads as a
 - **Lists.** Tailwind removes list markers from every list, and Runic Desktop's
   WebKitGTK then no longer reports such a list as a list to a screen reader;
   see [Runic.Desktop accessibility](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Desktop#accessibility).
+- **Screen readers on Linux.** On Runic Desktop's WebKitGTK, live regions and
+  changed accessible names are silent under Orca, and a list item whose only
+  content is a button can crash the page; see the same section for what to use
+  instead.
 
 ## Typed commands and checked writes
 
@@ -1486,6 +1490,7 @@ output accordingly. The message properties are listed per event.
 | 3007 | `DesktopShutdownFailed` | Error | Closing the Desktop windows for that shutdown throws. | `ErrorType` |
 | 3008 | `BrowserProfileNotDeleted` | Warning | A generated browser profile still cannot be deleted a minute after its browser closed; it stays in the temporary folder. | |
 | 3009 | `DesktopDiagnosticSinkFailed` | Warning | `DesktopHostOptions.DiagnosticSink` throws for a diagnostic. | `Code`, `ErrorType` |
+| 3010 | `EmbeddedWindowDiagnostic` | Warning or Error | An embedded window reports an event of its own: on Linux, `web-process-terminated` when the WebKitGTK web process crashed and the page was reloaded (Warning), or was not reloaded after three reloads within a minute (Error). | `Code`, `DiagnosticMessage`, `Remediation` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
@@ -1503,7 +1508,7 @@ Navigation (1060-1075) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
 section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`, and event 2100
-uses `Runic.Application.Views.CsWebUi` and the factory of the Window's scope. Events 3000-3009
+uses `Runic.Application.Views.CsWebUi` and the factory of the Window's scope. Events 3000-3010
 use `Runic.Desktop` and `DesktopHostOptions.LoggerFactory`, which `RunicDesktopHost.Run`
 and `RunicViewHost` fill from the application's services.
 

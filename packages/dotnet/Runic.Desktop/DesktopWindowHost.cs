@@ -234,6 +234,13 @@ public sealed record DesktopWindowHostOptions
     /// its first navigation. It carries session credentials: do not log, persist, or expose it to page content.
     /// </summary>
     public string? DocumentStartScript { get; init; }
+
+    /// <summary>
+    /// Gets the callback that reports an event of the open window, such as a crashed web process, to
+    /// <see cref="DesktopHostOptions.DiagnosticSink"/> and the Desktop logger (event 3010). The host may call it on any
+    /// thread, including the window's own; a sink that throws is logged, not rethrown.
+    /// </summary>
+    public Action<DesktopDiagnostic>? ReportDiagnostic { get; init; }
 }
 
 internal sealed class DesktopWindowHostFactoryAdapter(IDesktopWindowHostFactory factory) : IWebUiEmbeddedHostFactory
@@ -294,6 +301,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             CustomArguments = options.CustomParameters,
             AllowedPermissions = options.AllowedPermissions,
             DocumentStartScript = options.DocumentStartScript,
+            ReportDiagnostic = options.ReportDiagnostic,
         }, cancellationToken);
 
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) =>

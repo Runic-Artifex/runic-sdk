@@ -20,6 +20,9 @@ dotnet run --project examples/status-icon -c Release
 later launch forwards its arguments, working directory and activation token, and
 exits; the primary instance raises `IApplicationInstance.Launched`, and
 `PlatformServices.PresentAsync` brings the open Window forward with that token.
+Without an open Window, `RunicDesktopHost.OpenWindowAsync(options, context)`
+opens one and presents it with the token, so that Wayland compositors such as
+KWin give it focus.
 
 `IDesktopStatusIcon.Activated` and `Launched` are raised on worker threads. The
 sample hands each to the host's application loop through a channel, so Windows

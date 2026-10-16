@@ -221,9 +221,10 @@ the envelope CS-WebUI sends for an unbound route.
 ## Accessibility
 
 On Linux, the embedded window is WebKitGTK, and a screen reader such as Orca
-reads the page through WebKit's accessibility tree. Two differences from
-Chromium, which CS-WebUI and WebView2 use, were seen with Orca 50 and
-WebKitGTK 4.1 (GTK 3); GTK 4 was not compared.
+reads the page through WebKit's accessibility tree. It differs from Chromium,
+which CS-WebUI and WebView2 use. The first two differences were seen with Orca
+50 and WebKitGTK 4.1 (GTK 3), where GTK 4 was not compared; the others with
+Orca 50.2 and WebKitGTK 2.54.1.
 
 **Lists styled with `list-style: none` are not lists.** WebKit exposes a `ul`
 or `ol` without list markers as a panel, a plain group, as Safari does. Only its items
@@ -249,6 +250,73 @@ that the page finished loading, counts its landmarks and headings, and starts
 reading. On Runic Desktop the user reaches the content with Orca's browse-mode
 keys, such as H for the next heading. Give the page a `<title>` that names it,
 a `main` landmark and headings.
+
+**Live regions are silent.** WebKitGTK 2.54.1 sends no AT-SPI event when the
+text of a live region changes, and none when an element's accessible name or
+description changes. Orca therefore says nothing
+for `aria-live` (polite or assertive, with or without `aria-atomic`),
+`role="status"`, `role="alert"`, a separate announcer element, or a changed
+`aria-label` or `aria-description`. Chromium announces all of them, so a page
+that relies on them works on CS-WebUI and WebView2 but is silent on Runic
+Desktop on Linux. Report a change through an element whose native semantics
+Orca follows instead. A value that the user changes, such as a count, is a spin
+button: Orca reads its new value while it has focus.
+
+```html
+<span role="spinbutton" tabindex="0" aria-label="Restore points to keep"
+      aria-valuenow="5" aria-valuemin="1" aria-valuemax="50">5</span>
+```
+
+Handle the arrow, Page Up, Page Down, Home and End keys on it as the WAI-ARIA
+spin button pattern describes, and keep focus on it when buttons beside it
+change the value. A result that appears after an action, such as an error, can
+receive focus itself (`tabindex="-1"` and `focus()`), so that Orca reads it.
+
+**A list item with only a button can crash the page.** WebKitGTK 2.54.1, both
+webkit2gtk-4.1 (GTK 3) and webkitgtk-6.0 (GTK 4), aborts its web process when
+Orca asks for the text attributes of a list item whose only content is a button
+whose last node has no box, such as collapsed whitespace or the empty comments
+that Svelte and other frameworks insert. Orca asks for them when the user
+presses Tab onto such a button, so a navigation list of buttons crashes on its
+first use with a screen reader:
+
+```html
+<ul role="list">
+  <li><button><svg aria-hidden="true">…</svg><span>Changes</span><!----></button></li>
+  <li><button> <span>History</span> </button></li>
+</ul>
+```
+
+Give such list items `display: contents`, so they have no box of their own,
+and their position in the list with `aria-setsize` and `aria-posinset`, which
+Orca otherwise no longer counts:
+
+```html
+<ul role="list">
+  <li style="display: contents" aria-setsize="2" aria-posinset="1"><button>…</button></li>
+  <li style="display: contents" aria-setsize="2" aria-posinset="2"><button>…</button></li>
+</ul>
+```
+
+Removing every whitespace and comment node after the button's last rendered
+child also avoids the crash, but frameworks that insert comment anchors make it
+fragile. A crashed web process is reported and the page reloaded; see
+[Web process crashes on Linux](#web-process-crashes-on-linux).
+
+## Web process crashes on Linux
+
+WebKitGTK renders the page in a separate web process. When it crashes or
+exceeds its memory limit, an embedded window on GTK 3 or GTK 4 reloads its page
+and reports `web-process-terminated` to `DesktopHostOptions.DiagnosticSink` and
+the logger (event 3010, `EmbeddedWindowDiagnostic`), as a warning. The page
+connects again as after a reload by the user, so a Runic View shows its current
+state again; what only the page held, such as text being typed, is lost. A page
+that crashes it again after three reloads within a minute is not reloaded
+again: the diagnostic is then an error, and the window stays blank until it is
+reopened. A process the application ended itself is reported without a reload.
+Look for the crash of `WebKitWebProcess` in the system journal, for example
+with `coredumpctl`. A custom `IDesktopWindowHost` reports such events through
+`DesktopWindowHostOptions.ReportDiagnostic`.
 
 ## Keyboard and zoom in embedded windows
 

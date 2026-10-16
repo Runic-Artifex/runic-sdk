@@ -50,6 +50,11 @@ internal static partial class DesktopLog
         Message = "The diagnostic sink failed for {Code} with {ErrorType}.")]
     internal static partial void DiagnosticSinkFailed(ILogger logger, Exception exception, string code, string errorType);
 
+    [LoggerMessage(EventId = 3010, EventName = "EmbeddedWindowDiagnostic",
+        Message = "The embedded window reported {Code}: {DiagnosticMessage} {Remediation}")]
+    internal static partial void EmbeddedWindowDiagnostic(
+        ILogger logger, LogLevel level, string code, string diagnosticMessage, string remediation);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";

@@ -41,6 +41,10 @@ export const traceAllowList = [
     'TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.")',
     'TraceWarning($"The diagnostic sink failed for {BrowserLaunchStalledCode}',
     'TraceWarning($"{BrowserLaunchStalledCode}: {message}")',
+    // An embedded window's own diagnostic, such as a crashed WebKitGTK web process (#313).
+    'TraceWarning($"The diagnostic sink failed for {diagnostic.Code}',
+    'TraceError($"{diagnostic.Code}: {diagnostic.Message}")',
+    'TraceWarning($"{diagnostic.Code}: {diagnostic.Message}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/WebUiWindow.cs', fragment })),
   // A CS-WebUI window that could not be shown, without an ILoggerFactory in the Window's scope.
   { file: 'packages/dotnet/Runic.Application.Views.CsWebUi/CsWebUiLog.cs',

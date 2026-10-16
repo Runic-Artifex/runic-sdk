@@ -138,6 +138,10 @@ public sealed class ContentAndLifecycleTests
             Assert.Equal(HttpStatusCode.Found, nestedResponse.StatusCode);
             Assert.Equal("/nested/index.htm", nestedResponse.Headers.Location?.OriginalString);
 
+            using var queryResponse = await client.GetAsync("/nested?view=changes&q=a%20b");
+            Assert.Equal(HttpStatusCode.Found, queryResponse.StatusCode);
+            Assert.Equal("/nested/index.htm?view=changes&q=a%20b", queryResponse.Headers.Location?.OriginalString);
+
             using var head = new HttpRequestMessage(HttpMethod.Head, "/site.css");
             using var headResponse = await client.SendAsync(head);
             Assert.Equal(HttpStatusCode.OK, headResponse.StatusCode);

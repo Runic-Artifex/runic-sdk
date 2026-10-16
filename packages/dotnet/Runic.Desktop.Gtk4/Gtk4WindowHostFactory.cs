@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Runtime.InteropServices;
 using System.Runtime.ExceptionServices;
@@ -368,7 +369,7 @@ internal static class Gtk4Runtime
 }
 
 [SupportedOSPlatform("linux")]
-internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
+internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
@@ -379,6 +380,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private WebView? _webView;
     private DesktopWindowHostOptions? _options;
     private Uri? _presentedUrl;
+    private readonly WebKitGtkWebProcess _webProcess = new();
     private int _isOpen;
     private int _disposed;
     private int _forceClose;
@@ -645,6 +647,7 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             window.OnCloseRequest += OnCloseRequest;
             window.OnDestroy += OnDestroyed;
             webView.OnPermissionRequest += OnPermissionRequest;
+            WebProcessTerminatedSignal.Connect(this, webView);
             webView.LoadUri(url.AbsoluteUri);
             if (!options.Hidden)
             {
@@ -826,6 +829,58 @@ internal sealed class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             request.Request.Deny();
         }
         return true;
+    }
+
+    // A crashed web process leaves the view blank (#313): report it and reload, a few times at most.
+    private void OnWebProcessTerminated(nint webView, int reason)
+    {
+        if (!IsOpen || _webView is not { } view || view.Handle.DangerousGetHandle() != webView)
+        {
+            return;
+        }
+        var (reload, diagnostic) = _webProcess.Terminated(reason, Environment.TickCount64);
+        if (reload)
+        {
+            view.Reload();
+        }
+        _options?.ReportDiagnostic?.Invoke(diagnostic);
+    }
+
+    // Connected through GObject, not a GirCore event: a GirCore signal handler that has run keeps the view from being
+    // finalized, and closing waits for that. The connection ends when the view is finalized.
+    private static unsafe partial class WebProcessTerminatedSignal
+    {
+        internal static void Connect(Gtk4WindowHost host, WebView webView)
+        {
+            var context = GCHandle.Alloc(host);
+            var handler = ConnectData(webView.Handle.DangerousGetHandle(), "web-process-terminated",
+                (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, void>)&OnTerminated, GCHandle.ToIntPtr(context),
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Release, 0);
+            if (handler == 0)
+            {
+                context.Free();
+                throw new InvalidOperationException("GTK rejected the 'web-process-terminated' signal handler.");
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnTerminated(nint webView, int reason, nint context)
+        {
+            try
+            {
+                (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnWebProcessTerminated(webView, reason);
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void Release(nint context, nint closure) => GCHandle.FromIntPtr(context).Free();
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
     }
 
     // WebKitGTK does not identify the requesting frame; the top-level document must
