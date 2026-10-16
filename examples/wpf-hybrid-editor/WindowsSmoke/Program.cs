@@ -183,10 +183,11 @@ internal static class Program
         }
     }
 
+    // Only the limit's own timeout is renamed; a timeout of a wait inside the task already names its condition.
     private static async Task WithinAsync(Task task, TimeSpan limit, string what)
     {
         try { await task.WaitAsync(limit); }
-        catch (TimeoutException error) { throw new TimeoutException($"Hybrid smoke timed out after {limit.TotalSeconds:0} s waiting for {what}.", error); }
+        catch (TimeoutException error) when (!task.IsCompleted) { throw new TimeoutException($"Hybrid smoke timed out after {limit.TotalSeconds:0} s waiting for {what}.", error); }
     }
 
     private static void Check(bool passed, string message)
