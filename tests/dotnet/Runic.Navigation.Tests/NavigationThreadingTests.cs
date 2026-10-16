@@ -783,6 +783,27 @@ internal sealed partial class NavigationTests
         Require(region.Current is ProbePage { Name: "detail" }, $"The region shows {region.Current}.");
     }
 
+    // #288: a region's typed entry is created on its first read. Threads that read CurrentEntry for
+    // the first time together see one instance, so a caller can keep the entry and compare it later.
+    [Test]
+    public async Task ConcurrentFirstReadsShareOneTypedEntryAsync()
+    {
+        await using var fixture = new Fixture();
+        const int readers = 4;
+        for (var round = 0; round < 500; round++)
+        {
+            var region = fixture.Navigator.CreateRegion<Page>(fixture.Root, NavigationTarget.Borrow(new Page("home")));
+            using var start = new Barrier(readers);
+            var seen = await Task.WhenAll(Enumerable.Range(0, readers).Select(_ => Task.Factory.StartNew(() =>
+            {
+                start.SignalAndWait();
+                return region.CurrentEntry;
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
+            Require(seen.All(entry => entry is not null && ReferenceEquals(entry, region.CurrentEntry)),
+                $"Round {round}: concurrent first reads returned {seen.Distinct(ReferenceEqualityComparer.Instance).Count()} typed entries for one entry.");
+        }
+    }
+
     private sealed class PumpingGuardPage(Probe probe, Func<ValueTask<bool>> guard) : ProbePage("home", probe), INavigationDepartureGuard
     {
         ValueTask<bool> INavigationDepartureGuard.CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken) => guard();

@@ -265,12 +265,21 @@ internal sealed class NavigationEntryCore
     };
 
     // The cached view keeps the region's typed entry stable. An object view (from
-    // NavigationEntryContext or INavigationRegion) does not replace a typed one.
+    // NavigationEntryContext or INavigationRegion) does not replace a typed one. Any thread may
+    // read an entry first (#288), so the view is published once: concurrent first readers all
+    // return the one that was stored.
     public NavigationEntry<T> View<T>() where T : class
     {
-        if (_typedView is NavigationEntry<T> cached) return cached;
+        var current = Volatile.Read(ref _typedView);
+        if (current is NavigationEntry<T> cached) return cached;
         var view = new NavigationEntry<T>(this);
-        if (_typedView is null || typeof(T) != typeof(object)) _typedView = view;
+        while (current is null || (typeof(T) != typeof(object) && current is not NavigationEntry<T>))
+        {
+            var seen = Interlocked.CompareExchange(ref _typedView, view, current);
+            if (ReferenceEquals(seen, current)) return view;
+            if (seen is NavigationEntry<T> published) return published;
+            current = seen;
+        }
         return view;
     }
 }
