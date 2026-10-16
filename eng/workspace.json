@@ -301,6 +301,7 @@
       "paths": [
         "tools/Runic.Application.Templates",
         "tests/templates",
+        "tests/fixtures/nix",
         "tools/Runic.Create",
         "tests/dotnet/Runic.Create.Tests"
       ]

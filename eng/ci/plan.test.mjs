@@ -225,7 +225,10 @@ test('every core solution project commits a NuGet lock file and no other lock fi
     ? `${dirname(path)}/packages.${path.split('/').at(-1).replace(/\.csproj$/, '')}.lock.json`
     : `${dirname(path)}/packages.lock.json`).sort();
   for (const path of expected) assert.ok(existsSync(resolve(root, path)), `${path} is missing; run bun run lock:nuget`);
-  assert.deepEqual(tracked('*packages.lock.json', '*packages.*.lock.json').sort(), expected);
+  // The Nix builder's fixtures are independent consumers outside the solution, restored for linux-x64 with their own
+  // lock files, which buildRunicApplication reads (nix/tests).
+  const independent = path => path.startsWith('tests/fixtures/nix/');
+  assert.deepEqual(tracked('*packages.lock.json', '*packages.*.lock.json').filter(path => !independent(path)).sort(), expected);
 });
 
 test('a navigation engine change runs its own group and the application group that depends on it', () => {
