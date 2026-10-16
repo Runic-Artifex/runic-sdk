@@ -339,6 +339,11 @@ public static class PlatformServices
     private static ValueTask<PlatformResult<PlatformUnit>> PresentWindows(DesktopNativeOwner owner, CancellationToken cancellationToken) =>
         WindowsPlatformProvider.PresentAsync(owner, cancellationToken);
 
+    // Runic.Application.Views.Wpf presents a WPF window with the same Windows presentation, on the window's thread.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    [SupportedOSPlatform("windows8.0")]
+    internal static PlatformResult<PlatformUnit> PresentWindowsHandle(nint handle) => WindowsWindowPresentation.Present(handle);
+
 #if RUNIC_PORTABLE_PLATFORMS
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static ValueTask PresentGtk3(DesktopNativeOwner owner, DesktopActivationContext? context, CancellationToken cancellationToken) =>
