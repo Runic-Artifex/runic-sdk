@@ -275,7 +275,9 @@ internal sealed partial class CodegenDiagnosticsTests
         }
         finally
         {
-            if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true);
+            // A cleanup failure must not replace the case's own failure (#348).
+            try { if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, recursive: true); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
         }
     }
 

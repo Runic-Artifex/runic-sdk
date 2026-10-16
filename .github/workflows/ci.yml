@@ -367,6 +367,15 @@ jobs:
         run: |
           dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release -- --treenode-filter "/*/*/CodegenDiagnosticsTests/*Framework*"
           dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release --no-build -- --treenode-filter "/*/*/BridgeAttributeNamesTests/*"
+      # A generator that stalls past the cases' timeout is dumped there (#348).
+      - name: Retain dumps of stalled Bridge generators
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codegen-timeouts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/codegen-timeouts
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Verify WPF Bridge generation, single-project and split, from the packed packages
         run: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs
       - name: Verify the packed WPF consumer pulls in only Runic.Navigation
