@@ -232,15 +232,17 @@ internal sealed class SignallingContext(DispatcherModelContext inner) : IRunicMo
 
     public ValueTask InvokeAsync(Action turn, CancellationToken cancellationToken = default)
     {
+        var armed = ArmedOffThread();
         var result = inner.InvokeAsync(turn, cancellationToken);
-        Signal();
+        if (armed) OffThreadTurn.Set();
         return result;
     }
 
     public ValueTask<T> InvokeAsync<T>(Func<T> turn, CancellationToken cancellationToken = default)
     {
+        var armed = ArmedOffThread();
         var result = inner.InvokeAsync(turn, cancellationToken);
-        Signal();
+        if (armed) OffThreadTurn.Set();
         return result;
     }
 
@@ -248,10 +250,9 @@ internal sealed class SignallingContext(DispatcherModelContext inner) : IRunicMo
 
     public ValueTask DisposeAsync() => inner.DisposeAsync();
 
-    private void Signal()
-    {
-        if (Volatile.Read(ref _armed) && !inner.Dispatcher.CheckAccess()) OffThreadTurn.Set();
-    }
+    // Only a turn requested after Arm signals (#340). Reading the switch after queuing the turn let the push's own commit
+    // request, from a pool thread descheduled between queuing and signalling, report the clear's turn as queued.
+    private bool ArmedOffThread() => Volatile.Read(ref _armed) && !inner.Dispatcher.CheckAccess();
 
     private bool _armed;
 
