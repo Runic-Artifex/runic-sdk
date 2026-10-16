@@ -59,7 +59,8 @@ internal static class Program
             Console.WriteLine("Hybrid smoke: first embedded session opened");
             var first = firstHost.Surface!;
             Check(ReferenceEquals(firstHost.Model, model) && ReferenceEquals(regions.Main.CurrentEntry, entry), "Presentation switch replaced model or entry.");
-            await UntilAsync(async () => await first.ExecuteJavaScriptAsync("return document.querySelector('#title').value;") == "Native draft");
+            // The session connects before the View mounts its inputs, so the poll waits for them too.
+            await UntilAsync(async () => await first.ExecuteJavaScriptAsync("return document.querySelector('#title')?.value ?? '';") == "Native draft");
 
             await first.RunJavaScriptAsync("""
                 const title = document.querySelector('#title');
@@ -87,7 +88,7 @@ internal static class Program
             Console.WriteLine("Hybrid smoke: reloaded embedded session");
             var reloaded = secondHost.Surface!;
             Check(!ReferenceEquals(second, reloaded) && ReferenceEquals(secondHost.Model, model), "Reload did not preserve the same model in a fresh session.");
-            await UntilAsync(async () => await reloaded.ExecuteJavaScriptAsync("return document.querySelector('#body').value;") == "One shared draft");
+            await UntilAsync(async () => await reloaded.ExecuteJavaScriptAsync("return document.querySelector('#body')?.value ?? '';") == "One shared draft");
             Check(ReferenceEquals(regions.Main.CurrentEntry, entry), "Reload changed navigation entry.");
 
             await regions.Main.BackAsync();

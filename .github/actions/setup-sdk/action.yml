@@ -51,7 +51,15 @@ runs:
         path: .cache/nuget
         key: nuget-${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/packages.lock.json', '**/packages.*.lock.json', '**/Directory.Packages.props', 'global.json', 'NuGet.config') }}
         restore-keys: nuget-${{ inputs.nuget }}-${{ runner.os }}-${{ runner.arch }}-
+    # On Windows, Bun 1.4.2 sometimes fails to link a package's bins into a fresh
+    # node_modules with EBUSY (#291), while the same lockfile installs on the rerun.
+    # Only that failure is retried, once, as a full reinstall.
     - name: Install workspace dependencies
       if: inputs.install == 'true'
       shell: bash
-      run: bun install --frozen-lockfile
+      run: |
+        log="$RUNNER_TEMP/bun-install.log"
+        if bun install --frozen-lockfile 2>&1 | tee "$log"; then exit 0; fi
+        grep -q 'EBUSY: failed to link binaries' "$log" || exit 1
+        echo "::warning::bun install could not link binaries (EBUSY, #291); reinstalling once."
+        bun install --frozen-lockfile --force
