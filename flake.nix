@@ -38,6 +38,10 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
           };
+          builder-dotnet-tools = import ./nix/tests/dotnet-tools.nix {
+            pkgs = import nixpkgs { system = "x86_64-linux"; };
+            runic = self.lib;
+          };
           home-manager-module = import ./nix/tests/modules.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             inherit self;

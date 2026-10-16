@@ -75,6 +75,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `nugetLockFiles` | `[ ]` | `packages.lock.json` files whose packages restore the project: its own, and those of projects it references. |
 | `nugetDeps` | `null` | More NuGet packages: a `deps.json`, a package derivation or a list of them, as `buildDotnetModule` takes. |
 | `nugetLockedMode` | `true` with lock files | Restore with `RestoreLockedMode`, so a lock file that no longer matches the project fails the build. |
+| `dotnetTools` | `null` | Local .NET tools the build runs, restored offline from their manifest: `manifest` (relative to `src`; default `.config/dotnet-tools.json` beside the project) and `hashes`. See [Local .NET tools](#local-net-tools). |
 | `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, `pnpmFetcherVersion` (default 4), or `nodeModules`. See below. |
 | `host` | `"desktop"` | `desktop` (GTK 3, WebKitGTK 4.1), `desktop-gtk4` (GTK 4, WebKitGTK 6.0), `cswebui`, or `null`: which libraries the host loads at run time. |
 | `withMedia` | `false` | GStreamer plugins for audio and video in WebKitGTK. |
@@ -137,6 +138,31 @@ record different hashes for the same package and version, evaluation fails.
 Packages from another feed, or a project without lock files, use nixpkgs'
 `deps.json`: set `nugetDeps = ./deps.json`, and generate it with
 `nix build .#default.fetch-deps && ./result`.
+
+### Local .NET tools
+
+A build step that runs a local tool from `dotnet-tools.json`, such as the
+[Translations Vite plugin](https://github.com/Runic-Artifex/runic-translations-sdk),
+which runs `dotnet tool run runic-translations`, needs the tool restored, and
+`dotnet tool restore` downloads it. `dotnetTools` restores the tools of a
+manifest offline instead. Each tool package is a fixed-output download from
+nuget.org by the hash of its `.nupkg`; start each with `lib.fakeHash` and copy
+the hash that `nix build` reports:
+
+```nix
+dotnetTools = {
+  manifest = "MyApp/.config/dotnet-tools.json";
+  hashes.dotnet-runic-translations = "sha256-/sG0ngRIx6fh0LLQzBNvpCk6N1kYB1NYhhKpI6NjDPY=";
+};
+```
+
+The manifest is read at evaluation, so `src` must be a local path, such as the
+flake's own source, and include it. Every tool in it needs a hash, and a new
+tool version a new one. The build runs `dotnet tool restore --tool-manifest`
+before the restore of the projects; `dotnet tool run` then finds the manifest
+from the directory it runs in, as during development. A manifest at the root
+of `src` needs `dotnetTools` as well: nixpkgs restores its tools by itself, from
+packages it cannot download.
 
 ### Frontend packages
 
@@ -339,7 +365,9 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   privileged-actions smoke with its policy, and evaluates the Home Manager
   module. Its `builder-*` checks build small consumers from
   `tests/fixtures/nix`: `builder-test-runner` runs a TUnit project with
-  `testRunner = "Microsoft.Testing.Platform"`.
+  `testRunner = "Microsoft.Testing.Platform"`, and `builder-dotnet-tools`
+  restores a local tool from a manifest below the source's root with
+  `dotnetTools`.
 - `nix build .#packaging-nixos -L` runs a NixOS VM (KVM) that installs the
   NativeAOT status-icon example and the smoke through the NixOS module. It
   checks the desktop entry and icon, that the user service starts with an X

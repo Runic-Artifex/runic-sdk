@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <!-- A build step that runs a local tool from .config/dotnet-tools.json, as the Translations Vite plugin runs
+       dotnet-runic-translations. -->
+  <Target Name="WriteToolVersion" BeforeTargets="Build">
+    <Exec Command="dotnet tool run runic-translations -- --version" ConsoleToMsBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="ToolVersion" />
+    </Exec>
+    <WriteLinesToFile File="$(OutDir)tool-version.txt" Lines="$(ToolVersion)" Overwrite="true" />
+  </Target>
+</Project>
