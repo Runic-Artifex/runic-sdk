@@ -23,7 +23,9 @@ public sealed class PrivilegedActionDeclaration
     private readonly string? _verb;
     private readonly int _maximumArguments;
     private readonly string? _argumentPattern;
-    private readonly Regex? _argumentRegex;
+    // Compiled on the first AcceptsArguments: a NonBacktracking regex costs tens of milliseconds under the JIT, which
+    // every process reading the generated declarations would pay at startup (#315).
+    private Regex? _argumentRegex;
 
     /// <summary>Declares an action.</summary>
     /// <param name="id">A lowercase reverse-DNS identifier such as <c>org.example.app.activate</c>; see <see cref="IsValidId"/>.</param>
@@ -81,23 +83,16 @@ public sealed class PrivilegedActionDeclaration
     /// A negated class such as <c>[^/]</c> also matches a line break. An inline <c>(?i)</c> makes <c>[a-z]</c> match the
     /// Kelvin sign (U+212A) too, and <c>(?x)</c> turns <c>#</c> into a comment. Spell out the allowed characters, for
     /// example <c>[A-Za-z0-9._+-]</c>, without inline options.
+    /// <para>
+    /// The pattern is compiled when <see cref="AcceptsArguments"/> first runs, not when it is set, which reports an
+    /// invalid pattern. <c>RunicPrivilegedAction</c> items are checked the same way at build time (RUNICPA008), so a
+    /// generated declaration's pattern is always valid.
+    /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentException">The pattern is invalid on its own, for example with an unbalanced group.</exception>
-    /// <exception cref="NotSupportedException">The pattern needs backtracking (backreferences or lookarounds).</exception>
     public string? ArgumentPattern
     {
         get => _argumentPattern;
-        init
-        {
-            if (value is not null)
-            {
-                // Compiled alone first, so that "a)|(b" cannot close the anchoring group and match a part.
-                _ = new Regex(value, PatternOptions);
-                _argumentRegex = new Regex($"^(?:{value})\\z", PatternOptions);
-            }
-            else _argumentRegex = null;
-            _argumentPattern = value;
-        }
+        init => _argumentPattern = value;
     }
 
     /// <summary>The options <see cref="ArgumentPattern"/> is compiled with, at build time and at run time.</summary>
@@ -108,20 +103,41 @@ public sealed class PrivilegedActionDeclaration
     /// <see cref="MaximumArguments"/>, each without NUL characters, at most <see cref="ArgumentLengthLimit"/> long
     /// and matching <see cref="ArgumentPattern"/>.
     /// </summary>
+    /// <exception cref="ArgumentException">
+    /// <see cref="ArgumentPattern"/> is invalid on its own, for example with an unbalanced group, or once anchored.
+    /// </exception>
+    /// <exception cref="NotSupportedException">
+    /// <see cref="ArgumentPattern"/> needs backtracking (backreferences or lookarounds).
+    /// </exception>
     public bool AcceptsArguments(IReadOnlyList<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
+        // Compiled before the arguments are checked, so that an invalid pattern is reported on the first call.
+        var regex = _argumentPattern is null ? null : Volatile.Read(ref _argumentRegex) ?? CompileArgumentPattern();
         if (arguments.Count > MaximumArguments) return false;
         foreach (var argument in arguments)
         {
             if (argument is null || argument.Length > ArgumentLengthLimit || argument.Contains('\0')) return false;
-            if (_argumentRegex is not null && !_argumentRegex.IsMatch(argument)) return false;
+            if (regex is not null && !regex.IsMatch(argument)) return false;
         }
         return true;
     }
 
+    private Regex CompileArgumentPattern()
+    {
+        var pattern = _argumentPattern!;
+        // Compiled alone first, so that "a)|(b" cannot close the anchoring group and match a part.
+        _ = new Regex(pattern, PatternOptions);
+        var regex = new Regex($"^(?:{pattern})\\z", PatternOptions);
+        // Threads that compile it at the same time agree on one instance.
+        return Interlocked.CompareExchange(ref _argumentRegex, regex, null) ?? regex;
+    }
+
     /// <summary>The complete argument vector after the program: the verb, when declared, then <paramref name="arguments"/>.</summary>
-    /// <exception cref="ArgumentException">The arguments are not within this declaration.</exception>
+    /// <exception cref="ArgumentException">
+    /// The arguments are not within this declaration, or <see cref="ArgumentPattern"/> is invalid.
+    /// </exception>
+    /// <exception cref="NotSupportedException"><see cref="ArgumentPattern"/> needs backtracking.</exception>
     public ImmutableArray<string> CreateArgumentVector(IReadOnlyList<string> arguments)
     {
         if (!AcceptsArguments(arguments))

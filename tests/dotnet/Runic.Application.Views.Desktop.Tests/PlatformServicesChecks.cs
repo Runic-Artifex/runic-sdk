@@ -136,6 +136,16 @@ internal sealed class PlatformServicesChecks
             Require(await PlatformServices.PresentAsync(owner) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
                 "A closed window did not report the owner closed.");
         }
+
+        // A Runic Window is presented through its Desktop window's owner: the closed presentation reports it.
+        await using (var provider = CreateProvider())
+        await using (var host = await DesktopHost.StartAsync(new DesktopHostOptions { WindowHostFactory = new NativeDispatchFactory(), WaitForConnection = false }))
+        {
+            await using var window = await TestWindows.EmbeddedHtml(provider, host).OpenWindowAsync<FileWindow>();
+            await ((DesktopBridgeWindow<FileViewModel>)window.Host).Presentation.CloseAsync();
+            Require(await PlatformServices.PresentAsync(window) is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerClosed),
+                "A Runic Window whose presentation closed did not report the owner closed.");
+        }
     }
 
     [Test, NotInParallel(Order = 17)]

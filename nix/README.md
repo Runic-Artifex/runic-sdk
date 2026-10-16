@@ -78,7 +78,7 @@ Arguments that `buildDotnetModule` also takes (`dotnetFlags`, `runtimeDeps`,
 | `frontend` | `null` | The frontend that the Runic MSBuild targets build: `directory` (relative to `src`; default `Frontend` beside the project), `packageManager` (`npm`, `pnpm` or `bun`, required), `hash`, `pnpmFetcherVersion` (default 4), or `nodeModules`. See below. |
 | `host` | `"desktop"` | `desktop` (GTK 3, WebKitGTK 4.1), `desktop-gtk4` (GTK 4, WebKitGTK 6.0), `cswebui`, or `null`: which libraries the host loads at run time. |
 | `withMedia` | `false` | GStreamer plugins for audio and video in WebKitGTK. |
-| `nativeAot` | `false` | Publish with NativeAOT. Self-contained either way when set. |
+| `nativeAot` | `false` | Publish `projectFile` with NativeAOT; see [NativeAOT](#nativeaot). Self-contained either way when set. |
 | `selfContainedBuild` | `nativeAot` | A self-contained JIT build. |
 | `desktopItems` | `[ ]` | `makeDesktopItem` results, installed in `$out/share/applications`. |
 | `icons` | `{ }` | `{ scalable = ./app.svg; "256x256" = ./app.png; }`, installed as `$out/share/icons/hicolor/<size>/apps/<iconName>.<svg or png>`. |
@@ -113,10 +113,14 @@ that check, re-resolving whatever the lock lacks from the fetched packages. nixp
 content hash, which a locked restore rejects, so the build links each locked
 package into the restore's packages folder with the hash its lock records.
 
-A NativeAOT restore adds the compiler packages (`Microsoft.DotNet.ILCompiler`,
-and `runtime.linux-x64.Microsoft.DotNet.ILCompiler` in the runtime's section),
-so its graph differs from the JIT one. Keep a second lock file for it, as the
-template does:
+A NativeAOT restore adds the compiler packages, `Microsoft.DotNet.ILCompiler`
+and `Microsoft.NET.ILLink.Tasks`, so its graph differs from the JIT one. Whether
+the runtime's section also lists `runtime.linux-x64.Microsoft.DotNet.ILCompiler`
+depends on where restore found `Microsoft.DotNet.ILCompiler`: nuget.org's
+package adds it, while the build of it that the .NET SDK in nixpkgs ships with
+(its `library-packs`) uses the SDK's own compiler pack and adds nothing there.
+Both locks build, since the SDK provides these packages. Keep a second lock
+file for the NativeAOT graph, as the template does:
 
 ```xml
 <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
@@ -210,9 +214,15 @@ path.
 
 ### NativeAOT
 
-`nativeAot = true` publishes with `-p:PublishAot=true` for the system's runtime
-identifier, with Clang and zlib from nixpkgs and the NativeAOT packages of the
-.NET SDK.
+`nativeAot = true` publishes `projectFile` with NativeAOT for the system's
+runtime identifier, with Clang and zlib from nixpkgs and the NativeAOT packages
+of the .NET SDK. It sets `PublishAot` for that project alone, as if its project
+file set it, through `CustomAfterDirectoryBuildProps`, so the project sees it
+in its own body, for example to choose `packages.aot.lock.json`. The projects it
+references and `testProjectFile` keep their own settings: tests are restored
+with their usual lock file and run under the JIT. A project that sets
+`PublishAot` itself, or a `dotnetFlags` entry that sets
+`CustomAfterDirectoryBuildProps`, overrides it.
 
 ## NixOS and Home Manager modules
 
