@@ -45,6 +45,15 @@ An unpackaged application (a ZIP or an installer) registers its
 AppUserModelID itself, with a Start menu shortcut whose
 `System.AppUserModel.ID` property is the ID.
 
+## Opening files and URLs
+
+The shell starts a registered application with the URL or file as an argument;
+`ApplicationInstance.CreateOpenRequests` in Runic.Platform.Runtime forwards it to
+the running instance. The application's installer registers the URL scheme and
+file types per user under `HKCU\Software\Classes`, with the command
+`"C:\…\App.exe" "%1"` quoted so a URL cannot add arguments, or declares them in
+an MSIX manifest. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists the keys.
+
 ## Secret storage
 
 `WindowsPlatformProvider.CreateSecretStore()` keeps secrets as generic

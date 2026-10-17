@@ -4,3 +4,4 @@ Runic.Application.Views.Desktop.RunicDesktopHost.Placement.get -> System.Func<Ru
 Runic.Application.Views.Desktop.RunicDesktopHost.Placement.init -> void
 static Runic.Application.Views.Desktop.PlatformServices.GetWindowState(Runic.Application.Views.IRunicWindow! window) -> Runic.Platform.PlatformResult<Runic.Desktop.DesktopWindowState!>!
 static Runic.Application.Views.Desktop.PlatformServices.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
+static Runic.Application.Views.Desktop.PlatformServices.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
