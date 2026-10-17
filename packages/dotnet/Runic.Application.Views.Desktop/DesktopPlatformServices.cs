@@ -246,6 +246,39 @@ public static partial class PlatformServices
             .CreateUnparentedInhibition();
 #endif
 
+    /// <summary>
+    /// Creates the requests to open files and URLs that the application registered with the desktop, from the
+    /// provider for the operating system.
+    /// </summary>
+    /// <param name="options">The URL schemes and files the application registered.</param>
+    /// <param name="instance">The running instance from <c>ApplicationInstance.ClaimAsync</c>, whose later launches
+    /// carry files and URLs; <see langword="null"/> without single instance.</param>
+    /// <param name="launch">This process's launch, usually <see cref="ApplicationLaunch.FromProcess"/>.</param>
+    /// <returns>Open requests to dispose when the application ends.</returns>
+    /// <remarks>
+    /// Linux and Windows start the application with the files or URL as arguments, so requests come from
+    /// <paramref name="launch"/> and from the later launches the instance receives. macOS sends open events to the
+    /// running application instead, and the arguments of launches from a terminal also count. On macOS, create it on
+    /// the main thread before the first window or status icon, as <c>MacOSPlatformProvider.CreateOpenRequests</c>
+    /// requires. It is not registered by
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/>, because
+    /// it needs the instance and must exist before the first window; register the instance this returns.
+    /// </remarks>
+    public static IDesktopOpenRequests CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+#if RUNIC_PORTABLE_PLATFORMS
+        if (OperatingSystem.IsMacOS()) return CreateMacOSOpenRequests(options, instance, launch);
+#endif
+        return ApplicationInstance.CreateOpenRequests(instance, launch ?? new ApplicationLaunch([], Environment.CurrentDirectory), options);
+    }
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopOpenRequests CreateMacOSOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance, ApplicationLaunch? launch) =>
+        MacOSPlatformProvider.CreateOpenRequests(options, instance, launch);
+#endif
+
     /// <summary>Creates secret storage in the user's credential store from the provider for the operating system.</summary>
     /// <returns>A secret store; it holds no native resources between requests and needs no disposal.</returns>
     /// <remarks>

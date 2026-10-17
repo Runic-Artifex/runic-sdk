@@ -18,9 +18,16 @@ internal static class Program
         // The running instance in another process, for the forwarding test (ApplicationInstanceTests).
         if (args is ["--instance-primary", var directory]) return ApplicationInstanceTests.RunPrimaryAsync(directory).GetAwaiter().GetResult();
         if (args is ["--instance-replier", var replierDirectory]) return ApplicationInstanceTests.RunReplierAsync(replierDirectory).GetAwaiter().GetResult();
+        // The running instance that a desktop registration starts, for the open-request test (OpenRequestsTests).
+        if (args is ["--open-probe", var probeId, var probeScheme, .. var probeArguments])
+            return OpenRequestsTests.RunProbeAsync(probeId, probeScheme, probeArguments).GetAwaiter().GetResult();
+        // Launched by LaunchServices from the bundle the CI script builds around this executable (MacOpenEventsNativeTests).
+        if (OperatingSystem.IsMacOS() && Environment.ProcessPath is { } path && path.Contains(".app/Contents/MacOS/", StringComparison.Ordinal))
+            return MacOpenEventsNativeTests.RunBundleProbe(path[..(path.IndexOf(".app/Contents/MacOS/", StringComparison.Ordinal) + 4)]);
         if (OperatingSystem.IsMacOS() && args.Any(static arg => arg.Contains("Category=NativeServices", StringComparison.Ordinal)
             || arg.Contains("Category=NativeSelect", StringComparison.Ordinal) || arg.Contains("Category=NativeAppKit", StringComparison.Ordinal)
-            || arg.Contains("Category=NativeAppearance", StringComparison.Ordinal)))
+            || arg.Contains("Category=NativeAppearance", StringComparison.Ordinal)
+            || arg.Contains("Category=NativeOpenEvents", StringComparison.Ordinal)))
         {
             int exitCode = 1;
             DesktopEventLoop.Run(async () => exitCode = await RunTestsAsync(args));

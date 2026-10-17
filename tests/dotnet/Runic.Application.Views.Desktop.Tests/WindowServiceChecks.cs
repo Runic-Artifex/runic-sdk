@@ -231,8 +231,9 @@ internal sealed class WindowServiceChecks
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
             typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore)];
-        // Privileged actions need declared actions and a provider package; the instance claim runs before any host.
-        Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance)];
+        // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
+        // open requests need the instance and, on macOS, must exist before the first window.
+        Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];
         Type[] notServices = [typeof(IPlatformCapabilities), typeof(IUiDispatcher), typeof(IDirectoryLease), typeof(IReadFileLease),
             typeof(IReadFileLeaseList), typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
             typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply)];
@@ -254,6 +255,19 @@ internal sealed class WindowServiceChecks
             "Window services outside a window did not report the missing native owner.");
         foreach (var type in composed)
             Require(provider.GetService(type) is null, $"{type.Name} was registered without the application composing it.");
+    }
+
+    // Linux and Windows pass opened files and URLs as arguments; macOS's Apple events are the native job's.
+    [Test]
+    public async Task OpenRequestsComeFromTheLaunchArguments()
+    {
+        if (OperatingSystem.IsMacOS()) return;
+        await using var opens = PlatformServices.CreateOpenRequests(new(["org.example.notes"]), launch: new ApplicationLaunch(["--new", "org.example.notes:draft/1"], "/"));
+        var opened = new TaskCompletionSource<DesktopOpenRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        opens.Opened += (_, request) => opened.TrySetResult(request);
+        var request = await opened.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Require(request.Items is [{ Scheme: "org.example.notes" }], $"The launch's registered URL was not delivered: {string.Join(", ", request.Items)}");
+        Require(Catch(() => PlatformServices.CreateOpenRequests(new(["not a scheme"]))) is ArgumentException, "An invalid scheme was accepted.");
     }
 
     [Test]

@@ -89,6 +89,41 @@ public static class ApplicationInstance
         return ClaimAsync(applicationId, launch, options, null, cancellationToken);
     }
 
+    /// <summary>
+    /// Delivers the files and URLs of <paramref name="launch"/> and of each later launch that <paramref name="instance"/>
+    /// receives, as Linux and Windows pass them: as arguments.
+    /// </summary>
+    /// <param name="instance">The running instance, or <see langword="null"/> without single instance.</param>
+    /// <param name="launch">This process's launch, usually <see cref="ApplicationLaunch.FromProcess"/>.</param>
+    /// <param name="options">The URL schemes and files the application registered.</param>
+    /// <returns>Open requests to dispose when the application ends; disposal stops listening to the instance.</returns>
+    /// <remarks>
+    /// Each launch becomes a request through <see cref="DesktopOpenRequests.FromLaunch"/>; a launch without files or
+    /// registered URLs raises nothing. The instance's own <see cref="IApplicationInstance.Launched"/> handlers still
+    /// receive every launch, and complete <see cref="ApplicationLaunch.Reply"/> where one is set. On macOS the system
+    /// sends open events instead; <c>MacOSPlatformProvider.CreateOpenRequests</c> handles both.
+    /// </remarks>
+    public static IDesktopOpenRequests CreateOpenRequests(IApplicationInstance? instance, ApplicationLaunch launch, DesktopOpenOptions options)
+    {
+        var first = DesktopOpenRequests.FromLaunch(launch, options);
+        var queue = new OpenRequestQueue();
+        if (first is not null) queue.Post(first);
+        Attach(queue, instance, options);
+        return queue;
+    }
+
+    // Posts each later launch's files and URLs to the queue until it is disposed.
+    internal static void Attach(OpenRequestQueue queue, IApplicationInstance? instance, DesktopOpenOptions options)
+    {
+        if (instance is null) return;
+        EventHandler<ApplicationLaunch> handler = (_, received) =>
+        {
+            if (DesktopOpenRequests.FromLaunch(received, options) is { } request) queue.Post(request);
+        };
+        instance.Launched += handler;
+        queue.OnDispose(() => { instance.Launched -= handler; return ValueTask.CompletedTask; });
+    }
+
     internal static ValueTask<PlatformResult<ApplicationInstanceClaim>> ClaimAsync(string applicationId, ApplicationLaunch launch,
         string? directory, CancellationToken cancellationToken) => ClaimAsync(applicationId, launch, HandOver, directory, cancellationToken);
 

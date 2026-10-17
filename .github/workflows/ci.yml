@@ -838,6 +838,44 @@ jobs:
         run: |
           eng/ci/macos-appearance.sh "dotnet tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll"
           eng/ci/macos-appearance.sh ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests
+      # Open requests: odoc and GURL Apple events the test process sends itself, then a bundle around the NativeAOT
+      # executable that LaunchServices launches with a document and with a URL (eng/ci/macos-open-probe.sh).
+      - name: Verify macOS open events with JIT and NativeAOT
+        if: runner.os == 'macOS'
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          # macOS has no timeout(1); an alarm ends a run that hangs instead of the step's whole budget.
+          deadline() { perl -e 'alarm shift; exec @ARGV' "$@"; }
+          dotnet build tests/dotnet/Runic.Platform.Runtime.Tests -c Release
+          deadline 120 tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
+          deadline 120 ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeOpenEvents]" --output detailed
+          deadline 240 eng/ci/macos-open-probe.sh artifacts/platform-runtime-aot
+      # Files and URLs opened through the desktop's own registration reach the running instance, with a scheme unique
+      # to the run: a desktop entry opened with gio in an isolated session without a display (Linux), and a per-user
+      # URL protocol opened by the shell (Windows). CI runners only.
+      - name: Verify open requests through desktop registration with JIT and NativeAOT
+        if: runner.os != 'macOS'
+        timeout-minutes: 8
+        shell: bash
+        env:
+          RUNIC_TEST_OPEN_REGISTRATION: "1"
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then eng/ci/apt-install.sh libglib2.0-bin; fi
+          dotnet build tests/dotnet/Runic.Platform.Runtime.Tests -c Release
+          for tests in tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests${{ matrix.extension }} artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests${{ matrix.extension }}; do
+            if [ "$RUNNER_OS" = Linux ]; then
+              session=$(mktemp -d)
+              mkdir -p "$session/home" "$session/data" "$session/config" "$session/system-data" "$session/system-config" "$session/run"
+              chmod 700 "$session/run"
+              env -u DISPLAY -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS HOME="$session/home" XDG_DATA_HOME="$session/data" \
+                XDG_CONFIG_HOME="$session/config" XDG_DATA_DIRS="$session/system-data" XDG_CONFIG_DIRS="$session/system-config" \
+                XDG_RUNTIME_DIR="$session/run" dbus-run-session -- "$tests" --treenode-filter "/*/*/*/*[Category=NativeOpen]" --output detailed
+              rm -rf "$session"
+            else
+              "$tests" --treenode-filter "/*/*/*/*[Category=NativeOpen]" --output detailed
+            fi
+          done
       # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms;
       # Command and A, C, V copy and paste through the Edit menu, and Command and Q asks the close guard.
       - name: Exercise page zoom, Edit and Quit keys in the macOS window
