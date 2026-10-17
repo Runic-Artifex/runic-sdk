@@ -4,3 +4,5 @@ Runic.Application.Views.Desktop.RunicDesktopHost.Placement.get -> System.Func<Ru
 Runic.Application.Views.Desktop.RunicDesktopHost.Placement.init -> void
 static Runic.Application.Views.Desktop.PlatformServices.GetWindowState(Runic.Application.Views.IRunicWindow! window) -> Runic.Platform.PlatformResult<Runic.Desktop.DesktopWindowState!>!
 static Runic.Application.Views.Desktop.PlatformServices.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
+Runic.Application.Views.Desktop.RunicDesktopHost.MenuCommands.get -> System.Collections.Generic.IReadOnlyDictionary<string!, System.Windows.Input.ICommand!>?
+Runic.Application.Views.Desktop.RunicDesktopHost.MenuCommands.init -> void

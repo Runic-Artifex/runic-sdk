@@ -62,3 +62,96 @@ Runic.Desktop.DesktopWindowCapabilities.FileDrop = 512 -> Runic.Desktop.DesktopW
 Runic.Desktop.DesktopWindow.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
 Runic.Desktop.IDesktopFileDropWindowHost
 Runic.Desktop.IDesktopFileDropWindowHost.FilesDropped -> System.EventHandler<Runic.Desktop.DesktopFileDropEventArgs!>?
+abstract Runic.Desktop.DesktopMenuEntry.<Clone>$() -> Runic.Desktop.DesktopMenuEntry!
+override Runic.Desktop.DesktopMenu.<Clone>$() -> Runic.Desktop.DesktopMenu!
+override Runic.Desktop.DesktopMenuEntry.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopMenuEntry.GetHashCode() -> int
+override Runic.Desktop.DesktopMenuEntry.ToString() -> string!
+override Runic.Desktop.DesktopMenu.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopMenu.GetHashCode() -> int
+override Runic.Desktop.DesktopMenuBarItem.<Clone>$() -> Runic.Desktop.DesktopMenuBarItem!
+override Runic.Desktop.DesktopMenuBarItem.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopMenuBarItem.GetHashCode() -> int
+override Runic.Desktop.DesktopMenuBarItem.ToString() -> string!
+override Runic.Desktop.DesktopMenuBarSeparator.<Clone>$() -> Runic.Desktop.DesktopMenuBarSeparator!
+override Runic.Desktop.DesktopMenuBarSeparator.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopMenuBarSeparator.GetHashCode() -> int
+override Runic.Desktop.DesktopMenuBarSeparator.ToString() -> string!
+override Runic.Desktop.DesktopMenu.ToString() -> string!
+~override Runic.Desktop.DesktopShortcut.Equals(object obj) -> bool
+override Runic.Desktop.DesktopShortcut.GetHashCode() -> int
+override Runic.Desktop.DesktopShortcut.ToString() -> string!
+override sealed Runic.Desktop.DesktopMenu.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
+override sealed Runic.Desktop.DesktopMenuBarItem.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
+override sealed Runic.Desktop.DesktopMenuBarSeparator.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
+Runic.Desktop.DesktopHost.MenuBarChanged -> System.EventHandler?
+Runic.Desktop.DesktopHost.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenu!>!
+Runic.Desktop.DesktopHost.MenuCommands.get -> Runic.Desktop.IDesktopMenuCommandTarget?
+Runic.Desktop.DesktopHost.MenuCommands.set -> void
+Runic.Desktop.DesktopHostOptions.MenuBar.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenu!>!
+Runic.Desktop.DesktopHostOptions.MenuBar.init -> void
+Runic.Desktop.DesktopHost.SetMenuBar(System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenu!>! menus) -> void
+Runic.Desktop.DesktopMenu
+Runic.Desktop.DesktopMenu.Deconstruct(out string! Title, out System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenuEntry!>! Items) -> void
+Runic.Desktop.DesktopMenu.DesktopMenu(string! Title, System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenuEntry!>! Items) -> void
+Runic.Desktop.DesktopMenuEntry
+Runic.Desktop.DesktopMenuEntry.DesktopMenuEntry(Runic.Desktop.DesktopMenuEntry! original) -> void
+Runic.Desktop.DesktopMenu.Equals(Runic.Desktop.DesktopMenu? other) -> bool
+Runic.Desktop.DesktopMenuBarItem
+Runic.Desktop.DesktopMenuBarItem.CommandId.get -> string!
+Runic.Desktop.DesktopMenuBarItem.CommandId.init -> void
+Runic.Desktop.DesktopMenuBarItem.Deconstruct(out string! Title, out string! CommandId) -> void
+Runic.Desktop.DesktopMenuBarItem.DesktopMenuBarItem(string! Title, string! CommandId) -> void
+Runic.Desktop.DesktopMenuBarItem.Equals(Runic.Desktop.DesktopMenuBarItem? other) -> bool
+Runic.Desktop.DesktopMenu.Items.get -> System.Collections.Generic.IReadOnlyList<Runic.Desktop.DesktopMenuEntry!>!
+Runic.Desktop.DesktopMenuBarItem.Shortcut.get -> Runic.Desktop.DesktopShortcut?
+Runic.Desktop.DesktopMenuBarItem.Shortcut.init -> void
+Runic.Desktop.DesktopMenu.Items.init -> void
+Runic.Desktop.DesktopMenuBarItem.Title.get -> string!
+Runic.Desktop.DesktopMenuBarItem.Title.init -> void
+Runic.Desktop.DesktopMenuRole
+Runic.Desktop.DesktopMenuRole.Application = 1 -> Runic.Desktop.DesktopMenuRole
+Runic.Desktop.DesktopMenuRole.File = 2 -> Runic.Desktop.DesktopMenuRole
+Runic.Desktop.DesktopMenu.Role.get -> Runic.Desktop.DesktopMenuRole
+Runic.Desktop.DesktopMenuRole.Help = 3 -> Runic.Desktop.DesktopMenuRole
+Runic.Desktop.DesktopMenu.Role.init -> void
+Runic.Desktop.DesktopMenuRole.None = 0 -> Runic.Desktop.DesktopMenuRole
+Runic.Desktop.DesktopMenuBarSeparator
+Runic.Desktop.DesktopMenuBarSeparator.DesktopMenuBarSeparator() -> void
+Runic.Desktop.DesktopMenuBarSeparator.Equals(Runic.Desktop.DesktopMenuBarSeparator? other) -> bool
+Runic.Desktop.DesktopMenu.Title.get -> string!
+Runic.Desktop.DesktopMenu.Title.init -> void
+Runic.Desktop.DesktopShortcut
+Runic.Desktop.DesktopShortcut.DesktopShortcut(string! key, Runic.Desktop.DesktopShortcutModifiers modifiers = Runic.Desktop.DesktopShortcutModifiers.Primary) -> void
+Runic.Desktop.DesktopShortcut.DesktopShortcut() -> void
+Runic.Desktop.DesktopShortcut.Equals(Runic.Desktop.DesktopShortcut other) -> bool
+Runic.Desktop.DesktopShortcut.Key.get -> string!
+Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcutModifiers.Alt = 4 -> Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcutModifiers.Control = 8 -> Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcut.Modifiers.get -> Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcutModifiers.None = 0 -> Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcutModifiers.Primary = 1 -> Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcutModifiers.Shift = 2 -> Runic.Desktop.DesktopShortcutModifiers
+Runic.Desktop.DesktopShortcut.ToDisplayString(bool macOS) -> string!
+Runic.Desktop.DesktopShortcut.ToDisplayString() -> string!
+Runic.Desktop.DesktopWindow.MenuCommands.get -> Runic.Desktop.IDesktopMenuCommandTarget?
+Runic.Desktop.DesktopWindow.MenuCommands.set -> void
+Runic.Desktop.IDesktopMenuCommandTarget
+Runic.Desktop.IDesktopMenuCommandTarget.CanExecute(string! commandId) -> bool
+Runic.Desktop.IDesktopMenuCommandTarget.Execute(string! commandId) -> void
+static Runic.Desktop.DesktopMenuEntry.operator !=(Runic.Desktop.DesktopMenuEntry? left, Runic.Desktop.DesktopMenuEntry? right) -> bool
+static Runic.Desktop.DesktopMenuEntry.operator ==(Runic.Desktop.DesktopMenuEntry? left, Runic.Desktop.DesktopMenuEntry? right) -> bool
+static Runic.Desktop.DesktopMenuBarItem.operator !=(Runic.Desktop.DesktopMenuBarItem? left, Runic.Desktop.DesktopMenuBarItem? right) -> bool
+static Runic.Desktop.DesktopMenuBarItem.operator ==(Runic.Desktop.DesktopMenuBarItem? left, Runic.Desktop.DesktopMenuBarItem? right) -> bool
+static Runic.Desktop.DesktopMenu.operator !=(Runic.Desktop.DesktopMenu? left, Runic.Desktop.DesktopMenu? right) -> bool
+static Runic.Desktop.DesktopMenu.operator ==(Runic.Desktop.DesktopMenu? left, Runic.Desktop.DesktopMenu? right) -> bool
+static Runic.Desktop.DesktopMenuBarSeparator.operator !=(Runic.Desktop.DesktopMenuBarSeparator? left, Runic.Desktop.DesktopMenuBarSeparator? right) -> bool
+static Runic.Desktop.DesktopMenuBarSeparator.operator ==(Runic.Desktop.DesktopMenuBarSeparator? left, Runic.Desktop.DesktopMenuBarSeparator? right) -> bool
+static Runic.Desktop.DesktopShortcut.operator !=(Runic.Desktop.DesktopShortcut left, Runic.Desktop.DesktopShortcut right) -> bool
+static Runic.Desktop.DesktopShortcut.operator ==(Runic.Desktop.DesktopShortcut left, Runic.Desktop.DesktopShortcut right) -> bool
+static Runic.Desktop.DesktopShortcut.Parse(string! text) -> Runic.Desktop.DesktopShortcut
+static Runic.Desktop.DesktopShortcut.TryParse(string? text, out Runic.Desktop.DesktopShortcut shortcut) -> bool
+virtual Runic.Desktop.DesktopMenuEntry.EqualityContract.get -> System.Type!
+virtual Runic.Desktop.DesktopMenuEntry.Equals(Runic.Desktop.DesktopMenuEntry? other) -> bool
+virtual Runic.Desktop.DesktopMenuEntry.PrintMembers(System.Text.StringBuilder! builder) -> bool

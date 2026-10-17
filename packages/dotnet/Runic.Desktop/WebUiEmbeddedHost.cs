@@ -30,6 +30,13 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Occurs after the platform window has closed.</summary>
     event EventHandler? Closed;
 
+    /// <summary>The menu bar's command target while this window is key; only the macOS host has a menu bar.</summary>
+    IDesktopMenuCommandTarget? MenuCommands
+    {
+        get => null;
+        set { }
+    }
+
     /// <summary>Gets the last reported bounds and state, kept after the window closes; null when the host reports none.</summary>
     DesktopWindowState? State => null;
 

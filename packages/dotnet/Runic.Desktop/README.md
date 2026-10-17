@@ -236,6 +236,68 @@ same place or size.
 Without a window manager, as under Xvfb, X11 has nobody to maximize a window
 or to keep it inside a work area; the GTK hosts still report what GDK reports.
 
+## Menu bar and keyboard shortcuts
+
+On macOS Runic Desktop gives the application the menus Cocoa applications are
+expected to have: the application menu (About, Hide, Quit), File with Close
+(⌘W, which asks the window's close guard), Edit (Undo, Redo, Cut, Copy, Paste,
+Select All), View with the page zoom items, and Window (Minimize, Zoom, Bring
+All to Front). `DesktopHostOptions.MenuBar` adds the application's own menus,
+whose items run commands by id:
+
+```csharp
+IReadOnlyList<DesktopMenu> MenuBar(AppText text) =>
+[
+    new(text.Messages.menu_settings, [new DesktopMenuBarItem(text.Messages.menu_settings_item, "app.settings")
+        { Shortcut = DesktopShortcut.Parse("Primary+,") }]) { Role = DesktopMenuRole.Application },
+    new(text.Messages.menu_file,
+    [
+        new DesktopMenuBarItem(text.Messages.menu_file_new, "file.new") { Shortcut = DesktopShortcut.Parse("Primary+N") },
+        new DesktopMenuBarItem(text.Messages.menu_file_save, "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") },
+    ]) { Role = DesktopMenuRole.File },
+    new(text.Messages.menu_tools, [new DesktopMenuBarItem(text.Messages.menu_tools_run, "tools.run")]),
+];
+
+var options = new DesktopHostOptions { MenuBar = MenuBar(text) };
+// Titles are user-visible: build the bar again in the new language.
+manager.LocaleChanged += (_, _) => host.SetMenuBar(MenuBar(text));
+```
+
+`text` and `manager` are the application's Runic Translations catalog and
+manager (`AppText`, `ITranslationManager`). `DesktopHost.SetMenuBar` replaces
+the application's menus at run time, so the bar follows a language change
+without a restart; the standard menus keep their English titles in this
+release. A menu's `Role` places it: `Application` adds its items after About,
+`File` fills the File menu before Close and gives it its title, `Help` goes
+last, and others go between View and Window.
+
+An item runs its command on the key window's `DesktopWindow.MenuCommands`, an
+`IDesktopMenuCommandTarget`, or else on `DesktopHost.MenuCommands`, also when
+no window is open. AppKit asks `CanExecute` whenever it shows a menu or matches
+a key, on its main thread, so keep it cheap; an item that no target can run is
+disabled. Runic Windows bind these to ViewModel commands; see
+[Menu bar commands](../Runic.Application.Views/README.md#menu-bar-commands).
+
+`DesktopShortcut` writes shortcuts once for every platform: `Primary` is ⌘ on
+macOS and Ctrl elsewhere, `Alt` is ⌥, and `Control` is ⌃ on macOS and Ctrl
+elsewhere. `ToDisplayString()` shows `⇧⌘S` on macOS and `Ctrl+Shift+S`
+elsewhere. An item's shortcut is its macOS key equivalent, with three rules:
+
+- The standard menus keep their shortcuts: ⌘Z, ⇧⌘Z, ⌘X, ⌘C, ⌘V, ⌘A, ⌘Q, ⌘H,
+  ⌥⌘H, ⌘W and ⌘M. An item declaring one is shown without it, and
+  `DesktopHost.Validate` reports `menu-shortcut-reserved`; a second item with
+  the same shortcut reports `menu-shortcut-duplicate`.
+- The focused page sees a key first. Only when the page does not call
+  `preventDefault()` on it does the menu bar answer it, as the zoom keys do.
+- Items run commands without a parameter.
+
+Windows and Linux show no native menu bar in this release, and
+`DesktopHost.Validate` reports `menu-bar-unsupported` for a declared one. Render
+the menu bar and context menus in the page there, bound to the same commands;
+the web view keeps its own context menu unless the page handles `contextmenu`
+and calls `preventDefault()`. Native menu bars and context menus, checked
+items, and global shortcuts are planned for later releases.
+
 ## File drops
 
 An embedded window whose `Capabilities` include `DesktopWindowCapabilities.FileDrop`

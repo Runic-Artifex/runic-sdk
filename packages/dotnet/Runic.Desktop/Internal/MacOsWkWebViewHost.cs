@@ -26,6 +26,41 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private static readonly nint WebViewClass = CreateWebViewClass();
     private static readonly Lazy<nint> FileDropHandler = new(CreateFileDropHandler);
     private FileDropPairing? _drops;
+    private IDesktopMenuCommandTarget? _menuCommands;
+    // The application's declared menus and their fallback command target; one menu bar per process.
+    private static IReadOnlyList<DesktopMenu> s_menuBar = [];
+    private static IDesktopMenuCommandTarget? s_applicationMenuCommands;
+    private const string MenuCommandAction = "runicMenuCommand:";
+    private const string DeclaredIdentifier = "runic.app.";
+    private const string FileIdentifier = "runic.menu.file";
+
+    public IDesktopMenuCommandTarget? MenuCommands
+    {
+        get => Volatile.Read(ref _menuCommands);
+        set => Volatile.Write(ref _menuCommands, value);
+    }
+
+    internal static void SetApplicationMenuCommands(IDesktopMenuCommandTarget? target) => Volatile.Write(ref s_applicationMenuCommands, target);
+
+    // Shows the menus as soon as the main thread can: now while the AppKit loop runs, else when the first window opens.
+    internal static void RequestMenuBar(IReadOnlyList<DesktopMenu> menus)
+    {
+        Volatile.Write(ref s_menuBar, menus);
+        if (!OperatingSystem.IsMacOS() || !Api.IsAvailable) return;
+        if (IsMainThread || DesktopEventLoop.IsRunning)
+        {
+            _ = InvokeOnMainAsync(static () =>
+            {
+                var application = Api.SendNint(Api.GetClass("NSApplication"), "sharedApplication");
+                if (!Api.InfoDictionaryBool("LSUIElement"))
+                {
+                    Api.SendBoolLong(application, "setActivationPolicy:", ApplicationActivationPolicyRegular);
+                }
+                InstallMainMenu(application);
+                ApplyMenuBar(application);
+            }, CancellationToken.None).AsTask();
+        }
+    }
     private static readonly nint MenuTargetClass = CreateMenuTargetClass();
     private static nint s_menuTarget;
 
@@ -289,6 +324,7 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Api.SendVoid(_application, "finishLaunching");
         InstallMainMenu(_application);
+        ApplyMenuBar(_application);
 
         var style = options.Frameless || options.Kiosk
             ? StyleBorderless | (options.Resizable ? StyleResizable : 0)
@@ -535,6 +571,11 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             {
                 Api.AddItems(Api.InsertSubmenu(mainMenu, "Edit", 1, MacOsMainMenu.EditIdentifier), MacOsMainMenu.Edit, name, s_menuTarget);
             }
+            // The Cocoa template's File menu: Close sends performClose:, so a window's close guard applies.
+            if (Api.FindSubmenu(mainMenu, FileIdentifier, MacOsMainMenu.FileActions) == 0)
+            {
+                Api.AddItems(Api.InsertSubmenu(mainMenu, "File", 1, FileIdentifier), MacOsMainMenu.File, name, s_menuTarget);
+            }
         }
         // The zoom items go into any main menu that has no Command and = or + of its own.
         if (!Api.HasCommandKey(mainMenu, "=") && !Api.HasCommandKey(mainMenu, "+"))
@@ -561,6 +602,167 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             var window = Api.InsertSubmenu(mainMenu, "Window", Api.SendNint(mainMenu, "numberOfItems"), MacOsMainMenu.WindowIdentifier);
             Api.AddItems(window, MacOsMainMenu.Window, "", s_menuTarget);
             Api.SendVoidNint(application, "setWindowsMenu:", window);
+        }
+    }
+
+    // Main thread only. Replaces the declared menus: removes those of the previous bar, then inserts the File role's
+    // items before Close, the Application role's after About, Help last, and the others before the Window menu.
+    private static void ApplyMenuBar(nint application)
+    {
+        var mainMenu = Api.SendNint(application, "mainMenu");
+        if (mainMenu == 0 || s_menuTarget == 0) return;
+        Api.RemoveIdentifiedItems(mainMenu, DeclaredIdentifier);
+        // The standard File menu takes the declared File menu's title, and its own back without one.
+        if (Api.FindSubmenu(mainMenu, FileIdentifier, MacOsMainMenu.FileActions) is var standardFile and not 0)
+        {
+            Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, standardFile)), standardFile, "File");
+        }
+        var menus = Volatile.Read(ref s_menuBar);
+        foreach (var menu in menus)
+        {
+            switch (menu.Role)
+            {
+                case DesktopMenuRole.Application:
+                    var applicationMenu = Api.SendNint(mainMenu, "numberOfItems") > 0
+                        ? Api.SendNint(Api.SendNintNint(mainMenu, "itemAtIndex:", 0), "submenu") : 0;
+                    if (applicationMenu != 0) AddEntries(applicationMenu, menu.Items, insertAt: Math.Min(2, (int)Api.SendNint(applicationMenu, "numberOfItems")), separate: true);
+                    break;
+                case DesktopMenuRole.File:
+                    var file = Api.FindSubmenu(mainMenu, FileIdentifier, MacOsMainMenu.FileActions);
+                    if (file == 0)
+                    {
+                        file = Api.InsertSubmenu(mainMenu, menu.Title, DesktopMenuBar.InsertionIndex(DesktopMenuRole.File,
+                            (int)Api.SendNint(mainMenu, "numberOfItems"), -1), DeclaredIdentifier + "file");
+                        AddEntries(file, menu.Items, insertAt: null, separate: false);
+                    }
+                    else
+                    {
+                        Api.SetTitle(Api.SendNintNint(mainMenu, "itemAtIndex:", Api.IndexOfSubmenu(mainMenu, file)), file, menu.Title);
+                        AddEntries(file, menu.Items, insertAt: 0, separate: true);
+                    }
+                    break;
+                default:
+                    var windowMenu = Api.SendNint(application, "windowsMenu");
+                    var count = (int)Api.SendNint(mainMenu, "numberOfItems");
+                    var index = DesktopMenuBar.InsertionIndex(menu.Role, count, windowMenu == 0 ? -1 : (int)Api.IndexOfSubmenu(mainMenu, windowMenu));
+                    AddEntries(Api.InsertSubmenu(mainMenu, menu.Title, index, DeclaredIdentifier + "menu"), menu.Items, insertAt: null, separate: false);
+                    break;
+            }
+        }
+    }
+
+    // Adds a declared menu's entries, at an index of an existing menu with a separator after them, or at its end.
+    private static void AddEntries(nint menu, IReadOnlyList<DesktopMenuEntry> entries, int? insertAt, bool separate)
+    {
+        var index = insertAt;
+        void Add(nint item)
+        {
+            Api.SetIdentifier(item, DeclaredIdentifier + "item");
+            if (index is { } at)
+            {
+                Api.InsertItem(menu, item, at);
+                index = at + 1;
+            }
+            else
+            {
+                Api.SendVoidNint(menu, "addItem:", item);
+            }
+        }
+        foreach (var entry in entries)
+        {
+            switch (entry)
+            {
+                case DesktopMenuBarSeparator:
+                    Add(Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+                    break;
+                case DesktopMenuBarItem item:
+                    var (key, modifiers) = item.Shortcut is { Key: not null } shortcut && !DesktopMenuBar.IsReserved(shortcut)
+                        ? DesktopMenuBar.ToMacKeyEquivalent(shortcut)
+                        : ("", 0UL);
+                    var native = Api.NewMenuItem(item.Title, MenuCommandAction, key, modifiers, s_menuTarget);
+                    Api.SetRepresentedString(native, item.CommandId);
+                    Add(native);
+                    Api.SendVoid(native, "release");
+                    break;
+                case DesktopMenu submenu:
+                    var holder = Api.NewMenuItem(submenu.Title, null, "", 0, 0);
+                    var child = Api.NewMenu(submenu.Title);
+                    Api.SendVoidNint(holder, "setSubmenu:", child);
+                    AddEntries(child, submenu.Items, insertAt: null, separate: false);
+                    Add(holder);
+                    Api.SendVoid(child, "release");
+                    Api.SendVoid(holder, "release");
+                    break;
+            }
+        }
+        if (separate && entries.Count > 0)
+        {
+            Add(Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
+        }
+    }
+
+    // The target of the key window, or of the main window while a panel is key, then the application's.
+    private static IEnumerable<IDesktopMenuCommandTarget> MenuTargets()
+    {
+        var application = Api.SharedApplicationIfCreated();
+        if (application != 0)
+        {
+            foreach (var selector in (string[])["keyWindow", "mainWindow"])
+            {
+                if (Hosts.TryGetValue(Api.SendNint(application, selector), out var host) && host.IsOpen && host.MenuCommands is { } target)
+                {
+                    yield return target;
+                    break;
+                }
+            }
+        }
+        if (Volatile.Read(ref s_applicationMenuCommands) is { } fallback) yield return fallback;
+    }
+
+    internal static bool CanExecuteMenuCommand(string commandId) => MenuTargets().Any(target => SafeCanExecute(target, commandId));
+
+    internal static bool ExecuteMenuCommand(string commandId)
+    {
+        foreach (var target in MenuTargets())
+        {
+            if (!SafeCanExecute(target, commandId)) continue;
+            target.Execute(commandId);
+            return true;
+        }
+        return false;
+    }
+
+    private static bool SafeCanExecute(IDesktopMenuCommandTarget target, string commandId)
+    {
+        try { return target.CanExecute(commandId); }
+        catch (Exception error) when (error is not OutOfMemoryException) { return false; }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void MenuCommand(nint self, nint selector, nint sender)
+    {
+        try
+        {
+            if (Api.RepresentedString(sender) is { Length: > 0 } commandId) ExecuteMenuCommand(commandId);
+        }
+        catch
+        {
+            // Never unwind through AppKit.
+        }
+    }
+
+    // AppKit asks before it shows a menu or answers a key equivalent. Only the declared items depend on a command.
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static byte ValidateMenuItem(nint self, nint selector, nint item)
+    {
+        try
+        {
+            if (!Api.HasAction(item, MenuCommandAction)) return 1;
+            return Api.RepresentedString(item) is { Length: > 0 } commandId && CanExecuteMenuCommand(commandId) ? (byte)1 : (byte)0;
+        }
+        catch
+        {
+            return 0;
         }
     }
 
@@ -754,6 +956,9 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Out), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ZoomOut, "v@:@");
         Api.AddMethod(type, MacOsPageZoom.Selector(PageZoomCommand.Reset), (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&ActualSize, "v@:@");
         Api.AddMethod(type, MacOsMainMenu.QuitAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&Quit, "v@:@");
+        Api.AddMethod(type, MenuCommandAction, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&MenuCommand, "v@:@");
+        Api.AddMethod(type, "validateMenuItem:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&ValidateMenuItem,
+            RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
         Api.RegisterClassPair(type);
         return type;
     }
@@ -978,6 +1183,72 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
             }
             return 0;
         }
+
+        // Removes the items whose identifier starts with the prefix, in every submenu.
+        internal void RemoveIdentifiedItems(nint menu, string prefix)
+        {
+            for (var index = SendNint(menu, "numberOfItems") - 1; index >= 0; index--)
+            {
+                var item = SendNintNint(menu, "itemAtIndex:", index);
+                if (Text(SendNint(item, "identifier")).StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    SendVoidNint(menu, "removeItemAtIndex:", index);
+                }
+                else if (SendNint(item, "submenu") is var submenu and not 0)
+                {
+                    RemoveIdentifiedItems(submenu, prefix);
+                }
+            }
+        }
+
+        internal nint NewMenuItem(string title, string? action, string keyEquivalent, ulong modifiers, nint target)
+        {
+            var item = AllocMenuItem(title, action is null ? 0 : Selector(action), keyEquivalent);
+            SendVoidUlong(item, "setKeyEquivalentModifierMask:", modifiers);
+            if (target != 0) SendVoidNint(item, "setTarget:", target);
+            return item;
+        }
+
+        internal void InsertItem(nint menu, nint item, int index) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, nint, void>)_messageSend)(menu, Selector("insertItem:atIndex:"), item,
+                Math.Min(index, SendNint(menu, "numberOfItems")));
+
+        internal void SetIdentifier(nint item, string identifier)
+        {
+            var text = CreateString(identifier);
+            SendVoidNint(item, "setIdentifier:", text);
+            SendVoid(text, "release");
+        }
+
+        internal void SetTitle(nint item, nint submenu, string title)
+        {
+            var text = CreateString(title);
+            if (item != 0) SendVoidNint(item, "setTitle:", text);
+            if (submenu != 0) SendVoidNint(submenu, "setTitle:", text);
+            SendVoid(text, "release");
+        }
+
+        internal void SetRepresentedString(nint item, string value)
+        {
+            var text = CreateString(value);
+            SendVoidNint(item, "setRepresentedObject:", text);
+            SendVoid(text, "release");
+        }
+
+        internal string? RepresentedString(nint item)
+        {
+            var value = item == 0 ? 0 : SendNint(item, "representedObject");
+            return value != 0 && SendBool(value, "isKindOfClass:", GetClass("NSString")) ? Text(value) : null;
+        }
+
+        internal bool HasAction(nint item, string action)
+        {
+            var selector = SendNint(item, "action");
+            return selector != 0 && Marshal.PtrToStringUTF8(Native.SelGetName(selector)) == action;
+        }
+
+        internal bool SendBool(nint receiver, string selector, nint argument) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)_messageSend)(receiver, Selector(selector), argument) != 0;
 
         internal nint IndexOfSubmenu(nint mainMenu, nint submenu) =>
             submenu == 0 ? -1 : SendNintNint(mainMenu, "indexOfItemWithSubmenu:", submenu);
