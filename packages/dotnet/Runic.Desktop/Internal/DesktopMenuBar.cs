@@ -66,7 +66,7 @@ internal static class DesktopMenuBar
                 case DesktopMenu submenu:
                     CheckMenu(submenu, path + " ▸ " + submenu.Title, seen, diagnostics);
                     break;
-                case DesktopMenuItem item:
+                case DesktopMenuBarItem item:
                     if (string.IsNullOrWhiteSpace(item.Title)) throw new ArgumentException($"An item of '{path}' has no title.");
                     if (string.IsNullOrWhiteSpace(item.CommandId)) throw new ArgumentException($"The item '{path} ▸ {item.Title}' has no command.");
                     if (item.Shortcut is { Key: not null } shortcut)
@@ -89,7 +89,7 @@ internal static class DesktopMenuBar
                         }
                     }
                     break;
-                case DesktopMenuSeparator:
+                case DesktopMenuBarSeparator:
                     break;
                 default:
                     throw new ArgumentException($"The menu '{path}' contains a null entry.");

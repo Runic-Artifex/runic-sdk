@@ -248,14 +248,14 @@ whose items run commands by id:
 ```csharp
 IReadOnlyList<DesktopMenu> MenuBar(AppText text) =>
 [
-    new(text.Messages.menu_settings, [new DesktopMenuItem(text.Messages.menu_settings_item, "app.settings")
+    new(text.Messages.menu_settings, [new DesktopMenuBarItem(text.Messages.menu_settings_item, "app.settings")
         { Shortcut = DesktopShortcut.Parse("Primary+,") }]) { Role = DesktopMenuRole.Application },
     new(text.Messages.menu_file,
     [
-        new DesktopMenuItem(text.Messages.menu_file_new, "file.new") { Shortcut = DesktopShortcut.Parse("Primary+N") },
-        new DesktopMenuItem(text.Messages.menu_file_save, "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") },
+        new DesktopMenuBarItem(text.Messages.menu_file_new, "file.new") { Shortcut = DesktopShortcut.Parse("Primary+N") },
+        new DesktopMenuBarItem(text.Messages.menu_file_save, "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") },
     ]) { Role = DesktopMenuRole.File },
-    new(text.Messages.menu_tools, [new DesktopMenuItem(text.Messages.menu_tools_run, "tools.run")]),
+    new(text.Messages.menu_tools, [new DesktopMenuBarItem(text.Messages.menu_tools_run, "tools.run")]),
 ];
 
 var options = new DesktopHostOptions { MenuBar = MenuBar(text) };

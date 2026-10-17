@@ -135,7 +135,7 @@ public sealed record DesktopHostOptions
     /// Window menus; empty by default. Windows and Linux show no native menu bar in this release.
     /// </summary>
     /// <remarks>
-    /// Each <see cref="DesktopMenuItem"/> names a command that the key window's <see cref="DesktopWindow.MenuCommands"/>
+    /// Each <see cref="DesktopMenuBarItem"/> names a command that the key window's <see cref="DesktopWindow.MenuCommands"/>
     /// runs, or else <see cref="DesktopHost.MenuCommands"/>; an item is disabled while neither can run it. Titles are
     /// user-visible text, so take them from the application's translations, and call
     /// <see cref="DesktopHost.SetMenuBar"/> to show the bar again after the language changes. Building the host throws

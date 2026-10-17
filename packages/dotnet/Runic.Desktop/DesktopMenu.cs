@@ -34,7 +34,7 @@ public sealed record DesktopMenu(string Title, IReadOnlyList<DesktopMenuEntry> I
 /// The command the item runs: the key window's <see cref="DesktopWindow.MenuCommands"/> handles it, or else
 /// <see cref="DesktopHost.MenuCommands"/>. The item is disabled while neither can run it.
 /// </param>
-public sealed record DesktopMenuItem(string Title, string CommandId) : DesktopMenuEntry
+public sealed record DesktopMenuBarItem(string Title, string CommandId) : DesktopMenuEntry
 {
     /// <summary>Gets the item's keyboard shortcut, or <see langword="null"/> for none.</summary>
     /// <remarks>
@@ -46,7 +46,7 @@ public sealed record DesktopMenuItem(string Title, string CommandId) : DesktopMe
 }
 
 /// <summary>A separator line between menu items.</summary>
-public sealed record DesktopMenuSeparator : DesktopMenuEntry;
+public sealed record DesktopMenuBarSeparator : DesktopMenuEntry;
 
 /// <summary>Where a <see cref="DesktopMenu"/> goes in the menu bar.</summary>
 public enum DesktopMenuRole
@@ -234,10 +234,10 @@ public readonly record struct DesktopShortcut
 public interface IDesktopMenuCommandTarget
 {
     /// <summary>Gets whether the command can run now; <see langword="false"/> also for a command this target does not handle.</summary>
-    /// <param name="commandId">The <see cref="DesktopMenuItem.CommandId"/>.</param>
+    /// <param name="commandId">The <see cref="DesktopMenuBarItem.CommandId"/>.</param>
     bool CanExecute(string commandId);
 
     /// <summary>Runs the command, after <see cref="CanExecute"/> returned <see langword="true"/>.</summary>
-    /// <param name="commandId">The <see cref="DesktopMenuItem.CommandId"/>.</param>
+    /// <param name="commandId">The <see cref="DesktopMenuBarItem.CommandId"/>.</param>
     void Execute(string commandId);
 }
