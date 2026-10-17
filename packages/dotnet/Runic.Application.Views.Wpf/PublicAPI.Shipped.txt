@@ -50,3 +50,5 @@
 [RUNICWPF001]static Runic.Application.Views.Wpf.RunicViewHost.SetServices(System.Windows.DependencyObject! element, System.IServiceProvider? services) -> void
 [RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.CloseAsync(System.TimeSpan timeout, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Application.Views.BridgeWindowCloseResult!>
 [RUNICWPF001]Runic.Application.Views.Wpf.WpfBridgeView<TViewModel>.WaitForCloseAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+[RUNICWPF001]Runic.Application.Views.Wpf.WpfPlatformServices
+[RUNICWPF001]static Runic.Application.Views.Wpf.WpfPlatformServices.PresentAsync(System.Windows.Window! window, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>

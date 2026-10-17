@@ -1,12 +1,1 @@
 #nullable enable
-Runic.Desktop.DesktopWindowHostOptions.ReportDiagnostic.get -> System.Action<Runic.Desktop.DesktopDiagnostic!>?
-Runic.Desktop.DesktopWindowHostOptions.ReportDiagnostic.init -> void
-Runic.Desktop.DesktopSurface.ConnectionCount.get -> int
-Runic.Desktop.DesktopSurfaceOptions.Resources.get -> Runic.Desktop.ContentHandler?
-Runic.Desktop.DesktopSurfaceOptions.Resources.init -> void
-Runic.Desktop.DesktopAnnouncementPriority
-Runic.Desktop.DesktopAnnouncementPriority.Assertive = 1 -> Runic.Desktop.DesktopAnnouncementPriority
-Runic.Desktop.DesktopAnnouncementPriority.Polite = 0 -> Runic.Desktop.DesktopAnnouncementPriority
-Runic.Desktop.DesktopWindow.AnnounceAsync(string! message, Runic.Desktop.DesktopAnnouncementPriority priority = Runic.Desktop.DesktopAnnouncementPriority.Polite, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
-Runic.Desktop.DesktopWindowCapabilities.Announcements = 128 -> Runic.Desktop.DesktopWindowCapabilities
-Runic.Desktop.IDesktopWindowHost.AnnounceAsync(string! message, Runic.Desktop.DesktopAnnouncementPriority priority, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask

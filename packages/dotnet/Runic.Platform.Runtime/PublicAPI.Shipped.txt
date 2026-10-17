@@ -123,3 +123,5 @@ Runic.Platform.Runtime.ApplicationInstanceOptions.<Clone>$() -> Runic.Platform.R
 Runic.Platform.Runtime.ApplicationInstanceOptions.Equals(Runic.Platform.Runtime.ApplicationInstanceOptions? other) -> bool
 static Runic.Platform.Runtime.ApplicationInstanceOptions.operator !=(Runic.Platform.Runtime.ApplicationInstanceOptions? left, Runic.Platform.Runtime.ApplicationInstanceOptions? right) -> bool
 static Runic.Platform.Runtime.ApplicationInstanceOptions.operator ==(Runic.Platform.Runtime.ApplicationInstanceOptions? left, Runic.Platform.Runtime.ApplicationInstanceOptions? right) -> bool
+Runic.Platform.Runtime.ApplicationInstanceOptions.ForwardOnly.get -> bool
+Runic.Platform.Runtime.ApplicationInstanceOptions.ForwardOnly.init -> void

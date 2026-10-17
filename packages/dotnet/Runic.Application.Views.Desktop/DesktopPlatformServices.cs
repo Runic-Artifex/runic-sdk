@@ -320,8 +320,6 @@ public static class PlatformServices
     /// <exception cref="InvalidOperationException">The Window has not opened.</exception>
     // The overloads differ in their first parameter, which no call omits, so the optional ones cannot make a call
     // ambiguous or bind to the other overload.
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0026:Do not add multiple public overloads with optional parameters",
-        Justification = "The overloads differ in their required first parameter.")]
     public static ValueTask<PlatformResult<PlatformUnit>> PresentAsync(IRunicWindow window, DesktopActivationContext? context = null,
         CancellationToken cancellationToken = default)
     {
