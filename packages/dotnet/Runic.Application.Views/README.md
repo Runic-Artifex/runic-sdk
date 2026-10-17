@@ -1608,6 +1608,30 @@ capture. Until then it may still hold the old reference. An invocation on that
 reference is rejected like any forgotten route, and the outlet may briefly
 show the old View or nothing. The next capture converges.
 
+### Navigation command results
+
+A command that navigates returns the request's `NavigationOutcome`, as
+`CreateBackCommand()` and the adapter's entry commands do, because the Bridge
+cannot encode a `NavigationResult<TContent>` (`RUNICBRIDGE003`). The generated
+client receives it as a typed result:
+
+```ts
+interface NavigationOutcome {
+  readonly kind: "Committed" | "Rejected" | "Superseded" | "Failed";
+  readonly rejection: NavigationRejection | null; // set for "Rejected"
+  readonly activation: "None" | "Completed" | "Failed" | "Cancelled"; // "None" unless "Committed"
+}
+```
+
+`activation` reports how the
+[activation hooks](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#after-the-commit-activation)
+(`INavigationActivated`) of the entry the commit made current ended. A
+`"Failed"` hook leaves the commit standing, so a page that went back or
+navigated can show that the destination's data did not load. Like a `"Failed"`
+kind, it carries no exception message, which can contain application data:
+the hook's exception is logged as event 1076, and code that needs it awaits the
+region's request in its own command and reads `Committed.ActivationError`.
+
 ## Logging and telemetry
 
 Registering logging is all an application needs: with `services.AddLogging(...)`,

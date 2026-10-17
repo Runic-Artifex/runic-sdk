@@ -162,9 +162,11 @@ See [Container-resolved targets](#container-resolved-targets).
   treats failures as bugs can write
   `if ((await main.PushAsync<EditorViewModel>()).ThrowIfFailed().IsCommitted) { ... }`.
 - `result.Outcome` is a `NavigationOutcome`: the `Kind` (`Committed`,
-  `Rejected`, `Superseded` or `Failed`) and, for a rejection, its `Rejection`
-  reason. It holds no .NET content or exception, so a ViewModel can return it to
-  a Runic View, which cannot receive a `NavigationResult<TContent>`.
+  `Rejected`, `Superseded` or `Failed`), for a rejection its `Rejection`
+  reason, and for a commit its `Activation` state (`None`, `Completed`,
+  `Failed` or `Cancelled`, as in `Committed.Activation`). It holds no .NET
+  content or exception, so a ViewModel can return it to a Runic View, which
+  cannot receive a `NavigationResult<TContent>`.
 - `NavigationRequestOptions.ExpectedCurrent` makes a request conditional. It
   is rejected as `NotCurrent` if that entry is not current at admission or at
   commit. Use it, or `NavigationEntryContext.BackAsync`, for work that

@@ -211,17 +211,20 @@ internal static partial class XmlDocumentation
         }
     }
 
-    // "T:Ns.Outer.Type`1" or "M:Ns.Type.Method(System.String)" -> "Type" or "Method".
+    // "T:Ns.Outer.Type`1", "M:Ns.Type.Method(System.String)" or "P:Ns.Type`1.Nested.Member" -> "Type", "Method" or
+    // "Member": the arity of a generic type or method is dropped wherever it appears.
     private static string CrefName(string cref)
     {
         var name = cref.Length > 2 && cref[1] == ':' ? cref[2..] : cref;
         var parameters = name.IndexOf('(', StringComparison.Ordinal);
         if (parameters >= 0) name = name[..parameters];
-        var tick = name.IndexOf('`', StringComparison.Ordinal);
-        if (tick >= 0) name = name[..tick];
+        name = GenericArity().Replace(name, "");
         var dot = name.LastIndexOf('.');
         return dot >= 0 ? name[(dot + 1)..] : name;
     }
+
+    [GeneratedRegex(@"``?[0-9]+")]
+    private static partial Regex GenericArity();
 
     [GeneratedRegex(@"[ \t\r\n]+")]
     private static partial Regex Whitespace();

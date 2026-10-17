@@ -6,8 +6,8 @@ import { pageDocument, type DocumentPageReference } from "./document.js";
 import { pageHome, type HomePageReference } from "./home.js";
 import { pagePinnedTask, type PinnedTaskPageReference } from "./pinnedTask.js";
 import { pagePinnedNote, type PinnedNotePageReference } from "./pinnedNote.js";
-import type { NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
-export type { NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
+import type { NavigationActivationState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
+export type { NavigationActivationState, NavigationOutcome, NavigationOutcomeKind, NavigationRejection } from "./types.js";
 
 export interface ShellState {
   readonly main: DocumentPageReference | HomePageReference | null;
@@ -74,7 +74,7 @@ function hydrate(wire: WireState): ShellState {
     pinned: wire.pinned.map(item => item.kind === "pinnedTask" ? pagePinnedTask(item.id) : item.kind === "pinnedNote" ? pagePinnedNote(item.id) : (() => { throw new BridgeError("failed", "Unknown pinned kind."); })()),
   };
 }
-const bridgeContract = "NotesReactiveViews.ShellViewModel:2D2F80D1D5A1871AD7B3594A7CB9AB7382B7B675D9651097E5E56A250F86269F";
+const bridgeContract = "NotesReactiveViews.ShellViewModel:40D769D3CFF1067D01A4F7BCD7BBBC0F2DF1906BFD84477727DBCB9C6886AD57";
 
 /**
  * Connects a Shell client. It waits up to `options.timeout` milliseconds (default 5000) for the
@@ -83,7 +83,7 @@ const bridgeContract = "NotesReactiveViews.ShellViewModel:2D2F80D1D5A1871AD7B359
 export function connectShell(options?: BridgeConnectOptions): Promise<ShellClient> { return connectShellAt("shell", false, options); }
 async function connectShellAt(route: string, mount = false, options?: BridgeConnectOptions): Promise<ShellClient> {
   const view = await connectView({ contract: bridgeContract, route, mount, hydrate, operations: bridgeOperations, timeout: options?.timeout });
-  const startOpenHomeOperation = (requestId: string) => view.startOperation<NavigationOutcome>("OpenHome", requestId, () => requestId, value => bridgeWire.object<NavigationOutcome>(value, value => ({ kind: bridgeWire.enumName<NavigationOutcomeKind>(value["kind"], ["Committed", "Rejected", "Superseded", "Failed"]), rejection: (value["rejection"] === null ? null : bridgeWire.enumName<NavigationRejection>(value["rejection"], ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"]))})));
+  const startOpenHomeOperation = (requestId: string) => view.startOperation<NavigationOutcome>("OpenHome", requestId, () => requestId, value => bridgeWire.object<NavigationOutcome>(value, value => ({ kind: bridgeWire.enumName<NavigationOutcomeKind>(value["kind"], ["Committed", "Rejected", "Superseded", "Failed"]), rejection: (value["rejection"] === null ? null : bridgeWire.enumName<NavigationRejection>(value["rejection"], ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"])), activation: bridgeWire.enumName<NavigationActivationState>(value["activation"], ["None", "Completed", "Failed", "Cancelled"])})));
   const startOpenDocumentOperation = (requestId: string) => view.startOperation<void>("OpenDocument", requestId, () => requestId, value => undefined);
   const startSwapPinnedOperation = (requestId: string) => view.startOperation<void>("SwapPinned", requestId, () => requestId, value => undefined);
   const startRemovePinnedOperation = (requestId: string) => view.startOperation<void>("RemovePinned", requestId, () => requestId, value => undefined);
@@ -99,7 +99,7 @@ async function connectShellAt(route: string, mount = false, options?: BridgeConn
     async restorePinned() { return view.command(`${route}RestorePinned`); },
     startOpenHome() { return startOpenHomeOperation(globalThis.crypto.randomUUID()); },
     startOpenHomeWithRequestId(requestId: string) { return startOpenHomeOperation(requestId); },
-    recoverOpenHomeWithRequestId(requestId: string) { return view.recoverOperation<NavigationOutcome>("OpenHome", requestId, value => bridgeWire.object<NavigationOutcome>(value, value => ({ kind: bridgeWire.enumName<NavigationOutcomeKind>(value["kind"], ["Committed", "Rejected", "Superseded", "Failed"]), rejection: (value["rejection"] === null ? null : bridgeWire.enumName<NavigationRejection>(value["rejection"], ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"]))}))); },
+    recoverOpenHomeWithRequestId(requestId: string) { return view.recoverOperation<NavigationOutcome>("OpenHome", requestId, value => bridgeWire.object<NavigationOutcome>(value, value => ({ kind: bridgeWire.enumName<NavigationOutcomeKind>(value["kind"], ["Committed", "Rejected", "Superseded", "Failed"]), rejection: (value["rejection"] === null ? null : bridgeWire.enumName<NavigationRejection>(value["rejection"], ["Guard", "Cancelled", "Closed", "Reentrant", "NoHistory", "NotCurrent", "EntryNotFound", "Busy"])), activation: bridgeWire.enumName<NavigationActivationState>(value["activation"], ["None", "Completed", "Failed", "Cancelled"])}))); },
     startOpenDocument() { return startOpenDocumentOperation(globalThis.crypto.randomUUID()); },
     startOpenDocumentWithRequestId(requestId: string) { return startOpenDocumentOperation(requestId); },
     recoverOpenDocumentWithRequestId(requestId: string) { return view.recoverOperation<void>("OpenDocument", requestId, value => undefined); },
