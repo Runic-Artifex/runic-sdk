@@ -7,3 +7,5 @@ static Runic.Platform.Windows.WindowsPlatformProvider.CreateNotifications(string
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateSettings() -> Runic.Platform.IDesktopSettings!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateTextClipboard(Runic.Platform.Runtime.INativePickerOwner! owner) -> Runic.Platform.ITextClipboard!
 static Runic.Platform.Windows.WindowsPlatformProvider.CreateLoginStartup(string! applicationId) -> Runic.Platform.IDesktopLoginStartup!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
+static Runic.Platform.Windows.WindowsPlatformProvider.CreateTrash() -> Runic.Platform.IDesktopTrash!

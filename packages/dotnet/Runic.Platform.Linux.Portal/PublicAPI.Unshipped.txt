@@ -1,6 +1,1 @@
 #nullable enable
-Runic.Platform.Linux.Portal.PortalApplication.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!
-Runic.Platform.Linux.Portal.PortalApplication.CreateUnparentedInhibition() -> Runic.Platform.IDesktopInhibition!
-static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateSecretStore(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopSecretStore!
-Runic.Platform.Linux.Portal.PortalApplication.CreateTrash() -> Runic.Platform.IDesktopTrash!
-static Runic.Platform.Linux.Portal.PortalPlatformProvider.CreateTrash(System.Action<Runic.Platform.Linux.Portal.PortalDiagnostic!>? diagnosticSink = null) -> Runic.Platform.IDesktopTrash!
