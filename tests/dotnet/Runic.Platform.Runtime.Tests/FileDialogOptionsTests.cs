@@ -19,9 +19,9 @@ internal sealed class FileDialogOptionsTests
             "valid filters");
         foreach (var extensions in new ImmutableArray<string>[] { default, [], [""], [" "], [".png"], ["png."], ["*.png"], ["p?g"], ["a/b"], ["a\\b"],
             ["a;b"], ["a,b"], ["a:b"], ["a b"], ["a\0"], ["[ab]"], ["png", null!] })
-            Throws<ArgumentException>(() => new FileDialogFilter("Files", extensions), $"extensions {string.Join('|', extensions.IsDefault ? [] : extensions)}");
-        Throws<ArgumentException>(() => new FileDialogFilter(" ", ["png"]), "empty name");
-        Throws<ArgumentException>(() => new FileDialogFilter("a\0", ["png"]), "NUL name");
+            Throws<ArgumentException>(() => _ = new FileDialogFilter("Files", extensions), $"extensions {string.Join('|', extensions.IsDefault ? [] : extensions)}");
+        Throws<ArgumentException>(() => _ = new FileDialogFilter(" ", ["png"]), "empty name");
+        Throws<ArgumentException>(() => _ = new FileDialogFilter("a\0", ["png"]), "NUL name");
         Throws<ArgumentException>(() => _ = Images with { Extensions = [".png"] }, "with bypassed extension validation");
         Throws<ArgumentException>(() => _ = Images with { Name = "" }, "with bypassed name validation");
 
