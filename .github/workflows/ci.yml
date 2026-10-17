@@ -572,9 +572,8 @@ jobs:
           # DesktopWindow.AnnounceAsync reaches AT-SPI as Object:Announcement with GTK 3 and GTK 4 (#318).
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
-          # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, and GTK's own
-          # direction matches its translation. Ubuntu 24.04's GTK 4 language packs do not translate the direction for
-          # Arabic, so GTK stays left to right here; the smoke reports it and checks the application's override.
+          # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, GTK 4's own
+          # direction is right to left without a translation, and the application can override it.
           sudo locale-gen ar_EG.UTF-8
           LC_ALL=ar_EG.UTF-8 LANG=ar_EG.UTF-8 LANGUAGE=ar GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --rtl
           # Controlled-portal journey: directory and SaveFile requests through the production provider.

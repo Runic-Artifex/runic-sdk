@@ -10,10 +10,10 @@ using Runic.Desktop.Gtk4;
 // - the page reads the process locale in navigator.language, so it can choose its own lang and dir;
 // - WebKitGTK has Intl.Locale.prototype.maximize, which Runic Translations' localeDirection uses;
 // - a page with dir="rtl" lays out right to left;
-// - GTK's own direction, which mirrors the window's header bar and GTK dialogs, is right to left exactly when GTK's
-//   translation for the locale says so. Ubuntu 24.04's GTK 4 language packs have no such translation for Arabic,
-//   Hebrew or Persian, while NixOS's GTK 4 has one, so both outcomes are accepted and reported;
-// - the application can set GTK's direction itself from any thread, as the guide shows.
+// - GTK's own direction, which mirrors the window's header bar and GTK dialogs, is right to left for the Arabic
+//   locale. GTK 4 derives it from the language's script, so it needs no translation: on the Ubuntu runner, whose
+//   GTK 4 has no translation of "default:LTR", it is right to left as on NixOS;
+// - the application can set GTK's direction itself from its own thread, as the guide shows.
 [SupportedOSPlatform("linux")]
 internal static class RightToLeftSmoke
 {
@@ -64,35 +64,38 @@ internal static class RightToLeftSmoke
             await window.DispatchNativeAsync(_ =>
             {
                 messages = Marshal.PtrToStringUTF8(SetLocale(LcMessages, 0)) ?? "";
-                // GTK takes its direction from its own translation of "default:LTR" for the process locale.
+                // GTK 3 takes its direction from this translation; reported to show GTK 4 does not need it.
                 translated = GLib.Functions.Dgettext("gtk40", "default:LTR");
                 locale = Gtk.Functions.GetLocaleDirection().ToString();
                 widgets = Gtk.Widget.GetDefaultDirection().ToString();
             });
             if (messages != "ar_EG.UTF-8")
                 throw new InvalidOperationException($"The message locale is {messages}, not ar_EG.UTF-8; generate the locale.");
-            var expected = translated == "default:RTL" ? "Rtl" : "Ltr";
-            if (locale != expected || widgets != expected)
-                throw new InvalidOperationException($"GTK translates default:LTR as {translated}, but its locale direction is {locale} and its widget direction {widgets}.");
-            var gtk = expected == "Rtl"
-                ? "GTK's direction follows the locale (Rtl)"
-                : $"GTK has no right-to-left translation for {messages} (default:LTR → {translated}), so its direction stays Ltr";
+            if (locale != "Rtl" || widgets != "Rtl")
+                throw new InvalidOperationException($"GTK's locale direction is {locale} and its widget direction {widgets} for {messages} (default:LTR → {translated}).");
 
-            // The guide's override, from the application's thread: GTK's direction for every window.
-            var set = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            GLib.Functions.IdleAdd(GLib.Constants.PRIORITY_DEFAULT, () =>
-            {
-                Gtk.Widget.SetDefaultDirection(Gtk.TextDirection.Rtl);
-                set.TrySetResult();
-                return false;
-            });
-            await set.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            // The guide's override, from the application's thread, for a UI language other than the process locale.
+            await SetDirectionAsync(Gtk.TextDirection.Ltr);
             await window.DispatchNativeAsync(_ => widgets = Gtk.Widget.GetDefaultDirection().ToString());
-            if (widgets != "Rtl")
-                throw new InvalidOperationException($"Setting GTK's default direction left it {widgets}.");
-            Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left; {gtk}; the application can set it to Rtl.");
+            if (widgets != "Ltr")
+                throw new InvalidOperationException($"Setting GTK's default direction to Ltr left it {widgets}.");
+            await SetDirectionAsync(Gtk.TextDirection.Rtl);
+            Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left; GTK's direction is Rtl for {messages} (default:LTR → {translated}); the application can override it.");
             return 0;
         });
+    }
+
+    // As the guide shows: GTK applies the direction on its own thread, for every window.
+    private static Task SetDirectionAsync(Gtk.TextDirection direction)
+    {
+        var set = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        GLib.Functions.IdleAdd(GLib.Constants.PRIORITY_DEFAULT, () =>
+        {
+            Gtk.Widget.SetDefaultDirection(direction);
+            set.TrySetResult();
+            return false;
+        });
+        return set.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     // The process's message locale as GTK set it with setlocale(LC_ALL, "").
