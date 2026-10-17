@@ -5,13 +5,15 @@ using Runic.Desktop;
 using Runic.Desktop.Gtk4;
 
 // --rtl (W315-019): run with an Arabic process locale, for example
-// `LANG=ar_EG.UTF-8 LANGUAGE=ar dbus-run-session -- xvfb-run -a`. Checks what the right-to-left guide tells an
+// `LC_ALL=ar_EG.UTF-8 LANGUAGE=ar dbus-run-session -- xvfb-run -a`. Checks what the right-to-left guide tells an
 // application to rely on with GTK 4 and WebKitGTK 6:
 // - the page reads the process locale in navigator.language, so it can choose its own lang and dir;
 // - WebKitGTK has Intl.Locale.prototype.maximize, which Runic Translations' localeDirection uses;
 // - a page with dir="rtl" lays out right to left;
-// - GTK's own direction, which mirrors the window's header bar and GTK dialogs, follows the process locale when GTK
-//   has an Arabic translation. In CI that translation is required; locally its absence is reported as a skip.
+// - GTK's own direction, which mirrors the window's header bar and GTK dialogs, is right to left exactly when GTK's
+//   translation for the locale says so. Ubuntu 24.04's GTK 4 language packs have no such translation for Arabic,
+//   Hebrew or Persian, while NixOS's GTK 4 has one, so both outcomes are accepted and reported;
+// - the application can set GTK's direction itself from any thread, as the guide shows.
 [SupportedOSPlatform("linux")]
 internal static class RightToLeftSmoke
 {
@@ -45,7 +47,7 @@ internal static class RightToLeftSmoke
     {
         var language = Environment.GetEnvironmentVariable("LANGUAGE") ?? Environment.GetEnvironmentVariable("LANG") ?? "";
         if (!language.StartsWith("ar", StringComparison.Ordinal))
-            throw new InvalidOperationException("Run --rtl with an Arabic locale, for example LANG=ar_EG.UTF-8 LANGUAGE=ar.");
+            throw new InvalidOperationException("Run --rtl with an Arabic locale, for example LC_ALL=ar_EG.UTF-8 LANGUAGE=ar.");
         var options = new DesktopHostOptions().WithGtk4() with { WaitForConnection = true };
         return DesktopEventLoop.Run(options, async host =>
         {
@@ -67,25 +69,33 @@ internal static class RightToLeftSmoke
                 locale = Gtk.Functions.GetLocaleDirection().ToString();
                 widgets = Gtk.Widget.GetDefaultDirection().ToString();
             });
-            if (translated == "default:RTL")
+            if (messages != "ar_EG.UTF-8")
+                throw new InvalidOperationException($"The message locale is {messages}, not ar_EG.UTF-8; generate the locale.");
+            var expected = translated == "default:RTL" ? "Rtl" : "Ltr";
+            if (locale != expected || widgets != expected)
+                throw new InvalidOperationException($"GTK translates default:LTR as {translated}, but its locale direction is {locale} and its widget direction {widgets}.");
+            var gtk = expected == "Rtl"
+                ? "GTK's direction follows the locale (Rtl)"
+                : $"GTK has no right-to-left translation for {messages} (default:LTR → {translated}), so its direction stays Ltr";
+
+            // The guide's override, from the application's thread: GTK's direction for every window.
+            var set = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            GLib.Functions.IdleAdd(GLib.Constants.PRIORITY_DEFAULT, () =>
             {
-                if (locale != "Rtl" || widgets != "Rtl")
-                    throw new InvalidOperationException($"GTK translates default:LTR as default:RTL, but its locale direction is {locale} and its widget direction {widgets}.");
-                Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left, and GTK's direction is {widgets}.");
-            }
-            else if (Environment.GetEnvironmentVariable("CI") == "true")
-            {
-                throw new InvalidOperationException($"GTK has no Arabic translation here (default:LTR → {translated}, LC_MESSAGES {messages}, LC_ALL '{Environment.GetEnvironmentVariable("LC_ALL")}'); install it, for example language-pack-gnome-ar-base, and generate the ar_EG.UTF-8 locale.");
-            }
-            else
-            {
-                Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left. GTK direction skipped: GTK has no Arabic translation for LC_MESSAGES {messages} (default:LTR → {translated}).");
-            }
+                Gtk.Widget.SetDefaultDirection(Gtk.TextDirection.Rtl);
+                set.TrySetResult();
+                return false;
+            });
+            await set.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await window.DispatchNativeAsync(_ => widgets = Gtk.Widget.GetDefaultDirection().ToString());
+            if (widgets != "Rtl")
+                throw new InvalidOperationException($"Setting GTK's default direction left it {widgets}.");
+            Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left; {gtk}; the application can set it to Rtl.");
             return 0;
         });
     }
 
-    // The process's message locale as GTK set it with setlocale(LC_ALL, ""), for the failure message.
+    // The process's message locale as GTK set it with setlocale(LC_ALL, "").
     private const int LcMessages = 5;
 
     [DllImport("libc.so.6", EntryPoint = "setlocale")]

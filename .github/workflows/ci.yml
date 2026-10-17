@@ -573,9 +573,9 @@ jobs:
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk3
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --announcement gtk4
           # Right-to-left (W315-019): an Arabic process locale reaches the page's navigator.language, and GTK's own
-          # direction, with GTK's Arabic translation from the language pack, is right to left. The language packs
-          # generate the ar_* locales; LC_ALL overrides any locale variable the runner sets.
-          eng/ci/apt-install.sh language-pack-gnome-ar-base
+          # direction matches its translation. Ubuntu 24.04's GTK 4 language packs do not translate the direction for
+          # Arabic, so GTK stays left to right here; the smoke reports it and checks the application's override.
+          sudo locale-gen ar_EG.UTF-8
           LC_ALL=ar_EG.UTF-8 LANG=ar_EG.UTF-8 LANGUAGE=ar GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --rtl
           # Controlled-portal journey: directory and SaveFile requests through the production provider.
           # A private runtime directory lets the isolated bus activate its own document portal, when

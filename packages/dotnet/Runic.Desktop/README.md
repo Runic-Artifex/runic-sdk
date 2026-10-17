@@ -554,7 +554,10 @@ its language, for example with Runic Translations' `localeDirection`. Its
 `navigator.language` is the process locale with WebKitGTK (`C` under the C
 locale), the Windows display language with WebView2 and the user's preferred
 languages with WKWebView. GTK mirrors its header bar for the process locale
-when GTK has a translation for it. On Windows the window frame is not mirrored
+when its translation says so; Ubuntu 24.04's GTK 4 language packs do not for
+Arabic, Hebrew or Persian, while GTK 3's do. A GTK 4 application can set the
+direction itself with `Gtk.Widget.SetDefaultDirection` on the GTK thread, for
+example through `GLib.Functions.IdleAdd`. On Windows the window frame is not mirrored
 ([#389](https://github.com/Runic-Artifex/runic-sdk/issues/389)). The
 [right-to-left guide](https://docs.runic-artifex.eu/guides/desktop/right-to-left/)
 lists every native piece per platform.
