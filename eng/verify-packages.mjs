@@ -91,9 +91,12 @@ export const packageLayouts = {
     dependencies: ["Runic.Platform"],
     exactDependencies: ["Runic.Platform"],
   },
-  // The D-Bus API wraps Tmds.DBus.Protocol; no Tmds type is public (W310-001).
+  // The D-Bus API wraps Tmds.DBus.Protocol; no Tmds type is public (W310-001). Its source generator, adapted from
+  // Tmds.DBus.Generator, ships as an analyzer with the MIT notice; the props expose the AdditionalFiles metadata.
   "Runic.Platform.Linux.DBus": {
-    files: ["README.md", "Runic.Platform.Linux.DBus.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Linux.DBus.dll", "lib/net10.0/Runic.Platform.Linux.DBus.xml"],
+    files: ["README.md", "Runic.Platform.Linux.DBus.nuspec", "icon.png", "NOTICE", "licenses/Tmds.DBus-LICENSE.txt",
+      "analyzers/dotnet/cs/Runic.Platform.Linux.DBus.Generator.dll", "buildTransitive/Runic.Platform.Linux.DBus.props",
+      "lib/net10.0/Runic.Platform.Linux.DBus.dll", "lib/net10.0/Runic.Platform.Linux.DBus.xml"],
     dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Runic.Platform", "Tmds.DBus.Protocol"],
     exactDependencies: ["Runic.Platform"],
   },
