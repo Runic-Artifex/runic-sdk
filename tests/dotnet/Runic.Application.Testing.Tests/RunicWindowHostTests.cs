@@ -15,6 +15,28 @@ namespace Runic.Application.Testing.Tests;
 // the validation case, which builds its own provider, relies on the earlier cases having reset them.
 internal sealed class RunicWindowHostTests
 {
+    // The default content root: www beside the application, or a macOS bundle's Contents/Resources/www without it.
+    [Test]
+    public void DefaultContentRootFindsTheFrontendInAMacOSBundle()
+    {
+        const string bundle = "/Applications/Notes.app/Contents/";
+        string beside = Path.Combine(bundle + "MacOS/", "www"), resources = Path.Combine(bundle + "Resources", "www");
+        Require(RunicWindowOptions.DefaultContentRoot("/opt/notes/", macOS: false, _ => false) == Path.Combine("/opt/notes/", "www"),
+            "The default content root is not www beside the application.");
+        Require(RunicWindowOptions.DefaultContentRoot(bundle + "MacOS/", macOS: false, path => path == resources) == beside,
+            "A bundle's Resources were used outside macOS.");
+        Require(RunicWindowOptions.DefaultContentRoot(bundle + "MacOS/", macOS: true, path => path == resources) == resources,
+            "A macOS bundle without www beside its executable did not use Contents/Resources/www.");
+        Require(RunicWindowOptions.DefaultContentRoot(bundle + "MacOS/", macOS: true, _ => true) == beside,
+            "www beside the executable did not take precedence in a bundle.");
+        Require(RunicWindowOptions.DefaultContentRoot(bundle + "MacOS/", macOS: true, _ => false) == beside,
+            "A bundle without either directory did not report www beside the executable.");
+        Require(RunicWindowOptions.DefaultContentRoot("/opt/Contents/MacOS/", macOS: true, path => path.Contains("Resources", StringComparison.Ordinal))
+                == Path.Combine("/opt/Contents/MacOS/", "www"),
+            "A Contents/MacOS directory outside an .app bundle was treated as a bundle.");
+        Require(new RunicWindowOptions { ContentRoot = "/srv/www" }.ResolveContentRoot() == "/srv/www", "An explicit ContentRoot was not used.");
+    }
+
     [Test, NotInParallel(Order = 1)]
     public async Task OpenResolvesTheViewModelInANewScopeAndAssignsIt()
     {

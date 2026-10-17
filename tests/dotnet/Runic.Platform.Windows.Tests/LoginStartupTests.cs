@@ -19,6 +19,28 @@ internal sealed class LoginStartupTests
 #pragma warning restore CA1416
     }
 
+    // An MSIX package's process uses its package's AppUserModelID for notifications; an unpackaged one the ID it passes.
+    [Test]
+    public void NotificationsUseThePackageApplicationId()
+    {
+        Check(WindowsPackageIdentity.NotificationsApplicationId("org.example.App", null) == "org.example.App");
+        Check(WindowsPackageIdentity.NotificationsApplicationId("org.example.App", "Example.App_1a2b3c4d5e6f7!App") == "Example.App_1a2b3c4d5e6f7!App");
+    }
+
+    // The runner's test process has no package identity, read through GetCurrentApplicationUserModelId, and a packaged
+    // process gets no Run-key login startup: Windows redirects its HKCU writes into the package.
+    [Test, Explicit, Category("NativeLoginStartup")]
+    public async Task PackageIdentityAsync()
+    {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Package identity requires Windows.");
+        Check(WindowsPackageIdentity.Current is null);
+        Check(WindowsPlatformProvider.CreateLoginStartup("org.example.App", null) is WindowsLoginStartup);
+        var packaged = WindowsPlatformProvider.CreateLoginStartup("org.example.App", "Example.App_1a2b3c4d5e6f7!App");
+        Check(await packaged.IsEnabledAsync() is PlatformResult<bool>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
+        Check(await packaged.EnableAsync(new LoginStartupRequest([])) is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
+        Check(await packaged.DisableAsync() is PlatformResult<PlatformUnit>.Unavailable { Reason: PlatformUnavailableReason.BackendUnavailable });
+    }
+
     // The Run and StartupApproved keys, in a scratch key under the current user.
     [Test, Explicit, Category("NativeLoginStartup")]
     public async Task RunKeyAsync()

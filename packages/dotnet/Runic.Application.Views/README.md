@@ -984,7 +984,10 @@ the host adapters set) and the `RunicViews*` target names are not settings.
 | `RunicApplicationFrontendWindowProject` | `false` | `true` marks a Window project that `dotnet runic dev` and `doctor` run. |
 
 `dotnet build` and `dotnet publish` copy the built frontend as loose files to
-`www/` next to the executable; they do not embed it. `dotnet runic dev` sets
+`www/` next to the executable; they do not embed it. On macOS, an application
+in an `.app` bundle without `www/` next to its executable reads the frontend
+from the bundle's `Contents/Resources/www`, where Apple expects resources
+(`RunicWindowOptions.ContentRoot` overrides both). `dotnet runic dev` sets
 `RunicApplicationFrontendBuildEnabled=false` and
 `RunicApplicationFrontendCopyEnabled=false` while its development server serves
 the frontend. The

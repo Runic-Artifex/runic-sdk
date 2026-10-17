@@ -716,7 +716,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     /// <param name="services">The application's services.</param>
     /// <param name="applicationId">
     /// The application's identity, the same string on every operating system: on Windows its AppUserModelID, which the
-    /// application's installer registers with the shell; on Linux the reverse-DNS ID of its installed desktop entry,
+    /// application's installer registers with the shell (a process installed from an MSIX package uses its package's
+    /// AppUserModelID instead); on Linux the reverse-DNS ID of its installed desktop entry,
     /// such as <c>org.example.App</c> for <c>org.example.App.desktop</c>. macOS uses the bundle identifier instead.
     /// </param>
     /// <remarks>
