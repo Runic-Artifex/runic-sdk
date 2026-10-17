@@ -7,6 +7,7 @@
     "viewModels": { "longName": "view-models", "shortName": "" },
     "tests": { "longName": "tests", "shortName": "" },
     "nix": { "longName": "nix", "shortName": "" },
+    "applicationId": { "longName": "application-id", "shortName": "" },
     "runicVersion": { "longName": "runic-version", "shortName": "", "isHidden": true },
     "runicNpmVersion": { "longName": "runic-npm-version", "shortName": "", "isHidden": true }
   },
@@ -14,6 +15,7 @@
     "--frontend svelte --package-manager bun",
     "--frontend vue --host cswebui --view-models toolkit",
     "--tests",
-    "--nix"
+    "--nix",
+    "--application-id org.example.Notes"
   ]
 }

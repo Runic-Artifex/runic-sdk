@@ -7,6 +7,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RunicApplicationFrontendWindowProject>true</RunicApplicationFrontendWindowProject>
+    <!-- The application's identity, in one place: the desktop entry, Flatpak and GTK application ID on Linux, the
+         bundle identifier on macOS and the package name on Windows. Program.cs reads it from the assembly. -->
+    <RunicApplicationId>__RUNIC_APPLICATION_ID__</RunicApplicationId>
+    <RunicApplicationName>__RUNIC_APPLICATION_NAME__</RunicApplicationName>
+    <Version>1.0.0</Version>
+    <!-- The Explorer and taskbar icon; icons/ holds the same placeholder as SVG and PNG. -->
+    <ApplicationIcon>icons/icon.ico</ApplicationIcon>
 <!--#if (nix) -->
     <!-- dotnet restore writes packages.lock.json, and dotnet restore -p:PublishAot=true writes
          packages.aot.lock.json, whose graph adds the NativeAOT compiler. flake.nix restores from them in locked
@@ -20,6 +27,10 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);RunicWindowApp.Tests/**</DefaultItemExcludes>
 <!--#endif -->
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="RunicApplicationId" Value="$(RunicApplicationId)" />
+    <AssemblyMetadata Include="RunicApplicationName" Value="$(RunicApplicationName)" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
 <!--#if (viewModels == "reactiveui") -->

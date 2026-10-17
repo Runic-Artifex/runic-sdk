@@ -115,6 +115,12 @@ clipboard on the default Runic Desktop host (create the project without
 | `Views.cs` | The `WorkspaceWindow` and the Views. The build generates a typed client for each. |
 | `WorkspaceServices.cs` | `AddWorkspace()` registers the ViewModels, the generated `AddRunicViews()` and the platform services. |
 | `Program.cs` | Opens the Window with the services from `AddWorkspace()`. |
+<!--#if (desktopHost) -->
+| `ApplicationIdentity.cs` | The application ID and name from the project file, and `DiagnosticsLog`, which keeps the Desktop diagnostics. |
+<!--#else -->
+| `ApplicationIdentity.cs` | The application ID and name from the project file. |
+<!--#endif -->
+| `icons/` | The application's placeholder icon: `icon.svg`, `icon.png` (512 px) and `icon.ico` (16 to 256 px). |
 <!--#if (frontend == "angular") -->
 | `Frontend/src/app` | Components connect generated clients with `injectView()` and render the page that `WorkspaceViewModel.Main` selects with `ViewOutlet`, both from `@runic-artifex/angular`. |
 <!--#elif (frontend == "svelte") -->
@@ -223,6 +229,42 @@ way. Give status such as `IsDirty`, `Error` or a collection a private setter
 form fields publicly settable.
 <!--#endif -->
 
+## Identity and icons
+
+The project file declares the application's identity once:
+
+| Property | Value | Used for |
+| --- | --- | --- |
+| `RunicApplicationId` | `__RUNIC_APPLICATION_ID__` | The desktop entry, icon and Flatpak ID on Linux, the bundle identifier on macOS, the package name and AppUserModelID on Windows. |
+| `RunicApplicationName` | `__RUNIC_APPLICATION_NAME__` | The name users see. |
+| `Version` | `1.0.0` | The application's version. |
+| `ApplicationIcon` | `icons/icon.ico` | The executable's icon in Explorer and the taskbar. |
+
+Choose the ID before you ship: a reverse-DNS name for a domain you control,
+such as `org.example.Notes` (`dotnet new runic-app --application-id org.example.Notes`
+sets it). Use ASCII letters, digits and dots, and start each part with a
+letter, so every platform accepts it; changing it later makes the platforms see
+a different application. `ApplicationIdentity.Id` reads it from the assembly.
+<!--#if (gtk4) -->
+Program.cs passes it to `WithGtk4`, so the desktop matches the windows to the
+desktop entry of that name.
+<!--#endif -->
+<!--#if (desktopHost) -->
+To show notifications, pass it to `AddRunicPlatformServices(ApplicationIdentity.Id)`
+once the application is installed: the platforms accept it only from an
+installed application (a desktop entry of that name, a registered
+AppUserModelID or an MSIX package, a macOS bundle).
+<!--#endif -->
+
+The icon in `icons/` is a neutral placeholder. Replace `icons/icon.svg` with
+your own square icon, then render `icon.png` (512 px) and `icon.ico` from it,
+for example with ImageMagick:
+
+```sh
+magick -background none -density 384 icons/icon.svg -resize 512x512 icons/icon.png
+magick icons/icon.png -define icon:auto-resize=256,128,64,48,32,24,16 icons/icon.ico
+```
+
 ## Publish
 
 ```sh
@@ -231,7 +273,17 @@ dotnet publish -c Release -r linux-x64
 
 Use `win-x64`, `osx-arm64`, or another runtime identifier for other
 platforms. Windows builds are GUI applications (`WinExe`), so no console window
-opens and diagnostics written to standard error are not visible there. The
+opens.
+<!--#if (desktopHost) -->
+Desktop diagnostics, such as a missing WebView runtime, still go to standard
+error, which a terminal or a redirect (`RunicWindowApp.exe 2> errors.txt`)
+shows, and to `diagnostics.log` in a folder named after the application ID
+under the user's local application data (`%LOCALAPPDATA%` on Windows,
+`~/.local/share` on Linux, `~/Library/Application Support` on macOS). The log
+starts empty at each start and keeps at most 256 KiB of diagnostics, without
+arguments or data.
+<!--#endif -->
+The
 publish folder holds the executable and a `www` folder with the built frontend;
 ship those two together, without debug symbols. Users need no Node.js or package
 manager, only the platform WebView or a browser described above. The
@@ -278,8 +330,11 @@ reports the real hash: replace `lib.fakeHash` with it, and update it whenever
 the lock file changes.
 
 <!--#endif -->
-The package installs the program in `bin`, the desktop entry in
-`share/applications`, and GTK and WebKitGTK as run-time libraries. `nix develop`
+The package installs the program in `bin`, the desktop entry
+`share/applications/__RUNIC_APPLICATION_ID__.desktop` with the icons from
+`icons/` under the same name, and GTK and WebKitGTK as run-time libraries.
+`flake.nix` repeats the application ID; change it there too when you change
+`RunicApplicationId`. `nix develop`
 opens a shell with the .NET SDK, Node, the package manager and those libraries.
 The SDK's
 [Nix packaging guide](https://github.com/Runic-Artifex/runic-sdk/blob/v__RUNIC_NUGET_VERSION__/nix/README.md)

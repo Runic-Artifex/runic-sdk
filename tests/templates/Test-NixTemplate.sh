@@ -181,7 +181,11 @@ for case in "${cases[@]}"; do
     grep -q 'Test run summary: Passed!' "$work/build.log" || { tail -n 60 "$work/build.log" >&2; echo "The build ran no tests." >&2; exit 1; }
     echo "  tests: passed in the build"
   fi
-  test -f "$project/result-$output/share/applications/NixApp.desktop"
+  # The desktop entry and icons are named after the project's RunicApplicationId.
+  test -f "$project/result-$output/share/applications/com.example.NixApp.desktop"
+  grep -qx 'Icon=com.example.NixApp' "$project/result-$output/share/applications/com.example.NixApp.desktop"
+  test -f "$project/result-$output/share/icons/hicolor/scalable/apps/com.example.NixApp.svg"
+  test -f "$project/result-$output/share/icons/hicolor/512x512/apps/com.example.NixApp.png"
   serve "$project/result-$output/bin/NixApp"
   if [[ "${RUNIC_NIX_TEMPLATE_WINDOW:-}" == 1 ]]; then window "$project/result-$output/bin/NixApp"; fi
   echo "  $case: built and served"

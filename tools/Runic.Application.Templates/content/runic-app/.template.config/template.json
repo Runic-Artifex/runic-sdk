@@ -29,6 +29,7 @@
         "**/*.filelist",
         "**/*.user"
       ],
+      "copyOnly": [ "icons/*.png", "icons/*.ico" ],
       "modifiers": [
         { "condition": "(!tests)", "exclude": [ "RunicWindowApp.Tests/**/*", "global.json" ] },
         { "condition": "(!nix)", "exclude": [ "flake.nix" ] }
@@ -148,6 +149,60 @@
       "displayName": "Nix flake",
       "description": "Adds a Nix flake that builds the application in the Nix sandbox with the Runic SDK's buildRunicApplication, from packages.lock.json and the frontend's lock file."
     },
+    "applicationId": {
+      "type": "parameter",
+      "datatype": "text",
+      "defaultValue": "",
+      "displayName": "Application ID",
+      "description": "The reverse-DNS application ID, such as org.example.Notes: the desktop entry and Flatpak ID on Linux, the bundle identifier on macOS and the package name on Windows. Default: com.example. and the project name's ASCII letters and digits, at most 50 characters, as an MSIX package name allows."
+    },
+    "applicationDisplayName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "identity",
+      "replaces": "__RUNIC_APPLICATION_NAME__",
+      "description": "The project name as users see it."
+    },
+    "derivedApplicationName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "applicationIdName",
+      "description": "The project name with only ASCII letters and digits, starting with a letter; empty when none remain."
+    },
+    "fallbackApplicationName": {
+      "type": "generated",
+      "generator": "constant",
+      "parameters": { "value": "App" }
+    },
+    "applicationName": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "derivedApplicationName",
+        "fallbackVariableName": "fallbackApplicationName"
+      }
+    },
+    "defaultApplicationId": {
+      "type": "generated",
+      "generator": "join",
+      "parameters": {
+        "symbols": [
+          { "type": "const", "value": "com.example" },
+          { "type": "ref", "value": "applicationName" }
+        ],
+        "separator": "."
+      }
+    },
+    "applicationIdValue": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "applicationId",
+        "fallbackVariableName": "defaultApplicationId"
+      },
+      "replaces": "__RUNIC_APPLICATION_ID__",
+      "description": "The application ID that the project file declares."
+    },
     "runicVersion": {
       "type": "parameter",
       "datatype": "text",
@@ -244,6 +299,25 @@
       "identifier": "replace",
       "pattern": "^[._-]+|[._-]+$",
       "replacement": ""
+    },
+    "applicationIdCharacters": {
+      "identifier": "replace",
+      "pattern": "[^A-Za-z0-9]",
+      "replacement": ""
+    },
+    "applicationIdLeadingLetter": {
+      "identifier": "replace",
+      "pattern": "^([0-9])",
+      "replacement": "App$1"
+    },
+    "applicationIdMaximumLength": {
+      "identifier": "replace",
+      "pattern": "^(.{38}).+$",
+      "replacement": "$1"
+    },
+    "applicationIdName": {
+      "identifier": "chain",
+      "steps": [ "applicationIdCharacters", "applicationIdLeadingLetter", "applicationIdMaximumLength" ]
     },
     "npmPackageName": {
       "identifier": "chain",

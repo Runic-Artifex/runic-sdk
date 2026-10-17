@@ -64,14 +64,21 @@
           host = "__RUNIC_HOST__";
           inherit nativeAot;
           executables = [ "RunicWindowApp" ];
+          # The desktop entry and icon are named after RunicApplicationId in the project file.
           desktopItems = [
             (pkgs.makeDesktopItem {
-              name = "RunicWindowApp";
-              desktopName = "RunicWindowApp";
+              name = "__RUNIC_APPLICATION_ID__";
+              desktopName = "__RUNIC_APPLICATION_NAME__";
               exec = "RunicWindowApp";
+              icon = "__RUNIC_APPLICATION_ID__";
               categories = [ "Utility" ];
             })
           ];
+          icons = {
+            scalable = ./icons/icon.svg;
+            "512x512" = ./icons/icon.png;
+          };
+          iconName = "__RUNIC_APPLICATION_ID__";
           meta.mainProgram = "RunicWindowApp";
         };
     in
