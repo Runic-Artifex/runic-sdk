@@ -15,6 +15,28 @@ public static class MacOSPlatformProvider
     /// <summary>Creates UserNotifications for a bundled application. The AppKit main loop must run before use.</summary>
     public static IDesktopNotifications CreateNotifications()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopNotifications(); }
+    /// <summary>
+    /// Creates the requests to open files and URLs: the open-documents and get-URL events the system sends for the
+    /// types and schemes in the bundle's <c>Info.plist</c>, and the files and URLs among the arguments of
+    /// <paramref name="launch"/> and of the later launches <paramref name="instance"/> receives.
+    /// </summary>
+    /// <param name="options">The URL schemes and files the application registered.</param>
+    /// <param name="instance">The running instance, or <see langword="null"/> without single instance.</param>
+    /// <param name="launch">This process's launch, or <see langword="null"/>.</param>
+    /// <remarks>
+    /// Call it on the main thread before the first window or status icon, because the system sends the open event of
+    /// the launch itself as the application finishes launching; one instance per process. The events arrive while
+    /// the Desktop event loop runs.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Not on the main thread, after the application finished launching,
+    /// or while another instance is alive.</exception>
+    public static IDesktopOpenRequests CreateOpenRequests(DesktopOpenOptions options, IApplicationInstance? instance = null, ApplicationLaunch? launch = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException();
+        return new MacOpenRequests(options, instance, launch);
+    }
+
     /// <summary>Creates secret storage in the user's default keychain, as generic passwords.</summary>
     /// <remarks>Each secret is an item with the secret's service and account, labelled with the service. The Keychain
     /// may ask the user to unlock it or to allow this application; a request waits for the answer, which cancellation

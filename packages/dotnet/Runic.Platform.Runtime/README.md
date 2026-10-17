@@ -93,3 +93,13 @@ instance.Launched += (_, launch) => _ = Task.Run(async () =>
   `ResourceBusy` and an `ApplicationInstance` diagnostic, and the launch is not
   handled. Launches without `ReplyToLaunches` keep the one-way protocol and reach
   any instance.
+
+## Opening files and URLs
+
+`ApplicationInstance.CreateOpenRequests(instance, launch, options)` turns this
+launch and each later launch into `IDesktopOpenRequests.Opened` requests: the
+arguments that are URLs with a registered scheme and, with `Files`, existing
+files. Linux desktop entries (`Exec=app %U`) and Windows registrations
+(`"app.exe" "%1"`) pass them that way. The instance's own `Launched` handlers
+still receive every launch. See the
+[opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
