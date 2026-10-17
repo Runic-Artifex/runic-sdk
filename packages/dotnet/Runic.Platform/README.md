@@ -148,7 +148,7 @@ either.
 | Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers`, `IDesktopVolumes`, `IDesktopApplications` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -238,6 +238,37 @@ result is `Success`. A missing item is `Failed(NotFound)`, a refused move
 `DesktopTrash.Unavailable(reason)`. The
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md)
 has the per-platform behaviour and its verification.
+
+## Desktop applications
+
+`IDesktopApplications` is the desktop's application database: what a file is,
+which installed applications open it, the user's default for it, and their
+icons. A file manager uses it for "Open With", and opens a file with the
+application the user picks. `AddRunicPlatformServices()` registers one for the
+application; it needs no window. Linux reads the freedesktop.org desktop
+entries, shared MIME-info database, `mimeapps.list` and icon themes directly;
+Windows and macOS report `Unavailable(ProviderNotConfigured)` for now.
+
+```csharp
+if (await applications.GetContentTypeAsync(path) is PlatformResult<DesktopContentType>.Success(var type)
+    && await applications.GetApplicationsForAsync(type.Id) is PlatformResult<ImmutableArray<DesktopApplicationInfo>>.Success(var handlers))
+{
+    // handlers[0] is the default; show each one's Name and GetIconAsync(DesktopIconRequest.ForApplication(app.Id, 32)).
+    await applications.LaunchAsync(handlers[0].Id, [path]);
+}
+```
+
+Identifiers are the platform's own: on Linux a desktop file ID such as
+`org.gnome.TextEditor.desktop` and a MIME type such as `text/plain`. `LaunchAsync`
+starts only an installed application the desktop knows, and passes each path or
+URI as one argument, never through a shell. `SetDefaultApplicationAsync` changes
+one key of the user's `mimeapps.list` on Linux. Icons are PNG or SVG bytes.
+Inside Flatpak and Snap the host's applications are out of reach and the
+application methods report `Unavailable(BackendUnavailable)`; use
+`IDesktopFileLauncher` there. Hosts without a provider register
+`DesktopApplications.Unavailable(reason)`. The
+[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md)
+has the per-platform behaviour, the algorithms and their verification.
 
 ## Copy and move
 

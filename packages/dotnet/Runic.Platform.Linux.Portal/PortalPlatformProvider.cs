@@ -36,6 +36,12 @@ public static class PortalPlatformProvider
     /// presentation; a sandbox must allow talking to <c>org.freedesktop.UDisks2</c> on the system bus. Creating them
     /// connects to nothing; the first request does.</remarks>
     public static IDesktopVolumes CreateVolumes() => new UDisksVolumes();
+
+    /// <summary>Creates the desktop's application database: content types, installed applications, default applications
+    /// and icons, read from the freedesktop.org files.</summary>
+    /// <remarks>Diagnostic callbacks never receive file contents.</remarks>
+    public static IDesktopApplications CreateApplications(Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(null, diagnosticSink).CreateApplications();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

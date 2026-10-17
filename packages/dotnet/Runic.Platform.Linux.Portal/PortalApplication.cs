@@ -50,6 +50,13 @@ public sealed class PortalApplication
     /// <remarks>It needs no window. Outside a sandbox it moves items into <c>$XDG_DATA_HOME/Trash</c>, or into the trash
     /// at the top of the item's mount; inside Flatpak or Snap it asks the Trash portal.</remarks>
     public IDesktopTrash CreateTrash() => new LinuxTrash(application: this);
+
+    /// <summary>Creates the desktop's application database: content types, installed applications, default applications
+    /// and icons, read from the freedesktop.org files.</summary>
+    /// <remarks>It needs no window and reads the XDG directories from the environment of this process when created. Only
+    /// the icon theme lookup and D-Bus-activatable launches use the session bus. Inside Flatpak or Snap the host's
+    /// applications are out of reach; content types and icons come from the sandbox's own data.</remarks>
+    public IDesktopApplications CreateApplications() => new LinuxDesktopApplications(DesktopApplicationsOptions.FromProcess(), this);
     /// <summary>Creates file handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }

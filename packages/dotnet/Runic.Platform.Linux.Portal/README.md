@@ -239,3 +239,20 @@ UDisks2 every request is `Unavailable(BackendUnavailable)`. Inside Flatpak, add
 `--system-talk-name=org.freedesktop.UDisks2` to the finish arguments; inside
 Snap, connect the `udisks2` interface. See the
 [volumes design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/volumes.md).
+
+## Desktop applications
+
+`CreateApplications()` on `PortalApplication` or `PortalPlatformProvider` reads
+the desktop's application database without GIO: desktop entries from the XDG
+data directories, the shared MIME-info database (globs, magic, aliases,
+subclasses, icons and descriptions), the MIME Apps `mimeapps.list` files and
+`mimeinfo.cache`, and icon themes. `GetContentTypeAsync` with `NameOnly` never
+touches the file. `LaunchAsync` starts a desktop entry's `Exec` without a
+shell, expanding `%f %F %u %U %i %c %k` into whole arguments, or calls
+`org.freedesktop.Application` for a `DBusActivatable` entry through
+Runic.Platform.Linux.DBus; a `Terminal=true` entry reports
+`Unavailable(BackendUnavailable)`. `SetDefaultApplicationAsync` changes one key
+of `$XDG_CONFIG_HOME/mimeapps.list` and keeps every other byte. The icon theme
+comes from the Settings portal, then KDE's `kdeglobals`, then `hicolor`. Inside
+Flatpak or Snap only content types and icons work. See the
+[desktop applications design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/desktop-applications.md).
