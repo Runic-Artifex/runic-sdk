@@ -18,6 +18,9 @@ internal sealed class GeneratorTests
             <property name="Data" type="a{oas}" access="read"/>
             <signal name="Changed"><arg name="class" type="(sv)"/><arg type="h"/></signal>
           </interface>
+          <interface name="org.example.Bare">
+            <method name="Ping"/>
+          </interface>
         </node>
         """;
 
@@ -32,6 +35,7 @@ internal sealed class GeneratorTests
         Check(output.GetTypeByMetadataName("Example.Bus.Thing") is { DeclaredAccessibility: Accessibility.Public, IsSealed: true }, "a public proxy");
         Check(output.GetTypeByMetadataName("Example.Bus.ThingService") is { DeclaredAccessibility: Accessibility.Public, IsAbstract: true }, "a public service");
         Check(output.GetTypeByMetadataName("Example.Bus.ThingProperties") is not null, "a properties class");
+        Check(output.GetTypeByMetadataName("Example.Bus.BareProperties") is not null, "an interface without properties still compiles cleanly");
         var proxy = sources.Single(static s => s.HintName.EndsWith(".Proxy.g.cs", StringComparison.Ordinal)).SourceText.ToString();
         Check(proxy.Contains("DoAsync(string @in,", StringComparison.Ordinal) && proxy.Contains("WatchChangedAsync", StringComparison.Ordinal), "keyword argument names are escaped");
     }

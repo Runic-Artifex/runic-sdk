@@ -146,20 +146,23 @@ internal static class DBusEmitter
         code.Open();
         code.Line("global::System.ArgumentNullException.ThrowIfNull(values);");
         code.Line($"var properties = new {name}Properties {{ Invalidated = invalidated.IsDefault ? [] : invalidated }};");
-        code.Line("foreach (var entry in values)");
-        code.Open();
-        code.Line("var value = entry.Value;");
-        code.Line("switch (entry.Key)");
-        code.Open();
-        foreach (var property in properties)
+        if (properties.Count > 0)
         {
-            code.Line($"case \"{property.Name}\":");
-            code.Line($"    RunicDBusGenerated.Expect(value, \"{property.Signature}\", \"{property.Name}\");");
-            code.Line($"    properties.{Prettify(property.Name)} = {FromValue("value", property.Signature)};");
-            code.Line("    break;");
+            code.Line("foreach (var entry in values)");
+            code.Open();
+            code.Line("var value = entry.Value;");
+            code.Line("switch (entry.Key)");
+            code.Open();
+            foreach (var property in properties)
+            {
+                code.Line($"case \"{property.Name}\":");
+                code.Line($"    RunicDBusGenerated.Expect(value, \"{property.Signature}\", \"{property.Name}\");");
+                code.Line($"    properties.{Prettify(property.Name)} = {FromValue("value", property.Signature)};");
+                code.Line("    break;");
+            }
+            code.Close();
+            code.Close();
         }
-        code.Close();
-        code.Close();
         code.Line("return properties;");
         code.Close();
         code.Close();
