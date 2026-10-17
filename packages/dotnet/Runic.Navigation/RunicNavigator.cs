@@ -110,7 +110,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private long? _initializeStart;
     private readonly List<NavigationRegionCore> _regions = [];
     private readonly Dictionary<object, List<NavigationRegionCore>> _regionsByOwner = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<object, NavigationEntryCore> _ownedEntries = new(ReferenceEqualityComparer.Instance);
+    // The entries that hold each held instance (Own, Create and Share entries), until its last holder finished retiring.
+    private readonly Dictionary<object, NavigationContentHolders> _holders = new(ReferenceEqualityComparer.Instance);
     // Pending, committed, and removed entries that have not finished retiring.
     private readonly HashSet<NavigationEntryCore> _tracked = [];
     private readonly HashSet<NavigationTransition> _running = [];
@@ -210,6 +211,10 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         lock (Gate)
         {
             ObjectDisposedException.ThrowIf(_closing, this);
+            // Before the initial content exists, so nothing needs to be disposed.
+            if (_holders.TryGetValue(owner, out var holders) && holders.Shared)
+                throw new InvalidOperationException(
+                    $"This {owner.GetType().Name} is shared between navigation entries (NavigationTarget.Share), so it can't own a navigation region. Own the region from content that is not shared.");
             region = new NavigationRegionCore(this, ++_nextRegionId, typeof(TContent).Name, owner,
                 options?.WhileParentRetained ?? NavigationChildRetention.Keep, options?.Admission ?? NavigationAdmission.Supersede);
             if (target is not null)
@@ -312,6 +317,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             ?? throw new ArgumentException("Navigation targets must be created with NavigationTarget.", parameter);
         if (target.HasInput)
             throw new ArgumentException("A target created with input initializes asynchronously and can't be an initial target.", parameter);
+        if (target.Ownership == NavigationOwnership.Shared)
+            throw new ArgumentException(
+                "A shared target can't be an initial target. Start the region with Own or a Create target, then share that content into later entries.", parameter);
         if (target.Instance is { } instance) RejectInitializable(instance, parameter);
         return target;
     }
@@ -376,7 +384,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         entry.Scope = content.Scope;
         entry.Activation = Activation(null, entry.Content);
         _tracked.Add(entry);
-        if (content.Owned) _ownedEntries[content.Content!] = entry;
+        if (content.Owned) AddHolderLocked(content.Content!, entry);
         if (region.Closed)
         {
             entry.Phase = NavigationEntryPhase.Removed;
@@ -793,13 +801,16 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (target is not null)
                 {
                     if (target is { Ownership: NavigationOwnership.Owned, Instance: { } instance }) Claim(instance);
+                    else if (target is { Ownership: NavigationOwnership.Shared, Instance: { } shared }) ClaimSharedLocked(shared);
                     pending = new NavigationEntryCore(region, NextEntryId(), target.Ownership, target.Instance)
                     {
                         Phase = NavigationEntryPhase.Pending,
                         ResultRequest = request,
                     };
                     _tracked.Add(pending);
-                    if (pending.Owned && pending.Content is { } claimed) _ownedEntries[claimed] = pending;
+                    // A pending entry holds its content from admission, so a pending Share keeps the content alive while the
+                    // entry that handed it over retires.
+                    if (pending.Holds && pending.Content is { } claimed) AddHolderLocked(claimed, pending);
                     if (request is not null)
                     {
                         request.Entry = pending;
@@ -1209,7 +1220,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 case GuardSlot.Stale: return (TransitionOutcome.Superseded, null);
             }
             // One departure per guard invocation; OnCommitted closes when the guard's task completes.
-            var departure = new NavigationDeparture(entry, kind, transition);
+            bool contentContinues;
+            lock (Gate) contentContinues = ContentContinuesLocked(entry, kind, plan);
+            var departure = new NavigationDeparture(entry, kind, transition, contentContinues);
             try
             {
                 allowed = await this.AfterUserCode(StartHook(transition, () => guard.CanDepartAsync(departure, token), token));
@@ -1354,7 +1367,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                         {
                             entry.Content = content;
                             entry.Scope = scope;
-                            _ownedEntries[content] = entry;
+                            AddHolderLocked(content, entry);
                         }
                     }
                     if (retiring)
@@ -1365,7 +1378,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                         return TransitionOutcome.Reject(NavigationRejection.Closed);
                     }
                 }
-                if (entry.Owned)
+                // Each holder binds its own lease; the registry counts them.
+                if (entry.Holds)
                 {
                     var bound = RunicModelContextRegistry.Shared.Bind(ModelContext, entry.Content!);
                     bool retiringNow;
@@ -1996,11 +2010,20 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         TaskCompletionSource done;
         NavigationEntryState previous;
         NavigationOperation operation;
+        var lastHolder = true;
         lock (Gate)
         {
             if (entry.Retiring is { } running) return running;
             done = new(TaskCreationOptions.RunContinuationsAsynchronously);
             entry.Retiring = done.Task;
+            // The entry stops holding its content now; only the last holder releases the content (W315-020 §2.2).
+            if (entry.Holds && entry.Content is { } held && _holders.TryGetValue(held, out var holders))
+            {
+                holders.Holders.Remove(entry);
+                lastHolder = holders.Holders.Count == 0;
+                // The last holder waits for this entry's initialize hook too before it disposes the content.
+                if (!lastHolder && entry.Initializing is { IsCompleted: false } initializing) holders.Initializing.Add(initializing);
+            }
             previous = entry.State;
             operation = entry.Transition?.Operation ?? NavigationOperation.Clear;
             entry.Phase = NavigationEntryPhase.Retiring;
@@ -2015,11 +2038,12 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (HasListeners(change)) InTurn(() => RaiseEntryChanges(change, operation));
         }
         retired?.Add(entry.Id);
-        _ = RetireCoreAsync(entry, done, retired);
+        _ = RetireCoreAsync(entry, done, retired, lastHolder);
         return done.Task;
     }
 
-    private async Task RetireCoreAsync(NavigationEntryCore entry, TaskCompletionSource done, List<NavigationEntryId>? retired)
+    private async Task RetireCoreAsync(NavigationEntryCore entry, TaskCompletionSource done, List<NavigationEntryId>? retired,
+        bool lastHolder)
     {
         try
         {
@@ -2033,13 +2057,25 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (entry.ResultRequest is { } request) FinishResult(request, NavigationResultDismissal.Retired);
 
             var content = entry.Content;
-            if (entry.Owned && content is not null)
+            // Another entry still holding shared content keeps it: its child regions, presentations and disposal.
+            if (entry.Holds && content is not null && lastHolder)
             {
                 // An initialize hook that already started owns the content until it
                 // returns; wait for it, bounded by CloseTimeout. A hook that never
-                // returns is abandoned after the timeout.
+                // returns is abandoned after the timeout. With shared content, the initialize hooks of the holders
+                // that retired before this one count too.
                 Task? initializing;
-                lock (Gate) initializing = entry.Initializing;
+                lock (Gate)
+                {
+                    List<Task> running = [];
+                    if (entry.Initializing is { IsCompleted: false } own) running.Add(own);
+                    if (_holders.TryGetValue(content, out var record))
+                    {
+                        running.AddRange(record.Initializing.Where(task => !task.IsCompleted));
+                        record.Initializing.Clear();
+                    }
+                    initializing = running.Count switch { 0 => null, 1 => running[0], _ => Task.WhenAll(running) };
+                }
                 if (initializing is { IsCompleted: false })
                 {
                     var wait = InitializeWait();
@@ -2074,14 +2110,29 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             }
 
             // 4b. Dispose the entry's service scope, after its content (W240-001 §5.1). A pending
-            // entry whose factory failed has none: preparation disposed it.
-            IServiceScope? scope;
+            // entry whose factory failed has none: preparation disposed it. The scope of created content that another
+            // entry still holds lives on with the content, and the last holder disposes it.
+            List<IServiceScope> scopes = [];
             lock (Gate)
             {
-                scope = entry.Scope;
+                var scope = entry.Scope;
                 entry.Scope = null;
+                var holders = entry.Holds && content is not null && _holders.TryGetValue(content, out var record) ? record : null;
+                if (!lastHolder && holders is not null)
+                {
+                    if (scope is not null) holders.Scopes.Add(scope);
+                }
+                else
+                {
+                    if (scope is not null) scopes.Add(scope);
+                    if (holders is not null)
+                    {
+                        scopes.AddRange(holders.Scopes);
+                        holders.Scopes.Clear();
+                    }
+                }
             }
-            await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
+            foreach (var scope in scopes) await this.AfterUserCode(DisposeEntryScopeAsync(entry, scope));
 
             // 5. Release the model-context lease.
             IRunicModelContextLease? lease;
@@ -2103,8 +2154,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             {
                 entry.Phase = NavigationEntryPhase.Retired;
                 _tracked.Remove(entry);
-                if (entry.Content is { } content && _ownedEntries.TryGetValue(content, out var owner) && ReferenceEquals(owner, entry))
-                    _ownedEntries.Remove(content);
+                // The record goes once its last holder finished retiring; until then it says that the content is released.
+                if (lastHolder && entry.Content is { } content && _holders.TryGetValue(content, out var holders) && holders.Holders.Count == 0)
+                    _holders.Remove(content);
                 _retirements.Remove(done.Task);
             }
             done.TrySetResult();
@@ -2436,9 +2488,70 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
     private bool IsRetiringOwnerLocked(object owner)
     {
-        if (_ownedEntries.TryGetValue(owner, out var entry))
-            return entry.Phase is NavigationEntryPhase.Removed or NavigationEntryPhase.Retiring or NavigationEntryPhase.Retired;
+        if (_holders.TryGetValue(owner, out var holders))
+        {
+            foreach (var holder in holders.Holders)
+                if (holder.Phase is not (NavigationEntryPhase.Removed or NavigationEntryPhase.Retiring or NavigationEntryPhase.Retired)) return false;
+            return true;
+        }
         lock (EverOwnedGate) return EverOwned.TryGetValue(owner, out _);
+    }
+
+    // The number of held instances with a holder record; for tests.
+    internal int HolderRecordCount
+    {
+        get { lock (Gate) return _holders.Count; }
+    }
+
+    // Registers an entry as a holder of its content. Call under the gate.
+    private void AddHolderLocked(object content, NavigationEntryCore entry)
+    {
+        if (!_holders.TryGetValue(content, out var holders)) _holders.Add(content, holders = new NavigationContentHolders());
+        holders.Holders.Add(entry);
+        if (entry.Ownership == NavigationOwnership.Shared) holders.Shared = true;
+    }
+
+    // Admits Share(content) (W315-020 §2.2): a new instance is claimed like owned content; an instance that live entries
+    // of this navigator hold gets another holder. An instance that was owned and released, that another navigator holds,
+    // or that owns navigation regions is refused. Call under the gate.
+    private void ClaimSharedLocked(object content)
+    {
+        if (_regionsByOwner.TryGetValue(content, out var regions) && regions.Count > 0)
+            throw new InvalidOperationException(
+                $"This {content.GetType().Name} owns navigation regions, so it can't be shared between navigation entries. Push a new entry with Own or a Create target instead.");
+        if (_holders.TryGetValue(content, out var holders))
+        {
+            if (holders.Holders.Count > 0) return;
+            throw new InvalidOperationException(
+                $"This {content.GetType().Name} instance was released by its last navigation entry, so it can't be shared any more. Share it while an entry holds it.");
+        }
+        lock (EverOwnedGate)
+        {
+            if (EverOwned.TryGetValue(content, out _))
+                throw new InvalidOperationException(
+                    $"This {content.GetType().Name} instance was already owned by a navigator and no entry of this navigator holds it. Share a new instance, or content of a live entry of this navigator.");
+            EverOwned.Add(content, OwnedMarker);
+        }
+    }
+
+    // Whether a retiring entry's content continues in another holder that this plan doesn't retire. Call under the gate.
+    private bool ContentContinuesLocked(NavigationEntryCore entry, NavigationDepartureKind kind, NavigationPlan plan)
+    {
+        if (kind != NavigationDepartureKind.Retire || !entry.Holds || entry.Content is not { } content
+            || !_holders.TryGetValue(content, out var holders)) return false;
+        foreach (var holder in holders.Holders)
+        {
+            if (ReferenceEquals(holder, entry)) continue;
+            var retiring = false;
+            foreach (var (guarded, guardedKind) in plan.Guards)
+            {
+                if (!ReferenceEquals(guarded, holder) || guardedKind != NavigationDepartureKind.Retire) continue;
+                retiring = true;
+                break;
+            }
+            if (!retiring) return true;
+        }
+        return false;
     }
 
     private static void Claim(object content)
@@ -2814,6 +2927,17 @@ internal sealed class NavigationPlan
             if (Kept[index].Version != Basis[Regions.Count + index]) return false;
         return true;
     }
+}
+
+// The entries that hold one instance, and the entry scopes that live until the last of them retires.
+internal sealed class NavigationContentHolders
+{
+    public List<NavigationEntryCore> Holders { get; } = [];
+    // A Share entry held the instance: it can't own regions.
+    public bool Shared { get; set; }
+    public List<IServiceScope> Scopes { get; } = [];
+    // The initialize hooks of holders that retired while their hook ran; the last holder waits for them.
+    public List<Task> Initializing { get; } = [];
 }
 
 internal sealed class NavigationCommit

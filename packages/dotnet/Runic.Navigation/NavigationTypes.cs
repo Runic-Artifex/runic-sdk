@@ -84,6 +84,12 @@ public enum NavigationOwnership
 
     /// <summary>The caller or a container owns the content; retiring only drops the reference.</summary>
     Borrowed,
+
+    /// <summary>
+    /// The entry holds the content together with the other entries of its navigator that hold it
+    /// (<see cref="NavigationTarget.Share{T}"/>). The navigator forgets and disposes the content when the last of them retires.
+    /// </summary>
+    Shared,
 }
 
 /// <summary>The operation that caused a departure, resume or result.</summary>
@@ -135,11 +141,13 @@ public sealed class NavigationDeparture
     // Set under the navigator's gate when the guard's task has completed.
     private bool _closed;
 
-    internal NavigationDeparture(NavigationEntryCore entry, NavigationDepartureKind kind, NavigationTransition transition)
+    internal NavigationDeparture(NavigationEntryCore entry, NavigationDepartureKind kind, NavigationTransition transition,
+        bool contentContinues = false)
     {
         _entry = entry;
         _transition = transition;
         Kind = kind;
+        ContentContinues = contentContinues;
     }
 
     /// <summary>Gets the departing entry.</summary>
@@ -147,6 +155,14 @@ public sealed class NavigationDeparture
 
     /// <summary>Gets whether the entry is retained or retired.</summary>
     public NavigationDepartureKind Kind { get; }
+
+    /// <summary>
+    /// Gets whether the entry retires but its content continues: another entry that this transition doesn't retire holds
+    /// the same content (<see cref="NavigationTarget.Share{T}"/>), as when a Replace hands the content over to the next
+    /// entry. The content is then neither forgotten nor disposed; a guard that protects the content's state, such as
+    /// <see cref="LeaveConfirmation"/>, treats the departure like <see cref="NavigationDepartureKind.Retain"/>.
+    /// </summary>
+    public bool ContentContinues { get; }
 
     /// <summary>Gets the requested operation.</summary>
     public NavigationOperation Operation => _transition.Operation;
@@ -194,7 +210,8 @@ public sealed class NavigationDeparture
     }
 
     /// <inheritdoc />
-    public override string ToString() => $"NavigationDeparture {{ Entry = {Entry.Value}, Kind = {Kind}, Operation = {Operation} }}";
+    public override string ToString() =>
+        $"NavigationDeparture {{ Entry = {Entry.Value}, Kind = {Kind}, Operation = {Operation}, ContentContinues = {ContentContinues} }}";
 }
 
 // Identifies one admitted transition; unique per navigator.
@@ -670,6 +687,34 @@ public static class NavigationTarget
     {
         ArgumentNullException.ThrowIfNull(content);
         return new InstanceNavigationTarget<T>(content, NavigationOwnership.Owned);
+    }
+
+    /// <summary>
+    /// Holds <paramref name="content"/> together with the other entries of the navigator that hold it, and forgets and
+    /// disposes it when the last of them retires. Pass a new instance, or the content of a live entry of this navigator
+    /// created with <see cref="Own{T}"/>, a <c>Create</c> target or <see cref="Share{T}"/>; for example, hand the current
+    /// page over to the next entry with <c>ReplaceAsync(NavigationTarget.Share(current))</c>, which disposes nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The request throws <see cref="InvalidOperationException"/> when the content was owned and fully released, is held by
+    /// another navigator, or owns navigation regions; shared content can't own regions, and
+    /// <see cref="RunicNavigator.CreateRegion{TContent}"/> with shared content as owner throws. A shared target can't be an
+    /// initial target: start the region with <see cref="Own{T}"/> or a <c>Create</c> target, then share that content.
+    /// </para>
+    /// <para>
+    /// Each entry is its own entry: <see cref="INavigationInitialize"/> runs for each, and content that keeps the
+    /// <see cref="NavigationEntryContext"/> it was constructed with still has its first entry's context after that entry
+    /// retired; take the context in <see cref="INavigationInitialize.InitializeAsync"/> or
+    /// <see cref="INavigationActivated.OnActivatedAsync"/> instead. The entry scope of created content
+    /// (<see cref="RunicNavigatorOptions.CreateEntryScopes"/>) lives until the content is disposed. Don't also
+    /// <see cref="Borrow{T}"/> shared content: the borrowing entry can outlive its disposal.
+    /// </para>
+    /// </remarks>
+    public static INavigationTarget<T> Share<T>(T content) where T : class
+    {
+        ArgumentNullException.ThrowIfNull(content);
+        return new InstanceNavigationTarget<T>(content, NavigationOwnership.Shared);
     }
 
     /// <summary>
