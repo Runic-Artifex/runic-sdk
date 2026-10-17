@@ -133,6 +133,28 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's login startup.");
     }
 
+    // Volumes are an application singleton that needs no window. Resolving them connects to nothing.
+    [Test, NotInParallel(Order = 33)]
+    public async Task PlatformServicesRegisterOneVolumesForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var volumes = provider.GetRequiredService<IDesktopVolumes>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(volumes, first.ServiceProvider.GetRequiredService<IDesktopVolumes>()), "A Window scope got its own volumes.");
+            if (OperatingSystem.IsLinux())
+                Require(volumes.GetType().FullName == "Runic.Platform.Linux.Portal.UDisksVolumes", $"Linux did not create UDisks2 volumes: {volumes.GetType().FullName}");
+            else
+                Require(await volumes.ListAsync() is PlatformResult<System.Collections.Immutable.ImmutableArray<DesktopVolume>>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+                    "Volumes without a provider were not reported unconfigured.");
+        }
+
+        await using var custom = DesktopVolumes.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopVolumes>(), custom), "AddRunicPlatformServices replaced the application's volumes.");
+    }
+
     // Secret storage is an application singleton that needs no window. Resolving it connects to nothing.
     [Test, NotInParallel(Order = 33)]
     public async Task PlatformServicesRegisterOneSecretStoreForTheApplication()
@@ -277,7 +299,8 @@ internal sealed class WindowServiceChecks
     {
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
-            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers)];
+            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers),
+            typeof(IDesktopVolumes)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];

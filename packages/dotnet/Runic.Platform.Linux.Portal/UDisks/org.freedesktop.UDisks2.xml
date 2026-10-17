@@ -1,0 +1,54 @@
+<!-- The UDisks2 members Runic uses, written from the UDisks2 D-Bus API reference
+     (https://storaged.org/doc/udisks2-api/latest/). Not a copy of udisks' introspection data. -->
+<node>
+  <interface name="org.freedesktop.DBus.ObjectManager">
+    <method name="GetManagedObjects">
+      <arg name="objects" type="a{oa{sa{sv}}}" direction="out"/>
+    </method>
+    <signal name="InterfacesAdded">
+      <arg name="object" type="o"/>
+      <arg name="interfaces" type="a{sa{sv}}"/>
+    </signal>
+    <signal name="InterfacesRemoved">
+      <arg name="object" type="o"/>
+      <arg name="interfaces" type="as"/>
+    </signal>
+  </interface>
+  <interface name="org.freedesktop.UDisks2.Block">
+    <property name="Device" type="ay" access="read"/>
+    <property name="PreferredDevice" type="ay" access="read"/>
+    <property name="Size" type="t" access="read"/>
+    <property name="ReadOnly" type="b" access="read"/>
+    <property name="Drive" type="o" access="read"/>
+    <property name="IdUsage" type="s" access="read"/>
+    <property name="IdType" type="s" access="read"/>
+    <property name="IdLabel" type="s" access="read"/>
+    <property name="CryptoBackingDevice" type="o" access="read"/>
+    <property name="HintIgnore" type="b" access="read"/>
+    <property name="HintSystem" type="b" access="read"/>
+    <property name="HintName" type="s" access="read"/>
+  </interface>
+  <interface name="org.freedesktop.UDisks2.Filesystem">
+    <method name="Mount">
+      <arg name="options" type="a{sv}" direction="in"/>
+      <arg name="mount_path" type="s" direction="out"/>
+    </method>
+    <method name="Unmount">
+      <arg name="options" type="a{sv}" direction="in"/>
+    </method>
+    <property name="MountPoints" type="aay" access="read"/>
+  </interface>
+  <interface name="org.freedesktop.UDisks2.Encrypted">
+    <property name="CleartextDevice" type="o" access="read"/>
+  </interface>
+  <interface name="org.freedesktop.UDisks2.Drive">
+    <method name="Eject">
+      <arg name="options" type="a{sv}" direction="in"/>
+    </method>
+    <property name="Vendor" type="s" access="read"/>
+    <property name="Model" type="s" access="read"/>
+    <property name="Removable" type="b" access="read"/>
+    <property name="MediaRemovable" type="b" access="read"/>
+    <property name="Ejectable" type="b" access="read"/>
+  </interface>
+</node>

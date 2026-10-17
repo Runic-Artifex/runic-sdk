@@ -333,6 +333,12 @@ The same Window and `async host => ...` body run on CS-WebUI with
   [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
   lists every service's result without a native owner. Register
   `IDesktopPrivilegedActions` yourself; it needs declared actions.
+- `AddRunicPlatformServices()` also registers `IDesktopVolumes`, one singleton
+  created by `PlatformServices.CreateVolumes()`, which lists, mounts, unmounts
+  and ejects storage volumes and watches them. Linux uses UDisks2 on the system
+  bus with either toolkit; Windows and macOS report
+  `Unavailable(ProviderNotConfigured)` in this release. See
+  [Volumes](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#volumes).
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativePickerOwner`, which the services above bind to. The
   provider APIs that take it directly, such as

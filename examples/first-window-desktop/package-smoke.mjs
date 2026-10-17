@@ -20,6 +20,7 @@ const projects = [
   ["Runic.Platform.Runtime", "Runic.Platform.Runtime"],
   ["Runic.Platform.Windows", "Runic.Platform.Windows"],
   ["Runic.Platform.MacOS", "Runic.Platform.MacOS"],
+  ["Runic.Platform.Linux.DBus", "Runic.Platform.Linux.DBus"],
   ["Runic.Platform.Linux.Portal", "Runic.Platform.Linux.Portal"],
   ["Runic.Platform.Linux", "Runic.Platform.Linux"],
   ["Runic.Platform.Linux.Gtk4", "Runic.Platform.Linux.Gtk4"],

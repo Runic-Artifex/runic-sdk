@@ -209,6 +209,8 @@ function verifyConsumerGraph(consumer, label, { platformOnly = false, selectedPr
   const allowedPlatform = new Set(["runic.platform", label.toLowerCase()]);
   if (label !== "Runic.Platform") allowedPlatform.add("runic.platform.runtime");
   if (label === "Runic.Platform.Linux") allowedPlatform.add("runic.platform.linux.portal");
+  // The portal reaches UDisks2 through the public D-Bus API.
+  if (label === "Runic.Platform.Linux" || label === "Runic.Platform.Linux.Portal") allowedPlatform.add("runic.platform.linux.dbus");
   for (const library of libraries) {
     const name = library.split("/")[0].toLowerCase();
     assert.ok(!nativeProviders.has(name) || name === selectedProvider,

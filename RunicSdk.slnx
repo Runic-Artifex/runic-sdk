@@ -86,6 +86,7 @@
     <Project Path="tests/native/Runic.Lifetime.Smoke/Runic.Lifetime.Smoke.csproj" />
     <Project Path="tests/native/Runic.StatusIcon.Smoke/Runic.StatusIcon.Smoke.csproj" />
     <Project Path="tests/native/Runic.Privileged.Smoke/Runic.Privileged.Smoke.csproj" />
+    <Project Path="tests/native/Runic.Volumes.Smoke/Runic.Volumes.Smoke.csproj" />
     <Project Path="tests/native/Runic.Elevation.Smoke/Runic.Elevation.Smoke.csproj" />
   </Folder>
   <Folder Name="/tools/">

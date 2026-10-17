@@ -1,1 +1,110 @@
 #nullable enable
+Runic.Platform.DesktopVolume
+Runic.Platform.DesktopVolume.<Clone>$() -> Runic.Platform.DesktopVolume!
+Runic.Platform.DesktopVolume.CanEject.get -> bool
+Runic.Platform.DesktopVolume.CanEject.init -> void
+Runic.Platform.DesktopVolume.CanMount.get -> bool
+Runic.Platform.DesktopVolume.CanMount.init -> void
+Runic.Platform.DesktopVolume.CanUnmount.get -> bool
+Runic.Platform.DesktopVolume.CanUnmount.init -> void
+Runic.Platform.DesktopVolume.Deconstruct(out string! Id, out string! DisplayName) -> void
+Runic.Platform.DesktopVolume.DesktopVolume(string! Id, string! DisplayName) -> void
+Runic.Platform.DesktopVolume.DisplayName.get -> string!
+Runic.Platform.DesktopVolume.DisplayName.init -> void
+Runic.Platform.DesktopVolume.DriveId.get -> string?
+Runic.Platform.DesktopVolume.DriveId.init -> void
+Runic.Platform.DesktopVolume.DriveName.get -> string?
+Runic.Platform.DesktopVolume.DriveName.init -> void
+Runic.Platform.DesktopVolume.Equals(Runic.Platform.DesktopVolume? other) -> bool
+Runic.Platform.DesktopVolume.FileSystem.get -> string?
+Runic.Platform.DesktopVolume.FileSystem.init -> void
+Runic.Platform.DesktopVolume.Id.get -> string!
+Runic.Platform.DesktopVolume.Id.init -> void
+Runic.Platform.DesktopVolume.IsLocked.get -> bool
+Runic.Platform.DesktopVolume.IsLocked.init -> void
+Runic.Platform.DesktopVolume.IsReadOnly.get -> bool
+Runic.Platform.DesktopVolume.IsReadOnly.init -> void
+Runic.Platform.DesktopVolume.IsRemovable.get -> bool
+Runic.Platform.DesktopVolume.IsRemovable.init -> void
+Runic.Platform.DesktopVolume.IsSystem.get -> bool
+Runic.Platform.DesktopVolume.IsSystem.init -> void
+Runic.Platform.DesktopVolume.MountPaths.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopVolume.MountPaths.init -> void
+Runic.Platform.DesktopVolume.Size.get -> long?
+Runic.Platform.DesktopVolume.Size.init -> void
+Runic.Platform.DesktopVolumeChange
+Runic.Platform.DesktopVolumeChange.Added
+Runic.Platform.DesktopVolumeChange.Added.Added(Runic.Platform.DesktopVolume! Volume) -> void
+Runic.Platform.DesktopVolumeChange.Added.Deconstruct(out Runic.Platform.DesktopVolume! Volume) -> void
+Runic.Platform.DesktopVolumeChange.Added.Equals(Runic.Platform.DesktopVolumeChange.Added? other) -> bool
+Runic.Platform.DesktopVolumeChange.Added.Volume.get -> Runic.Platform.DesktopVolume!
+Runic.Platform.DesktopVolumeChange.Added.Volume.init -> void
+Runic.Platform.DesktopVolumeChange.Changed
+Runic.Platform.DesktopVolumeChange.Changed.Changed(Runic.Platform.DesktopVolume! Volume) -> void
+Runic.Platform.DesktopVolumeChange.Changed.Deconstruct(out Runic.Platform.DesktopVolume! Volume) -> void
+Runic.Platform.DesktopVolumeChange.Changed.Equals(Runic.Platform.DesktopVolumeChange.Changed? other) -> bool
+Runic.Platform.DesktopVolumeChange.Changed.Volume.get -> Runic.Platform.DesktopVolume!
+Runic.Platform.DesktopVolumeChange.Changed.Volume.init -> void
+Runic.Platform.DesktopVolumeChange.DesktopVolumeChange(Runic.Platform.DesktopVolumeChange! original) -> void
+Runic.Platform.DesktopVolumeChange.Removed
+Runic.Platform.DesktopVolumeChange.Removed.Deconstruct(out string! Id) -> void
+Runic.Platform.DesktopVolumeChange.Removed.Equals(Runic.Platform.DesktopVolumeChange.Removed? other) -> bool
+Runic.Platform.DesktopVolumeChange.Removed.Id.get -> string!
+Runic.Platform.DesktopVolumeChange.Removed.Id.init -> void
+Runic.Platform.DesktopVolumeChange.Removed.Removed(string! Id) -> void
+Runic.Platform.DesktopVolumeChange.Snapshot
+Runic.Platform.DesktopVolumeChange.Snapshot.Deconstruct(out System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopVolume!> Volumes) -> void
+Runic.Platform.DesktopVolumeChange.Snapshot.Equals(Runic.Platform.DesktopVolumeChange.Snapshot? other) -> bool
+Runic.Platform.DesktopVolumeChange.Snapshot.Snapshot(System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopVolume!> Volumes) -> void
+Runic.Platform.DesktopVolumeChange.Snapshot.Volumes.get -> System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopVolume!>
+Runic.Platform.DesktopVolumeChange.Snapshot.Volumes.init -> void
+Runic.Platform.DesktopVolumes
+Runic.Platform.IDesktopVolumes
+Runic.Platform.IDesktopVolumes.EjectAsync(string! volumeId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopVolumes.ListAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<System.Collections.Immutable.ImmutableArray<Runic.Platform.DesktopVolume!>>!>
+Runic.Platform.IDesktopVolumes.MountAsync(string! volumeId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.DesktopVolume!>!>
+Runic.Platform.IDesktopVolumes.UnmountAsync(string! volumeId, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.IDesktopVolumes.WatchAsync(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Collections.Generic.IAsyncEnumerable<Runic.Platform.PlatformResult<Runic.Platform.DesktopVolumeChange!>!>!
+abstract Runic.Platform.DesktopVolumeChange.<Clone>$() -> Runic.Platform.DesktopVolumeChange!
+override Runic.Platform.DesktopVolume.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolume.GetHashCode() -> int
+override Runic.Platform.DesktopVolume.ToString() -> string!
+override Runic.Platform.DesktopVolumeChange.Added.<Clone>$() -> Runic.Platform.DesktopVolumeChange.Added!
+override Runic.Platform.DesktopVolumeChange.Added.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolumeChange.Added.GetHashCode() -> int
+override Runic.Platform.DesktopVolumeChange.Added.ToString() -> string!
+override Runic.Platform.DesktopVolumeChange.Changed.<Clone>$() -> Runic.Platform.DesktopVolumeChange.Changed!
+override Runic.Platform.DesktopVolumeChange.Changed.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolumeChange.Changed.GetHashCode() -> int
+override Runic.Platform.DesktopVolumeChange.Changed.ToString() -> string!
+override Runic.Platform.DesktopVolumeChange.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolumeChange.GetHashCode() -> int
+override Runic.Platform.DesktopVolumeChange.Removed.<Clone>$() -> Runic.Platform.DesktopVolumeChange.Removed!
+override Runic.Platform.DesktopVolumeChange.Removed.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolumeChange.Removed.GetHashCode() -> int
+override Runic.Platform.DesktopVolumeChange.Removed.ToString() -> string!
+override Runic.Platform.DesktopVolumeChange.Snapshot.<Clone>$() -> Runic.Platform.DesktopVolumeChange.Snapshot!
+override Runic.Platform.DesktopVolumeChange.Snapshot.Equals(object? obj) -> bool
+override Runic.Platform.DesktopVolumeChange.Snapshot.GetHashCode() -> int
+override Runic.Platform.DesktopVolumeChange.Snapshot.ToString() -> string!
+override Runic.Platform.DesktopVolumeChange.ToString() -> string!
+override sealed Runic.Platform.DesktopVolumeChange.Added.Equals(Runic.Platform.DesktopVolumeChange? other) -> bool
+override sealed Runic.Platform.DesktopVolumeChange.Changed.Equals(Runic.Platform.DesktopVolumeChange? other) -> bool
+override sealed Runic.Platform.DesktopVolumeChange.Removed.Equals(Runic.Platform.DesktopVolumeChange? other) -> bool
+override sealed Runic.Platform.DesktopVolumeChange.Snapshot.Equals(Runic.Platform.DesktopVolumeChange? other) -> bool
+static Runic.Platform.DesktopVolume.operator !=(Runic.Platform.DesktopVolume? left, Runic.Platform.DesktopVolume? right) -> bool
+static Runic.Platform.DesktopVolume.operator ==(Runic.Platform.DesktopVolume? left, Runic.Platform.DesktopVolume? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Added.operator !=(Runic.Platform.DesktopVolumeChange.Added? left, Runic.Platform.DesktopVolumeChange.Added? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Added.operator ==(Runic.Platform.DesktopVolumeChange.Added? left, Runic.Platform.DesktopVolumeChange.Added? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Changed.operator !=(Runic.Platform.DesktopVolumeChange.Changed? left, Runic.Platform.DesktopVolumeChange.Changed? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Changed.operator ==(Runic.Platform.DesktopVolumeChange.Changed? left, Runic.Platform.DesktopVolumeChange.Changed? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Removed.operator !=(Runic.Platform.DesktopVolumeChange.Removed? left, Runic.Platform.DesktopVolumeChange.Removed? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Removed.operator ==(Runic.Platform.DesktopVolumeChange.Removed? left, Runic.Platform.DesktopVolumeChange.Removed? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Snapshot.operator !=(Runic.Platform.DesktopVolumeChange.Snapshot? left, Runic.Platform.DesktopVolumeChange.Snapshot? right) -> bool
+static Runic.Platform.DesktopVolumeChange.Snapshot.operator ==(Runic.Platform.DesktopVolumeChange.Snapshot? left, Runic.Platform.DesktopVolumeChange.Snapshot? right) -> bool
+static Runic.Platform.DesktopVolumeChange.operator !=(Runic.Platform.DesktopVolumeChange? left, Runic.Platform.DesktopVolumeChange? right) -> bool
+static Runic.Platform.DesktopVolumeChange.operator ==(Runic.Platform.DesktopVolumeChange? left, Runic.Platform.DesktopVolumeChange? right) -> bool
+static Runic.Platform.DesktopVolumes.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopVolumes!
+virtual Runic.Platform.DesktopVolumeChange.EqualityContract.get -> System.Type!
+virtual Runic.Platform.DesktopVolumeChange.Equals(Runic.Platform.DesktopVolumeChange? other) -> bool
+virtual Runic.Platform.DesktopVolumeChange.PrintMembers(System.Text.StringBuilder! builder) -> bool

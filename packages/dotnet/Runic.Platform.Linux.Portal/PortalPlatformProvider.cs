@@ -31,6 +31,11 @@ public static class PortalPlatformProvider
     /// <remarks>Inside Flatpak or Snap it asks the Trash portal. Diagnostic callbacks never receive paths.</remarks>
     public static IDesktopTrash CreateTrash(Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(null, diagnosticSink).CreateTrash();
+    /// <summary>Creates the desktop's storage volumes from UDisks2 on the system bus.</summary>
+    /// <remarks>UDisks2 asks Polkit for authorization itself and may show a prompt. The volumes need no portal and no
+    /// presentation; a sandbox must allow talking to <c>org.freedesktop.UDisks2</c> on the system bus. Creating them
+    /// connects to nothing; the first request does.</remarks>
+    public static IDesktopVolumes CreateVolumes() => new UDisksVolumes();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

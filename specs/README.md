@@ -7,7 +7,7 @@ inputs. Translation CLI packages embed their schemas directly from this tree.
 - [Desktop](desktop): native transport contract and conformance vectors.
 - [Assets](assets): archive format decisions.
 - [Application](application): current Window and View contract ownership and its package documentation.
-- [Platform](platform): cross-platform designs of native services, such as [privileged operations](platform/privileged-operations.md), [secret storage](platform/secret-storage.md), [opening files and URLs](platform/open-activation.md), the [trash](platform/trash.md) and [file transfers](platform/file-transfers.md).
+- [Platform](platform): cross-platform designs of native services, such as [privileged operations](platform/privileged-operations.md), [secret storage](platform/secret-storage.md), [opening files and URLs](platform/open-activation.md), the [trash](platform/trash.md), [file transfers](platform/file-transfers.md) and [volumes](platform/volumes.md).
 
 Runic Application Views selects contracts from explicit .NET Window and View
 types and generates clients during the build. Its generated contract is not a
