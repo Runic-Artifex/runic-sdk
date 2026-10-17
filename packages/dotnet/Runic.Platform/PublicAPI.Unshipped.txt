@@ -68,3 +68,8 @@ static Runic.Platform.DesktopOpenOptions.operator !=(Runic.Platform.DesktopOpenO
 static Runic.Platform.DesktopOpenOptions.operator ==(Runic.Platform.DesktopOpenOptions? left, Runic.Platform.DesktopOpenOptions? right) -> bool
 static Runic.Platform.DesktopOpenRequest.operator !=(Runic.Platform.DesktopOpenRequest? left, Runic.Platform.DesktopOpenRequest? right) -> bool
 static Runic.Platform.DesktopOpenRequest.operator ==(Runic.Platform.DesktopOpenRequest? left, Runic.Platform.DesktopOpenRequest? right) -> bool
+Runic.Platform.DesktopTrash
+Runic.Platform.IDesktopTrash
+Runic.Platform.IDesktopTrash.MoveToTrashAsync(string! path, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.PlatformFailureCode.NotFound = 8 -> Runic.Platform.PlatformFailureCode
+static Runic.Platform.DesktopTrash.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopTrash!

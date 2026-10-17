@@ -105,6 +105,28 @@ public static class DesktopServiceValidation
             throw new ArgumentException("Supply a local drive path, not a UNC, device or alternate stream path.", nameof(path));
         return path;
     }
+    /// <summary>
+    /// Validates and normalizes a trusted absolute local path to a file, directory or symbolic link that an operation
+    /// acts on, such as moving it to the trash.
+    /// </summary>
+    /// <returns>The full path without a trailing separator; a final symbolic link is not resolved.</returns>
+    /// <exception cref="ArgumentException">
+    /// The path is empty, relative or contains NUL, names a root directory, or on Windows is a device or alternate
+    /// stream path.
+    /// </exception>
+    public static string ItemPath(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (path.Contains('\0') || !Path.IsPathFullyQualified(path)) throw new ArgumentException("Supply a fully qualified local path.", nameof(path));
+        path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        if (Path.GetPathRoot(path) is { } root && Path.TrimEndingDirectorySeparator(root) == path)
+            throw new ArgumentException("Supply a file or directory below a root directory.", nameof(path));
+        // \\?\ and \\.\ device paths reach devices; a later colon names an alternate stream. UNC shares are allowed.
+        if (OperatingSystem.IsWindows() && (path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal)
+            || path.IndexOf(':', 2) >= 0))
+            throw new ArgumentException("Supply a drive or UNC path, not a device or alternate stream path.", nameof(path));
+        return path;
+    }
     /// <summary>Validates bounded notification content and routing identifiers.</summary>
     public static void Notification(DesktopNotification notification)
     {

@@ -88,3 +88,6 @@ CREDENTIALW
 CRED_TYPE
 CRED_PERSIST
 GetCurrentApplicationUserModelId
+IFileOperation
+IFileOperationProgressSink
+FILEOPERATION_FLAGS

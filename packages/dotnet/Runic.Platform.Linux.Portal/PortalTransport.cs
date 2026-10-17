@@ -219,7 +219,7 @@ internal sealed class PortalTransport(string? address = null, string destination
         { return (path, new PortalResponse(2, [])); } // The portal's "other error" response code.
     }
     // Tmds takes ownership of the wrapper. Retain, but never close, the caller's file handle.
-    private sealed class BorrowedHandle : SafeHandle
+    internal sealed class BorrowedHandle : SafeHandle
     {
         private readonly SafeHandle _source;
         internal BorrowedHandle(SafeHandle source) : base(-1, true)

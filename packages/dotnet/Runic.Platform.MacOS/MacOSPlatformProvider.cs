@@ -43,6 +43,11 @@ public static class MacOSPlatformProvider
     /// does not interrupt.</remarks>
     public static IDesktopSecretStore CreateSecretStore()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacSecretStore(); }
+    /// <summary>Creates the Trash, through <c>NSFileManager</c> as Finder moves items.</summary>
+    /// <remarks>It needs no window and no AppKit event loop. A volume without a trash, such as a network share, reports
+    /// <see cref="PlatformUnavailableReason.BackendUnavailable"/> and the item stays where it was.</remarks>
+    public static IDesktopTrash CreateTrash()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacTrash(); }
     /// <summary>Creates owned file handoff operations. Caller retains security-scoped access through completion.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }

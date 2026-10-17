@@ -46,6 +46,10 @@ public sealed class PortalApplication
     /// <remarks>It needs no window and connects to nothing until the first request. Inside Flatpak or Snap the sandbox
     /// must allow talking to <c>org.freedesktop.secrets</c>; otherwise requests report unavailable.</remarks>
     public IDesktopSecretStore CreateSecretStore() => new SecretServiceStore(application: this);
+    /// <summary>Creates the user's trash, following the freedesktop.org Trash specification.</summary>
+    /// <remarks>It needs no window. Outside a sandbox it moves items into <c>$XDG_DATA_HOME/Trash</c>, or into the trash
+    /// at the top of the item's mount; inside Flatpak or Snap it asks the Trash portal.</remarks>
+    public IDesktopTrash CreateTrash() => new LinuxTrash(application: this);
     /// <summary>Creates file handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }

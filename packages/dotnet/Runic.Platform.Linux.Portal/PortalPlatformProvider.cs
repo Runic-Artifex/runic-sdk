@@ -27,6 +27,10 @@ public static class PortalPlatformProvider
     /// <remarks>Diagnostic callbacks never receive secrets, services or accounts.</remarks>
     public static IDesktopSecretStore CreateSecretStore(Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(null, diagnosticSink).CreateSecretStore();
+    /// <summary>Creates the user's trash, following the freedesktop.org Trash specification.</summary>
+    /// <remarks>Inside Flatpak or Snap it asks the Trash portal. Diagnostic callbacks never receive paths.</remarks>
+    public static IDesktopTrash CreateTrash(Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(null, diagnosticSink).CreateTrash();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

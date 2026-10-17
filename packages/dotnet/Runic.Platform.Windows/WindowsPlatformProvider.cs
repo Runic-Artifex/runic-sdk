@@ -48,6 +48,11 @@ public static class WindowsPlatformProvider
     /// service percent-encoded, and whose user name is the account. It persists for this user on this computer.</remarks>
     public static IDesktopSecretStore CreateSecretStore()
     { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsSecretStore(); }
+    /// <summary>Creates the Recycle Bin, through the shell's own file operation without UI.</summary>
+    /// <remarks>An item the shell cannot recycle, such as one on a network share or larger than the Recycle Bin, is not
+    /// deleted permanently: the request reports <see cref="PlatformUnavailableReason.BackendUnavailable"/>.</remarks>
+    public static IDesktopTrash CreateTrash()
+    { if (!WindowsSupport.IsAvailable) throw new PlatformNotSupportedException(); return new WindowsTrash(); }
     // The notification-area icon. Internal: Runic.Application.Views.Desktop selects it through
     // PlatformServices.CreateStatusIcon, as it does the other providers' status icons.
     internal static IDesktopStatusIcon CreateStatusIcon()

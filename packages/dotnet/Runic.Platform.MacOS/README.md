@@ -89,6 +89,14 @@ creating it later throws `InvalidOperationException`. The events arrive while
 the Desktop event loop runs. URLs with schemes not in the options are ignored.
 See the [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
 
+## Trash
+
+`MacOSPlatformProvider.CreateTrash()` moves items to the Trash with
+`NSFileManager`, as Finder's Move to Trash does, so Finder can put them back. It
+needs no window and no AppKit event loop. A volume without a trash, such as a
+network volume, reports `Unavailable(BackendUnavailable)` and the item stays.
+See the [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md).
+
 ## Secret storage
 
 `MacOSPlatformProvider.CreateSecretStore()` keeps secrets as generic passwords

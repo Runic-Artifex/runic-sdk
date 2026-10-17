@@ -610,7 +610,8 @@ jobs:
           done
       # W315-011: the real xdg-desktop-portal and its GNOME backend publish every appearance key only from portal 1.20
       # on (Ubuntu 24.04 has 1.18), so they run in Fedora. The container runs the published tests and needs no .NET.
-      - name: Verify appearance settings against the real GNOME portal with JIT and NativeAOT
+      # The same container runs the Trash portal (W310-003), which xdg-desktop-portal implements itself.
+      - name: Verify appearance settings and the Trash portal against the real GNOME portal with JIT and NativeAOT
         if: runner.os == 'Linux'
         timeout-minutes: 10
         env:
@@ -796,6 +797,14 @@ jobs:
         timeout-minutes: 3
         shell: bash
         run: ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=Native]"
+      # The runner's Recycle Bin and Trash, with items unique to each run that the cases remove afterwards.
+      - name: Verify the trash with JIT and NativeAOT
+        if: runner.os != 'Linux'
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          dotnet tests/dotnet/Runic.Platform.${{ matrix.provider }}.Tests/bin/Release/net10.0/Runic.Platform.${{ matrix.provider }}.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeTrash]" --output detailed
+          ./artifacts/clipboard-aot/Runic.Platform.${{ matrix.provider }}.Tests${{ matrix.extension }} --treenode-filter "/*/*/*/*[Category=NativeTrash]" --output detailed
       # Credential Manager and the runner's login keychain, under a service unique to each run.
       - name: Verify secret storage with JIT and NativeAOT
         if: runner.os != 'Linux'
