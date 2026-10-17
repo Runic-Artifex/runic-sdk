@@ -49,7 +49,10 @@
   # Local .NET tools that the build runs with `dotnet tool run`, such as dotnet-runic-translations for the
   # Translations Vite plugin, restored offline from their manifest:
   #   manifest  the dotnet-tools.json, relative to src; default: .config/dotnet-tools.json beside the project. It is
-  #             read at evaluation, so src must be a local path, such as the flake's own source.
+  #             read at evaluation from src when it is a path, from its unfiltered source when it is filtered by
+  #             lib.fileset.toSource, lib.cleanSource or lib.cleanSourceWith, and otherwise from src's store path,
+  #             which then has to exist. A path (./App/.config/dotnet-tools.json) is read and restored from as
+  #             it is, for any src, such as one that builtins.path filters.
   #   hashes    { <package ID> = <hash of the .nupkg>; } for each tool in it
   dotnetTools ? null,
   # Shell completions that the program prints, installed for bash, zsh and fish (share/bash-completion,
@@ -152,7 +155,19 @@ let
     else
       let
         manifest = dotnetTools.manifest or "${dirOf (lib.head (lib.toList projectFile))}/.config/dotnet-tools.json";
-        tools = (lib.importJSON "${src}/${manifest}").tools or { };
+        # The store path of a filtered source, or of a path's copy ("${./.}"), exists only once a writable
+        # evaluation has added it, so reading from it fails a read-only one (nix flake check --no-build) on an
+        # empty store. The path itself, or the filtered source's unfiltered one, is read instead.
+        manifestFile =
+          if builtins.isPath manifest then
+            manifest
+          else if src._isLibCleanSourceWith or false then
+            src.origSrc + "/${manifest}"
+          else if builtins.isPath src then
+            src + "/${manifest}"
+          else
+            "${src}/${manifest}";
+        tools = (lib.importJSON manifestFile).tools or { };
         hashes = dotnetTools.hashes or { };
         fetch =
           id: tool:
@@ -161,12 +176,13 @@ let
             inherit (tool) version;
             hash =
               hashes.${id} or (throw ''
-                buildRunicApplication: dotnetTools.hashes has no hash for ${id} ${tool.version}, a tool in ${manifest}.
+                buildRunicApplication: dotnetTools.hashes has no hash for ${id} ${tool.version}, a tool in ${toString manifest}.
                 Set dotnetTools.hashes.${id} = lib.fakeHash, build, and copy the hash Nix reports.'');
           };
       in
       {
-        inherit manifest;
+        # Relative to src, or the manifest's own store path.
+        manifest = if builtins.isPath manifest then "${manifest}" else manifest;
         packages = lib.mapAttrsToList fetch tools;
       };
 

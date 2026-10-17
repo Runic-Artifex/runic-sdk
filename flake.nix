@@ -38,10 +38,14 @@
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
           };
-          builder-dotnet-tools = import ./nix/tests/dotnet-tools.nix {
+        }
+        // nixpkgs.lib.mapAttrs' (name: nixpkgs.lib.nameValuePair (if name == "default" then "builder-dotnet-tools" else "builder-dotnet-tools-${name}")) (
+          import ./nix/tests/dotnet-tools.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
-          };
+          }
+        )
+        // {
           builder-completions = import ./nix/tests/completions.nix {
             pkgs = import nixpkgs { system = "x86_64-linux"; };
             runic = self.lib;
