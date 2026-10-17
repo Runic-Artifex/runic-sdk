@@ -29,7 +29,8 @@ internal sealed partial class MacOpenEventsNativeTests
         await using (opens!)
         {
             opens!.Opened += (_, request) => requests.Writer.TryWrite(request);
-            Check((await NextAsync(requests, cancellationToken)) == "runic-test://from-arguments", "this launch's arguments");
+            string first = await NextAsync(requests, cancellationToken);
+            Check(new Uri(first) == new Uri("runic-test://from-arguments"), $"this launch's arguments: {first}");
 
             string file = Path.Combine(Path.GetTempPath(), "runic open " + Guid.NewGuid().ToString("N")[..8] + ".txt");
             await File.WriteAllTextAsync(file, "probe", cancellationToken);
@@ -46,8 +47,8 @@ internal sealed partial class MacOpenEventsNativeTests
                 });
                 var opened = new Uri(await NextAsync(requests, cancellationToken));
                 Check(opened.IsFile && opened.LocalPath == file, $"odoc opened the file: {opened}");
-                Check((await NextAsync(requests, cancellationToken)).Equals("runic-test://from-event?id=1", StringComparison.OrdinalIgnoreCase),
-                    "GURL opened the registered URL and skipped the unregistered one");
+                string url = await NextAsync(requests, cancellationToken);
+                Check(new Uri(url) == new Uri("runic-test://from-event?id=1"), $"GURL opened the registered URL and skipped the unregistered one: {url}");
             }
             finally { File.Delete(file); }
         }
