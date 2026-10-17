@@ -1,0 +1,27 @@
+<!-- A publish passes RuntimeIdentifier and PublishAot to every project it reaches, including during restore;
+     they apply to applications, never to this netstandard2.0 generator. -->
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="RuntimeIdentifier;SelfContained;PublishAot;PublishTrimmed">
+  <Import Project="../../../eng/build/platform.props" />
+  <PropertyGroup>
+    <!-- A Roslyn source generator, packed into Runic.Platform.Linux.DBus under analyzers/; never a package of its own. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Generated source must not depend on the developer's locale. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Diagnostics link to their docs/diagnostics.md entry at the release tag. -->
+    <RunicGenerateReleaseLinks>true</RunicGenerateReleaseLinks>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Directory.Packages.props in this directory pins the Roslyn version the oldest supported .NET 10 SDK runs. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+    <AdditionalFiles Include="AnalyzerReleases.Shipped.md;AnalyzerReleases.Unshipped.md" />
+  </ItemGroup>
+  <Import Project="../../../eng/build/application.targets" />
+</Project>

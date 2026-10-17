@@ -14,6 +14,7 @@ Each entry starts with what the ID means. **Fix** says what to change.
 - [Asset packer (`RAS`)](#asset-packer)
 - [Runic.Create (`RCREATE`)](#runiccreate)
 - [Privileged actions (`RUNICPA`)](#privileged-actions)
+- [D-Bus source generator (`RUNICDBUS`)](#d-bus-source-generator)
 
 ## Bridge code generator
 
@@ -913,6 +914,86 @@ from whoever starts it, so code the application does not contain could run
 under its signature.
 
 **Fix:** publish the application with `PublishAot` set to `true`.
+
+## D-Bus source generator
+
+`Runic.Platform.Linux.DBus` generates proxies and services from introspection XML
+listed as `AdditionalFiles` with `RunicDBusMode` metadata. The
+[package guide](../packages/dotnet/Runic.Platform.Linux.DBus/README.md#generate-proxies-and-services)
+describes the metadata. Each error names the XML file; nothing is generated for it.
+
+### RUNICDBUS001
+
+`RunicDBusMode` is neither `Proxy`, `Service` nor `Proxy,Service`.
+
+**Fix:** use one of those values. Separate both modes with a comma, not a semicolon.
+
+### RUNICDBUS002
+
+The XML file has no `Namespace` metadata.
+
+**Fix:** add `Namespace="My.App.DBus"` to its `AdditionalFiles` item.
+
+### RUNICDBUS003
+
+`RunicDBusVisibility` is neither `internal` nor `public`.
+
+**Fix:** use `internal`, the default, or `public`.
+
+### RUNICDBUS004
+
+The compiler could not read the XML file.
+
+**Fix:** check that the file exists and is readable.
+
+### RUNICDBUS005
+
+The file is not well-formed XML; the message gives the parser's reason.
+
+**Fix:** correct the XML, or replace it with the service's introspection data.
+
+### RUNICDBUS006
+
+The root element is not `<node>`.
+
+**Fix:** wrap the interfaces in `<node>`, as `busctl introspect --xml-interface` writes them.
+
+### RUNICDBUS007
+
+An `<interface>` has no name, or a name that is not a D-Bus interface name,
+such as one without a dot.
+
+**Fix:** give the interface its full D-Bus name, such as `org.example.Player`.
+
+### RUNICDBUS008
+
+The `<node>` declares no `<interface>`.
+
+**Fix:** add the interfaces to generate, or remove the file from `AdditionalFiles`.
+
+### RUNICDBUS009
+
+`RunicDBusClassName` is not a C# identifier, or names the proxy of a file with
+more than one interface, which gets one proxy class per interface.
+
+**Fix:** use an identifier, or split the interfaces into separate files to name each proxy.
+
+### RUNICDBUS010
+
+Two files would generate a type with the same name in one namespace, such as
+two interfaces that both end in `.Player`.
+
+**Fix:** set `RunicDBusClassName` on one of them, or give it another `Namespace`.
+
+### RUNICDBUS011
+
+An interface member cannot be generated: a method, signal or property name that
+is not a D-Bus member name, an argument or property type that is not one
+complete D-Bus type, a property `access` other than `read`, `write` or
+`readwrite`, or two interfaces of one service file that would generate the same
+member. The message names the member.
+
+**Fix:** correct the XML, or put interfaces whose members collide in separate files.
 
 ## Privileged actions on Windows
 

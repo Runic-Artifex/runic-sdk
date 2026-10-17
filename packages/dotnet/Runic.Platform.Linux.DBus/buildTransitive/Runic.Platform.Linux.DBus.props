@@ -1,0 +1,12 @@
+<Project>
+  <!-- The D-Bus source generator reads these AdditionalFiles metadata names:
+       <AdditionalFiles Include="org.example.Player.xml" RunicDBusMode="Proxy" Namespace="Example.DBus" />
+       RunicDBusMode is Proxy, Service or Proxy,Service; RunicDBusVisibility is internal (default) or public;
+       RunicDBusClassName names the generated class. -->
+  <ItemGroup>
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="RunicDBusMode" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="Namespace" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="RunicDBusVisibility" />
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="RunicDBusClassName" />
+  </ItemGroup>
+</Project>
