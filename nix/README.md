@@ -223,7 +223,7 @@ Runic targets build the frontend without installing.
 
 | Package manager | How the packages are fetched | `hash` |
 | --- | --- | --- |
-| npm | Without a hash, nixpkgs' `importNpmLock` fetches each package of `package-lock.json` by its integrity; this reads the lock file at evaluation, so `src` must be a local path such as the flake's own source. With a hash, `fetchNpmDeps` fetches them as one download. | optional |
+| npm | Without a hash, nixpkgs' `importNpmLock` fetches each package of `package-lock.json` by its integrity; this reads `package.json` and `package-lock.json` at evaluation, as `dotnetTools` reads its manifest: from `src` when it is a path, and from the unfiltered source when `src` is filtered by `lib.fileset.toSource`, `lib.cleanSource` or `lib.cleanSourceWith`. Any other `src`, such as one that `builtins.path { filter; }` filters, needs a hash for a read-only evaluation (`nix flake check --no-build`). With a hash, `fetchNpmDeps` fetches them as one download. | optional |
 | pnpm | `fetchPnpmDeps` (fetcher version 4), then `pnpmConfigHook` installs offline. | required |
 | Bun | `bun install --frozen-lockfile --ignore-scripts` in a fixed-output derivation; a second derivation patches the scripts' interpreters, which a fixed-output derivation cannot reference. | required |
 
@@ -481,4 +481,5 @@ build agree; `buildRunicApplication` takes the same two arguments. Other
   and must load GTK and WebKitGTK from the store.
 - The `builder-locks` flake check requires that a Bun frontend whose lock
   changed without its hash fails, that another system's Bun install builds,
-  and that lock files are chosen and checked per runtime identifier.
+  that an npm frontend without a hash installs from a `lib.fileset.toSource`
+  source, and that lock files are chosen and checked per runtime identifier.

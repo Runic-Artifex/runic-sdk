@@ -4,6 +4,10 @@
 #   its name and hash alone, so the install of the earlier lock file is reused; here the copy of the current install
 #   is given the changed lock file, as such a reuse does.
 # - The Bun install for another system is a fixed-output derivation that this system can build.
+# - An npm frontend without a hash in a lib.fileset.toSource source installs from package-lock.json, which the
+#   builder reads at evaluation from the unfiltered source: the filtered one's store path exists only once a
+#   writable evaluation has added it, so reading from it fails nix flake check --no-build --all-systems on the
+#   empty store that the Nix workflow runs it on.
 # - nugetLockFiles keyed by runtime identifier selects this runtime's lock files, and a locked restore rejects a
 #   lock file with another runtime's section at evaluation.
 { pkgs, runic }:
@@ -24,6 +28,19 @@ let
     };
   current = bunFrontend "current";
   stale = pkgs.testers.testBuildFailure (current.overrideAttrs { src = fixtures + "/frontend-lock/changed"; });
+
+  npmFiltered =
+    (runic.buildRunicApplication pkgs {
+      pname = "runic-frontend-npm-fixture";
+      version = "0.0.0";
+      src = lib.fileset.toSource {
+        root = fixtures + "/frontend-npm";
+        fileset = fixtures + "/frontend-npm/Frontend";
+      };
+      projectFile = "App.csproj";
+      frontend.packageManager = "npm";
+      host = null;
+    }).frontendNodeModules;
 
   application =
     nugetLockFiles:
@@ -54,5 +71,6 @@ pkgs.runCommand "runic-builder-locks" { } ''
   grep -q 'frontend.hash is out of date' ${stale}/testBuildFailure.log
   test -d ${current}/node_modules/is-number
   test -d ${current.fetchedFor.aarch64-linux}/node_modules/is-number
+  test -f ${npmFiltered}/node_modules/is-number/package.json
   touch $out
 ''
