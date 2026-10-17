@@ -1291,6 +1291,12 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
 
     internal Microsoft.Extensions.Logging.ILogger? Logger => _runtimeOptions?.Logger;
 
+    // The current embedded window's menu command target; a replacement window starts without one.
+    internal void SetEmbeddedMenuCommands(IDesktopMenuCommandTarget? target)
+    {
+        if (Volatile.Read(ref _embeddedHost) is { } host) host.MenuCommands = target;
+    }
+
     // Each drop of files onto the current embedded window, with the window that reported it.
     internal event Action<object, DesktopFileDropEventArgs>? EmbeddedFilesDropped;
 

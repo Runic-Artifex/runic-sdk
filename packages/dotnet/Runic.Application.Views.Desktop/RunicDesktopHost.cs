@@ -138,6 +138,47 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// </remarks>
     public Func<IRunicWindow, DesktopWindowPlacement?>? Placement { get; init; }
 
+    private IReadOnlyDictionary<string, System.Windows.Input.ICommand>? _menuCommands;
+    private MenuCommandBinding? _applicationMenu;
+
+    /// <summary>
+    /// The application's menu bar commands by command id, such as New or Settings…, which run when no key window's
+    /// root ViewModel (<see cref="IRunicMenuCommandSource"/>) runs the id; <see langword="null"/>, the default, for none.
+    /// </summary>
+    /// <remarks>
+    /// It becomes <see cref="DesktopHost.MenuCommands"/> of <see cref="Desktop"/>. Each command's availability follows
+    /// its <see cref="System.Windows.Input.ICommand.CanExecute"/> with a <see langword="null"/> parameter, and it runs on
+    /// the thread pool: an application command has no ViewModel turn. A failure is logged (event 2004).
+    /// <code>
+    /// var host = new RunicDesktopHost(provider, desktop)
+    /// {
+    ///     MenuCommands = new Dictionary&lt;string, ICommand&gt; { ["file.new"] = newWindowCommand },
+    /// };
+    /// </code>
+    /// </remarks>
+    public IReadOnlyDictionary<string, System.Windows.Input.ICommand>? MenuCommands
+    {
+        get => _menuCommands;
+        init
+        {
+            _menuCommands = value;
+            _applicationMenu?.Dispose();
+            _applicationMenu = null;
+            if (value is null)
+            {
+                Desktop.MenuCommands = null;
+                return;
+            }
+            var commands = new Dictionary<string, System.Windows.Input.ICommand>(value, StringComparer.Ordinal);
+            var logger = (Services.GetService<ILoggerFactory>()?.CreateLogger("Runic.Application.Views.Desktop"))
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+            // Without a model context the binding resolves synchronously.
+            _applicationMenu = MenuCommandBinding.BindAsync(Desktop, context: null, id => commands.GetValueOrDefault(id), logger)
+                .AsTask().GetAwaiter().GetResult();
+            Desktop.MenuCommands = _applicationMenu;
+        }
+    }
+
     /// <summary>Gets the Desktop surface that serves an open Window of this host, or <see langword="null"/> for another host.</summary>
     /// <param name="window">The open Window.</param>
     /// <remarks>
@@ -342,6 +383,14 @@ public sealed class RunicDesktopHost : IRunicWindowHost
             // RunicWindow.RequestCloseAsync joins the decision of the native close button.
             if (confirmsClose) opening.UseCloseRequest(presentation.RequestCloseAsync);
             owner.SetPresentation(presentation);
+            if (viewModel is IRunicMenuCommandSource menuSource)
+            {
+                var menuLogger = (loggerFactory?.CreateLogger("Runic.Application.Views.Desktop"))
+                    ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+                var menu = await MenuCommandBinding.BindAsync(Desktop, content.ModelContext, menuSource.GetMenuCommand, menuLogger)
+                    .ConfigureAwait(false);
+                owner.SetMenuCommands(menu);
+            }
             await CloseAfterOpenIfRequestedAsync(presentation, loggerFactory).ConfigureAwait(false);
             return owner;
         }

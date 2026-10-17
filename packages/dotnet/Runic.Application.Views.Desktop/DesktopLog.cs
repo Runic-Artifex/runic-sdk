@@ -20,6 +20,10 @@ internal static partial class DesktopLog
         Message = "xdg-desktop-portal reported {Code}: {DiagnosticMessage} {Remediation}")]
     internal static partial void PortalDiagnostic(ILogger logger, LogLevel level, string code, string diagnosticMessage, string remediation);
 
+    [LoggerMessage(EventId = 2004, EventName = "DesktopMenuCommandFailed", Level = LogLevel.Error,
+        Message = "The menu command {CommandId} failed with {ErrorType}.")]
+    internal static partial void MenuCommandFailed(ILogger logger, Exception? exception, string commandId, string errorType);
+
 #if RUNIC_PORTABLE_PLATFORMS
     // A rejected identity or an unreachable portal is a warning; accepted requests and registrations are details.
     internal static void PortalDiagnostic(ILogger logger, PortalDiagnostic diagnostic) =>

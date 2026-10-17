@@ -287,6 +287,22 @@ has established a new boundary; ordinary Cancel does not. Both controllers consu
 late promise rejections after detachment and isolate subscriber exceptions through
 bridge diagnostics.
 
+## Keyboard shortcuts
+
+`matchesShortcut(event, "Primary+S")` tells whether a `keydown` event is a
+shortcut, and `formatShortcut("Primary+S")` shows it as the platform does:
+`⌘S` on Apple platforms, `Ctrl+S` elsewhere. `Primary` is the Command key on
+Apple platforms and Ctrl elsewhere, `Alt` is Option, and `Control` is the
+Control key on Apple platforms and the same Ctrl elsewhere; matching requires
+exactly the shortcut's modifiers and ignores keys an input method is composing.
+The text is the same as Runic Desktop's `DesktopShortcut`, which macOS menu
+items use, and both are checked against the cases in
+[specs/desktop/fixtures/shortcuts.json](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/desktop/fixtures/shortcuts.json).
+Pass `{ apple: true }` or `{ apple: false }` to choose the platform rule
+instead of detecting it from `navigator`. See the
+[shortcut guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#keyboard-shortcuts-in-the-page)
+for which keys to leave to text fields and the web view.
+
 ## Developing without .NET
 
 `@runic-artifex/views/mock` provides an in-memory Bridge. Install it before the

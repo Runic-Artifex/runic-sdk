@@ -1,0 +1,40 @@
+{
+  "description": "Keyboard shortcut text shared by DesktopShortcut (.NET, Runic.Desktop.Tests) and matchesShortcut/formatShortcut (@runic-artifex/views). Primary is Command on Apple platforms and Ctrl elsewhere; Control is the Control key on Apple platforms and the same Ctrl elsewhere.",
+  "parse": [
+    { "text": "Primary+S", "canonical": "Primary+S", "apple": "⌘S", "other": "Ctrl+S" },
+    { "text": "primary+shift+s", "canonical": "Primary+Shift+S", "apple": "⇧⌘S", "other": "Ctrl+Shift+S" },
+    { "text": "Shift+Primary+Z", "canonical": "Primary+Shift+Z", "apple": "⇧⌘Z", "other": "Ctrl+Shift+Z" },
+    { "text": "Primary+Alt+I", "canonical": "Primary+Alt+I", "apple": "⌥⌘I", "other": "Ctrl+Alt+I" },
+    { "text": "Control+Tab", "canonical": "Control+Tab", "apple": "⌃⇥", "other": "Ctrl+Tab" },
+    { "text": "Primary+,", "canonical": "Primary+,", "apple": "⌘,", "other": "Ctrl+," },
+    { "text": "Primary++", "canonical": "Primary+Plus", "apple": "⌘+", "other": "Ctrl++" },
+    { "text": "Primary+Plus", "canonical": "Primary+Plus", "apple": "⌘+", "other": "Ctrl++" },
+    { "text": "F5", "canonical": "F5", "apple": "F5", "other": "F5" },
+    { "text": "Alt+F4", "canonical": "Alt+F4", "apple": "⌥F4", "other": "Alt+F4" },
+    { "text": "Primary+ArrowUp", "canonical": "Primary+ArrowUp", "apple": "⌘↑", "other": "Ctrl+Up" },
+    { "text": "Escape", "canonical": "Escape", "apple": "⎋", "other": "Esc" },
+    { "text": "Primary+Shift+Delete", "canonical": "Primary+Shift+Delete", "apple": "⇧⌘⌦", "other": "Ctrl+Shift+Del" },
+    { "text": "Primary+1", "canonical": "Primary+1", "apple": "⌘1", "other": "Ctrl+1" },
+    { "text": " Primary + S ", "canonical": "Primary+S", "apple": "⌘S", "other": "Ctrl+S" }
+  ],
+  "invalid": ["", "Primary+", "Hyper+S", "Primary+Primary+S", "F25", "F0", "Ctrl+S", "Cmd+S", "Primary+Enterr", "Primary+é"],
+  "match": [
+    { "shortcut": "Primary+S", "apple": true, "event": { "key": "s", "code": "KeyS", "metaKey": true }, "matches": true },
+    { "shortcut": "Primary+S", "apple": true, "event": { "key": "s", "code": "KeyS", "ctrlKey": true }, "matches": false },
+    { "shortcut": "Primary+S", "apple": false, "event": { "key": "s", "code": "KeyS", "ctrlKey": true }, "matches": true },
+    { "shortcut": "Primary+S", "apple": false, "event": { "key": "s", "code": "KeyS", "metaKey": true }, "matches": false },
+    { "shortcut": "Primary+S", "apple": false, "event": { "key": "S", "code": "KeyS", "ctrlKey": true, "shiftKey": true }, "matches": false },
+    { "shortcut": "Primary+Shift+S", "apple": false, "event": { "key": "S", "code": "KeyS", "ctrlKey": true, "shiftKey": true }, "matches": true },
+    { "shortcut": "Primary+Alt+S", "apple": true, "event": { "key": "ß", "code": "KeyS", "metaKey": true, "altKey": true }, "matches": true },
+    { "shortcut": "Control+Tab", "apple": true, "event": { "key": "Tab", "code": "Tab", "ctrlKey": true }, "matches": true },
+    { "shortcut": "Control+Tab", "apple": false, "event": { "key": "Tab", "code": "Tab", "ctrlKey": true }, "matches": true },
+    { "shortcut": "Primary+,", "apple": true, "event": { "key": ",", "code": "Comma", "metaKey": true }, "matches": true },
+    { "shortcut": "Primary+Plus", "apple": false, "event": { "key": "+", "code": "Equal", "ctrlKey": true, "shiftKey": true }, "matches": true },
+    { "shortcut": "Primary+1", "apple": false, "event": { "key": "1", "code": "Numpad1", "ctrlKey": true }, "matches": true },
+    { "shortcut": "F5", "apple": false, "event": { "key": "F5", "code": "F5" }, "matches": true },
+    { "shortcut": "F5", "apple": false, "event": { "key": "F5", "code": "F5", "ctrlKey": true }, "matches": false },
+    { "shortcut": "Primary+ArrowUp", "apple": true, "event": { "key": "ArrowUp", "code": "ArrowUp", "metaKey": true }, "matches": true },
+    { "shortcut": "Escape", "apple": true, "event": { "key": "Escape", "code": "Escape" }, "matches": true },
+    { "shortcut": "Primary+S", "apple": false, "event": { "key": "s", "code": "KeyS", "ctrlKey": true, "repeat": true, "isComposing": true }, "matches": false }
+  ]
+}

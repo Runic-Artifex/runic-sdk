@@ -114,7 +114,8 @@ it to use one on CS-WebUI. The
 [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
 lists each service's result on both hosts. A root ViewModel that implements `IRunicFileDropTarget` is
 never called here: a browser window reports no dropped paths, so the page only
-gets HTML5 `File` objects.
+gets HTML5 `File` objects. Likewise there is no native menu bar: an `IRunicMenuCommandSource`
+is never asked, so render menus in the page, bound to the same commands.
 
 When WebUI cannot show a window, because it finds no browser, the selected
 browser does not exist or does not start, or the page does not connect within
