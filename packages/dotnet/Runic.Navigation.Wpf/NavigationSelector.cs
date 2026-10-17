@@ -69,6 +69,8 @@ public static class NavigationSelector
         private readonly DataTemplate? _tabTemplate;
         private CancellationTokenSource? _pending;
         private Task? _selection;
+        // Completed when the region stops transitioning: the commit of the pending selection is decided.
+        private TaskCompletionSource? _decided;
         private long _request;
         private bool _attached;
         private bool _synchronizing;
@@ -115,6 +117,8 @@ public static class NavigationSelector
 
         private void Changed(object? sender, PropertyChangedEventArgs args)
         {
+            if ((args.PropertyName is null or "" or nameof(INavigationRegion.IsTransitioning)) && !_region.IsTransitioning)
+                Interlocked.Exchange(ref _decided, null)?.TrySetResult();
             if (args.PropertyName is not (null or "" or nameof(INavigationRegion.Current))) return;
             if (_selector.Dispatcher.CheckAccess()) Reconcile();
             else if (!_selector.Dispatcher.HasShutdownStarted) _selector.Dispatcher.BeginInvoke(Reconcile);
@@ -158,8 +162,12 @@ public static class NavigationSelector
         private async Task KeepSelectionAsync(object selected, long request, Task previous)
         {
             // Cancellation cannot undo a commit that already started. If it wins that race,
-            // restore the latest selection through another ordinary guarded core request.
-            await previous.ConfigureAwait(false);
+            // restore the latest selection through another ordinary guarded core request. Wait only until the previous
+            // request's commit is decided, not for its task: that includes the previous tab's activation hook, which the
+            // restoring Replace cancels (W315-020 §1.3). The race needs a navigator on another model context than the
+            // dispatcher: this handler and a commit turn on the dispatcher never interleave, so there the cancellation
+            // always wins and the previous task ends without an activation.
+            await Task.WhenAny(previous, WhenDecided()).ConfigureAwait(false);
             await OnDispatcherAsync(() =>
             {
                 if (!_attached || request != _request) return;
@@ -193,6 +201,18 @@ public static class NavigationSelector
                     cancellation.Dispose();
                 }
             }
+        }
+
+        // Completes once the region is not transitioning, read when the region raises IsTransitioning.
+        private Task WhenDecided()
+        {
+            if (!_region.IsTransitioning) return Task.CompletedTask;
+            var decided = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var previous = Interlocked.Exchange(ref _decided, decided);
+            previous?.TrySetResult();
+            // The region may have stopped transitioning between the read and the publication.
+            if (!_region.IsTransitioning) Interlocked.Exchange(ref _decided, null)?.TrySetResult();
+            return decided.Task;
         }
 
         // The execution can dispose its source on another thread just after a UI handler read it.

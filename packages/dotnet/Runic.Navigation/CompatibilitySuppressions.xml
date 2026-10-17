@@ -29,4 +29,46 @@
     <Right>lib/net10.0/Runic.Navigation.dll</Right>
     <IsBaselineSuppression>true</IsBaselineSuppression>
   </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0021</DiagnosticId>
+    <Target>M:Runic.Navigation.NavigationRegion`1.PushAsync``2(``1,Runic.Navigation.NavigationRequestOptions,System.Threading.CancellationToken)``0:T:Runic.Navigation.INavigationInput{``1}</Target>
+    <Left>lib/net10.0/Runic.Navigation.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0021</DiagnosticId>
+    <Target>M:Runic.Navigation.NavigationRegion`1.ReplaceAsync``2(``1,Runic.Navigation.NavigationRequestOptions,System.Threading.CancellationToken)``0:T:Runic.Navigation.INavigationInput{``1}</Target>
+    <Left>lib/net10.0/Runic.Navigation.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0021</DiagnosticId>
+    <Target>M:Runic.Navigation.NavigationRegion`1.ResetAsync``2(``1,Runic.Navigation.NavigationRequestOptions,System.Threading.CancellationToken)``0:T:Runic.Navigation.INavigationInput{``1}</Target>
+    <Left>lib/net10.0/Runic.Navigation.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0021</DiagnosticId>
+    <Target>M:Runic.Navigation.NavigationTarget.Create``2(``1)``0:T:Runic.Navigation.INavigationInput{``1}</Target>
+    <Left>lib/net10.0/Runic.Navigation.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0021</DiagnosticId>
+    <Target>M:Runic.Navigation.NavigationTarget.Create``2(System.Func{System.IServiceProvider,``0},``1)``0:T:Runic.Navigation.INavigationInput{``1}</Target>
+    <Left>lib/net10.0/Runic.Navigation.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0021</DiagnosticId>
+    <Target>M:Runic.Navigation.NavigationTarget.Create``2(System.Func{System.IServiceProvider,Runic.Navigation.NavigationEntryContext,``0},``1)``0:T:Runic.Navigation.INavigationInput{``1}</Target>
+    <Left>lib/net10.0/Runic.Navigation.dll</Left>
+    <Right>lib/net10.0/Runic.Navigation.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
 </Suppressions>

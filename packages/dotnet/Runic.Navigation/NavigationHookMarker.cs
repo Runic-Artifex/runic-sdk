@@ -30,13 +30,32 @@ internal sealed class NavigationHookMarker
     [ThreadStatic] private static bool t_frameWrapped;
 
     private readonly WeakReference<NavigationTransition> _transition;
+    // The hook's own token when it isn't the transition's: an activation hook runs after its transition released admission.
+    private readonly CancellationToken? _token;
 
-    private NavigationHookMarker(NavigationTransition transition) => _transition = new(transition);
+    private NavigationHookMarker(NavigationTransition transition, CancellationToken? token)
+    {
+        _transition = new(transition);
+        _token = token;
+    }
 
     public NavigationTransition? Transition => _transition.TryGetTarget(out var transition) ? transition : null;
 
+    // The token of the hook whose code runs on the calling flow (RunicNavigator.HookCancellationToken), or None.
+    public static CancellationToken ActiveToken
+    {
+        get
+        {
+            var marker = ActiveMarker;
+            if (marker is null) return CancellationToken.None;
+            return marker._token ?? marker.Transition?.Token ?? CancellationToken.None;
+        }
+    }
+
     // The transition whose hook the calling code belongs to, or null.
-    public static NavigationTransition? Active
+    public static NavigationTransition? Active => ActiveMarker?.Transition;
+
+    private static NavigationHookMarker? ActiveMarker
     {
         get
         {
@@ -51,20 +70,20 @@ internal sealed class NavigationHookMarker
                     : context is null;
                 if (!hookContext) return null;
             }
-            return marker.Transition;
+            return marker;
         }
     }
 
     // Marks the calling code as the hook of `transition` until the scope is disposed; null clears the
     // marker (cleanup operations and admissions on behalf of no hook). Dispose on the same thread, in
     // the same synchronous frame.
-    public static Scope Enter(NavigationTransition? transition)
+    public static Scope Enter(NavigationTransition? transition, CancellationToken? token = null)
     {
         var previousMarker = Current.Value;
         var previousContext = SynchronizationContext.Current;
         var previousFrame = t_frame;
         var previousFrameWrapped = t_frameWrapped;
-        var marker = transition is null ? null : new NavigationHookMarker(transition);
+        var marker = transition is null ? null : new NavigationHookMarker(transition, token);
         Current.Value = marker;
         var wrapped = marker is not null && previousContext is not null;
         if (wrapped) SynchronizationContext.SetSynchronizationContext(new HookSynchronizationContext(previousContext!, marker!));

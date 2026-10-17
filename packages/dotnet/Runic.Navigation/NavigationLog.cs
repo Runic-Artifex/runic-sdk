@@ -80,4 +80,9 @@ internal static partial class NavigationLog
         Message = "A {Notification} handler of {EntryType} in navigation region {Region} ({RegionId}) failed during {Operation} with {ErrorType}; the change stands.")]
     internal static partial void NavigationEntryNotificationFailed(ILogger logger, Exception? exception, string region, int regionId,
         string operation, string entryType, string notification, string errorType);
+
+    [LoggerMessage(EventId = 1076, EventName = "NavigationActivationFailed", Level = LogLevel.Error,
+        Message = "The activation hook of {EntryType} in navigation region {Region} ({RegionId}) failed during {Operation} with {ErrorType}; the commit stands.")]
+    internal static partial void NavigationActivationFailed(ILogger logger, Exception? exception, string region, int regionId,
+        string operation, string entryType, string errorType);
 }
