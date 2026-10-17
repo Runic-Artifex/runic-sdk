@@ -959,10 +959,134 @@ jobs:
         env:
           RID: ${{ matrix.rid }}
 
+  # W315-014: the runic-app template's packaging/package.mjs packages tests/native/Runic.Packaging.Probe on each OS
+  # without the maintainers' signing credentials: an MSIX signed with a test certificate, an ad-hoc signed .app with
+  # the hardened runtime in a disk image, and an unsigned Flatpak. Each package is installed and opened through its
+  # URL scheme, and the probe's receipt shows what the package gives the application (eng/ci/packaging-probe-check.mjs).
+  packaging:
+    name: Packaging / ${{ matrix.target }}
+    needs: plan
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'packaging') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows
+          - os: macos-26
+            target: macos
+          - os: ubuntu-24.04
+            target: flatpak
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      PROBE: tests/native/Runic.Packaging.Probe/Runic.Packaging.Probe.csproj
+      PACKAGE: tools/Runic.Application.Templates/content/runic-app/packaging/package.mjs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: packaging
+          node: "true"
+          install: "false"
+      # Windows installs only signed packages: a self-signed certificate whose subject is the probe's
+      # RunicApplicationPublisher, trusted on this runner only, stands in for a code-signing certificate.
+      - name: Package, install and open the MSIX
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $password = 'runic-packaging-test'
+          $certificate = New-SelfSignedCertificate -Type Custom -Subject 'CN=Runic Packaging Test' -KeyUsage DigitalSignature `
+            -CertStoreLocation Cert:\CurrentUser\My -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          Export-PfxCertificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\packaging-test.pfx" `
+            -Password (ConvertTo-SecureString $password -AsPlainText -Force) | Out-Null
+          Export-Certificate -Cert $certificate -FilePath "$env:RUNNER_TEMP\packaging-test.cer" | Out-Null
+          Import-Certificate -FilePath "$env:RUNNER_TEMP\packaging-test.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+          $env:RUNIC_SIGNING_PASSWORD = $password
+          node $env:PACKAGE windows --project $env:PROBE --output artifacts/package/windows --certificate "$env:RUNNER_TEMP\packaging-test.pfx"
+          if ($LASTEXITCODE -ne 0) { throw 'package.mjs failed' }
+
+          # The published WinExe outside the package: diagnostics reach a redirected standard error and the log.
+          $receipt = "$env:RUNNER_TEMP\unpackaged.json"
+          $probe = Start-Process -FilePath artifacts\package\windows\msix\Runic.Packaging.Probe.exe -Wait -PassThru `
+            -ArgumentList "runic-packaging-probe://receipt?path=$([uri]::EscapeDataString($receipt))" -RedirectStandardError "$env:RUNNER_TEMP\stderr.txt"
+          if ($probe.ExitCode -ne 0) { throw "The unpackaged probe exited with $($probe.ExitCode)" }
+          if (-not (Select-String -Path "$env:RUNNER_TEMP\stderr.txt" -Pattern 'packaging-probe' -Quiet)) { throw 'The WinExe wrote no diagnostic to the redirected standard error' }
+          bun eng/ci/packaging-probe-check.mjs $receipt windows unpackaged
+          if ($LASTEXITCODE -ne 0) { throw 'The unpackaged receipt failed' }
+
+          $msix = Get-ChildItem artifacts\package\windows\*.msix | Select-Object -First 1
+          Add-AppxPackage -Path $msix.FullName
+          try {
+            $receipt = "$env:RUNNER_TEMP\packaged.json"
+            Start-Process "runic-packaging-probe://receipt?path=$([uri]::EscapeDataString($receipt))"
+            for ($i = 0; $i -lt 60 -and -not (Test-Path $receipt); $i++) { Start-Sleep -Seconds 1 }
+            if (-not (Test-Path $receipt)) { throw 'Opening the URL scheme did not start the packaged probe' }
+            bun eng/ci/packaging-probe-check.mjs $receipt windows
+            if ($LASTEXITCODE -ne 0) { throw 'The packaged receipt failed' }
+          } finally {
+            Get-AppxPackage -Name org.runic.tests.PackagingProbe | Remove-AppxPackage
+          }
+      - name: Package and open the .app and its disk image
+        if: matrix.target == 'macos'
+        shell: bash
+        run: |
+          node "$PACKAGE" macos --project "$PROBE" --output artifacts/package/macos
+          app="artifacts/package/macos/Runic Packaging Probe.app"
+          codesign --verify --strict --verbose=2 "$app"
+          # Ad hoc, with the hardened runtime that notarization requires.
+          codesign --display --verbose=2 "$app" 2>&1 | grep -E '^CodeDirectory .*flags=0x[0-9a-f]+\(adhoc,runtime\)'
+          plutil -lint "$app/Contents/Info.plist"
+          test -f "$app/Contents/Resources/icon.icns"
+          test -f "$app/Contents/Resources/www/index.html"
+          test ! -e "$app/Contents/MacOS/www"
+          mount="$RUNNER_TEMP/probe-dmg"
+          hdiutil attach "artifacts/package/macos/Runic Packaging Probe-1.2.3.dmg" -mountpoint "$mount" -nobrowse -readonly
+          test -d "$mount/Runic Packaging Probe.app" && test -L "$mount/Applications"
+          codesign --verify --strict "$mount/Runic Packaging Probe.app"
+          hdiutil detach "$mount"
+          receipt="$RUNNER_TEMP/packaged.json"
+          open -W -n "$app" --args "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipt")"
+          bun eng/ci/packaging-probe-check.mjs "$receipt" macos
+      # The GNOME runtime and SDK come from Flathub, cached by their branch.
+      - name: Install flatpak-builder
+        if: matrix.target == 'flatpak'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder appstream desktop-file-utils
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: matrix.target == 'flatpak'
+        with:
+          path: |
+            ~/.local/share/flatpak/runtime
+            ~/.local/share/flatpak/repo
+          key: flatpak-gnome-50-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml') }}
+          restore-keys: flatpak-gnome-50-${{ runner.os }}-${{ runner.arch }}-
+      - name: Package, install and open the Flatpak
+        if: matrix.target == 'flatpak'
+        run: |
+          node "$PACKAGE" flatpak --project "$PROBE" --output artifacts/package/flatpak
+          flatpak install --user -y --noninteractive --bundle artifacts/package/flatpak/org.runic.tests.PackagingProbe.flatpak
+          entry=~/.local/share/flatpak/exports/share/applications/org.runic.tests.PackagingProbe.desktop
+          desktop-file-validate "$entry"
+          grep -qx 'MimeType=x-scheme-handler/runic-packaging-probe;' "$entry"
+          test -f ~/.local/share/flatpak/exports/share/icons/hicolor/scalable/apps/org.runic.tests.PackagingProbe.svg
+          receipts="$RUNNER_TEMP/receipts"
+          mkdir -p "$receipts"
+          flatpak run --user --filesystem="$receipts" org.runic.tests.PackagingProbe \
+            "runic-packaging-probe://receipt?path=$(node -p 'encodeURIComponent(process.argv[1])' "$receipts/packaged.json")"
+          bun eng/ci/packaging-probe-check.mjs "$receipts/packaged.json" flatpak
+          flatpak uninstall --user -y --noninteractive org.runic.tests.PackagingProbe
+
   verify:
     name: verify
     if: always()
-    needs: [plan, build, managed, web, engineering, framework-consumers, views, packages, package-consumers, wpf, templates, native, native-musl]
+    needs: [plan, build, managed, web, engineering, framework-consumers, views, packages, package-consumers, wpf, templates, native, native-musl, packaging]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -92,6 +92,21 @@ test('template and Svelte changes run their lanes without unrelated suites', () 
   assert.deepEqual(svelte.managed, ['platform'], 'templates holds Runic.Create.Tests');
 });
 
+test('the packaging job runs for the packaging recipes, their probe and the platform and Views packages only', () => {
+  for (const file of ['tools/Runic.Application.Templates/content/runic-app/packaging/package.mjs',
+    'tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs', 'tests/native/Runic.Packaging.Probe/Program.cs',
+    'packages/dotnet/Runic.Platform.Windows/WindowsPlatformProvider.cs', 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
+    'packages/dotnet/Runic.Application.Views/RunicWindowHost.cs']) {
+    const result = plan([file]);
+    assert.ok(runs(result, 'packaging'), file);
+  }
+  const packagingOnly = plan(['tools/Runic.Application.Templates/content/runic-app/packaging/linux/flatpak.yml']);
+  assert.ok(runs(packagingOnly, 'templates'), 'the recipes ship in the template package');
+  for (const file of ['tests/templates/Test-Templates.sh', 'tools/Runic.Application.Templates/content/runic-app/Program.cs',
+    'packages/web/svelte/src/index.ts'])
+    assert.ok(!runs(plan([file]), 'packaging'), file);
+});
+
 test('Windows administration changes run native checks', () => {
   const result = plan(['packages/dotnet/Runic.Platform.Administration.Windows/Inspection.cs']);
   assert.ok(runs(result, 'native'));

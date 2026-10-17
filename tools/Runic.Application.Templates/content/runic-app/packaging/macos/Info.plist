@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The bundle's Info.plist that package.mjs fills in from the project file (the fields in double braces). macOS sends an opened URL or
+     document to the running application as an Apple event. -->
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>{{ApplicationId}}</string>
+  <key>CFBundleName</key><string>{{ApplicationName}}</string>
+  <key>CFBundleDisplayName</key><string>{{ApplicationName}}</string>
+  <key>CFBundleExecutable</key><string>{{Executable}}</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>{{BundleVersion}}</string>
+  <key>CFBundleVersion</key><string>{{BundleVersion}}</string>
+  <key>CFBundleIconFile</key><string>icon</string>
+  <key>LSMinimumSystemVersion</key><string>15.0</string>
+  <key>NSHighResolutionCapable</key><true/>{{UrlSchemes}}
+  <!-- A document type the application opens:
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>Notes document</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSItemContentTypes</key><array><string>org.example.notes.document</string></array>
+    </dict>
+  </array>
+  and its UTExportedTypeDeclarations entry with UTTypeIdentifier, UTTypeConformsTo and the file extension. -->
+</dict>
+</plist>

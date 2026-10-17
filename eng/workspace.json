@@ -296,6 +296,18 @@
         "tests/web/svelte-package-consumers"
       ]
     },
+    "packaging": {
+      "dependsOn": [
+        "platform",
+        "application"
+      ],
+      "paths": [
+        "tools/Runic.Application.Templates/content/runic-app/packaging",
+        "tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs",
+        "tools/Runic.Application.Templates/content/runic-app/icons",
+        "tests/native/Runic.Packaging.Probe"
+      ]
+    },
     "templates": {
       "dependsOn": [
         "application",

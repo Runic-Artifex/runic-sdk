@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The application that CI packages with the runic-app template's packaging/package.mjs on each platform, then
+       installs and opens through its URL scheme. It opens no window: it writes a receipt of what the installed
+       package sees (see README.md). -->
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
+    <!-- As in the template: a Windows GUI application, whose diagnostics the template's DiagnosticsLog keeps. -->
+    <OutputType Condition="$(RuntimeIdentifier.StartsWith('win')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">WinExe</OutputType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- The template's identity properties, which package.mjs reads. The name has spaces, as a bundle name may. -->
+    <RunicApplicationId>org.runic.tests.PackagingProbe</RunicApplicationId>
+    <RunicApplicationName>Runic Packaging Probe</RunicApplicationName>
+    <Version>1.2.3</Version>
+    <Description>Checks Runic application packages</Description>
+    <PackageProjectUrl>https://github.com/Runic-Artifex/runic-sdk</PackageProjectUrl>
+    <RunicApplicationPublisher>CN=Runic Packaging Test</RunicApplicationPublisher>
+    <RunicApplicationUrlSchemes>runic-packaging-probe</RunicApplicationUrlSchemes>
+    <!-- The template's ApplicationIdentity.cs with its Desktop part. -->
+    <DefineConstants>$(DefineConstants);desktopHost</DefineConstants>
+    <ApplicationIcon>../../../tools/Runic.Application.Templates/content/runic-app/icons/icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="RunicApplicationId" Value="$(RunicApplicationId)" />
+    <AssemblyMetadata Include="RunicApplicationName" Value="$(RunicApplicationName)" />
+    <Compile Include="../../../tools/Runic.Application.Templates/content/runic-app/ApplicationIdentity.cs" Link="ApplicationIdentity.cs" />
+    <None Update="www/index.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../packages/dotnet/Runic.Application.Views/Runic.Application.Views.csproj" />
+    <ProjectReference Include="../../../packages/dotnet/Runic.Platform.Windows/Runic.Platform.Windows.csproj" />
+  </ItemGroup>
+</Project>

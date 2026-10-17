@@ -12,6 +12,16 @@
     <RunicApplicationId>__RUNIC_APPLICATION_ID__</RunicApplicationId>
     <RunicApplicationName>__RUNIC_APPLICATION_NAME__</RunicApplicationName>
     <Version>1.0.0</Version>
+<!--#if (packaging) -->
+    <!-- packaging/package.mjs reads these too. The summary software centers and the Start menu show. -->
+    <Description>A Runic desktop application</Description>
+    <PackageProjectUrl>https://example.com</PackageProjectUrl>
+    <!-- The MSIX package's publisher: the subject of the certificate that signs it. -->
+    <RunicApplicationPublisher>CN=Example</RunicApplicationPublisher>
+    <!-- URL schemes the application opens, separated by semicolons, such as the redirect of an OAuth sign-in. The
+         packages register them; see "Package it" in the README. -->
+    <RunicApplicationUrlSchemes></RunicApplicationUrlSchemes>
+<!--#endif -->
     <!-- The Explorer and taskbar icon; icons/ holds the same placeholder as SVG and PNG. -->
     <ApplicationIcon>icons/icon.ico</ApplicationIcon>
 <!--#if (nix) -->
