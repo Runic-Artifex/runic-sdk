@@ -69,8 +69,8 @@ echo probe > "$document"
 open -a "$app" "$document"
 wait_for_log
 echo "Open document: $(cat "$log")"
-# The temporary directory may arrive resolved, as /private/var/...; the file name is what matters.
-grep -q "^file:///.*/probe%20document\.txt$" "$log" || { echo "The document did not arrive at launch." >&2; exit 1; }
+# The temporary directory may arrive resolved, as /private/var/..., and Uri prints the space unescaped.
+grep -qE "^file:///.*/probe( |%20)document\.txt$" "$log" || { echo "The document did not arrive at launch." >&2; exit 1; }
 
 rm -f "$log"
 open "runic-open-probe://item?id=1"
