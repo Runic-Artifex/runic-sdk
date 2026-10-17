@@ -193,6 +193,25 @@ internal sealed class WindowServiceChecks
             "The unavailable trash accepted a relative path.");
     }
 
+    // File transfers are an application singleton: the managed engine on every operating system.
+    [Test, NotInParallel(Order = 35)]
+    public async Task PlatformServicesRegisterOneFileTransferEngineForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var transfers = provider.GetRequiredService<IDesktopFileTransfers>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(transfers, first.ServiceProvider.GetRequiredService<IDesktopFileTransfers>()),
+                    "A Window scope got its own file transfers.");
+            Require(transfers.GetType().FullName == "Runic.Platform.Runtime.FileTransferEngine",
+                $"The managed engine was not created: {transfers.GetType().FullName}");
+        }
+        var custom = DesktopFileTransfers.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopFileTransfers>(), custom), "AddRunicPlatformServices replaced the application's file transfers.");
+    }
+
     // The status icon is an application singleton like notifications. Creating it connects to nothing; only
     // ShowAsync registers with the desktop's status area.
     [Test, NotInParallel(Order = 30)]
@@ -258,7 +277,7 @@ internal sealed class WindowServiceChecks
     {
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
-            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash)];
+            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore), typeof(IDesktopTrash), typeof(IDesktopFileTransfers)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host, and
         // open requests need the instance and, on macOS, must exist before the first window.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance), typeof(IDesktopOpenRequests)];

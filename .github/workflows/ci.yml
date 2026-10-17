@@ -520,6 +520,13 @@ jobs:
         run: >-
           dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release --
           --treenode-filter "/*/*/PathWatcherTests/*" --timeout 3m --output detailed
+      # The managed job runs these cases on Linux; renames, attributes and path rules differ on Windows and macOS.
+      - name: Test file transfers on Windows and macOS
+        if: runner.os != 'Linux'
+        timeout-minutes: 10
+        run: >-
+          dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release --
+          --treenode-filter "/*/*/FileTransferTests/*" --timeout 3m --output detailed
       - name: Retain desktop contract diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

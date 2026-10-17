@@ -129,6 +129,29 @@ internal sealed class PathWatcherTests
         Require(removed.Contains(target), $"Expected the removed entry, got {Describe(removed)}.");
     }
 
+    // W310-003: a file manager watches the directory it shows while a transfer writes into it. The engine writes each
+    // file under a hidden temporary name and renames it into place, so a pattern for the real names sees each file
+    // once it is complete, and never a partial one.
+    [Test]
+    public async Task TransferredEntriesAreReported()
+    {
+        using var root = new TempDirectory();
+        var source = root.Directory("source");
+        root.File(Path.Combine("source", "report.txt"), new string('r', 50_000));
+        var shown = root.Directory("shown");
+        await using var context = new RunicModelContext();
+        var tester = new RunicPathWatchTester();
+        var target = RunicWatchTarget.Directory(shown, "*.txt");
+        using var watcher = RunicPathWatcher.Start(context, [target], _ => { }, options: tester.Options);
+
+        var result = await Runic.Platform.Runtime.LocalFileTransfers.Create().CopyAsync(
+            new Runic.Platform.FileTransferRequest([Path.Combine(source, "report.txt")], shown));
+        Require(result is Runic.Platform.PlatformResult<Runic.Platform.FileTransferSummary>.Success, $"The copy failed: {result}.");
+        var added = await EventAsync(tester, watcher);
+        Require(added.Contains(target), $"Expected the copied entry, got {Describe(added)}.");
+        Require(new FileInfo(Path.Combine(shown, "report.txt")).Length == 50_000, "The reported entry is incomplete.");
+    }
+
     // #302: a program that updates a record atomically writes a temporary file and renames it over the record. The
     // directory's entries keep their names, so Directory does not report it; Files does.
     [Test]
