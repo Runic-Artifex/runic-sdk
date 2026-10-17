@@ -330,19 +330,19 @@ pair is supported only when Runic CI builds and runs that host's native layer on
 it. "Packaged, not CI-verified" ships and is best effort, outside the promise;
 "unsupported" means Runic ships no native assets for it.
 
-During 0.9, CI is planned to cover `linux-arm64` and `win-arm64` on hosted Arm
-runners and the musl RIDs in an Alpine container, which makes them supported
-where the host ships native assets. The planned 1.0 status:
+CI covers `linux-arm64` and `win-arm64` on hosted Arm runners and the musl RIDs
+in an Alpine container, so they are supported where the host ships native
+assets. The 1.0 status:
 
 | RID | Runic Desktop | CS-WebUI (preview) | WPF |
 | --- | --- | --- | --- |
 | `linux-x64` | Supported | Supported | n/a |
 | `win-x64` | Supported | Supported | Supported |
 | `osx-arm64` | Supported | Supported | n/a |
-| `linux-arm64` | Supported (planned for 0.9) | Supported (planned for 0.9) | n/a |
-| `win-arm64` | Supported (planned for 0.9) | Unsupported | Supported (planned for 0.9) |
-| `linux-musl-x64` | Supported (planned for 0.9) | Unsupported | n/a |
-| `linux-musl-arm64` | Supported (planned for 0.9) | Unsupported | n/a |
+| `linux-arm64` | Supported | Supported | n/a |
+| `win-arm64` | Supported | Unsupported | Supported |
+| `linux-musl-x64` | Supported | Unsupported | n/a |
+| `linux-musl-arm64` | Supported | Unsupported | n/a |
 | `osx-x64` | Packaged, best effort | Packaged, best effort | n/a |
 
 - CS-WebUI ships no native library for musl or `win-arm64`. Publish for a glibc
@@ -361,7 +361,7 @@ Minimum operating systems and components, from `eng/support.json`:
 | macOS | Runic Desktop, CS-WebUI | macOS 15 |
 | Linux (glibc) | Runic Desktop | GTK 3 and WebKitGTK 4.1, or GTK 4.12 and WebKitGTK 6.0 with `Runic.Desktop.Gtk4` |
 | Linux (glibc) | CS-WebUI | glibc 2.34; GTK 3 and WebKitGTK 4.1 when no Chromium-family browser is installed |
-| Linux (musl) | Runic Desktop | The Alpine releases .NET 10 supports, with GTK 3 and WebKitGTK 4.1 (planned for 0.9) |
+| Linux (musl) | Runic Desktop | The Alpine releases .NET 10 supports, with GTK 3 and WebKitGTK 4.1 (`Runic.Desktop.Gtk4` is not CI-verified on musl) |
 
 Runic supports the Linux distributions that .NET 10 supports and that provide
 these libraries.

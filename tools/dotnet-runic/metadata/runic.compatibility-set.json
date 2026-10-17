@@ -225,23 +225,23 @@
           },
           {
             "rid": "linux-arm64",
-            "status": "packaged-unverified",
-            "reason": "Uses the system GTK and WebKitGTK libraries; no arm64 Linux CI runner."
+            "status": "ci-verified",
+            "reason": "Covered by the Native / linux-arm64 CI job."
           },
           {
             "rid": "linux-musl-x64",
-            "status": "packaged-unverified",
-            "reason": "Uses the system GTK and WebKitGTK libraries; no musl CI runner."
+            "status": "ci-verified",
+            "reason": "Covered by the Native / linux-musl-x64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1."
           },
           {
             "rid": "linux-musl-arm64",
-            "status": "packaged-unverified",
-            "reason": "Uses the system GTK and WebKitGTK libraries; no musl CI runner."
+            "status": "ci-verified",
+            "reason": "Covered by the Native / linux-musl-arm64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1."
           },
           {
             "rid": "win-arm64",
-            "status": "packaged-unverified",
-            "reason": "Ships the arm64 WebView2 loader; no Windows on Arm CI runner."
+            "status": "ci-verified",
+            "reason": "Covered by the Native / win-arm64 CI job."
           },
           {
             "rid": "osx-x64",
@@ -272,8 +272,8 @@
           },
           {
             "rid": "linux-arm64",
-            "status": "packaged-unverified",
-            "reason": "CsWebUi.Native ships a glibc linux-arm64 library; no arm64 Linux CI runner."
+            "status": "ci-verified",
+            "reason": "Covered by the Native / linux-arm64 CI job."
           },
           {
             "rid": "linux-musl-x64",
@@ -364,6 +364,16 @@
         "component": "GTK 3 and WebKitGTK 4.1",
         "minimum": null,
         "note": "Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed."
+      },
+      {
+        "id": "alpine",
+        "os": "linux",
+        "hosts": [
+          "desktop"
+        ],
+        "component": "Alpine Linux (musl), an Alpine release that .NET 10 supports",
+        "minimum": null,
+        "note": "For the linux-musl RIDs, with Alpine's gtk+3.0 and webkit2gtk-4.1 packages. CI runs Alpine 3.22 with WebKit's sandbox enabled; Runic.Desktop.Gtk4 is not CI-verified on musl."
       },
       {
         "id": "gtk4",

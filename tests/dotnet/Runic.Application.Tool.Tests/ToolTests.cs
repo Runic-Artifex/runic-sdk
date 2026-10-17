@@ -1412,14 +1412,16 @@ internal sealed class ToolTests
         DoctorReport csWebUi = InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, "win-arm64", runtime);
         Equal(DoctorStatus.Failure, Check(csWebUi, "target-rid").Status);
         Contains(Check(csWebUi, "target-rid").Message, "CS-WebUI");
-        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "win-arm64", runtime), "target-rid").Status);
+        // Runic Desktop on win-arm64 and musl is CI-verified; osx-x64 is packaged but not CI-verified.
+        Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "win-arm64", runtime), "target-rid").Status);
+        Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, "osx-x64", runtime), "target-rid").Status);
         foreach (string musl in new[] { "linux-musl-x64", "linux-musl-arm64" })
         {
             DoctorReport cswebuiMusl = InspectTarget(desktop with { Host = RunicViewsHost.CsWebUi }, musl, runtime);
             Equal(DoctorStatus.Failure, Check(cswebuiMusl, "target-rid").Status);
             Contains(Check(cswebuiMusl, "target-rid").Message, "glibc");
             SequenceEqual(["target-rid"], TargetCheckIds(cswebuiMusl));
-            Equal(DoctorStatus.Warning, Check(InspectTarget(desktop, musl, runtime), "target-rid").Status);
+            Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, musl, runtime), "target-rid").Status);
         }
         Equal(DoctorStatus.Pass, Check(InspectTarget(desktop, "osx-arm64", runtime), "target-rid").Status);
     }
@@ -1453,7 +1455,7 @@ internal sealed class ToolTests
                 else Contains(check.Message, support.CiVerifiedMeaning);
             }
         }
-        DoctorCheck unknownHost = Check(InspectTarget(desktop with { Host = RunicViewsHost.Unknown }, "win-arm64", runtime), "target-rid");
+        DoctorCheck unknownHost = Check(InspectTarget(desktop with { Host = RunicViewsHost.Unknown }, "osx-x64", runtime), "target-rid");
         Equal(DoctorStatus.Warning, unknownHost.Status);
         Contains(unknownHost.Message, "most permissive host");
     }
@@ -1845,7 +1847,8 @@ internal sealed class ToolTests
         DoctorCheck neither = Check(InspectTarget(csWebUi, "linux-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-presentation");
         Equal(DoctorStatus.Warning, neither.Status);
         Contains(neither.Remediation ?? string.Empty, "WebKitGTK 4.1");
-        Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi, "linux-arm64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
+        Equal(DoctorStatus.Pass, Check(InspectTarget(csWebUi, "linux-arm64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
+        Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi, "osx-x64", new FakeDoctorRuntime(authority.Toolchain)), "target-rid").Status);
         Equal(DoctorStatus.Warning, Check(InspectTarget(csWebUi with { Host = RunicViewsHost.Unknown }, "linux-x64",
             new FakeDoctorRuntime(authority.Toolchain)), "target-presentation").Status);
     }

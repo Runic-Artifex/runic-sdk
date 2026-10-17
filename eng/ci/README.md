@@ -60,6 +60,40 @@ The launcher currently supports Linux with an amd64 runner image. Windows x64 an
 macOS Apple Silicon jobs remain native GitHub checks. A passing local Linux run
 is not evidence that the other operating systems passed. Intel macOS is excluded.
 
+## Native jobs per runtime identifier
+
+The `native` matrix runs on `linux-x64`, `linux-arm64` (`ubuntu-24.04-arm`),
+`win-x64`, `win-arm64` (`windows-11-arm`) and `osx-arm64`; `native-musl` runs
+`linux-musl-x64` and `linux-musl-arm64`. These are the CI-verified RIDs of
+[`eng/support.json`](../support.json), and `eng/support.test.mjs` keeps them equal.
+Matrix entries with `cswebui: false` (`win-arm64`) skip the CS-WebUI window probes,
+because CS-WebUI ships no native library there; `Runic.Platform.Administration.Windows`
+and the IDE reload check run on Windows x64 only. So does the notification-area status
+icon: the `windows-11-arm` image's Explorer refuses `Shell_NotifyIcon(NIM_ADD)` with
+`E_FAIL`, also from a plain P/Invoke outside Runic. The WPF job runs its hosts on
+`win-x64` and `win-arm64`, and the architecture-independent generator and packed
+consumer checks on `win-x64`.
+
+`native-musl` checks out and caches on the runner, then runs
+`eng/ci/native-musl.sh` in a digest-pinned Alpine container, because GitHub cannot
+run JavaScript actions in Alpine containers on arm64 runners. As root, the script
+installs Alpine's GTK 3 and WebKitGTK 4.1 and the SDK from `global.json`, then runs
+the WebView smoke with JIT and NativeAOT and the Linux platform, portal, polkit and
+runtime checks as a user with the checkout owner's uid, as on the glibc runners. The keyboard driver stays on the glibc jobs: its zoom checks read
+`devicePixelRatio`, which includes the page zoom in Ubuntu's WebKitGTK 2.52 but not
+in Alpine's 2.48. WebKit's
+bubblewrap sandbox stays enabled: the container runs without Docker's seccomp filter,
+and the runner allows unprivileged user namespaces. act provides no container engine
+inside its jobs, so `bun run ci` skips that step; run it directly instead:
+
+```sh
+podman run --rm --init --userns=keep-id --user root --security-opt seccomp=unconfined \
+  --shm-size 1g -v "$PWD:$PWD" -w "$PWD" -e NUGET_PACKAGES="$PWD/.cache/nuget" \
+  <ALPINE_IMAGE from ci.yml> sh eng/ci/native-musl.sh linux-musl-x64
+```
+
+The container writes its build outputs into the checkout's `bin`, `obj` and `artifacts`.
+
 ## Affected-only pull requests
 
 The `plan` job runs `eng/ci/plan.mjs`. On a pull request it diffs GitHub's merge
@@ -105,7 +139,7 @@ Projects in `RunicSdk.Core.slnx` commit `packages.lock.json`
 Publishing with a RuntimeIdentifier or NativeAOT changes the package graph of every
 referenced project, so those restores are not locked; `Directory.Packages.props` still
 pins their direct versions. The `core` NuGet cache key hashes the lock files and package
-props; native jobs use a separate `native` key. Both fall back to the latest cache for
+props; native jobs use a separate `native` key, and `native-musl` a `native-musl-<rid>` key. Each falls back to the latest cache for
 the same OS and architecture. Web and Svelte consumer jobs skip NuGet entirely.
 
 ## Source snapshots and artifacts

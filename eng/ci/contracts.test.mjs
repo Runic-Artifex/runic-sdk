@@ -210,15 +210,24 @@ test('local checks are focused and Linux workflow selection leaves native OS cov
   assert.equal(args[args.indexOf('--directory') + 1], '/snapshot');
   assert.equal(args[args.indexOf('--matrix') + 1], 'os:ubuntu-24.04');
   assert.deepEqual(args.slice(-2), ['--job', 'templates']);
-  for (const id of ['native'])
-    assert.deepEqual(workflow.jobs[id].strategy.matrix.include.map(item => item.rid), ['linux-x64', 'win-x64', 'osx-arm64']);
+  // The Arm entries run on runners act does not map, so local runs keep linux-x64.
+  assert.deepEqual(workflow.jobs.native.strategy.matrix.include.map(item => [item.rid, item.os]),
+    [['linux-x64', 'ubuntu-24.04'], ['linux-arm64', 'ubuntu-24.04-arm'], ['win-x64', 'windows-latest'], ['win-arm64', 'windows-11-arm'], ['osx-arm64', 'macos-26']]);
+  // act passes no container engine into its jobs, so the musl container step does not run there.
+  const musl = workflow.jobs['native-musl'];
+  assert.deepEqual(musl.strategy.matrix.include.map(item => [item.rid, item.os]),
+    [['linux-musl-x64', 'ubuntu-24.04'], ['linux-musl-arm64', 'ubuntu-24.04-arm']]);
+  const container = musl.steps.find(step => step.run?.includes('eng/ci/native-musl.sh'));
+  assert.equal(container?.if, '${{ !env.ACT }}');
+  assert.match(container.run, /docker run .*--security-opt seccomp=unconfined/s);
+  assert.match(musl.env.ALPINE_IMAGE, /^docker\.io\/library\/alpine:3\.22@sha256:[0-9a-f]{64}$/);
 });
 
 test('the Windows native job scales the example smoke timeouts (#70)', () => {
   const { env, strategy } = workflow.jobs.native;
   assert.equal(env.RUNIC_SMOKE_TIMEOUT_SCALE, "${{ matrix.smoke-timeout-scale || '1' }}");
   const scales = Object.fromEntries(strategy.matrix.include.map(item => [item.rid, item['smoke-timeout-scale']]));
-  assert.deepEqual(scales, { 'linux-x64': undefined, 'win-x64': '2', 'osx-arm64': undefined });
+  assert.deepEqual(scales, { 'linux-x64': undefined, 'linux-arm64': undefined, 'win-x64': '2', 'win-arm64': '2', 'osx-arm64': undefined });
 });
 
 test('template lanes cover every framework once and run the creator check in one lane', () => {
@@ -267,8 +276,15 @@ test('remote actions are pinned to a commit with their release tag', () => {
 // W240-005: the WPF hosts run in a Windows desktop session, then their packed consumer.
 test('the WPF lane runs the STA tests and the packed consumer on Windows', () => {
   const job = workflow.jobs.wpf;
-  assert.equal(job['runs-on'], 'windows-2025');
+  assert.equal(job['runs-on'], '${{ matrix.os }}');
+  assert.deepEqual(job.strategy.matrix.include, [{ os: 'windows-2025', rid: 'win-x64' }, { os: 'windows-11-arm', rid: 'win-arm64' }]);
   assert.equal(job['timeout-minutes'], 30);
+  // win-arm64 runs the WPF hosts; the architecture-independent generator and packed-consumer steps run on win-x64.
+  const hosts = ['dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release',
+    'dotnet run --project tests/dotnet/Runic.Application.Views.Wpf.Windows.Tests -c Release'];
+  for (const step of job.steps.filter(step => step.run))
+    assert.equal(step.if, hosts.includes(step.run) || step.run.includes('HybridNotes.WindowsSmoke') || step.run.includes('source-state.mjs check')
+      ? undefined : "matrix.rid == 'win-x64'", step.name);
   const runs = job.steps.map(step => step.run).filter(Boolean);
   const tests = runs.indexOf('dotnet run --project tests/dotnet/Runic.Navigation.Wpf.Tests -c Release');
   const consumer = runs.indexOf('bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs');

@@ -74,7 +74,7 @@ export function webTests() {
 // Jobs that always run: `plan`, `build` (which also checks generated files) and
 // `engineering` (workflow lint, contracts, Markdown links). `verify` accepts a
 // skipped job only when it is listed here and the plan skipped it.
-export const skippableJobs = ["managed", "web", "framework-consumers", "views", "packages", "package-consumers", "wpf", "templates", "native"];
+export const skippableJobs = ["managed", "web", "framework-consumers", "views", "packages", "package-consumers", "wpf", "templates", "native", "native-musl"];
 
 const owner = file => Object.entries(workspace.components)
   .find(([, component]) => component.paths.some(path => file === path || file.startsWith(`${path}/`)))?.[0];
@@ -110,6 +110,8 @@ export function planFor({ full, components }) {
     // Desktop contracts, native windows, platform services, NativeAOT Views apps and Windows administration.
     native: full || has("desktop", "platform", "application", "examples", "administration-windows"),
   };
+  // The musl RIDs run the same native checks in Alpine.
+  run["native-musl"] = run.native;
   return {
     full,
     components: full ? Object.keys(workspace.components) : components,

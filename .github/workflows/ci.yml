@@ -335,10 +335,20 @@ jobs:
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
   wpf:
-    name: WPF navigation
+    name: WPF navigation / ${{ matrix.rid }}
     needs: [plan, packages]
     if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'wpf') }}
-    runs-on: windows-2025
+    # Both run the WPF hosts. Bridge generation and the packed consumers do not
+    # depend on the architecture, so only win-x64 runs them.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            rid: win-x64
+          - os: windows-11-arm
+            rid: win-arm64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -363,6 +373,7 @@ jobs:
       # #269 and #270 were reported on Windows: generate beside WPF stand-ins and
       # ASP.NET Core types, and from the packed packages, there too.
       - name: Test Bridge generation beside WPF and ASP.NET Core types
+        if: matrix.rid == 'win-x64'
         shell: bash
         run: |
           dotnet run --project tests/dotnet/Runic.Application.Testing.Tests -c Release -- --treenode-filter "/*/*/CodegenDiagnosticsTests/*Framework*"
@@ -377,14 +388,18 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
       - name: Verify WPF Bridge generation, single-project and split, from the packed packages
+        if: matrix.rid == 'win-x64'
         run: bun tests/fixtures/application/wpf-bridge-consumer/package-smoke.mjs
       - name: Verify the packed WPF consumer pulls in only Runic.Navigation
+        if: matrix.rid == 'win-x64'
         run: bun tests/fixtures/navigation/wpf-consumer/package-smoke.mjs
       # W240-007: the reference app and its scenario tests, built from the packed packages only.
       - name: Test the WPF navigation example from the packed packages
+        if: matrix.rid == 'win-x64'
         run: bun examples/wpf-navigation/package-smoke.mjs
       # W250-037: the ReactiveUI variant of the same app, built from source with the ReactiveUI adapter.
       - name: Test the ReactiveUI WPF navigation example
+        if: matrix.rid == 'win-x64'
         run: dotnet run --project examples/wpf-navigation/Tests.ReactiveUI -c Release
       - name: Check generated files and lockfile
         run: bun eng/ci/source-state.mjs check
@@ -439,20 +454,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # cswebui: whether CS-WebUI ships a native library for the RID, so the job runs its
+          # window probes (eng/support.json).
           - os: ubuntu-24.04
             rid: linux-x64
             provider: Linux
             extension: ""
+            cswebui: true
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            provider: Linux
+            extension: ""
+            cswebui: true
           - os: windows-latest
             rid: win-x64
             provider: Windows
             extension: .exe
+            cswebui: true
             # Cold Chromium and Node timers stall on Windows runners (#70).
+            smoke-timeout-scale: "2"
+          - os: windows-11-arm
+            rid: win-arm64
+            provider: Windows
+            extension: .exe
+            cswebui: false
             smoke-timeout-scale: "2"
           - os: macos-26
             rid: osx-arm64
             provider: MacOS
             extension: ""
+            cswebui: true
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     env:
@@ -545,12 +576,12 @@ jobs:
       - name: Verify GTK4 and portal NativeAOT consumers
         if: runner.os == 'Linux'
         run: |
-          dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
+          dotnet publish tests/native/Runic.Desktop.Gtk4.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/gtk4-aot
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --event-loop
           GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a tests/native/Runic.Desktop.WebViewSmoke/keyboard-driver.sh artifacts/keyboard/gtk4-aot artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke
           env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 GSETTINGS_BACKEND=memory artifacts/gtk4-aot/Runic.Desktop.Gtk4.Smoke --no-display
-          dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
+          dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/portal-aot
           # The run without a filter keeps the portable cases covered under NativeAOT.
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
@@ -568,7 +599,7 @@ jobs:
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
         run: |
-          dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
+          dotnet publish tests/dotnet/Runic.Platform.Linux.Polkit.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/polkit-aot
           artifacts/polkit-aot/Runic.Platform.Linux.Polkit.Tests
       - name: Exercise native window close interception on Windows and macOS
         if: runner.os != 'Linux'
@@ -576,16 +607,17 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+      # Runic.Platform.Administration.Windows supports Windows x64 only (eng/release/README.md).
       - name: Verify Windows administration native inspection
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 5
         run: dotnet run --project tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -p:RunicApplicationBuildMode=Verification
       - name: Publish Windows administration inspection with NativeAOT
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 10
         run: dotnet publish tests/dotnet/Runic.Platform.Administration.Windows.Tests -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:RunicApplicationBuildMode=Verification -p:IlcTreatWarningsAsErrors=true -o artifacts/administration-aot
       - name: Verify NativeAOT Windows administration inspection
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 5
         run: ./artifacts/administration-aot/Runic.Platform.Administration.Windows.Tests.exe
       # Privileged actions (W300-025). The NativeElevation cases run the real pipe, its DACL, the client and server
@@ -602,7 +634,7 @@ jobs:
           $uac = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
           $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
           Write-Host "Administrators enabled: $($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)); EnableLUA: $($uac.EnableLUA); ConsentPromptBehaviorAdmin: $($uac.ConsentPromptBehaviorAdmin)"
-          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r win-x64 -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/elevation-helper
+          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r ${{ matrix.rid }} -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/elevation-helper
           $helper = Join-Path $env:ProgramFiles 'Runic Elevation Smoke'
           New-Item -ItemType Directory -Force $helper | Out-Null
           Copy-Item artifacts/elevation-helper/Runic.Elevation.Smoke.exe $helper
@@ -615,7 +647,7 @@ jobs:
           Copy-Item tests/native/Runic.Elevation.Smoke/bin/Release/net10.0/* $jit -Recurse
           # And a self-contained single-file JIT publish, with nothing beside it: only its image's bundle marker shows
           # what it is. RunicElevatedHelper=false lets it publish without NativeAOT.
-          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:RunicElevatedHelper=false -o artifacts/elevation-singlefile
+          dotnet publish tests/native/Runic.Elevation.Smoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishSingleFile=true -p:RunicElevatedHelper=false -o artifacts/elevation-singlefile
           $singleFile = Join-Path $env:ProgramFiles 'Runic Elevation Smoke SingleFile'
           New-Item -ItemType Directory -Force $singleFile | Out-Null
           Copy-Item artifacts/elevation-singlefile/Runic.Elevation.Smoke.exe $singleFile
@@ -626,7 +658,7 @@ jobs:
           icacls $helper
           icacls (Join-Path $helper 'Runic.Elevation.Smoke.exe')
           dotnet build tests/dotnet/Runic.Platform.Windows.Elevation.Tests -c Release
-          dotnet publish tests/dotnet/Runic.Platform.Windows.Elevation.Tests -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/elevation-aot
+          dotnet publish tests/dotnet/Runic.Platform.Windows.Elevation.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/elevation-aot
           foreach ($tests in @('tests/dotnet/Runic.Platform.Windows.Elevation.Tests/bin/Release/net10.0/Runic.Platform.Windows.Elevation.Tests.exe', 'artifacts/elevation-aot/Runic.Platform.Windows.Elevation.Tests.exe')) {
             Write-Host "== $tests"
             & $tests --output detailed
@@ -675,13 +707,20 @@ jobs:
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeSettings]"
       # A real notification-area icon on the runner's desktop session, driven through its window's messages, and a
       # minimized window brought forward or flashed.
-      - name: Verify the Windows status icon and window presentation with JIT and NativeAOT
-        if: runner.os == 'Windows'
+      # The windows-11-arm image's Explorer has a taskbar but refuses Shell_NotifyIcon(NIM_ADD) with E_FAIL, also
+      # from a plain P/Invoke outside Runic, so the status icon runs on Windows x64 only.
+      - name: Verify the Windows status icon with JIT and NativeAOT
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 3
         shell: bash
         run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativeStatusIcon]" --output detailed
+      - name: Verify Windows window presentation with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        shell: bash
+        run: |
           dotnet tests/dotnet/Runic.Platform.Windows.Tests/bin/Release/net10.0/Runic.Platform.Windows.Tests.dll --treenode-filter "/*/*/*/*[Category=NativePresentation]" --output detailed
           ./artifacts/clipboard-aot/Runic.Platform.Windows.Tests.exe --treenode-filter "/*/*/*/*[Category=NativePresentation]" --output detailed
       - name: Verify NativeAOT GTK clipboard
@@ -761,12 +800,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          dotnet publish tests/native/Runic.Desktop.WebViewSmoke -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/webview-aot
+          dotnet publish tests/native/Runic.Desktop.WebViewSmoke -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -p:TrimmerSingleWarn=false -o artifacts/webview-aot
           test ! -e artifacts/webview-aot/WebView2Loader.dll
           mkdir artifacts/webview-exe-only
           cp artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe artifacts/webview-exe-only/
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe)
+      # FirstWindow and the probes use the CS-WebUI host.
       - name: Publish Window and View application with NativeAOT
+        if: matrix.cswebui
         shell: bash
         run: |
           dotnet publish examples/first-window/FirstWindow.csproj -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/views-aot
@@ -786,8 +827,9 @@ jobs:
             ./artifacts/views-probes-aot/CsWebUiWindowProbes${{ matrix.extension }} --probe-show-failure
             RUNIC_FIRST_WINDOW_EXECUTABLE="$(node -p 'require("node:path").resolve("artifacts/views-aot/FirstWindow${{ matrix.extension }}")')" node examples/first-window/browser-smoke.mjs
           fi
+      # Development tooling, independent of the architecture: Windows x64 runs it.
       - name: Verify Windows View IDE launch and framework reload
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         timeout-minutes: 10
         run: |
@@ -797,10 +839,54 @@ jobs:
           node examples/notes-reactive-views/ide-host-smoke.mjs
           RUNIC_HMR_FRONTEND=angular RUNIC_HMR_VIA_IDE=1 node examples/notes-reactive-views/hmr-smoke.mjs
 
+  # The native checks for the musl RIDs, in Alpine. GitHub cannot run JavaScript actions in an
+  # Alpine container on arm64 runners, so the runner checks out and caches, and
+  # eng/ci/native-musl.sh installs the toolchain and runs the checks in `docker run`.
+  native-musl:
+    name: Native / ${{ matrix.rid }}
+    needs: plan
+    if: ${{ !contains(fromJSON(needs.plan.outputs.skip), 'native-musl') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            rid: linux-musl-x64
+          - os: ubuntu-24.04-arm
+            rid: linux-musl-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    env:
+      # Alpine 3.22, the oldest Alpine release that .NET 10 supports beyond November 2026.
+      ALPINE_IMAGE: docker.io/library/alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/nuget
+          key: nuget-native-musl-${{ matrix.rid }}-${{ hashFiles('**/packages.lock.json', '**/packages.*.lock.json', '**/Directory.Packages.props', 'global.json', 'NuGet.config') }}
+          restore-keys: nuget-native-musl-${{ matrix.rid }}-
+      # Ubuntu denies unconfined processes, such as the container's, capabilities in new user
+      # namespaces; WebKitGTK's bubblewrap sandbox needs them. The container keeps Docker's
+      # namespaces and drops only the seccomp filter that blocks unshare.
+      # act passes no container engine socket into its jobs; eng/ci/README.md gives the local command.
+      - name: Run the native checks in Alpine
+        if: ${{ !env.ACT }}
+        run: |
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          docker run --rm --init --security-opt seccomp=unconfined --security-opt apparmor=unconfined --shm-size 1g \
+            -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" \
+            -e NUGET_PACKAGES -e GITHUB_ACTIONS \
+            "$ALPINE_IMAGE" sh eng/ci/native-musl.sh "$RID"
+        env:
+          RID: ${{ matrix.rid }}
+
   verify:
     name: verify
     if: always()
-    needs: [plan, build, managed, web, engineering, framework-consumers, views, packages, package-consumers, wpf, templates, native]
+    needs: [plan, build, managed, web, engineering, framework-consumers, views, packages, package-consumers, wpf, templates, native, native-musl]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
