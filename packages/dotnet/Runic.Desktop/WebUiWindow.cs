@@ -102,6 +102,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
     private uint? _minimumHeight;
     private int? _x;
     private int? _y;
+    private DesktopWindowPlacement? _placement;
     private string? _iconFile;
     private WebUiBrowser _currentBrowser;
     private int _requestedPort;
@@ -613,6 +614,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 await ReleaseClosedEmbeddedHostAsync().ConfigureAwait(false);
                 host = CreateEmbeddedHost();
                 host.Closed += EmbeddedHostClosed;
+                Volatile.Write(ref _embeddedWindowState, null);
+                host.StateChanged += EmbeddedHostStateChanged;
                 _embeddedHost = host;
                 _currentBrowser = WebUiBrowser.WebView;
                 connection = BeginConnection();
@@ -625,6 +628,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
+                    host.StateChanged -= EmbeddedHostStateChanged;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
                     await host.DisposeAsync().ConfigureAwait(false);
@@ -679,6 +683,8 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 ReleaseClosedEmbeddedHostAsync().GetAwaiter().GetResult();
                 host = CreateEmbeddedHost();
                 host.Closed += EmbeddedHostClosed;
+                Volatile.Write(ref _embeddedWindowState, null);
+                host.StateChanged += EmbeddedHostStateChanged;
                 _embeddedHost = host;
                 _currentBrowser = WebUiBrowser.WebView;
                 connection = BeginConnection();
@@ -692,6 +698,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 {
                     StopCloseConfirmation();
                     host.Closed -= EmbeddedHostClosed;
+                    host.StateChanged -= EmbeddedHostStateChanged;
                     _embeddedHost = null;
                     _currentBrowser = WebUiBrowser.NoBrowser;
                     host.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -1256,6 +1263,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _x = null;
         _y = null;
         _centered = false;
+        _placement = null;
         _highContrast = null;
         _iconFile = null;
         _profileConfigured = false;
@@ -1264,6 +1272,30 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         _proxyServer = null;
         _customBrowserArguments = [];
         _customBrowserParameters = null;
+    }
+
+    // The saved placement the next embedded window restores; ApplyWindowOptions already set its size and position.
+    internal void SetPlacement(DesktopWindowPlacement placement) => _placement = placement;
+
+    // The embedded window's last reported state, kept after it closes, and each change, from the current host only.
+    internal DesktopWindowState? EmbeddedWindowState => Volatile.Read(ref _embeddedHost)?.State ?? Volatile.Read(ref _embeddedWindowState);
+
+    internal event Action<object, DesktopWindowState>? EmbeddedWindowStateChanged;
+
+    // Identifies the current embedded window, so a DesktopWindow ignores the state of a later replacement.
+    internal object? EmbeddedHostIdentity => Volatile.Read(ref _embeddedHost);
+
+    internal Microsoft.Extensions.Logging.ILogger? Logger => _runtimeOptions?.Logger;
+
+    private DesktopWindowState? _embeddedWindowState;
+
+    private void EmbeddedHostStateChanged(object? sender, EventArgs eventArgs)
+    {
+        if (sender is IWebUiEmbeddedHost host && ReferenceEquals(Volatile.Read(ref _embeddedHost), host) && host.State is { } state)
+        {
+            Volatile.Write(ref _embeddedWindowState, state);
+            EmbeddedWindowStateChanged?.Invoke(host, state);
+        }
     }
 
     internal ValueTask ResizePresentationAsync(uint width, uint height, CancellationToken cancellationToken)
@@ -1569,6 +1601,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             X = _x,
             Y = _y,
             Centered = _centered,
+            Placement = _placement,
             Resizable = _resizable,
             Frameless = _frameless,
             Transparent = _transparent,
@@ -1642,6 +1675,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
             {
                 StopCloseConfirmation();
                 closed.Closed -= EmbeddedHostClosed;
+                closed.StateChanged -= EmbeddedHostStateChanged;
                 _currentBrowser = WebUiBrowser.NoBrowser;
                 await closed.DisposeAsync().ConfigureAwait(false);
             }
@@ -1666,6 +1700,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
                 }
                 StopCloseConfirmation();
                 host.Closed -= EmbeddedHostClosed;
+                host.StateChanged -= EmbeddedHostStateChanged;
                 _currentBrowser = WebUiBrowser.NoBrowser;
                 await host.DisposeAsync().ConfigureAwait(false);
             }
@@ -1803,6 +1838,7 @@ internal sealed class WebUiWindow : IDisposable, IAsyncDisposable
         if (embeddedHost is not null)
         {
             embeddedHost.Closed -= EmbeddedHostClosed;
+            embeddedHost.StateChanged -= EmbeddedHostStateChanged;
             try
             {
                 await embeddedHost.CloseAsync().ConfigureAwait(false);

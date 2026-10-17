@@ -76,6 +76,24 @@ public interface IDesktopNativeDispatchWindowHost : IDesktopWindowHost
     ValueTask DispatchNativeAsync(Action action, CancellationToken cancellationToken);
 }
 
+/// <summary>An optional native host that reports its window's bounds, maximized and full-screen state.</summary>
+/// <remarks>
+/// Runic Desktop reads <see cref="State"/> when <see cref="StateChanged"/> is raised and passes it to
+/// <see cref="DesktopWindow.State"/> and <see cref="DesktopWindow.StateChanged"/>. Report
+/// <see cref="DesktopWindowCapabilities.State"/> in <see cref="IDesktopWindowHost.Capabilities"/> and apply
+/// <see cref="DesktopWindowHostOptions.Placement"/> when opening. Use the units of the host's own
+/// <see cref="IDesktopWindowHost.MoveAsync"/> and <see cref="IDesktopWindowHost.ResizeAsync"/>.
+/// </remarks>
+public interface IDesktopWindowStateHost : IDesktopWindowHost
+{
+    /// <summary>Gets the window's current state, or <see langword="null"/> before the window has reported one.</summary>
+    /// <remarks>Keep the last state after the window closes. Called from any thread; keep it cheap.</remarks>
+    DesktopWindowState? State { get; }
+
+    /// <summary>Occurs after <see cref="State"/> has changed. It may be raised on the window's owning thread.</summary>
+    event EventHandler? StateChanged;
+}
+
 /// <summary>Hosts one Desktop surface in a platform-native window.</summary>
 /// <remarks>
 /// Runic Desktop creates one host per opened window, calls its members from arbitrary threads, and disposes it
@@ -211,6 +229,18 @@ public sealed record DesktopWindowHostOptions
     /// <summary>Gets whether the window opens centered on the screen.</summary>
     public bool Centered { get; init; }
 
+    /// <summary>
+    /// Gets the saved placement the window restores, from <see cref="DesktopWindowOptions.Placement"/>, or
+    /// <see langword="null"/>. <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/> and <see cref="Y"/> already
+    /// hold its values.
+    /// </summary>
+    /// <remarks>
+    /// A host reporting <see cref="DesktopWindowCapabilities.State"/> keeps the restored window inside one of the
+    /// current monitors' work areas, shrinking it to fit, and opens it maximized when
+    /// <see cref="DesktopWindowPlacement.Maximized"/> is set and <see cref="Kiosk"/> is not.
+    /// </remarks>
+    public DesktopWindowPlacement? Placement { get; init; }
+
     /// <summary>Gets whether the user can resize the window. Defaults to <see langword="true"/>.</summary>
     public bool Resizable { get; init; } = true;
 
@@ -270,9 +300,17 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     {
         _host = host;
         _host.Closed += OnClosed;
+        if (_host is IDesktopWindowStateHost stateHost)
+        {
+            stateHost.StateChanged += OnStateChanged;
+        }
     }
 
     public event EventHandler? Closed;
+
+    public event EventHandler? StateChanged;
+
+    public DesktopWindowState? State => _host is IDesktopWindowStateHost stateHost ? stateHost.State : null;
 
     public bool IsOpen => _host.IsOpen;
 
@@ -302,6 +340,7 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
             X = options.X,
             Y = options.Y,
             Centered = options.Centered,
+            Placement = options.Placement,
             Resizable = options.Resizable,
             Frameless = options.Frameless,
             Transparent = options.Transparent,
@@ -349,8 +388,14 @@ internal sealed class DesktopWindowHostAdapter : IWebUiEmbeddedHost
     public async ValueTask DisposeAsync()
     {
         _host.Closed -= OnClosed;
+        if (_host is IDesktopWindowStateHost stateHost)
+        {
+            stateHost.StateChanged -= OnStateChanged;
+        }
         await _host.DisposeAsync().ConfigureAwait(false);
     }
 
     private void OnClosed(object? sender, EventArgs eventArgs) => Closed?.Invoke(this, eventArgs);
+
+    private void OnStateChanged(object? sender, EventArgs eventArgs) => StateChanged?.Invoke(this, eventArgs);
 }

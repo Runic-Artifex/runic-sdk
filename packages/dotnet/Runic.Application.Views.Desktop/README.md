@@ -133,6 +133,36 @@ The same Window and `async host => ...` body run on CS-WebUI with
   host, or a ViewModel's window that has not opened yet), `OwnerClosed` once it
   closed, and `BackendUnavailable` for a window host without announcements,
   such as GTK 4 before 4.14.
+- `RunicDesktopHost.Placement` restores each Window's size, position and
+  maximized state from the last time it closed, and
+  `PlatformServices.GetWindowState(window)` reads them to save. The callback is
+  called with each Window as it opens, after its ViewModel is set, and returns
+  the saved `DesktopWindowPlacement` or `null`; it becomes
+  `DesktopWindowOptions.Placement`, which replaces the Window's size and keeps it
+  on a monitor that exists now (see
+  [Window state and restore](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Desktop/README.md#window-state-and-restore)).
+  `GetWindowState` returns the embedded window's `DesktopWindowState`, also after
+  the window closed and until the Window is disposed, so save it after
+  `WaitForCloseAsync` returns:
+
+  ```csharp
+  var host = new RunicDesktopHost(provider, desktop)
+  {
+      Placement = window => window is MainWindow ? settings.MainWindowPlacement : null,
+  };
+  await using var window = await host.OpenWindowAsync<MainWindow>();
+  await window.WaitForCloseAsync();
+  if (PlatformServices.GetWindowState(window) is PlatformResult<DesktopWindowState>.Success { Value: var state })
+      settings.MainWindowPlacement = state.Placement;
+  ```
+
+  A Window without a native owner, one on CS-WebUI or another host, one served
+  under `RUNIC_APPLICATION_SERVE_ONLY` or an installed browser after a fallback,
+  reports `Unavailable` with `OwnerUnavailable`, as `PresentAsync` does; a custom
+  window host that reports no state reports `BackendUnavailable`. For each change
+  while the window is open, subscribe to `DesktopWindow.StateChanged` of the
+  Window's `Presentation`. A placement belongs to the machine and operating
+  system that saved it: its units are each platform's.
 - `services.AddRunicPlatformServices()` registers native file dialogs, the
   text clipboard, and the file launcher for each window scope:
   `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and

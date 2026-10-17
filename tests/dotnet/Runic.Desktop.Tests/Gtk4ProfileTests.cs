@@ -6,6 +6,18 @@ namespace Runic.Desktop.Tests;
 public sealed class Gtk4ProfileTests
 {
     [Test]
+    public void Gtk4IgnoresThePositionOfARestoredPlacementButRejectsAnExplicitOne()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var factory = new Gtk4WindowHostFactory();
+        Assert.True(factory.Capabilities.HasFlag(DesktopWindowCapabilities.State));
+        var placement = new DesktopWindowPlacement { X = 100, Y = 50, Width = 900, Height = 700, Maximized = true };
+        Assert.Empty(factory.ValidateOptions(new DesktopWindowHostOptions { X = 100, Y = 50, Placement = placement }));
+        var explicitPosition = factory.ValidateOptions(new DesktopWindowHostOptions { X = 100, Y = 50 });
+        Assert.Equal(["DesktopWindowOptions.X", "DesktopWindowOptions.Y"], explicitPosition.Select(static item => item.Option));
+    }
+
+    [Test]
     public void WithGtk4SelectsTheBackendAndTheFactoryTogether()
     {
         var original = new DesktopHostOptions { Port = 0, BrowserFolder = "/opt/browsers" };

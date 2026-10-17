@@ -395,12 +395,14 @@ internal static class Gtk4Runtime
 }
 
 [SupportedOSPlatform("linux")]
-internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
+internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost
 {
     internal const DesktopWindowCapabilities SupportedCapabilities = DesktopWindowCapabilities.NativeHandle |
         DesktopWindowCapabilities.Focus | DesktopWindowCapabilities.Minimize |
         DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
-        DesktopWindowCapabilities.CloseConfirmation;
+        DesktopWindowCapabilities.CloseConfirmation | DesktopWindowCapabilities.State;
+    private DesktopWindowState? _state;
+    private int _stateUpdateQueued;
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Gtk.ApplicationWindow? _window;
     private WebView? _webView;
@@ -418,6 +420,10 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     private UserContentManager? _contentManager;
 
     public event EventHandler? Closed;
+
+    public event EventHandler? StateChanged;
+
+    public DesktopWindowState? State => Volatile.Read(ref _state);
 
     public bool SupportsCloseConfirmation => true;
 
@@ -616,7 +622,15 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             webView = WebView.NewWithProperties(
                 [new GObject.ConstructArgument("web-context", contextValue)]);
             window.Title = "Runic Desktop";
-            window.SetDefaultSize(checked((int)options.Width), checked((int)options.Height));
+            var width = checked((int)options.Width);
+            var height = checked((int)options.Height);
+            if (options.Placement is not null)
+            {
+                // GTK 4 cannot tell where the compositor will show the window: fit the restored size to the largest
+                // monitor. The position of a placement is ignored.
+                (width, height) = FitToLargestMonitor(width, height);
+            }
+            window.SetDefaultSize(width, height);
             window.SetResizable(options.Resizable);
             window.SetDecorated(!options.Frameless && !options.Kiosk);
             if (options.MinimumWidth is not null || options.MinimumHeight is not null)
@@ -688,6 +702,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             webView.OnPermissionRequest += OnPermissionRequest;
             WebProcessTerminatedSignal.Connect(this, webView);
             webView.LoadUri(url.AbsoluteUri);
+            if (options.Placement is { Maximized: true } && !options.Kiosk)
+            {
+                // Before presenting, so the window maps maximized and keeps the restored default size.
+                window.Maximize();
+            }
             if (!options.Hidden)
             {
                 window.Present();
@@ -696,6 +715,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             {
                 window.Fullscreen();
             }
+            WindowStateSignals.Connect(this, window);
 
             _window = window;
             _webView = webView;
@@ -705,6 +725,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
             Gtk4Application.Register(this);
             registered = true;
             Volatile.Write(ref _isOpen, 1);
+            UpdateState();
         }
         catch
         {
@@ -757,9 +778,11 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
     {
         ArgumentNullException.ThrowIfNull(options);
         List<DesktopDiagnostic> diagnostics = [];
-        if (options.X is not null)
+        // A restored placement keeps its size and maximized state; its position is ignored, not rejected, so a
+        // placement saved by another backend still opens.
+        if (options.X is not null && options.Placement is null)
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.X), "GTK 4 does not support requested global window placement."));
-        if (options.Y is not null)
+        if (options.Y is not null && options.Placement is null)
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Y), "GTK 4 does not support requested global window placement."));
         if (options.Centered)
             diagnostics.Add(Unsupported(nameof(DesktopWindowOptions.Centered), "GTK 4 does not support requested global window placement."));
@@ -935,6 +958,133 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost
         } &&
         Uri.TryCreate(webView.GetUri(), UriKind.Absolute, out var current) &&
         Uri.Compare(presented, current, UriComponents.SchemeAndServer, UriFormat.UriEscaped, StringComparison.OrdinalIgnoreCase) == 0;
+
+    private static (int Width, int Height) FitToLargestMonitor(int width, int height)
+    {
+        if (Gdk.Display.GetDefault()?.GetMonitors() is not { } monitors)
+        {
+            return (width, height);
+        }
+        long largestArea = 0;
+        (int Width, int Height)? largest = null;
+        for (uint index = 0; index < monitors.GetNItems(); index++)
+        {
+            if (monitors.GetObject(index) is not Gdk.Monitor monitor)
+            {
+                continue;
+            }
+            monitor.GetGeometry(out var geometry);
+            if ((long)geometry.Width * geometry.Height > largestArea)
+            {
+                largestArea = (long)geometry.Width * geometry.Height;
+                largest = (geometry.Width, geometry.Height);
+            }
+        }
+        return largest is { } area ? (Math.Max(1, Math.Min(width, area.Width)), Math.Max(1, Math.Min(height, area.Height))) : (width, height);
+    }
+
+    // GTK thread only. GTK 4 keeps the restored (unmaximized) size in default-width and default-height and updates it
+    // when the user resizes the window, so it is the placement to save.
+    private void UpdateState()
+    {
+        Volatile.Write(ref _stateUpdateQueued, 0);
+        if (_window is not { } window || !IsOpen)
+        {
+            return;
+        }
+        window.GetDefaultSize(out var defaultWidth, out var defaultHeight);
+        var maximized = window.IsMaximized();
+        var fullScreen = window.IsFullscreen();
+        var width = window.GetWidth();
+        var height = window.GetHeight();
+        var restoredWidth = (uint)Math.Max(1, defaultWidth > 0 ? defaultWidth : width);
+        var restoredHeight = (uint)Math.Max(1, defaultHeight > 0 ? defaultHeight : height);
+        var state = new DesktopWindowState
+        {
+            Width = width > 0 ? (uint)width : restoredWidth,
+            Height = height > 0 ? (uint)height : restoredHeight,
+            IsMaximized = maximized,
+            IsFullScreen = fullScreen,
+            Placement = new DesktopWindowPlacement { Width = restoredWidth, Height = restoredHeight, Maximized = maximized },
+        };
+        if (Equals(state, Volatile.Read(ref _state)))
+        {
+            return;
+        }
+        Volatile.Write(ref _state, state);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void QueueStateUpdate()
+    {
+        if (IsOpen && Interlocked.Exchange(ref _stateUpdateQueued, 1) == 0)
+        {
+            // From a later main-loop iteration, once GTK has applied the new size to the window's allocation.
+            Gtk4Dispatcher.Instance.Post(() =>
+            {
+                try
+                {
+                    UpdateState();
+                }
+                catch
+                {
+                    // Never unwind through GTK.
+                }
+            });
+        }
+    }
+
+    // Connected through GObject, not GirCore events, for the same reason as WebProcessTerminatedSignal: a GirCore
+    // handler would keep the window from being finalized. The connections end when the window and surface are.
+    private static unsafe partial class WindowStateSignals
+    {
+        internal static void Connect(Gtk4WindowHost host, Gtk.ApplicationWindow window)
+        {
+            var native = window.Handle.DangerousGetHandle();
+            foreach (var property in (string[])["default-width", "default-height", "maximized", "fullscreened"])
+            {
+                ConnectNotify(host, native, property);
+            }
+            // The allocated size of a maximized or full-screen window follows its surface.
+            if (window.GetSurface() is { } surface)
+            {
+                var nativeSurface = surface.Handle.DangerousGetHandle();
+                ConnectNotify(host, nativeSurface, "width");
+                ConnectNotify(host, nativeSurface, "height");
+            }
+        }
+
+        private static void ConnectNotify(Gtk4WindowHost host, nint instance, string property)
+        {
+            var context = GCHandle.Alloc(host);
+            var handler = ConnectData(instance, "notify::" + property,
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnNotify, GCHandle.ToIntPtr(context),
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Release, 0);
+            if (handler == 0)
+            {
+                context.Free();
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnNotify(nint instance, nint property, nint context)
+        {
+            try
+            {
+                (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.QueueStateUpdate();
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void Release(nint context, nint closure) => GCHandle.FromIntPtr(context).Free();
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
+    }
 
     private void OnDestroyed(Gtk.Widget _, EventArgs __)
     {

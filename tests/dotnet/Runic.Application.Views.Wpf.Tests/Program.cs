@@ -22,6 +22,8 @@ internal sealed class Program
         Check(WpfPresentationOptions.Validate(new()).Count == 0, "Default options produced layout warnings.");
         var warnings = WpfPresentationOptions.Validate(new() { Width = 1200, Transparent = true, X = 20 });
         Check(warnings.Select(item => item.Option).ToHashSet().SetEquals(["Width", "Transparent", "X"]), "Unsupported layout options were not reported.");
+        Check(WpfPresentationOptions.Validate(new() { Placement = new DesktopWindowPlacement { Width = 900, Height = 700 } })
+            .Any(static item => item.Option == "Placement"), "A restored placement was not reported as owned by the WPF shell.");
     }
 
     [Test, NotInParallel("WpfSuite", Order = 1)]

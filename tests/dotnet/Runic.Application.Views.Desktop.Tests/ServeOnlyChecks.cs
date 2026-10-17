@@ -111,6 +111,8 @@ internal sealed class ServeOnlyChecks
                     "Presenting a serve-only Window did not report the owner unavailable.");
                 Check(await PlatformServices.AnnounceAsync(first, "Saved") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
                     "An announcement for a serve-only Window did not report the owner unavailable.");
+                Check(PlatformServices.GetWindowState(first) is PlatformResult<DesktopWindowState>.Unavailable(PlatformUnavailableReason.OwnerUnavailable),
+                    "The state of a serve-only Window did not report the owner unavailable.");
 
                 var closed = Task.WhenAll(first.WaitForCloseAsync().AsTask(), second.WaitForCloseAsync().AsTask());
                 lines.Send("");

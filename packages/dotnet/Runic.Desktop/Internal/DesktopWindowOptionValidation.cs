@@ -128,6 +128,12 @@ internal static class DesktopWindowOptionValidation
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Centered), remediation));
         }
+        if (options.Placement is { Maximized: true })
+        {
+            diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Placement),
+                "A browser opens with the saved size and position but not maximized. " + remediation)
+                with { Message = $"{presentation} ignores {Prefix}{nameof(DesktopWindowOptions.Placement)}.{nameof(DesktopWindowPlacement.Maximized)}." });
+        }
         if (!options.Resizable)
         {
             diagnostics.Add(Ignored(presentation, nameof(DesktopWindowOptions.Resizable), remediation));
@@ -235,6 +241,7 @@ internal static class DesktopWindowOptionValidation
         X = options.X is not null && options.Y is not null && !options.Centered ? options.X : null,
         Y = options.X is not null && options.Y is not null && !options.Centered ? options.Y : null,
         Centered = options.Centered,
+        Placement = options.Placement,
         Resizable = options.Resizable,
         Frameless = options.Frameless,
         Transparent = options.Transparent,

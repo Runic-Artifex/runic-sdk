@@ -113,6 +113,31 @@ public sealed class RunicDesktopHost : IRunicWindowHost
     /// </remarks>
     public Func<IRunicWindow, ContentHandler?>? Resources { get; init; }
 
+    /// <summary>
+    /// Chooses the saved placement each Window restores: its size, position and maximized state from the last time it
+    /// closed. <see langword="null"/>, the default, restores none.
+    /// </summary>
+    /// <remarks>
+    /// Called with each Window as it opens, once its ViewModel is set, before its native window opens. It returns
+    /// the placement saved from <see cref="PlatformServices.GetWindowState(IRunicWindow)"/>, or <see langword="null"/>
+    /// for none, and it becomes <see cref="DesktopWindowOptions.Placement"/> of the Window, replacing the size of
+    /// <see cref="WindowOptions"/> and <see cref="RunicWindowOptions"/>. The embedded window keeps a restored placement on a
+    /// monitor that exists now; see <see cref="DesktopWindowOptions.Placement"/>.
+    /// <code>
+    /// var host = new RunicDesktopHost(provider, desktop)
+    /// {
+    ///     Placement = window =&gt; window is MainWindow ? settings.MainWindowPlacement : null,
+    /// };
+    /// await using var window = await host.OpenWindowAsync&lt;MainWindow&gt;();
+    /// await window.WaitForCloseAsync();
+    /// if (PlatformServices.GetWindowState(window) is PlatformResult&lt;DesktopWindowState&gt;.Success { Value: var state })
+    ///     settings.MainWindowPlacement = state.Placement;
+    /// </code>
+    /// A placement saved on one machine or operating system is not meant for another; see
+    /// <see cref="DesktopWindowPlacement"/>. A callback that throws fails the open.
+    /// </remarks>
+    public Func<IRunicWindow, DesktopWindowPlacement?>? Placement { get; init; }
+
     /// <summary>Gets the Desktop surface that serves an open Window of this host, or <see langword="null"/> for another host.</summary>
     /// <param name="window">The open Window.</param>
     /// <remarks>
@@ -305,6 +330,8 @@ public sealed class RunicDesktopHost : IRunicWindowHost
                 return owner;
             }
             var windowOptions = GuardedWindowOptions(opening, WindowOptionsFor(opening.Options));
+            if (Placement is { } choosePlacement && choosePlacement(opening.Window) is { } placement)
+                windowOptions = windowOptions with { Placement = placement };
             var presentation = await surface.OpenWindowAsync(windowOptions, cancellationToken).ConfigureAwait(false);
             // An EmbeddedThenBrowser fallback opens without close confirmation; Runic Desktop reports
             // close-confirmation-unavailable for the options, and this names the Window.

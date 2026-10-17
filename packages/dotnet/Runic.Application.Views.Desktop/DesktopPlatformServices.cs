@@ -40,7 +40,7 @@ public enum DesktopPlatformProvider
 /// <see cref="IWindowPlatformServices"/> or <see cref="IFileDialogs"/> in a ViewModel constructor. The explicit
 /// providers, such as <c>WindowsPlatformProvider</c>, remain available for custom composition.
 /// </remarks>
-public static class PlatformServices
+public static partial class PlatformServices
 {
     /// <summary>Gets the provider for the operating system and the Linux toolkit this process has started.</summary>
     /// <remarks>
