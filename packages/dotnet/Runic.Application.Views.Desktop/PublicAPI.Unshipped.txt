@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Application.Views.Desktop.PlatformServices.CreateInhibition(string? applicationId = null) -> Runic.Platform.IDesktopInhibition!

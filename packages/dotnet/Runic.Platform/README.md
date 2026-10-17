@@ -77,6 +77,41 @@ registers `DesktopSettings.Unavailable(reason)`: reads return
 `IDesktopNotifications` is registered the same way; without a provider it is
 `DesktopNotifications.Unavailable(reason)`, whose requests return
 `Unavailable(reason)` and which never raises `Activated`.
+`IDesktopStatusIcon`, `IDesktopLoginStartup` and `IDesktopInhibition` are
+application singletons too; without a provider they are
+`DesktopStatusIcons.Unavailable(reason)`, `DesktopLoginStartup.Unavailable(reason)`
+and `DesktopInhibition.Unavailable(reason)`. Unavailable inhibition supports no
+effects, still validates the effects and reason as a provider does, and returns
+`Unavailable(reason)` from every acquisition.
+
+### Hosts without a native owner
+
+One `services.AddRunicPlatformServices()` call registers every service above on
+both hosts, so a ViewModel that takes any of them resolves on Runic Desktop and on
+CS-WebUI. Window services need the window's native owner; application services
+need none. A window has no native owner when it is shown in an installed browser
+after an embedded-window fallback, served under `RUNIC_APPLICATION_SERVE_ONLY=1`,
+or opened on CS-WebUI; a ViewModel resolved outside a window's scope has none
+either.
+
+| Service | Desktop window with a native owner | Desktop window without one, or outside a window scope | CS-WebUI |
+| --- | --- | --- | --- |
+| `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| Announcements and `PlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+
+On Runic Desktop the application services behave the same with or without a
+native owner. The macOS settings, notifications and status icon need the AppKit
+event loop that the Desktop host runs, as their providers describe. Linux inhibition sends no parent window, so the desktop does not tie it to a
+window. CS-WebUI selects no native provider; register one before calling
+`AddRunicPlatformServices()` to use an application service there, for example
+`WindowsPlatformProvider.CreateInhibition()` or
+`new PortalApplication("org.example.Notes").CreateUnparentedInhibition()`.
+Existing registrations are kept on both hosts.
+
+The application composes `IDesktopPrivilegedActions` itself, because it needs
+declared actions and a provider package, and claims `ApplicationInstance` before
+it starts a host.
 
 ## Privileged actions
 

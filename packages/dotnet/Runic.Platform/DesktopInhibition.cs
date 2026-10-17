@@ -30,3 +30,36 @@ public interface IDesktopInhibition
     ValueTask<PlatformResult<IDesktopInhibitionLease>> AcquireAsync(DesktopInhibitionEffects effects, string reason,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>Creates idle-power inhibition for a host or platform without a provider.</summary>
+public static class DesktopInhibition
+{
+    /// <summary>Creates inhibition that supports no effects and reports every acquisition unavailable for <paramref name="reason"/>.</summary>
+    /// <remarks>
+    /// Acquisition validates its arguments as a provider does, so a call that is wrong on one platform is wrong on every
+    /// platform; otherwise nothing throws except caller cancellation.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="reason"/> is not defined.</exception>
+    public static IDesktopInhibition Unavailable(PlatformUnavailableReason reason)
+    {
+        if (!Enum.IsDefined(reason)) throw new ArgumentOutOfRangeException(nameof(reason));
+        return new UnavailableInhibition(reason);
+    }
+
+    private sealed class UnavailableInhibition(PlatformUnavailableReason unavailable) : IDesktopInhibition
+    {
+        public DesktopInhibitionEffects SupportedEffects => DesktopInhibitionEffects.None;
+
+        public ValueTask<PlatformResult<IDesktopInhibitionLease>> AcquireAsync(DesktopInhibitionEffects effects, string reason,
+            CancellationToken cancellationToken = default)
+        {
+            // The rules of InhibitionValidation in Runic.Platform.Runtime, which references this package.
+            if (effects == DesktopInhibitionEffects.None || (effects & ~(DesktopInhibitionEffects.SystemSleep | DesktopInhibitionEffects.DisplaySleep)) != 0)
+                throw new ArgumentOutOfRangeException(nameof(effects));
+            ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+            if (reason.Length > 128 || reason.Contains('\0')) throw new ArgumentException("Use a reason of at most 128 characters without NUL.", nameof(reason));
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult<PlatformResult<IDesktopInhibitionLease>>(new PlatformResult<IDesktopInhibitionLease>.Unavailable(unavailable));
+        }
+    }
+}

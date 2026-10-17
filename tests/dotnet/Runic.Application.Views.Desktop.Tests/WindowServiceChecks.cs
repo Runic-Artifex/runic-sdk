@@ -163,6 +163,91 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's status icon.");
     }
 
+    // Inhibition is an application singleton: a lease belongs to an operation, not to a window, and Windows and macOS
+    // have no window in the request. Nothing here acquires a lease or connects to a session bus.
+    [Test, NotInParallel(Order = 32)]
+    public async Task PlatformServicesRegisterOneInhibitionForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var inhibition = provider.GetRequiredService<IDesktopInhibition>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(inhibition, first.ServiceProvider.GetRequiredService<IDesktopInhibition>()),
+                    "A Window scope got its own inhibition.");
+            var expected = OperatingSystem.IsLinux() ? "Runic.Platform.Linux.Portal.PortalInhibition"
+                : OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsDesktopInhibition"
+                : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacDesktopInhibition" : null;
+            if (expected is not null)
+                Require(inhibition.GetType().FullName == expected
+                    && inhibition.SupportedEffects == (DesktopInhibitionEffects.SystemSleep | DesktopInhibitionEffects.DisplaySleep),
+                    $"The operating system's inhibition provider was not registered: {inhibition.GetType().FullName}");
+        }
+
+        var custom = DesktopInhibition.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopInhibition>(), custom),
+            "AddRunicPlatformServices replaced the application's inhibition.");
+    }
+
+    // One call registers every platform service a ViewModel can take. Each public interface of Runic.Platform is
+    // classified here, so a new service contract fails this check until it is registered or listed as composed by
+    // the application.
+    [Test, NotInParallel(Order = 32)]
+    public async Task PlatformServicesRegisterEveryPlatformService()
+    {
+        Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
+        Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
+            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition)];
+        // Privileged actions need declared actions and a provider package; the instance claim runs before any host.
+        Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance)];
+        Type[] notServices = [typeof(IPlatformCapabilities), typeof(IUiDispatcher), typeof(IDirectoryLease), typeof(IReadFileLease),
+            typeof(ISaveFileLease), typeof(ILaunchableFileLease), typeof(IFileWriteTransaction), typeof(IDesktopInhibitionLease),
+            typeof(IApplicationLaunchReply), typeof(IForwardedLaunchReply)];
+        var contracts = typeof(IFileDialogs).Assembly.GetExportedTypes().Where(static type => type.IsInterface).ToHashSet();
+        var unclassified = contracts.Except(window).Except(application).Except(composed).Except(notServices).Select(static type => type.Name).ToArray();
+        Require(unclassified.Length == 0, $"Classify these Runic.Platform interfaces for AddRunicPlatformServices: {string.Join(", ", unclassified)}");
+
+        await using var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        await using var scope = provider.CreateAsyncScope();
+        foreach (var type in application)
+            Require(ReferenceEquals(provider.GetService(type), scope.ServiceProvider.GetService(type)) && provider.GetService(type) is not null,
+                $"{type.Name} is not one application service.");
+        foreach (var type in window)
+            Require(scope.ServiceProvider.GetService(type) is IPlatformCapabilities or IFileDialogs or ITextClipboard or IDesktopFileLauncher,
+                $"{type.Name} is not registered per window.");
+        var unbound = scope.ServiceProvider.GetRequiredService<IWindowPlatformServices>();
+        Require(unbound.GetSnapshot().Statuses.Values.All(static status => status is CapabilityStatus.Unavailable(PlatformUnavailableReason.OwnerUnavailable)),
+            "Window services outside a window did not report the missing native owner.");
+        foreach (var type in composed)
+            Require(provider.GetService(type) is null, $"{type.Name} was registered without the application composing it.");
+    }
+
+    [Test]
+    public async Task UnavailableInhibitionReportsTheReason()
+    {
+        var inhibition = DesktopInhibition.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+        Require(inhibition.SupportedEffects == DesktopInhibitionEffects.None, "Unavailable inhibition reported effects.");
+        Require(await inhibition.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Exporting") is
+            PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.ProviderNotConfigured),
+            "Unavailable inhibition did not report the provider unconfigured.");
+        // Arguments are checked as a provider checks them, so a call wrong on one platform is wrong on every platform.
+        Require(await CatchAsync(() => inhibition.AcquireAsync(DesktopInhibitionEffects.None, "Exporting").AsTask()) is ArgumentOutOfRangeException
+            && await CatchAsync(() => inhibition.AcquireAsync((DesktopInhibitionEffects)4, "Exporting").AsTask()) is ArgumentOutOfRangeException
+            && await CatchAsync(() => inhibition.AcquireAsync(DesktopInhibitionEffects.DisplaySleep, " ").AsTask()) is ArgumentException
+            && await CatchAsync(() => inhibition.AcquireAsync(DesktopInhibitionEffects.DisplaySleep, new string('x', 129)).AsTask()) is ArgumentException,
+            "Unavailable inhibition accepted a request a provider refuses.");
+        using (var cancelled = new CancellationTokenSource())
+        {
+            await cancelled.CancelAsync();
+            Require(await CatchAsync(() => inhibition.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Exporting", cancelled.Token).AsTask()) is OperationCanceledException,
+                "A cancelled acquisition did not throw.");
+        }
+        Require(Catch(() => DesktopInhibition.Unavailable((PlatformUnavailableReason)99)) is ArgumentOutOfRangeException,
+            "An undefined reason was accepted.");
+    }
+
     [Test]
     public async Task UnavailableDesktopNotificationsReportTheReason()
     {

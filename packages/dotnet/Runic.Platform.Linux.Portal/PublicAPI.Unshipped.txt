@@ -1,1 +1,2 @@
 #nullable enable
+Runic.Platform.Linux.Portal.PortalApplication.CreateUnparentedInhibition() -> Runic.Platform.IDesktopInhibition!

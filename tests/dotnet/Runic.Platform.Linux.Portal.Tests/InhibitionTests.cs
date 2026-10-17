@@ -75,6 +75,26 @@ internal sealed class InhibitionTests
         Console.WriteLine("PASS inhibition: early/legacy replies, flags/reason, parent release, independent/idempotent release, denial, cancellation, owner replacement and portal restart without replay.");
     }
 
+    // AddRunicPlatformServices registers this application-scoped inhibition: its requests name no window.
+    [Test, Explicit, Category("DBus"), DisplayName("inhibition: an unparented request sends the empty window identifier")]
+    public async Task UnparentedInhibitionAsync()
+    {
+        using var bus = new DBusConnection(DBusAddress.Session!);
+        await bus.ConnectAsync();
+        var service = new Service(bus) { ExpectedParent = "" };
+        bus.AddMethodHandler(service);
+        if (new PortalApplication().CreateUnparentedInhibition() is not PortalInhibition)
+            throw new InvalidOperationException("Unparented inhibition did not use the Inhibit portal.");
+        var provider = new PortalInhibition(new PortalPlatformProvider.UnparentedOwner(), new PortalApplication(), destination: bus.UniqueName!);
+        if (await provider.AcquireAsync(DesktopInhibitionEffects.DisplaySleep, "Presenting") is not PlatformResult<IDesktopInhibitionLease>.Success(var lease)
+            || service.Flags != 8 || service.Reason != "Presenting")
+            throw new InvalidOperationException("An unparented inhibition request was not accepted.");
+        int closes = service.Closes;
+        await lease.DisposeAsync();
+        if (service.Closes != closes + 1) throw new InvalidOperationException("The unparented lease was not released.");
+        Console.WriteLine("PASS inhibition: an unparented request sends the empty window identifier.");
+    }
+
     private sealed class Service(DBusConnection connection) : IPathMethodHandler
     {
         public string Path => "/org/freedesktop/portal/desktop";
@@ -85,6 +105,7 @@ internal sealed class InhibitionTests
         internal bool Legacy;
         internal bool Deny;
         internal bool Respond = true;
+        internal string ExpectedParent = "x11:1234";
         private int _number;
         internal volatile TaskCompletionSource Called = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ValueTask HandleMethodAsync(MethodContext context)
@@ -99,7 +120,7 @@ internal sealed class InhibitionTests
             // The Called of this request, not one the test set after it (#339).
             var called = Called;
             var reader = context.Request.GetBodyReader();
-            if (reader.ReadString() != "x11:1234") throw new InvalidOperationException("Owner not forwarded.");
+            if (reader.ReadString() != ExpectedParent) throw new InvalidOperationException("Owner not forwarded.");
             Flags = reader.ReadUInt32();
             var options = reader.ReadDictionaryOfStringToVariantValue();
             Reason = options["reason"].GetString();

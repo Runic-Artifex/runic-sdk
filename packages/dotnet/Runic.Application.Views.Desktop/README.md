@@ -266,6 +266,26 @@ The same Window and `async host => ...` body run on CS-WebUI with
   are logged as event 2003 through the provider's `ILoggerFactory`. Register
   your own `IDesktopNotifications` first to replace it, for example a fake in
   tests.
+- `AddRunicPlatformServices()` also registers `IDesktopStatusIcon`,
+  `IDesktopLoginStartup` and `IDesktopInhibition`, one singleton each for the
+  application, created by `PlatformServices.CreateStatusIcon(applicationId)`,
+  `CreateLoginStartup(applicationId)` and `CreateInhibition(applicationId)`.
+  Inhibition keeps the system or display awake while an operation holds a lease:
+
+  ```csharp
+  if (await inhibition.AcquireAsync(DesktopInhibitionEffects.SystemSleep, "Exporting documents")
+      is PlatformResult<IDesktopInhibitionLease>.Success(var lease))
+      await using (lease) await ExportAsync();
+  ```
+
+  Windows uses a power request and macOS an IOKit power assertion; Linux asks
+  the xdg-desktop-portal Inhibit interface without a parent window, so the
+  request belongs to the application, not to a window. The application services
+  need no native owner and work the same in an installed browser after a
+  fallback; the window services report `OwnerUnavailable` there. The
+  [Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
+  lists every service's result without a native owner. Register
+  `IDesktopPrivilegedActions` yourself; it needs declared actions.
 - `DesktopBridgeWindow<TViewModel>.NativeOwner` (a `DesktopNativeOwner`) is the
   presentation's `INativePickerOwner`, which the services above bind to. The
   provider APIs that take it directly, such as

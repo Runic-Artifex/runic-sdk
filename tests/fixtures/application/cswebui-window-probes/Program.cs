@@ -24,8 +24,11 @@ switch (args.SingleOrDefault())
         break;
     case "--probe-show-failure":
         return ProbeShowFailure();
+    case "--probe-platform-services":
+        await ProbePlatformServicesAsync();
+        break;
     default:
-        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure");
+        Console.Error.WriteLine("Usage: CsWebUiWindowProbes --probe-factory-failure | --probe-window-close | --probe-close-guard | --probe-missing-bridge | --probe-show-failure | --probe-platform-services");
         return 2;
 }
 WebUiApplication.Clean();
@@ -56,6 +59,41 @@ static async Task ProbeFactoryFailureAsync()
             throw new InvalidOperationException($"Failed Window construction released the scope {scopeDisposals} times.");
         Console.WriteLine("FIRST_WINDOW_FACTORY_FAILURE_OK");
     }
+}
+
+// AddRunicPlatformServices registers every service Runic Desktop's does, so a ViewModel resolves on both hosts.
+// Without a native owner the window services report OwnerUnavailable; without a provider the application services
+// report ProviderNotConfigured, and a provider the application registers first is kept.
+static async Task ProbePlatformServicesAsync()
+{
+    var custom = Runic.Platform.DesktopInhibition.Unavailable(Runic.Platform.PlatformUnavailableReason.BackendUnavailable);
+    var services = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices();
+    await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+    await using var scope = provider.CreateAsyncScope();
+    var window = scope.ServiceProvider;
+    const Runic.Platform.PlatformUnavailableReason noOwner = Runic.Platform.PlatformUnavailableReason.OwnerUnavailable;
+    const Runic.Platform.PlatformUnavailableReason noProvider = Runic.Platform.PlatformUnavailableReason.ProviderNotConfigured;
+    var platform = window.GetRequiredService<Runic.Platform.IWindowPlatformServices>();
+    if (!platform.GetSnapshot().Statuses.Values.All(static status => status is Runic.Platform.CapabilityStatus.Unavailable(noOwner))
+        || await window.GetRequiredService<Runic.Platform.IFileDialogs>().OpenFileAsync(new()) is not Runic.Platform.PickerResult<Runic.Platform.IReadFileLease>.Unavailable(noOwner)
+        || await window.GetRequiredService<Runic.Platform.ITextClipboard>().ReadTextAsync(16) is not Runic.Platform.PlatformResult<string?>.Unavailable(noOwner)
+        || await window.GetRequiredService<Runic.Platform.IDesktopFileLauncher>().LaunchAsync(Environment.CurrentDirectory, Runic.Platform.DesktopFileOperation.Reveal)
+            is not Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable(noOwner))
+        throw new InvalidOperationException("A CS-WebUI window service did not report the missing native owner.");
+    if (await provider.GetRequiredService<Runic.Platform.IDesktopSettings>().ReadAsync() is not Runic.Platform.PlatformResult<Runic.Platform.DesktopAppearance>.Unavailable(noProvider)
+        || await provider.GetRequiredService<Runic.Platform.IDesktopNotifications>().RequestPermissionAsync() is not Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable(noProvider)
+        || await provider.GetRequiredService<Runic.Platform.IDesktopStatusIcon>().HideAsync() is not Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>.Unavailable(noProvider)
+        || await provider.GetRequiredService<Runic.Platform.IDesktopLoginStartup>().IsEnabledAsync() is not Runic.Platform.PlatformResult<bool>.Unavailable(noProvider))
+        throw new InvalidOperationException("A CS-WebUI application service did not report the provider unconfigured.");
+    if (!ReferenceEquals(provider.GetRequiredService<Runic.Platform.IDesktopInhibition>(), custom)
+        || !ReferenceEquals(window.GetRequiredService<Runic.Platform.IDesktopInhibition>(), custom))
+        throw new InvalidOperationException("AddRunicPlatformServices replaced the application's inhibition.");
+    var unconfigured = new ServiceCollection().AddRunicPlatformServices().BuildServiceProvider();
+    if (await unconfigured.GetRequiredService<Runic.Platform.IDesktopInhibition>().AcquireAsync(Runic.Platform.DesktopInhibitionEffects.SystemSleep, "Probe")
+        is not Runic.Platform.PlatformResult<Runic.Platform.IDesktopInhibitionLease>.Unavailable(noProvider))
+        throw new InvalidOperationException("CS-WebUI inhibition did not report the provider unconfigured.");
+    await unconfigured.DisposeAsync();
+    Console.WriteLine("CSWEBUI_PLATFORM_SERVICES_OK");
 }
 
 // An idle Window opened through the application entry point closes without remaining operations, its
