@@ -310,6 +310,73 @@ example is a complete application. See the
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/)
 to choose between this host and CS-WebUI.
 
+## From a command line
+
+An application with a command line, such as `my-app ui` next to other commands,
+starts its Window from a
+[Runic.CommandLine](https://www.nuget.org/packages/Runic.CommandLine) command
+with Runic Command Line 0.7.0-preview.2 or later (see its guide,
+[Start a UI host on the main thread](https://github.com/Runic-Artifex/runic-cli-sdk/blob/v0.7.0-preview.2/packages/dotnet/Runic.CommandLine/README.md#start-a-ui-host-on-the-main-thread)). `RunicDesktopHost.Run`
+and `DesktopEventLoop.Run` must be called on the process main thread before any
+`await`, and a command runs asynchronously, so the command does not start the
+host itself: it hands the host's start back to `Main` with
+`CommandExecutionContext.ContinueOnCallingThread`, and `Main` returns
+`CommandApp.Run(args)` instead of awaiting `RunAsync`. `Run` blocks until the
+command completed, then runs the continuation on the thread that called it and
+returns its result as the exit code:
+
+```csharp
+using Runic.CommandLine;
+using Runic.CommandLine.Generated;
+
+// A synchronous Main, or no await before this line: the thread is the process main thread.
+return new CommandApp(GeneratedCommandCatalog.Create()) { Name = "my-app" }.Run(args);
+
+internal static class WindowCommands
+{
+    [Command("ui", Description = "Open the main window.")]
+    internal static async Task Ui(CommandExecutionContext context,
+        [Option("--settings")] string? path = null, CancellationToken cancellationToken = default)
+    {
+        // Asynchronous work and its failures belong to the command, before the host starts.
+        AppSettings settings = await AppSettings.LoadAsync(path, cancellationToken);
+        context.ContinueOnCallingThread(() => DesktopEventLoop.Run(new DesktopHostOptions(), async desktop =>
+        {
+            await using var provider = new ServiceCollection()
+                .AddSingleton(settings)
+                .AddScoped<MainViewModel>()
+                .AddRunicViews()
+                .BuildServiceProvider();
+            var host = new RunicDesktopHost(provider, desktop);
+            await using var window = await host.OpenWindowAsync<MainWindow>();
+            await window.WaitForCloseAsync();
+            return 0;
+        }));
+    }
+}
+```
+
+`DesktopEventLoop.Run` and `new RunicDesktopHost(provider, desktop)` let the
+service provider be created and disposed asynchronously on the event loop.
+`RunicDesktopHost.Run(provider, options, application)` works the same way in a
+continuation for a provider built before it.
+
+The continuation runs only when the command succeeded and was not cancelled,
+after its output was written and its scope disposed, so capture values, such as
+`settings`, rather than the command's scoped services. Help, usage errors and
+the other commands never start the host, and a failed command returns its exit
+code without opening a Window. Runic.CommandLine stops handling Ctrl+C before
+the continuation starts; the Desktop host then handles Ctrl+C and SIGTERM as
+described above. Under `CommandApp.RunAsync`, the hosting adapter's `RunAsync`
+or a directly used `CommandExecutor`,
+`CommandExecutionContext.CanContinueOnCallingThread` is `false` and
+`ContinueOnCallingThread` throws.
+
+Test such a command with `CommandAppTester.Run` from
+`Runic.CommandLine.Testing`, which runs the continuation on the calling
+thread, or start the application in serve-only mode with
+`RunicServeOnlyApplication` from `Runic.Application.Testing`.
+
 ## Automation
 
 Set `RUNIC_APPLICATION_CLOSE_AFTER_OPEN=1` to start a template-shaped

@@ -4,9 +4,9 @@
     "net10.0": {
       "Runic.CommandLine": {
         "type": "Direct",
-        "requested": "[0.7.0-preview.1, )",
-        "resolved": "0.7.0-preview.1",
-        "contentHash": "YPfn8rOUIolbOqwBmsyPhggaH7kZ5hTVKDfnoKSE819WI6VxAPPUqTFHFFzg4HjYDFqQi90bXDXsCfGSWddZ/Q=="
+        "requested": "[0.7.0-preview.2, )",
+        "resolved": "0.7.0-preview.2",
+        "contentHash": "wvKkoCcr8Htbbjgg2w5PR+djnRXHkNvQEOSPzlXvYRy8lGa2RUHx5EKpsL/fXKVCG3qJju9QdjB/25JARnpbgQ=="
       }
     },
     "net10.0/linux-x64": {}

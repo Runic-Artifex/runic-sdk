@@ -19,7 +19,11 @@ factory's own loop for an `IDesktopEventLoopWindowHostFactory` (GTK 4 through
 and a plain wait on Windows and Linux GTK 3. The options are validated before
 any loop starts. If the factory cannot run its loop, the reasons go to
 `DiagnosticSink` and the logger, and the plain loop runs so a browser fallback
-can open. One Desktop event loop runs per process.
+can open. One Desktop event loop runs per process. A Runic.CommandLine command
+that starts the host hands `DesktopEventLoop.Run` back to `Main` with
+`CommandExecutionContext.ContinueOnCallingThread`, and `Main` returns
+`CommandApp.Run(args)`; see
+[From a command line](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.Desktop/README.md#from-a-command-line).
 
 Ctrl+C, SIGTERM and closing the Windows console stop the application the same
 way as closing its last window. The first signal cancels

@@ -4,6 +4,6 @@
     <AssemblyName>hello</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Runic.CommandLine" Version="0.7.0-preview.1" />
+    <PackageReference Include="Runic.CommandLine" Version="0.7.0-preview.2" />
   </ItemGroup>
 </Project>
