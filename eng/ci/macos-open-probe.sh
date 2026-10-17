@@ -19,7 +19,9 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "$app/Contents/MacOS"
-cp -R "$source_directory"/. "$app/Contents/MacOS/"
+# Only code: codesign refuses other files, such as test results, in Contents/MacOS.
+cp "$source_directory/Runic.Platform.Runtime.Tests" "$app/Contents/MacOS/"
+find "$source_directory" -maxdepth 1 -name '*.dylib' -exec cp {} "$app/Contents/MacOS/" \;
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
