@@ -372,6 +372,11 @@ example is a complete application. See the
 [host selection guide](https://docs.runic-artifex.eu/guides/desktop/host-selection/)
 to choose between this host and CS-WebUI.
 
+An exception from the application body passed to `Run` closes the windows,
+disposes the host and is rethrown by `Run`; Runic does not log it. The
+[crash reporting guide](https://docs.runic-artifex.eu/guides/desktop/crash-reporting/)
+shows how to log such crashes, capture a dump and keep NativeAOT symbols.
+
 ## From a command line
 
 An application with a command line, such as `my-app ui` next to other commands,
