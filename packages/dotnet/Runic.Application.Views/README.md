@@ -519,6 +519,47 @@ public sealed partial class EditorViewModel(IRunicWindowContext window) : Observ
   `true` or `false` after the application's services, or opens the Window and
   lets its guards decide.
 
+### Receiving dropped files
+
+A Window's root ViewModel receives the files the user drops onto its window,
+with their real paths, by implementing `IRunicFileDropTarget`:
+
+```csharp
+public sealed partial class EditorViewModel : ObservableObject, IRunicFileDropTarget
+{
+    public async ValueTask OnFilesDroppedAsync(RunicFileDrop drop, CancellationToken cancellationToken)
+    {
+        foreach (var file in drop.Files.Where(static file => !file.IsDirectory))
+            await OpenAsync(file.Path, cancellationToken);
+    }
+}
+```
+
+The host calls it in the ViewModel's model turn, as a command runs, once per
+drop and in drop order; the token is cancelled when the Window closes. A failure
+is logged as event 1054, `WindowFileDropFailed`, and the Window stays open.
+`RunicFileDrop.Files` lists each dropped file or directory as a
+`RunicDroppedFile` with its absolute `Path`, `Name` and `IsDirectory`.
+
+The paths come from the native window, never from the page. Runic Desktop's
+embedded window (WebView2, WKWebView, GTK 3 and GTK 4) and the WPF child web
+View deliver drops; CS-WebUI and an installed browser have no native window
+that could, so there the page only gets HTML5 `File` objects without paths. The
+page keeps its own `dragenter`, `dragover` and `drop` events, so it can
+highlight a drop target, and dropping a file never navigates the Window away.
+To tell drop areas apart, mark an element with `data-runic-drop-target`:
+
+```html
+<li data-runic-drop-target="folder:42">Invoices</li>
+```
+
+The nearest marked element under the drop becomes `RunicFileDrop.Target`. The
+page reports it, so treat it as an untrusted routing label: never as a path,
+and never for an access decision. In a Flatpak sandbox the paths are
+document-portal paths under `/run/user/<uid>/doc`, which the application can
+open; a macOS App Sandbox grants access to dropped files while the application
+runs.
+
 ### Moved and renamed since 0.7.0-preview.6
 
 The Window types and entry points of the two hosts were merged into this API,
@@ -1618,6 +1659,7 @@ output accordingly. The message properties are listed per event.
 | 1051 | `WindowReleaseFailed` | Error | `IRunicWindowService` fails to release a Window it opened, after that Window closed. | `Window`, `ErrorType` |
 | 1052 | `WindowCloseGuardFailed` | Error | A guarded Window's `CanCloseAsync` throws; the window stays open. A departure guard that throws is logged by the navigator as 1060 instead. | `Window`, `ErrorType` |
 | 1053 | `WindowCloseGuardUnavailable` | Warning | A Window with `GuardClose` opens on a presentation that cannot keep its window open, such as CS-WebUI or a browser, so a user close does not ask `CanCloseAsync`. | `Window`, `Presentation` |
+| 1054 | `WindowFileDropFailed` | Error | `IRunicFileDropTarget.OnFilesDroppedAsync` of a Window's root ViewModel threw for a drop of files; later drops still arrive. | `ViewModel`, `FileCount`, `ErrorType` |
 | 1090 | `ReactiveSchedulerKept` | Information | A Runic Desktop, CS-WebUI or test-host window opens while ReactiveUI's main-thread scheduler is one set before `AddRunicReactiveModelContext()`, so Runic's was not installed. Once per scheduler type; a UI dispatcher's scheduler, such as WPF's, is not logged. | `Scheduler` |
 | 1091 | `ReactiveSchedulerReplaced` | Warning | Such a window opens after another scheduler replaced the installed one, for example a later `RxAppBuilder` `BuildApp()` with `WithPlatformServices()`. Call `WithRunicModelContext()` on that builder. Once per scheduler type; a UI dispatcher's scheduler is not logged. | `Scheduler` |
 | 1100 | `HotReloadRestartRequired` | Error | A Hot Reload edit changed a generated Bridge contract; restart the application. The `RUNIC_IDE_CONTRACT_RESTART_REQUIRED` line also goes to standard error. | `Mismatch` |
@@ -1644,6 +1686,7 @@ output accordingly. The message properties are listed per event.
 | 3009 | `DesktopDiagnosticSinkFailed` | Warning | `DesktopHostOptions.DiagnosticSink` throws for a diagnostic. | `Code`, `ErrorType` |
 | 3010 | `EmbeddedWindowDiagnostic` | Warning or Error | An embedded window reports an event of its own: on Linux, `web-process-terminated` when the WebKitGTK web process crashed and the page was reloaded (Warning), or was not reloaded after three reloads within a minute (Error). | `Code`, `DiagnosticMessage`, `Remediation` |
 | 3011 | `WindowStateHandlerFailed` | Error | A `DesktopWindow.StateChanged` handler threw; later handlers and events still run. | `ErrorType` |
+| 3012 | `FileDropHandlerFailed` | Error | A `DesktopWindow.FilesDropped` handler threw; later handlers and drops still run. | `ErrorType` |
 
 `Model` is the ViewModel type name, `Member` the command or property, and
 `Route` the Bridge route (a content presentation's route is per instance, such
@@ -1661,7 +1704,7 @@ Navigation (1060-1075) and the model context (1030-1033) log under
 `Runic.Navigation` and `Runic.Navigation.RunicModelContext`; see the
 [Runic.Navigation logging](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#logging)
 section. Events 2000 and 2002 use `Runic.Application.Views.Desktop`, and event 2100
-uses `Runic.Application.Views.CsWebUi` and the factory of the Window's scope. Events 3000-3011
+uses `Runic.Application.Views.CsWebUi` and the factory of the Window's scope. Events 3000-3012
 use `Runic.Desktop` and `DesktopHostOptions.LoggerFactory`, which `RunicDesktopHost.Run`
 and `RunicViewHost` fill from the application's services.
 

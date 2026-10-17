@@ -589,6 +589,7 @@ public sealed class DesktopWindow : IAsyncDisposable
             // The window may have reported its state while it opened, before this object existed.
             _stateSource = _engine.EmbeddedHostIdentity;
             _engine.EmbeddedWindowStateChanged += OnEngineStateChanged;
+            _engine.EmbeddedFilesDropped += OnEngineFilesDropped;
             _state = _engine.EmbeddedWindowState;
             _raisedState = _state;
         }
@@ -632,12 +633,79 @@ public sealed class DesktopWindow : IAsyncDisposable
         if (!ReferenceEquals(host, _stateSource))
         {
             _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
+            _engine.EmbeddedFilesDropped -= OnEngineFilesDropped;
             return;
         }
         Volatile.Write(ref _state, state);
         if (Interlocked.Exchange(ref _stateSignaled, 1) == 0 && Interlocked.CompareExchange(ref _stateDispatching, 1, 0) == 0)
         {
             ThreadPool.UnsafeQueueUserWorkItem(static window => window.DispatchStateChanged(), this, preferLocal: false);
+        }
+    }
+
+    /// <summary>Occurs when the user drops files onto the embedded window, with their native paths.</summary>
+    /// <remarks>
+    /// <para>
+    /// An embedded window whose <see cref="Capabilities"/> include <see cref="DesktopWindowCapabilities.FileDrop"/>
+    /// raises it once per drop, with the absolute local paths the platform reported: WebView2 from the
+    /// <c>File</c> objects of the page's drop event, WKWebView from the dragging pasteboard, WebKitGTK from the drag's
+    /// <c>text/uri-list</c> or GTK 4 file list. The page never supplies a path; on WebView2 page script can at most
+    /// hand over <c>File</c> objects the user gave it by dropping or choosing them. The page still receives its own
+    /// <c>dragenter</c>, <c>dragover</c> and <c>drop</c> events to show a drop target, and dropping a file never
+    /// navigates the window. <see cref="DesktopFileDropEventArgs.Target"/> is the page's untrusted routing label.
+    /// </para>
+    /// <para>
+    /// Raised on the thread pool, one drop at a time and in drop order. A handler that throws is logged (event 3012,
+    /// <c>FileDropHandlerFailed</c>). An installed browser reports no drops: its page only has HTML5 <c>File</c>
+    /// objects without paths.
+    /// </para>
+    /// </remarks>
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
+
+    private readonly System.Collections.Concurrent.ConcurrentQueue<DesktopFileDropEventArgs> _drops = new();
+    private int _dropDispatching;
+
+    private void OnEngineFilesDropped(object host, DesktopFileDropEventArgs drop)
+    {
+        if (!ReferenceEquals(host, _stateSource))
+        {
+            _engine.EmbeddedFilesDropped -= OnEngineFilesDropped;
+            return;
+        }
+        _drops.Enqueue(drop);
+        if (Interlocked.CompareExchange(ref _dropDispatching, 1, 0) == 0)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static window => window.DispatchDrops(), this, preferLocal: false);
+        }
+    }
+
+    private void DispatchDrops()
+    {
+        while (true)
+        {
+            while (_drops.TryDequeue(out var drop))
+            {
+                if (!AcceptsState || FilesDropped is not { } handlers) continue;
+                foreach (EventHandler<DesktopFileDropEventArgs> handler in handlers.GetInvocationList())
+                {
+                    try
+                    {
+                        handler(this, drop);
+                    }
+                    catch (Exception error) when (error is not OutOfMemoryException)
+                    {
+                        if (_engine.Logger is { } logger)
+                            Internal.DesktopLog.FileDropHandlerFailed(logger, error, Internal.DesktopLog.ErrorType(error));
+                        else
+                            System.Diagnostics.Trace.TraceError($"A DesktopWindow.FilesDropped handler failed with {error.GetType().FullName}.");
+                    }
+                }
+            }
+            Volatile.Write(ref _dropDispatching, 0);
+            if (_drops.IsEmpty || Interlocked.CompareExchange(ref _dropDispatching, 1, 0) != 0)
+            {
+                return;
+            }
         }
     }
 

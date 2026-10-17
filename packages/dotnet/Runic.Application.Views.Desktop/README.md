@@ -163,6 +163,12 @@ The same Window and `async host => ...` body run on CS-WebUI with
   while the window is open, subscribe to `DesktopWindow.StateChanged` of the
   Window's `Presentation`. A placement belongs to the machine and operating
   system that saved it: its units are each platform's.
+- A Window's root ViewModel that implements `IRunicFileDropTarget` receives the
+  files the user drops onto the embedded window, with their native paths, in
+  its model turn (see
+  [Receiving dropped files](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views/README.md#receiving-dropped-files)).
+  A window served under `RUNIC_APPLICATION_SERVE_ONLY` or shown in an installed
+  browser after a fallback receives none.
 - `services.AddRunicPlatformServices()` registers native file dialogs, the
   text clipboard, and the file launcher for each window scope:
   `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, and

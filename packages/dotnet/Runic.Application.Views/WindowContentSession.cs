@@ -26,6 +26,7 @@ public sealed class WindowContentSession : IDisposable
     private readonly BridgeFieldWriteRegistryProvider _fieldWrites;
     private readonly RunicModelContextRegistry _modelContexts;
     private IRunicModelContextLease? _rootModelLease;
+    private readonly object? _rootModel;
     // Sessions constructed for a standalone content host still need one graph
     // lane before their first Expose. It has no registry identity of its own;
     // every exposed model receives an ordinary, releasable binding lease.
@@ -118,6 +119,7 @@ public sealed class WindowContentSession : IDisposable
         var viewLocator = options.ViewLocator;
         var operationShutdown = options.OperationShutdown;
         var rootModel = options.RootModel;
+        _rootModel = rootModel;
         var modelContext = options.ModelContext;
         var loggerFactory = options.LoggerFactory;
         TimeProvider = options.TimeProvider ?? TimeProvider.System;
@@ -182,6 +184,43 @@ public sealed class WindowContentSession : IDisposable
     /// attaches to it.
     /// </summary>
     public IRunicModelContext? ModelContext => _rootModelLease?.Context ?? _sessionModelContext;
+
+    /// <summary>Gets whether the window's root ViewModel receives dropped files (<see cref="IRunicFileDropTarget"/>).</summary>
+    public bool AcceptsFileDrops => _rootModel is IRunicFileDropTarget;
+
+    /// <summary>
+    /// Passes files dropped onto the window's native presentation to the root ViewModel, when it implements
+    /// <see cref="IRunicFileDropTarget"/>, in its model turn. Host adapters call it once per drop, in drop order.
+    /// </summary>
+    /// <param name="drop">The drop, with paths from the native window.</param>
+    /// <param name="cancellationToken">Cancelled when the window closes.</param>
+    /// <returns>A task that completes when the ViewModel has handled the drop. It never faults: a failure is logged (event 1054).</returns>
+    public async ValueTask DeliverFileDropAsync(RunicFileDrop drop, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(drop);
+        if (_rootModel is not IRunicFileDropTarget target) return;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ModelContext is { IsExecuting: false } context)
+            {
+                var handled = await context.InvokeAsync(() => target.OnFilesDroppedAsync(drop, cancellationToken).AsTask(), cancellationToken)
+                    .ConfigureAwait(false);
+                await handled.ConfigureAwait(false);
+            }
+            else
+            {
+                await target.OnFilesDroppedAsync(drop, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception error)
+        {
+            ViewsLog.WindowFileDropFailed(Logger, error, _rootModel.GetType().Name, drop.Files.Count, error.GetType().FullName ?? error.GetType().Name);
+        }
+    }
 
     // Failures of this window's Bridges, operations and mounts. Without a
     // logger factory this is the Trace fallback.

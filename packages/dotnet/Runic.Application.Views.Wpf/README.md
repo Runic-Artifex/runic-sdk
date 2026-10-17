@@ -142,7 +142,9 @@ move, or resize the shell. Window layout options, including
 shell instead; the WPF `Window` saves and restores its own placement with
 `RestoreBounds`, `WindowState` and its `LocationChanged`, `SizeChanged` and
 `StateChanged` events, and the child presentation reports no
-`DesktopWindow.State`. Browser fallback is not supported by
+`DesktopWindow.State`. Files dropped on the child WebView do not reach the WPF
+shell's `Drop` event, which the WebView's window covers; the borrowed ViewModel
+receives them, with their paths, when it implements `IRunicFileDropTarget`. Browser fallback is not supported by
 `WpfBridgeView.OpenAsync`. Standard HWND airspace constraints apply; WPF overlays
 cannot draw over the child WebView. Tab enters the document's first or last tab
 stop. WebView2 moves that focus asynchronously: the document's focused element

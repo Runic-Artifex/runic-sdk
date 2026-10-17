@@ -311,6 +311,11 @@ internal static partial class ViewsLog
         Message = "The close guard of {Window} failed with {ErrorType}; the window stays open.")]
     internal static partial void WindowCloseGuardFailed(ILogger logger, Exception? exception, string window, string errorType);
 
+    // IRunicFileDropTarget.OnFilesDroppedAsync threw for a drop onto a native presentation.
+    [LoggerMessage(EventId = 1054, EventName = "WindowFileDropFailed", Level = LogLevel.Error,
+        Message = "{ViewModel} failed with {ErrorType} to handle {FileCount} dropped files.")]
+    internal static partial void WindowFileDropFailed(ILogger logger, Exception? exception, string viewModel, int fileCount, string errorType);
+
     // A Window with GuardClose opened on a presentation that cannot keep its window open.
     [LoggerMessage(EventId = 1053, EventName = "WindowCloseGuardUnavailable", Level = LogLevel.Warning,
         Message = "{Window} guards its close, but {Presentation} cannot keep its window open, so a user close does not ask CanCloseAsync.")]

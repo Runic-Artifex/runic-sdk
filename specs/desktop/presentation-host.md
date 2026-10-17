@@ -117,6 +117,13 @@ inside the work area of a monitor that exists at that time: the work area the
 saved bounds overlap most, or the nearest one, with the window shrunk to fit.
 A saved placement never makes opening fail.
 
+A window that reports file drops delivers each drop of files with absolute
+local paths taken from the platform's drag and drop, never from page content,
+and keeps the page's own drag events working; dropping a file must not navigate
+the window. A page may add a routing label for the element under the drop. The
+label is untrusted: it is attached only to a drop the native window reported,
+and must never be treated as a path or used for an access decision.
+
 Closing a window closes only resources owned by that presentation. It does not
 implicitly terminate its surface when other windows, sessions, or a server-only
 owner keep the surface alive. The application or host adapter decides whether

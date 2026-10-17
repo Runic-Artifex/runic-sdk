@@ -68,9 +68,11 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
         DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
-        DesktopWindowCapabilities.State;
+        DesktopWindowCapabilities.State | DesktopWindowCapabilities.FileDrop;
 
     public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public event EventHandler<DesktopFileDropEventArgs>? FilesDropped;
 
     public event EventHandler? StateChanged;
     public bool SupportsDocumentStartScript => true;
@@ -530,6 +532,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             {
                 await _controller.AddDocumentStartScriptAsync(documentStartScript);
             }
+            await _controller.EnableFileDropsAsync(url, drop => FilesDropped?.Invoke(this, drop));
             _controller.Navigate(url.AbsoluteUri);
             if (!string.IsNullOrWhiteSpace(options.IconFile))
             {
