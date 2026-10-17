@@ -557,6 +557,9 @@ jobs:
         if: runner.os == 'Linux'
         # The explicit DBus cases need a session bus; the managed job runs the portable cases.
         run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
+      - name: Exercise the D-Bus client and service API on a private bus
+        if: runner.os == 'Linux'
+        run: dbus-run-session -- dotnet run --project tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=DBus]"
       - name: Exercise GTK4 native window and platform services
         if: runner.os == 'Linux'
         timeout-minutes: 15
@@ -588,6 +591,9 @@ jobs:
           # The run without a filter keeps the portable cases covered under NativeAOT.
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
           dbus-run-session -- artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
+          dotnet publish tests/dotnet/Runic.Platform.Linux.DBus.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:PublishAot=true -p:IlcTreatWarningsAsErrors=true -o artifacts/dbus-aot
+          dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests
+          dbus-run-session -- artifacts/dbus-aot/Runic.Platform.Linux.DBus.Tests --treenode-filter "/*/*/*/*[Category=DBus]"
       # A real Secret Service: GNOME Keyring with an unlocked login keyring on a private session bus, from the JIT build
       # and the NativeAOT executable. The case requires the encrypted session and has secret-tool read what it stored.
       - name: Verify secret storage against GNOME Keyring with JIT and NativeAOT

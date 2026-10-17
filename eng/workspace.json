@@ -153,6 +153,10 @@
       "project": "packages/dotnet/Runic.Platform.Linux.Polkit/Runic.Platform.Linux.Polkit.csproj"
     },
     {
+      "name": "Runic.Platform.Linux.DBus",
+      "project": "packages/dotnet/Runic.Platform.Linux.DBus/Runic.Platform.Linux.DBus.csproj"
+    },
+    {
       "name": "Runic.Platform.Windows.Elevation",
       "project": "packages/dotnet/Runic.Platform.Windows.Elevation/Runic.Platform.Windows.Elevation.csproj"
     }
@@ -357,6 +361,8 @@
         "tests/native/Runic.Lifetime.Smoke",
         "packages/dotnet/Runic.Platform.Linux.Polkit",
         "tests/dotnet/Runic.Platform.Linux.Polkit.Tests",
+        "packages/dotnet/Runic.Platform.Linux.DBus",
+        "tests/dotnet/Runic.Platform.Linux.DBus.Tests",
         "tests/native/Runic.Privileged.Smoke",
         "packages/dotnet/Runic.Platform.Windows.Elevation",
         "tests/dotnet/Runic.Platform.Windows.Elevation.Tests",

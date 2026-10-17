@@ -152,6 +152,11 @@
     },
     {
       "ecosystem": "nuget",
+      "identity": "Runic.Platform.Linux.DBus",
+      "version": "0.8.0-preview.4"
+    },
+    {
+      "ecosystem": "nuget",
       "identity": "Runic.Platform.Windows.Elevation",
       "version": "0.8.0-preview.4"
     },
