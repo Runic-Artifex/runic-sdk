@@ -7,7 +7,7 @@ namespace Runic.Platform.Runtime.Tests;
 /// The entry point is hand-written because the opt-in native cases on macOS need the AppKit event loop on the process
 /// main thread (<see cref="DesktopEventLoop.Run(Func{Task})"/>), which the generated entry point does not start. When a
 /// native category is selected, the whole test application runs inside that loop, as the former
-/// <c>--native-services</c> and <c>--native-select</c> modes did; the <c>NativeAppKit</c> category runs there too. Every other run is the ordinary test application.
+/// <c>--native-services</c> and <c>--native-select</c> modes did; the <c>NativeAppKit</c> and <c>NativeAppearance</c> categories run there too. Every other run is the ordinary test application.
 /// </summary>
 internal static class Program
 {
@@ -19,7 +19,8 @@ internal static class Program
         if (args is ["--instance-primary", var directory]) return ApplicationInstanceTests.RunPrimaryAsync(directory).GetAwaiter().GetResult();
         if (args is ["--instance-replier", var replierDirectory]) return ApplicationInstanceTests.RunReplierAsync(replierDirectory).GetAwaiter().GetResult();
         if (OperatingSystem.IsMacOS() && args.Any(static arg => arg.Contains("Category=NativeServices", StringComparison.Ordinal)
-            || arg.Contains("Category=NativeSelect", StringComparison.Ordinal) || arg.Contains("Category=NativeAppKit", StringComparison.Ordinal)))
+            || arg.Contains("Category=NativeSelect", StringComparison.Ordinal) || arg.Contains("Category=NativeAppKit", StringComparison.Ordinal)
+            || arg.Contains("Category=NativeAppearance", StringComparison.Ordinal)))
         {
             int exitCode = 1;
             DesktopEventLoop.Run(async () => exitCode = await RunTestsAsync(args));

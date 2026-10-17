@@ -38,6 +38,13 @@ returns unavailable; it is never replayed automatically. Notifications detect
 portal replacement and recreate/register their connection before the next call.
 File operations open a fresh identified connection per request. Settings keep one
 connection and watch `SettingChanged` signals, reconnecting after portal replacement.
+The appearance comes from the portal's `org.freedesktop.appearance` keys, so it is
+only as complete as the portal and its backend. Ubuntu 24.04 (xdg-desktop-portal 1.18
+with the GNOME backend 46) publishes the colour scheme and contrast, so the accent
+colour and reduced motion stay null there. A newer portal whose backend implements
+them publishes all four; CI checks all four against Fedora 44's (xdg-desktop-portal
+1.22 with xdg-desktop-portal-gnome 50), changed through GSettings as GNOME Settings
+does.
 Only the notification service owns the application's activation bus name.
 
 Presentation-bound requests require a valid exported X11/Wayland parent. Failure
