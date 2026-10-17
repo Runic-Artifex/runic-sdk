@@ -9,33 +9,58 @@ import { readSupport, renderReadme, renderSupportMarkdown, supportRids, validate
 const support = readSupport(root);
 const workflow = Bun.YAML.parse(readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8"));
 
-test("ci-verified support entries match the Native CI matrix", () => {
-  // Every Native job builds and runs both hosts' native window layers: the
-  // Runic Desktop WebView smoke and the CS-WebUI window probes.
+test("ci-verified support entries match the Native CI jobs", () => {
+  // Every Native entry builds and runs Runic Desktop's native window layer (the WebView
+  // smoke); entries with `cswebui: true` also run the CS-WebUI window probes. The musl
+  // entries run Runic Desktop's checks in Alpine through eng/ci/native-musl.sh.
   const matrix = workflow.jobs.native.strategy.matrix.include;
-  const nativeRids = matrix.map(entry => entry.rid).sort();
+  const musl = workflow.jobs["native-musl"].strategy.matrix.include;
+  const expected = {
+    desktop: [...matrix, ...musl].map(entry => entry.rid).sort(),
+    cswebui: matrix.filter(entry => entry.cswebui === true).map(entry => entry.rid).sort(),
+  };
+  assert.deepEqual(support.hosts.map(host => host.id).sort(), Object.keys(expected).sort());
   for (const host of support.hosts) {
     const verified = host.targets.filter(target => target.status === "ci-verified").map(target => target.rid).sort();
-    assert.deepEqual(verified, nativeRids, `${host.id}: ci-verified RIDs must equal the Native job matrix`);
+    assert.deepEqual(verified, expected[host.id], `${host.id}: ci-verified RIDs must equal the Native jobs that run its window layer`);
   }
-  const runnerOs = os => /^ubuntu-/.test(os) ? "Linux" : /^windows-/.test(os) ? "Windows" : /^macos-/.test(os) ? "macOS" : assert.fail(`unknown runner ${os}`);
+  for (const entry of matrix) assert.equal(typeof entry.cswebui, "boolean", `${entry.rid}: cswebui must be true or false`);
+  const runner = os => {
+    const name = /^ubuntu-/.test(os) ? "Linux" : /^windows-/.test(os) ? "Windows" : /^macos-/.test(os) ? "macOS" : assert.fail(`unknown runner ${os}`);
+    // Hosted macOS 14 and later and the -arm labels are Arm runners.
+    return { os: name, arch: /-arm$/.test(os) || name === "macOS" ? "ARM64" : "X64" };
+  };
   // Only the step conditions the Native job uses are understood; anything else fails the test.
   // It cannot see `$RUNNER_OS` branches inside a step's shell script, such as the probe step's
   // Linux/else branches; the patterns below match commands that both branches run.
-  const runsOn = (step, os) => {
-    if (step.if === undefined) return true;
-    const match = /^runner\.os (==|!=) '(\w+)'$/.exec(step.if);
-    assert.ok(match, `unexpected Native step condition: ${step.if}`);
-    return (match[2] === os) === (match[1] === "==");
+  const holds = (condition, entry, { os, arch }) => {
+    if (condition === "matrix.cswebui") return entry.cswebui;
+    const match = /^runner\.(os|arch) (==|!=) '(\w+)'$/.exec(condition);
+    assert.ok(match, `unexpected Native step condition: ${condition}`);
+    return ((match[1] === "os" ? os : arch) === match[3]) === (match[2] === "==");
   };
+  const runsOn = (step, entry) => step.if === undefined
+    || step.if.split(" && ").every(condition => holds(condition, entry, runner(entry.os)));
   for (const entry of matrix) {
-    const os = runnerOs(entry.os);
-    for (const [probe, pattern] of [["Runic Desktop WebView smoke", /dotnet\s+\S*Runic\.Desktop\.WebViewSmoke\.dll|Runic\.Desktop\.WebViewSmoke\.exe/],
-      ["CS-WebUI window probes", /CsWebUiWindowProbes\$\{\{ matrix\.extension \}\} --probe-window-close/]]) {
-      assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && runsOn(step, os)),
+    const probes = [["Runic Desktop WebView smoke", /dotnet\s+\S*Runic\.Desktop\.WebViewSmoke\.dll|Runic\.Desktop\.WebViewSmoke\.exe/]];
+    if (entry.cswebui) probes.push(["CS-WebUI window probes", /CsWebUiWindowProbes\$\{\{ matrix\.extension \}\} --probe-window-close/]);
+    for (const [probe, pattern] of probes)
+      assert.ok(workflow.jobs.native.steps.some(step => typeof step.run === "string" && pattern.test(step.run) && runsOn(step, entry)),
         `${entry.rid}: the Native job must run the ${probe}`);
-    }
+    // CS-WebUI ships no native library for the RID, so no step may publish for it.
+    if (!entry.cswebui)
+      assert.ok(!workflow.jobs.native.steps.some(step => typeof step.run === "string" && /CsWebUiWindowProbes/.test(step.run) && runsOn(step, entry)),
+        `${entry.rid}: the Native job must not run the CS-WebUI window probes`);
   }
+  const script = readFileSync(resolve(root, "eng/ci/native-musl.sh"), "utf8");
+  for (const entry of musl) {
+    assert.match(entry.rid, /^linux-musl-/);
+    assert.match(script, new RegExp(`^\\s+(?:[\\w-]+ \\| )*${entry.rid}(?: \\| [\\w-]+)*\\) ;;$`, "m"), `eng/ci/native-musl.sh must accept ${entry.rid}`);
+  }
+  assert.ok(workflow.jobs["native-musl"].steps.some(step => step.run?.includes('sh eng/ci/native-musl.sh "$RID"')
+    && step.env?.RID === "${{ matrix.rid }}"));
+  assert.match(script, /xvfb-run -a dotnet "\$smoke"\n/);
+  assert.match(script, /xvfb-run -a artifacts\/webview-aot\/Runic\.Desktop\.WebViewSmoke\n/);
 });
 
 // Read from the restored NuGet cache when present; the CI engineering job may not restore it.

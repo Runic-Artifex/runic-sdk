@@ -15,10 +15,10 @@
         { "rid": "linux-x64", "status": "ci-verified", "reason": "Covered by the Native / linux-x64 CI job." },
         { "rid": "win-x64", "status": "ci-verified", "reason": "Covered by the Native / win-x64 CI job." },
         { "rid": "osx-arm64", "status": "ci-verified", "reason": "Covered by the Native / osx-arm64 CI job." },
-        { "rid": "linux-arm64", "status": "packaged-unverified", "reason": "Uses the system GTK and WebKitGTK libraries; no arm64 Linux CI runner." },
-        { "rid": "linux-musl-x64", "status": "packaged-unverified", "reason": "Uses the system GTK and WebKitGTK libraries; no musl CI runner." },
-        { "rid": "linux-musl-arm64", "status": "packaged-unverified", "reason": "Uses the system GTK and WebKitGTK libraries; no musl CI runner." },
-        { "rid": "win-arm64", "status": "packaged-unverified", "reason": "Ships the arm64 WebView2 loader; no Windows on Arm CI runner." },
+        { "rid": "linux-arm64", "status": "ci-verified", "reason": "Covered by the Native / linux-arm64 CI job." },
+        { "rid": "linux-musl-x64", "status": "ci-verified", "reason": "Covered by the Native / linux-musl-x64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1." },
+        { "rid": "linux-musl-arm64", "status": "ci-verified", "reason": "Covered by the Native / linux-musl-arm64 CI job, in Alpine 3.22 with its GTK 3 and WebKitGTK 4.1." },
+        { "rid": "win-arm64", "status": "ci-verified", "reason": "Covered by the Native / win-arm64 CI job." },
         { "rid": "osx-x64", "status": "packaged-unverified", "reason": "Uses the system WKWebView; no Intel macOS CI runner." }
       ]
     },
@@ -30,7 +30,7 @@
         { "rid": "linux-x64", "status": "ci-verified", "reason": "Covered by the Native / linux-x64 CI job." },
         { "rid": "win-x64", "status": "ci-verified", "reason": "Covered by the Native / win-x64 CI job." },
         { "rid": "osx-arm64", "status": "ci-verified", "reason": "Covered by the Native / osx-arm64 CI job." },
-        { "rid": "linux-arm64", "status": "packaged-unverified", "reason": "CsWebUi.Native ships a glibc linux-arm64 library; no arm64 Linux CI runner." },
+        { "rid": "linux-arm64", "status": "ci-verified", "reason": "Covered by the Native / linux-arm64 CI job." },
         { "rid": "linux-musl-x64", "status": "unsupported", "reason": "CS-WebUI ships no native library for linux-musl-x64; its Linux library needs glibc 2.34 or newer.", "remediation": "Publish for a glibc distribution (linux-x64 or linux-arm64), or use the Runic Desktop host." },
         { "rid": "linux-musl-arm64", "status": "unsupported", "reason": "CS-WebUI ships no native library for linux-musl-arm64; its Linux library needs glibc 2.34 or newer.", "remediation": "Publish for a glibc distribution (linux-x64 or linux-arm64), or use the Runic Desktop host." },
         { "rid": "win-arm64", "status": "unsupported", "reason": "CS-WebUI ships no native library for win-arm64.", "remediation": "Publish for win-x64, which runs under emulation on Windows on Arm, or use the Runic Desktop host." },
@@ -45,6 +45,7 @@
     { "id": "macos-cswebui", "os": "osx", "hosts": ["cswebui"], "component": "macOS", "minimum": "15", "note": "The bundled native library loads on macOS 15 (cs-webui package smoke on macos-15)." },
     { "id": "glibc", "os": "linux", "hosts": ["cswebui"], "component": "glibc", "minimum": "2.34", "note": "The CsWebUi.Native Linux library; musl distributions are unsupported." },
     { "id": "gtk3", "os": "linux", "hosts": ["desktop", "cswebui"], "component": "GTK 3 and WebKitGTK 4.1", "minimum": null, "note": "Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed." },
+    { "id": "alpine", "os": "linux", "hosts": ["desktop"], "component": "Alpine Linux (musl), an Alpine release that .NET 10 supports", "minimum": null, "note": "For the linux-musl RIDs, with Alpine's gtk+3.0 and webkit2gtk-4.1 packages. CI runs Alpine 3.22 with WebKit's sandbox enabled; Runic.Desktop.Gtk4 is not CI-verified on musl." },
     { "id": "gtk4", "os": "linux", "hosts": ["desktop"], "component": "GTK", "minimum": "4.12", "note": "With Runic.Desktop.Gtk4." },
     { "id": "webkitgtk6", "os": "linux", "hosts": ["desktop"], "component": "WebKitGTK", "minimum": "6.0", "note": "With Runic.Desktop.Gtk4." }
   ]

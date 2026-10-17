@@ -45,10 +45,10 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 | `linux-x64` | CI-verified | CI-verified |
 | `win-x64` | CI-verified | CI-verified |
 | `osx-arm64` | CI-verified | CI-verified |
-| `linux-arm64` | Packaged, not CI-verified | Packaged, not CI-verified |
-| `linux-musl-x64` | Packaged, not CI-verified | Unsupported |
-| `linux-musl-arm64` | Packaged, not CI-verified | Unsupported |
-| `win-arm64` | Packaged, not CI-verified | Unsupported |
+| `linux-arm64` | CI-verified | CI-verified |
+| `linux-musl-x64` | CI-verified | Unsupported |
+| `linux-musl-arm64` | CI-verified | Unsupported |
+| `win-arm64` | CI-verified | Unsupported |
 | `osx-x64` | Packaged, not CI-verified | Packaged, not CI-verified |
 
 - CI-verified: Runic CI builds and runs the host's native window layer on this RID for changes that affect it.
@@ -63,17 +63,13 @@ edit that file and run `bun tools/dotnet-runic/metadata/generate.mjs --write`.
 | macOS | CS-WebUI | macOS 15 or newer | The bundled native library loads on macOS 15 (cs-webui package smoke on macos-15). |
 | Linux | CS-WebUI | glibc 2.34 or newer | The CsWebUi.Native Linux library; musl distributions are unsupported. |
 | Linux | Runic Desktop, CS-WebUI | GTK 3 and WebKitGTK 4.1 | Runic Desktop's default Linux host, and CS-WebUI's fallback when no Chromium-family browser is installed. |
+| Linux | Runic Desktop | Alpine Linux (musl), an Alpine release that .NET 10 supports | For the linux-musl RIDs, with Alpine's gtk+3.0 and webkit2gtk-4.1 packages. CI runs Alpine 3.22 with WebKit's sandbox enabled; Runic.Desktop.Gtk4 is not CI-verified on musl. |
 | Linux | Runic Desktop | GTK 4.12 or newer | With Runic.Desktop.Gtk4. |
 | Linux | Runic Desktop | WebKitGTK 6.0 or newer | With Runic.Desktop.Gtk4. |
 
 Notes on targets that CI does not verify:
 
-- Runic Desktop, `linux-arm64`: Uses the system GTK and WebKitGTK libraries; no arm64 Linux CI runner.
-- Runic Desktop, `linux-musl-x64`: Uses the system GTK and WebKitGTK libraries; no musl CI runner.
-- Runic Desktop, `linux-musl-arm64`: Uses the system GTK and WebKitGTK libraries; no musl CI runner.
-- Runic Desktop, `win-arm64`: Ships the arm64 WebView2 loader; no Windows on Arm CI runner.
 - Runic Desktop, `osx-x64`: Uses the system WKWebView; no Intel macOS CI runner.
-- CS-WebUI, `linux-arm64`: CsWebUi.Native ships a glibc linux-arm64 library; no arm64 Linux CI runner.
 - CS-WebUI, `linux-musl-x64`: CS-WebUI ships no native library for linux-musl-x64; its Linux library needs glibc 2.34 or newer.
 - CS-WebUI, `linux-musl-arm64`: CS-WebUI ships no native library for linux-musl-arm64; its Linux library needs glibc 2.34 or newer.
 - CS-WebUI, `win-arm64`: CS-WebUI ships no native library for win-arm64.
