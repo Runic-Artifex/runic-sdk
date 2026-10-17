@@ -58,7 +58,7 @@ public sealed class DesktopShortcutTests
 
 public sealed class DesktopMenuBarTests
 {
-    private static DesktopMenuItem Item(string title, string id, string? shortcut = null) =>
+    private static DesktopMenuBarItem Item(string title, string id, string? shortcut = null) =>
         new(title, id) { Shortcut = shortcut is null ? null : DesktopShortcut.Parse(shortcut) };
 
     [Test]

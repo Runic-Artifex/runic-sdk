@@ -13,11 +13,11 @@ internal sealed class MenuCommandChecks
 {
     private static readonly IReadOnlyList<DesktopMenu> Bar =
     [
-        new("File", [new DesktopMenuItem("New", "file.new"), new DesktopMenuItem("Save", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
+        new("File", [new DesktopMenuBarItem("New", "file.new"), new DesktopMenuBarItem("Save", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
         {
             Role = DesktopMenuRole.File,
         },
-        new("Tools", [new DesktopMenu("Danger", [new DesktopMenuItem("Explode", "tools.explode")])]),
+        new("Tools", [new DesktopMenu("Danger", [new DesktopMenuBarItem("Explode", "tools.explode")])]),
     ];
 
     [Test, NotInParallel(Order = 19)]
@@ -64,7 +64,7 @@ internal sealed class MenuCommandChecks
                 "A failing menu command was not logged as DesktopMenuCommandFailed.");
 
             // A new menu bar binds its ids again, for example after a language change.
-            desktop.SetMenuBar([new DesktopMenu("Werkzeuge", [new DesktopMenuItem("Sichern", "file.save.as")])]);
+            desktop.SetMenuBar([new DesktopMenu("Werkzeuge", [new DesktopMenuBarItem("Sichern", "file.save.as")])]);
             await WaitAsync(() => target.CanExecute("file.save.as") && !target.CanExecute("file.save"), "The new menu bar was not bound.");
             await WaitAsync(() => application.CanExecute("file.new") == false, "The application's commands kept the old menu bar.");
         }

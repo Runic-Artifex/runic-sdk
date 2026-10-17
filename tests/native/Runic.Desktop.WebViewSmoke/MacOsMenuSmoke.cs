@@ -8,22 +8,22 @@ internal static partial class MacOsMenuSmoke
 {
     internal static readonly IReadOnlyList<DesktopMenu> Bar =
     [
-        new("Settings", [new DesktopMenuItem("Settings…", "app.settings") { Shortcut = DesktopShortcut.Parse("Primary+,") }])
+        new("Settings", [new DesktopMenuBarItem("Settings…", "app.settings") { Shortcut = DesktopShortcut.Parse("Primary+,") }])
         {
             Role = DesktopMenuRole.Application,
         },
-        new("Fichier", [new DesktopMenuItem("Enregistrer", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
+        new("Fichier", [new DesktopMenuBarItem("Enregistrer", "file.save") { Shortcut = DesktopShortcut.Parse("Primary+S") }])
         {
             Role = DesktopMenuRole.File,
         },
         new("Tools",
         [
-            new DesktopMenuItem("Run", "tools.run") { Shortcut = DesktopShortcut.Parse("Primary+Shift+R") },
-            new DesktopMenuSeparator(),
-            new DesktopMenuItem("Copy Special", "tools.copy") { Shortcut = DesktopShortcut.Parse("Primary+C") },
-            new DesktopMenu("More", [new DesktopMenuItem("Nothing", "tools.nothing")]),
+            new DesktopMenuBarItem("Run", "tools.run") { Shortcut = DesktopShortcut.Parse("Primary+Shift+R") },
+            new DesktopMenuBarSeparator(),
+            new DesktopMenuBarItem("Copy Special", "tools.copy") { Shortcut = DesktopShortcut.Parse("Primary+C") },
+            new DesktopMenu("More", [new DesktopMenuBarItem("Nothing", "tools.nothing")]),
         ]),
-        new("Help", [new DesktopMenuItem("Runic Help", "help.show")]) { Role = DesktopMenuRole.Help },
+        new("Help", [new DesktopMenuBarItem("Runic Help", "help.show")]) { Role = DesktopMenuRole.Help },
     ];
 
     internal sealed class Target : IDesktopMenuCommandTarget

@@ -121,7 +121,7 @@ internal sealed class MenuCommandBinding : IDesktopMenuCommandTarget, IDisposabl
         {
             foreach (var entry in entries)
             {
-                if (entry is DesktopMenuItem item) ids.Add(item.CommandId);
+                if (entry is DesktopMenuBarItem item) ids.Add(item.CommandId);
                 else if (entry is DesktopMenu submenu) Collect(submenu.Items);
             }
         }

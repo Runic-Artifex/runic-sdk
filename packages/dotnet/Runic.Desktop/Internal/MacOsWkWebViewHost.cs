@@ -672,10 +672,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             switch (entry)
             {
-                case DesktopMenuSeparator:
+                case DesktopMenuBarSeparator:
                     Add(Api.SendNint(Api.GetClass("NSMenuItem"), "separatorItem"));
                     break;
-                case DesktopMenuItem item:
+                case DesktopMenuBarItem item:
                     var (key, modifiers) = item.Shortcut is { Key: not null } shortcut && !DesktopMenuBar.IsReserved(shortcut)
                         ? DesktopMenuBar.ToMacKeyEquivalent(shortcut)
                         : ("", 0UL);
