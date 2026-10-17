@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using Runic.Desktop;
@@ -57,9 +58,10 @@ internal static class RightToLeftSmoke
                 || root.GetProperty("direction").GetString() != "rtl" || !root.GetProperty("firstIsRight").GetBoolean())
                 throw new InvalidOperationException($"The WebKitGTK 6 page did not follow the Arabic locale: {root.GetRawText()}.");
 
-            string translated = "", locale = "", widgets = "";
+            string translated = "", locale = "", widgets = "", messages = "";
             await window.DispatchNativeAsync(_ =>
             {
+                messages = Marshal.PtrToStringUTF8(SetLocale(LcMessages, 0)) ?? "";
                 // GTK takes its direction from its own translation of "default:LTR" for the process locale.
                 translated = GLib.Functions.Dgettext("gtk40", "default:LTR");
                 locale = Gtk.Functions.GetLocaleDirection().ToString();
@@ -73,13 +75,19 @@ internal static class RightToLeftSmoke
             }
             else if (Environment.GetEnvironmentVariable("CI") == "true")
             {
-                throw new InvalidOperationException($"GTK has no Arabic translation here (default:LTR → {translated}); install it, for example language-pack-gnome-ar-base, and generate the ar_EG.UTF-8 locale.");
+                throw new InvalidOperationException($"GTK has no Arabic translation here (default:LTR → {translated}, LC_MESSAGES {messages}, LC_ALL '{Environment.GetEnvironmentVariable("LC_ALL")}'); install it, for example language-pack-gnome-ar-base, and generate the ar_EG.UTF-8 locale.");
             }
             else
             {
-                Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left. GTK direction skipped: GTK has no Arabic translation for this locale (default:LTR → {translated}).");
+                Console.WriteLine($"PASS GTK 4 RTL: page language {pageLanguage} lays out right to left. GTK direction skipped: GTK has no Arabic translation for LC_MESSAGES {messages} (default:LTR → {translated}).");
             }
             return 0;
         });
     }
+
+    // The process's message locale as GTK set it with setlocale(LC_ALL, ""), for the failure message.
+    private const int LcMessages = 5;
+
+    [DllImport("libc.so.6", EntryPoint = "setlocale")]
+    private static extern nint SetLocale(int category, nint locale);
 }
