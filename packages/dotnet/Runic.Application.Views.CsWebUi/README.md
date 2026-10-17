@@ -103,11 +103,16 @@ instead. `services.AddRunicPlatformServices()` registers `IWindowPlatformService
 `IFileDialogs`, `ITextClipboard` and `IDesktopFileLauncher` per window here too, so
 ViewModels that take them resolve on both hosts. CS-WebUI windows have no native
 owner, so every operation and the capability snapshot report
-`Unavailable(OwnerUnavailable)`. It also registers one `IDesktopSettings` and
-one `IDesktopNotifications` whose requests return
-`Unavailable(ProviderNotConfigured)`; register a platform provider's settings
-or notifications, such as `WindowsPlatformProvider.CreateSettings()`, before it
-to use them on CS-WebUI.
+`Unavailable(OwnerUnavailable)`. It also registers one `IDesktopSettings`,
+`IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup` and
+`IDesktopInhibition`, the same application services as Runic Desktop, whose
+requests return `Unavailable(ProviderNotConfigured)`: this package selects no
+native provider. They need no window, so register a platform provider's service,
+such as `WindowsPlatformProvider.CreateSettings()` or
+`new PortalApplication("org.example.Notes").CreateUnparentedInhibition()`, before
+it to use one on CS-WebUI. The
+[Runic.Platform guide](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Platform/README.md#hosts-without-a-native-owner)
+lists each service's result on both hosts.
 
 When WebUI cannot show a window, because it finds no browser, the selected
 browser does not exist or does not start, or the page does not connect within

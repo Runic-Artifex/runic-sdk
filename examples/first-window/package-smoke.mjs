@@ -126,12 +126,15 @@ try {
   const showFailure = await run("dotnet", [probe, "--probe-show-failure"], probes);
   if (!showFailure.includes("FIRST_WINDOW_SHOW_FAILURE_OK"))
     throw new Error(`The packaged Window did not report a browser that could not show it:\n${showFailure}`);
+  const platformServices = await run("dotnet", [probe, "--probe-platform-services"], probes);
+  if (!platformServices.includes("CSWEBUI_PLATFORM_SERVICES_OK"))
+    throw new Error(`The packaged CS-WebUI platform services did not report their documented results:\n${platformServices}`);
   const browser = await run("node", [join(example, "browser-smoke.mjs")], root, {
     ...process.env,
     RUNIC_FIRST_WINDOW_DLL: join(consumer, "bin/Release/net10.0/ConsumerFirstWindow.dll")
   });
   if (!browser.includes("FIRST_WINDOW_OK")) throw new Error(`Browser journey failed:\n${browser}`);
-  console.log("FIRST_WINDOW_PACKAGE_OK|pack|restore|generate|failed-construction|close|close-guard|missing-bridge|browser");
+  console.log("FIRST_WINDOW_PACKAGE_OK|pack|restore|generate|failed-construction|close|close-guard|missing-bridge|platform-services|browser");
 } finally {
   await rm(temporary, { recursive: true, force: true });
   if (testVersion) {

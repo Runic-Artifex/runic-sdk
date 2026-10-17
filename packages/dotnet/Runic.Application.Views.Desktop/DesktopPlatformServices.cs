@@ -205,6 +205,47 @@ public static class PlatformServices
         return startup ?? DesktopLoginStartup.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
     }
 
+    /// <summary>Creates idle-power inhibition for the application from the provider for the operating system.</summary>
+    /// <param name="applicationId">On Linux the reverse-DNS ID of the installed desktop entry, which identifies the
+    /// application to the portal; <see langword="null"/> lets the portal infer it. Windows and macOS ignore it.</param>
+    /// <returns>Application-scoped inhibition; each lease it acquires is released by disposing the lease.</returns>
+    /// <remarks>
+    /// Nothing is inhibited until <see cref="IDesktopInhibition.AcquireAsync"/>. Windows creates a power request and
+    /// macOS an IOKit power assertion; neither needs a window or the Desktop event loop. Linux asks the
+    /// xdg-desktop-portal Inhibit interface with either toolkit, without loading GTK, and sends no parent window, so
+    /// the request belongs to the application rather than to a window and works for a host without a native owner.
+    /// Elsewhere, or where the Windows provider does not support the running version, every acquisition reports
+    /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>.
+    /// <see cref="DesktopPlatformServiceCollectionExtensions.AddRunicPlatformServices(IServiceCollection)"/> registers
+    /// one instance for the application.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="applicationId"/> is not a valid ID on this operating system.</exception>
+    public static IDesktopInhibition CreateInhibition(string? applicationId = null) => CreateInhibition(applicationId, null);
+
+    internal static IDesktopInhibition CreateInhibition(string? applicationId, ILogger? logger)
+    {
+        IDesktopInhibition? inhibition = null;
+        if (OperatingSystem.IsWindows()) inhibition = Optional(CreateWindowsInhibition);
+#if RUNIC_PORTABLE_PLATFORMS
+        else if (OperatingSystem.IsMacOS()) inhibition = CreateMacOSInhibition();
+        else if (OperatingSystem.IsLinux()) inhibition = CreatePortalInhibition(applicationId, logger);
+#endif
+        return inhibition ?? DesktopInhibition.Unavailable(PlatformUnavailableReason.ProviderNotConfigured);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopInhibition CreateWindowsInhibition() => WindowsPlatformProvider.CreateInhibition();
+
+#if RUNIC_PORTABLE_PLATFORMS
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopInhibition CreateMacOSInhibition() => MacOSPlatformProvider.CreateInhibition();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static IDesktopInhibition CreatePortalInhibition(string? applicationId, ILogger? logger) =>
+        new PortalApplication(applicationId, logger is null ? null : diagnostic => DesktopLog.PortalDiagnostic(logger, diagnostic))
+            .CreateUnparentedInhibition();
+#endif
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static IDesktopStatusIcon CreateWindowsStatusIcon() => WindowsPlatformProvider.CreateStatusIcon();
 
@@ -601,26 +642,29 @@ public sealed class DesktopWindowPlatformServices : IWindowPlatformServices, IFi
 public static class DesktopPlatformServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed as
-    /// <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
-    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, one
-    /// <see cref="IDesktopNotifications"/>, one <see cref="IDesktopStatusIcon"/> and one <see cref="IDesktopLoginStartup"/>
-    /// for the application, without an
-    /// application ID.
+    /// Registers every Runic platform service: one <see cref="DesktopWindowPlatformServices"/> per window scope, exposed
+    /// as <see cref="IWindowPlatformServices"/>, <see cref="IFileDialogs"/>, <see cref="ITextClipboard"/> and
+    /// <see cref="IDesktopFileLauncher"/>, and one <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/>,
+    /// <see cref="IDesktopStatusIcon"/>, <see cref="IDesktopLoginStartup"/> and <see cref="IDesktopInhibition"/> for the
+    /// application, without an application ID.
     /// </summary>
     /// <remarks>
     /// A ViewModel resolved in the scope that <c>OpenWindowAsync</c> on <see cref="RunicDesktopHost"/> creates can take any of these services in
-    /// its constructor. They bind to the window's native owner when the window opens, using
-    /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. Resolved in any other scope
-    /// they stay unbound and report <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
-    /// <see cref="IDesktopSettings"/>, <see cref="IDesktopNotifications"/> and <see cref="IDesktopStatusIcon"/> need
-    /// no window: they are singletons created by <see cref="PlatformServices.CreateSettings"/>,
-    /// <see cref="PlatformServices.CreateNotifications(string?)"/> and <see cref="PlatformServices.CreateStatusIcon(string?)"/>
+    /// its constructor. The window services need the window's native owner: they bind to it when the window opens, using
+    /// <see cref="PlatformServices.CurrentProvider"/>, and stop when the window closes. A window without a native owner,
+    /// such as an installed browser after an embedded-window fallback or a window served under
+    /// <c>RUNIC_APPLICATION_SERVE_ONLY=1</c>, and any scope other than a window's, get window services that report
+    /// <see cref="PlatformUnavailableReason.OwnerUnavailable"/>.
+    /// The application services need no window, so they work the same with or without a native owner: they are
+    /// singletons created by <see cref="PlatformServices.CreateSettings"/>,
+    /// <see cref="PlatformServices.CreateNotifications(string?)"/>, <see cref="PlatformServices.CreateStatusIcon(string?)"/>,
+    /// <see cref="PlatformServices.CreateLoginStartup(string?)"/> and <see cref="PlatformServices.CreateInhibition(string?)"/>
     /// when first resolved, and disposed with the service provider. Without an application ID, Linux notifications
     /// use the identity the desktop portal infers and Windows notifications report
     /// <see cref="PlatformUnavailableReason.ProviderNotConfigured"/>; pass the ID to
     /// <see cref="AddRunicPlatformServices(IServiceCollection, string)"/> instead. Existing registrations of these
-    /// service types are kept.
+    /// service types are kept. Privileged actions need declared actions and their own provider package, so the
+    /// application registers <see cref="IDesktopPrivilegedActions"/> itself.
     /// </remarks>
     public static IServiceCollection AddRunicPlatformServices(this IServiceCollection services)
     {
@@ -629,8 +673,8 @@ public static class DesktopPlatformServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the same services as <see cref="AddRunicPlatformServices(IServiceCollection)"/>, with notifications
-    /// for the application identified by <paramref name="applicationId"/>.
+    /// Registers the same services as <see cref="AddRunicPlatformServices(IServiceCollection)"/>, with notifications,
+    /// the status icon, login startup and inhibition for the application identified by <paramref name="applicationId"/>.
     /// </summary>
     /// <param name="services">The application's services.</param>
     /// <param name="applicationId">
@@ -665,6 +709,8 @@ public static class DesktopPlatformServiceCollectionExtensions
         services.TryAddSingleton(provider => PlatformServices.CreateLoginStartup(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddSingleton(provider => PlatformServices.CreateStatusIcon(applicationId,
+            provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
+        services.TryAddSingleton(provider => PlatformServices.CreateInhibition(applicationId,
             provider.GetService<ILoggerFactory>()?.CreateLogger(DesktopBridgeTransport.LogCategory)));
         services.TryAddScoped(static _ => new DesktopWindowPlatformServices());
         services.TryAddScoped<IWindowPlatformServices>(static provider => provider.GetRequiredService<DesktopWindowPlatformServices>());

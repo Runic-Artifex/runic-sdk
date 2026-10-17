@@ -28,6 +28,10 @@ factories for GTK 4 windows; compose the services yourself to pass a `PortalAppl
 It also registers notifications with `PortalPlatformProvider.CreateNotifications`,
 with the application ID passed to `AddRunicPlatformServices(applicationId)`, or
 desktop-inferred identity without one.
+Its inhibition comes from `PortalApplication.CreateUnparentedInhibition()`: an
+application-scoped Inhibit request with the empty parent window identifier, so
+it works without a window and is not tied to one. `CreateInhibition(owner)`
+associates each request with a presentation instead.
 
 Calls are bound to a specific portal service owner. An interrupted operation
 returns unavailable; it is never replayed automatically. Notifications detect

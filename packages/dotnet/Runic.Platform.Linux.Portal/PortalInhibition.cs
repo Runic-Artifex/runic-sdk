@@ -19,7 +19,9 @@ internal sealed class PortalInhibition(IPortalWindowOwner owner, PortalApplicati
         {
             if (!owner.IsAvailable) return new PlatformResult<IDesktopInhibitionLease>.Unavailable(PlatformUnavailableReason.OwnerClosed);
             parent = await owner.ExportParentAsync(cancellationToken).ConfigureAwait(false);
-            if (!(parent.Identifier.StartsWith("x11:", StringComparison.Ordinal) && parent.Identifier.Length > 4
+            // An explicitly unparented request sends the empty window identifier, which the Inhibit portal accepts.
+            if (owner is not IExplicitUnparentedOwner
+                && !(parent.Identifier.StartsWith("x11:", StringComparison.Ordinal) && parent.Identifier.Length > 4
                 || parent.Identifier.StartsWith("wayland:", StringComparison.Ordinal) && parent.Identifier.Length > 8))
                 throw new NativeBackendUnavailableException();
             if (!owner.IsAvailable || owner.Generation != generation) throw new OwnerClosedException();

@@ -25,6 +25,11 @@ public sealed class PortalApplication
     /// <summary>Creates operation-scoped idle power inhibition associated with a presentation owner.</summary>
     public IDesktopInhibition CreateInhibition(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalInhibition(owner, this); }
+    /// <summary>Creates idle power inhibition for an application without a native presentation, or one whose
+    /// operations outlive their windows.</summary>
+    /// <remarks>Each request sends the empty parent window identifier, which the Inhibit portal accepts, so the request
+    /// is not tied to a window. Use <see cref="CreateInhibition"/> to associate requests with a presentation.</remarks>
+    public IDesktopInhibition CreateUnparentedInhibition() => new PortalInhibition(new PortalPlatformProvider.UnparentedOwner(), this);
     /// <summary>Creates application-scoped appearance preferences.</summary>
     public IDesktopSettings CreateSettings() => new PortalDesktopSettings(application: this);
     /// <summary>Creates application-scoped notifications; only one service may own this application bus name.</summary>

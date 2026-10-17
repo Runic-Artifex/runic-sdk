@@ -1,1 +1,3 @@
 #nullable enable
+Runic.Platform.DesktopInhibition
+static Runic.Platform.DesktopInhibition.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopInhibition!
