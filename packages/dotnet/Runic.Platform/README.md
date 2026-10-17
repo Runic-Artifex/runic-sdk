@@ -148,7 +148,7 @@ either.
 | Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Dropped files, `IRunicFileDropTarget` | Native paths, once per drop | None | None |
 | Menu bar commands, `IRunicMenuCommandSource` | The macOS menu bar, while the window is key | None | None |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore`, `IDesktopTrash`, `IDesktopFileTransfers` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -238,6 +238,174 @@ result is `Success`. A missing item is `Failed(NotFound)`, a refused move
 `DesktopTrash.Unavailable(reason)`. The
 [trash design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/trash.md)
 has the per-platform behaviour and its verification.
+
+## Copy and move
+
+`IDesktopFileTransfers` copies and moves files and directories as a file
+manager does: with progress, cancellation and a decision for each conflict.
+`AddRunicPlatformServices()` registers one for the application; every
+operating system uses the same managed engine
+(`Runic.Platform.Runtime.LocalFileTransfers.Create()`).
+
+```csharp
+var request = new FileTransferRequest([report, photos], destinationDirectory);
+if (await transfers.CopyAsync(request, cancellationToken) is PlatformResult<FileTransferSummary>.Success(var summary))
+    Console.WriteLine($"{summary.Transferred} copied, {summary.Skipped} skipped");
+```
+
+Each source goes into the destination directory under its own name. A file is
+written under a hidden temporary name and renamed into place once complete, so
+a directory listing, or a `RunicPathWatcher` watching it, never sees a partial
+file. A move renames a source that stays on its file system and copies one that
+does not, removing the source only after its whole item is complete.
+
+When the transfer stops, by an error, a conflict answered `Cancel` or
+cancellation, items completed before stay done, and what the item in progress
+did is put back: its copies are removed, renamed entries move back, and an entry
+it replaced returns. The first error is `Failed` with `NotFound`,
+`PermissionDenied`, `Conflict` (a conflict without a handler), `UserDismissed`
+(a conflict answered `Cancel`) or `IoError`, such as for a full disk. Caller
+cancellation throws `OperationCanceledException`.
+
+### What a transfer keeps
+
+| Kept | Not kept |
+| --- | --- |
+| File content | Owner and group |
+| Last write time of files and directories | Access control lists and extended attributes, including macOS quarantine and tags |
+| Permission bits on Linux and macOS (`UnixFileMode`) | Alternate data streams on Windows |
+| Read-only, hidden and archive attributes on Windows | macOS resource forks and Finder information |
+| Symbolic links, as links; they are never followed | Hard links: each becomes a separate file |
+| Directory structure, empty directories included | Sparse regions: holes are written out; creation and access times |
+
+Named pipes, sockets and devices are skipped and counted in `Skipped`. On
+Windows, copying a symbolic link needs Developer Mode or an elevated process;
+otherwise the transfer fails with `PermissionDenied`. Copying is block by
+block in .NET: reflinks, `CopyFileEx` and `clonefile` are not used.
+
+### Conflicts
+
+When an entry of the destination has a source's name, the transfer calls
+`ResolveConflict` with a `FileTransferConflict`, the source and the existing
+entry with their sizes and times, and waits for a `FileConflictResolution`:
+`Skip`, `Replace`, `KeepBoth` (`report (2).txt`), `Merge` (directories only:
+each conflict inside is decided in turn) or `Cancel`. `ApplyToAll` answers every
+later conflict of the same kind, between two directories or not. Without a
+handler the transfer stops at the first conflict with `Failed(Conflict)`.
+Copying an item into its own directory keeps both without asking; moving it
+there does nothing.
+
+The handler is called on the `SynchronizationContext` that was current when the
+transfer started. In a ViewModel command that is the model context, so the
+handler can ask the page through an interaction, and progress reported through
+a `Progress<T>` created in the command updates state in a later turn.
+
+### Show progress and ask the page
+
+This ReactiveUI ViewModel pastes files the user copied in its own listing. The
+command is a bridged operation, so the page can cancel it; its progress is
+state, and conflicts reach the page through an interaction. The paths stay in
+.NET; the page sees names and sizes.
+
+```csharp
+/// <summary>How far a paste is.</summary>
+public sealed record PasteProgress(int Items, int TotalItems, double Bytes, double TotalBytes);
+
+/// <summary>An entry of the folder that a pasted one would replace.</summary>
+public sealed record ConflictPrompt(string Name, bool IsDirectory, double Bytes, DateTimeOffset Modified, bool CanMerge);
+
+/// <summary>The user's decision.</summary>
+public sealed record ConflictAnswer(FileConflictAction Action, bool ApplyToAll);
+
+/// <summary>What a paste did.</summary>
+public sealed record PasteResult(int Transferred, int Skipped, bool Cancelled);
+
+public sealed partial class FolderViewModel : ReactiveObject
+{
+    private readonly IDesktopFileTransfers _transfers;
+    private ImmutableArray<string> _copied = [];  // Set by the folder's own Copy command.
+
+    public FolderViewModel(IDesktopFileTransfers transfers, string location)
+    {
+        _transfers = transfers;
+        Location = location;
+        PasteCommand = ReactiveCommand.CreateFromTask(PasteAsync);
+    }
+
+    public string Location { get; }
+
+    /// <summary>The paste in progress, or null.</summary>
+    [Reactive]
+    public partial PasteProgress? Pasting { get; private set; }
+
+    /// <summary>Asks which way to resolve a conflict.</summary>
+    public Interaction<ConflictPrompt, ConflictAnswer> ResolveConflict { get; } = new();
+
+    /// <summary>Copies the entries copied earlier into this folder.</summary>
+    public ReactiveCommand<RxVoid, PasteResult> PasteCommand { get; }
+
+    private async Task<PasteResult> PasteAsync(CancellationToken cancellationToken)
+    {
+        var request = new FileTransferRequest(_copied, Location)
+        {
+            // Created in the command's turn: each report sets state in a later turn of the model context.
+            Progress = new Progress<FileTransferProgress>(progress =>
+                Pasting = new(progress.CompletedItems, progress.TotalItems, progress.CompletedBytes, progress.TotalBytes)),
+            // Called in the model context; the page answers through the interaction.
+            ResolveConflict = async (conflict, token) =>
+            {
+                var prompt = new ConflictPrompt(Path.GetFileName(conflict.DestinationPath), conflict.Destination.IsDirectory,
+                    conflict.Destination.Length, conflict.Destination.LastWriteTime, conflict.CanMerge);
+                var answer = await ResolveConflict.Handle(prompt); // The command's cancellation cancels the question.
+                return new FileConflictResolution(answer.Action) { ApplyToAll = answer.ApplyToAll };
+            },
+        };
+        try
+        {
+            return await _transfers.CopyAsync(request, cancellationToken) switch
+            {
+                PlatformResult<FileTransferSummary>.Success(var done) => new(done.Transferred, done.Skipped, Cancelled: false),
+                PlatformResult<FileTransferSummary>.Failed { Code: PlatformFailureCode.UserDismissed } => new(0, 0, Cancelled: true),
+                var stopped => throw new IOException($"The paste stopped: {stopped}"),
+            };
+        }
+        finally { Pasting = null; }
+    }
+}
+```
+
+The page starts the operation, renders `pasting` from the snapshot, cancels
+through the operation controller and answers conflicts while it is mounted:
+
+```ts
+import { createOperationController } from "@runic-artifex/views";
+
+const paste = createOperationController(() => folder.startPaste());
+const unregister = folder.interactions.resolveConflict.handle(
+  async (prompt, { signal }) => askReplaceDialog(prompt, signal), // resolves to { action: "Replace", applyToAll: false }
+);
+folder.subscribe(state => renderProgress(state.pasting));
+pasteButton.onclick = () => void paste.run();
+cancelButton.onclick = () => void paste.cancel();
+```
+
+Cancel aborts the command's `CancellationToken`, which stops the transfer within
+a block and puts back the item in progress. The
+[operations guide](https://docs.runic-artifex.eu/guides/application/guides/operations-and-cancellation/)
+covers pending state and cancellation feedback. The
+[file transfer design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/file-transfers.md)
+has the full behaviour and its verification.
+
+### Watch a directory
+
+`RunicPathWatcher` in Runic.Application.Views watches the directory a file
+manager shows, also while a transfer writes into it:
+`RunicWatchTarget.Directory(location)` reports entries added, removed and
+renamed, through inotify on Linux, `ReadDirectoryChangesW` on Windows and
+FSEvents on macOS, and polls network file systems. Hidden temporary files that
+a transfer writes start with `.`, so a pattern such as `*.txt`, or skipping
+names that start with `.`, shows only complete entries. See
+[Watching files](https://github.com/Runic-Artifex/runic-sdk/tree/main/packages/dotnet/Runic.Application.Views#watching-files).
 
 ## Privileged actions
 

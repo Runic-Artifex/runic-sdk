@@ -103,3 +103,13 @@ files. Linux desktop entries (`Exec=app %U`) and Windows registrations
 (`"app.exe" "%1"`) pass them that way. The instance's own `Launched` handlers
 still receive every launch. See the
 [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
+
+## File transfers
+
+`LocalFileTransfers.Create()` is the `IDesktopFileTransfers` engine every
+platform uses, and what `AddRunicPlatformServices()` registers on Runic
+Desktop. It copies in 1 MiB blocks under hidden temporary names, renames into
+place with an exclusive rename, and moves by renaming within a file system. A
+CS-WebUI application can register it itself. See
+[Copy and move](../Runic.Platform/README.md#copy-and-move) and the
+[file transfer design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/file-transfers.md).

@@ -8,3 +8,4 @@ Runic.Application.Views.Desktop.RunicDesktopHost.MenuCommands.get -> System.Coll
 Runic.Application.Views.Desktop.RunicDesktopHost.MenuCommands.init -> void
 static Runic.Application.Views.Desktop.PlatformServices.CreateOpenRequests(Runic.Platform.DesktopOpenOptions! options, Runic.Platform.IApplicationInstance? instance = null, Runic.Platform.ApplicationLaunch? launch = null) -> Runic.Platform.IDesktopOpenRequests!
 static Runic.Application.Views.Desktop.PlatformServices.CreateTrash() -> Runic.Platform.IDesktopTrash!
+static Runic.Application.Views.Desktop.PlatformServices.CreateFileTransfers() -> Runic.Platform.IDesktopFileTransfers!
