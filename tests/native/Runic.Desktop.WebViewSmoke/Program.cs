@@ -35,6 +35,14 @@ try
     {
         await RunWindowsUiAutomationSmokeAsync();
     }
+    else if (args.Contains("--accessibility", StringComparer.Ordinal))
+    {
+        // DesktopEventLoop.Run must run before the first await: on macOS the AppKit loop owns the main thread.
+        watchdog.Change(TimeSpan.FromMinutes(6), Timeout.InfiniteTimeSpan);
+        var hostName = OperatingSystem.IsWindows() ? "webview2" : OperatingSystem.IsMacOS() ? "wkwebview" : "gtk3";
+        var probe = AccessibilitySmoke.ProbeCommand(args);
+        Environment.ExitCode = DesktopEventLoop.Run(CreateHostOptions(), host => AccessibilitySmoke.RunAsync(host, hostName, probe));
+    }
     else if (args.Contains("--zoom", StringComparer.Ordinal) && OperatingSystem.IsMacOS())
     {
         // Must run before the first await, as --event-loop: the AppKit loop owns the main thread.

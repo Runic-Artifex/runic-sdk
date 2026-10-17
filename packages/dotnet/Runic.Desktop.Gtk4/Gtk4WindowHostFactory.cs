@@ -713,6 +713,7 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             window.OnDestroy += OnDestroyed;
             webView.OnPermissionRequest += OnPermissionRequest;
             WebProcessTerminatedSignal.Connect(this, webView);
+            TitleSignal.Connect(this, webView);
             _drops = new FileDropPairing(drop => FilesDropped?.Invoke(this, drop), FileDropSupport.LabelWait);
             _receivesFileDrops = Gtk4FileDrops.Connect(this, webView);
             webView.LoadUri(url.AbsoluteUri);
@@ -958,6 +959,47 @@ internal sealed partial class Gtk4WindowHost : IDesktopNativeDispatchWindowHost,
             try
             {
                 (GCHandle.FromIntPtr(context).Target as Gtk4WindowHost)?.OnWebProcessTerminated(webView, reason);
+            }
+            catch
+            {
+                // Native callbacks cannot unwind through GTK.
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void Release(nint context, nint closure) => GCHandle.FromIntPtr(context).Free();
+
+        [LibraryImport("libgobject-2.0.so.0", EntryPoint = "g_signal_connect_data", StringMarshalling = StringMarshalling.Utf8)]
+        private static partial nuint ConnectData(nint instance, string signal, nint handler, nint data, nint destroy, int flags);
+    }
+
+    // The window takes the page's <title>, as on GTK 3, WebView2 and in a browser: window lists and screen readers
+    // name the window by it. "Runic Desktop" stays until the page has a title.
+    private static unsafe partial class TitleSignal
+    {
+        internal static void Connect(Gtk4WindowHost host, WebView webView)
+        {
+            var context = GCHandle.Alloc(host);
+            var handler = ConnectData(webView.Handle.DangerousGetHandle(), "notify::title",
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitle, GCHandle.ToIntPtr(context),
+                (nint)(delegate* unmanaged[Cdecl]<nint, nint, void>)&Release, 0);
+            if (handler == 0)
+            {
+                context.Free();
+                throw new InvalidOperationException("GTK rejected the 'notify::title' signal handler.");
+            }
+        }
+
+        [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+        private static void OnTitle(nint webView, nint property, nint context)
+        {
+            try
+            {
+                if (GCHandle.FromIntPtr(context).Target is Gtk4WindowHost { _window: { } window, _webView: { } view }
+                    && view.GetTitle() is { Length: > 0 } title)
+                {
+                    window.Title = title;
+                }
             }
             catch
             {

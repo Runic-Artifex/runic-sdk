@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A test-only accessibility client: reads and changes the accessibility fixture's page through UI Automation
+       (net10.0-windows), the macOS accessibility API or AT-SPI (net10.0), as a screen reader does. Not packed. -->
+  <Import Project="../../../eng/build/desktop.props" />
+  <PropertyGroup>
+    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <!-- UIAutomationClient ships with the Windows desktop framework. -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <Compile Remove="MacAccessibility.cs;LinuxAccessibility.cs;VoiceOver.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <Compile Remove="WindowsAccessibility.cs;UiaNotifications.cs" />
+    <PackageReference Include="Tmds.DBus.Protocol" />
+  </ItemGroup>
+</Project>

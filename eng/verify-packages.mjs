@@ -91,12 +91,6 @@ export const packageLayouts = {
     dependencies: ["Runic.Platform"],
     exactDependencies: ["Runic.Platform"],
   },
-  // The D-Bus API wraps Tmds.DBus.Protocol; no Tmds type is public (W310-001).
-  "Runic.Platform.Linux.DBus": {
-    files: ["README.md", "Runic.Platform.Linux.DBus.nuspec", "icon.png", "lib/net10.0/Runic.Platform.Linux.DBus.dll", "lib/net10.0/Runic.Platform.Linux.DBus.xml"],
-    dependencies: ["Microsoft.Extensions.DependencyInjection.Abstractions", "Runic.Platform", "Tmds.DBus.Protocol"],
-    exactDependencies: ["Runic.Platform"],
-  },
   // The elevation targets generate the WindowsElevation options and check helpers; the manifest is the helpers'
   // requireAdministrator default (W300-025).
   "Runic.Platform.Windows.Elevation": {

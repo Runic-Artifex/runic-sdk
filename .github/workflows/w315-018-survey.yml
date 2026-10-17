@@ -1,0 +1,70 @@
+name: W315-018 accessibility survey (temporary)
+on:
+  push:
+    branches: [probe/w315-018-macos-a11y]
+permissions:
+  contents: read
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  NUGET_PACKAGES: ${{ github.workspace }}/.cache/nuget
+jobs:
+  survey:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            attempt: 1
+          - os: macos-26
+            attempt: 1
+          - os: macos-26
+            attempt: 2
+          - os: macos-26
+            attempt: 3
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} ${{ matrix.attempt }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-sdk
+        with:
+          nuget: native
+      - name: Install Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          eng/ci/apt-install.sh libwebkit2gtk-4.1-0 libwebkitgtk-6.0-4 xvfb dbus-x11 at-spi2-core
+          eng/ci/permit-webkit-sandbox.sh
+      - name: Build
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" == Windows ]]; then f=net10.0-windows; else f=net10.0; fi
+          dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f $f
+          if [[ "$RUNNER_OS" == Linux ]]; then dotnet build tests/native/Runic.Desktop.Gtk4.Smoke -c Release; else dotnet build tests/native/Runic.Desktop.WebViewSmoke -c Release; fi
+      - name: Survey
+        shell: bash
+        run: |
+          mkdir -p artifacts/a11y
+          status=0
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            probe="dotnet $PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll"
+            for toolkit in gtk3 gtk4; do
+              GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke -c Release --no-build -- --accessibility $toolkit --probe $probe --survey --receipt artifacts/a11y/$toolkit.json || status=1
+            done
+          elif [[ "$RUNNER_OS" == Windows ]]; then
+            probe="$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe"
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility --probe "$probe" --survey --receipt artifacts/a11y/webview2.json || status=1
+          else
+            probe="dotnet $PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll"
+            eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility --probe $probe --survey --voiceover --receipt artifacts/a11y/wkwebview.json || status=1
+            screencapture -x artifacts/a11y/screen.png || true
+          fi
+          exit $status
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: a11y-${{ matrix.os }}-${{ matrix.attempt }}
+          path: artifacts/a11y
+          if-no-files-found: ignore
