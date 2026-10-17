@@ -38,6 +38,21 @@ internal sealed class ServeOnlyApplicationTests
         finally { Release(descendants); }
     }
 
+    // #301: a Runic.CommandLine command starts the application. RunicDesktopHost.Run, handed back to Main with
+    // ContinueOnCallingThread, runs on the process main thread after the command's asynchronous work, and the Window
+    // is served as when Main starts the host itself.
+    [Test]
+    public async Task StartsFromACommandOnTheMainThread()
+    {
+        await using var application = await RunicServeOnlyApplication.StartAsync(
+            LoggingApplication.SelfStartInfo(CommandLineApplication.Command), Timeout);
+        await LoadPageAsync(application);
+        var exitCode = await application.StopAsync(Timeout);
+        Require(exitCode == 0, $"The application exited with {exitCode}.", application);
+        Require(application.StandardOutput.ReplaceLineEndings("\n").Split('\n').Contains($"{CommandLineApplication.MainThreadLine}\tTrue"),
+            "The command's continuation did not run on the process main thread.", application);
+    }
+
     // The listing is what lets a test find a process that outlives its application.
     [Test]
     public async Task ReportsADescendantThatOutlivesTheApplication()

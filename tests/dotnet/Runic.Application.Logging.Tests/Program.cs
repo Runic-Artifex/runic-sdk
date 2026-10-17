@@ -3,7 +3,8 @@ using Runic.Application.Logging.Tests;
 
 /// <summary>
 /// The entry point is hand-written because <see cref="SerilogApplicationTests"/> starts this executable as the
-/// application it checks: <c>--run-logging-application</c> runs <see cref="LoggingApplication"/> instead of the tests.
+/// application it checks: <c>--run-logging-application</c> runs <see cref="LoggingApplication"/> instead of the tests,
+/// and <c>ui</c> runs it through <see cref="CommandLineApplication"/>'s command.
 /// Every other invocation is the TUnit test application.
 /// </summary>
 internal static class Program
@@ -14,6 +15,8 @@ internal static class Program
     {
         // Before any await: RunicDesktopHost.Run needs the process main thread on macOS.
         if (args is [LoggingApplication.Argument]) return LoggingApplication.Run();
+        // The same application started by a Runic.CommandLine command, which hands the host back to this thread.
+        if (args is [CommandLineApplication.Command, ..]) return CommandLineApplication.Run(args);
         // The application's child process: it runs until it is killed.
         if (args is [LoggingApplication.ChildProcessArgument])
         {
