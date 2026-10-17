@@ -80,3 +80,10 @@ EndMenu
 IsWindow
 WM_ENDSESSION
 IsWindowVisible
+CredRead
+CredWrite
+CredDelete
+CredFree
+CREDENTIALW
+CRED_TYPE
+CRED_PERSIST

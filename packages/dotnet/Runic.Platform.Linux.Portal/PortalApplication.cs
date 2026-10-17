@@ -42,6 +42,10 @@ public sealed class PortalApplication
     /// <remarks>Outside a sandbox it writes <c>~/.config/autostart/&lt;application ID&gt;.desktop</c>, so it needs the
     /// application ID; inside Flatpak or Snap it asks the Background portal, which may ask the user.</remarks>
     public IDesktopLoginStartup CreateLoginStartup() => new LinuxLoginStartup(this);
+    /// <summary>Creates secret storage in the desktop's Secret Service, such as GNOME Keyring or KeePassXC.</summary>
+    /// <remarks>It needs no window and connects to nothing until the first request. Inside Flatpak or Snap the sandbox
+    /// must allow talking to <c>org.freedesktop.secrets</c>; otherwise requests report unavailable.</remarks>
+    public IDesktopSecretStore CreateSecretStore() => new SecretServiceStore(application: this);
     /// <summary>Creates file handoffs for a presentation owner.</summary>
     public IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner, this); }

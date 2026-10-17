@@ -146,7 +146,7 @@ either.
 | `IWindowPlatformServices`, `IFileDialogs`, `ITextClipboard`, `IDesktopFileLauncher` | Native provider; `OwnerClosed` after the window closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Announcements and `PlatformServices.PresentAsync` | Native window | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
 | Window state, `PlatformServices.GetWindowState` | The window's bounds and state, also the last ones after it closes | `Unavailable(OwnerUnavailable)` | `Unavailable(OwnerUnavailable)` |
-| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
+| `IDesktopSettings`, `IDesktopNotifications`, `IDesktopStatusIcon`, `IDesktopLoginStartup`, `IDesktopInhibition`, `IDesktopSecretStore` | Operating system provider | Operating system provider, the same instance | `Unavailable(ProviderNotConfigured)` |
 
 On Runic Desktop the application services behave the same with or without a
 native owner. The macOS settings, notifications and status icon need the AppKit
@@ -160,6 +160,30 @@ Existing registrations are kept on both hosts.
 The application composes `IDesktopPrivilegedActions` itself, because it needs
 declared actions and a provider package, and claims `ApplicationInstance` before
 it starts a host.
+
+## Secret storage
+
+`IDesktopSecretStore` keeps secrets, such as access tokens, in the user's
+credential store: the Secret Service on Linux (GNOME Keyring, KeePassXC,
+KWallet), Credential Manager on Windows and the login keychain on macOS.
+`AddRunicPlatformServices()` registers one for the application; it needs no
+window.
+
+```csharp
+await secrets.SetAsync("com.example.Mail", account, refreshToken);
+if (await secrets.GetAsync("com.example.Mail", account) is PlatformResult<string?>.Success(var token)) { /* null: none stored */ }
+await secrets.DeleteAsync("com.example.Mail", account); // Success(false): none stored
+```
+
+Services and accounts are 1 to 256 characters without NUL. Secrets are UTF-8
+text of at most 2560 bytes on every platform; a longer one is
+`Failed(TooLarge)`. No reachable store is `Unavailable(BackendUnavailable)`; a
+locked store that cannot ask the user to unlock it is `Failed(Locked)`; a
+dismissed unlock or access prompt is `Failed(UserDismissed)`. A request may wait
+while the store asks the user. Hosts without a provider register
+`DesktopSecretStore.Unavailable(reason)`. The
+[secret storage design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/secret-storage.md) has the
+per-platform behaviour and its verification.
 
 ## Privileged actions
 

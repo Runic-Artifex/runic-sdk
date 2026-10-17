@@ -1,1 +1,2 @@
 #nullable enable
+static Runic.Platform.MacOS.MacOSPlatformProvider.CreateSecretStore() -> Runic.Platform.IDesktopSecretStore!

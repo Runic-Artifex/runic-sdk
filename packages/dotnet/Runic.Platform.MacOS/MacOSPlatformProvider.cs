@@ -15,6 +15,12 @@ public static class MacOSPlatformProvider
     /// <summary>Creates UserNotifications for a bundled application. The AppKit main loop must run before use.</summary>
     public static IDesktopNotifications CreateNotifications()
     { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopNotifications(); }
+    /// <summary>Creates secret storage in the user's default keychain, as generic passwords.</summary>
+    /// <remarks>Each secret is an item with the secret's service and account, labelled with the service. The Keychain
+    /// may ask the user to unlock it or to allow this application; a request waits for the answer, which cancellation
+    /// does not interrupt.</remarks>
+    public static IDesktopSecretStore CreateSecretStore()
+    { if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacSecretStore(); }
     /// <summary>Creates owned file handoff operations. Caller retains security-scoped access through completion.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(INativePickerOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); if (!OperatingSystem.IsMacOS()) throw new PlatformNotSupportedException(); return new MacDesktopFileLauncher(owner); }

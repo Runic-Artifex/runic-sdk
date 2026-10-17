@@ -28,3 +28,10 @@ Runic.Platform.SaveFileOptions.InitialDirectory.init -> void
 static Runic.Platform.DesktopInhibition.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopInhibition!
 static Runic.Platform.FileDialogFilter.operator !=(Runic.Platform.FileDialogFilter? left, Runic.Platform.FileDialogFilter? right) -> bool
 static Runic.Platform.FileDialogFilter.operator ==(Runic.Platform.FileDialogFilter? left, Runic.Platform.FileDialogFilter? right) -> bool
+Runic.Platform.DesktopSecretStore
+Runic.Platform.IDesktopSecretStore
+Runic.Platform.IDesktopSecretStore.DeleteAsync(string! service, string! account, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<bool>!>
+Runic.Platform.IDesktopSecretStore.GetAsync(string! service, string! account, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<string?>!>
+Runic.Platform.IDesktopSecretStore.SetAsync(string! service, string! account, string! secret, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
+Runic.Platform.PlatformFailureCode.Locked = 7 -> Runic.Platform.PlatformFailureCode
+static Runic.Platform.DesktopSecretStore.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopSecretStore!

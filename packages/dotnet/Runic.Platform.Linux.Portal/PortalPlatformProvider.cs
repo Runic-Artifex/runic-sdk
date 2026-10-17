@@ -23,6 +23,10 @@ public static class PortalPlatformProvider
     /// <remarks>Without an ID it works only inside Flatpak or Snap, where the portal knows the application.</remarks>
     public static IDesktopLoginStartup CreateLoginStartup(string? applicationId = null, Action<PortalDiagnostic>? diagnosticSink = null) =>
         new PortalApplication(applicationId, diagnosticSink).CreateLoginStartup();
+    /// <summary>Creates secret storage in the desktop's Secret Service, such as GNOME Keyring or KeePassXC.</summary>
+    /// <remarks>Diagnostic callbacks never receive secrets, services or accounts.</remarks>
+    public static IDesktopSecretStore CreateSecretStore(Action<PortalDiagnostic>? diagnosticSink = null) =>
+        new PortalApplication(null, diagnosticSink).CreateSecretStore();
     /// <summary>Creates owned local-file handoff operations.</summary>
     public static IDesktopFileLauncher CreateFileLauncher(IPortalWindowOwner owner)
     { ArgumentNullException.ThrowIfNull(owner); return new PortalFileLauncher(owner); }

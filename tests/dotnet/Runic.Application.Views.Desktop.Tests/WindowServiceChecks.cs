@@ -133,6 +133,38 @@ internal sealed class WindowServiceChecks
             "AddRunicPlatformServices replaced the application's login startup.");
     }
 
+    // Secret storage is an application singleton that needs no window. Resolving it connects to nothing.
+    [Test, NotInParallel(Order = 33)]
+    public async Task PlatformServicesRegisterOneSecretStoreForTheApplication()
+    {
+        await using (var provider = new ServiceCollection().AddRunicPlatformServices()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            var store = provider.GetRequiredService<IDesktopSecretStore>();
+            await using (var first = provider.CreateAsyncScope())
+                Require(ReferenceEquals(store, first.ServiceProvider.GetRequiredService<IDesktopSecretStore>()),
+                    "A Window scope got its own secret store.");
+            string expected = OperatingSystem.IsLinux() ? "Runic.Platform.Linux.Portal.SecretServiceStore"
+                : OperatingSystem.IsWindows() ? "Runic.Platform.Windows.WindowsSecretStore"
+                : OperatingSystem.IsMacOS() ? "Runic.Platform.MacOS.MacSecretStore" : "";
+            Require(store.GetType().FullName == expected || expected.Length == 0,
+                $"The operating system's secret store was not created: {store.GetType().FullName}");
+        }
+
+        var custom = DesktopSecretStore.Unavailable(PlatformUnavailableReason.BackendUnavailable);
+        await using var kept = new ServiceCollection().AddSingleton(custom).AddRunicPlatformServices().BuildServiceProvider();
+        Require(ReferenceEquals(kept.GetRequiredService<IDesktopSecretStore>(), custom),
+            "AddRunicPlatformServices replaced the application's secret store.");
+        Require(await custom.GetAsync("org.example.App", "user") is PlatformResult<string?>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+            && await custom.SetAsync("org.example.App", "user", "s") is PlatformResult<PlatformUnit>.Unavailable(PlatformUnavailableReason.BackendUnavailable)
+            && await custom.DeleteAsync("org.example.App", "user") is PlatformResult<bool>.Unavailable(PlatformUnavailableReason.BackendUnavailable),
+            "The unavailable secret store did not report its reason.");
+        // Arguments are checked as a provider checks them.
+        Require(await CatchAsync(() => custom.GetAsync("", "user").AsTask()) is ArgumentException
+            && await CatchAsync(() => custom.SetAsync("s", "a\0", "x").AsTask()) is ArgumentException,
+            "The unavailable secret store accepted invalid names.");
+    }
+
     // The status icon is an application singleton like notifications. Creating it connects to nothing; only
     // ShowAsync registers with the desktop's status area.
     [Test, NotInParallel(Order = 30)]
@@ -198,7 +230,7 @@ internal sealed class WindowServiceChecks
     {
         Type[] window = [typeof(IWindowPlatformServices), typeof(IFileDialogs), typeof(ITextClipboard), typeof(IDesktopFileLauncher)];
         Type[] application = [typeof(IDesktopSettings), typeof(IDesktopNotifications), typeof(IDesktopStatusIcon),
-            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition)];
+            typeof(IDesktopLoginStartup), typeof(IDesktopInhibition), typeof(IDesktopSecretStore)];
         // Privileged actions need declared actions and a provider package; the instance claim runs before any host.
         Type[] composed = [typeof(IDesktopPrivilegedActions), typeof(IApplicationInstance)];
         Type[] notServices = [typeof(IPlatformCapabilities), typeof(IUiDispatcher), typeof(IDirectoryLease), typeof(IReadFileLease),
