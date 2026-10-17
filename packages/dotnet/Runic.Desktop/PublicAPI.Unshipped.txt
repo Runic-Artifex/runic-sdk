@@ -1,1 +1,56 @@
 #nullable enable
+override Runic.Desktop.DesktopWindowPlacement.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopWindowPlacement.GetHashCode() -> int
+override Runic.Desktop.DesktopWindowPlacement.ToString() -> string!
+override Runic.Desktop.DesktopWindowState.Equals(object? obj) -> bool
+override Runic.Desktop.DesktopWindowState.GetHashCode() -> int
+override Runic.Desktop.DesktopWindowState.ToString() -> string!
+Runic.Desktop.DesktopWindowCapabilities.State = 256 -> Runic.Desktop.DesktopWindowCapabilities
+Runic.Desktop.DesktopWindowHostOptions.Placement.get -> Runic.Desktop.DesktopWindowPlacement?
+Runic.Desktop.DesktopWindowHostOptions.Placement.init -> void
+Runic.Desktop.DesktopWindowOptions.Placement.get -> Runic.Desktop.DesktopWindowPlacement?
+Runic.Desktop.DesktopWindowOptions.Placement.init -> void
+Runic.Desktop.DesktopWindowPlacement
+Runic.Desktop.DesktopWindowPlacement.<Clone>$() -> Runic.Desktop.DesktopWindowPlacement!
+Runic.Desktop.DesktopWindowPlacement.DesktopWindowPlacement() -> void
+Runic.Desktop.DesktopWindowPlacement.Equals(Runic.Desktop.DesktopWindowPlacement? other) -> bool
+Runic.Desktop.DesktopWindowPlacement.Height.get -> uint
+Runic.Desktop.DesktopWindowPlacement.Height.init -> void
+Runic.Desktop.DesktopWindowPlacement.Maximized.get -> bool
+Runic.Desktop.DesktopWindowPlacement.Maximized.init -> void
+Runic.Desktop.DesktopWindowPlacement.Width.get -> uint
+Runic.Desktop.DesktopWindowPlacement.Width.init -> void
+Runic.Desktop.DesktopWindowPlacement.X.get -> int?
+Runic.Desktop.DesktopWindowPlacement.X.init -> void
+Runic.Desktop.DesktopWindowPlacement.Y.get -> int?
+Runic.Desktop.DesktopWindowPlacement.Y.init -> void
+Runic.Desktop.DesktopWindowState
+Runic.Desktop.DesktopWindowStateChangedEventArgs
+Runic.Desktop.DesktopWindowStateChangedEventArgs.DesktopWindowStateChangedEventArgs(Runic.Desktop.DesktopWindowState! state) -> void
+Runic.Desktop.DesktopWindowStateChangedEventArgs.State.get -> Runic.Desktop.DesktopWindowState!
+Runic.Desktop.DesktopWindow.StateChanged -> System.EventHandler<Runic.Desktop.DesktopWindowStateChangedEventArgs!>?
+Runic.Desktop.DesktopWindowState.<Clone>$() -> Runic.Desktop.DesktopWindowState!
+Runic.Desktop.DesktopWindowState.DesktopWindowState() -> void
+Runic.Desktop.DesktopWindowState.Equals(Runic.Desktop.DesktopWindowState? other) -> bool
+Runic.Desktop.DesktopWindow.State.get -> Runic.Desktop.DesktopWindowState?
+Runic.Desktop.DesktopWindowState.Height.get -> uint
+Runic.Desktop.DesktopWindowState.Height.init -> void
+Runic.Desktop.DesktopWindowState.IsFullScreen.get -> bool
+Runic.Desktop.DesktopWindowState.IsFullScreen.init -> void
+Runic.Desktop.DesktopWindowState.IsMaximized.get -> bool
+Runic.Desktop.DesktopWindowState.IsMaximized.init -> void
+Runic.Desktop.DesktopWindowState.Placement.get -> Runic.Desktop.DesktopWindowPlacement!
+Runic.Desktop.DesktopWindowState.Placement.init -> void
+Runic.Desktop.DesktopWindowState.Width.get -> uint
+Runic.Desktop.DesktopWindowState.Width.init -> void
+Runic.Desktop.DesktopWindowState.X.get -> int?
+Runic.Desktop.DesktopWindowState.X.init -> void
+Runic.Desktop.DesktopWindowState.Y.get -> int?
+Runic.Desktop.DesktopWindowState.Y.init -> void
+Runic.Desktop.IDesktopWindowStateHost
+Runic.Desktop.IDesktopWindowStateHost.StateChanged -> System.EventHandler?
+Runic.Desktop.IDesktopWindowStateHost.State.get -> Runic.Desktop.DesktopWindowState?
+static Runic.Desktop.DesktopWindowPlacement.operator !=(Runic.Desktop.DesktopWindowPlacement? left, Runic.Desktop.DesktopWindowPlacement? right) -> bool
+static Runic.Desktop.DesktopWindowPlacement.operator ==(Runic.Desktop.DesktopWindowPlacement? left, Runic.Desktop.DesktopWindowPlacement? right) -> bool
+static Runic.Desktop.DesktopWindowState.operator !=(Runic.Desktop.DesktopWindowState? left, Runic.Desktop.DesktopWindowState? right) -> bool
+static Runic.Desktop.DesktopWindowState.operator ==(Runic.Desktop.DesktopWindowState? left, Runic.Desktop.DesktopWindowState? right) -> bool

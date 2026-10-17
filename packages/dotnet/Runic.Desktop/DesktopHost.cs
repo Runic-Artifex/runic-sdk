@@ -111,7 +111,7 @@ public sealed class DesktopHost : IAsyncDisposable
     public DesktopPresentationPreflight GetPresentationPreflight(DesktopWindowOptions? options = null)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        var configured = options ?? new DesktopWindowOptions();
+        var configured = (options ?? new DesktopWindowOptions()).WithPlacementApplied();
         DesktopSurface.ValidateWindowOptions(configured);
         var availability = GetAvailability();
         var preferredBrowser = configured.PresentationPolicy == DesktopPresentationPolicy.EmbeddedThenBrowser

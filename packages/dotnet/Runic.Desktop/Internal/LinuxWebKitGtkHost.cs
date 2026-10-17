@@ -21,12 +21,20 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
+    private DesktopWindowState? _state;
+    private DesktopWindowPlacement? _normal;
+    private int _stateUpdateQueued;
 
     public bool SupportsCloseConfirmation => true;
 
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
-        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
+        (Api.CanReportState ? DesktopWindowCapabilities.State : DesktopWindowCapabilities.None);
+
+    public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public event EventHandler? StateChanged;
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => Dispatcher.CheckAccess;
@@ -206,6 +214,30 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
 
         var width = checked((int)options.Width);
         var height = checked((int)options.Height);
+        int? x = options.X;
+        int? y = options.Y;
+        var isWayland = Api.IsWaylandDisplay();
+        if (options.Placement is not null && Api.CanReportState)
+        {
+            // Keep a restored window on a monitor that exists now. Wayland lets the compositor place it.
+            var workAreas = Api.GetWorkAreas();
+            if (x is { } placedX && y is { } placedY && !isWayland)
+            {
+                var fitted = WindowPlacementClamp.Clamp(new ScreenRect(placedX, placedY, width, height), workAreas);
+                (x, y, width, height) = (fitted.X, fitted.Y, fitted.Width, fitted.Height);
+            }
+            else
+            {
+                (width, height) = WindowPlacementClamp.ClampSize(width, height, WindowPlacementClamp.Largest(workAreas));
+            }
+            _normal = new DesktopWindowPlacement
+            {
+                X = isWayland ? null : x,
+                Y = isWayland ? null : y,
+                Width = (uint)width,
+                Height = (uint)height,
+            };
+        }
         Api.GtkWindowSetDefaultSize(_window, width, height);
         if (options.MinimumWidth is { } minimumWidth && options.MinimumHeight is { } minimumHeight)
         {
@@ -218,9 +250,9 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         {
             Api.GtkWindowSetPosition(_window, 1);
         }
-        else if (options.X is { } x && options.Y is { } y)
+        else if (x is { } positionX && y is { } positionY)
         {
-            Api.GtkWindowMove(_window, x, y);
+            Api.GtkWindowMove(_window, positionX, positionY);
         }
         if (options.DocumentStartScript is { } documentStartScript)
         {
@@ -242,6 +274,13 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         Api.Connect(_webView, "notify::title", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&OnTitleChanged, this);
         Api.Connect(_webView, "permission-request", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnPermissionRequest, this);
         Api.Connect(_webView, "web-process-terminated", (nint)(delegate* unmanaged[Cdecl]<nint, int, nint, void>)&OnWebProcessTerminated, this);
+        if (Api.CanReportState)
+        {
+            // Before GTK's own handlers, which stop the emission; the state is read from a later main-loop iteration,
+            // once GTK has recorded the new size, position and state.
+            Api.Connect(_window, "configure-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnWindowGeometryEvent, this);
+            Api.Connect(_window, "window-state-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnWindowGeometryEvent, this);
+        }
         // WebKit sends each key to the page first. It runs handlers connected after its
         // own only for keys the page did not handle. The keyboard script reports
         // Control and the wheel, which WebKit would otherwise scroll with.
@@ -253,6 +292,11 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             Api.Connect(_webView, "button-press-event", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, int>)&OnButtonPress, this);
         }
         Api.LoadUri(_webView, url.AbsoluteUri);
+        if (options.Placement is { Maximized: true } && !options.Kiosk)
+        {
+            // Before mapping, so the window manager maps it maximized and keeps the restored size.
+            Api.GtkWindowMaximize(_window);
+        }
         Api.GtkWidgetShowAll(_window);
         if (options.Kiosk)
         {
@@ -264,6 +308,85 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
 
         Volatile.Write(ref _isOpen, 1);
+        UpdateState();
+    }
+
+    // GTK thread only. Reads the window after GTK has processed its configure and state events.
+    private void UpdateState()
+    {
+        Volatile.Write(ref _stateUpdateQueued, 0);
+        if (_window == 0 || !Api.CanReportState)
+        {
+            return;
+        }
+        var flags = Api.GetWindowStateFlags(_window);
+        if ((flags & GdkWindowStateIconified) != 0)
+        {
+            // A minimized window keeps the state it had.
+            return;
+        }
+        var maximized = (flags & GdkWindowStateMaximized) != 0 || Api.GtkWindowIsMaximized(_window);
+        var fullScreen = (flags & GdkWindowStateFullscreen) != 0;
+        var tiled = (flags & GdkWindowStateTiled) != 0;
+        var (width, height) = Api.GtkWindowGetSize(_window);
+        int? x = null;
+        int? y = null;
+        if (!Api.IsWaylandDisplay())
+        {
+            (var positionX, var positionY) = Api.GtkWindowGetPosition(_window);
+            (x, y) = (positionX, positionY);
+        }
+        var current = new DesktopWindowPlacement { X = x, Y = y, Width = (uint)Math.Max(1, width), Height = (uint)Math.Max(1, height) };
+        if (!maximized && !fullScreen && !tiled)
+        {
+            _normal = current;
+        }
+        var state = new DesktopWindowState
+        {
+            X = x,
+            Y = y,
+            Width = current.Width,
+            Height = current.Height,
+            IsMaximized = maximized,
+            IsFullScreen = fullScreen,
+            Placement = (_normal ?? current) with { Maximized = maximized },
+        };
+        if (Equals(state, Volatile.Read(ref _state)))
+        {
+            return;
+        }
+        Volatile.Write(ref _state, state);
+        try
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through GTK.
+        }
+    }
+
+    private const int GdkWindowStateIconified = 1 << 1;
+    private const int GdkWindowStateMaximized = 1 << 2;
+    private const int GdkWindowStateFullscreen = 1 << 4;
+    private const int GdkWindowStateTiled = 1 << 8;
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static int OnWindowGeometryEvent(nint window, nint nativeEvent, nint context)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr(context).Target is LinuxWebKitGtkHost { IsOpen: true } host
+                && Interlocked.Exchange(ref host._stateUpdateQueued, 1) == 0)
+            {
+                Dispatcher.Post(host.UpdateState);
+            }
+        }
+        catch
+        {
+            // Native callbacks cannot unwind through GTK.
+        }
+        return 0;
     }
 
     private void HandleDestroyed()
@@ -514,6 +637,17 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
             await work.WaitAsync().ConfigureAwait(false);
         }
 
+        // GTK thread only: runs the action from a later main-loop iteration, after the current event is handled.
+        internal void Post(Action action)
+        {
+            var work = new NativeDispatchWork(action, CancellationToken.None);
+            var handle = GCHandle.Alloc(work);
+            if (_api.GIdleAdd(WorkItemCallback, GCHandle.ToIntPtr(handle)) == 0)
+            {
+                handle.Free();
+            }
+        }
+
         private void EnsureStarted()
         {
             if (Interlocked.Exchange(ref _started, 1) != 0)
@@ -639,6 +773,14 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
                 GValueSetStringPointer = Required(_gObject, "g_value_set_string");
                 GValueSetIntPointer = Required(_gObject, "g_value_set_int");
                 GtkWindowSetIconFromFilePointer = Optional(_gtk, "gtk_window_set_icon_from_file");
+                GtkWindowGetPositionPointer = Optional(_gtk, "gtk_window_get_position");
+                GtkWindowGetSizePointer = Optional(_gtk, "gtk_window_get_size");
+                GtkWidgetGetWindowPointer = Optional(_gtk, "gtk_widget_get_window");
+                GdkWindowGetStatePointer = Optional(_gtk, "gdk_window_get_state");
+                GdkDisplayGetNMonitorsPointer = Optional(_gtk, "gdk_display_get_n_monitors");
+                GdkDisplayGetMonitorPointer = Optional(_gtk, "gdk_display_get_monitor");
+                GdkMonitorGetWorkareaPointer = Optional(_gtk, "gdk_monitor_get_workarea");
+                GdkWaylandDisplayGetTypePointer = Optional(_gtk, "gdk_wayland_display_get_type");
                 GtkWidgetSetVisualPointer = Optional(_gtk, "gtk_widget_set_visual");
                 GtkWidgetGetScreenPointer = Optional(_gtk, "gtk_widget_get_screen");
                 GdkScreenGetRgbaVisualPointer = Optional(_gtk, "gdk_screen_get_rgba_visual");
@@ -678,6 +820,83 @@ internal sealed class LinuxWebKitGtkHost : IWebUiEmbeddedHost
         }
 
         internal bool IsAvailable { get; }
+
+        // GTK 3.22 and later, which WebKitGTK 4.1 requires, export every function the window state needs.
+        internal bool CanReportState => IsAvailable && GtkWindowGetPositionPointer != 0 && GtkWindowGetSizePointer != 0 &&
+            GtkWidgetGetWindowPointer != 0 && GdkWindowGetStatePointer != 0 && GdkDisplayGetNMonitorsPointer != 0 &&
+            GdkDisplayGetMonitorPointer != 0 && GdkMonitorGetWorkareaPointer != 0;
+
+        private nint GtkWindowGetPositionPointer { get; }
+        private nint GtkWindowGetSizePointer { get; }
+        private nint GtkWidgetGetWindowPointer { get; }
+        private nint GdkWindowGetStatePointer { get; }
+        private nint GdkDisplayGetNMonitorsPointer { get; }
+        private nint GdkDisplayGetMonitorPointer { get; }
+        private nint GdkMonitorGetWorkareaPointer { get; }
+        private nint GdkWaylandDisplayGetTypePointer { get; }
+
+        internal (int X, int Y) GtkWindowGetPosition(nint window)
+        {
+            int x = 0, y = 0;
+            ((delegate* unmanaged[Cdecl]<nint, int*, int*, void>)GtkWindowGetPositionPointer)(window, &x, &y);
+            return (x, y);
+        }
+
+        internal (int Width, int Height) GtkWindowGetSize(nint window)
+        {
+            int width = 0, height = 0;
+            ((delegate* unmanaged[Cdecl]<nint, int*, int*, void>)GtkWindowGetSizePointer)(window, &width, &height);
+            return (width, height);
+        }
+
+        internal int GetWindowStateFlags(nint window)
+        {
+            var gdkWindow = ((delegate* unmanaged[Cdecl]<nint, nint>)GtkWidgetGetWindowPointer)(window);
+            return gdkWindow == 0 ? 0 : ((delegate* unmanaged[Cdecl]<nint, int>)GdkWindowGetStatePointer)(gdkWindow);
+        }
+
+        internal bool IsWaylandDisplay()
+        {
+            if (GdkWaylandDisplayGetTypePointer == 0)
+            {
+                return false;
+            }
+            var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+            return display != 0 && IsInstanceOf(display, GdkWaylandDisplayGetTypePointer);
+        }
+
+        // The work area of every monitor, in GDK's application pixels: the monitor without panels and docks.
+        internal List<ScreenRect> GetWorkAreas()
+        {
+            List<ScreenRect> areas = [];
+            var display = ((delegate* unmanaged[Cdecl]<nint>)GdkDisplayGetDefaultPointer)();
+            if (display == 0)
+            {
+                return areas;
+            }
+            var count = ((delegate* unmanaged[Cdecl]<nint, int>)GdkDisplayGetNMonitorsPointer)(display);
+            for (var index = 0; index < count; index++)
+            {
+                var monitor = ((delegate* unmanaged[Cdecl]<nint, int, nint>)GdkDisplayGetMonitorPointer)(display, index);
+                if (monitor == 0)
+                {
+                    continue;
+                }
+                GdkRectangle area;
+                ((delegate* unmanaged[Cdecl]<nint, GdkRectangle*, void>)GdkMonitorGetWorkareaPointer)(monitor, &area);
+                areas.Add(new ScreenRect(area.X, area.Y, area.Width, area.Height));
+            }
+            return areas;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct GdkRectangle
+        {
+            internal int X;
+            internal int Y;
+            internal int Width;
+            internal int Height;
+        }
 
         private nint GtkInitCheckPointer { get; }
         private nint GtkMainPointer { get; }

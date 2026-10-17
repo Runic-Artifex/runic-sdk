@@ -14,6 +14,8 @@ internal static class WpfPresentationOptions
         Add(options.X is not null, nameof(DesktopWindowOptions.X));
         Add(options.Y is not null, nameof(DesktopWindowOptions.Y));
         Add(options.Centered, nameof(DesktopWindowOptions.Centered));
+        // The WPF Window restores its own placement (Window.RestoreBounds and WindowState).
+        Add(options.Placement is not null, nameof(DesktopWindowOptions.Placement));
         Add(!options.Resizable, nameof(DesktopWindowOptions.Resizable));
         Add(options.Frameless, nameof(DesktopWindowOptions.Frameless));
         Add(options.Transparent, nameof(DesktopWindowOptions.Transparent));

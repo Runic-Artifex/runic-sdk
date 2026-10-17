@@ -30,6 +30,16 @@ internal interface IWebUiEmbeddedHost : IAsyncDisposable
     /// <summary>Occurs after the platform window has closed.</summary>
     event EventHandler? Closed;
 
+    /// <summary>Gets the last reported bounds and state, kept after the window closes; null when the host reports none.</summary>
+    DesktopWindowState? State => null;
+
+    /// <summary>Occurs after <see cref="State"/> has changed, possibly on the window's owning thread.</summary>
+    event EventHandler? StateChanged
+    {
+        add { }
+        remove { }
+    }
+
     /// <summary>Gets whether the platform window is open.</summary>
     bool IsOpen { get; }
 
@@ -90,6 +100,9 @@ internal sealed record WebUiEmbeddedHostOptions
     public int? Y { get; init; }
 
     public bool Centered { get; init; }
+
+    /// <summary>The saved placement to fit to the current monitors and restore; X, Y, Width and Height hold its values.</summary>
+    public DesktopWindowPlacement? Placement { get; init; }
 
     public bool Resizable { get; init; } = true;
 

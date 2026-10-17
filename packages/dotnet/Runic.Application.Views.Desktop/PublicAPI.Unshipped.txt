@@ -1,2 +1,5 @@
 #nullable enable
 static Runic.Application.Views.Desktop.PlatformServices.CreateInhibition(string? applicationId = null) -> Runic.Platform.IDesktopInhibition!
+Runic.Application.Views.Desktop.RunicDesktopHost.Placement.get -> System.Func<Runic.Application.Views.IRunicWindow!, Runic.Desktop.DesktopWindowPlacement?>?
+Runic.Application.Views.Desktop.RunicDesktopHost.Placement.init -> void
+static Runic.Application.Views.Desktop.PlatformServices.GetWindowState(Runic.Application.Views.IRunicWindow! window) -> Runic.Platform.PlatformResult<Runic.Desktop.DesktopWindowState!>!

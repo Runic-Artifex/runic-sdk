@@ -33,11 +33,19 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
+    private DesktopWindowState? _state;
+    private DesktopWindowPlacement? _normal;
+    private const ulong StyleFullScreen = 1UL << 14;
 
     public bool SupportsCloseConfirmation => true;
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
-        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
+        DesktopWindowCapabilities.State;
+
+    public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public event EventHandler? StateChanged;
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => IsMainThread;
@@ -322,6 +330,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         {
             Api.SendVoidPoint(_window, "setFrameOrigin:", new CGPoint(x, y));
         }
+        if (options.Placement is not null)
+        {
+            FitPlacement(hasPosition: options.X is not null && options.Y is not null);
+        }
         if (!string.IsNullOrWhiteSpace(options.IconFile))
         {
             var path = Api.CreateString(options.IconFile);
@@ -345,6 +357,106 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         if (options.Kiosk)
         {
             Api.SendVoidNint(_window, "toggleFullScreen:", 0);
+        }
+        else if (options.Placement is { Maximized: true } && !Api.SendBool(_window, "isZoomed"))
+        {
+            Api.SendVoidNint(_window, "zoom:", 0);
+        }
+        UpdateState();
+    }
+
+    // Keeps a restored window on a screen that exists now: the frame, title bar included, moves into the visible
+    // frame (without the menu bar and Dock) it overlaps most, or the nearest, and shrinks to fit it.
+    private void FitPlacement(bool hasPosition)
+    {
+        var areas = Api.GetScreenVisibleFrames();
+        var frame = Api.SendRect(_window, "frame");
+        var rect = new ScreenRect((int)Math.Round(frame.X), (int)Math.Round(frame.Y),
+            (int)Math.Round(frame.Width), (int)Math.Round(frame.Height));
+        if (hasPosition)
+        {
+            rect = WindowPlacementClamp.Clamp(rect, areas);
+            Api.SendVoidRectBool(_window, "setFrame:display:", new CGRect(rect.X, rect.Y, rect.Width, rect.Height), false);
+        }
+        else
+        {
+            var mainScreen = Api.SendNint(Api.GetClass("NSScreen"), "mainScreen");
+            ScreenRect? main = null;
+            if (mainScreen != 0)
+            {
+                var visible = Api.SendRect(mainScreen, "visibleFrame");
+                main = new ScreenRect((int)Math.Round(visible.X), (int)Math.Round(visible.Y),
+                    (int)Math.Round(visible.Width), (int)Math.Round(visible.Height));
+            }
+            var (width, height) = WindowPlacementClamp.ClampSize(rect.Width, rect.Height, main ?? WindowPlacementClamp.Largest(areas));
+            Api.SendVoidRectBool(_window, "setFrame:display:", new CGRect(frame.X, frame.Y, width, height), false);
+            // Without a saved position the window opens centered, where AppKit places a new document window.
+            Api.SendVoid(_window, "center");
+        }
+        _normal = ReadBounds();
+    }
+
+    // Main thread only. The frame origin and the content size, the units of setFrameOrigin: and setContentSize:.
+    private DesktopWindowPlacement ReadBounds()
+    {
+        var frame = Api.SendRect(_window, "frame");
+        var content = Api.SendRectRect(_window, "contentRectForFrameRect:", frame);
+        return new DesktopWindowPlacement
+        {
+            X = (int)Math.Round(frame.X),
+            Y = (int)Math.Round(frame.Y),
+            Width = (uint)Math.Max(1, Math.Round(content.Width)),
+            Height = (uint)Math.Max(1, Math.Round(content.Height)),
+        };
+    }
+
+    // Main thread only: after every move, resize, zoom and full-screen change.
+    private void UpdateState()
+    {
+        if (_window == 0 || Api.SendBool(_window, "isMiniaturized"))
+        {
+            // A minimized window keeps the state it had.
+            return;
+        }
+        var fullScreen = (Api.SendUlong(_window, "styleMask") & StyleFullScreen) != 0;
+        var maximized = !fullScreen && Api.SendBool(_window, "isZoomed");
+        var current = ReadBounds();
+        if (!maximized && !fullScreen)
+        {
+            _normal = current;
+        }
+        var state = new DesktopWindowState
+        {
+            X = current.X,
+            Y = current.Y,
+            Width = current.Width,
+            Height = current.Height,
+            IsMaximized = maximized,
+            IsFullScreen = fullScreen,
+            Placement = (_normal ?? current) with { Maximized = maximized },
+        };
+        if (Equals(state, Volatile.Read(ref _state)))
+        {
+            return;
+        }
+        Volatile.Write(ref _state, state);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static void WindowGeometryChanged(nint self, nint selector, nint notification)
+    {
+        try
+        {
+            var window = Api.SendNint(notification, "object");
+            if (Hosts.TryGetValue(window, out var host) && host.IsOpen)
+            {
+                host.UpdateState();
+            }
+        }
+        catch
+        {
+            // Never unwind through AppKit.
         }
     }
 
@@ -513,6 +625,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
         }
         Api.AddMethod(type, "windowWillClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowWillClose, "v@:@");
         Api.AddMethod(type, "windowShouldClose:", (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, byte>)&WindowShouldClose, RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "B@:@" : "c@:@");
+        foreach (var selector in (string[])["windowDidMove:", "windowDidResize:", "windowDidEnterFullScreen:", "windowDidExitFullScreen:", "windowDidDeminiaturize:"])
+        {
+            Api.AddMethod(type, selector, (nint)(delegate* unmanaged[Cdecl]<nint, nint, nint, void>)&WindowGeometryChanged, "v@:@");
+        }
         Api.RegisterClassPair(type);
         return type;
     }
@@ -618,6 +734,8 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
     {
         private readonly nint _appKit;
         private readonly nint _messageSend;
+        // Intel Macs return structures larger than 16 bytes, such as NSRect, through objc_msgSend_stret.
+        private readonly nint _messageSendStructure;
         private readonly nint _webKit;
         private readonly nint _runLoopDefaultMode;
 
@@ -632,6 +750,10 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
                 && NativeLibrary.TryLoad("/usr/lib/libobjc.A.dylib", out var library)
                 && NativeLibrary.TryGetExport(library, "objc_msgSend", out _messageSend))
             {
+                _messageSendStructure = RuntimeInformation.ProcessArchitecture == Architecture.X64
+                    && NativeLibrary.TryGetExport(library, "objc_msgSend_stret", out var structure)
+                        ? structure
+                        : _messageSend;
                 IsAvailable = GetClass("WKWebView") != 0 && GetClass("NSWindow") != 0;
             }
             if (IsAvailable
@@ -861,6 +983,45 @@ internal sealed partial class MacOsWkWebViewHost : IWebUiEmbeddedHost, IWebUiMai
 
         internal void SendVoidPoint(nint receiver, string selector, CGPoint value) =>
             ((delegate* unmanaged[Cdecl]<nint, nint, CGPoint, void>)_messageSend)(receiver, Selector(selector), value);
+
+        internal bool SendBool(nint receiver, string selector) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, byte>)_messageSend)(receiver, Selector(selector)) != 0;
+
+        internal ulong SendUlong(nint receiver, string selector) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, ulong>)_messageSend)(receiver, Selector(selector));
+
+        internal CGRect SendRect(nint receiver, string selector) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, CGRect>)_messageSendStructure)(receiver, Selector(selector));
+
+        internal CGRect SendRectRect(nint receiver, string selector, CGRect value) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, CGRect>)_messageSendStructure)(receiver, Selector(selector), value);
+
+        internal void SendVoidRectBool(nint receiver, string selector, CGRect value, bool flag) =>
+            ((delegate* unmanaged[Cdecl]<nint, nint, CGRect, byte, void>)_messageSend)(receiver, Selector(selector), value, flag ? (byte)1 : (byte)0);
+
+        // The visible frame of every screen: without the menu bar and the Dock, in AppKit screen coordinates.
+        internal List<ScreenRect> GetScreenVisibleFrames()
+        {
+            List<ScreenRect> frames = [];
+            var screens = SendNint(GetClass("NSScreen"), "screens");
+            if (screens == 0)
+            {
+                return frames;
+            }
+            var count = (long)SendUlong(screens, "count");
+            for (long index = 0; index < count; index++)
+            {
+                var screen = SendNintNint(screens, "objectAtIndex:", (nint)index);
+                if (screen == 0)
+                {
+                    continue;
+                }
+                var visible = SendRect(screen, "visibleFrame");
+                frames.Add(new ScreenRect((int)Math.Round(visible.X), (int)Math.Round(visible.Y),
+                    (int)Math.Round(visible.Width), (int)Math.Round(visible.Height)));
+            }
+            return frames;
+        }
 
         // The script runs at document start in every frame (WKUserScriptInjectionTimeAtDocumentStart = 0).
         internal nint AllocInitWebView(CGRect frame, string? documentStartScript)

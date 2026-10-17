@@ -137,8 +137,12 @@ view after unload uses a fresh surface/session.
 Each factory presents one surface at a time in its control. WPF owns layout,
 DPI, visibility, focus routing and the containing window. The child advertises
 focus only; it does not expose a top-level native handle or minimize, maximize,
-move, or resize the shell. Window layout options report warnings and are
-configured on the WPF shell instead. Browser fallback is not supported by
+move, or resize the shell. Window layout options, including
+`DesktopWindowOptions.Placement`, report warnings and are configured on the WPF
+shell instead; the WPF `Window` saves and restores its own placement with
+`RestoreBounds`, `WindowState` and its `LocationChanged`, `SizeChanged` and
+`StateChanged` events, and the child presentation reports no
+`DesktopWindow.State`. Browser fallback is not supported by
 `WpfBridgeView.OpenAsync`. Standard HWND airspace constraints apply; WPF overlays
 cannot draw over the child WebView. Tab enters the document's first or last tab
 stop. WebView2 moves that focus asynchronously: the document's focused element

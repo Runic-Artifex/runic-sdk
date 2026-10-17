@@ -36,6 +36,9 @@ export const traceAllowList = [
     'TraceError($"A window close cancellation callback failed: {error}")',
     'TraceError($"Window close confirmation failed; the window was kept open: {error}")',
   ].map(fragment => ({ file: 'packages/dotnet/Runic.Desktop/Internal/WindowCloseController.cs', fragment })),
+  // A DesktopWindow.StateChanged handler that threw (event 3011).
+  { file: 'packages/dotnet/Runic.Desktop/DesktopSurface.cs',
+    fragment: 'TraceError($"A DesktopWindow.StateChanged handler failed with' },
   ...[
     'TraceWarning($"{BridgeHandshakeExpiredCode}: Bridge WebSocket {connectionId} sent no token check',
     'TraceWarning("A generated browser profile could not be deleted; it remains in the temporary folder.")',

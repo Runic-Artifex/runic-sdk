@@ -104,7 +104,7 @@ public sealed class DesktopSurface : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        var configured = options ?? new DesktopWindowOptions();
+        var configured = (options ?? new DesktopWindowOptions()).WithPlacementApplied();
         DesktopWindow window;
         await _windowGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -344,6 +344,10 @@ public sealed class DesktopSurface : IAsyncDisposable
         {
             _engine.Center();
         }
+        if (options.Placement is { } placement)
+        {
+            _engine.SetPlacement(placement);
+        }
         _engine.SetResizable(options.Resizable);
         _engine.SetFrameless(options.Frameless);
         _engine.SetTransparent(options.Transparent);
@@ -562,6 +566,11 @@ public sealed class DesktopWindow : IAsyncDisposable
     private readonly WebUiWindow _engine;
     private readonly TaskCompletionSource _closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _disposed;
+    private DesktopWindowState? _state;
+    private DesktopWindowState? _raisedState;
+    private int _stateSignaled;
+    private int _stateDispatching;
+    private readonly object? _stateSource;
 
     internal DesktopWindow(
         DesktopSurface surface,
@@ -575,6 +584,97 @@ public sealed class DesktopWindow : IAsyncDisposable
         RequestedBrowser = requestedBrowser;
         Browser = browser;
         FellBack = fellBack;
+        if (browser == BrowserKind.Embedded)
+        {
+            // The window may have reported its state while it opened, before this object existed.
+            _stateSource = _engine.EmbeddedHostIdentity;
+            _engine.EmbeddedWindowStateChanged += OnEngineStateChanged;
+            _state = _engine.EmbeddedWindowState;
+            _raisedState = _state;
+        }
+    }
+
+    /// <summary>
+    /// Gets the window's bounds, maximized and full-screen state as the window last reported them, also after it has
+    /// closed; <see langword="null"/> when the presentation reports none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An embedded window whose <see cref="Capabilities"/> include <see cref="DesktopWindowCapabilities.State"/>
+    /// reports its state when it opens and after every move, resize, maximize, restore and full-screen change. An
+    /// installed browser and a custom window host that does not implement <see cref="IDesktopWindowStateHost"/> report
+    /// none. Reading it is cheap and does not reach the native window.
+    /// </para>
+    /// <para>
+    /// The value stays readable after the window has closed and is then the last state before closing, so an
+    /// application saves <see cref="DesktopWindowState.Placement"/> after <see cref="WaitForCloseAsync"/> returns and
+    /// restores it with <see cref="DesktopWindowOptions.Placement"/>. The units differ per platform; see
+    /// <see cref="DesktopWindowState"/>.
+    /// </para>
+    /// </remarks>
+    public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    /// <summary>Occurs after the window's <see cref="State"/> has changed.</summary>
+    /// <remarks>
+    /// Raised on the thread pool, never on the window's native thread and never concurrently. While the user drags or
+    /// resizes the window, changes that arrive faster than the handlers run are combined, so a handler sees the latest
+    /// state, not every intermediate one. A handler that throws is logged (event 3011, <c>WindowStateHandlerFailed</c>)
+    /// and does not stop later events. No event is raised after the window has closed or was replaced.
+    /// </remarks>
+    public event EventHandler<DesktopWindowStateChangedEventArgs>? StateChanged;
+
+    private bool AcceptsState => Volatile.Read(ref _disposed) == 0 && _surface.IsCurrentWindow(this);
+
+    private void OnEngineStateChanged(object host, DesktopWindowState state)
+    {
+        // The engine lives as long as the surface and may later present a replacement window; this object keeps
+        // the last state of its own window only.
+        if (!ReferenceEquals(host, _stateSource))
+        {
+            _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
+            return;
+        }
+        Volatile.Write(ref _state, state);
+        if (Interlocked.Exchange(ref _stateSignaled, 1) == 0 && Interlocked.CompareExchange(ref _stateDispatching, 1, 0) == 0)
+        {
+            ThreadPool.UnsafeQueueUserWorkItem(static window => window.DispatchStateChanged(), this, preferLocal: false);
+        }
+    }
+
+    private void DispatchStateChanged()
+    {
+        while (true)
+        {
+            Volatile.Write(ref _stateSignaled, 0);
+            var state = Volatile.Read(ref _state);
+            if (state is not null && !Equals(state, _raisedState) && AcceptsState)
+            {
+                _raisedState = state;
+                if (StateChanged is { } handlers)
+                {
+                    var args = new DesktopWindowStateChangedEventArgs(state);
+                    foreach (EventHandler<DesktopWindowStateChangedEventArgs> handler in handlers.GetInvocationList())
+                    {
+                        try
+                        {
+                            handler(this, args);
+                        }
+                        catch (Exception error) when (error is not OutOfMemoryException)
+                        {
+                            if (_engine.Logger is { } logger)
+                                Internal.DesktopLog.WindowStateHandlerFailed(logger, error, Internal.DesktopLog.ErrorType(error));
+                            else
+                                System.Diagnostics.Trace.TraceError($"A DesktopWindow.StateChanged handler failed with {error.GetType().FullName}.");
+                        }
+                    }
+                }
+            }
+            Volatile.Write(ref _stateDispatching, 0);
+            if (Volatile.Read(ref _stateSignaled) == 0 || Interlocked.CompareExchange(ref _stateDispatching, 1, 0) != 0)
+            {
+                return;
+            }
+        }
     }
 
     /// <summary>Gets the presentation requested by <see cref="DesktopWindowOptions.Browser"/>.</summary>
@@ -781,6 +881,7 @@ public sealed class DesktopWindow : IAsyncDisposable
         try
         {
             await _surface.CloseWindowAsync(this).ConfigureAwait(false);
+            _engine.EmbeddedWindowStateChanged -= OnEngineStateChanged;
             _closed.TrySetResult();
         }
         catch (Exception exception)

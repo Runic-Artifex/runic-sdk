@@ -69,6 +69,20 @@ for portal-first file dialogs, so KDE uses its own picker. Runic.Application.Vie
 applications get this composition from `services.AddRunicPlatformServices()`, which
 selects the GTK 4 provider when the process runs this backend.
 
+GTK 4 has no window position: it neither reports nor sets where a top-level
+window is, on X11 or Wayland, so the compositor places every window. The window
+reports `DesktopWindowCapabilities.State`: `DesktopWindow.State` has the content
+size, maximized and full-screen state, and a `null` position.
+`State.Placement` holds GTK's default size, which GTK 4 updates when the user
+resizes the window and keeps while it is maximized, so it is the restored
+(unmaximized) size to save. Restoring `DesktopWindowOptions.Placement` applies
+its size and maximized state and ignores its position, without the
+`window-option-unsupported` error an explicit `X` and `Y` cause, so a placement
+saved with GTK 3 or on another machine still opens. GTK 4 cannot tell which
+monitor the compositor will choose, so the restored size is fitted to the
+largest monitor, and a work area without panels is not available. See
+[Window state and restore](../Runic.Desktop/README.md#window-state-and-restore).
+
 The native smoke runs GTK4/WebKit6 under isolated X11: bridge JavaScript,
 close veto/retry, sequential DesktopHost windows, capability reporting, GTK
 window/WebView weak finalization, GTK clipboard round-trip, and X11 portal

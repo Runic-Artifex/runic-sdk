@@ -106,6 +106,17 @@ visibility, minimization, maximization, and drag regions are explicitly
 reported. Unsupported capabilities return `unavailable`; they must not appear
 to succeed.
 
+A window that reports its state exposes its current bounds, whether it is
+maximized or full-screen, and a restorable placement: its bounds when last
+neither maximized nor full-screen, and whether it is maximized. The last state
+stays readable after the window closes. Bounds use the units the window's own
+move and resize operations take, so a placement is specific to the platform and
+machine that produced it; a platform that cannot report a position reports
+none rather than a guess. Opening with a saved placement must leave the window
+inside the work area of a monitor that exists at that time: the work area the
+saved bounds overlap most, or the nearest one, with the window shrunk to fit.
+A saved placement never makes opening fail.
+
 Closing a window closes only resources owned by that presentation. It does not
 implicitly terminate its surface when other windows, sessions, or a server-only
 owner keep the surface alive. The application or host adapter decides whether

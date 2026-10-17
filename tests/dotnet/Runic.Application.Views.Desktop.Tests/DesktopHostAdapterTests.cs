@@ -501,18 +501,29 @@ sealed class NativeDispatchFactory : IDesktopWindowHostFactory
     public List<NativeDispatchHost> Hosts { get; } = [];
     public bool SupportsDispatch { get; init; } = true;
     public bool Announces { get; init; }
+    // A window host that reports its state, from this state at open, or none when it is null.
+    public DesktopWindowState? InitialState { get; init; }
     public bool IsSupported => true;
     public IDesktopWindowHost Create()
     {
-        var host = new NativeDispatchHost { SupportsNativeDispatch = SupportsDispatch, Announces = Announces };
+        var host = new NativeDispatchHost { SupportsNativeDispatch = SupportsDispatch, Announces = Announces, InitialState = InitialState };
         Hosts.Add(host);
         return host;
     }
 }
 
 // A headless embedded host whose "native thread" is a dedicated worker.
-sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost
+sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost, IDesktopWindowStateHost
 {
+    public DesktopWindowState? InitialState { get; init; }
+    public DesktopWindowState? State { get; private set; }
+    public DesktopWindowHostOptions? Options { get; private set; }
+    public event EventHandler? StateChanged;
+    public void Report(DesktopWindowState state)
+    {
+        State = state;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
     internal const nint Handle = 0x5151;
     [ThreadStatic] private static bool _onNativeThread;
     private volatile bool _open;
@@ -524,7 +535,8 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost
     public bool Announces { get; init; }
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize | DesktopWindowCapabilities.Resize |
-        DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None);
+        DesktopWindowCapabilities.Move | (Announces ? DesktopWindowCapabilities.Announcements : DesktopWindowCapabilities.None) |
+        (InitialState is null ? DesktopWindowCapabilities.None : DesktopWindowCapabilities.State);
     public System.Collections.Concurrent.ConcurrentQueue<(string Message, DesktopAnnouncementPriority Priority)> Announcements { get; } = new();
     public ValueTask AnnounceAsync(string message, DesktopAnnouncementPriority priority, CancellationToken cancellationToken = default)
     {
@@ -547,7 +559,7 @@ sealed class NativeDispatchHost : IDesktopNativeDispatchWindowHost
         await completion.Task.ConfigureAwait(false);
     }
     public ValueTask OpenAsync(Uri url, DesktopWindowHostOptions options, CancellationToken cancellationToken = default)
-    { _open = true; return ValueTask.CompletedTask; }
+    { Options = options; State = InitialState; _open = true; return ValueTask.CompletedTask; }
     public ValueTask NavigateAsync(Uri url, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     public ValueTask CloseAsync(CancellationToken cancellationToken = default)
     {

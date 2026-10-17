@@ -15,6 +15,7 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private const uint WmDpiChanged = 0x02E0;
     private const uint WmGetMinMaxInfo = 0x0024;
     private const uint WmNcCreate = 0x0081;
+    private const uint WmWindowPosChanged = 0x0047;
     private const int GwlpUserData = -21;
     private const int SwHide = 0;
     private const int SwShow = 5;
@@ -59,11 +60,19 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private readonly CancellationTokenSource _nativeShutdown = new();
     private int _isOpen;
     private int _disposed;
+    private DesktopWindowState? _state;
+    private DesktopWindowPlacement? _normal;
+    private bool _maximizeWhenShown;
 
     public bool SupportsCloseConfirmation => true;
     public DesktopWindowCapabilities Capabilities => DesktopWindowCapabilities.NativeHandle | DesktopWindowCapabilities.Focus |
         DesktopWindowCapabilities.Minimize | DesktopWindowCapabilities.Maximize |
-        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements;
+        DesktopWindowCapabilities.Resize | DesktopWindowCapabilities.Move | DesktopWindowCapabilities.Announcements |
+        DesktopWindowCapabilities.State;
+
+    public DesktopWindowState? State => Volatile.Read(ref _state);
+
+    public event EventHandler? StateChanged;
     public bool SupportsDocumentStartScript => true;
     public bool SupportsNativeDispatch => true;
     public bool CheckNativeAccess() => ReferenceEquals(Thread.CurrentThread, _thread);
@@ -213,7 +222,12 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     public ValueTask SetVisibleAsync(bool visible, CancellationToken cancellationToken = default)
         => InvokeAsync(() =>
         {
-            Native.ShowWindow(_window, visible ? SwShow : SwHide);
+            // A hidden window that restores a maximized placement opens maximized when it is first shown.
+            Native.ShowWindow(_window, !visible ? SwHide : _maximizeWhenShown ? SwMaximize : SwShow);
+            if (visible)
+            {
+                _maximizeWhenShown = false;
+            }
             if (_controller is not null)
             {
                 _controller.IsVisible = visible;
@@ -277,6 +291,121 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     private static int ScaleForWindow(uint value, nint window)
         => checked((int)Math.Round(value * (Native.GetDpiForWindow(window) / 96d)));
 
+    private static int ScaleForDpi(uint value, uint dpi) => checked((int)Math.Round(value * (dpi / 96d)));
+
+    private static uint UnscaleForDpi(int value, uint dpi) => (uint)Math.Max(1, Math.Round(value * 96d / (dpi == 0 ? 96 : dpi)));
+
+    // Fits a restored placement to the monitors that exist now. The position is in physical pixels and the size in
+    // device-independent pixels, which scale with the monitor the window lands on.
+    private static (int X, int Y, uint Width, uint Height) FitPlacement(int x, int y, uint width, uint height)
+    {
+        var monitors = GetMonitors();
+        if (monitors.Count == 0)
+        {
+            return (x, y, width, height);
+        }
+        var startDpi = MonitorDpi(Native.MonitorFromPoint(new Point { X = x, Y = y }, MonitorDefaultToNearest));
+        var start = new ScreenRect(x, y, ScaleForDpi(width, startDpi), ScaleForDpi(height, startDpi));
+        if (WindowPlacementClamp.Choose(start, [.. monitors.Select(static monitor => monitor.WorkArea)]) is not { } target)
+        {
+            return (x, y, width, height);
+        }
+        var dpi = monitors.First(monitor => monitor.WorkArea == target).Dpi;
+        var fitted = WindowPlacementClamp.Clamp(new ScreenRect(x, y, ScaleForDpi(width, dpi), ScaleForDpi(height, dpi)), [target]);
+        return (fitted.X, fitted.Y, UnscaleForDpi(fitted.Width, dpi), UnscaleForDpi(fitted.Height, dpi));
+    }
+
+    private static unsafe List<(ScreenRect WorkArea, uint Dpi)> GetMonitors()
+    {
+        List<nint> handles = [];
+        var list = GCHandle.Alloc(handles);
+        try
+        {
+            Native.EnumDisplayMonitors(0, 0, (nint)(delegate* unmanaged[Stdcall]<nint, nint, Rect*, nint, int>)&AddMonitor, GCHandle.ToIntPtr(list));
+        }
+        finally
+        {
+            list.Free();
+        }
+        List<(ScreenRect, uint)> monitors = [];
+        foreach (var handle in handles)
+        {
+            var info = new MonitorInfo { Size = (uint)sizeof(MonitorInfo) };
+            if (Native.GetMonitorInfo(handle, ref info))
+            {
+                var work = info.Work;
+                monitors.Add((new ScreenRect(work.Left, work.Top, work.Right - work.Left, work.Bottom - work.Top), MonitorDpi(handle)));
+            }
+        }
+        return monitors;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static unsafe int AddMonitor(nint monitor, nint deviceContext, Rect* bounds, nint context)
+    {
+        if (GCHandle.FromIntPtr(context).Target is List<nint> handles)
+        {
+            handles.Add(monitor);
+        }
+        return 1;
+    }
+
+    private static uint MonitorDpi(nint monitor)
+    {
+        if (monitor != 0 && Native.GetDpiForMonitor(monitor, 0, out var dpiX, out _) >= 0 && dpiX != 0)
+        {
+            return dpiX;
+        }
+        return 96;
+    }
+
+    // Window thread only: after every move, resize, maximize, restore and DPI change.
+    private void UpdateState()
+    {
+        if (_window == 0 || Native.IsIconic(_window) || !Native.GetWindowRect(_window, out var frame))
+        {
+            // A minimized window keeps the state it had.
+            return;
+        }
+        var dpi = Native.GetDpiForWindow(_window);
+        var fullScreen = _options?.Kiosk == true;
+        var maximized = !fullScreen && Native.IsZoomed(_window);
+        var current = new DesktopWindowPlacement
+        {
+            X = frame.Left,
+            Y = frame.Top,
+            Width = UnscaleForDpi(frame.Right - frame.Left, dpi),
+            Height = UnscaleForDpi(frame.Bottom - frame.Top, dpi),
+        };
+        if (!maximized && !fullScreen)
+        {
+            _normal = current;
+        }
+        var state = new DesktopWindowState
+        {
+            X = current.X,
+            Y = current.Y,
+            Width = current.Width,
+            Height = current.Height,
+            IsMaximized = maximized,
+            IsFullScreen = fullScreen,
+            Placement = (_normal ?? current) with { Maximized = maximized },
+        };
+        if (Equals(state, Volatile.Read(ref _state)))
+        {
+            return;
+        }
+        Volatile.Write(ref _state, state);
+        try
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Never unwind through the window procedure.
+        }
+    }
+
     private void Run(Uri url)
     {
         var comInitialized = false;
@@ -295,10 +424,18 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
             comInitialized = true;
             EnsureWindowClass();
             var options = _options ?? throw new InvalidOperationException("The embedded host has no launch options.");
-            var width = checked((int)options.Width);
-            var height = checked((int)options.Height);
+            var logicalWidth = options.Width;
+            var logicalHeight = options.Height;
             var x = options.X ?? 100;
             var y = options.Y ?? 100;
+            if (options.Placement is not null)
+            {
+                // Keep a restored window on a monitor that exists now, also without a saved position.
+                (x, y, logicalWidth, logicalHeight) = FitPlacement(x, y, logicalWidth, logicalHeight);
+                _normal = new DesktopWindowPlacement { X = x, Y = y, Width = logicalWidth, Height = logicalHeight };
+            }
+            var width = checked((int)logicalWidth);
+            var height = checked((int)logicalHeight);
             if (options.Centered)
             {
                 x = Math.Max(0, (Native.GetSystemMetrics(SmCxScreen) - width) / 2);
@@ -326,8 +463,8 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                 throw new Win32Exception(Marshal.GetLastWin32Error(), "The WebView2 host window could not be created.");
             }
 
-            width = ScaleForWindow(options.Width, _window);
-            height = ScaleForWindow(options.Height, _window);
+            width = ScaleForWindow(logicalWidth, _window);
+            height = ScaleForWindow(logicalHeight, _window);
             if (options.Centered)
             {
                 x = Math.Max(0, (Native.GetSystemMetrics(SmCxScreen) - width) / 2);
@@ -403,16 +540,23 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     Native.SendMessage(_window, WmSetIcon, IconBig, _icon);
                 }
             }
+            var maximize = options.Placement is { Maximized: true } && !options.Kiosk;
             if (options.Kiosk)
             {
                 Native.ShowWindow(_window, SwMaximize);
             }
+            else if (options.Hidden)
+            {
+                Native.ShowWindow(_window, SwHide);
+                _maximizeWhenShown = maximize;
+            }
             else
             {
-                Native.ShowWindow(_window, options.Hidden ? SwHide : SwShow);
+                Native.ShowWindow(_window, maximize ? SwMaximize : SwShow);
             }
             Native.UpdateWindow(_window);
             Volatile.Write(ref _isOpen, 1);
+            UpdateState();
             if (!_ready.TrySetResult())
             {
                 // The caller cancelled and no longer owns this window.
@@ -518,6 +662,10 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
                     host._controller.Bounds = host.ClientBounds();
                 }
                 return 0;
+            case WmWindowPosChanged:
+                host?.UpdateState();
+                // DefWindowProc sends WM_SIZE and WM_MOVE from this message.
+                return Native.DefWindowProc(window, message, wParam, lParam);
             case WmDpiChanged:
                 var suggested = (Rect*)lParam;
                 Native.SetWindowPos(window, 0, suggested->Left, suggested->Top,
@@ -626,6 +774,17 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        internal uint Size;
+        internal Rect Monitor;
+        internal Rect Work;
+        internal uint Flags;
+    }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
     private struct Message
     {
         internal nint Window;
@@ -710,6 +869,29 @@ internal sealed partial class WindowsWebView2Host : IWebUiEmbeddedHost
         [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static partial bool IsZoomed(nint window);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool IsIconic(nint window);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetWindowRect(nint window, out Rect rectangle);
+
+        [LibraryImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool EnumDisplayMonitors(nint deviceContext, nint clip, nint callback, nint data);
+
+        [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static partial bool GetMonitorInfo(nint monitor, ref MonitorInfo info);
+
+        [LibraryImport("user32.dll")]
+        internal static partial nint MonitorFromPoint(Point point, uint flags);
+
+        // Windows 8.1 and later; the effective DPI (MDT_EFFECTIVE_DPI = 0) that per-monitor aware windows use.
+        [LibraryImport("shcore.dll")]
+        internal static partial int GetDpiForMonitor(nint monitor, int type, out uint dpiX, out uint dpiY);
 
         [LibraryImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]

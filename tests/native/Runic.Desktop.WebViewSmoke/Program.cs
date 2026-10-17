@@ -88,8 +88,27 @@ static async Task RunAsyncSmoke()
         await GtkWidgetLifetime.ObserveAsync(window.NativeHandle);
     }
     await GtkWidgetLifetime.AssertReleasedAsync();
+    if (!SmokeSoak.Enabled) await RunWindowStateSmokeAsync(host);
     SmokeSoak.Completed();
     }
+}
+
+static async Task RunWindowStateSmokeAsync(DesktopHost host)
+{
+    DesktopWindowPlacement saved;
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(WindowStateSmoke.Page()) }))
+    {
+        var window = await surface.OpenWindowAsync(WindowStateSmoke.DisconnectedMonitorOptions());
+        saved = await WindowStateSmoke.ExerciseAsync(window);
+        await window.CloseAsync();
+        WindowStateSmoke.CheckSavedAfterClose(window, saved);
+    }
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(WindowStateSmoke.Page()) }))
+    await using (var window = await surface.OpenWindowAsync(WindowStateSmoke.RestoreOptions(saved)))
+    {
+        await WindowStateSmoke.ExerciseRestoredAsync(window, saved);
+    }
+    Console.WriteLine("Window state passed: off-screen placement fitted to a monitor, change events, restore bounds, saved after close, restored maximized.");
 }
 
 static async Task RunWindowsUiAutomationSmokeAsync()
@@ -289,6 +308,17 @@ static void RunMacOsSmoke() => DesktopEventLoop.Run(async () =>
             RestartedPage(),
             new DesktopWindowOptions { Browser = BrowserKind.Embedded, Hidden = true },
             static (surface, _) => ExerciseRestartedWindowAsync(surface));
+        if (!SmokeSoak.Enabled)
+        {
+            DesktopWindowPlacement? saved = null;
+            DesktopWindow? exercised = null;
+            await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), WindowStateSmoke.DisconnectedMonitorOptions(),
+                async (_, window) => { exercised = window; saved = await WindowStateSmoke.ExerciseAsync(window); });
+            WindowStateSmoke.CheckSavedAfterClose(exercised!, saved!);
+            await RunMacOsWindowAsync(host, WindowStateSmoke.Page(), WindowStateSmoke.RestoreOptions(saved!),
+                (_, window) => WindowStateSmoke.ExerciseRestoredAsync(window, saved!));
+            Console.WriteLine("Window state passed: off-screen placement fitted to a monitor, change events, restore bounds, saved after close, restored maximized.");
+        }
         SmokeSoak.Completed();
         }
     }

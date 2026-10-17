@@ -276,6 +276,12 @@ public enum DesktopWindowCapabilities
 
     /// <summary>The window can ask the screen reader to announce a message (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
     Announcements = 1 << 7,
+
+    /// <summary>
+    /// The window reports its bounds, maximized and full-screen state (<see cref="DesktopWindow.State"/> and
+    /// <see cref="DesktopWindow.StateChanged"/>), and applies <see cref="DesktopWindowOptions.Placement"/>.
+    /// </summary>
+    State = 1 << 8,
 }
 
 /// <summary>How urgently a screen reader speaks an announcement (<see cref="DesktopWindow.AnnounceAsync"/>).</summary>
@@ -345,6 +351,33 @@ public sealed record DesktopWindowOptions
     /// <summary>Gets whether the embedded window opens centered on the screen, replacing <see cref="X"/> and <see cref="Y"/>.</summary>
     public bool Centered { get; init; }
 
+    /// <summary>
+    /// Gets a saved placement to restore, from <see cref="DesktopWindowState.Placement"/>, or <see langword="null"/>,
+    /// the default, to open with <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/>, <see cref="Y"/> and
+    /// <see cref="Centered"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A placement replaces <see cref="Width"/>, <see cref="Height"/>, <see cref="X"/>, <see cref="Y"/> and
+    /// <see cref="Centered"/>. An embedded window that reports <see cref="DesktopWindowCapabilities.State"/> keeps it on a
+    /// monitor that exists now: when the saved bounds are not inside one monitor's work area (the screen without the
+    /// taskbar, Dock or panels), for example because they were saved on an external monitor that is no longer
+    /// connected, the window moves to the work area it overlaps most, or else to the nearest one, and shrinks to fit
+    /// it. A placement without a position keeps the platform's choice of position and is only shrunk to fit. The
+    /// window then opens maximized when <see cref="DesktopWindowPlacement.Maximized"/> is set, unless
+    /// <see cref="Kiosk"/> is set, and restores to the saved bounds.
+    /// </para>
+    /// <para>
+    /// A saved placement never fails the open: a zero width or height keeps <see cref="Width"/> or <see cref="Height"/>,
+    /// a position with only one coordinate is ignored, and a size above 65535 is reduced to it. The GTK 4 window
+    /// restores the size and maximized state and ignores the position, which GTK 4 cannot set. An installed browser
+    /// opens with the saved size and position as it would with <see cref="Width"/>, <see cref="Height"/>,
+    /// <see cref="X"/> and <see cref="Y"/>, without fitting them to a monitor or maximizing; <see cref="DesktopHost.Validate"/>
+    /// reports the ignored maximized state.
+    /// </para>
+    /// </remarks>
+    public DesktopWindowPlacement? Placement { get; init; }
+
     /// <summary>Gets whether the user can resize the embedded window. Defaults to <see langword="true"/>.</summary>
     public bool Resizable { get; init; } = true;
 
@@ -395,4 +428,23 @@ public sealed record DesktopWindowOptions
     /// no longer receive Runic Desktop's default isolation flags. The macOS and GTK 3 embedded windows ignore it.
     /// </remarks>
     public string? BrowserArguments { get; init; }
+
+    // The options a presentation opens with: a placement's values replace the size and position, sanitized so a
+    // damaged settings file cannot fail the open. The placement stays set for the hosts that fit it to a monitor.
+    internal DesktopWindowOptions WithPlacementApplied()
+    {
+        if (Placement is not { } placement)
+        {
+            return this;
+        }
+        var hasPosition = placement.X is not null && placement.Y is not null;
+        return this with
+        {
+            Width = placement.Width == 0 ? Width : Math.Min(placement.Width, Internal.WindowPlacementClamp.MaximumDimension),
+            Height = placement.Height == 0 ? Height : Math.Min(placement.Height, Internal.WindowPlacementClamp.MaximumDimension),
+            X = hasPosition ? placement.X : null,
+            Y = hasPosition ? placement.Y : null,
+            Centered = false,
+        };
+    }
 }

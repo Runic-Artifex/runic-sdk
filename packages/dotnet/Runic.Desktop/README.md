@@ -180,6 +180,62 @@ pickers and clipboard, register the matching GTK platform provider and the
 [portal service](../Runic.Platform.Linux.Portal/README.md). Runic.Application.Views.Desktop
 selects the provider for the running backend from `services.AddRunicPlatformServices()`.
 
+## Window state and restore
+
+An embedded window whose `Capabilities` include `DesktopWindowCapabilities.State`
+reports its bounds, maximized and full-screen state in `DesktopWindow.State`,
+and raises `DesktopWindow.StateChanged` after every move, resize, maximize,
+restore and full-screen change. The event runs on the thread pool, never
+concurrently; changes that arrive while a handler runs, as during a drag, are
+combined into the latest state. A handler that throws is logged as event 3011,
+`WindowStateHandlerFailed`. A minimized window keeps the state it had.
+
+`State` stays readable after the window has closed, as the last state before
+closing, so an application saves the placement once the window is closed and
+restores it on the next start:
+
+```csharp
+var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+{
+    Placement = settings.MainWindowPlacement, // null on the first start
+});
+await window.WaitForCloseAsync();
+settings.MainWindowPlacement = window.State?.Placement;
+```
+
+`DesktopWindowState.Placement` holds the window's bounds when it was last
+neither maximized nor full-screen, and whether it is maximized. It is a plain
+record that `System.Text.Json` serializes as is. `DesktopWindowOptions.Placement`
+replaces `Width`, `Height`, `X`, `Y` and `Centered`, keeps the window on a
+monitor that exists now, and opens it maximized when the placement was. When the
+saved bounds are not inside one monitor's work area (the screen without the
+taskbar, Dock or panels), for example because they were saved on an external
+monitor that is no longer connected, the window moves to the work area it
+overlaps most, or else to the nearest one, and shrinks to fit it. A window that
+spanned two monitors moves onto the one that held most of it. A placement
+without a position keeps the platform's position and is only shrunk. A damaged
+placement never fails the open: a zero size keeps `Width` and `Height`, a lone
+coordinate is ignored and a size above 65535 is reduced. Full-screen is
+reported but not restored; open with `Kiosk` for that.
+
+The values use the units `MoveAsync` and `ResizeAsync` take on each platform,
+so a placement belongs to the machine and operating system that saved it.
+Restoring it elsewhere still opens a visible window, but not necessarily at the
+same place or size.
+
+| Presentation | Bounds | Maximized | Full-screen | Restore fitted to |
+| --- | --- | --- | --- | --- |
+| Windows WebView2 | Position in physical virtual-screen pixels, outer frame size in device-independent pixels at the window's monitor scale | Yes | `Kiosk` only | The monitor work areas, at the target monitor's scale |
+| macOS WKWebView | AppKit points: the frame's bottom-left corner, measured up from the main screen's bottom, and the content size | Yes (zoomed) | Yes | The screens' visible frames (without the menu bar and Dock), title bar included |
+| Linux GTK 3 (X11) | Logical pixels: the frame's top-left corner and the content size | Yes | Yes | The GDK monitor work areas |
+| Linux GTK 3 (Wayland) | Content size only; the position is `null` | Yes | Yes | The largest monitor's work area, size only |
+| Linux GTK 4 | Content size only; the position is always `null` | Yes | Yes | The largest monitor, size only; see [Runic.Desktop.Gtk4](../Runic.Desktop.Gtk4/README.md) |
+| Installed browser | None (`State` is `null`) | No | No | Not fitted: the saved size and position open as `Width`, `Height`, `X` and `Y`; `Validate` reports the ignored maximized state |
+| Custom `IDesktopWindowHostFactory` | When its host implements `IDesktopWindowStateHost` | Host-defined | Host-defined | Host-defined, from `DesktopWindowHostOptions.Placement` |
+
+Without a window manager, as under Xvfb, X11 has nobody to maximize a window
+or to keep it inside a work area; the GTK hosts still report what GDK reports.
+
 ## Callback concurrency and ordering
 
 Each browser connection admits one callback or event at a time, but an

@@ -461,6 +461,57 @@ static async Task ExerciseDesktopHostAsync(Gtk4WindowHostFactory factory)
         throw new InvalidOperationException("GTK 4 did not reopen a DesktopHost window on the same application runner.");
     }
     await restartedWindow.CloseAsync();
+    await ExerciseWindowStateAsync(host);
+}
+
+// W315-001: GTK 4 reports the size and maximized state, keeps the restored size in the placement, and restores a
+// placement fitted to a monitor, ignoring its position.
+static async Task ExerciseWindowStateAsync(DesktopHost host)
+{
+    const string page = "<!doctype html><title>GTK4 state</title><script src=\"webui.js\"></script>";
+    DesktopWindowPlacement saved;
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(page) }))
+    {
+        var window = await surface.OpenWindowAsync(new DesktopWindowOptions
+        {
+            Browser = BrowserKind.Embedded,
+            Placement = new DesktopWindowPlacement { X = -100_000, Y = -100_000, Width = 20_000, Height = 15_000 },
+        });
+        if (!window.Capabilities.HasFlag(DesktopWindowCapabilities.State))
+            throw new InvalidOperationException("The GTK 4 window did not advertise its state.");
+        var opened = await WaitForStateAsync(window, static _ => true, "an initial state");
+        Console.WriteLine($"GTK4 smoke: window state opened as {opened}.");
+        if (opened.X is not null || opened.Placement.X is not null || opened.Width >= 20_000 || opened.Placement.Width >= 20_000)
+            throw new InvalidOperationException($"The GTK 4 placement was not fitted to a monitor without a position: {opened}.");
+        var changed = 0;
+        window.StateChanged += (_, _) => Interlocked.Increment(ref changed);
+        await window.ResizeAsync(420, 300);
+        var resized = await WaitForStateAsync(window, static state => state.Placement is { Width: 420, Height: 300 }, "the size 420x300");
+        if (Volatile.Read(ref changed) == 0)
+            throw new InvalidOperationException("Resizing the GTK 4 window raised no StateChanged event.");
+        saved = resized.Placement with { Maximized = true };
+        await window.CloseAsync();
+        if (window.State?.Placement is not { Width: 420, Height: 300 })
+            throw new InvalidOperationException($"The closed GTK 4 window lost its last state: {window.State}.");
+    }
+    await using (var surface = await host.CreateSurfaceAsync(new DesktopSurfaceOptions { Content = new DesktopContent.Html(page) }))
+    await using (var window = await surface.OpenWindowAsync(new DesktopWindowOptions { Browser = BrowserKind.Embedded, Placement = saved }))
+    {
+        var restored = await WaitForStateAsync(window, static state => state.Placement is { Width: 420, Height: 300 }, "the restored size");
+        Console.WriteLine($"GTK4 smoke: window state restored {saved} as {restored}.");
+    }
+    Console.WriteLine("GTK4 smoke: window state, change events, saved-after-close and restore passed.");
+}
+
+static async Task<DesktopWindowState> WaitForStateAsync(DesktopWindow window, Func<DesktopWindowState, bool> condition, string expected)
+{
+    var elapsed = System.Diagnostics.Stopwatch.StartNew();
+    while (elapsed.Elapsed < TimeSpan.FromSeconds(15))
+    {
+        if (window.State is { } state && condition(state)) return state;
+        await Task.Delay(20);
+    }
+    throw new TimeoutException($"The GTK 4 window did not report {expected}; last state: {window.State?.ToString() ?? "<none>"}.");
 }
 
 internal sealed class HostOwner(IDesktopNativeDispatchWindowHost host) : INativePickerOwner

@@ -55,6 +55,10 @@ internal static partial class DesktopLog
     internal static partial void EmbeddedWindowDiagnostic(
         ILogger logger, LogLevel level, string code, string diagnosticMessage, string remediation);
 
+    [LoggerMessage(EventId = 3011, EventName = "WindowStateHandlerFailed", Level = LogLevel.Error,
+        Message = "A DesktopWindow.StateChanged handler failed with {ErrorType}.")]
+    internal static partial void WindowStateHandlerFailed(ILogger logger, Exception exception, string errorType);
+
     internal static void Diagnostic(ILogger logger, DesktopDiagnostic diagnostic)
     {
         var option = diagnostic.Option ?? "the presentation";
