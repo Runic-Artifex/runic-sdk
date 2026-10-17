@@ -217,6 +217,8 @@ internal sealed class NavigationEntryCore
     public NavigationEntryId Id { get; }
     public NavigationOwnership Ownership { get; }
     public bool Owned => Ownership == NavigationOwnership.Owned;
+    // The entry holds its content: Own, Create and Share entries; the last holder disposes it.
+    public bool Holds => Ownership is NavigationOwnership.Owned or NavigationOwnership.Shared;
 
     // Null only while a factory target has not created its content yet.
     public object? Content { get; set; }

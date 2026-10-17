@@ -194,7 +194,8 @@ Main.WhenCurrentChanged()          // TContent?, distinct by instance, on the mo
 - `WhenCurrentChanged()` emits the current content (`null` when the region is
   empty) on subscription and then each different instance.
   `WhenEntryChanged()` emits each `NavigationEntry<TContent>`, also when two
-  entries present the same borrowed instance.
+  entries present the same borrowed or shared instance, as after
+  `ReplaceAsync(NavigationTarget.Share(current))`.
 - `WhenCanGoBackChanged()` emits whether the region has Back history.
   `WhenIsTransitioningChanged()` emits whether it has an unsettled transition,
   including one started by another caller. They emit initial values and then

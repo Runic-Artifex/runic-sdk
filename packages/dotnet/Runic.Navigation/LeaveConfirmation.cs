@@ -84,7 +84,8 @@ public sealed class LeaveConfirmation
     }
 
     /// <summary>
-    /// Decides a departure: allows a retaining departure unless <c>askOnRetain</c> is set, allows a departure that a
+    /// Decides a departure: allows a retaining departure, and one whose content continues in another entry
+    /// (<see cref="NavigationDeparture.ContentContinues"/>), unless <c>askOnRetain</c> is set, allows a departure that a
     /// standing yes covers, allows when there are no unsaved changes, and otherwise asks. A yes registers
     /// <c>discard</c> with <see cref="NavigationDeparture.OnCommitted"/>.
     /// </summary>
@@ -93,8 +94,8 @@ public sealed class LeaveConfirmation
     public async ValueTask<bool> CanDepartAsync(NavigationDeparture departure, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(departure);
-        // 1. A retained entry keeps its state, so nothing is lost.
-        if (departure.Kind == NavigationDepartureKind.Retain && !_askOnRetain) return true;
+        // 1. A retained entry keeps its state, so nothing is lost; so does content that continues in another entry.
+        if ((departure.Kind == NavigationDepartureKind.Retain || departure.ContentContinues) && !_askOnRetain) return true;
 
         // 2. A yes that still stands for this entry answers again without asking.
         if (Current(departure.Entry) is { } standing)

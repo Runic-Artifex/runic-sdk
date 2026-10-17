@@ -444,6 +444,7 @@ var result = await Main.PushAsync<DetailViewModel>(); // Rejected(Busy)
 | `Own(content)` | The caller, with `new`, handing it over | Child regions close, presentations are forgotten, the content is disposed and its lease is released. |
 | `Create(factory)` / `Create(factory, input)` | The factory, with `new`, when the transition prepares; a `(services, entry)` factory also receives the entry's context | As `Own`, then the entry's scope is disposed. |
 | `Create<T>()` / `Create<T, TInput>(input)` | The navigator, with `ActivatorUtilities`, when the transition prepares | As `Own`, then the entry's scope is disposed. |
+| `Share(content)` | The caller (a new instance), or a live `Own`, `Create` or `Share` entry of this navigator | Nothing while another entry holds the content; the last holder releases it as `Own`, including the scope of created content. |
 
 - Content resolved from a container (a window scope, the root provider or
   Splat) belongs to that container, so `Borrow` it. Use `Own` and `Create` only
@@ -456,6 +457,27 @@ var result = await Main.PushAsync<DetailViewModel>(); // Rejected(Busy)
   A `Create` factory that returns one gives `Failed(Preparing)`.
 - Present owned content only through its region's slot. Retirement forgets
   every presentation of the instance.
+- `Share` lets several entries hold one instance, as when the next page takes
+  over the editor of the current one:
+  `ReplaceAsync(NavigationTarget.Share(current))` retires the current entry
+  and disposes nothing. A Push with `Share` keeps the content in both entries.
+  The content is forgotten and disposed when the last entry that holds it
+  retires; a pending `Share` push holds it from admission, so the entry that
+  handed it over can retire first. Each entry is its own entry: its
+  `INavigationInitialize` and `INavigationActivated` hooks run, and its
+  `NavigationEntryContext` is its own. Content that kept the context it was
+  constructed with still has its first entry's, so take the context in a hook
+  if the content moves between entries.
+- A departure that retires an entry whose content another entry keeps has
+  `NavigationDeparture.ContentContinues`; `LeaveConfirmation` treats it like a
+  `Retain` departure and doesn't ask. `OnNavigatedFrom` and `StateChanged`
+  still report the entry's retirement.
+- `Share` throws `InvalidOperationException` for an instance that was owned
+  and fully released, that another navigator holds, or that owns regions;
+  `Own` of shared content throws too. Shared content can't own regions
+  (`CreateRegion` with it as owner throws), and a shared target can't be an
+  initial target: start with `Own` or `Create`, then share. Don't also `Borrow`
+  shared content, since a borrowing entry can outlive its disposal.
 - Borrowed selection hosts use caller/container-owned models. Do not re-borrow
   content from a navigator-owned entry into another entry; retirement of its
   owning entry still disposes that content.

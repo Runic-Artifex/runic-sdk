@@ -2028,20 +2028,31 @@ internal sealed partial class NavigationTests
                 var options = new NavigationRequestOptions(expected);
                 var choice = random.Next(10);
                 var pageRandom = new Random(random.Next());
-                INavigationTarget<RacePage> NewTarget() => random.Next(4) == 0
-                    ? NavigationTarget.Borrow(pool[random.Next(pool.Length)])
-                    : NavigationTarget.Create(_ => Create(pageRandom, target));
-                var operation = choice switch
+                // W315-020 §2: sometimes share the region's current created page (one without regions) into a new entry.
+                INavigationTarget<RacePage> NewTarget() => random.Next(8) switch
                 {
-                    < 4 => target.PushAsync(NewTarget(), options, cancel.Token),
-                    < 6 => target.BackAsync(options, cancel.Token),
-                    6 => target.History is { Count: > 0 } history
-                        ? target.BackToAsync(history[random.Next(history.Count)].Id, options, cancel.Token)
-                        : target.BackAsync(options, cancel.Token),
-                    7 => target.ReplaceAsync(NewTarget(), options, cancel.Token),
-                    8 => random.Next(2) == 0 ? target.ResetAsync(NewTarget(), options, cancel.Token) : target.ClearHistoryAsync(options, cancel.Token),
-                    _ => target.ClearAsync(options, cancel.Token),
+                    < 2 => NavigationTarget.Borrow(pool[random.Next(pool.Length)]),
+                    2 when target.Current is InitRacePage { Child: null } current && ReferenceEquals(current.Origin, target)
+                        => NavigationTarget.Share<RacePage>(current),
+                    _ => NavigationTarget.Create(_ => Create(pageRandom, target)),
                 };
+                ValueTask<NavigationResult<RacePage>> operation;
+                try
+                {
+                    operation = choice switch
+                    {
+                        < 4 => target.PushAsync(NewTarget(), options, cancel.Token),
+                        < 6 => target.BackAsync(options, cancel.Token),
+                        6 => target.History is { Count: > 0 } history
+                            ? target.BackToAsync(history[random.Next(history.Count)].Id, options, cancel.Token)
+                            : target.BackAsync(options, cancel.Token),
+                        7 => target.ReplaceAsync(NewTarget(), options, cancel.Token),
+                        8 => random.Next(2) == 0 ? target.ResetAsync(NewTarget(), options, cancel.Token) : target.ClearHistoryAsync(options, cancel.Token),
+                        _ => target.ClearAsync(options, cancel.Token),
+                    };
+                }
+                // A shared page that its last entry released meanwhile can't be shared any more.
+                catch (InvalidOperationException) { continue; }
                 var result = await operation.AsTask().WaitAsync(Timeout);
                 if (result is NavigationResult<RacePage>.Failed { Error: not RaceException } failed)
                     violations.Enqueue($"seed {seed}: unexpected failure {failed.Error}");
@@ -2095,6 +2106,8 @@ internal sealed partial class NavigationTests
         await fixture.Context.DisposeAsync();
         if (fixture.Navigator.UnretiredEntryCount != 0)
             violations.Enqueue($"seed {seed}: {fixture.Navigator.UnretiredEntryCount} entries were left unretired");
+        if (fixture.Navigator.HolderRecordCount != 0)
+            violations.Enqueue($"seed {seed}: {fixture.Navigator.HolderRecordCount} holder records were left after disposal");
         foreach (var page in created)
         {
             if (page.Disposed != 1) violations.Enqueue($"seed {seed}: {page.Name} was disposed {page.Disposed} times");
