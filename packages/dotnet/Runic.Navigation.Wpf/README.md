@@ -410,6 +410,14 @@ The guard runs on the UI thread, and so do its awaits. It doesn't pump. A
 guard may also call `MessageBox.Show` and return the answer, but other
 regions can then commit through the message box's nested loop.
 
+A guard for a whole region, rather than one page, is an
+`INavigationRegionGuard` registered with `region.AddDepartureGuard(guard)`, or
+on the navigator for every region (see
+[Guards for a whole region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#guards-for-a-whole-region)).
+`GuardWindowClose` clears the region, so it asks these guards too. A navigator
+guard is asked once per guarded region that has entries; register a
+window-wide question on the main region instead.
+
 ## Selecting tabs and other existing models
 
 The optional selector adapter uses the same engine with either Toolkit or

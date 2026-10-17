@@ -129,6 +129,8 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     private readonly TaskCompletionSource _disposalStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     // The attached presentations: the sinks that forget owned content when it retires.
     private readonly List<PresentationAttachment> _presentations = [];
+    // The navigator's region guards (AddDepartureGuard), in registration order.
+    private readonly List<NavigationRegionGuardRegistration> _guards = [];
 
     /// <summary>Creates a navigator for one window.</summary>
     public RunicNavigator(RunicNavigatorOptions options)
@@ -537,6 +539,36 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             await this.AfterUserCode(Task.WhenAll(pending).WaitAsync(cancellationToken));
         }
     }
+
+    /// <summary>
+    /// Registers a guard that is asked before a transition of any region of this navigator departs, after the guards of the
+    /// entries and of the regions (<see cref="NavigationRegion{TContent}.AddDepartureGuard"/>), once per transition. Its
+    /// <see cref="NavigationRegionDeparture.Region"/> is the region the request was made to, and its
+    /// <see cref="NavigationRegionDeparture.Entries"/> and <see cref="NavigationRegionDeparture.Kind"/> cover every region of
+    /// the transition.
+    /// </summary>
+    /// <remarks>
+    /// The rules of <see cref="NavigationRegion{TContent}.AddDepartureGuard"/> apply. A window close that clears its regions
+    /// one after another, such as WPF's <c>GuardWindowClose</c> or a Runic View's <c>CanCloseAsync</c>, asks the guard once
+    /// per region that has entries; to ask once per close, register it on the window's main region instead, or remember the
+    /// answer.
+    /// </remarks>
+    /// <param name="guard">The guard.</param>
+    /// <param name="options">When the guard is asked; by default it is skipped for retained entries and for ClearHistory.</param>
+    /// <returns>An <see cref="IDisposable"/> that removes the guard.</returns>
+    public IDisposable AddDepartureGuard(INavigationRegionGuard guard, NavigationRegionGuardOptions? options = null) =>
+        AddGuard(_guards, guard, options);
+
+    internal IDisposable AddGuard(List<NavigationRegionGuardRegistration> list, INavigationRegionGuard guard,
+        NavigationRegionGuardOptions? options)
+    {
+        ArgumentNullException.ThrowIfNull(guard);
+        var registration = new NavigationRegionGuardRegistration(this, list, guard, options ?? DefaultRegionGuardOptions);
+        lock (Gate) list.Add(registration);
+        return registration;
+    }
+
+    private static readonly NavigationRegionGuardOptions DefaultRegionGuardOptions = new();
 
     // NavigationRegion<TContent>.WhenIdleAsync: the region's running transitions, until none is left.
     internal async ValueTask WhenRegionIdleAsync(NavigationRegionCore region, CancellationToken cancellationToken)
@@ -980,6 +1012,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
         // Guarding.
         NavigationPlan plan;
+        List<RegionGuardAsk> regionGuards;
         lock (Gate)
         {
             if (transition.CancelReason != NavigationCancelReason.None || _closing || region.Closed
@@ -987,6 +1020,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 return (CancelledOutcome(transition), null);
             plan = ComputePlanLocked(region, transition.Operation, transition.Pending, transition.BackTo, transition.Expected,
                 transition.Return is not null);
+            regionGuards = RegionGuardsLocked(transition, plan);
         }
         if (plan.Rejection is { } rejection) return (TransitionOutcome.Reject(rejection), null);
         if (plan.Unchanged) return (TransitionOutcome.Commit(region.CurrentEntry, []), null);
@@ -1001,7 +1035,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
             if (StaleOutcome(transition, plan) is { } stale) return (stale, null);
             bool allowed;
             // Guard hooks of one region never overlap across transitions (see EnterGuardHookAsync).
-            switch (await this.AfterUserCode(EnterGuardHookAsync(transition, entry, plan, token)))
+            switch (await this.AfterUserCode(EnterGuardHookAsync(transition, entry.Region, entry, plan, token)))
             {
                 case GuardSlot.Cancelled: return (CancelledOutcome(transition), null);
                 case GuardSlot.Stale: return (TransitionOutcome.Superseded, null);
@@ -1030,6 +1064,47 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 ExitGuardHook(transition);
             }
             if (!allowed) return (TransitionOutcome.Reject(NavigationRejection.Guard, entry.Id), null);
+        }
+
+        // Then the region guards, deepest region first, and the navigator's (W315-020 §3).
+        foreach (var ask in regionGuards)
+        {
+            if (token.IsCancellationRequested) return (CancelledOutcome(transition), null);
+            if (BeforeBasisCheck is { } beforeRegionGuard) await this.AfterUserCode(beforeRegionGuard(region, NavigationPhase.Guarding));
+            if (StaleOutcome(transition, plan) is { } stale) return (stale, null);
+            bool removed;
+            lock (Gate) removed = ask.Registration.Removed;
+            if (removed) continue;
+            switch (await this.AfterUserCode(EnterGuardHookAsync(transition, ask.Region, null, plan, token)))
+            {
+                case GuardSlot.Cancelled: return (CancelledOutcome(transition), null);
+                case GuardSlot.Stale: return (TransitionOutcome.Superseded, null);
+            }
+            var guard = ask.Registration.Guard;
+            var guardType = guard.GetType().Name;
+            var departure = new NavigationRegionDeparture(transition, ask.Region.Public!, ask.Kind, ask.Entries, guardType);
+            bool allowed;
+            try
+            {
+                allowed = await this.AfterUserCode(StartHook(transition, () => guard.CanLeaveAsync(departure, token), token));
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                return (CancelledOutcome(transition), null);
+            }
+            catch (Exception error)
+            {
+                if (IsClosing(region)) return (TransitionOutcome.Reject(NavigationRejection.Closed), null);
+                NavigationLog.NavigationGuardFailed(Logger, error, ask.Region.ContentTypeName, ask.Region.Id,
+                    OperationName(transition.Operation), guardType, NavigationTelemetry.ErrorType(error));
+                return (TransitionOutcome.Fail(error, NavigationPhase.Guarding), null);
+            }
+            finally
+            {
+                departure.Close();
+                ExitGuardHook(transition);
+            }
+            if (!allowed) return (TransitionOutcome.Reject(NavigationRejection.Guard), null);
         }
 
         // Preparing.
@@ -1218,7 +1293,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         TransitionOutcome? stopped = null;
         NavigationCommit? commit = null;
         List<(NavigationRegionCore Region, NavigationRegionChanges Changes)> changed = [];
-        (NavigationEntryCore Entry, Action Action)[] committed = [];
+        (string EntryType, Action Action)[] committed = [];
         List<NavigationEntryChange> entryChanges = [];
         lock (Gate)
         {
@@ -1281,13 +1356,13 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
 
         // OnCommitted actions run in this turn, outside the gate, after the new state is applied and
         // before the notifications. One that throws is logged; the commit stands (D-13).
-        foreach (var (entry, action) in committed)
+        foreach (var (entryType, action) in committed)
         {
             try { action(); }
             catch (Exception error)
             {
                 NavigationLog.NavigationDepartureActionFailed(Logger, error, region.ContentTypeName, region.Id,
-                    OperationName(transition.Operation), entry.ContentTypeName, NavigationTelemetry.ErrorType(error));
+                    OperationName(transition.Operation), entryType, NavigationTelemetry.ErrorType(error));
             }
         }
         // Then the entries' StateChanged and INavigationAware calls, before the regions' notifications.
@@ -1367,8 +1442,9 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
     // the same entry (deviation 14).
     private enum GuardSlot { Entered, Cancelled, Stale }
 
-    private async Task<GuardSlot> EnterGuardHookAsync(NavigationTransition transition, NavigationEntryCore entry,
-        NavigationPlan plan, CancellationToken token)
+    // A region guard has no entry: its slot is keyed by the region it guards (the requested region for a navigator guard).
+    private async Task<GuardSlot> EnterGuardHookAsync(NavigationTransition transition, NavigationRegionCore guardRegion,
+        NavigationEntryCore? entry, NavigationPlan plan, CancellationToken token)
     {
         while (true)
         {
@@ -1378,23 +1454,78 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
                 if (_closing || transition.Region.Closed
                     || transition.CancelReason != NavigationCancelReason.None)
                     return GuardSlot.Cancelled;
-                if (entry.Region.Closed || !plan.BasisMatches() || entry.Retiring is not null) return GuardSlot.Stale;
+                if (guardRegion.Closed || !plan.BasisMatches() || entry?.Retiring is not null) return GuardSlot.Stale;
                 foreach (var other in _running)
                 {
                     if (ReferenceEquals(other, transition) || other.GuardHook is not { } hook) continue;
-                    if (other.GuardingEntry is not { } guarding || !ReferenceEquals(guarding.Region, entry.Region)) continue;
+                    if (!ReferenceEquals(other.GuardingRegion, guardRegion)) continue;
                     blocker = hook.Task;
                     break;
                 }
                 if (blocker is null)
                 {
-                    transition.GuardingEntry = entry;
+                    transition.GuardingRegion = guardRegion;
                     transition.GuardHook = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                     return GuardSlot.Entered;
                 }
             }
             try { await this.AfterUserCode(blocker.WaitAsync(token)); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { return GuardSlot.Cancelled; }
+        }
+    }
+
+    private readonly record struct RegionGuardAsk(NavigationRegionCore Region, NavigationRegionGuardRegistration Registration,
+        NavigationDepartureKind Kind, IReadOnlyList<NavigationEntryId> Entries);
+
+    // The region and navigator guards a plan asks, in order (W315-020 §3.2). For each region with a departing entry, in the
+    // order the regions first appear in the plan's guards (deepest first), its guards in registration order, with the
+    // region's departing entries (the plan lists a region's entries top-down, so current first); then the navigator's
+    // guards, with the requested region and every departing entry. A plan without departures asks none. Registrations are
+    // skipped by their options, against the request's operation, so a parent's ClearHistory skips the guards of the child
+    // regions it closes too. Call under the gate.
+    private List<RegionGuardAsk> RegionGuardsLocked(NavigationTransition transition, NavigationPlan plan)
+    {
+        List<RegionGuardAsk> asks = [];
+        if (plan.Guards.Count == 0 || plan.Unchanged || plan.Rejection is not null) return asks;
+        var clearHistory = transition.Operation == NavigationOperation.ClearHistory;
+        List<NavigationRegionCore> regions = [];
+        foreach (var (entry, _) in plan.Guards)
+            if (!regions.Contains(entry.Region)) regions.Add(entry.Region);
+        foreach (var guarded in regions)
+        {
+            if (guarded.Guards.Count == 0) continue;
+            List<NavigationEntryId> entries = [];
+            var retire = false;
+            foreach (var (entry, kind) in plan.Guards)
+            {
+                if (!ReferenceEquals(entry.Region, guarded)) continue;
+                entries.Add(entry.Id);
+                retire |= kind == NavigationDepartureKind.Retire;
+            }
+            Add(guarded, guarded.Guards, retire, entries);
+        }
+        if (_guards.Count > 0)
+        {
+            List<NavigationEntryId> entries = [];
+            var retire = false;
+            foreach (var (entry, kind) in plan.Guards)
+            {
+                entries.Add(entry.Id);
+                retire |= kind == NavigationDepartureKind.Retire;
+            }
+            Add(transition.Region, _guards, retire, entries);
+        }
+        return asks;
+
+        void Add(NavigationRegionCore region, List<NavigationRegionGuardRegistration> registrations, bool retire,
+            IReadOnlyList<NavigationEntryId> entries)
+        {
+            foreach (var registration in registrations)
+            {
+                if (!retire && !registration.Options.AskOnRetain) continue;
+                if (clearHistory && !registration.Options.AskOnClearHistory) continue;
+                asks.Add(new(region, registration, retire ? NavigationDepartureKind.Retire : NavigationDepartureKind.Retain, entries));
+            }
         }
     }
 
@@ -1405,7 +1536,7 @@ public sealed class RunicNavigator : IAsyncDisposable, IDisposable
         {
             hook = transition.GuardHook;
             transition.GuardHook = null;
-            transition.GuardingEntry = null;
+            transition.GuardingRegion = null;
         }
         hook?.TrySetResult();
     }
@@ -2396,11 +2527,12 @@ internal sealed class NavigationTransition : IDisposable
 
     // NavigationDeparture.OnCommitted actions of this transition's guards, in registration order.
     // Guarded by the navigator's gate; run only by the commit turn.
-    public List<(NavigationEntryCore Entry, Action Action)> CommitActions { get; } = [];
+    // NavigationRegionDeparture.OnCommitted actions follow, with the guard's type name in place of the entry's.
+    public List<(string EntryType, Action Action)> CommitActions { get; } = [];
 
-    // The entry whose departure guard hook this transition is running, and the
+    // The region whose guard hook (an entry's departure guard, or a region guard) this transition is running, and the
     // signal that the hook has returned. Set and cleared under the navigator's gate.
-    public NavigationEntryCore? GuardingEntry { get; set; }
+    public NavigationRegionCore? GuardingRegion { get; set; }
     public TaskCompletionSource? GuardHook { get; set; }
 
     // Admission released: requests waiting on this one may proceed.

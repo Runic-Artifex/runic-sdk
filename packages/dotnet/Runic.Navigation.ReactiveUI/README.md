@@ -433,6 +433,14 @@ var outcome = await editor.CloseCommand.Execute(); // NavigationOutcomeKind.Comm
 A Runic web View answers it with the generated client; see
 [Leave confirmation in a web View](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Application.Views.ReactiveUI/README.md#leave-confirmation-in-a-web-view).
 
+A question for a whole region rather than one page, such as unsaved work
+anywhere in a window, is an `INavigationRegionGuard` registered with
+`region.AddDepartureGuard(guard)` or `navigator.AddDepartureGuard(guard)` (see
+[Guards for a whole region](https://github.com/Runic-Artifex/runic-sdk/blob/main/packages/dotnet/Runic.Navigation/README.md#guards-for-a-whole-region)).
+It can ask through an `Interaction` the same way: its
+`NavigationRegionDeparture` has the `ModelContext` and `OnCommitted` of a
+`NavigationDeparture`.
+
 ## Native command composition
 
 The adapter supplies observable state for ReactiveUI pipelines; it does not

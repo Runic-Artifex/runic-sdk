@@ -47,6 +47,9 @@ public interface INavigationRegion : INotifyPropertyChanged
     /// <inheritdoc cref="NavigationRegion{TContent}.WhenIdleAsync" />
     ValueTask WhenIdleAsync(CancellationToken cancellationToken = default);
 
+    /// <inheritdoc cref="NavigationRegion{TContent}.AddDepartureGuard" />
+    IDisposable AddDepartureGuard(INavigationRegionGuard guard, NavigationRegionGuardOptions? options = null);
+
     /// <summary>Retires the current entry and resumes the top retained entry.</summary>
     /// <remarks>Compare the result's entry with this region's entries by <see cref="INavigationEntry.Id"/>.</remarks>
     ValueTask<NavigationResult<object>> BackAsync(NavigationRequestOptions? options = null, CancellationToken cancellationToken = default);
@@ -88,6 +91,7 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     {
         Core = core;
         core.Raise = Raise;
+        core.Public = this;
     }
 
     internal NavigationRegionCore Core { get; }
@@ -153,6 +157,33 @@ public sealed class NavigationRegion<TContent> : INavigationRegion where TConten
     /// <remarks>A hook of a transition of this region that awaits it deadlocks: the region is busy while the hook runs.</remarks>
     /// <param name="cancellationToken">Stops waiting.</param>
     public ValueTask WhenIdleAsync(CancellationToken cancellationToken = default) => Core.Navigator.WhenRegionIdleAsync(Core, cancellationToken);
+
+    /// <summary>
+    /// Registers a guard that is asked before a transition departs from this region: a request to the region, or to a
+    /// region whose plan resets or closes it or leaves it, as a tab switch leaves the tab's page regions. It is asked once
+    /// per transition, after the departure guards of the entries (<see cref="INavigationDepartureGuard"/>), and only when
+    /// an entry of the region departs: a push into an empty region asks it not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The region guards of a transition run region by region, deepest first, each region's guards in registration order,
+    /// then the navigator's (<see cref="RunicNavigator.AddDepartureGuard"/>). A guard is skipped when the transition only
+    /// retains the region's entries, unless <see cref="NavigationRegionGuardOptions.AskOnRetain"/>, and for a
+    /// <see cref="NavigationOperation.ClearHistory"/> request, unless <see cref="NavigationRegionGuardOptions.AskOnClearHistory"/>.
+    /// </para>
+    /// <para>
+    /// <see langword="false"/> rejects the transition as <see cref="NavigationRejection.Guard"/> with no
+    /// <see cref="NavigationResult{TContent}.Rejected.By"/> entry; a guard that throws fails it in
+    /// <see cref="NavigationPhase.Guarding"/> (event 1060, with the guard's type as <c>EntryType</c>). The guards are read
+    /// when the transition starts guarding: a guard removed before its turn is not asked, and one added later waits for
+    /// the next transition. Navigator disposal asks no guards.
+    /// </para>
+    /// </remarks>
+    /// <param name="guard">The guard.</param>
+    /// <param name="options">When the guard is asked; by default it is skipped for retained entries and for ClearHistory.</param>
+    /// <returns>An <see cref="IDisposable"/> that removes the guard.</returns>
+    public IDisposable AddDepartureGuard(INavigationRegionGuard guard, NavigationRegionGuardOptions? options = null) =>
+        Core.Navigator.AddGuard(Core.Guards, guard, options);
 
     /// <summary>
     /// Raised inside a model turn after a commit, for <see cref="Current"/>, <see cref="CurrentEntry"/>,
@@ -437,6 +468,10 @@ internal sealed class NavigationRegionCore(RunicNavigator navigator, int id, str
     public List<NavigationTransition> InFlight { get; } = [];
     // Admitted transitions whose task has not completed (the region's share of the navigator's running set).
     public HashSet<NavigationTransition> Running { get; } = [];
+    // The region's guards (AddDepartureGuard), in registration order.
+    public List<NavigationRegionGuardRegistration> Guards { get; } = [];
+    // The public region of this core, set once by its constructor.
+    public INavigationRegion? Public { get; set; }
 
     public Action<NavigationRegionChanges>? Raise { get; set; }
 

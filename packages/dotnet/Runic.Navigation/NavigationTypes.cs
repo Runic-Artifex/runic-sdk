@@ -183,7 +183,7 @@ public sealed class NavigationDeparture
             if (_closed)
                 throw new InvalidOperationException(
                     "OnCommitted can be called only while the departure guard runs, before the task it returned completes.");
-            _transition.CommitActions.Add((_entry, action));
+            _transition.CommitActions.Add((_entry.ContentTypeName, action));
         }
     }
 
@@ -360,7 +360,10 @@ public abstract record NavigationResult<TContent> where TContent : class
 
     /// <summary>The transition was rejected; history is unchanged.</summary>
     /// <param name="Reason">Why it was rejected.</param>
-    /// <param name="By">The entry whose guard vetoed it, for <see cref="NavigationRejection.Guard"/>.</param>
+    /// <param name="By">
+    /// The entry whose guard vetoed it, for <see cref="NavigationRejection.Guard"/>; <see langword="null"/> when a region or
+    /// navigator guard (<see cref="INavigationRegionGuard"/>) vetoed it.
+    /// </param>
     public sealed record Rejected(NavigationRejection Reason, NavigationEntryId? By) : NavigationResult<TContent>;
 
     /// <summary>The transition failed; history is unchanged.</summary>
