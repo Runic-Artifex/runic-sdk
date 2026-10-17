@@ -11,9 +11,9 @@ system.
 
 | Platform | Delivery state | Validation |
 | --- | --- | --- |
-| Linux | Implemented: the Secret Service API (`org.freedesktop.secrets`) over D-Bus in Runic.Platform.Linux.Portal, with the `dh-ietf1024-sha256-aes128-cbc-pkcs7` session and a `plain` fallback. | Tests against a fake service on a private bus for every outcome (encrypted and plain sessions, locked items and collections, prompt completed, dismissed, unshowable and cancelled, no default collection, no service). CI: GNOME Keyring on a private bus, JIT and NativeAOT, requiring the encrypted session; `secret-tool` reads the stored item; a locked keyring is typed. |
-| Windows | Implemented: Credential Manager generic credentials (`CredWriteW`, `CredReadW`, `CredDeleteW`) in Runic.Platform.Windows. | Portable tests for target names and error mapping. CI: the runner's vault, JIT and NativeAOT. |
-| macOS | Implemented: generic passwords in the default keychain (`SecItemAdd`, `SecItemCopyMatching`, `SecItemUpdate`, `SecItemDelete`) in Runic.Platform.MacOS. | Portable tests for status mapping. CI: the runner's login keychain, JIT and NativeAOT. Unlock and access prompts are manual checks. |
+| Linux | Implemented: the Secret Service API (`org.freedesktop.secrets`) over D-Bus in Runic.Platform.Linux.Portal, with the `dh-ietf1024-sha256-aes128-cbc-pkcs7` session and a `plain` fallback. | Tests against a fake service on a private bus for every outcome (encrypted and plain sessions, locked items and collections, prompt completed, dismissed, unshowable and cancelled, no default collection, no service). CI-verified against GNOME Keyring 46.1 and libsecret 0.21.4 on Ubuntu 24.04, JIT and NativeAOT: the encrypted session is required, `secret-tool` reads the stored item, and a locked keyring without a prompter reports `UserDismissed` (GNOME Keyring completes the prompt as dismissed). KeePassXC and KWallet are unverified. |
+| Windows | Implemented: Credential Manager generic credentials (`CredWriteW`, `CredReadW`, `CredDeleteW`) in Runic.Platform.Windows. | Portable tests for target names and error mapping. CI-verified on the windows-latest runner's vault, JIT and NativeAOT. |
+| macOS | Implemented: generic passwords in the default keychain (`SecItemAdd`, `SecItemCopyMatching`, `SecItemUpdate`, `SecItemDelete`) in Runic.Platform.MacOS. | Portable tests for status mapping. CI-verified on the macos-26 runner's login keychain, JIT and NativeAOT. The locked-keychain, unlock and access prompts are unverified (manual checks). |
 | Sandboxed Linux | Implemented where the sandbox allows the Secret Service: Flatpak `--talk-name=org.freedesktop.secrets`, the Snap `password-manager-service` interface. Otherwise unavailable with the `secret-service-unavailable` diagnostic. | Deferred to 1.x: the Secret portal (`org.freedesktop.portal.Secret`) with a local encrypted file, for sandboxes without Secret Service access. |
 
 ## Contract
@@ -47,7 +47,7 @@ public interface IDesktopSecretStore
 | --- | --- | --- | --- | --- |
 | No store reachable | `Unavailable(BackendUnavailable)` | No owner and no activatable service for `org.freedesktop.secrets`, including a sandbox that hides it | `ERROR_NO_SUCH_LOGON_SESSION` (no vault in a service or network logon) | `errSecNoSuchKeychain`, `errSecNotAvailable`, `errSecNoDefaultKeychain`, `errSecInvalidKeychain` |
 | Locked, and the store cannot ask the user | `Failed(Locked)` | `Prompt` fails (no prompter), or `org.freedesktop.Secret.Error.IsLocked` after `Unlock` | — (no locked state) | `errSecInteractionNotAllowed` |
-| The user dismissed an unlock, access or create prompt | `Failed(UserDismissed)` | `Prompt.Completed` with `dismissed` | `ERROR_CANCELLED` | `errSecUserCanceled` |
+| The user dismissed an unlock, access or create prompt | `Failed(UserDismissed)` | `Prompt.Completed` with `dismissed`; GNOME Keyring also completes a prompt it cannot show (no prompter, as in a headless session) this way | `ERROR_CANCELLED` | `errSecUserCanceled` |
 | Access refused | `Failed(PermissionDenied)` | `org.freedesktop.DBus.Error.AccessDenied` | `ERROR_ACCESS_DENIED` | `errSecAuthFailed`, `errSecReadOnly`, `errSecWrPerm`, `errSecMissingEntitlement` |
 | Other native errors | `Failed(IoError)` with the native code | D-Bus error name | Win32 code | `OSStatus` |
 
