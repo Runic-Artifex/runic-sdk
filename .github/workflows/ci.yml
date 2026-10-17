@@ -595,6 +595,18 @@ jobs:
           for tests in "dotnet tests/dotnet/Runic.Platform.Linux.Portal.Tests/bin/Release/net10.0/Runic.Platform.Linux.Portal.Tests.dll" artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests; do
             RUNIC_TEST_SECRET_SERVICE=gnome-keyring dbus-run-session -- sh -c "printf runic | gnome-keyring-daemon --unlock --components=secrets >/dev/null && $tests --treenode-filter '/*/*/*/*[Category=SecretService]' --output detailed"
           done
+      # W315-011: the real xdg-desktop-portal and its GNOME backend publish every appearance key only from portal 1.20
+      # on (Ubuntu 24.04 has 1.18), so they run in Fedora. The container runs the published tests and needs no .NET.
+      - name: Verify appearance settings against the real GNOME portal with JIT and NativeAOT
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        env:
+          FEDORA_IMAGE: docker.io/library/fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+          RID: ${{ matrix.rid }}
+        run: |
+          dotnet publish tests/dotnet/Runic.Platform.Linux.Portal.Tests -c Release -r "$RID" --self-contained true -o artifacts/portal-jit
+          docker run --rm --init -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -w "$GITHUB_WORKSPACE" "$FEDORA_IMAGE" \
+            sh eng/ci/real-portal.sh artifacts/portal-jit/Runic.Platform.Linux.Portal.Tests artifacts/portal-aot/Runic.Platform.Linux.Portal.Tests
       - name: Verify privileged actions under NativeAOT
         if: runner.os == 'Linux'
         # The managed job runs the same cases under JIT; nixos/privileged-operations covers a real Polkit.
@@ -773,6 +785,14 @@ jobs:
         run: |
           dotnet run --project tests/dotnet/Runic.Platform.Runtime.Tests -c Release -- --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
           ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests --treenode-filter "/*/*/*/*[Category=NativeAppKit]"
+      # W315-011: accent colour, Increase contrast and Reduce motion written before each process starts, and dark mode
+      # switched through System Events while one runs. The script restores the preferences.
+      - name: Verify macOS appearance preferences with JIT and NativeAOT
+        if: runner.os == 'macOS'
+        timeout-minutes: 8
+        run: |
+          eng/ci/macos-appearance.sh "dotnet tests/dotnet/Runic.Platform.Runtime.Tests/bin/Release/net10.0/Runic.Platform.Runtime.Tests.dll"
+          eng/ci/macos-appearance.sh ./artifacts/platform-runtime-aot/Runic.Platform.Runtime.Tests
       # Real key events posted to the AppKit queue: the page sees each Command key before the View menu zooms;
       # Command and A, C, V copy and paste through the Edit menu, and Command and Q asks the close guard.
       - name: Exercise page zoom, Edit and Quit keys in the macOS window
@@ -805,6 +825,17 @@ jobs:
           mkdir artifacts/webview-exe-only
           cp artifacts/webview-aot/Runic.Desktop.WebViewSmoke.exe artifacts/webview-exe-only/
           (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe)
+      # W315-017: the WebView2 window follows a live change of the monitor scale (100, 150, 175 %) through
+      # WM_DPICHANGED, as when it moves to a monitor with another scale. The runner has one virtual monitor.
+      - name: Exercise per-monitor DPI changes in the WebView2 window with JIT and NativeAOT
+        if: runner.os == 'Windows'
+        timeout-minutes: 5
+        shell: bash
+        env:
+          RUNIC_TEST_DISPLAY_SCALING: "1"
+        run: |
+          dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --dpi
+          (cd artifacts/webview-exe-only && ./Runic.Desktop.WebViewSmoke.exe --dpi)
       # FirstWindow and the probes use the CS-WebUI host.
       - name: Publish Window and View application with NativeAOT
         if: matrix.cswebui

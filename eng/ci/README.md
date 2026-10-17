@@ -94,6 +94,28 @@ podman run --rm --init --userns=keep-id --user root --security-opt seccomp=uncon
 
 The container writes its build outputs into the checkout's `bin`, `obj` and `artifacts`.
 
+## Display scaling and appearance evidence
+
+The native job changes the runner's own display and preferences to check W315-017
+and W315-011, and restores them before the step ends:
+
+- Windows (`--dpi` mode of the WebView smoke, `RUNIC_TEST_DISPLAY_SCALING=1`) raises
+  the virtual display to 1920x1080 and switches the scale to 150 % and 175 % while the
+  WebView2 window is open, with JIT and NativeAOT. The undocumented
+  `SPI_SETLOGICALDPIOVERRIDE` selects the scale step without signing out;
+  `tests/native/Runic.Desktop.WebViewSmoke/windows-display-scaling.ps1` does the same
+  through Windows Settings for manual runs.
+- macOS (`eng/ci/macos-appearance.sh`) writes the accent colour, Increase contrast and
+  Reduce motion before each test process starts and switches dark mode through System
+  Events while one runs.
+- Linux (`eng/ci/real-portal.sh`) runs the published portal tests against the real
+  xdg-desktop-portal and its GNOME backend in a digest-pinned Fedora container, because
+  Ubuntu 24.04's portal does not publish the accent colour or reduced motion.
+
+Hosted runners have one virtual monitor, and the macOS runner offers no HiDPI mode,
+so moving a window between monitors with different scales and macOS scaling need
+real hardware.
+
 ## Affected-only pull requests
 
 The `plan` job runs `eng/ci/plan.mjs`. On a pull request it diffs GitHub's merge

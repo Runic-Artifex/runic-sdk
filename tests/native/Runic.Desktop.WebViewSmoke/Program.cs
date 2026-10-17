@@ -27,6 +27,10 @@ try
     {
         await KeyboardSmoke.RunAsync(CreateHostOptions(), "gtk3");
     }
+    else if (args.Contains("--dpi", StringComparer.Ordinal))
+    {
+        await WindowsDpiSmoke.RunAsync(CreateHostOptions());
+    }
     else if (args.Contains("--ui-automation", StringComparer.Ordinal))
     {
         await RunWindowsUiAutomationSmokeAsync();
