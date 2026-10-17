@@ -487,6 +487,8 @@ static async Task ExerciseWindowStateAsync(DesktopHost host)
         window.StateChanged += (_, _) => Interlocked.Increment(ref changed);
         await window.ResizeAsync(420, 300);
         var resized = await WaitForStateAsync(window, static state => state.Placement is { Width: 420, Height: 300 }, "the size 420x300");
+        // DesktopWindow.State changes before StateChanged runs on the thread pool: wait for the event too.
+        for (var waited = 0; Volatile.Read(ref changed) == 0 && waited < 5000; waited += 20) await Task.Delay(20);
         if (Volatile.Read(ref changed) == 0)
             throw new InvalidOperationException("Resizing the GTK 4 window raised no StateChanged event.");
         saved = resized.Placement with { Maximized = true };
