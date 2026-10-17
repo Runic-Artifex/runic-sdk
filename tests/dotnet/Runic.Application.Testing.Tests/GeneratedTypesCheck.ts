@@ -76,5 +76,8 @@ export async function closeEditor(view: ReactiveNavEditorClient): Promise<string
   const settled = await operation.outcome();
   if (!settled.ok) return "failed";
   const outcome: NavigationOutcome = settled.value;
-  return outcome.kind === "Rejected" ? `kept: ${outcome.rejection ?? "unknown"}` : outcome.kind;
+  if (outcome.kind === "Rejected") return `kept: ${outcome.rejection ?? "unknown"}`;
+  // #385: a committed navigation reports how the activation hooks of the page it made current ended.
+  const activation: "None" | "Completed" | "Failed" | "Cancelled" = outcome.activation;
+  return activation === "Failed" ? "load failed" : outcome.kind;
 }

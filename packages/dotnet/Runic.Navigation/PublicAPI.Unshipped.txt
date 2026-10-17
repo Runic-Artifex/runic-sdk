@@ -21,6 +21,8 @@ Runic.Navigation.NavigationAdmission
 Runic.Navigation.NavigationAdmission.RejectWhileBusy = 1 -> Runic.Navigation.NavigationAdmission
 Runic.Navigation.NavigationAdmission.Supersede = 0 -> Runic.Navigation.NavigationAdmission
 Runic.Navigation.NavigationDeparture.ContentContinues.get -> bool
+Runic.Navigation.NavigationOutcome.Activation.get -> Runic.Navigation.NavigationActivationState
+Runic.Navigation.NavigationOutcome.Activation.init -> void
 Runic.Navigation.NavigationOwnership.Shared = 2 -> Runic.Navigation.NavigationOwnership
 Runic.Navigation.NavigationRegion<TContent>.AddDepartureGuard(Runic.Navigation.INavigationRegionGuard! guard, Runic.Navigation.NavigationRegionGuardOptions? options = null) -> System.IDisposable!
 Runic.Navigation.NavigationRegion<TContent>.Admission.get -> Runic.Navigation.NavigationAdmission
