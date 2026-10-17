@@ -35,3 +35,36 @@ Runic.Platform.IDesktopSecretStore.GetAsync(string! service, string! account, Sy
 Runic.Platform.IDesktopSecretStore.SetAsync(string! service, string! account, string! secret, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<Runic.Platform.PlatformResult<Runic.Platform.PlatformUnit>!>
 Runic.Platform.PlatformFailureCode.Locked = 7 -> Runic.Platform.PlatformFailureCode
 static Runic.Platform.DesktopSecretStore.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopSecretStore!
+Runic.Platform.DesktopOpenOptions
+Runic.Platform.DesktopOpenOptions.DesktopOpenOptions(System.Collections.Immutable.ImmutableArray<string!> UrlSchemes) -> void
+Runic.Platform.DesktopOpenOptions.Files.get -> bool
+Runic.Platform.DesktopOpenOptions.Files.init -> void
+Runic.Platform.DesktopOpenOptions.UrlSchemes.get -> System.Collections.Immutable.ImmutableArray<string!>
+Runic.Platform.DesktopOpenOptions.UrlSchemes.init -> void
+Runic.Platform.DesktopOpenRequest
+Runic.Platform.DesktopOpenRequest.DesktopOpenRequest(System.Collections.Immutable.ImmutableArray<System.Uri!> Items) -> void
+Runic.Platform.DesktopOpenRequest.Items.get -> System.Collections.Immutable.ImmutableArray<System.Uri!>
+Runic.Platform.DesktopOpenRequest.Items.init -> void
+Runic.Platform.DesktopOpenRequest.PlatformContext.get -> Runic.Platform.DesktopActivationContext?
+Runic.Platform.DesktopOpenRequest.PlatformContext.init -> void
+Runic.Platform.DesktopOpenRequests
+Runic.Platform.IDesktopOpenRequests
+Runic.Platform.IDesktopOpenRequests.Opened -> System.EventHandler<Runic.Platform.DesktopOpenRequest!>?
+static Runic.Platform.DesktopOpenRequests.FromLaunch(Runic.Platform.ApplicationLaunch! launch, Runic.Platform.DesktopOpenOptions! options) -> Runic.Platform.DesktopOpenRequest?
+static Runic.Platform.DesktopOpenRequests.Unavailable(Runic.Platform.PlatformUnavailableReason reason) -> Runic.Platform.IDesktopOpenRequests!
+override Runic.Platform.DesktopOpenOptions.Equals(object? obj) -> bool
+override Runic.Platform.DesktopOpenOptions.GetHashCode() -> int
+override Runic.Platform.DesktopOpenOptions.ToString() -> string!
+override Runic.Platform.DesktopOpenRequest.Equals(object? obj) -> bool
+override Runic.Platform.DesktopOpenRequest.GetHashCode() -> int
+override Runic.Platform.DesktopOpenRequest.ToString() -> string!
+Runic.Platform.DesktopOpenOptions.<Clone>$() -> Runic.Platform.DesktopOpenOptions!
+Runic.Platform.DesktopOpenOptions.Deconstruct(out System.Collections.Immutable.ImmutableArray<string!> UrlSchemes) -> void
+Runic.Platform.DesktopOpenOptions.Equals(Runic.Platform.DesktopOpenOptions? other) -> bool
+Runic.Platform.DesktopOpenRequest.<Clone>$() -> Runic.Platform.DesktopOpenRequest!
+Runic.Platform.DesktopOpenRequest.Deconstruct(out System.Collections.Immutable.ImmutableArray<System.Uri!> Items) -> void
+Runic.Platform.DesktopOpenRequest.Equals(Runic.Platform.DesktopOpenRequest? other) -> bool
+static Runic.Platform.DesktopOpenOptions.operator !=(Runic.Platform.DesktopOpenOptions? left, Runic.Platform.DesktopOpenOptions? right) -> bool
+static Runic.Platform.DesktopOpenOptions.operator ==(Runic.Platform.DesktopOpenOptions? left, Runic.Platform.DesktopOpenOptions? right) -> bool
+static Runic.Platform.DesktopOpenRequest.operator !=(Runic.Platform.DesktopOpenRequest? left, Runic.Platform.DesktopOpenRequest? right) -> bool
+static Runic.Platform.DesktopOpenRequest.operator ==(Runic.Platform.DesktopOpenRequest? left, Runic.Platform.DesktopOpenRequest? right) -> bool

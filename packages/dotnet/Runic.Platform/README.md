@@ -162,6 +162,29 @@ The application composes `IDesktopPrivilegedActions` itself, because it needs
 declared actions and a provider package, and claims `ApplicationInstance` before
 it starts a host.
 
+## Opening files and URLs
+
+`IDesktopOpenRequests` raises `Opened` with the files and URLs the user opens
+with the application: its registered URL schemes, such as an OAuth callback, and
+its file types, at launch and while it runs. Linux and Windows start the
+application with them as arguments, which `ApplicationInstance` forwards to the
+running instance; macOS sends open events to the running application.
+`PlatformServices.CreateOpenRequests` in Runic.Application.Views.Desktop selects
+the provider:
+
+```csharp
+var launch = ApplicationLaunch.FromProcess(args);
+// After ApplicationInstance.ClaimAsync made this process the running instance; on macOS on the main thread,
+// before the first window.
+await using var opens = PlatformServices.CreateOpenRequests(new(["org.example.notes"]) { Files = true }, instance, launch);
+opens.Opened += (_, request) => { /* worker thread: validate each URI, then dispatch to a window */ };
+```
+
+`DesktopOpenRequests.FromLaunch` is the argument parser on its own. Treat every
+opened URL and file as untrusted input: any web page can open a URL with the
+application's scheme. The [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md) lists what
+each platform's package registers.
+
 ## Secret storage
 
 `IDesktopSecretStore` keeps secrets, such as access tokens, in the user's

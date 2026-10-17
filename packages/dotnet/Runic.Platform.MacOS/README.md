@@ -77,6 +77,18 @@ signature reports `InvalidData`, and other `SMAppService` errors keep their
 domain and code in the diagnostic. A call that succeeds without changing the
 login item's status reports that as an `IoError`.
 
+## Opening files and URLs
+
+`MacOSPlatformProvider.CreateOpenRequests(options, instance, launch)` handles
+the open-documents and get-URL Apple events that LaunchServices sends for the
+`CFBundleDocumentTypes` and `CFBundleURLTypes` of the bundle's `Info.plist`, at
+launch and while the application runs, and the arguments of launches from a
+terminal. Create it on the main thread before the first window or status icon:
+the launch's own event is sent as the application finishes launching, so
+creating it later throws `InvalidOperationException`. The events arrive while
+the Desktop event loop runs. URLs with schemes not in the options are ignored.
+See the [opening files and URLs design](https://github.com/Runic-Artifex/runic-sdk/blob/main/specs/platform/open-activation.md).
+
 ## Secret storage
 
 `MacOSPlatformProvider.CreateSecretStore()` keeps secrets as generic passwords
