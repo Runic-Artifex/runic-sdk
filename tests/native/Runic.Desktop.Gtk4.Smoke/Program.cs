@@ -25,6 +25,20 @@ if (args.Contains("--keyboard", StringComparer.Ordinal))
 if (Array.IndexOf(args, "--announcement") is var announcement and >= 0)
     return AnnouncementSmoke.Run(announcement + 1 < args.Length ? args[announcement + 1] : "gtk4");
 
+// --accessibility gtk3|gtk4 --probe <command>: the page read and changed through AT-SPI by the accessibility probe.
+if (Array.IndexOf(args, "--accessibility") is var accessibility and >= 0)
+{
+    var toolkit = accessibility + 1 < args.Length ? args[accessibility + 1] : "gtk4";
+    var options = toolkit switch
+    {
+        "gtk3" => new DesktopHostOptions { Linux = new() { EmbeddedBackend = LinuxEmbeddedBackend.Gtk3WebKit41 } },
+        "gtk4" => new DesktopHostOptions().WithGtk4(),
+        _ => throw new ArgumentException($"Unknown toolkit '{toolkit}'; use gtk3 or gtk4."),
+    };
+    var probe = AccessibilitySmoke.ProbeCommand(args);
+    return DesktopEventLoop.Run(options, host => AccessibilitySmoke.RunAsync(host, toolkit, probe));
+}
+
 if (args.Any(arg => arg.StartsWith("--notification-", StringComparison.Ordinal)))
     return NotificationActivationSmoke.Run(args);
 

@@ -630,6 +630,40 @@ jobs:
       - name: Exercise the Desktop event-loop entry point on Windows and macOS
         if: runner.os != 'Linux'
         run: dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --event-loop
+      # W315-018: Runic.Desktop.AccessibilityProbe reads and changes a page through AT-SPI (GTK 3 and GTK 4), UI
+      # Automation (WebView2) or the macOS accessibility API (WKWebView) from its own process, as a screen reader does:
+      # roles, range values, selection, their change events, focus, live regions and AnnounceAsync. On macOS VoiceOver
+      # also runs and the probe checks what it says. Expectations.cs lists each host's known gaps.
+      - name: Check what screen readers read in the embedded window
+        timeout-minutes: 12
+        shell: bash
+        run: |
+          mkdir -p artifacts/accessibility
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0-windows
+            probe="$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0-windows/Runic.Desktop.AccessibilityProbe.exe"
+            dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll --accessibility \
+              --probe "$probe" --receipt artifacts/accessibility/webview2.json
+            exit
+          fi
+          dotnet build tests/native/Runic.Desktop.AccessibilityProbe -c Release -f net10.0
+          probe=(dotnet "$PWD/tests/native/Runic.Desktop.AccessibilityProbe/bin/Release/net10.0/Runic.Desktop.AccessibilityProbe.dll")
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            eng/ci/macos-voiceover.sh dotnet tests/native/Runic.Desktop.WebViewSmoke/bin/Release/net10.0/Runic.Desktop.WebViewSmoke.dll \
+              --accessibility --probe "${probe[@]}" --voiceover --receipt artifacts/accessibility/wkwebview.json
+            exit
+          fi
+          for toolkit in gtk3 gtk4; do
+            GDK_BACKEND=x11 GSETTINGS_BACKEND=memory dbus-run-session -- xvfb-run -a dotnet run --project tests/native/Runic.Desktop.Gtk4.Smoke \
+              -c Release --no-build -- --accessibility "$toolkit" --probe "${probe[@]}" --receipt "artifacts/accessibility/$toolkit.json"
+          done
+      - name: Retain accessibility receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: accessibility-${{ matrix.rid }}-${{ github.run_id }}
+          path: artifacts/accessibility
+          if-no-files-found: ignore
       # Runic.Platform.Administration.Windows supports Windows x64 only (eng/release/README.md).
       - name: Verify Windows administration native inspection
         if: runner.os == 'Windows' && runner.arch == 'X64'

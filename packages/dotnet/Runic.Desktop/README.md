@@ -399,11 +399,47 @@ the envelope CS-WebUI sends for an unbound route.
 
 ## Accessibility
 
+The embedded window gives its page to the platform's accessibility API:
+WebKitGTK to AT-SPI (Orca), WebView2 to UI Automation (Narrator, NVDA) and
+WKWebView to the macOS accessibility API (VoiceOver). The window is named by the
+page's `<title>` on every host. CI checks what each host exposes with
+`tests/native/Runic.Desktop.AccessibilityProbe`, which reads and changes a page
+through the API from its own process, as a screen reader does
+(`Runic.Desktop.WebViewSmoke --accessibility` on Windows and macOS,
+`Runic.Desktop.Gtk4.Smoke --accessibility gtk3|gtk4` on Linux). On macOS
+VoiceOver runs as well, and the probe checks what it says. The probe's
+`Expectations.cs` lists each host's known gaps:
+
+| Page | WebKitGTK (GTK 3 and GTK 4) | WebView2 | WKWebView |
+| --- | --- | --- | --- |
+| `<input type="range">` | Slider with value, minimum and maximum; set through the Value interface; value-change event | Slider; `RangeValue`; value-change event | Slider; `AXIncrement`; VoiceOver says "7 Volume slider", then the new value |
+| `<input type="number">` | An entry: its text, no range | Spinner with value, minimum and maximum | Number field: its value; minimum and maximum read 0 |
+| ARIA spin button whose value the page changes | Spin button; value-change event | Spinner; value-change event | Stepper; VoiceOver says `aria-valuetext`, or a percentage of the range without it |
+| Increment of an ARIA spin button by the screen reader | AT-SPI has none: Orca sends arrow keys. Setting the value through AT-SPI aborts the web process ([#396](https://github.com/Runic-Artifex/runic-sdk/issues/396)) | `RangeValue.SetValue` is ignored: screen readers send arrow keys | `AXIncrement` reaches the page as Arrow Up |
+| `<select size>` and ARIA list box (`aria-selected`) | List box; selected item; select through the Selection interface; selection event | List; `Selection` patterns; selection event | List with its selected item; VoiceOver says "Apple selected (1 of 3)" for `<select>`; the page's change of an ARIA list box is not checked |
+| Focus moved by the screen reader | Focus event | Focus event | VoiceOver follows it and says the control |
+| Live region (`aria-live`, `role="status"`) | No event ([#318](https://github.com/Runic-Artifex/runic-sdk/issues/318)) | `LiveRegionChanged` | VoiceOver says it |
+| `AnnounceAsync`, polite and assertive | `Object:Announcement` | Notification event | `AXAnnouncementRequested`; VoiceOver says it |
+| Native menu bar | None | None | Application, Edit, View and Window menus |
+
+The Linux and Windows columns are what a client of the API receives; Orca,
+Narrator and NVDA were not run. WebKit on macOS posts the page's notifications
+to VoiceOver but not to an observer of the public accessibility API, so there
+the probe checks values, selection, focus and live regions through what
+VoiceOver says (`eng/ci/macos-voiceover.sh` lets the job control VoiceOver).
+
 On Linux, the embedded window is WebKitGTK, and a screen reader such as Orca
 reads the page through WebKit's accessibility tree. It differs from Chromium,
 which CS-WebUI and WebView2 use. The first two differences were seen with Orca
 50 and WebKitGTK 4.1 (GTK 3), where GTK 4 was not compared; the others with
 Orca 50.2 and WebKitGTK 2.54.1.
+
+**On GTK 4, start the screen reader before the application.** With
+webkitgtk-6.0 the page's web process reads which events screen readers listen
+for when it starts. A screen reader turned on later reads the page but hears no
+value, selection or focus change from it until the web process restarts
+([#395](https://github.com/Runic-Artifex/runic-sdk/issues/395)). GTK 3 has no
+such limit.
 
 **Lists styled with `list-style: none` are not lists.** WebKit exposes a `ul`
 or `ol` without list markers as a panel, a plain group, as Safari does. Only its items
@@ -444,12 +480,15 @@ it has focus.
 
 ```html
 <span role="spinbutton" tabindex="0" aria-label="Restore points to keep"
-      aria-valuenow="5" aria-valuemin="1" aria-valuemax="50">5</span>
+      aria-valuenow="5" aria-valuemin="1" aria-valuemax="50"
+      aria-valuetext="5 restore points">5</span>
 ```
 
 Handle the arrow, Page Up, Page Down, Home and End keys on it as the WAI-ARIA
 spin button pattern describes, and keep focus on it when buttons beside it
-change the value. A result that appears after an action, such as an error, can
+change the value. Update `aria-valuetext` with `aria-valuenow`: VoiceOver
+otherwise reads the value as a percentage of the range ("14.3%" for 8 of 1 to
+50). A result that appears after an action, such as an error, can
 receive focus itself (`tabindex="-1"` and `focus()`), so that Orca reads it.
 
 **Announce status messages from the backend.** `DesktopWindow.AnnounceAsync(message, priority)`
@@ -462,8 +501,8 @@ every platform:
 | --- | --- | --- |
 | GTK 3 | Emits ATK's `notification` signal (ATK 2.50; `announcement`, always polite, on 2.46 to 2.48) on the window's accessible object. The AT-SPI bridge sends it as `Object:Announcement` with the politeness. | `Object:Announcement` with both politeness levels on the accessibility bus (`Runic.Desktop.Gtk4.Smoke --announcement gtk3`) |
 | GTK 4 | Calls `gtk_accessible_announce` (GTK 4.14 or later; an older GTK reports no `Announcements`). | As GTK 3 (`--announcement gtk4`) |
-| WebView2 | Raises a UI Automation notification event on the window. | The call succeeds; not checked with Narrator or NVDA |
-| WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | The call succeeds; not checked with VoiceOver |
+| WebView2 | Raises a UI Automation notification event from the window's own provider: UI Automation ignores one raised on a window without a provider. | A UI Automation client receives both with their processing (`Runic.Desktop.AccessibilityProbe`); not checked with Narrator or NVDA |
+| WKWebView | Posts `NSAccessibilityAnnouncementRequestedNotification` for the window. | VoiceOver says both (`Runic.Desktop.AccessibilityProbe --voiceover`) |
 
 `DesktopAnnouncementPriority.Polite`, the default, waits for what the screen
 reader is saying, and `Assertive` interrupts it, as `aria-live` does. A browser
