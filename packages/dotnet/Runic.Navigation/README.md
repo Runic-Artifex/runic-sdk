@@ -284,7 +284,7 @@ A failed step is logged as event 1064.
 | Phase | Where | What happens |
 | --- | --- | --- |
 | Admission | Synchronously, in the call | The request is rejected at once for these reasons: `Closed`; `Reentrant`, when the caller is inside a hook of a transition in this region, an ancestor or a descendant, for example a `CurrentPane` guard that calls `Main.BackAsync()`; `NotCurrent`; `NoHistory`; `Cancelled`, for a token that is already cancelled; or `Busy`, in a region that rejects requests while busy. Otherwise the request supersedes every earlier request of the region that has not started committing, unless it is a Back that joins a pending Back (see below). It also supersedes those of the child regions its plan affects. |
-| Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
+| Guarding | Outside model turns | The request first waits until earlier requests of the region, and those of the child regions in its plan, have ended. Then departure guards run one at a time, deepest first, also when a push only retains the current entry (`NavigationDepartureKind.Retain`), followed by the region and navigator guards (see [Guards for a whole region](#guards-for-a-whole-region)). `false` rejects the request as `Guard`. A guard that throws fails it (event 1060). |
 | Preparing | Outside model turns | A new entry runs its factory, the ownership check, model-context binding and `InitializeAsync`, exactly once. A resumed entry runs `ResumeAsync`, which runs again on a retry. A step that throws fails the request (event 1061), and its pending entry retires. |
 | Committing | One model turn | The turn re-checks supersession, `ExpectedCurrent`, the target and the versions of the affected regions. Then it applies the new stacks and child policies, runs the departure's `OnCommitted` actions, raises the entries' `StateChanged` and `INavigationAware` notifications (event 1075 for a handler that throws), and raises `PropertyChanged`. A `PropertyChanged` handler that throws is logged (event 1063; its `Property` names the region property), and the commit stands. If the turn cannot run, for example because the model context throws, the request fails as `Failed(Committing)` (event 1062), nothing changes, and its pending entry retires. If the model context is already closed, the request is `Rejected(Closed)` instead, without event 1062, and the navigator starts closing. |
 | Committed | Outside model turns | Admission is released in the commit turn (`IsTransitioning` turns `false`), and departing entries retire. The returned `ValueTask` completes after that cleanup; the region stays `IsBusy` until then. |
@@ -580,6 +580,60 @@ token dismisses the dialog when the departure is superseded or the navigator
 closes. The dialog region must not be the guarded region, one of its
 ancestors or one of its descendants: that push would be
 `Rejected(Reentrant)`.
+
+### Guards for a whole region
+
+An entry's guard answers for its own content. A guard that answers for a
+whole region, whatever its pages are, such as "discard the unsaved work of
+this window?", is an `INavigationRegionGuard` registered on the region, or on
+the navigator for every region:
+
+```csharp
+public sealed class UnsavedWorkGuard(Workspace workspace) : INavigationRegionGuard
+{
+    public async ValueTask<bool> CanLeaveAsync(NavigationRegionDeparture departure, CancellationToken token)
+    {
+        if (!await departure.ModelContext.InvokeAsync(() => workspace.HasUnsavedWork, token)) return true;
+        if (!await workspace.AskDiscardAsync(token)) return false;
+        departure.OnCommitted(workspace.Discard);
+        return true;
+    }
+}
+
+_registration = Main.AddDepartureGuard(new UnsavedWorkGuard(workspace));
+// or, for every region: navigator.AddDepartureGuard(guard)
+```
+
+- A region guard is asked once per transition that departs from an entry of
+  its region: a request to the region, a parent request that resets or closes
+  it, or the departure of borrowed content that leaves it, as a tab switch
+  does. A push into an empty region or a `BackTo` the current entry asks none.
+- Region guards run after the entries' guards, region by region, deepest
+  first, each region's guards in registration order, then the navigator's
+  guards once. `NavigationRegionDeparture` names the `Region`, the departing
+  `Entries` (current first), the `Operation`, and the `Kind`: `Retire` when one
+  of them retires, otherwise `Retain`. A navigator guard gets the region the
+  request was made to, and the entries and kind of the whole transition.
+- `NavigationRegionGuardOptions` decides when a guard is asked. By default it
+  is skipped when the transition only retains the region's entries
+  (`AskOnRetain`), and for `ClearHistory` (`AskOnClearHistory`), also for the
+  child regions a ClearHistory closes. The entries' own guards are asked
+  either way.
+- `false` gives `Rejected(Guard)` with `By` = `null`. A guard that throws fails
+  the request as `Failed(Guarding)` (event 1060, with the guard's type as
+  `EntryType`). `OnCommitted` actions run after those of the entries' guards,
+  in asking order.
+- They run like entry guards: outside turns, on the model's thread with a hook
+  scheduler, never two of one region at once, with the hook's token, and a
+  request from one into its region, an ancestor or a descendant is
+  `Rejected(Reentrant)`. A joined Back asks them once.
+- The guards are read when the request starts guarding. Disposing the
+  registration removes the guard; one removed before its turn is not asked.
+  Navigator disposal asks none.
+- A window close that clears its regions one after another, such as WPF's
+  `GuardWindowClose` or a Runic View's `CanCloseAsync`, asks a navigator guard
+  once per region with entries. Register an "unsaved anywhere" guard on the
+  window's main region instead, or let it remember its answer.
 
 `LeaveConfirmation` keeps the caller's context, so its confirm delegate stays
 on the UI thread. Without a hook scheduler the guard can run in the frame of
